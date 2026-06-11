@@ -13,6 +13,7 @@ import Clients from './pages/Clients'
 import Cashflow from './pages/Cashflow'
 import Ryoshu from './pages/Ryoshu'
 import Reports from './pages/Reports'
+import Evaluations from './pages/Evaluations'
 import Jobs from './pages/Jobs'
 
 function AppContent() {
