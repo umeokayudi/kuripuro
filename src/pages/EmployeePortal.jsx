@@ -165,13 +165,29 @@ export default function EmployeePortal() {
 
   const checkGPS = async (job) => {
     if (!job.gps_lat||!job.gps_lng) return true
-    setGpsStatus('Checking...')
+    setGpsStatus('Checking location...')
     try {
       const pos = await getCurrentPosition()
       const dist = distanceMeters(pos.lat,pos.lng,Number(job.gps_lat),Number(job.gps_lng))
-      if (dist>100) { setGpsStatus(`${Math.round(dist)}m away`); toast.error(`Too far! ${Math.round(dist)}m.`); return false }
-      setGpsStatus(`✓ ${Math.round(dist)}m`); return true
-    } catch { setGpsStatus('GPS unavailable'); return true }
+      if (dist>100) {
+        setGpsStatus(`⚠️ ${Math.round(dist)}m away`)
+        // Show warning but allow to continue
+        return new Promise(resolve => {
+          toast((t) => {
+            const el = document.createElement('div')
+            return null
+          })
+          const confirmed = window.confirm(`You are ${Math.round(dist)}m from the job location (max 100m).\nContinue anyway?`)
+          resolve(confirmed)
+        })
+      }
+      setGpsStatus(`✓ ${Math.round(dist)}m away`)
+      return true
+    } catch(e) {
+      setGpsStatus('GPS unavailable — continuing')
+      toast('📍 GPS unavailable, proceeding without location check', { icon: '⚠️' })
+      return true
+    }
   }
 
   const handleAcceptSpot = async (job) => {
