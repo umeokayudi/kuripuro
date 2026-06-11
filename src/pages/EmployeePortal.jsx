@@ -122,7 +122,8 @@ export default function EmployeePortal() {
 
   const calcSalary = (allData, empInfo) => {
     const month = new Date().toISOString().slice(0,7)
-    const completed = allData.filter(j=>j.status==='completed'&&j.scheduled_date?.startsWith(month))
+    const todayStr = new Date().toISOString().split('T')[0]
+    const completed = allData.filter(j=>j.status==='completed'&&j.scheduled_date?.startsWith(month)&&j.scheduled_date<=todayStr)
     const totalMins = completed.reduce((s,j)=>{ if(!j.started_at||!j.completed_at) return s; return s+(new Date(j.completed_at)-new Date(j.started_at))/60000 },0)
     const spotEarned = completed.filter(j=>j.job_category==='spot').reduce((s,j)=>s+Number(j.spot_value||0),0)
     // Count unique work days — night shifts (00:00-06:00) count as previous calendar day
@@ -349,6 +350,7 @@ export default function EmployeePortal() {
     {key:'transport',icon:'🚃',label:'Transport'},
     {key:'chat',icon:'💬',label:'Chat',badge:unreadMsgs},
     {key:'shift',icon:'🗺',label:'Today\'s Shift'},
+    {key:'calendar',icon:'📆',label:'Calendar'},
     {key:'achievements',icon:'🏆',label:'Achievements'},
   ]
 
@@ -960,6 +962,13 @@ export default function EmployeePortal() {
               <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&sendMessage()} placeholder="Message admin..." style={{...S.input,flex:1,borderRadius:22,padding:'12px 18px'}} />
               <button onClick={sendMessage} disabled={!newMsg.trim()} style={{width:46,height:46,borderRadius:'50%',border:'none',background:newMsg.trim()?'#c19c56':'rgba(255,255,255,0.07)',color:newMsg.trim()?'#0a1929':'rgba(255,255,255,0.3)',fontSize:20,cursor:newMsg.trim()?'pointer':'default',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>›</button>
             </div>
+          </div>
+        )}
+
+        {/* CALENDAR */}
+        {tab==='calendar'&&(
+          <div>
+            <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} />
           </div>
         )}
 
