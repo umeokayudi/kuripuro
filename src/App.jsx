@@ -1,20 +1,37 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { LangProvider } from './hooks/useLang'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import Sidebar from './components/Sidebar'
 import Login from './pages/Login'
 import EmployeePortal from './pages/EmployeePortal'
-import Dashboard from './pages/Dashboard'
-import Checkin from './pages/Checkin'
-import Employees from './pages/Employees'
-import Salary from './pages/Salary'
-import Clients from './pages/Clients'
-import Cashflow from './pages/Cashflow'
-import Ryoshu from './pages/Ryoshu'
-import Reports from './pages/Reports'
-import Evaluations from './pages/Evaluations'
-import Jobs from './pages/Jobs'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Jobs = lazy(() => import('./pages/Jobs'))
+const Employees = lazy(() => import('./pages/Employees'))
+const Salary = lazy(() => import('./pages/Salary'))
+const Clients = lazy(() => import('./pages/Clients'))
+const Cashflow = lazy(() => import('./pages/Cashflow'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Ryoshu = lazy(() => import('./pages/Ryoshu'))
+const Evaluations = lazy(() => import('./pages/Evaluations'))
+const Checkin = lazy(() => import('./pages/Checkin'))
+
+function Clock() {
+  const [now, setNow] = React.useState(new Date())
+  React.useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
+  return (
+    <span style={{ fontSize:13, fontFamily:'monospace', color:'var(--text2)' }}>
+      {now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
+      <span style={{ marginLeft:8, fontSize:12, color:'var(--text3)' }}>
+        {now.toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short' })}
+      </span>
+    </span>
+  )
+}
+
+
 
 function AppContent() {
   const { user, loading, logout } = useAuth()
@@ -40,25 +57,28 @@ function AppContent() {
           <div className="topbar-right">
             <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
             <span style={{ color:'var(--text3)' }}>·</span>
-            <span>{new Date().toLocaleDateString('en-GB',{ weekday:'short', day:'2-digit', month:'short' })}</span>
+            <Clock />
             <button onClick={logout} style={{ marginLeft:8, padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)', background:'#f4f6f9', color:'#1a2636', fontSize:13, fontWeight:600, cursor:'pointer' }}>
               Logout
             </button>
           </div>
         </header>
         <main className="page-content">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/jobs" element={<Jobs />} />
-            <Route path="/checkin" element={<Checkin />} />
-            <Route path="/employees" element={<Employees />} />
-            <Route path="/salary" element={<Salary />} />
-            <Route path="/clients" element={<Clients />} />
-            <Route path="/cashflow" element={<Cashflow />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/ryoshu" element={<Ryoshu />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+          <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>Loading...</div>}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/jobs" element={<Jobs />} />
+              <Route path="/employees" element={<Employees />} />
+              <Route path="/salary" element={<Salary />} />
+              <Route path="/clients" element={<Clients />} />
+              <Route path="/cashflow" element={<Cashflow />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/ryoshu" element={<Ryoshu />} />
+              <Route path="/evaluations" element={<Evaluations />} />
+              <Route path="/checkin" element={<Checkin />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </div>
