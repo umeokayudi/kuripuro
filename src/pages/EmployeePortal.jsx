@@ -720,243 +720,26 @@ export default function EmployeePortal() {
           />
         )}
 
-                {/* HISTORY */}
+        {/* HISTORY */}
         {tab==='history'&&(
-          <div>
-            <div style={{display:'flex',gap:6,marginBottom:14,overflowX:'auto',paddingBottom:2}}>
-              {[['all','All'],['upcoming','Upcoming'],['past','Done'],['cancelled','Cancelled']].map(([k,l])=>(
-                <button key={k} onClick={()=>setHistoryFilter(k)} style={{padding:'7px 14px',borderRadius:20,border:'1px solid',flexShrink:0,borderColor:historyFilter===k?'#c19c56':'rgba(255,255,255,0.08)',background:historyFilter===k?'rgba(193,156,86,0.12)':'rgba(255,255,255,0.03)',color:historyFilter===k?'#c19c56':'rgba(255,255,255,0.4)',fontSize:12,fontWeight:historyFilter===k?600:400,cursor:'pointer'}}>
-                  {l}
-                </button>
-              ))}
-            </div>
-            {(() => {
-              const filtered = jobsForCalendar(historyFilter)
-              if (filtered.length===0) return <div style={{textAlign:'center',paddingTop:40,color:'rgba(255,255,255,0.25)',fontSize:13}}>No jobs</div>
-              const byDate = {}
-              filtered.forEach(j=>{ const d=displayDate(j); if(!byDate[d]) byDate[d]=[]; byDate[d].push(j) })
-              return Object.keys(byDate).sort((a,b)=>historyFilter==='upcoming'?a.localeCompare(b):b.localeCompare(a)).map(date=>(
-                <div key={date} style={{marginBottom:18}}>
-                  <div style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.4)',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
-                    <div style={{height:1,flex:1,background:'rgba(255,255,255,0.06)'}} />
-                    {new Date(date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
-                    <div style={{height:1,flex:1,background:'rgba(255,255,255,0.06)'}} />
-                  </div>
-                  {byDate[date].map(j=>{
-                    const duration = j.started_at&&j.completed_at?Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000):null
-                    const sc = {assigned:'#60a5fa',in_progress:'#fbbf24',completed:'#4ade80',cancelled:'rgba(255,255,255,0.2)'}[j.status]
-                    return (
-                      <div key={j.id} onClick={()=>setSelectedJob(j)} style={{...S.card,cursor:'pointer',marginBottom:8}}>
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                          <div style={{flex:1,marginRight:8}}>
-                            <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3}}>
-                              {j.job_category==='spot'&&<span style={{fontSize:8,background:'#c19c56',color:'#0a1929',padding:'1px 5px',borderRadius:20,fontWeight:800}}>SPOT</span>}
-                              <span style={{fontSize:13,fontWeight:600,color:'#fff'}}>{j.title}</span>
-                            </div>
-                            <div style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{j.scheduled_time}</div>
-                          </div>
-                          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}}>
-                            <div style={{fontSize:12,fontWeight:700,color:'#c19c56'}}>¥{Number(j.spot_value||j.value||0).toLocaleString()}</div>
-                            <div style={{fontSize:8,color:sc,fontWeight:600,textTransform:'uppercase'}}>{j.status}</div>
-                          </div>
-                        </div>
-                        <div style={{display:'flex',gap:12,fontSize:9,color:'rgba(255,255,255,0.25)'}}>
-                          {j.started_at&&<span>▶ {new Date(j.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
-                          {j.completed_at&&<span>🏁 {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
-                          {duration&&<span>⏱ {duration}m</span>}
-                          <span style={{marginLeft:'auto'}}>details ›</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              ))
-            })()}
-          </div>
-        )}
-
-        {/* SALARY */}
-        {tab==='salary'&&(
-          <div>
-            <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>Earned This Month</div>
-              <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{(salaryData?.total||0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>of ¥{(salaryData?.fixedMax||0).toLocaleString()} max</div>
-              <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 14px 5px',overflow:'hidden'}}>
-                <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
-              </div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)'}}>{salaryData?.workedDays||0} days · ¥{(salaryData?.dailyRate||0).toLocaleString()}/day</div>
-              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} spot ⚡</div>}
-              {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>Projected full month: ¥{salaryData.projected.toLocaleString()}</div>}
-            </div>
-
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
-              {[['📋','Jobs',salaryData?.jobs||0],['⏱','Hours',(salaryData?.hours||0)+'h'],['💴','Base','¥'+(salaryData?.base||0).toLocaleString()],['⚡','Spot','¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 10px'}}>
-                  <div style={{fontSize:20,marginBottom:6}}>{icon}</div>
-                  <div style={{fontSize:18,fontWeight:700,color:'#fff'}}>{v}</div>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2,textTransform:'uppercase',letterSpacing:0.5}}>{l}</div>
-                </div>
-              ))}
-            </div>
-
-            {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
-              <div style={{background:'linear-gradient(135deg,rgba(96,165,250,0.1),rgba(96,165,250,0.02))',border:'1px solid rgba(96,165,250,0.18)',borderRadius:18,padding:16,marginBottom:14}}>
-                <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>💴 Upcoming Payments</div>
-                {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').map((p,i)=>(
-                  <div key={p.id} style={{paddingBottom:i<payments.filter(x=>!x.is_deduction&&x.payment_type!=='advance').length-1?10:0,marginBottom:i<payments.filter(x=>!x.is_deduction&&x.payment_type!=='advance').length-1?10:0,borderBottom:i<payments.filter(x=>!x.is_deduction&&x.payment_type!=='advance').length-1?'1px solid rgba(255,255,255,0.06)':'none'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <div><div style={{fontSize:i===0?28:16,fontWeight:800,color:'#fff',letterSpacing:i===0?-1:0}}>¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{p.payment_date} · {p.description||'Salary'}</div></div>
-                      <span style={{fontSize:9,background:'rgba(96,165,250,0.1)',color:'#60a5fa',border:'1px solid rgba(96,165,250,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600,textTransform:'uppercase'}}>{p.status}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {payments.filter(p=>p.payment_type==='advance').length>0&&(
-              <div style={{marginBottom:14}}>
-                <span style={S.label}>Advances Scheduled</span>
-                {payments.filter(p=>p.payment_type==='advance').map(p=>(
-                  <div key={p.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                    <div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{p.payment_date} · {p.description}</div></div>
-                    <span style={{fontSize:9,background:'rgba(193,156,86,0.1)',color:'#c19c56',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>advance</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {payments.filter(p=>p.is_deduction).length>0&&(
-              <div style={{marginBottom:14}}>
-                <span style={S.label}>Deductions</span>
-                {payments.filter(p=>p.is_deduction).map(p=>(
-                  <div key={p.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6,borderColor:'rgba(248,113,113,0.15)'}}>
-                    <div><div style={{fontSize:13,fontWeight:600,color:'#f87171'}}>-¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{p.payment_date} · {p.description}</div></div>
-                    <span style={{fontSize:9,background:'rgba(248,113,113,0.1)',color:'#f87171',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>deduction</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {(() => {
-              const todayStr = new Date().toISOString().split('T')[0]
-              const parseAdvanceDate = (desc) => {
-                if (!desc) return null
-                const junMatch = desc.match(/Jun (\d+)/)
-                if (junMatch) return '2026-06-' + junMatch[1].padStart(2,'0')
-                const julMatch = desc.match(/Jul (\d+)/)
-                if (julMatch) return '2026-07-' + julMatch[1].padStart(2,'0')
-                return null
-              }
-              const received = advances.filter(a => {
-                const d = parseAdvanceDate(a.description)
-                return d && d < todayStr
-              })
-              const pending = advances.filter(a => {
-                const d = parseAdvanceDate(a.description)
-                return !d || d >= todayStr
-              })
-              return (
-                <>
-                  {received.length>0&&(
-                    <div style={{marginBottom:14}}>
-                      <span style={S.label}>Advances Received</span>
-                      {received.map(a=>(
-                        <div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                          <div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.description}</div></div>
-                          <span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ received</span>
-                        </div>
-                      ))}
-                      <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                        <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>Total received</span>
-                        <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  )}
-                  {pending.length>0&&(
-                    <div style={{marginBottom:14}}>
-                      <span style={S.label}>Advances Pending</span>
-                      {pending.map(a=>(
-                        <div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                          <div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{a.description}</div></div>
-                          <span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>pending</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )
-            })()}
-          </div>
-        )}
-
-        {/* TRANSPORT */}
-        {tab==='transport'&&(
-          <div>
-            <div style={{marginBottom:16}}>
-              <span style={S.label}>Submit Transport Claim</span>
-              <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:20,padding:18}}>
-                <div style={{marginBottom:12}}><span style={S.label}>Related Job</span><select value={claimForm.job_id} onChange={e=>setClaimForm(f=>({...f,job_id:e.target.value}))} style={{...S.input,appearance:'none'}}><option value="">No specific job</option>{allJobs.slice(0,30).map(j=><option key={j.id} value={j.id}>{j.title} · {j.scheduled_date}</option>)}</select></div>
-                <div style={{marginBottom:12}}><span style={S.label}>Amount (¥) *</span><input type="number" value={claimForm.amount} onChange={e=>setClaimForm(f=>({...f,amount:e.target.value}))} placeholder="e.g. 280" style={S.input} /></div>
-                <div style={{marginBottom:12}}><span style={S.label}>Route</span><input value={claimForm.route} onChange={e=>setClaimForm(f=>({...f,route:e.target.value}))} placeholder="Shibuya → Shinjuku" style={S.input} /></div>
-                <div style={{marginBottom:16}}><span style={S.label}>Notes</span><input value={claimForm.description} onChange={e=>setClaimForm(f=>({...f,description:e.target.value}))} style={S.input} /></div>
-                <div style={{marginBottom:16}}>
-                  <span style={S.label}>Photos & Receipt</span>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                    <div>
-                      <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:5}}>PHOTO</div>
-                      <div onClick={()=>claimPhotoRef.current.click()} style={{aspectRatio:'1',borderRadius:12,overflow:'hidden',cursor:'pointer',border:claimPhotoPreview?'2px solid #4ade80':'2px dashed rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.03)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:5,color:'rgba(255,255,255,0.3)'}}>
-                        {claimPhotoPreview?<img src={claimPhotoPreview} style={{width:'100%',height:'100%',objectFit:'cover'}} />:<><span style={{fontSize:26}}>📷</span><span style={{fontSize:10}}>Photo</span></>}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:5}}>RECEIPT</div>
-                      <div onClick={()=>claimReceiptRef.current.click()} style={{aspectRatio:'1',borderRadius:12,overflow:'hidden',cursor:'pointer',border:claimReceiptPreview?'2px solid #4ade80':'2px dashed rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.03)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:5,color:'rgba(255,255,255,0.3)'}}>
-                        {claimReceiptPreview?<img src={claimReceiptPreview} style={{width:'100%',height:'100%',objectFit:'cover'}} />:<><span style={{fontSize:26}}>🧾</span><span style={{fontSize:10}}>Receipt</span></>}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <button onClick={handleSubmitClaim} disabled={submittingClaim} style={{width:'100%',padding:'15px',borderRadius:14,border:'none',background:submittingClaim?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#0F6E56,#16a37e)',color:submittingClaim?'rgba(255,255,255,0.25)':'#fff',fontSize:15,fontWeight:700,cursor:submittingClaim?'not-allowed':'pointer'}}>
-                  {submittingClaim?'Submitting...':'📤 Submit Claim'}
-                </button>
-              </div>
-            </div>
-            <span style={S.label}>My Claims</span>
-            {claims.length===0&&<div style={{textAlign:'center',color:'rgba(255,255,255,0.25)',fontSize:13,padding:'20px 0'}}>No claims yet</div>}
-            {claims.map(c=>(
-              <div key={c.id} style={S.card}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:5}}>
-                  <div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(c.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{c.claim_date}{c.route&&` · ${c.route}`}</div></div>
-                  <span style={{fontSize:9,borderRadius:20,padding:'3px 9px',fontWeight:600,textTransform:'uppercase',background:c.status==='approved'?'rgba(74,222,128,0.12)':c.status==='rejected'?'rgba(248,113,113,0.12)':'rgba(251,191,36,0.12)',color:c.status==='approved'?'#4ade80':c.status==='rejected'?'#f87171':'#fbbf24',border:`1px solid rgba(${c.status==='approved'?'74,222,128':c.status==='rejected'?'248,113,113':'251,191,36'},0.2)`}}>{c.status}</span>
-                </div>
-                {c.admin_note&&<div style={{fontSize:10,color:'rgba(255,255,255,0.35)',background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'6px 8px',marginTop:4}}>Admin: {c.admin_note}</div>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* CHAT */}
-        {tab==='chat'&&(
-          <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 280px)'}}>
-            <div style={{flex:1,overflowY:'auto',marginBottom:12}}>
-              {messages.length===0&&<div style={{textAlign:'center',paddingTop:40,color:'rgba(255,255,255,0.25)',fontSize:13}}>No messages yet</div>}
-              {messages.map(m=>(
-                <div key={m.id} style={{display:'flex',justifyContent:m.sender==='employee'?'flex-end':'flex-start',marginBottom:10}}>
-                  <div style={{maxWidth:'78%',background:m.sender==='employee'?'rgba(193,156,86,0.18)':'rgba(255,255,255,0.08)',border:`1px solid rgba(${m.sender==='employee'?'193,156,86':'255,255,255'},0.12)`,borderRadius:m.sender==='employee'?'18px 18px 4px 18px':'18px 18px 18px 4px',padding:'11px 15px'}}>
-                    {m.sender==='admin'&&<div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3,fontWeight:600}}>Admin</div>}
-                    <div style={{fontSize:14,color:'#fff',lineHeight:1.5}}>{m.content}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginTop:4,textAlign:'right'}}>{new Date(m.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>
-                  </div>
-                </div>
-              ))}
-              <div ref={msgEndRef} />
-            </div>
-            <div style={{display:'flex',gap:8}}>
-              <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&sendMessage()} placeholder="Message admin..." style={{...S.input,flex:1,borderRadius:22,padding:'12px 18px'}} />
-              <button onClick={sendMessage} disabled={!newMsg.trim()} style={{width:46,height:46,borderRadius:'50%',border:'none',background:newMsg.trim()?'#c19c56':'rgba(255,255,255,0.07)',color:newMsg.trim()?'#0a1929':'rgba(255,255,255,0.3)',fontSize:20,cursor:newMsg.trim()?'pointer':'default',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>›</button>
-            </div>
-          </div>
+          <DayGroupView
+            allJobs={allJobs}
+            displayDate={displayDate}
+            today={today}
+            setSelectedJob={setSelectedJob}
+            handleStart={handleStart}
+            handleComplete={handleComplete}
+            activeJob={activeJob}
+            elapsed={elapsed}
+            checklist={checklist}
+            setChecklist={setChecklist}
+            notes={notes}
+            setNotes={setNotes}
+            PhotoGrid={PhotoGrid}
+            submitting={submitting}
+            fmt={fmt}
+            S={S}
+          />
         )}
 
         {/* CALENDAR */}
@@ -998,6 +781,196 @@ export default function EmployeePortal() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function DayGroupView({ allJobs, displayDate, today, setSelectedJob, handleStart, handleComplete, activeJob, elapsed, checklist, setChecklist, notes, setNotes, PhotoGrid, submitting, fmt, S }) {
+  const [filter, setFilter] = useState('all')
+  const [openDay, setOpenDay] = useState(null)
+
+  const filtered = allJobs.filter(j => {
+    if (filter === 'upcoming') return j.status === 'assigned' && j.scheduled_date >= today
+    if (filter === 'past') return j.status === 'completed'
+    if (filter === 'cancelled') return j.status === 'cancelled'
+    return j.status !== 'cancelled'
+  })
+
+  const byDate = {}
+  filtered.forEach(j => {
+    const d = displayDate(j)
+    if (!byDate[d]) byDate[d] = []
+    byDate[d].push(j)
+  })
+
+  const sortedDates = Object.keys(byDate).sort((a, b) =>
+    filter === 'upcoming' ? a.localeCompare(b) : b.localeCompare(a)
+  )
+
+  const getDayStatus = (jobs) => {
+    if (jobs.every(j => j.status === 'completed')) return 'done'
+    if (jobs.some(j => j.status === 'in_progress')) return 'active'
+    if (jobs.some(j => j.status === 'assigned')) return 'scheduled'
+    return 'cancelled'
+  }
+
+  const statusColors = { done: '#4ade80', active: '#fbbf24', scheduled: '#60a5fa', cancelled: 'rgba(255,255,255,0.2)' }
+  const statusLabels = { done: '✓ Complete', active: '▶ In Progress', scheduled: 'Scheduled', cancelled: 'Cancelled' }
+
+  return (
+    <div>
+      {/* Filter pills */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+        {[['all', 'All'], ['upcoming', 'Upcoming'], ['past', 'Done'], ['cancelled', 'Cancelled']].map(([k, l]) => (
+          <button key={k} onClick={() => setFilter(k)} style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid', flexShrink: 0, borderColor: filter === k ? '#c19c56' : 'rgba(255,255,255,0.08)', background: filter === k ? 'rgba(193,156,86,0.12)' : 'rgba(255,255,255,0.03)', color: filter === k ? '#c19c56' : 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: filter === k ? 600 : 400, cursor: 'pointer' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {sortedDates.length === 0 && <div style={{ textAlign: 'center', paddingTop: 40, color: 'rgba(255,255,255,0.25)', fontSize: 13 }}>No jobs</div>}
+
+      {sortedDates.map(date => {
+        const dayJobs = byDate[date].sort((a, b) => (a.sequence_order || 99) - (b.sequence_order || 99))
+        const status = getDayStatus(dayJobs)
+        const isOpen = openDay === date
+        const isToday = date === today
+        const doneCount = dayJobs.filter(j => j.status === 'completed').length
+        const activeInDay = dayJobs.find(j => j.status === 'in_progress')
+        const nextJob = dayJobs.find(j => j.status === 'assigned')
+
+        return (
+          <div key={date} style={{ marginBottom: 10 }}>
+            {/* Day card */}
+            <div onClick={() => setOpenDay(isOpen ? null : date)}
+              style={{ background: isOpen ? 'rgba(193,156,86,0.08)' : isToday ? 'rgba(96,165,250,0.06)' : 'rgba(255,255,255,0.04)', border: `1px solid rgba(${isOpen ? '193,156,86' : isToday ? '96,165,250' : '255,255,255'},${isOpen ? '0.2' : isToday ? '0.15' : '0.07'})`, borderRadius: isOpen ? '18px 18px 0 0' : 18, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.2s' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: isToday ? '#60a5fa' : '#fff' }}>
+                      {new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      {isToday && <span style={{ fontSize: 9, color: '#60a5fa', background: 'rgba(96,165,250,0.1)', borderRadius: 20, padding: '2px 7px', marginLeft: 6 }}>today</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, color: statusColors[status], fontWeight: 600 }}>{statusLabels[status]}</span>
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{dayJobs.length} locations</span>
+                    {status === 'active' && <span style={{ fontSize: 11, color: '#fbbf24', fontFamily: 'monospace', fontWeight: 700 }}>▶ {fmt(elapsed)}</span>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {/* Progress dots */}
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    {dayJobs.slice(0, 8).map((j, i) => (
+                      <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: j.status === 'completed' ? '#4ade80' : j.status === 'in_progress' ? '#fbbf24' : 'rgba(255,255,255,0.15)' }} />
+                    ))}
+                    {dayJobs.length > 8 && <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>+{dayJobs.length - 8}</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{doneCount}/{dayJobs.length}</div>
+                  <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.3)' }}>{isOpen ? '∧' : '›'}</div>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              {dayJobs.length > 0 && (
+                <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: (doneCount / dayJobs.length * 100) + '%', background: status === 'done' ? '#4ade80' : 'linear-gradient(90deg,#60a5fa,#4ade80)', borderRadius: 2, transition: 'width 0.4s' }} />
+                </div>
+              )}
+            </div>
+
+            {/* Expanded job list */}
+            {isOpen && (
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(193,156,86,0.15)', borderTop: 'none', borderRadius: '0 0 18px 18px', padding: '10px 12px 14px' }}>
+                {dayJobs.map((j, idx) => {
+                  const isActive = j.status === 'in_progress'
+                  const isDone = j.status === 'completed'
+                  const isNext = !isDone && !isActive && dayJobs.slice(0, idx).every(p => p.status === 'completed')
+                  const isLocked = !isDone && !isActive && !isNext
+                  const duration = j.started_at && j.completed_at ? Math.round((new Date(j.completed_at) - new Date(j.started_at)) / 60000) : null
+
+                  return (
+                    <div key={j.id} style={{ marginBottom: 8, opacity: isLocked ? 0.35 : 1 }}>
+                      <div style={{ background: isActive ? 'rgba(74,222,128,0.07)' : isDone ? 'rgba(74,222,128,0.03)' : 'rgba(255,255,255,0.04)', border: `1px solid rgba(${isActive ? '74,222,128' : isDone ? '74,222,128' : '255,255,255'},${isActive ? '0.2' : isDone ? '0.07' : '0.06'})`, borderRadius: 14, padding: 12 }}>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: isActive ? 12 : 0 }}>
+                          <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, background: isDone ? '#4ade80' : isActive ? 'rgba(74,222,128,0.15)' : isNext ? 'rgba(193,156,86,0.15)' : 'rgba(255,255,255,0.05)', border: isActive ? '2px solid #4ade80' : isNext ? '2px solid rgba(193,156,86,0.3)' : 'none', color: isDone ? '#080f1a' : isActive ? '#4ade80' : isNext ? '#c19c56' : 'rgba(255,255,255,0.25)' }}>
+                            {isDone ? '✓' : isActive ? '▶' : idx + 1}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: isDone ? 'rgba(255,255,255,0.35)' : '#fff', textDecoration: isDone ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {j.title.replace(' — Basic Cleaning', '').replace(' — Deep Cleaning', '').replace(' — Range Hood, AC, Grease Trap', '').replace(' — AC, Grease Trap, Range Hood', '')}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
+                              {isActive && <span style={{ fontSize: 10, color: '#4ade80', fontFamily: 'monospace', fontWeight: 700 }}>▶ {fmt(elapsed)}</span>}
+                              {isDone && j.started_at && <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>▶ {new Date(j.started_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</span>}
+                              {isDone && j.completed_at && <span style={{ fontSize: 9, color: '#4ade80' }}>🏁 {new Date(j.completed_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</span>}
+                              {duration && <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)' }}>⏱ {duration}m</span>}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                            {j.address?.startsWith('http') && <a href={j.address} target="_blank" rel="noreferrer" style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, textDecoration: 'none' }}>🗺</a>}
+                            <button onClick={() => setSelectedJob(j)} style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>i</button>
+                          </div>
+                        </div>
+
+                        {/* Active job controls */}
+                        {isActive && (
+                          <div>
+                            {j.description && <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{j.description}</div>}
+                            {checklist.length > 0 && (
+                              <div style={{ marginBottom: 10 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1 }}>Checklist</span>
+                                  <span style={{ fontSize: 9, color: '#4ade80', fontWeight: 600 }}>{checklist.filter(t => t.done).length}/{checklist.length}</span>
+                                </div>
+                                <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginBottom: 8, overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: (checklist.length ? checklist.filter(t => t.done).length / checklist.length * 100 : 0) + '%', background: '#4ade80', borderRadius: 2, transition: 'width 0.3s' }} />
+                                </div>
+                                {checklist.map((t, i) => (
+                                  <div key={i} onClick={() => setChecklist(cl => cl.map((x, ji) => ji === i ? { ...x, done: !x.done } : x))} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none' }}>
+                                    <div style={{ width: 20, height: 20, borderRadius: 6, border: '1.5px solid', flexShrink: 0, borderColor: t.done ? '#4ade80' : 'rgba(255,255,255,0.15)', background: t.done ? '#4ade80' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      {t.done && <span style={{ fontSize: 11, color: '#080f1a', fontWeight: 900 }}>✓</span>}
+                                    </div>
+                                    <span style={{ fontSize: 13, color: t.done ? 'rgba(255,255,255,0.25)' : '#fff', textDecoration: t.done ? 'line-through' : 'none' }}>{t.label}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes..." style={{ width: '100%', padding: '10px', fontSize: 13, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'inherit', boxSizing: 'border-box', resize: 'none', minHeight: 60, marginBottom: 10 }} />
+                            <PhotoGrid slot="end" label={`Photos${j.photo_required ? ' (required)' : ''}`} />
+                            <button onClick={handleComplete} disabled={submitting} style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: submitting ? 'rgba(255,255,255,0.07)' : 'linear-gradient(135deg,#c19c56,#e8c47a)', color: submitting ? 'rgba(255,255,255,0.25)' : '#0a1929', fontSize: 15, fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', marginTop: 4 }}>
+                              {submitting ? 'Saving...' : idx === dayJobs.length - 1 ? '🏁 Finish Day' : '🏁 Done → Next'}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Next job start */}
+                        {isNext && !activeJob && (
+                          <div style={{ marginTop: 10 }}>
+                            <button onClick={() => handleStart(j)} disabled={submitting} style={{ width: '100%', padding: '12px', borderRadius: 11, border: 'none', background: 'linear-gradient(135deg,#0F6E56,#16a37e)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+                              ▶ Start — {j.title.split(' —')[0]}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* All done banner */}
+                {dayJobs.every(j => j.status === 'completed') && (
+                  <div style={{ textAlign: 'center', padding: '20px', background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.1)', borderRadius: 14, marginTop: 6 }}>
+                    <div style={{ fontSize: 32, marginBottom: 6 }}>🎉</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#4ade80' }}>Day Complete!</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 3 }}>All {dayJobs.length} locations done</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
