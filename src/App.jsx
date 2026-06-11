@@ -16,6 +16,8 @@ const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
 const Evaluations = lazy(() => import('./pages/Evaluations'))
+const Payments = lazy(() => import('./pages/Payments'))
+const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'))
 const Checkin = lazy(() => import('./pages/Checkin'))
 
 function Clock() {
