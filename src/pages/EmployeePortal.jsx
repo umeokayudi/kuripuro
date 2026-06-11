@@ -285,6 +285,8 @@ export default function EmployeePortal() {
   const fmt = s=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
   const scoreColor = s=>s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
   const today = new Date().toISOString().split('T')[0]
+  const todayJobs = jobs.filter(j=>j.scheduled_date===today||displayDate(j)===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  const currentShiftJob = todayJobs.find(j=>j.status==='in_progress') || todayJobs.find(j=>j.status==='assigned')
 
   // Calendar grouping — night shifts show on correct date
   const jobsForCalendar = (filter) => {
@@ -345,6 +347,7 @@ export default function EmployeePortal() {
     {key:'salary',icon:'💴',label:'Salary'},
     {key:'transport',icon:'🚃',label:'Transport'},
     {key:'chat',icon:'💬',label:'Chat',badge:unreadMsgs},
+    {key:'shift',icon:'🗺',label:'Today\'s Shift'},
     {key:'achievements',icon:'🏆',label:'Achievements'},
   ]
 
@@ -509,21 +512,36 @@ export default function EmployeePortal() {
               </div>
             </div>}
 
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:10}}>Today's Jobs</div>
-            {jobs.filter(j=>j.scheduled_date===today&&j.status==='assigned').length===0&&!activeJob&&<div style={{background:'rgba(255,255,255,0.03)',borderRadius:14,padding:18,textAlign:'center',color:'rgba(255,255,255,0.2)',fontSize:13,marginBottom:12}}>No jobs today</div>}
-            {jobs.filter(j=>j.scheduled_date===today&&j.status==='assigned').map(j=>(
-              <div key={j.id} style={S.card}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div style={{flex:1,marginRight:10}}>
-                    <div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{j.title}</div>
-                    <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{j.scheduled_time||'—'}</div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase'}}>Today's Shift</div>
+              {todayJobs.length>0&&<div style={{fontSize:10,color:'rgba(255,255,255,0.35)'}}>{todayJobs.filter(j=>j.status==='completed').length}/{todayJobs.length} done</div>}
+            </div>
+            {todayJobs.length===0&&!activeJob&&<div style={{background:'rgba(255,255,255,0.03)',borderRadius:14,padding:18,textAlign:'center',color:'rgba(255,255,255,0.2)',fontSize:13,marginBottom:12}}>No jobs today</div>}
+            {todayJobs.length>0&&(
+              <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(193,156,86,0.1),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:'#c19c56'}}>📋 Today's Route</div>
+                    <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{todayJobs.length} locations · tap to start</div>
                   </div>
-                  <button onClick={()=>handleStart(j)} disabled={submitting||!!activeJob} style={{padding:'8px 16px',borderRadius:10,border:'none',background:activeJob?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#0F6E56,#16a37e)',color:activeJob?'rgba(255,255,255,0.2)':'#fff',fontSize:12,fontWeight:700,cursor:activeJob?'not-allowed':'pointer',flexShrink:0}}>
-                    {activeJob?'Busy':'▶ Start'}
-                  </button>
+                  <div style={{fontSize:24,color:'#c19c56'}}>›</div>
+                </div>
+                <div style={{height:4,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden'}}>
+                  <div style={{height:'100%',width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%',background:'linear-gradient(90deg,#c19c56,#e8c47a)',borderRadius:2,transition:'width 0.4s'}} />
+                </div>
+                <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
+                  {todayJobs.slice(0,6).map((j,i)=>(
+                    <div key={j.id} style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,
+                      background:j.status==='completed'?'#4ade80':j.status==='in_progress'?'#fbbf24':'rgba(255,255,255,0.08)',
+                      color:j.status==='completed'||j.status==='in_progress'?'#0a1929':'rgba(255,255,255,0.4)',
+                      border:j.status==='in_progress'?'2px solid #fbbf24':'none'}}>
+                      {j.status==='completed'?'✓':j.status==='in_progress'?'▶':i+1}
+                    </div>
+                  ))}
+                  {todayJobs.length>6&&<div style={{fontSize:10,color:'rgba(255,255,255,0.3)',alignSelf:'center'}}>+{todayJobs.length-6}</div>}
                 </div>
               </div>
-            ))}
+            )}
 
             {/* Monthly stats */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginTop:4,marginBottom:14}}>
@@ -671,6 +689,105 @@ export default function EmployeePortal() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* SHIFT — sequential flow */}
+        {tab==='shift'&&(
+          <div>
+            {todayJobs.length===0&&<div style={{textAlign:'center',paddingTop:60}}><div style={{fontSize:48}}>📋</div><div style={{fontSize:15,color:'rgba(255,255,255,0.35)',marginTop:12}}>No jobs today</div></div>}
+            {todayJobs.length>0&&(
+              <>
+                {/* Progress header */}
+                <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:18,padding:'14px 16px',marginBottom:14}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>Today's Route</div>
+                    <div style={{fontSize:12,color:'#4ade80',fontWeight:600}}>{todayJobs.filter(j=>j.status==='completed').length}/{todayJobs.length} done</div>
+                  </div>
+                  <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,overflow:'hidden'}}>
+                    <div style={{height:'100%',width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%',background:'linear-gradient(90deg,#4ade80,#22c55e)',borderRadius:3,transition:'width 0.4s'}} />
+                  </div>
+                </div>
+
+                {/* Job list in sequence */}
+                {todayJobs.map((j,idx)=>{
+                  const isActive = j.status==='in_progress'
+                  const isDone = j.status==='completed'
+                  const isNext = !isDone && !isActive && todayJobs.slice(0,idx).every(prev=>prev.status==='completed')
+                  const isLocked = !isDone && !isActive && !isNext
+                  return (
+                    <div key={j.id} style={{marginBottom:10,opacity:isLocked?0.4:1}}>
+                      <div style={{background:isActive?'rgba(74,222,128,0.08)':isDone?'rgba(74,222,128,0.04)':'rgba(255,255,255,0.04)',border:`1px solid rgba(${isActive?'74,222,128':isDone?'74,222,128':'255,255,255'},${isActive?'0.25':isDone?'0.1':'0.07'})`,borderRadius:18,padding:16}}>
+                        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:isActive?12:0}}>
+                          {/* Step number / status icon */}
+                          <div style={{width:36,height:36,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:isActive?14:16,fontWeight:700,
+                            background:isDone?'#4ade80':isActive?'rgba(74,222,128,0.2)':isNext?'rgba(193,156,86,0.2)':'rgba(255,255,255,0.06)',
+                            border:isActive?'2px solid #4ade80':isNext?'2px solid rgba(193,156,86,0.4)':'none',
+                            color:isDone?'#080f1a':isActive?'#4ade80':isNext?'#c19c56':'rgba(255,255,255,0.3)'}}>
+                            {isDone?'✓':isActive?'▶':idx+1}
+                          </div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:14,fontWeight:600,color:isDone?'rgba(255,255,255,0.4)':'#fff',textDecoration:isDone?'line-through':'none'}}>{j.title.replace(' — Basic Cleaning','').replace(' — Deep Cleaning','')}</div>
+                            <div style={{display:'flex',gap:8,marginTop:2,alignItems:'center'}}>
+                              {j.description?.includes('Key box')&&<div style={{fontSize:9,color:'rgba(255,255,255,0.3)',background:'rgba(255,255,255,0.05)',borderRadius:20,padding:'2px 7px'}}>🔑 Key box</div>}
+                              {isActive&&<div style={{fontSize:10,color:'#4ade80',fontFamily:'monospace',fontWeight:700}}>▶ {fmt(elapsed)}</div>}
+                              {isDone&&j.started_at&&<div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>✓ {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>}
+                            </div>
+                          </div>
+                          <div style={{display:'flex',gap:6,flexShrink:0}}>
+                            {j.address?.startsWith('http')&&<a href={j.address} target="_blank" rel="noreferrer" style={{width:32,height:32,borderRadius:10,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,textDecoration:'none'}}>🗺</a>}
+                            <button onClick={()=>setSelectedJob(j)} style={{width:32,height:32,borderRadius:10,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.5)',fontSize:11,cursor:'pointer'}}>i</button>
+                          </div>
+                        </div>
+
+                        {/* Active job expanded */}
+                        {isActive&&(
+                          <div>
+                            {j.description&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:10,padding:'10px 12px',marginBottom:12,fontSize:12,color:'rgba(255,255,255,0.6)',lineHeight:1.7,whiteSpace:'pre-line'}}>{j.description}</div>}
+                            {checklist.length>0&&<div style={{marginBottom:12}}>
+                              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><span style={{fontSize:9,color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:1}}>Checklist</span><span style={{fontSize:9,color:'#4ade80',fontWeight:600}}>{checklist.filter(t=>t.done).length}/{checklist.length}</span></div>
+                              <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2,marginBottom:8,overflow:'hidden'}}><div style={{height:'100%',width:(checklist.length?checklist.filter(t=>t.done).length/checklist.length*100:0)+'%',background:'#4ade80',borderRadius:2,transition:'width 0.3s'}} /></div>
+                              {checklist.map((t,i)=>(
+                                <div key={i} onClick={()=>setChecklist(c=>c.map((x,ji)=>ji===i?{...x,done:!x.done}:x))} style={{display:'flex',alignItems:'center',gap:11,padding:'11px 0',borderBottom:'1px solid rgba(255,255,255,0.04)',cursor:'pointer',userSelect:'none',WebkitUserSelect:'none'}}>
+                                  <div style={{width:21,height:21,borderRadius:6,border:'1.5px solid',flexShrink:0,borderColor:t.done?'#4ade80':'rgba(255,255,255,0.15)',background:t.done?'#4ade80':'transparent',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                    {t.done&&<span style={{fontSize:12,color:'#080f1a',fontWeight:900}}>✓</span>}
+                                  </div>
+                                  <span style={{fontSize:14,color:t.done?'rgba(255,255,255,0.25)':'#fff',textDecoration:t.done?'line-through':'none'}}>{t.label}</span>
+                                </div>
+                              ))}
+                            </div>}
+                            <div style={{marginBottom:12}}><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." style={{width:'100%',padding:'11px',fontSize:13,borderRadius:11,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontFamily:'inherit',boxSizing:'border-box',resize:'none',minHeight:60}} /></div>
+                            <PhotoGrid slot="end" label={`Photos ${j.photo_required?'(required)':''}`} />
+                            <button onClick={handleComplete} disabled={submitting} style={{width:'100%',padding:'15px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:submitting?'rgba(255,255,255,0.25)':'#0a1929',fontSize:16,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
+                              {submitting?'Saving...':idx===todayJobs.length-1?'🏁 Complete Last Job':'🏁 Complete & Next →'}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Next job — show start button */}
+                        {isNext&&!activeJob&&(
+                          <div style={{marginTop:12}}>
+                            {j.photo_required&&<div style={{marginBottom:10}}><PhotoGrid slot="start" label="Start Photo" /></div>}
+                            <button onClick={()=>handleStart(j)} disabled={submitting} style={{width:'100%',padding:'14px',borderRadius:13,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:15,fontWeight:700,cursor:submitting?'not-allowed':'pointer'}}>
+                              ▶ Start — {j.title.replace(' — Basic Cleaning','').replace(' — Deep Cleaning','')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* All done */}
+                {todayJobs.every(j=>j.status==='completed')&&(
+                  <div style={{textAlign:'center',padding:'30px 20px',background:'rgba(74,222,128,0.06)',border:'1px solid rgba(74,222,128,0.15)',borderRadius:20,marginTop:8}}>
+                    <div style={{fontSize:48,marginBottom:12}}>🎉</div>
+                    <div style={{fontSize:18,fontWeight:700,color:'#4ade80',marginBottom:6}}>Shift Complete!</div>
+                    <div style={{fontSize:13,color:'rgba(255,255,255,0.4)'}}>All {todayJobs.length} locations done</div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
