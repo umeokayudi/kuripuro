@@ -13,6 +13,7 @@ import Clients from './pages/Clients'
 import Cashflow from './pages/Cashflow'
 import Ryoshu from './pages/Ryoshu'
 import Reports from './pages/Reports'
+import Jobs from './pages/Jobs'
 
 function AppContent() {
   const { user, loading, logout } = useAuth()
@@ -47,6 +48,7 @@ function AppContent() {
         <main className="page-content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/jobs" element={<Jobs />} />
             <Route path="/checkin" element={<Checkin />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/salary" element={<Salary />} />
