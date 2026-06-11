@@ -74,11 +74,23 @@ export default function EmployeePortal() {
       setChecklist(cl)
     }
     const month = new Date().toISOString().slice(0,7)
+    const now2 = new Date()
     const completed = (all.data||[]).filter(j=>j.status==='completed'&&j.scheduled_date?.startsWith(month))
     const totalMins = completed.reduce((s,j)=>{ if(!j.started_at||!j.completed_at) return s; return s+(new Date(j.completed_at)-new Date(j.started_at))/60000 },0)
     const spotEarned = completed.filter(j=>j.job_category==='spot').reduce((s,j)=>s+Number(j.spot_value||0),0)
-    const base = emp.data?.salary_type==='hourly'?(totalMins/60)*(emp.data?.hourly_rate||0):(emp.data?.fixed_salary||0)
-    setSalaryData({ jobs:completed.length, hours:(totalMins/60).toFixed(1), base:Math.round(base), spotEarned, total:Math.round(base)+spotEarned })
+    const workedDays = new Set(completed.filter(j=>j.counts_as_work_day!==false).map(j=>j.scheduled_date)).size
+    let base = 0
+    const fixedMax = emp.data?.fixed_salary || 0
+    const monthlyDays = emp.data?.monthly_work_days || 22
+    const dailyRate = fixedMax / monthlyDays
+    if (emp.data?.salary_type==='fixed') {
+      base = Math.min(Math.round(dailyRate * workedDays), fixedMax)
+    } else if (emp.data?.salary_type==='hourly') {
+      base = Math.round((totalMins/60)*(emp.data?.hourly_rate||0))
+    } else {
+      base = Math.round(fixedMax + (totalMins/60)*(emp.data?.hourly_rate||0))
+    }
+    setSalaryData({ jobs:completed.length, hours:(totalMins/60).toFixed(1), base, spotEarned, total:base+spotEarned, workedDays, fixedMax, dailyRate:Math.round(dailyRate) })
   }
 
   const checkGPS = async (job) => {
@@ -480,10 +492,15 @@ export default function EmployeePortal() {
         {tab==='salary'&&(
           <div>
             <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.18)',borderRadius:20,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>Estimated This Month</div>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>Earned This Month</div>
               <div style={{fontSize:42,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{(salaryData?.total||0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.2)',marginTop:5}}>{new Date().toLocaleString('en',{month:'long',year:'numeric'})} · confirmed by admin</div>
-              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:4}}>+¥{salaryData.spotEarned.toLocaleString()} from spot ⚡</div>}
+              <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:6}}>of ¥{(salaryData?.fixedMax||0).toLocaleString()} max</div>
+              <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 20px 4px',overflow:'hidden'}}>
+                <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
+              </div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>{salaryData?.workedDays||0} days worked · ¥{(salaryData?.dailyRate||0).toLocaleString()}/day</div>
+              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:6}}>+¥{salaryData.spotEarned.toLocaleString()} from spot ⚡</div>}
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.2)',marginTop:4}}>{new Date().toLocaleString('en',{month:'long',year:'numeric'})} · confirmed by admin</div>
             </div>
 
             {/* Upcoming payments */}
