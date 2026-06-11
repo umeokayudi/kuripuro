@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
       .eq('is_active', true)
       .single()
     if (emp) {
-      const u = { id: emp.id, name: emp.full_name, email: emp.email, role: 'employee', contract_type: emp.contract_type, hourly_rate: emp.hourly_rate }
+      const u = { id: emp.id, name: emp.full_name, email: emp.email, role: 'employee', contract_type: emp.contract_type, hourly_rate: emp.hourly_rate, fixed_salary: emp.fixed_salary, salary_type: emp.salary_type, score: emp.score }
       setUser(u)
       localStorage.setItem('kp_user', JSON.stringify(u))
       return { success: true }
