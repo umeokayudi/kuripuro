@@ -852,47 +852,81 @@ export default function EmployeePortal() {
         {/* SALARY */}
         {tab==='salary'&&(
           <div>
-            <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:24,padding:'26px 20px',textAlign:'center',marginBottom:16}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:6}}>Earned This Month</div>
-              <div style={{fontSize:46,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{(salaryData?.total||0).toLocaleString()}</div>
-              <div style={{fontSize:11,color:'rgba(255,255,255,0.25)',marginTop:5}}>of ¥{(salaryData?.fixedMax||0).toLocaleString()} max</div>
-              <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'12px 16px 6px',overflow:'hidden'}}>
+            <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>Earned This Month</div>
+              <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{(salaryData?.total||0).toLocaleString()}</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>of ¥{(salaryData?.fixedMax||0).toLocaleString()} max</div>
+              <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 14px 5px',overflow:'hidden'}}>
                 <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
               </div>
               <div style={{fontSize:10,color:'rgba(255,255,255,0.25)'}}>{salaryData?.workedDays||0} days · ¥{(salaryData?.dailyRate||0).toLocaleString()}/day</div>
-              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:6}}>+¥{salaryData.spotEarned.toLocaleString()} from ⚡ spot</div>}
-              {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.2)',marginTop:4}}>Projected if full month: ¥{salaryData.projected.toLocaleString()}</div>}
+              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} spot ⚡</div>}
+              {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>Projected full month: ¥{salaryData.projected.toLocaleString()}</div>}
             </div>
 
-            {advances.length>0&&<div style={{marginBottom:16}}>
-              <span style={S.label}>Advances Received</span>
-              {advances.map(a=>(
-                <div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.created_at?.slice(0,10)} · {a.description}</div></div>
-                  <span style={{fontSize:9,background:'rgba(248,113,113,0.1)',color:'#f87171',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>advance</span>
-                </div>
-              ))}
-            </div>}
-
-            {payments.length>0&&<div style={{marginBottom:16}}>
-              <span style={S.label}>Upcoming Payments</span>
-              {payments.map(p=>(
-                <div key={p.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div><div style={{fontSize:15,fontWeight:700,color:'#fff'}}>¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{p.payment_date} · {p.description||'Salary'}</div></div>
-                  <span style={{fontSize:9,background:'rgba(96,165,250,0.1)',color:'#60a5fa',border:'1px solid rgba(96,165,250,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600,textTransform:'uppercase'}}>{p.status}</span>
-                </div>
-              ))}
-            </div>}
-
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
               {[['📋','Jobs',salaryData?.jobs||0],['⏱','Hours',(salaryData?.hours||0)+'h'],['💴','Base','¥'+(salaryData?.base||0).toLocaleString()],['⚡','Spot','¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:16,padding:'14px 12px'}}>
-                  <div style={{fontSize:22,marginBottom:8}}>{icon}</div>
-                  <div style={{fontSize:20,fontWeight:700,color:'#fff'}}>{v}</div>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:3,textTransform:'uppercase',letterSpacing:0.5}}>{l}</div>
+                <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 10px'}}>
+                  <div style={{fontSize:20,marginBottom:6}}>{icon}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:'#fff'}}>{v}</div>
+                  <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2,textTransform:'uppercase',letterSpacing:0.5}}>{l}</div>
                 </div>
               ))}
             </div>
+
+            {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
+              <div style={{background:'linear-gradient(135deg,rgba(96,165,250,0.1),rgba(96,165,250,0.02))',border:'1px solid rgba(96,165,250,0.18)',borderRadius:18,padding:16,marginBottom:14}}>
+                <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>💴 Upcoming Payments</div>
+                {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').map((p,i)=>(
+                  <div key={p.id} style={{paddingBottom:i<payments.filter(x=>!x.is_deduction&&x.payment_type!=='advance').length-1?10:0,marginBottom:i<payments.filter(x=>!x.is_deduction&&x.payment_type!=='advance').length-1?10:0,borderBottom:i<payments.filter(x=>!x.is_deduction&&x.payment_type!=='advance').length-1?'1px solid rgba(255,255,255,0.06)':'none'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div><div style={{fontSize:i===0?28:16,fontWeight:800,color:'#fff',letterSpacing:i===0?-1:0}}>¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{p.payment_date} · {p.description||'Salary'}</div></div>
+                      <span style={{fontSize:9,background:'rgba(96,165,250,0.1)',color:'#60a5fa',border:'1px solid rgba(96,165,250,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600,textTransform:'uppercase'}}>{p.status}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {payments.filter(p=>p.payment_type==='advance').length>0&&(
+              <div style={{marginBottom:14}}>
+                <span style={S.label}>Advances Scheduled</span>
+                {payments.filter(p=>p.payment_type==='advance').map(p=>(
+                  <div key={p.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                    <div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{p.payment_date} · {p.description}</div></div>
+                    <span style={{fontSize:9,background:'rgba(193,156,86,0.1)',color:'#c19c56',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>advance</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {payments.filter(p=>p.is_deduction).length>0&&(
+              <div style={{marginBottom:14}}>
+                <span style={S.label}>Deductions</span>
+                {payments.filter(p=>p.is_deduction).map(p=>(
+                  <div key={p.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6,borderColor:'rgba(248,113,113,0.15)'}}>
+                    <div><div style={{fontSize:13,fontWeight:600,color:'#f87171'}}>-¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{p.payment_date} · {p.description}</div></div>
+                    <span style={{fontSize:9,background:'rgba(248,113,113,0.1)',color:'#f87171',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>deduction</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {advances.length>0&&(
+              <div style={{marginBottom:14}}>
+                <span style={S.label}>Advances Received</span>
+                {advances.map(a=>(
+                  <div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                    <div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.created_at?.slice(0,10)} · {a.description}</div></div>
+                    <span style={{fontSize:9,background:'rgba(248,113,113,0.1)',color:'#f87171',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>received</span>
+                  </div>
+                ))}
+                <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>Total advances received</span>
+                  <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{advances.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
