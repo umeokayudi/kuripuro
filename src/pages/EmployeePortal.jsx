@@ -77,6 +77,7 @@ export default function EmployeePortal() {
     // Get today accounting for night shift (jobs starting after 22:00 belong to next calendar day display)
     const now = new Date()
     const today = now.toISOString().split('T')[0]
+    const todayDate = new Date().toISOString().split('T')[0]
     const [active, all, emp, pay, adv, clm, bdg] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(200),
@@ -837,21 +838,60 @@ export default function EmployeePortal() {
               </div>
             )}
 
-            {advances.length>0&&(
-              <div style={{marginBottom:14}}>
-                <span style={S.label}>Advances Received</span>
-                {advances.map(a=>(
-                  <div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                    <div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.created_at?.slice(0,10)} · {a.description}</div></div>
-                    <span style={{fontSize:9,background:'rgba(248,113,113,0.1)',color:'#f87171',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>received</span>
-                  </div>
-                ))}
-                <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>Total advances received</span>
-                  <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{advances.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
-                </div>
-              </div>
-            )}
+            {(() => {
+              const todayStr = new Date().toISOString().split('T')[0]
+              const received = advances.filter(a => {
+                // Extract date from description e.g. "Salary advance 1 — Jun 17"
+                const match = a.description?.match(/Jun (\d+)/)
+                if (match) {
+                  const day = match[1].padStart(2,'0')
+                  const dateStr = '2026-06-' + day
+                  return dateStr <= todayStr
+                }
+                return a.created_at?.slice(0,10) <= todayStr
+              })
+              const pending = advances.filter(a => {
+                const match = a.description?.match(/Jun (\d+)/)
+                if (match) {
+                  const day = match[1].padStart(2,'0')
+                  const dateStr = '2026-06-' + day
+                  return dateStr > todayStr
+                }
+                const match2 = a.description?.match(/Jul (\d+)/)
+                if (match2) return true
+                return false
+              })
+              return (
+                <>
+                  {received.length>0&&(
+                    <div style={{marginBottom:14}}>
+                      <span style={S.label}>Advances Received</span>
+                      {received.map(a=>(
+                        <div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                          <div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.description}</div></div>
+                          <span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ received</span>
+                        </div>
+                      ))}
+                      <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>Total received</span>
+                        <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+                  {pending.length>0&&(
+                    <div style={{marginBottom:14}}>
+                      <span style={S.label}>Advances Pending</span>
+                      {pending.map(a=>(
+                        <div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                          <div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{a.description}</div></div>
+                          <span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>pending</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
         )}
 
