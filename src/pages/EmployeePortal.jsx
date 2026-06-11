@@ -285,8 +285,6 @@ export default function EmployeePortal() {
   const fmt = s=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
   const scoreColor = s=>s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
   const today = new Date().toISOString().split('T')[0]
-  const todayJobs = jobs.filter(j=>j.scheduled_date===today||displayDate(j)===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
-  const currentShiftJob = todayJobs.find(j=>j.status==='in_progress') || todayJobs.find(j=>j.status==='assigned')
 
   // Calendar grouping — night shifts show on correct date
   const jobsForCalendar = (filter) => {
@@ -308,6 +306,9 @@ export default function EmployeePortal() {
     }
     return job.scheduled_date
   }
+
+  const todayJobs = jobs.filter(j=>j.scheduled_date===today||displayDate(j)===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  const currentShiftJob = todayJobs.find(j=>j.status==='in_progress') || todayJobs.find(j=>j.status==='assigned')
 
   const S = {
     card: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:16, marginBottom:12 },
