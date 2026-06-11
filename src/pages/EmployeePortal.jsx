@@ -840,26 +840,21 @@ export default function EmployeePortal() {
 
             {(() => {
               const todayStr = new Date().toISOString().split('T')[0]
+              const parseAdvanceDate = (desc) => {
+                if (!desc) return null
+                const junMatch = desc.match(/Jun (\d+)/)
+                if (junMatch) return '2026-06-' + junMatch[1].padStart(2,'0')
+                const julMatch = desc.match(/Jul (\d+)/)
+                if (julMatch) return '2026-07-' + julMatch[1].padStart(2,'0')
+                return null
+              }
               const received = advances.filter(a => {
-                // Extract date from description e.g. "Salary advance 1 — Jun 17"
-                const match = a.description?.match(/Jun (\d+)/)
-                if (match) {
-                  const day = match[1].padStart(2,'0')
-                  const dateStr = '2026-06-' + day
-                  return dateStr <= todayStr
-                }
-                return a.created_at?.slice(0,10) <= todayStr
+                const d = parseAdvanceDate(a.description)
+                return d && d < todayStr
               })
               const pending = advances.filter(a => {
-                const match = a.description?.match(/Jun (\d+)/)
-                if (match) {
-                  const day = match[1].padStart(2,'0')
-                  const dateStr = '2026-06-' + day
-                  return dateStr > todayStr
-                }
-                const match2 = a.description?.match(/Jul (\d+)/)
-                if (match2) return true
-                return false
+                const d = parseAdvanceDate(a.description)
+                return !d || d >= todayStr
               })
               return (
                 <>
