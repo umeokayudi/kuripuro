@@ -51,6 +51,15 @@ export default function EmployeePortal() {
   const [isSigning, setIsSigning] = useState(false)
   const [sigPoints, setSigPoints] = useState([])
   const [unreadMsgs, setUnreadMsgs] = useState(0)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+
+  useEffect(() => {
+    const on = () => setIsOnline(true)
+    const off = () => setIsOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online',on); window.removeEventListener('offline',off) }
+  }, [])
   const timerRef = useRef()
   const clockRef = useRef()
   const photoInputRef = useRef()
@@ -398,6 +407,9 @@ export default function EmployeePortal() {
           <span style={{fontSize:44,fontWeight:700,color:'#fff',fontFamily:'monospace',letterSpacing:-3,lineHeight:1}}>{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
           <span style={{fontSize:20,color:'rgba(255,255,255,0.2)',fontFamily:'monospace'}}>{String(clock.getSeconds()).padStart(2,'0')}</span>
         </div>
+        {!isOnline&&<div style={{background:'rgba(248,113,113,0.15)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:8,padding:'6px 12px',fontSize:11,color:'#f87171',fontWeight:600,marginTop:8,textAlign:'center'}}>
+          ⚠️ Offline — data will sync when reconnected
+        </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div style={{background:gpsStatus.includes('✅')?'rgba(74,222,128,0.1)':gpsStatus.includes('🚫')?'rgba(248,113,113,0.1)':'rgba(255,255,255,0.06)',borderRadius:20,padding:'4px 10px',fontSize:10,color:gpsStatus.includes('✅')?'#4ade80':gpsStatus.includes('🚫')?'#f87171':'rgba(255,255,255,0.4)',fontWeight:500,border:'1px solid rgba(255,255,255,0.08)'}}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
