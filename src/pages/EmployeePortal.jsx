@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { generateDailyReport, generatePayslip } from '../lib/generatePDF'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
@@ -555,6 +556,27 @@ export default function EmployeePortal() {
               {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} spot ⚡</div>}
               {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>Projected full month: ¥{salaryData.projected.toLocaleString()}</div>}
             </div>
+            {/* PDF buttons */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+              <button onClick={async()=>{
+                const doc = await generatePayslip(empData||{}, new Date().toISOString().slice(0,7), salaryData, payments, advances)
+                doc.save(`payslip_${user.name.replace(' ','_')}_${new Date().toISOString().slice(0,7)}.pdf`)
+                toast.success('Payslip downloaded!')
+              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                📄 Download Payslip
+              </button>
+              <button onClick={async()=>{
+                const today2 = new Date().toISOString().split('T')[0]
+                const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
+                if (!todayJobsForPDF.length) return toast.error('No jobs today')
+                const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
+                doc.save(`report_${today2}.pdf`)
+                toast.success('Report downloaded!')
+              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(96,165,250,0.3)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                📋 Today's Report
+              </button>
+            </div>
+
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
               {[['📋','Jobs',salaryData?.jobs||0],['⏱','Hours',(salaryData?.hours||0)+'h'],['💴','Base','¥'+(salaryData?.base||0).toLocaleString()],['⚡','Spot','¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
                 <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 10px'}}>
