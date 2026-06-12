@@ -429,7 +429,8 @@ export default function EmployeePortal() {
               <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
                 <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 TODAY'S SHIFT</div>
                 <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} locations</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:12}}>{todayJobs.filter(j=>j.status==='completed').length} done · {todayJobs.filter(j=>j.status==='assigned').length} remaining</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{todayJobs.filter(j=>j.status==='completed').length} done · {todayJobs.filter(j=>j.status==='assigned').length} remaining</div>
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginBottom:12}}>⏱ Est. {Math.round(todayJobs.length*0.75)}h total · avg 45min/location</div>
                 <div style={{height:5,background:'rgba(255,255,255,0.1)',borderRadius:3,overflow:'hidden',marginBottom:10}}>
                   <div style={{height:'100%',width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%',background:'linear-gradient(90deg,#c19c56,#e8c47a)',borderRadius:3,transition:'width 0.4s'}} />
                 </div>
@@ -442,6 +443,24 @@ export default function EmployeePortal() {
                 </div>
               </div>
             )}
+
+            {/* Countdown to next upcoming job */}
+            {todayJobs.length===0&&jobs.length>0&&!activeJob&&(()=>{
+              const nextJob = jobs.find(j=>j.status==='assigned')
+              if (!nextJob) return null
+              const nextDate = new Date(nextJob.scheduled_date+'T'+(nextJob.scheduled_time||'00:30')+':00')
+              const diffMs = nextDate - new Date()
+              const diffH = Math.floor(diffMs/3600000)
+              const diffM = Math.floor((diffMs%3600000)/60000)
+              if (diffMs < 0) return null
+              return (
+                <div style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12}}>
+                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>⏰ NEXT SHIFT</div>
+                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>{diffH>0?`${diffH}h ${diffM}m`:`${diffM}m`} away</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>{nextJob.title.split(' —')[0]} · {nextJob.scheduled_date} {nextJob.scheduled_time}</div>
+                </div>
+              )
+            })()}
 
             {/* No jobs today */}
             {todayJobs.length===0&&!activeJob&&(
