@@ -45,6 +45,11 @@ export default function EmployeePortal() {
   const [claimPhotoPreview, setClaimPhotoPreview] = useState(null)
   const [claimReceiptPreview, setClaimReceiptPreview] = useState(null)
   const [submittingClaim, setSubmittingClaim] = useState(false)
+  const [showSignature, setShowSignature] = useState(false)
+  const [signatureJob, setSignatureJob] = useState(null)
+  const sigCanvasRef = useRef()
+  const [isSigning, setIsSigning] = useState(false)
+  const [sigPoints, setSigPoints] = useState([])
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const timerRef = useRef()
   const clockRef = useRef()
@@ -197,7 +202,12 @@ export default function EmployeePortal() {
     setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!'); setSubmitting(false)
   }
 
-  const handleComplete = async () => {
+  const handleCompleteWithSig = (job) => {
+    setSignatureJob(job)
+    setShowSignature(true)
+  }
+
+  const handleComplete = async (sigDataUrl) => {
     const endPhotos = jobPhotos.filter(p=>p.slot==='end')
     if (activeJob.photo_required&&endPhotos.length===0) return toast.error('📷 Photo required!')
     setSubmitting(true)
@@ -209,7 +219,7 @@ export default function EmployeePortal() {
       await supabase.storage.from('service-photos').upload(`jobs/${activeJob.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
       if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${activeJob.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
     }
-    await supabase.from('jobs').update({ status:'completed',completed_at:new Date().toISOString(),notes_employee:notes,photo_end_url:endPhotoUrl,checklist_template:JSON.stringify(checklist) }).eq('id',activeJob.id)
+    await supabase.from('jobs').update({ status:'completed',completed_at:new Date().toISOString(),notes_employee:notes,photo_end_url:endPhotoUrl,checklist_template:JSON.stringify(checklist),signature_url:sigDataUrl||null }).eq('id',activeJob.id)
     clearInterval(timerRef.current)
     setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
     toast.success('🎉 Job completed!'); loadAll(); setSubmitting(false)
@@ -359,6 +369,11 @@ export default function EmployeePortal() {
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
 
       {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
+      {showSignature&&<SignatureModal
+        jobTitle={activeJob?.title||''}
+        onConfirm={(sig)=>{ setShowSignature(false); handleComplete(sig) }}
+        onCancel={()=>setShowSignature(false)}
+      />}
 
       {/* HEADER */}
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
@@ -923,7 +938,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                       )}
                       <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." style={{width:'100%',padding:'10px',fontSize:13,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontFamily:'inherit',boxSizing:'border-box',resize:'none',minHeight:60,marginBottom:10}} />
                       <PhotoGrid slot="end" label={`Photos${j.photo_required?' (required)':''}`} />
-                      <button onClick={handleComplete} disabled={submitting} style={{width:'100%',padding:'14px',borderRadius:13,border:'none',background:submitting?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:submitting?'rgba(255,255,255,0.25)':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer',marginTop:2}}>
+                      <button onClick={()=>handleCompleteWithSig(activeJob)} disabled={submitting} style={{width:'100%',padding:'14px',borderRadius:13,border:'none',background:submitting?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:submitting?'rgba(255,255,255,0.25)':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer',marginTop:2}}>
                         {submitting?'Saving...':idx===dayJobs.length-1?'🏁 Finish Day':'🏁 Done → Next'}
                       </button>
                     </div>
@@ -1065,7 +1080,7 @@ function DayGroupView({ allJobs, displayDate, today, setSelectedJob, handleStart
                             )}
                             <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." style={{width:'100%',padding:'10px',fontSize:13,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontFamily:'inherit',boxSizing:'border-box',resize:'none',minHeight:60,marginBottom:10}} />
                             <PhotoGrid slot="end" label={`Photos${j.photo_required?' (required)':''}`} />
-                            <button onClick={handleComplete} disabled={submitting} style={{width:'100%',padding:'13px',borderRadius:12,border:'none',background:submitting?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:submitting?'rgba(255,255,255,0.25)':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer',marginTop:4}}>
+                            <button onClick={()=>handleCompleteWithSig(activeJob)} disabled={submitting} style={{width:'100%',padding:'13px',borderRadius:12,border:'none',background:submitting?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:submitting?'rgba(255,255,255,0.25)':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer',marginTop:4}}>
                               {submitting?'Saving...':idx===dayJobs.length-1?'🏁 Finish Day':'🏁 Done → Next'}
                             </button>
                           </div>
@@ -1158,6 +1173,95 @@ function CalendarView({ jobs, today, displayDate, onSelect }) {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+function SignatureModal({ onConfirm, onCancel, jobTitle }) {
+  const canvasRef = useRef()
+  const [drawing, setDrawing] = useState(false)
+  const [hasSignature, setHasSignature] = useState(false)
+  const lastPos = useRef(null)
+
+  const getPos = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    if (e.touches) {
+      return { x:(e.touches[0].clientX-rect.left)*scaleX, y:(e.touches[0].clientY-rect.top)*scaleY }
+    }
+    return { x:(e.clientX-rect.left)*scaleX, y:(e.clientY-rect.top)*scaleY }
+  }
+
+  const startDraw = (e) => {
+    e.preventDefault()
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    const pos = getPos(e, canvas)
+    ctx.beginPath()
+    ctx.moveTo(pos.x, pos.y)
+    lastPos.current = pos
+    setDrawing(true)
+    setHasSignature(true)
+  }
+
+  const draw = (e) => {
+    if (!drawing) return
+    e.preventDefault()
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    const pos = getPos(e, canvas)
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#fff'
+    ctx.lineTo(pos.x, pos.y)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(pos.x, pos.y)
+    lastPos.current = pos
+  }
+
+  const endDraw = () => setDrawing(false)
+
+  const clear = () => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    setHasSignature(false)
+  }
+
+  const confirm = () => {
+    const canvas = canvasRef.current
+    const dataUrl = canvas.toDataURL('image/png')
+    onConfirm(dataUrl)
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:300,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+      <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px'}}>
+        <div style={{width:40,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 18px'}} />
+        <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4,textAlign:'center'}}>Sign to Complete</div>
+        <div style={{fontSize:12,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>{jobTitle}</div>
+
+        {/* Canvas */}
+        <div style={{position:'relative',borderRadius:14,overflow:'hidden',border:'1px solid rgba(255,255,255,0.15)',marginBottom:14,background:'rgba(255,255,255,0.05)'}}>
+          <canvas ref={canvasRef} width={380} height={160}
+            style={{width:'100%',height:160,display:'block',touchAction:'none'}}
+            onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
+            onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
+          />
+          {!hasSignature&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.2)',fontSize:14,pointerEvents:'none'}}>Sign here with your finger</div>}
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+          <button onClick={clear} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',fontSize:13,cursor:'pointer'}}>Clear</button>
+          <button onClick={onCancel} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',fontSize:13,cursor:'pointer'}}>Cancel</button>
+          <button onClick={confirm} disabled={!hasSignature} style={{padding:'13px',borderRadius:12,border:'none',background:hasSignature?'linear-gradient(135deg,#c19c56,#e8c47a)':'rgba(255,255,255,0.07)',color:hasSignature?'#0a1929':'rgba(255,255,255,0.25)',fontSize:13,fontWeight:700,cursor:hasSignature?'pointer':'not-allowed'}}>
+            ✓ Confirm
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
