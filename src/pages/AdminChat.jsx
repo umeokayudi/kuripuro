@@ -33,7 +33,7 @@ export default function AdminChat() {
   }, [messages])
 
   const loadEmployees = async () => {
-    const { data: emps } = await supabase.from('employees').select('id,full_name,is_active,last_seen,is_online').eq('is_active',true).order('full_name')
+    const { data: emps } = await supabase.from('employees').select('id,full_name,is_active,last_seen').eq('is_active',true).order('full_name')
     const { data: msgs } = await supabase.from('messages').select('employee_id,read,sender').eq('sender','employee').eq('read',false)
     const unreadMap = {}
     ;(msgs||[]).forEach(m => { unreadMap[m.employee_id] = (unreadMap[m.employee_id]||0)+1 })
@@ -86,9 +86,12 @@ export default function AdminChat() {
                 {e.full_name.split(' ')[0]}
               </div>
               <div style={{ fontSize:10, color: e.is_online?'var(--green)':'var(--text3)', marginTop:1 }}>
-                {e.is_online ? '● online' : e.last_seen
+                {(() => {
+                  const isOnline = e.last_seen && (Date.now() - new Date(e.last_seen)) < 120000
+                  return isOnline ? '● online' : e.last_seen
                   ? `Last: ${new Date(e.last_seen).toLocaleDateString('ja-JP',{month:'short',day:'numeric'})} ${new Date(e.last_seen).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`
-                  : '○ never'}
+                  : '○ never'
+              }})()}
               </div>
             </div>
             {unread[e.id]>0&&<span className="badge badge-red">{unread[e.id]}</span>}
