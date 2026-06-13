@@ -52,6 +52,9 @@ export default function EmployeePortal() {
   const [sigPoints, setSigPoints] = useState([])
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [lang, setLang] = useState(localStorage.getItem('kp_lang')||'en')
+  const t = (en, jp) => lang==='jp' ? jp : en
+  const setLanguage = (l) => { setLang(l); localStorage.setItem('kp_lang', l) }
 
   useEffect(() => {
     const on = () => setIsOnline(true)
@@ -304,22 +307,22 @@ export default function EmployeePortal() {
   }
 
   const menuItems = [
-    {key:'home',icon:'🏠',label:'Dashboard'},
-    {key:'shift',icon:'🗺',label:"Today's Shift"},
-    {key:'spots',icon:'⚡',label:'Spot Jobs',badge:spotJobs.length},
-    {key:'history',icon:'📅',label:'All Jobs'},
-    {key:'salary',icon:'💴',label:'Salary'},
-    {key:'transport',icon:'🚃',label:'Transport'},
-    {key:'chat',icon:'💬',label:'Chat',badge:unreadMsgs},
-    {key:'calendar',icon:'📆',label:'Calendar'},
-    {key:'achievements',icon:'🏆',label:'Achievements'},
+    {key:'home',icon:'🏠',label:t('Dashboard','ダッシュボード')},
+    {key:'shift',icon:'🗺',label:t("Today's Shift",'本日のシフト')},
+    {key:'spots',icon:'⚡',label:t('Spot Jobs','スポット'),badge:spotJobs.length},
+    {key:'history',icon:'📅',label:t('All Jobs','全作業')},
+    {key:'salary',icon:'💴',label:t('Salary','給与')},
+    {key:'transport',icon:'🚃',label:t('Transport','交通費')},
+    {key:'chat',icon:'💬',label:t('Chat','チャット'),badge:unreadMsgs},
+    {key:'calendar',icon:'📆',label:t('Calendar','カレンダー')},
+    {key:'achievements',icon:'🏆',label:t('Achievements','実績')},
   ]
 
   const bottomTabs = [
-    {key:'home',label:'Home',icon:'○'},
-    {key:'shift',label:'Shift',icon:'▶'},
-    {key:'salary',label:'Salary',icon:'¥'},
-    {key:'chat',label:'Chat',icon:'✉',badge:unreadMsgs},
+    {key:'home',label:t('Home','ホーム'),icon:'○'},
+    {key:'shift',label:t('Shift','シフト'),icon:'▶'},
+    {key:'salary',label:t('Salary','給与'),icon:'¥'},
+    {key:'chat',label:t('Chat','チャット'),icon:'✉',badge:unreadMsgs},
   ]
 
   const JobModal = ({ job, onClose }) => {
@@ -397,6 +400,9 @@ export default function EmployeePortal() {
               <div style={{fontSize:20,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
               <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>Score</div>
             </div>
+            <button onClick={()=>setLanguage(lang==='en'?'jp':'en')} style={{height:40,padding:'0 10px',borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',color:'rgba(255,255,255,0.6)',fontSize:12,fontWeight:600}}>
+              {lang==='en'?'JP':'EN'}
+            </button>
             <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,position:'relative'}}>
               {[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
               {(unreadMsgs>0||spotJobs.length>0)&&<div style={{position:'absolute',top:4,right:4,width:8,height:8,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18'}} />}
@@ -623,7 +629,7 @@ export default function EmployeePortal() {
               <button onClick={async()=>{
                 const today2 = new Date().toISOString().split('T')[0]
                 const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
-                if (!todayJobsForPDF.length) return toast.error('No jobs today')
+                if (!todayJobsForPDF.length) return toast.error(t('No jobs today','本日の作業なし'))
                 const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
                 doc.save(`report_${today2}.pdf`)
                 toast.success('Report downloaded!')
