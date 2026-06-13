@@ -82,6 +82,11 @@ function AppContent() {
               <Route path="/ryoshu" element={<Ryoshu />} />
               <Route path="/evaluations" element={<Evaluations />} />
               <Route path="/checkin" element={<Checkin />} />
+              <Route path="/adminchat" element={<AdminChat />} />
+              <Route path="/live" element={<LiveTracking />} />
+              <Route path="/transport-claims" element={<TransportClaims />} />
+              <Route path="/deductions" element={<Deductions />} />
+              <Route path="/employees/:id" element={<EmployeeProfile />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Suspense>
