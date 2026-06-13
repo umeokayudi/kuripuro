@@ -11,6 +11,7 @@ const navItems = [
   { to: '/salary',    label: 'Salary',     icon: Icons.calc },
   { to: '/cashflow',  label: 'Cashflow',   icon: Icons.chart },
   { to: '/reports',   label: 'Reports',    icon: Icons.file },
+  { to: '/faturas', label: 'Faturas', icon: Icons.file },
   { to: '/ryoshu',    label: '領収書',      icon: Icons.receipt },
   { to: '/adminchat', label: 'Chat',        icon: Icons.users },
   { to: '/live',      label: 'Live Track',  icon: Icons.users },
