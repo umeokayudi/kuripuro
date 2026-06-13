@@ -96,9 +96,24 @@ export default function EmployeePortal() {
     return () => clearInterval(timerRef.current)
   }, [activeJob])
 
+  const [userScrolled, setUserScrolled] = useState(false)
+  const chatContainerRef = useRef()
+
   useEffect(() => {
-    if (tab==='chat') { markRead(); setTimeout(()=>msgEndRef.current?.scrollIntoView({behavior:'smooth'}),100) }
+    if (tab==='chat') {
+      markRead()
+      // Only auto-scroll if user hasn't scrolled up
+      if (!userScrolled) {
+        setTimeout(()=>msgEndRef.current?.scrollIntoView({behavior:'smooth'}),100)
+      }
+    }
   }, [tab, messages])
+
+  const handleChatScroll = (e) => {
+    const el = e.target
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+    setUserScrolled(!isAtBottom)
+  }
 
   const loadAll = async () => {
     const today = new Date().toISOString().split('T')[0]
@@ -772,7 +787,15 @@ export default function EmployeePortal() {
         {/* CHAT */}
         {tab==='chat'&&(
           <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 280px)'}}>
-            <div style={{flex:1,overflowY:'auto',marginBottom:12}}>
+            <div ref={chatContainerRef} onScroll={handleChatScroll} style={{flex:1,overflowY:'auto',marginBottom:12,position:'relative'}}>
+              {userScrolled&&unreadMsgs>0&&(
+                <div onClick={()=>{setUserScrolled(false);msgEndRef.current?.scrollIntoView({behavior:'smooth'})}}
+                  style={{position:'sticky',top:8,zIndex:10,textAlign:'center',marginBottom:8}}>
+                  <div style={{display:'inline-block',background:'#f87171',color:'#fff',borderRadius:20,padding:'4px 14px',fontSize:12,fontWeight:600,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,0,0,0.3)'}}>
+                    ↓ {unreadMsgs} new message{unreadMsgs>1?'s':''}
+                  </div>
+                </div>
+              )}
               {messages.length===0&&<div style={{textAlign:'center',paddingTop:40,color:'rgba(255,255,255,0.25)',fontSize:13}}>No messages yet</div>}
               {messages.map(m=>(
                 <div key={m.id} style={{display:'flex',justifyContent:m.sender==='employee'?'flex-end':'flex-start',marginBottom:10}}>
