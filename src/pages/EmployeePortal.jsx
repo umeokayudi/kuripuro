@@ -129,8 +129,15 @@ export default function EmployeePortal() {
 
   const loadMessages = async () => {
     const { data } = await supabase.from('messages').select('*').eq('employee_id',user.id).order('created_at').limit(50)
-    setMessages(data||[])
-    setUnreadMsgs((data||[]).filter(m=>m.sender==='admin'&&!m.read).length)
+    const newUnread = (data||[]).filter(m=>m.sender==='admin'&&!m.read).length
+    setMessages(prev => {
+      const prevUnread = prev.filter(m=>m.sender==='admin'&&!m.read).length
+      if (newUnread > prevUnread && prev.length > 0) {
+        toast('💬 New message from admin!', { icon:'💬', duration:4000 })
+      }
+      return data||[]
+    })
+    setUnreadMsgs(newUnread)
   }
 
   const markRead = async () => {
@@ -746,7 +753,10 @@ export default function EmployeePortal() {
                   <div style={{maxWidth:'78%',background:m.sender==='employee'?'rgba(193,156,86,0.18)':'rgba(255,255,255,0.08)',border:`1px solid rgba(${m.sender==='employee'?'193,156,86':'255,255,255'},0.12)`,borderRadius:m.sender==='employee'?'18px 18px 4px 18px':'18px 18px 18px 4px',padding:'11px 15px'}}>
                     {m.sender==='admin'&&<div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3,fontWeight:600}}>Admin</div>}
                     <div style={{fontSize:14,color:'#fff',lineHeight:1.5}}>{m.content}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginTop:4,textAlign:'right'}}>{new Date(m.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginTop:4,textAlign:'right',display:'flex',justifyContent:'flex-end',alignItems:'center',gap:4}}>
+                      {new Date(m.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}
+                      {m.sender==='employee'&&<span style={{color:m.read?'#4ade80':'rgba(255,255,255,0.3)'}}>{m.read?'✓✓':'✓'}</span>}
+                    </div>
                   </div>
                 </div>
               ))}
