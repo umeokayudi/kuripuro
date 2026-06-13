@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { generateDailyReport, generatePayslip } from '../lib/generatePDF'
+import { generateDailyReport, generatePayslip, generatePayslipJP } from '../lib/generatePDF'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
@@ -603,14 +603,23 @@ export default function EmployeePortal() {
               {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>Projected full month: ¥{salaryData.projected.toLocaleString()}</div>}
             </div>
             {/* PDF buttons */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
                 const doc = await generatePayslip(empData||{}, new Date().toISOString().slice(0,7), salaryData, payments, advances)
                 doc.save(`payslip_${user.name.replace(' ','_')}_${new Date().toISOString().slice(0,7)}.pdf`)
                 toast.success('Payslip downloaded!')
-              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                📄 Download Payslip
+              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                📄 Payslip (EN)
               </button>
+              <button onClick={async()=>{
+                const doc = await generatePayslipJP(empData||{}, new Date().toISOString().slice(0,7), salaryData, payments, advances)
+                doc.save(`kyuyo_${user.name.replace(' ','_')}_${new Date().toISOString().slice(0,7)}.pdf`)
+                toast.success('給与明細ダウンロード完了!')
+              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                📄 給与明細 (JP)
+              </button>
+            </div>
+            <div style={{marginBottom:14}}>
               <button onClick={async()=>{
                 const today2 = new Date().toISOString().split('T')[0]
                 const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
@@ -618,8 +627,8 @@ export default function EmployeePortal() {
                 const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
                 doc.save(`report_${today2}.pdf`)
                 toast.success('Report downloaded!')
-              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(96,165,250,0.3)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                📋 Today's Report
+              }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(96,165,250,0.3)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                📋 Download Today's Service Report
               </button>
             </div>
 

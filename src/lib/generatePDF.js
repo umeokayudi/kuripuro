@@ -227,6 +227,13 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
   const deductions = payments.filter(p=>p.is_deduction)
   const advancesTotal = advances.reduce((s,a)=>s+Number(a.amount),0)
 
+  const todayPdf = new Date().toISOString().split('T')[0]
+  const receivedAdvances = advances.filter(a => {
+    const jun = a.description?.match(/Jun (\d+)/); if (jun) return '2026-06-'+jun[1].padStart(2,'0') < todayPdf
+    const jul = a.description?.match(/Jul (\d+)/); if (jul) return '2026-07-'+jul[1].padStart(2,'0') < todayPdf
+    return false
+  })
+  const advancesTotal = receivedAdvances.reduce((s,a)=>s+Number(a.amount),0)
   if (deductions.length > 0 || advancesTotal > 0) {
     doc.setFont('helvetica','bold')
     doc.setFontSize(11)
@@ -278,7 +285,8 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
   }
 
   // Net pay
-  const netPay = payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').reduce((s,p)=>s+Number(p.amount),0)
+  // Net pay = only actual salary payments (not advances)
+  const netPay = payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance'&&p.payment_type!=='deduction').reduce((s,p)=>s+Number(p.amount),0)
   doc.setFillColor(6,13,24)
   doc.rect(margin, y, W-margin*2, 14, 'F')
   doc.setTextColor(193,156,86)
@@ -305,7 +313,7 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
       doc.text(`¥${Number(p.amount).toLocaleString()}`, W-margin-4, y, {align:'right'})
       doc.setTextColor(120,120,120)
       doc.setFont('helvetica','normal')
-      doc.text(p.status, W-margin-24, y)
+      doc.text(p.status.toUpperCase(), margin+4, y+5)
       y += 6
     })
   }
@@ -317,6 +325,182 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
   doc.setFontSize(7)
   doc.text('KuriPuro by JBM — Confidential Payslip', margin, 292)
   doc.text(`Generated: ${new Date().toLocaleString('ja-JP')}`, W-margin, 292, {align:'right'})
+
+  return doc
+}
+
+export async function generatePayslipJP(employee, month, salaryData, payments, advances) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
+  const W = 210, margin = 14
+  let y = margin
+
+  const monthDate = new Date(month + '-01')
+  const monthJP = `${monthDate.getFullYear()}年${monthDate.getMonth()+1}月`
+
+  // Header
+  doc.setFillColor(6, 13, 24)
+  doc.rect(0, 0, W, 35, 'F')
+  doc.setTextColor(193, 156, 86)
+  doc.setFontSize(18)
+  doc.setFont('helvetica', 'bold')
+  doc.text('KuriPuro by JBM', margin, 14)
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'normal')
+  doc.text('Monthly Payslip / Kyuyo Meisai', margin, 23)
+  doc.text(monthJP, W - margin, 23, { align:'right' })
+  y = 44
+
+  // Employee info box
+  doc.setFillColor(245, 247, 255)
+  doc.roundedRect(margin, y, W - margin*2, 28, 2, 2, 'F')
+  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(9)
+
+  const rows = [
+    ['Employee / Jugyoin', employee.full_name||'—', 'Contract / Keiyaku', employee.contract_type||'—'],
+    ['Period / Kikan', monthJP, 'Daily Rate / Nikkyu', `¥${(salaryData?.dailyRate||0).toLocaleString()}`],
+    ['Days Worked / Kinmu Nissu', `${salaryData?.workedDays||0} days`, 'Hours / Jikan', `${salaryData?.hours||0}h`],
+  ]
+  rows.forEach((row, i) => {
+    doc.setFont('helvetica', 'bold')
+    doc.text(row[0]+':', margin+4, y+8+(i*8))
+    doc.setFont('helvetica', 'normal')
+    doc.text(row[1], margin+50, y+8+(i*8))
+    doc.setFont('helvetica', 'bold')
+    doc.text(row[2]+':', 120, y+8+(i*8))
+    doc.setFont('helvetica', 'normal')
+    doc.text(row[3], 160, y+8+(i*8))
+  })
+  y += 34
+
+  // Earnings section
+  const sectionHeader = (title, r, g, b) => {
+    doc.setFillColor(r, g, b)
+    doc.rect(margin, y, W-margin*2, 7, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.text(title, margin+4, y+5)
+    doc.text('Amount / Kingaku', W-margin-4, y+5, {align:'right'})
+    y += 9
+  }
+
+  const tableRow = (label, value, idx, color) => {
+    if (idx%2===0) { doc.setFillColor(248,250,255); doc.rect(margin,y-1,W-margin*2,8,'F') }
+    doc.setTextColor(50,50,50)
+    doc.setFont('helvetica','normal')
+    doc.setFontSize(9)
+    doc.text(label, margin+4, y+5)
+    doc.setFont('helvetica','bold')
+    if (color) doc.setTextColor(...color)
+    else doc.setTextColor(50,50,50)
+    doc.text(value, W-margin-4, y+5, {align:'right'})
+    y += 8
+  }
+
+  doc.setFont('helvetica','bold')
+  doc.setFontSize(11)
+  doc.setTextColor(6,13,24)
+  doc.text('Earnings / Shiharai', margin, y)
+  y += 5
+  sectionHeader('Description / Koumoku', 6, 13, 24)
+  tableRow('Base Salary / Kihon Kyuyo', `¥${(salaryData?.base||0).toLocaleString()}`, 0)
+  tableRow('Spot Jobs Bonus / Supotsuto Hoshuu', `¥${(salaryData?.spotEarned||0).toLocaleString()}`, 1)
+
+  doc.setFillColor(193,156,86)
+  doc.rect(margin, y, W-margin*2, 8, 'F')
+  doc.setTextColor(255,255,255)
+  doc.setFont('helvetica','bold')
+  doc.setFontSize(10)
+  doc.text('TOTAL EARNINGS / SOUGAKU', margin+4, y+5.5)
+  doc.text(`¥${(salaryData?.total||0).toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
+  y += 14
+
+  // Deductions
+  const todayPdf = new Date().toISOString().split('T')[0]
+  const receivedAdv = advances.filter(a => {
+    const jun = a.description?.match(/Jun (\d+)/); if (jun) return '2026-06-'+jun[1].padStart(2,'0') < todayPdf
+    const jul = a.description?.match(/Jul (\d+)/); if (jul) return '2026-07-'+jul[1].padStart(2,'0') < todayPdf
+    return false
+  })
+  const advTotal = receivedAdv.reduce((s,a)=>s+Number(a.amount),0)
+  const deds = payments.filter(p=>p.is_deduction)
+
+  if (deds.length>0 || advTotal>0) {
+    doc.setFont('helvetica','bold')
+    doc.setFontSize(11)
+    doc.setTextColor(6,13,24)
+    doc.text('Deductions / Koujo', margin, y)
+    y += 5
+    sectionHeader('Description / Koumoku', 180, 30, 30)
+    if (advTotal>0) tableRow('Salary Advances / Kyuyo Maegari', `-¥${advTotal.toLocaleString()}`, 0, [180,30,30])
+    deds.forEach((d,i)=>tableRow(d.description.substring(0,45), `-¥${Number(d.amount).toLocaleString()}`, i+1, [180,30,30]))
+    const totalDeds = advTotal + deds.reduce((s,d)=>s+Number(d.amount),0)
+    doc.setFillColor(180,30,30)
+    doc.rect(margin, y, W-margin*2, 8, 'F')
+    doc.setTextColor(255,255,255)
+    doc.setFont('helvetica','bold')
+    doc.setFontSize(10)
+    doc.text('TOTAL DEDUCTIONS / SOUGAKU KOUJO', margin+4, y+5.5)
+    doc.text(`-¥${totalDeds.toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
+    y += 14
+  }
+
+  // Net
+  const netPay = payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance'&&p.payment_type!=='deduction').reduce((s,p)=>s+Number(p.amount),0)
+  doc.setFillColor(6,13,24)
+  doc.rect(margin, y, W-margin*2, 14, 'F')
+  doc.setTextColor(193,156,86)
+  doc.setFont('helvetica','bold')
+  doc.setFontSize(13)
+  doc.text('NET PAYMENT / JISSHU SHIHARAI', margin+4, y+9)
+  doc.text(`¥${netPay.toLocaleString()}`, W-margin-4, y+9, {align:'right'})
+  y += 20
+
+  // Payment schedule
+  const upcoming = payments.filter(p=>!p.is_deduction)
+  if (upcoming.length>0) {
+    doc.setFont('helvetica','bold')
+    doc.setFontSize(10)
+    doc.setTextColor(6,13,24)
+    doc.text('Payment Schedule / Shiharai Yotei', margin, y)
+    y += 6
+    doc.setFillColor(240,245,255)
+    doc.rect(margin, y, W-margin*2, 7, 'F')
+    doc.setTextColor(50,50,50)
+    doc.setFontSize(8)
+    doc.setFont('helvetica','bold')
+    doc.text('Date / Highi', margin+4, y+5)
+    doc.text('Description / Naiyou', margin+35, y+5)
+    doc.text('Amount', W-margin-30, y+5)
+    doc.text('Status', W-margin-4, y+5, {align:'right'})
+    y += 9
+    upcoming.forEach((p,i) => {
+      if (i%2===0) { doc.setFillColor(248,250,255); doc.rect(margin,y-1,W-margin*2,8,'F') }
+      doc.setFont('helvetica','normal')
+      doc.setFontSize(8)
+      doc.setTextColor(50,50,50)
+      doc.text(p.payment_date, margin+4, y+5)
+      doc.text((p.description||'Payment').substring(0,35), margin+35, y+5)
+      doc.setFont('helvetica','bold')
+      doc.setTextColor(p.payment_type==='advance'?180:15, p.payment_type==='advance'?30:110, p.payment_type==='advance'?30:86)
+      doc.text(`¥${Number(p.amount).toLocaleString()}`, W-margin-30, y+5)
+      doc.setTextColor(120,120,120)
+      doc.setFont('helvetica','normal')
+      doc.text(p.status.toUpperCase(), W-margin-4, y+5, {align:'right'})
+      y += 8
+    })
+  }
+
+  // Footer
+  doc.setFillColor(6,13,24)
+  doc.rect(0, 285, W, 12, 'F')
+  doc.setTextColor(193,156,86)
+  doc.setFontSize(7)
+  doc.text('KuriPuro by JBM — Confidential / Maruhi', margin, 292)
+  doc.text(`Sakusei: ${new Date().toLocaleString('ja-JP')}`, W-margin, 292, {align:'right'})
 
   return doc
 }
