@@ -591,7 +591,7 @@ export default function EmployeePortal() {
 
         {/* HISTORY */}
         {tab==='history'&&(
-          <DayGroupView allJobs={allJobs} displayDate={displayDate} today={today} setSelectedJob={setSelectedJob} handleStart={handleStart} handleComplete={handleComplete} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} PhotoGrid={PhotoGrid} submitting={submitting} fmt={fmt} S={S} />
+          <DayGroupView allJobs={allJobs} displayDate={displayDate} today={today} setSelectedJob={setSelectedJob} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} PhotoGrid={PhotoGrid} submitting={submitting} fmt={fmt} S={S} />
         )}
 
         {/* SALARY */}
@@ -995,7 +995,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
   )
 }
 
-function DayGroupView({ allJobs, displayDate, today, setSelectedJob, handleStart, handleComplete, activeJob, elapsed, checklist, setChecklist, notes, setNotes, PhotoGrid, submitting, fmt, S }) {
+function DayGroupView({ allJobs, displayDate, today, setSelectedJob, handleStart, handleComplete, handleCompleteWithSig, activeJob, elapsed, checklist, setChecklist, notes, setNotes, PhotoGrid, submitting, fmt, S }) {
   const [filter, setFilter] = useState('all')
   const [openDay, setOpenDay] = useState(null)
 
