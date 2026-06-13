@@ -87,11 +87,7 @@ export default function AdminChat() {
               </div>
               <div style={{ fontSize:10, color: e.is_online?'var(--green)':'var(--text3)', marginTop:1 }}>
                 {(() => {
-                  const isOnline = e.last_seen && (Date.now() - new Date(e.last_seen)) < 120000
-                  return isOnline ? '● online' : e.last_seen
-                  ? `Last: ${new Date(e.last_seen).toLocaleDateString('ja-JP',{month:'short',day:'numeric'})} ${new Date(e.last_seen).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`
-                  : '○ never'
-              }})()}
+                {(()=>{ const on=e.last_seen&&(Date.now()-new Date(e.last_seen))<120000; if(on) return '● online'; if(e.last_seen) return 'Last: '+new Date(e.last_seen).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}); return '○ never' })()}
               </div>
             </div>
             {unread[e.id]>0&&<span className="badge badge-red">{unread[e.id]}</span>}
