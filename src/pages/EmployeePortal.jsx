@@ -447,9 +447,13 @@ export default function EmployeePortal() {
               🔔
               {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
             </button>
+            <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+              🔔
+              {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
+            </button>
             <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,position:'relative'}}>
               {[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
-              {(unreadMsgs>0||spotJobs.length>0)&&<div style={{position:'absolute',top:4,right:4,width:8,height:8,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18'}} />}
+              {spotJobs.length>0&&<div style={{position:'absolute',top:4,right:4,width:8,height:8,borderRadius:'50%',background:'#c19c56',border:'2px solid #060d18'}} />}
             </button>
           </div>
         </div>
@@ -552,17 +556,7 @@ export default function EmployeePortal() {
             )}
 
             {/* Unread messages banner */}
-            {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:18,padding:'12px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div><div style={{fontSize:10,color:'#f87171',fontWeight:700,letterSpacing:1,marginBottom:3}}>💬 NEW MESSAGE</div><div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{unreadMsgs} unread message{unreadMsgs>1?'s':''} from admin</div></div>
-              <div style={{fontSize:22,color:'#f87171'}}>›</div>
-            </div>}
-
-            {/* Unread messages banner */}
-            {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:18,padding:'12px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div><div style={{fontSize:10,color:'#f87171',fontWeight:700,letterSpacing:1,marginBottom:3}}>💬 NEW MESSAGE</div><div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{unreadMsgs} unread message{unreadMsgs>1?'s':''} from admin</div></div>
-              <div style={{fontSize:22,color:'#f87171'}}>›</div>
-            </div>}
-
+            
             {/* Next payment */}
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
               <div onClick={()=>setTab('salary')} style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
