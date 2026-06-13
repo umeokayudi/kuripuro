@@ -28,9 +28,24 @@ export default function AdminChat() {
     return () => clearInterval(msgPollRef.current)
   }, [selected])
 
+  const [userScrolled, setUserScrolled] = useState(false)
+  const [newMsgCount, setNewMsgCount] = useState(0)
+  const chatContainerRef = useRef()
+
   useEffect(() => {
-    setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior:'smooth' }), 100)
+    if (!userScrolled) {
+      setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior:'smooth' }), 100)
+    } else {
+      setNewMsgCount(prev => prev + 1)
+    }
   }, [messages])
+
+  const handleChatScroll = (e) => {
+    const el = e.target
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+    if (isAtBottom) { setUserScrolled(false); setNewMsgCount(0) }
+    else setUserScrolled(true)
+  }
 
   const loadEmployees = async () => {
     const { data: emps } = await supabase.from('employees').select('id,full_name,is_active,last_seen').eq('is_active',true).order('full_name')
@@ -50,6 +65,17 @@ export default function AdminChat() {
     await supabase.from('messages').update({ read:true }).eq('employee_id',empId).eq('sender','employee').eq('read',false)
     setUnread(u => ({ ...u, [empId]:0 }))
   }
+
+  const prevMsgCount = useRef(0)
+  useEffect(() => {
+    if (messages.length > prevMsgCount.current && prevMsgCount.current > 0) {
+      const lastMsg = messages[messages.length-1]
+      if (lastMsg?.sender === 'employee') {
+        toast(`💬 ${lastMsg.employee_name?.split(' ')[0]}: ${lastMsg.content.substring(0,40)}`, {duration:4000})
+      }
+    }
+    prevMsgCount.current = messages.length
+  }, [messages])
 
   const sendMessage = async () => {
     if (!newMsg.trim()||!selected) return
@@ -112,7 +138,15 @@ export default function AdminChat() {
             </div>
 
             {/* Messages */}
-            <div style={{ flex:1, overflowY:'auto', padding:'14px 18px', display:'flex', flexDirection:'column', gap:8 }}>
+            <div ref={chatContainerRef} onScroll={handleChatScroll} style={{ flex:1, overflowY:'auto', padding:'14px 18px', display:'flex', flexDirection:'column', gap:8, position:'relative' }}>
+              {userScrolled&&newMsgCount>0&&(
+                <div onClick={()=>{setUserScrolled(false);setNewMsgCount(0);msgEndRef.current?.scrollIntoView({behavior:'smooth'})}}
+                  style={{position:'sticky',top:0,zIndex:10,textAlign:'center',marginBottom:8}}>
+                  <div style={{display:'inline-block',background:'#f87171',color:'#fff',borderRadius:20,padding:'4px 14px',fontSize:12,fontWeight:600,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,0,0,0.2)'}}>
+                    ↓ {newMsgCount} new message{newMsgCount>1?'s':''}
+                  </div>
+                </div>
+              )}
               {messages.length===0&&<div style={{textAlign:'center',color:'var(--text3)',fontSize:12,paddingTop:20}}>No messages yet. Say hello!</div>}
               {messages.map(m=>(
                 <div key={m.id} style={{ display:'flex', justifyContent:m.sender==='admin'?'flex-end':'flex-start' }}>
