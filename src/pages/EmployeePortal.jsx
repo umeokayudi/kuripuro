@@ -49,9 +49,9 @@ export default function EmployeePortal() {
   const [signatureJob, setSignatureJob] = useState(null)
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
-  const [lang, setLang] = useState(localStorage.getItem('kp_lang')||'en')
+  const [lang, setLang] = useState(localStorage.getItem('emp_lang')||'en')
   const t = (en, jp) => lang==='jp' ? jp : en
-  const setLanguage = (l) => { setLang(l); localStorage.setItem('kp_lang', l) }
+  const setLanguage = (l) => { setLang(l); localStorage.setItem('emp_lang', l) }
 
   useEffect(() => {
     const on = () => setIsOnline(true)
