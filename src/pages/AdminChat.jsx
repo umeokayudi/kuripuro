@@ -118,12 +118,12 @@ export default function AdminChat() {
                 <div key={m.id} style={{ display:'flex', justifyContent:m.sender==='admin'?'flex-end':'flex-start' }}>
                   <div style={{
                     maxWidth:'70%',
-                    background: m.sender==='admin'?'var(--navy)':'var(--surface2)',
+                    background: m.sender==='admin'?'var(--navy)':'var(--surface)',
                     borderRadius: m.sender==='admin'?'14px 14px 4px 14px':'14px 14px 14px 4px',
                     padding:'10px 14px'
                   }}>
                     {m.sender==='employee'&&<div style={{ fontSize:10, color:'var(--text3)', marginBottom:3 }}>{selected.full_name.split(' ')[0]}</div>}
-                    <div style={{ fontSize:13, color: m.sender==='admin'?'#fff':'var(--text)', lineHeight:1.5 }}>{m.content}</div>
+                    <div style={{ fontSize:13, color: m.sender==='admin'?'#fff':'var(--text)', lineHeight:1.5, wordBreak:'break-word' }}>{m.content}</div>
                     <div style={{ fontSize:10, color: m.sender==='admin'?'rgba(255,255,255,0.4)':'var(--text3)', marginTop:3, textAlign:'right' }}>
                       {new Date(m.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}
                     </div>
