@@ -9,6 +9,10 @@ export default function AdminChat() {
   const [newMsg, setNewMsg] = useState('')
   const [unread, setUnread] = useState({})
   const msgEndRef = useRef()
+
+  useEffect(() => {
+    setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior:'smooth' }), 100)
+  }, [messages])
   const pollRef = useRef()
 
   useEffect(() => {
@@ -18,7 +22,13 @@ export default function AdminChat() {
   }, [])
 
   useEffect(() => {
-    if (selected) { loadMessages(selected.id); markRead(selected.id) }
+    if (selected) {
+      loadMessages(selected.id)
+      markRead(selected.id)
+      // Poll messages every 5s when chat is open
+      const msgPoll = setInterval(() => loadMessages(selected.id), 5000)
+      return () => clearInterval(msgPoll)
+    }
   }, [selected])
 
   useEffect(() => {
