@@ -86,7 +86,9 @@ export default function AdminChat() {
                 {e.full_name.split(' ')[0]}
               </div>
               <div style={{ fontSize:10, color: e.is_online?'var(--green)':'var(--text3)', marginTop:1 }}>
-                {e.is_online ? '● online' : e.last_seen ? `${new Date(e.last_seen).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}` : '○ offline'}
+                {e.is_online ? '● online' : e.last_seen
+                  ? `Last: ${new Date(e.last_seen).toLocaleDateString('ja-JP',{month:'short',day:'numeric'})} ${new Date(e.last_seen).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`
+                  : '○ never'}
               </div>
             </div>
             {unread[e.id]>0&&<span className="badge badge-red">{unread[e.id]}</span>}
@@ -124,8 +126,13 @@ export default function AdminChat() {
                   }}>
                     {m.sender==='employee'&&<div style={{ fontSize:10, color:'var(--text3)', marginBottom:3 }}>{selected.full_name.split(' ')[0]}</div>}
                     <div style={{ fontSize:13, color: m.sender==='admin'?'#fff':'var(--text)', lineHeight:1.5, wordBreak:'break-word' }}>{m.content}</div>
-                    <div style={{ fontSize:10, color: m.sender==='admin'?'rgba(255,255,255,0.4)':'var(--text3)', marginTop:3, textAlign:'right' }}>
+                    <div style={{ fontSize:10, color: m.sender==='admin'?'rgba(255,255,255,0.4)':'var(--text3)', marginTop:3, textAlign:'right', display:'flex', justifyContent:'flex-end', alignItems:'center', gap:4 }}>
                       {new Date(m.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}
+                      {m.sender==='admin'&&(
+                        <span style={{fontSize:10, color: m.read?'#4ade80':'rgba(255,255,255,0.3)'}}>
+                          {m.read ? '✓✓' : '✓'}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
