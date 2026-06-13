@@ -347,7 +347,7 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(11)
   doc.setFont('helvetica', 'normal')
-  doc.text('Monthly Payslip / Kyuyo Meisai', margin, 23)
+  doc.text('月次給与明細書', margin, 23)
   doc.text(monthJP, W - margin, 23, { align:'right' })
   y = 44
 
@@ -358,9 +358,9 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   doc.setFontSize(9)
 
   const rows = [
-    ['Employee / Jugyoin', employee.full_name||'—', 'Contract / Keiyaku', employee.contract_type||'—'],
-    ['Period / Kikan', monthJP, 'Daily Rate / Nikkyu', `¥${(salaryData?.dailyRate||0).toLocaleString()}`],
-    ['Days Worked / Kinmu Nissu', `${salaryData?.workedDays||0} days`, 'Hours / Jikan', `${salaryData?.hours||0}h`],
+    ['従業員', employee.full_name||'—', '契約種別', employee.contract_type||'—'],
+    ['対象期間', monthJP, '日給', `¥${(salaryData?.dailyRate||0).toLocaleString()}`],
+    ['勤務日数', `${salaryData?.workedDays||0} days`, '勤務時間', `${salaryData?.hours||0}h`],
   ]
   rows.forEach((row, i) => {
     doc.setFont('helvetica', 'bold')
@@ -382,7 +382,7 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
     doc.text(title, margin+4, y+5)
-    doc.text('Amount / Kingaku', W-margin-4, y+5, {align:'right'})
+    doc.text('金額', W-margin-4, y+5, {align:'right'})
     y += 9
   }
 
@@ -402,18 +402,18 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   doc.setFont('helvetica','bold')
   doc.setFontSize(11)
   doc.setTextColor(6,13,24)
-  doc.text('Earnings / Shiharai', margin, y)
+  doc.text('支払項目', margin, y)
   y += 5
-  sectionHeader('Description / Koumoku', 6, 13, 24)
-  tableRow('Base Salary / Kihon Kyuyo', `¥${(salaryData?.base||0).toLocaleString()}`, 0)
-  tableRow('Spot Jobs Bonus / Supotsuto Hoshuu', `¥${(salaryData?.spotEarned||0).toLocaleString()}`, 1)
+  sectionHeader('項目', 6, 13, 24)
+  tableRow('基本給', `¥${(salaryData?.base||0).toLocaleString()}`, 0)
+  tableRow('スポット手当', `¥${(salaryData?.spotEarned||0).toLocaleString()}`, 1)
 
   doc.setFillColor(193,156,86)
   doc.rect(margin, y, W-margin*2, 8, 'F')
   doc.setTextColor(255,255,255)
   doc.setFont('helvetica','bold')
   doc.setFontSize(10)
-  doc.text('TOTAL EARNINGS / SOUGAKU', margin+4, y+5.5)
+  doc.text('支給合計', margin+4, y+5.5)
   doc.text(`¥${(salaryData?.total||0).toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
   y += 14
 
@@ -431,10 +431,10 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
     doc.setFont('helvetica','bold')
     doc.setFontSize(11)
     doc.setTextColor(6,13,24)
-    doc.text('Deductions / Koujo', margin, y)
+    doc.text('控除項目', margin, y)
     y += 5
-    sectionHeader('Description / Koumoku', 180, 30, 30)
-    if (advTotal>0) tableRow('Salary Advances / Kyuyo Maegari', `-¥${advTotal.toLocaleString()}`, 0, [180,30,30])
+    sectionHeader('項目', 180, 30, 30)
+    if (advTotal>0) tableRow('給与前払い', `-¥${advTotal.toLocaleString()}`, 0, [180,30,30])
     deds.forEach((d,i)=>tableRow(d.description.substring(0,45), `-¥${Number(d.amount).toLocaleString()}`, i+1, [180,30,30]))
     const totalDeds = advTotal + deds.reduce((s,d)=>s+Number(d.amount),0)
     doc.setFillColor(180,30,30)
@@ -442,7 +442,7 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
     doc.setTextColor(255,255,255)
     doc.setFont('helvetica','bold')
     doc.setFontSize(10)
-    doc.text('TOTAL DEDUCTIONS / SOUGAKU KOUJO', margin+4, y+5.5)
+    doc.text('控除合計', margin+4, y+5.5)
     doc.text(`-¥${totalDeds.toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
     y += 14
   }
@@ -454,7 +454,7 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   doc.setTextColor(193,156,86)
   doc.setFont('helvetica','bold')
   doc.setFontSize(13)
-  doc.text('NET PAYMENT / JISSHU SHIHARAI', margin+4, y+9)
+  doc.text('差引支給額', margin+4, y+9)
   doc.text(`¥${netPay.toLocaleString()}`, W-margin-4, y+9, {align:'right'})
   y += 20
 
@@ -464,7 +464,7 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
     doc.setFont('helvetica','bold')
     doc.setFontSize(10)
     doc.setTextColor(6,13,24)
-    doc.text('Payment Schedule / Shiharai Yotei', margin, y)
+    doc.text('支払予定', margin, y)
     y += 6
     doc.setFillColor(240,245,255)
     doc.rect(margin, y, W-margin*2, 7, 'F')
@@ -498,7 +498,7 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   doc.rect(0, 285, W, 12, 'F')
   doc.setTextColor(193,156,86)
   doc.setFontSize(7)
-  doc.text('KuriPuro by JBM — Confidential / Maruhi', margin, 292)
+  doc.text('KuriPuro by JBM — 社外秘', margin, 292)
   doc.text(`Sakusei: ${new Date().toLocaleString('ja-JP')}`, W-margin, 292, {align:'right'})
 
   return doc
