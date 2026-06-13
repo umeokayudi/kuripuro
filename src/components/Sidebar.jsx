@@ -12,6 +12,10 @@ const navItems = [
   { to: '/cashflow',  label: 'Cashflow',   icon: Icons.chart },
   { to: '/reports',   label: 'Reports',    icon: Icons.file },
   { to: '/ryoshu',    label: '領収書',      icon: Icons.receipt },
+  { to: '/adminchat', label: 'Chat',        icon: Icons.users },
+  { to: '/live',      label: 'Live Track',  icon: Icons.users },
+  { to: '/transport-claims', label: 'Transport', icon: Icons.list },
+  { to: '/deductions', label: 'Deductions', icon: Icons.calc },
 ]
 
 export default function Sidebar() {
