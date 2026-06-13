@@ -225,7 +225,6 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
 
   // Deductions
   const deductions = payments.filter(p=>p.is_deduction)
-  const advancesTotal = advances.reduce((s,a)=>s+Number(a.amount),0)
 
   const todayPdf = new Date().toISOString().split('T')[0]
   const receivedAdvances = advances.filter(a => {
