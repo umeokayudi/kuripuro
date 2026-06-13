@@ -9,6 +9,7 @@ export default function Jobs() {
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
   const [locations, setLocations] = useState([])
+  const [editingLoc, setEditingLoc] = useState(null)
   const [loading, setLoading] = useState(true)
   const [geocoding, setGeocoding] = useState(false)
   const [form, setForm] = useState({
@@ -241,6 +242,7 @@ export default function Jobs() {
 
 function LocationsTab() {
   const [locations, setLocations] = useState([])
+  const [editingLoc, setEditingLoc] = useState(null)
   const [form, setForm] = useState({ name:'', address:'', location_type:'fixed', notes:'' })
   const [geocoding, setGeocoding] = useState(false)
   const [gps, setGps] = useState(null)
@@ -268,6 +270,20 @@ function LocationsTab() {
     const { error } = await supabase.from('locations').insert({ ...form, gps_lat: gps?.lat, gps_lng: gps?.lng })
     if (error) return toast.error(error.message)
     toast.success('Location saved!')
+    setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null); load()
+  }
+
+  const handleEditLoc = (l) => {
+    setEditingLoc(l.id)
+    setForm({ name:l.name||'', address:l.address||'', location_type:l.location_type||'fixed', notes:l.notes||'' })
+    setGps(l.gps_lat&&l.gps_lng?{lat:l.gps_lat,lng:l.gps_lng}:null)
+  }
+
+  const handleUpdateLoc = async () => {
+    if (!form.name) return toast.error('Name required')
+    await supabase.from('locations').update({ name:form.name, address:form.address, location_type:form.location_type, notes:form.notes, gps_lat:gps?.lat||null, gps_lng:gps?.lng||null }).eq('id', editingLoc)
+    toast.success('Location updated!')
+    setEditingLoc(null)
     setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null); load()
   }
 
@@ -312,7 +328,10 @@ function LocationsTab() {
                 <td><span className={`badge ${l.location_type==='fixed'?'badge-green':'badge-amber'}`}>{l.location_type}</span></td>
                 <td style={{fontSize:12}}>{l.address}</td>
                 <td>{l.gps_lat ? <span className="badge badge-navy">✓</span> : '—'}</td>
-                <td><button className="btn btn-sm" onClick={()=>handleDelete(l.id)}>Remove</button></td>
+                <td style={{display:'flex',gap:4}}>
+                  <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>✏️</button>
+                  <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l.id)}>✕</button>
+                </td>
               </tr>
             ))}
           </tbody>
