@@ -149,6 +149,10 @@ export default function EmployeePortal() {
     await supabase.from('messages').update({read:true}).eq('id',msgId)
   }
 
+  const markEmployeeMsgRead = async (msgId) => {
+    await supabase.from('messages').update({read:true}).eq('id',msgId)
+  }
+
   const sendMessage = async () => {
     if (!newMsg.trim()) return
     await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:newMsg.trim(), read:false })
@@ -525,6 +529,12 @@ export default function EmployeePortal() {
                 {jobs.length>0&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>Next: {displayDate(jobs[0])} · {jobs[0].scheduled_time}</div>}
               </div>
             )}
+
+            {/* Unread messages banner */}
+            {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:18,padding:'12px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div><div style={{fontSize:10,color:'#f87171',fontWeight:700,letterSpacing:1,marginBottom:3}}>💬 NEW MESSAGE</div><div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{unreadMsgs} unread message{unreadMsgs>1?'s':''} from admin</div></div>
+              <div style={{fontSize:22,color:'#f87171'}}>›</div>
+            </div>}
 
             {/* Unread messages banner */}
             {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:18,padding:'12px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
