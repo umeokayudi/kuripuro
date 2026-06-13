@@ -70,7 +70,7 @@ export default function EmployeePortal() {
   useEffect(() => {
     loadAll()
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
-    const msgPoll = setInterval(loadMessages, 15000)
+    const msgPoll = setInterval(loadMessages, 8000)
     // Ping presence every 60s
     const pingPresence = async () => {
       await supabase.from('employees').update({ last_seen: new Date().toISOString(), is_online: true }).eq('id', user.id)
@@ -143,6 +143,10 @@ export default function EmployeePortal() {
   const markRead = async () => {
     await supabase.from('messages').update({read:true}).eq('employee_id',user.id).eq('sender','admin').eq('read',false)
     setUnreadMsgs(0)
+  }
+
+  const markEmployeeMsgRead = async (msgId) => {
+    await supabase.from('messages').update({read:true}).eq('id',msgId)
   }
 
   const sendMessage = async () => {
@@ -521,6 +525,12 @@ export default function EmployeePortal() {
                 {jobs.length>0&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>Next: {displayDate(jobs[0])} · {jobs[0].scheduled_time}</div>}
               </div>
             )}
+
+            {/* Unread messages banner */}
+            {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:18,padding:'12px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div><div style={{fontSize:10,color:'#f87171',fontWeight:700,letterSpacing:1,marginBottom:3}}>💬 NEW MESSAGE</div><div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{unreadMsgs} unread message{unreadMsgs>1?'s':''} from admin</div></div>
+              <div style={{fontSize:22,color:'#f87171'}}>›</div>
+            </div>}
 
             {/* Next payment */}
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
