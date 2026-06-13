@@ -149,9 +149,7 @@ export default function EmployeePortal() {
     await supabase.from('messages').update({read:true}).eq('id',msgId)
   }
 
-  const markEmployeeMsgRead = async (msgId) => {
-    await supabase.from('messages').update({read:true}).eq('id',msgId)
-  }
+  
 
   const sendMessage = async () => {
     if (!newMsg.trim()) return
