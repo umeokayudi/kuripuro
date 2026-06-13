@@ -33,7 +33,7 @@ export default function AdminChat() {
   }, [messages])
 
   const loadEmployees = async () => {
-    const { data: emps } = await supabase.from('employees').select('id,full_name,is_active').eq('is_active',true).order('full_name')
+    const { data: emps } = await supabase.from('employees').select('id,full_name,is_active,last_seen,is_online').eq('is_active',true).order('full_name')
     const { data: msgs } = await supabase.from('messages').select('employee_id,read,sender').eq('sender','employee').eq('read',false)
     const unreadMap = {}
     ;(msgs||[]).forEach(m => { unreadMap[m.employee_id] = (unreadMap[m.employee_id]||0)+1 })
@@ -81,8 +81,13 @@ export default function AdminChat() {
               background: selected?.id===e.id?'var(--navy)':'var(--surface2)',
               border:`1px solid ${selected?.id===e.id?'var(--navy)':'var(--border)'}`,
               display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <div style={{ fontSize:13, fontWeight:500, color: selected?.id===e.id?'#fff':'var(--text)' }}>
-              {e.full_name.split(' ')[0]}
+            <div>
+              <div style={{ fontSize:13, fontWeight:500, color: selected?.id===e.id?'#fff':'var(--text)' }}>
+                {e.full_name.split(' ')[0]}
+              </div>
+              <div style={{ fontSize:10, color: e.is_online?'var(--green)':'var(--text3)', marginTop:1 }}>
+                {e.is_online ? '● online' : e.last_seen ? `${new Date(e.last_seen).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}` : '○ offline'}
+              </div>
             </div>
             {unread[e.id]>0&&<span className="badge badge-red">{unread[e.id]}</span>}
           </div>

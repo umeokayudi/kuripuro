@@ -71,7 +71,21 @@ export default function EmployeePortal() {
     loadAll()
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
     const msgPoll = setInterval(loadMessages, 15000)
-    return () => { clearInterval(clockRef.current); clearInterval(timerRef.current); clearInterval(msgPoll) }
+    // Ping presence every 60s
+    const pingPresence = async () => {
+      await supabase.from('employees').update({ last_seen: new Date().toISOString(), is_online: true }).eq('id', user.id)
+    }
+    pingPresence()
+    const presencePoll = setInterval(pingPresence, 60000)
+    // Set offline on unmount
+    return () => {
+      clearInterval(clockRef.current)
+      clearInterval(timerRef.current)
+      clearInterval(msgPoll)
+      clearInterval(presencePoll)
+      supabase.from('employees').update({ is_online: false }).eq('id', user.id)
+    }
+
   }, [])
 
   useEffect(() => {
