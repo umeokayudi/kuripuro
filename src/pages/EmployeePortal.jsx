@@ -647,18 +647,18 @@ export default function EmployeePortal() {
             {/* PDF buttons */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
-                const doc = await generatePayslip(empData||{}, new Date().toISOString().slice(0,7), salaryData, payments, advances)
-                doc.save(`payslip_${user.name.replace(' ','_')}_${new Date().toISOString().slice(0,7)}.pdf`)
-                toast.success('Payslip downloaded!')
-              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                📄 Payslip (EN)
-              </button>
-              <button onClick={async()=>{
-                const doc = await generatePayslipJP(empData||{}, new Date().toISOString().slice(0,7), salaryData, payments, advances)
-                doc.save(`kyuyo_${user.name.replace(' ','_')}_${new Date().toISOString().slice(0,7)}.pdf`)
-                toast.success('給与明細ダウンロード完了!')
-              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                📄 給与明細 (JP)
+                const month = new Date().toISOString().slice(0,7)
+                if (lang==='jp') {
+                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
+                  doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
+                  toast.success('給与明細ダウンロード完了!')
+                } else {
+                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, advances)
+                  doc.save('payslip_'+user.name.replace(' ','_')+'_'+month+'.pdf')
+                  toast.success('Payslip downloaded!')
+                }
+              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:13,fontWeight:600,cursor:'pointer',gridColumn:'1/-1'}}>
+                📄 {lang==='jp'?'給与明細をダウンロード':'Download Payslip'}
               </button>
             </div>
             <div style={{marginBottom:14}}>
