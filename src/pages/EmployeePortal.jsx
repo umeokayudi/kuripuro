@@ -70,7 +70,7 @@ export default function EmployeePortal() {
   useEffect(() => {
     loadAll()
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
-    const msgPoll = setInterval(loadMessages, 8000)
+    const msgPoll = setInterval(loadMessages, 1000)
     // Ping presence every 60s
     const pingPresence = async () => {
       await supabase.from('employees').update({ last_seen: new Date().toISOString(), is_online: true }).eq('id', user.id)
