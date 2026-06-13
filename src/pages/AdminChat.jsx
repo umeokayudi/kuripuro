@@ -86,7 +86,6 @@ export default function AdminChat() {
                 {e.full_name.split(' ')[0]}
               </div>
               <div style={{ fontSize:10, color: e.is_online?'var(--green)':'var(--text3)', marginTop:1 }}>
-                {(() => {
                 {(()=>{ const on=e.last_seen&&(Date.now()-new Date(e.last_seen))<120000; if(on) return '● online'; if(e.last_seen) return 'Last: '+new Date(e.last_seen).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}); return '○ never' })()}
               </div>
             </div>
