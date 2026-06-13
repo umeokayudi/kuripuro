@@ -330,6 +330,7 @@ export default function EmployeePortal() {
     )
   }
 
+  const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
   const menuItems = [
     {key:'home',icon:'🏠',label:t('Dashboard','ダッシュボード')},
     {key:'shift',icon:'🗺',label:t("Today's Shift",'本日のシフト')},
@@ -337,7 +338,7 @@ export default function EmployeePortal() {
     {key:'history',icon:'📅',label:t('All Jobs','全作業')},
     {key:'salary',icon:'💴',label:t('Salary','給与')},
     {key:'transport',icon:'🚃',label:t('Transport','交通費')},
-    {key:'chat',icon:'💬',label:t('Chat','チャット'),badge:unreadMsgs},
+    {key:'chat',icon:'💬',label:t('Chat','チャット'),badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
     {key:'calendar',icon:'📆',label:t('Calendar','カレンダー')},
     {key:'achievements',icon:'🏆',label:t('Achievements','実績')},
   ]
@@ -427,6 +428,10 @@ export default function EmployeePortal() {
             <button onClick={()=>setLanguage(lang==='en'?'jp':'en')} style={{height:40,padding:'0 10px',borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',color:'rgba(255,255,255,0.6)',fontSize:12,fontWeight:600}}>
               {lang==='en'?'JP':'EN'}
             </button>
+            <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>
+              🔔
+              {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
+            </button>
             <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,position:'relative'}}>
               {[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
               {(unreadMsgs>0||spotJobs.length>0)&&<div style={{position:'absolute',top:4,right:4,width:8,height:8,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18'}} />}
@@ -455,7 +460,10 @@ export default function EmployeePortal() {
             {menuItems.map(item=>(
               <button key={item.key} onClick={()=>{setTab(item.key);setMenuOpen(false)}} style={{width:'100%',padding:'14px 18px',border:'none',background:tab===item.key?'rgba(193,156,86,0.1)':'none',color:tab===item.key?'#c19c56':'rgba(255,255,255,0.7)',fontSize:14,fontWeight:tab===item.key?600:400,cursor:'pointer',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid rgba(255,255,255,0.04)',textAlign:'left'}}>
                 <span style={{fontSize:18}}>{item.icon}</span>
-                <span style={{flex:1}}>{item.label}</span>
+                <div style={{flex:1}}>
+                  <div>{item.label}</div>
+                  {item.preview&&<div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:120}}>{item.preview}</div>}
+                </div>
                 {item.badge>0&&<span style={{background:item.key==='chat'?'#f87171':'#c19c56',color:'#0a1929',borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:800}}>{item.badge}</span>}
               </button>
             ))}
