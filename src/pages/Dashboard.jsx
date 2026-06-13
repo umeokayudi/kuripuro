@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Icons } from '../components/Icons'
+import { useLang } from '../hooks/useLang'
 
 export default function Dashboard() {
+  const { lang } = useLang()
+  const jp = lang==='ja'
   const [data, setData] = useState({ revenue:0, profit:0, activeEmp:0, activeClients:0, todayJobs:[], recentEvals:[], clientProfit:[] })
   const [loading, setLoading] = useState(true)
 
@@ -57,10 +60,10 @@ export default function Dashboard() {
       {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:20}}>
         {[
-          ['月間売上','Monthly Revenue', `¥${(data.revenue/1000).toFixed(0)}k`, null],
-          ['純利益','Net Profit', `¥${(data.profit/1000).toFixed(0)}k`, `${margin}% margin`],
-          ['稼働中従業員','Active Employees', data.activeEmp, null],
-          ['稼働中クライアント','Active Clients', data.activeClients, null],
+          [jp?'月間売上':'Monthly Revenue', 'Monthly Revenue', `¥${(data.revenue/1000).toFixed(0)}k`, null],
+          [jp?'純利益':'Net Profit', 'Net Profit', `¥${(data.profit/1000).toFixed(0)}k`, `${margin}% margin`],
+          [jp?'稼働中従業員':'Active Employees', 'Active Employees', data.activeEmp, null],
+          [jp?'稼働中クライアント':'Active Clients', 'Active Clients', data.activeClients, null],
         ].map(([labelJP, labelEN, val, sub])=>(
           <div key={labelJP} className="card" style={{padding:'18px 20px'}}>
             <div style={{fontSize:12,color:'var(--text3)',marginBottom:6}}>{labelJP}</div>
@@ -73,9 +76,9 @@ export default function Dashboard() {
       <div className="grid-2" style={{gap:16}}>
         {/* Today's jobs */}
         <div className="card">
-          <div className="card-title"><Icons.clock /> 本日のジョブ ({data.todayJobs.length})</div>
+          <div className="card-title"><Icons.clock /> {jp?'本日のジョブ':"Today's Jobs"} ({data.todayJobs.length})</div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {data.todayJobs.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>No jobs today.</div>}
+          {data.todayJobs.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>{jp?'本日のジョブなし':'No jobs today.'}</div>}
           {data.todayJobs.slice(0,8).map(j=>(
             <div key={j.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
               <div>
@@ -89,8 +92,8 @@ export default function Dashboard() {
 
         {/* Recent evaluations */}
         <div className="card">
-          <div className="card-title"><Icons.alert /> 最近の評価</div>
-          {data.recentEvals.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>No evaluations yet.</div>}
+          <div className="card-title"><Icons.alert /> {jp?'最近の評価':'Recent Evaluations'}</div>
+          {data.recentEvals.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>{jp?'評価なし':'No evaluations yet.'}</div>}
           {data.recentEvals.map(e=>(
             <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
               <div>
@@ -105,8 +108,8 @@ export default function Dashboard() {
 
       {/* Client profit bars */}
       <div className="card" style={{marginTop:16}}>
-        <div className="card-title"><Icons.trending /> クライアント別収益</div>
-        {data.clientProfit.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>No clients yet.</div>}
+        <div className="card-title"><Icons.trending /> {jp?'クライアント別収益':'Profit by Client'}</div>
+        {data.clientProfit.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>{jp?'クライアントなし':'No clients yet.'}</div>}
         {data.clientProfit.map(c=>{
           const pct = Math.round(c.profit/data.maxProfit*100)
           const color = pct>=70?'var(--green)':pct>=40?'#EF9F27':'var(--red)'
