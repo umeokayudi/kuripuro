@@ -6,7 +6,7 @@ import { useLang } from '../hooks/useLang'
 export default function Dashboard() {
   const { lang } = useLang()
   const jp = lang === 'ja'
-  const [data, setData] = useState({ revenue:0, profit:0, activeEmp:0, activeClients:0, todayJobs:[], recentEvals:[], clientProfit:[], maxProfit:1, employees:[] })
+  const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
 
@@ -19,7 +19,7 @@ export default function Dashboard() {
 
   const load = async () => {
     setLoading(true)
-    setData(d => ({...d, todayJobs:[], employees:[]}))
+    setData(null)
     const today = new Date().toISOString().split('T')[0]
     const [clients, employees, jobs, evals] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
@@ -39,11 +39,12 @@ export default function Dashboard() {
   }
 
   const statusColor = s => ({assigned:'#60a5fa',in_progress:'#fbbf24',completed:'#4ade80',cancelled:'rgba(255,255,255,0.2)'}[s]||'#60a5fa')
-  const margin = data.revenue > 0 ? Math.round(data.profit/data.revenue*100) : 0
+  const margin = (data?.revenue||0) > 0 ? Math.round((data?.profit||0)/(data?.revenue||0)*100) : 0
 
   // Group today jobs by employee
   const byName = {}
-  data.todayJobs.forEach(j => {
+  if (!data) return <div style={{padding:20,color:'var(--text3)'}}>Loading...</div>
+  (data?.todayJobs||[]).forEach(j => {
     const k = j.employee_name || 'Unknown'
     if (!byName[k]) byName[k] = []
     byName[k].push(j)
@@ -66,10 +67,10 @@ export default function Dashboard() {
       {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:20}}>
         {[
-          [jp?'月間売上':'Monthly Revenue', `¥${(data.revenue/1000).toFixed(0)}k`, 'var(--text)'],
-          [jp?'純利益':'Net Profit', `¥${(data.profit/1000).toFixed(0)}k`, 'var(--green)'],
-          [jp?'稼働中従業員':'Active Employees', data.activeEmp, 'var(--text)'],
-          [jp?'稼働中クライアント':'Active Clients', data.activeClients, 'var(--text)'],
+          [jp?'月間売上':'Monthly Revenue', `¥${((data?.revenue||0)/1000).toFixed(0)}k`, 'var(--text)'],
+          [jp?'純利益':'Net Profit', `¥${((data?.profit||0)/1000).toFixed(0)}k`, 'var(--green)'],
+          [jp?'稼働中従業員':'Active Employees', (data?.activeEmp||0), 'var(--text)'],
+          [jp?'稼働中クライアント':'Active Clients', (data?.activeClients||0), 'var(--text)'],
         ].map(([l,v,c])=>(
           <div key={l} className="card" style={{padding:'18px 20px'}}>
             <div style={{fontSize:12,color:'var(--text3)',marginBottom:6}}>{l}</div>
@@ -82,7 +83,7 @@ export default function Dashboard() {
       <div className="card" style={{marginBottom:16}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
           <div className="card-title" style={{margin:0}}>{jp?"本日のシフト":"Today's Shift"} — {new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
-          <div style={{fontSize:12,color:'var(--text3)'}}>{data.todayJobs.length} jobs · {data.todayJobs.filter(j=>j.status==='completed').length} done</div>
+          <div style={{fontSize:12,color:'var(--text3)'}}>{(data?.todayJobs||[]).length} jobs · {(data?.todayJobs||[]).filter(j=>j.status==='completed').length} done</div>
         </div>
 
         {empGroups.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>No jobs today.</div>}
@@ -146,8 +147,8 @@ export default function Dashboard() {
         {/* Recent evals */}
         <div className="card">
           <div className="card-title">{jp?'最近の評価':'Recent Evaluations'}</div>
-          {data.recentEvals.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No evaluations yet.</div>}
-          {data.recentEvals.map(e=>(
+          {(data?.recentEvals||[]).length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No evaluations yet.</div>}
+          {(data?.recentEvals||[]).map(e=>(
             <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
               <div><div style={{fontSize:13,fontWeight:500}}>{e.employee_name}</div><div style={{fontSize:11,color:'var(--text3)'}}>{e.category} · {e.eval_date}</div></div>
               <span className={`badge ${e.points_change>0?'badge-green':'badge-red'}`}>{e.points_change>0?'+':''}{e.points_change} pts</span>
@@ -158,9 +159,9 @@ export default function Dashboard() {
         {/* Client profit */}
         <div className="card">
           <div className="card-title">{jp?'クライアント別収益':'Profit by Client'}</div>
-          {data.clientProfit.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No clients yet.</div>}
-          {data.clientProfit.map(c=>{
-            const pct = Math.round(c.profit/data.maxProfit*100)
+          {(data?.clientProfit||[]).length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No clients yet.</div>}
+          {(data?.clientProfit||[]).map(c=>{
+            const pct = Math.round(c.profit/(data?.maxProfit||1)*100)
             const color = pct>=70?'var(--green)':pct>=40?'#EF9F27':'var(--red)'
             return (
               <div key={c.name} style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
