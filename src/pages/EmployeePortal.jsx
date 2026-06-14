@@ -222,9 +222,16 @@ export default function EmployeePortal() {
     try {
       const pos = await getCurrentPosition()
       const dist = distanceMeters(pos.lat,pos.lng,Number(job.gps_lat),Number(job.gps_lng))
-      if (dist>100) { setGpsStatus(`🚫 ${Math.round(dist)}m away`); toast.error(`You are ${Math.round(dist)}m away. Must be within 100m.`,{duration:5000}); return false }
-      setGpsStatus(`✅ ${Math.round(dist)}m`); return true
-    } catch { setGpsStatus('⚠️ GPS unavailable'); toast.error('Enable GPS and try again.',{duration:4000}); return false }
+      if (dist>100) {
+        setGpsStatus(`⚠️ ${Math.round(dist)}m away`)
+        return { ok: true, dist: Math.round(dist), override: true }
+      }
+      setGpsStatus(`✅ ${Math.round(dist)}m`)
+      return { ok: true, dist: Math.round(dist), override: false }
+    } catch {
+      setGpsStatus('⚠️ GPS unavailable')
+      return { ok: true, dist: null, override: true }
+    }
   }
 
   const handleAcceptSpot = async (job) => {
@@ -238,8 +245,11 @@ export default function EmployeePortal() {
 
   const handleStart = async (job) => {
     setSubmitting(true)
-    const ok = await checkGPS(job)
-    if (!ok) { setSubmitting(false); return }
+    const gpsResult = await checkGPS(job)
+    if (gpsResult.override) {
+      const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
+      if (!proceed) { setSubmitting(false); setGpsStatus(''); return }
+    }
     let photoUrl = null
     const startPhotos = jobPhotos.filter(p=>p.slot==='start')
     for (let i=0;i<startPhotos.length;i++) {
@@ -262,15 +272,18 @@ export default function EmployeePortal() {
     const endPhotos = jobPhotos.filter(p=>p.slot==='end')
     if (activeJob.photo_required&&endPhotos.length===0) return toast.error('📷 Photo required!')
     setSubmitting(true)
-    const ok = await checkGPS(activeJob)
-    if (!ok) { setSubmitting(false); return }
+    const gpsResult = await checkGPS(activeJob)
+    if (gpsResult.override) {
+      const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
+      if (!proceed) { setSubmitting(false); return }
+    }
     let endPhotoUrl = null
     for (let i=0;i<endPhotos.length;i++) {
       const ext = endPhotos[i].file.name.split('.').pop()
       await supabase.storage.from('service-photos').upload(`jobs/${activeJob.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
       if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${activeJob.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
     }
-    await supabase.from('jobs').update({ status:'completed',completed_at:new Date().toISOString(),notes_employee:notes,photo_end_url:endPhotoUrl,checklist_template:JSON.stringify(checklist),signature_url:sigDataUrl||null }).eq('id',activeJob.id)
+    await supabase.from('jobs').update({ status:'completed',completed_at:new Date().toISOString(),notes_employee:notes,photo_end_url:endPhotoUrl,checklist_template:JSON.stringify(checklist),signature_url:sigDataUrl||null,gps_end_distance:gpsResult?.dist||null,gps_override:gpsResult?.override||false }).eq('id',activeJob.id)
     clearInterval(timerRef.current)
     setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
     toast.success('🎉 Job completed!'); loadAll(); setSubmitting(false)

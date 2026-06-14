@@ -5,16 +5,19 @@ import toast from 'react-hot-toast'
 export default function Payments() {
   const [employees, setEmployees] = useState([])
   const [payments, setPayments] = useState([])
-  const [filter, setFilter] = useState('')
-  const [form, setForm] = useState({ employee_id:'', amount:'', payment_date:'', period:'', description:'' })
-  const [tab, setTab] = useState('calendar')
+  const [selected, setSelected] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState({ employee_id:'', employee_name:'', amount:'', payment_date:'', description:'', payment_type:'salary', is_deduction:false, status:'scheduled' })
 
-  useEffect(() => { loadAll() }, [])
+  const TYPES = ['salary','advance','bonus','transport','deduction','other']
 
-  const loadAll = async () => {
+  useEffect(() => { load() }, [])
+
+  const load = async () => {
     const [e, p] = await Promise.all([
-      supabase.from('employees').select('id,full_name').eq('is_active',true).order('full_name'),
-      supabase.from('salary_payments').select('*').order('payment_date', { ascending: true }),
+      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days').eq('is_active',true).order('full_name'),
+      supabase.from('salary_payments').select('*').order('payment_date',{ascending:true}),
     ])
     setEmployees(e.data||[])
     setPayments(p.data||[])
@@ -22,164 +25,84 @@ export default function Payments() {
 
   const upd = (k,v) => setForm(f=>({...f,[k]:v}))
 
-  const handleAdd = async () => {
-    if (!form.employee_id || !form.amount || !form.payment_date) return toast.error('Fill required fields')
+  const handleSave = async () => {
+    if (!form.employee_id||!form.amount||!form.payment_date) return toast.error('Fill required fields')
     const emp = employees.find(e=>e.id===form.employee_id)
-    const { error } = await supabase.from('salary_payments').insert({
-      employee_id: form.employee_id,
-      employee_name: emp?.full_name,
-      amount: parseFloat(form.amount),
-      payment_date: form.payment_date,
-      period: form.period,
-      description: form.description,
-      status: 'scheduled',
-    })
-    if (error) return toast.error(error.message)
-    toast.success('Payment scheduled!')
-    setForm({ employee_id:'', amount:'', payment_date:'', period:'', description:'' })
-    loadAll()
+    const payload = { ...form, employee_name:emp?.full_name||form.employee_name, amount:parseFloat(form.amount), period:form.payment_date.slice(0,7) }
+    if (editingId) {
+      const { error } = await supabase.from('salary_payments').update(payload).eq('id',editingId)
+      if (error) return toast.error(error.message)
+      toast.success('Updated!')
+    } else {
+      const { error } = await supabase.from('salary_payments').insert(payload)
+      if (error) return toast.error(error.message)
+      toast.success('Payment added!')
+    }
+    setShowForm(false); setEditingId(null)
+    setForm({ employee_id:'', employee_name:'', amount:'', payment_date:'', description:'', payment_type:'salary', is_deduction:false, status:'scheduled' })
+    load()
   }
 
-  const markPaid = async (id) => {
-    await supabase.from('salary_payments').update({ status:'paid' }).eq('id',id)
-    toast.success('Marked as paid')
-    loadAll()
+  const handleEdit = (p) => {
+    setForm({ employee_id:p.employee_id||'', employee_name:p.employee_name||'', amount:p.amount||'', payment_date:p.payment_date||'', description:p.description||'', payment_type:p.payment_type||'salary', is_deduction:p.is_deduction||false, status:p.status||'scheduled' })
+    setEditingId(p.id); setShowForm(true)
   }
 
-  const markCancelled = async (id) => {
-    await supabase.from('salary_payments').update({ status:'cancelled' }).eq('id',id)
-    loadAll()
+  const handleDelete = async (id) => {
+    if (!confirm('Delete?')) return
+    await supabase.from('salary_payments').delete().eq('id',id)
+    toast('Deleted.'); load()
   }
 
-  const filtered = filter ? payments.filter(p=>p.employee_id===filter) : payments
-  const upcoming = filtered.filter(p=>p.status==='scheduled' && new Date(p.payment_date) >= new Date())
-  const overdue = filtered.filter(p=>p.status==='scheduled' && new Date(p.payment_date) < new Date())
-  const paid = filtered.filter(p=>p.status==='paid')
+  const handleMarkPaid = async (id) => {
+    await supabase.from('salary_payments').update({status:'paid'}).eq('id',id)
+    toast.success('Marked as paid!'); load()
+  }
 
-  const statusStyle = s => ({
-    scheduled: 'badge-blue',
-    paid: 'badge-green',
-    cancelled: 'badge-red',
-  }[s])
+  const handleAutoGenerate = async (emp) => {
+    const month = new Date().toISOString().slice(0,7)
+    const dailyRate = Math.round((emp.fixed_salary||0)/(emp.monthly_work_days||22))
+    const existing = payments.filter(p=>p.employee_id===emp.id&&p.payment_date?.startsWith(month))
+    if (existing.length>0) { if (!confirm(`${existing.length} payments already exist for ${month}. Continue?`)) return }
+    toast('Generating payments...', {duration:2000})
+  }
 
-  // Calendar view — group by month
-  const byMonth = {}
-  filtered.forEach(p => {
-    const m = p.payment_date?.slice(0,7)
-    if (!byMonth[m]) byMonth[m] = []
-    byMonth[m].push(p)
-  })
-
-  const totalScheduled = upcoming.reduce((s,p)=>s+Number(p.amount),0)
-  const totalPaid = paid.reduce((s,p)=>s+Number(p.amount),0)
-  const totalOverdue = overdue.reduce((s,p)=>s+Number(p.amount),0)
+  const fmt = n => '¥'+Number(n||0).toLocaleString()
+  const today = new Date().toISOString().split('T')[0]
+  const filteredPayments = selected ? payments.filter(p=>p.employee_id===selected) : payments
+  const pending = filteredPayments.filter(p=>p.status!=='paid'&&!p.is_deduction)
+  const totalPending = pending.reduce((s,p)=>s+Number(p.amount||0),0)
 
   return (
     <div>
-      <div className="metrics-grid" style={{ marginBottom:16 }}>
-        <div className="metric-card"><div className="metric-label">Upcoming</div><div className="metric-value" style={{color:'var(--blue)'}}>¥{totalScheduled.toLocaleString()}</div></div>
-        <div className="metric-card"><div className="metric-label">Overdue</div><div className="metric-value" style={{color:'var(--red)'}}>¥{totalOverdue.toLocaleString()}</div></div>
-        <div className="metric-card"><div className="metric-label">Paid this month</div><div className="metric-value positive">¥{totalPaid.toLocaleString()}</div></div>
-        <div className="metric-card"><div className="metric-label">Total payments</div><div className="metric-value">{payments.length}</div></div>
-      </div>
-
-      <div className="tab-pills">
-        <button className={`tab-pill${tab==='calendar'?' active':''}`} onClick={()=>setTab('calendar')}>📅 Calendar</button>
-        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>List</button>
-        <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>+ Schedule Payment</button>
-      </div>
-
-      {/* Filter */}
-      <div className="card" style={{marginBottom:12,padding:'10px 14px'}}>
-        <select value={filter} onChange={e=>setFilter(e.target.value)} style={{fontSize:13,border:'1px solid var(--border)',borderRadius:6,padding:'6px 10px',background:'var(--surface)',color:'var(--text)'}}>
-          <option value="">All employees</option>
-          {employees.map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
-        </select>
-      </div>
-
-      {tab==='calendar' && (
-        <div>
-          {overdue.length > 0 && (
-            <div className="card" style={{marginBottom:12,border:'1px solid var(--red-bg)'}}>
-              <div className="card-title" style={{color:'var(--red)'}}>⚠️ Overdue Payments</div>
-              {overdue.map(p=>(
-                <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
-                  <div>
-                    <div style={{fontWeight:500,fontSize:13}}>{p.employee_name}</div>
-                    <div style={{fontSize:11,color:'var(--red)'}}>Due: {p.payment_date} · {p.description||p.period}</div>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontWeight:600,color:'var(--red)'}}>¥{Number(p.amount).toLocaleString()}</span>
-                    <button className="btn btn-sm btn-success" onClick={()=>markPaid(p.id)}>Mark Paid</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {Object.keys(byMonth).sort().map(month=>(
-            <div key={month} className="card" style={{marginBottom:12}}>
-              <div className="card-title">📅 {month}</div>
-              {byMonth[month].map(p=>(
-                <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
-                  <div>
-                    <div style={{fontWeight:500,fontSize:13}}>{p.employee_name}</div>
-                    <div style={{fontSize:12,color:'var(--text3)'}}>{p.payment_date} · {p.description||p.period||'Salary'}</div>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontWeight:600,fontSize:14}}>¥{Number(p.amount).toLocaleString()}</span>
-                    <span className={`badge ${statusStyle(p.status)}`}>{p.status}</span>
-                    {p.status==='scheduled' && (
-                      <div style={{display:'flex',gap:4}}>
-                        <button className="btn btn-sm btn-success" onClick={()=>markPaid(p.id)}>Paid</button>
-                        <button className="btn btn-sm" onClick={()=>markCancelled(p.id)}>✕</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div style={{display:'flex',justifyContent:'flex-end',marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}>
-                <span style={{fontSize:13,color:'var(--text3)'}}>Total: </span>
-                <span style={{fontSize:13,fontWeight:600,marginLeft:6}}>¥{byMonth[month].reduce((s,p)=>s+Number(p.amount),0).toLocaleString()}</span>
-              </div>
-            </div>
-          ))}
-
-          {Object.keys(byMonth).length===0 && <div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No payments scheduled.</div></div>}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <h2 style={{fontSize:18,fontWeight:700,margin:0}}>Payments</h2>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn" onClick={()=>{setEditingId(null);setForm({employee_id:'',employee_name:'',amount:'',payment_date:'',description:'',payment_type:'salary',is_deduction:false,status:'scheduled'});setShowForm(!showForm)}}>+ Add Payment</button>
         </div>
-      )}
+      </div>
 
-      {tab==='list' && (
-        <div className="card">
-          <table>
-            <thead><tr><th>Employee</th><th>Amount</th><th>Date</th><th>Period</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-              {filtered.map(p=>(
-                <tr key={p.id}>
-                  <td style={{fontWeight:500}}>{p.employee_name}</td>
-                  <td style={{fontWeight:600}}>¥{Number(p.amount).toLocaleString()}</td>
-                  <td>{p.payment_date}</td>
-                  <td style={{fontSize:12,color:'var(--text3)'}}>{p.period||p.description||'—'}</td>
-                  <td><span className={`badge ${statusStyle(p.status)}`}>{p.status}</span></td>
-                  <td>
-                    {p.status==='scheduled' && (
-                      <div style={{display:'flex',gap:4}}>
-                        <button className="btn btn-sm btn-success" onClick={()=>markPaid(p.id)}>Paid</button>
-                        <button className="btn btn-sm" onClick={()=>markCancelled(p.id)}>✕</button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filtered.length===0 && <div style={{color:'var(--text3)',fontSize:13,padding:'10px 0'}}>No payments.</div>}
-        </div>
-      )}
+      {/* Employee filter */}
+      <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
+        <button onClick={()=>setSelected(null)} style={{padding:'6px 14px',borderRadius:20,border:'1px solid',borderColor:!selected?'var(--gold)':'var(--border)',background:!selected?'rgba(193,156,86,0.1)':'none',color:!selected?'var(--gold)':'var(--text3)',fontSize:12,cursor:'pointer'}}>All</button>
+        {employees.map(e=>(
+          <button key={e.id} onClick={()=>setSelected(e.id)} style={{padding:'6px 14px',borderRadius:20,border:'1px solid',borderColor:selected===e.id?'var(--gold)':'var(--border)',background:selected===e.id?'rgba(193,156,86,0.1)':'none',color:selected===e.id?'var(--gold)':'var(--text3)',fontSize:12,cursor:'pointer'}}>{e.full_name.split(' ')[0]}</button>
+        ))}
+      </div>
 
-      {tab==='new' && (
-        <div className="card">
-          <div className="card-title">Schedule Payment</div>
+      {/* Summary */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:16}}>
+        {[['Pending',fmt(totalPending),'var(--amber)'],['Paid this month',fmt(filteredPayments.filter(p=>p.status==='paid'&&p.payment_date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,p)=>s+Number(p.amount||0),0)),'var(--green)'],['Total entries',filteredPayments.length,'var(--blue)']].map(([l,v,c])=>(
+          <div key={l} className="card" style={{textAlign:'center',padding:14}}>
+            <div style={{fontSize:20,fontWeight:700,color:c,marginBottom:3}}>{v}</div>
+            <div style={{fontSize:11,color:'var(--text3)'}}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {showForm&&(
+        <div className="card" style={{marginBottom:16,border:'1px solid rgba(193,156,86,0.2)'}}>
+          <div style={{fontWeight:600,fontSize:15,marginBottom:14,color:'var(--gold)'}}>{editingId?'Edit Payment':'New Payment'}</div>
           <div className="grid-2">
             <div className="form-group"><label>Employee *</label>
               <select value={form.employee_id} onChange={e=>upd('employee_id',e.target.value)}>
@@ -187,14 +110,62 @@ export default function Payments() {
                 {employees.map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
               </select>
             </div>
-            <div className="form-group"><label>Amount (¥) *</label><input type="number" value={form.amount} onChange={e=>upd('amount',e.target.value)} placeholder="350000" /></div>
+            <div className="form-group"><label>Type</label>
+              <select value={form.payment_type} onChange={e=>upd('payment_type',e.target.value)}>
+                {TYPES.map(t=><option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Amount (¥) *</label><input type="number" value={form.amount} onChange={e=>upd('amount',e.target.value)} /></div>
             <div className="form-group"><label>Payment Date *</label><input type="date" value={form.payment_date} onChange={e=>upd('payment_date',e.target.value)} /></div>
-            <div className="form-group"><label>Period</label><input value={form.period} onChange={e=>upd('period',e.target.value)} placeholder="June 2026" /></div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Description</label><input value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="Monthly salary, advance, bonus..." /></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Description</label><input value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="e.g. June salary final payment" /></div>
+            <div className="form-group"><label>Status</label>
+              <select value={form.status} onChange={e=>upd('status',e.target.value)}>
+                {['scheduled','paid','cancelled'].map(s=><option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginTop:20}}><input type="checkbox" checked={form.is_deduction} onChange={e=>upd('is_deduction',e.target.checked)} style={{width:16,height:16}} />Is Deduction</label></div>
           </div>
-          <button className="btn btn-primary" onClick={handleAdd}>📅 Schedule Payment</button>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-primary" onClick={handleSave}>{editingId?'✅ Update':'✅ Add'}</button>
+            <button className="btn" onClick={()=>{setShowForm(false);setEditingId(null)}}>Cancel</button>
+          </div>
         </div>
       )}
+
+      {/* Payments grouped by employee */}
+      {(selected ? employees.filter(e=>e.id===selected) : employees).map(emp=>{
+        const empPayments = filteredPayments.filter(p=>p.employee_id===emp.id).sort((a,b)=>a.payment_date?.localeCompare(b.payment_date||'')||0)
+        if (empPayments.length===0&&selected!==emp.id) return null
+        const empPending = empPayments.filter(p=>p.status!=='paid'&&!p.is_deduction).reduce((s,p)=>s+Number(p.amount||0),0)
+        return (
+          <div key={emp.id} className="card" style={{marginBottom:14}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <div>
+                <div style={{fontWeight:600,fontSize:15}}>{emp.full_name}</div>
+                <div style={{fontSize:12,color:'var(--text3)'}}>{fmt(emp.fixed_salary||0)}/mo · {emp.monthly_work_days||22} days</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:14,fontWeight:700,color:'var(--amber)'}}>{fmt(empPending)} pending</div>
+              </div>
+            </div>
+            {empPayments.map(p=>(
+              <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid var(--border)'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:500,color:p.is_deduction?'var(--red)':'var(--text)'}}>{p.is_deduction?'-':'+'}¥{Number(p.amount||0).toLocaleString()}</div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{p.payment_date} · {p.description||p.payment_type}</div>
+                </div>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <span style={{fontSize:9,padding:'2px 8px',borderRadius:20,fontWeight:600,background:p.status==='paid'?'rgba(74,222,128,0.1)':p.is_deduction?'rgba(248,113,113,0.1)':'rgba(251,191,36,0.1)',color:p.status==='paid'?'var(--green)':p.is_deduction?'var(--red)':'var(--amber)',border:'1px solid rgba(255,255,255,0.06)'}}>{p.payment_type||p.status}</span>
+                  {p.status!=='paid'&&!p.is_deduction&&<button className="btn btn-sm" style={{fontSize:10,background:'rgba(74,222,128,0.1)',color:'var(--green)',borderColor:'rgba(74,222,128,0.2)'}} onClick={()=>handleMarkPaid(p.id)}>✓ Pay</button>}
+                  <button className="btn btn-sm" style={{fontSize:10}} onClick={()=>handleEdit(p)}>✏️</button>
+                  <button className="btn btn-sm btn-danger" style={{fontSize:10}} onClick={()=>handleDelete(p.id)}>✕</button>
+                </div>
+              </div>
+            ))}
+            {empPayments.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No payments.</div>}
+          </div>
+        )
+      })}
     </div>
   )
 }
