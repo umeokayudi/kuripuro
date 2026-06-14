@@ -3,12 +3,130 @@ import { supabase } from '../lib/supabase'
 import { geocodeAddress } from '../lib/geocode'
 import toast from 'react-hot-toast'
 
+function DayScheduleView({ onClose }) {
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [jobs, setJobs] = useState([])
+  const [employees, setEmployees] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => { loadEmps() }, [])
+  useEffect(() => { loadJobs() }, [date])
+
+  const loadEmps = async () => {
+    const { data } = await supabase.from('employees').select('id,full_name').eq('is_active',true).order('full_name')
+    setEmployees(data||[])
+  }
+
+  const loadJobs = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('jobs').select('*').eq('scheduled_date', date).order('sequence_order')
+    setJobs(data||[])
+    setLoading(false)
+  }
+
+  const handleReassign = async (jobId, empId) => {
+    const emp = employees.find(e=>e.id===empId)
+    await supabase.from('jobs').update({ employee_id:empId, employee_name:emp?.full_name }).eq('id',jobId)
+    loadJobs()
+  }
+
+  const handleStatusChange = async (jobId, status) => {
+    await supabase.from('jobs').update({ status }).eq('id',jobId)
+    loadJobs()
+  }
+
+  const handleTimeChange = async (jobId, time) => {
+    await supabase.from('jobs').update({ scheduled_time:time }).eq('id',jobId)
+  }
+
+  const handleDelete = async (jobId) => {
+    if (!confirm('Delete this job?')) return
+    await supabase.from('jobs').delete().eq('id',jobId)
+    loadJobs()
+  }
+
+  const empGroups = employees.map(e=>({
+    emp: e,
+    jobs: jobs.filter(j=>j.employee_id===e.id).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  })).filter(g=>g.jobs.length>0)
+
+  const unassigned = jobs.filter(j=>!j.employee_id)
+
+  const statusColor = s => ({assigned:'#60a5fa',in_progress:'#fbbf24',completed:'#4ade80',cancelled:'rgba(255,255,255,0.2)'}[s])
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:100,display:'flex',flexDirection:'column',overflow:'auto'}}>
+      <div style={{background:'var(--surface)',borderBottom:'1px solid var(--border)',padding:'14px 20px',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:10}}>
+        <div style={{display:'flex',alignItems:'center',gap:14}}>
+          <button className="btn" onClick={onClose}>← Back</button>
+          <h2 style={{fontSize:17,fontWeight:700,margin:0}}>Day Schedule</h2>
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{padding:'7px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text)',fontSize:13}} />
+        </div>
+        <div style={{fontSize:13,color:'var(--text3)'}}>{jobs.length} jobs · {new Date(date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
+      </div>
+
+      <div style={{padding:20}}>
+        {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
+
+        {empGroups.map(({emp, jobs:empJobs})=>(
+          <div key={emp.id} style={{marginBottom:20}}>
+            <div style={{fontSize:14,fontWeight:700,color:'var(--text)',marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
+              <div style={{width:8,height:8,borderRadius:'50%',background:empJobs.every(j=>j.status==='completed')?'#4ade80':empJobs.some(j=>j.status==='in_progress')?'#fbbf24':'#60a5fa'}} />
+              {emp.full_name} <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>({empJobs.length} jobs · {empJobs.filter(j=>j.status==='completed').length} done)</span>
+            </div>
+            <div style={{border:'1px solid var(--border)',borderRadius:12,overflow:'hidden'}}>
+              {empJobs.map((j,idx)=>(
+                <div key={j.id} style={{display:'grid',gridTemplateColumns:'28px 1fr auto auto auto auto',gap:8,alignItems:'center',padding:'10px 14px',borderBottom:idx<empJobs.length-1?'1px solid rgba(255,255,255,0.04)':'none',background:j.status==='completed'?'rgba(74,222,128,0.03)':j.status==='in_progress'?'rgba(251,191,36,0.05)':'transparent'}}>
+                  <div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,background:j.status==='completed'?'#4ade80':j.status==='in_progress'?'rgba(251,191,36,0.2)':'rgba(255,255,255,0.06)',color:j.status==='completed'?'#0a1929':j.status==='in_progress'?'#fbbf24':'var(--text3)'}}>{j.status==='completed'?'✓':idx+1}</div>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:500,color:j.status==='completed'?'var(--text3)':'var(--text)',textDecoration:j.status==='completed'?'line-through':'none'}}>{j.title.replace(/ — .*/,'')}</div>
+                    {j.description&&<div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>{j.description.substring(0,50)}</div>}
+                  </div>
+                  <input type="time" defaultValue={j.scheduled_time||'00:30'} onBlur={e=>handleTimeChange(j.id,e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text)',width:72}} />
+                  <select value={j.employee_id||''} onChange={e=>handleReassign(j.id,e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text)'}}>
+                    {employees.map(e=><option key={e.id} value={e.id}>{e.full_name.split(' ')[0]}</option>)}
+                  </select>
+                  <select value={j.status} onChange={e=>handleStatusChange(j.id,e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:statusColor(j.status)}}>
+                    {['assigned','in_progress','completed','cancelled'].map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <button onClick={()=>handleDelete(j.id)} style={{fontSize:11,padding:'3px 8px',borderRadius:6,border:'1px solid rgba(248,113,113,0.2)',background:'rgba(248,113,113,0.08)',color:'#f87171',cursor:'pointer'}}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {unassigned.length>0&&(
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:14,fontWeight:700,color:'#fbbf24',marginBottom:10}}>⚠️ Unassigned ({unassigned.length})</div>
+            <div style={{border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,overflow:'hidden'}}>
+              {unassigned.map((j,idx)=>(
+                <div key={j.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'center',padding:'10px 14px',borderBottom:idx<unassigned.length-1?'1px solid rgba(255,255,255,0.04)':'none'}}>
+                  <div style={{fontSize:13}}>{j.title.replace(/ — .*/,'')}</div>
+                  <select onChange={e=>handleReassign(j.id,e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text)'}}>
+                    <option value="">Assign to...</option>
+                    {employees.map(e=><option key={e.id} value={e.id}>{e.full_name.split(' ')[0]}</option>)}
+                  </select>
+                  <button onClick={()=>handleDelete(j.id)} style={{fontSize:11,padding:'3px 8px',borderRadius:6,border:'1px solid rgba(248,113,113,0.2)',background:'rgba(248,113,113,0.08)',color:'#f87171',cursor:'pointer'}}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {jobs.length===0&&!loading&&<div style={{textAlign:'center',padding:40,color:'var(--text3)',fontSize:13}}>No jobs for this day.</div>}
+      </div>
+    </div>
+  )
+}
+
 export default function Jobs() {
   const [tab, setTab] = useState('list')
   const [jobs, setJobs] = useState([])
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
   const [locations, setLocations] = useState([])
+  const [showDaySchedule, setShowDaySchedule] = useState(false)
   const [editingLoc, setEditingLoc] = useState(null)
   const [loading, setLoading] = useState(true)
   const [geocoding, setGeocoding] = useState(false)
@@ -98,6 +216,10 @@ export default function Jobs() {
 
   return (
     <div>
+      {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <button className="btn btn-primary" onClick={()=>setShowDaySchedule(true)}>📅 Day Schedule</button>
+      </div>
       <div className="tab-pills">
         <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>All Jobs</button>
         <button className={`tab-pill${tab==='spot'?' active':''}`} onClick={()=>setTab('spot')}>
@@ -242,6 +364,7 @@ export default function Jobs() {
 
 function LocationsTab() {
   const [locations, setLocations] = useState([])
+  const [showDaySchedule, setShowDaySchedule] = useState(false)
   const [editingLoc, setEditingLoc] = useState(null)
   const [form, setForm] = useState({ name:'', address:'', location_type:'fixed', notes:'' })
   const [geocoding, setGeocoding] = useState(false)
@@ -294,6 +417,7 @@ function LocationsTab() {
 
   return (
     <div>
+      {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
       <div className="card" style={{marginBottom:14}}>
         <div className="card-title">Save New Location</div>
         <div className="grid-2">

@@ -5,6 +5,41 @@ import toast from 'react-hot-toast'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
+function ReassignJob({ job, onDone }) {
+  const [open, setOpen] = useState(false)
+  const [employees, setEmployees] = useState([])
+  const [selected, setSelected] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const load = async () => {
+    const { data } = await supabase.from('employees').select('id,full_name').eq('is_active',true).order('full_name')
+    setEmployees(data||[])
+  }
+
+  const handleOpen = () => { setOpen(true); load() }
+
+  const handleReassign = async () => {
+    if (!selected) return
+    setLoading(true)
+    const emp = employees.find(e=>e.id===selected)
+    await supabase.from('jobs').update({ employee_id:selected, employee_name:emp?.full_name }).eq('id',job.id)
+    setOpen(false); setLoading(false); onDone()
+  }
+
+  if (!open) return <button className="btn btn-sm" style={{fontSize:10,padding:'2px 8px'}} onClick={handleOpen}>↔ Move</button>
+
+  return (
+    <div style={{display:'flex',gap:4,alignItems:'center'}}>
+      <select value={selected} onChange={e=>setSelected(e.target.value)} style={{fontSize:11,padding:'2px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text)'}}>
+        <option value="">Select...</option>
+        {employees.map(e=><option key={e.id} value={e.id}>{e.full_name.split(' ')[0]}</option>)}
+      </select>
+      <button className="btn btn-sm" style={{fontSize:10,padding:'2px 8px',background:'var(--green)',color:'#0a1929'}} onClick={handleReassign} disabled={loading}>✓</button>
+      <button className="btn btn-sm" style={{fontSize:10,padding:'2px 8px'}} onClick={()=>setOpen(false)}>✕</button>
+    </div>
+  )
+}
+
 export default function EmployeeProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -286,7 +321,10 @@ export default function EmployeeProfile() {
             <div key={j.id} style={{padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                 <span style={{fontWeight:500,fontSize:13}}>{j.title.replace(/ — .*/,'')}</span>
-                <span className={`badge ${statusColor(j.status)}`}>{j.status}</span>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <span className={`badge ${statusColor(j.status)}`}>{j.status}</span>
+                  {j.status==='assigned'&&<ReassignJob job={j} onDone={loadAll} />}
+                </div>
               </div>
               <div style={{fontSize:11,color:'var(--text3)',display:'flex',gap:12}}>
                 <span>{j.scheduled_date}</span>
