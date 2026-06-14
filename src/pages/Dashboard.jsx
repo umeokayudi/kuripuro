@@ -41,10 +41,16 @@ export default function Dashboard() {
   const margin = data.revenue > 0 ? Math.round(data.profit/data.revenue*100) : 0
 
   // Group today jobs by employee
-  const empGroups = (data.employees||[]).map(e => ({
-    emp: e,
-    jobs: data.todayJobs.filter(j=>j.employee_id===e.id).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
-  })).filter(g=>g.jobs.length>0)
+  const byName = {}
+  data.todayJobs.forEach(j => {
+    const k = j.employee_name || 'Unknown'
+    if (!byName[k]) byName[k] = []
+    byName[k].push(j)
+  })
+  const empGroups = Object.entries(byName).map(([name, jobs]) => ({
+    emp: { id: name, full_name: name },
+    jobs: jobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  }))
 
   return (
     <div>
