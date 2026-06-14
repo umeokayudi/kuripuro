@@ -23,7 +23,7 @@ export default function Dashboard() {
     const [c, e, j, ev] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('*').eq('is_active', true).order('full_name'),
-      supabase.from('jobs').select('*').eq('scheduled_date', today).order('sequence_order'),
+      Promise.resolve({data:[]}),
       supabase.from('evaluations').select('*').order('created_at', { ascending: false }).limit(5),
     ])
     setClients(c.data || [])
@@ -75,68 +75,6 @@ export default function Dashboard() {
             <div style={{ fontSize: 28, fontWeight: 700, color: c }}>{v}</div>
           </div>
         ))}
-      </div>
-
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Today's Shift — {clock.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}</div>
-          <div style={{ fontSize: 12, color: 'var(--text3)' }}>{todayJobs.length} jobs · {todayJobs.filter(j => j.status === 'completed').length} done</div>
-        </div>
-
-        {loading && <div style={{ color: 'var(--text3)', fontSize: 13 }}>Loading...</div>}
-        {!loading && Object.keys(byEmp).length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>No jobs today.</div>}
-
-        {Object.entries(byEmp).map(([empName, jobs]) => {
-          const done = jobs.filter(j => j.status === 'completed').length
-          const active = jobs.find(j => j.status === 'in_progress')
-          const next = jobs.find(j => j.status === 'assigned')
-          const allDone = done === jobs.length && jobs.length > 0
-          const initials = empName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-
-          return (
-            <div key={empName} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: allDone ? 'rgba(74,222,128,0.15)' : active ? 'rgba(251,191,36,0.15)' : 'rgba(96,165,250,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: allDone ? 'var(--green)' : active ? 'var(--amber)' : '#60a5fa', flexShrink: 0 }}>
-                    {initials}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{empName.split(' ')[0]}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>
-                      {allDone ? '✅ All done' : active ? `▶ ${active.title.replace(/ — .*/, '')}` : next ? `Next: ${next.title.replace(/ — .*/, '')}` : '—'}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: allDone ? 'var(--green)' : 'var(--text3)' }}>{done}/{jobs.length}</div>
-                  <div style={{ display: 'flex', gap: 3 }}>
-                    {jobs.slice(0, 12).map((j, i) => (
-                      <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: j.status === 'completed' ? 'var(--green)' : j.status === 'in_progress' ? 'var(--amber)' : 'rgba(255,255,255,0.1)' }} />
-                    ))}
-                    {jobs.length > 12 && <span style={{ fontSize: 8, color: 'var(--text3)' }}>+{jobs.length - 12}</span>}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ height: 4, background: 'var(--surface2)', borderRadius: 2, overflow: 'hidden', marginBottom: 8 }}>
-                <div style={{ height: '100%', width: (jobs.length > 0 ? done / jobs.length * 100 : 0) + '%', background: allDone ? 'var(--green)' : 'linear-gradient(90deg,#60a5fa,#4ade80)', borderRadius: 2, transition: 'width 0.4s' }} />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {jobs.sort((a, b) => (a.sequence_order || 99) - (b.sequence_order || 99)).map((j, idx) => (
-                  <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, background: j.status === 'in_progress' ? 'rgba(251,191,36,0.05)' : j.status === 'completed' ? 'rgba(74,222,128,0.03)' : 'transparent' }}>
-                    <div style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, background: j.status === 'completed' ? 'var(--green)' : j.status === 'in_progress' ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.06)', color: j.status === 'completed' ? '#0a1929' : j.status === 'in_progress' ? 'var(--amber)' : 'var(--text3)' }}>
-                      {j.status === 'completed' ? '✓' : j.status === 'in_progress' ? '▶' : idx + 1}
-                    </div>
-                    <div style={{ flex: 1, fontSize: 12, color: j.status === 'completed' ? 'var(--text3)' : 'var(--text)', textDecoration: j.status === 'completed' ? 'line-through' : 'none' }}>{j.title.replace(/ — .*/, '')}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{j.scheduled_time}</div>
-                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor(j.status), flexShrink: 0 }} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
