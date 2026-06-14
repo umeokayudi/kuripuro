@@ -8,6 +8,7 @@ export default function Dashboard() {
   const jp = lang === 'ja'
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [lastUpdate, setLastUpdate] = useState(null)
   const [clock, setClock] = useState(new Date())
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function Dashboard() {
     const maxProfit = clientProfit[0]?.profit || 1
     setData({ revenue, profit:revenue-cost, activeEmp:empList.length, activeClients:clientList.length, todayJobs:jobList, recentEvals:evals.data||[], clientProfit, maxProfit, employees:empList })
     setLoading(false)
+    setLastUpdate(new Date())
   }
 
   const statusColor = s => ({assigned:'#60a5fa',in_progress:'#fbbf24',completed:'#4ade80',cancelled:'rgba(255,255,255,0.2)'}[s]||'#60a5fa')
@@ -59,7 +61,11 @@ export default function Dashboard() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div>
           <h2 style={{fontSize:20,fontWeight:700,margin:0}}>KuriPuro Admin</h2>
-          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+          <div style={{display:'flex',gap:10,alignItems:'center',marginTop:2}}>
+          <span style={{fontSize:12,color:'var(--text3)'}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>
+          {lastUpdate&&<span style={{fontSize:10,color:'var(--text3)'}}>Updated: {lastUpdate.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>}
+          <button onClick={load} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text3)',cursor:'pointer'}}>🔄 Refresh</button>
+        </div>
         </div>
         <div style={{fontSize:36,fontWeight:700,fontFamily:'monospace',color:'var(--text)',letterSpacing:-2}}>{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}<span style={{fontSize:18,color:'var(--text3)'}}>{String(clock.getSeconds()).padStart(2,'0')}</span></div>
       </div>
