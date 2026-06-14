@@ -6,7 +6,7 @@ import { useLang } from '../hooks/useLang'
 export default function Dashboard() {
   const { lang } = useLang()
   const jp = lang === 'ja'
-  const [data, setData] = useState({ revenue:0, profit:0, activeEmp:0, activeClients:0, todayJobs:[], recentEvals:[], clientProfit:[], maxProfit:1 })
+  const [data, setData] = useState({ revenue:0, profit:0, activeEmp:0, activeClients:0, todayJobs:[], recentEvals:[], clientProfit:[], maxProfit:1, employees:[] })
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
 
@@ -19,6 +19,7 @@ export default function Dashboard() {
 
   const load = async () => {
     setLoading(true)
+    setData(d => ({...d, todayJobs:[], employees:[]}))
     const today = new Date().toISOString().split('T')[0]
     const [clients, employees, jobs, evals] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
