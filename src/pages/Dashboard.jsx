@@ -13,7 +13,7 @@ export default function Dashboard() {
   useEffect(() => {
     load()
     const t = setInterval(() => setClock(new Date()), 1000)
-    const r = setInterval(load, 30000)
+    const r = setInterval(load, 15000)
     return () => { clearInterval(t); clearInterval(r) }
   }, [])
 
@@ -23,7 +23,7 @@ export default function Dashboard() {
     const [clients, employees, jobs, evals] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('*').eq('is_active', true).order('full_name'),
-      supabase.from('jobs').select('*').eq('scheduled_date', today).order('sequence_order'),
+      supabase.from('jobs').select('*').eq('scheduled_date', today).order('sequence_order').limit(200),
       supabase.from('evaluations').select('*').order('created_at', { ascending:false }).limit(5),
     ])
     const clientList = clients.data || []
