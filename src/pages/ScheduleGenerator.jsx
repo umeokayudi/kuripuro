@@ -61,6 +61,7 @@ export default function ScheduleGenerator() {
       const dow = date.getDay() // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
       const dateStr = date.toISOString().split('T')[0]
       const isMon = dow === 1
+      const isTue = dow === 2
       const isSatSun = dow === 0 || dow === 6
       const isMonFri = dow >= 1 && dow <= 5
 
@@ -72,12 +73,14 @@ export default function ScheduleGenerator() {
           jobs.push({ id: jobId++, date: dateStr, time: '06:00', employee: 'Bemnet', client: 'On The Planet', title: `${name} — Basic Cleaning`, address: r.address, notes: r.notes, seq: i + 2 })
         })
 
-        // Solomon - Deep Clean every Monday
+        // Solomon - Deep Clean every Tuesday
+        if (isTue) {
         const solomonRests = [...RESTAURANTS]
         if (includeYuraku) solomonRests.push({ name: 'Kodama Yurakucho', address: '', notes: 'Key box: TBD', deepClean: 7000 })
         solomonRests.forEach((r, i) => {
           jobs.push({ id: jobId++, date: dateStr, time: '00:30', employee: 'Solomon', client: 'On The Planet', title: `${r.name} — Deep Clean`, address: r.address || '', notes: r.notes || '', seq: i + 1, description: `Range Hood + AC + Grating + Grease Trap${r.deepClean === 7000 ? ' x2' : ''} | ¥${r.deepClean?.toLocaleString()}` })
         })
+        } // end solomon tuesday
       }
 
       // TUE-FRI - Bemnet: all 11 restaurants
