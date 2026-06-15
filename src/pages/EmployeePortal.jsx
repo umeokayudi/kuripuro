@@ -319,14 +319,7 @@ export default function EmployeePortal() {
   const scoreColor = s=>s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
   const today = new Date().toISOString().split('T')[0]
 
-  const displayDate = (job) => {
-    const hour = parseInt((job.scheduled_time||'12:00').split(':')[0])
-    if (hour < 6) {
-      const d = new Date(job.scheduled_date+'T12:00:00'); d.setDate(d.getDate()-1)
-      return d.toISOString().split('T')[0]
-    }
-    return job.scheduled_date
-  }
+  const displayDate = (job) => job.scheduled_date
 
   const todayJobs = jobs.filter(j=>j.scheduled_date===today||displayDate(j)===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
 
