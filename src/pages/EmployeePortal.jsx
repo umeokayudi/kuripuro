@@ -116,7 +116,7 @@ export default function EmployeePortal() {
   }
 
   const loadAll = async () => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}).split(' ')[0]
     const [active, all, emp, pay, adv, clm, bdg] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(200),
