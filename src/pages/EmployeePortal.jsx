@@ -516,7 +516,19 @@ export default function EmployeePortal() {
             {/* Today shift card */}
             {todayJobs.length>0&&!activeJob&&(
               <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
-                <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 TODAY'S SHIFT</div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                  <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 NEXT SHIFT</div>
+                  {(()=>{
+                    const nj=todayJobs.find(j=>j.status==='assigned')
+                    if(!nj) return null
+                    const nd=new Date(nj.scheduled_date+'T'+(nj.scheduled_time||'00:30')+':00')
+                    const diffMs=nd-new Date()
+                    if(diffMs<0) return null
+                    const diffH=Math.floor(diffMs/3600000)
+                    const diffM=Math.floor((diffMs%3600000)/60000)
+                    return <div style={{fontSize:11,color:'#60a5fa',fontWeight:600}}>⏰ {diffH>0?diffH+'h ':''}{diffM}m to start</div>
+                  })()}
+                </div>
                 <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} locations</div>
                 <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{todayJobs.filter(j=>j.status==='completed').length} done · {todayJobs.filter(j=>j.status==='assigned').length} remaining</div>
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginBottom:12}}>⏱ Est. {Math.round(todayJobs.length*0.75)}h total · avg 45min/location</div>
