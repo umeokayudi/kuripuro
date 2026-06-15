@@ -30,7 +30,7 @@ export default function Salary() {
   }
 
   const loadAdvances = async () => {
-    const { data } = await supabase.from('salary_advances').select('*')
+    const { data } = await supabase.from('salary_payments').select('*')
       .eq('employee_id', selected.id)
       .eq('period', period)
       .order('created_at')
@@ -39,12 +39,14 @@ export default function Salary() {
 
   const addAdvance = async () => {
     if (!newAdv.amount) return toast.error('Enter amount')
-    const { error } = await supabase.from('salary_advances').insert({
+    const { error } = await supabase.from('salary_payments').insert({
       employee_id: selected.id,
       employee_name: selected.full_name,
       period,
       amount: parseFloat(newAdv.amount),
       description: newAdv.desc || 'Advance payment',
+      payment_type: 'advance',
+      status: 'scheduled',
     })
     if (error) return toast.error(error.message)
     toast.success('Advance registered')
