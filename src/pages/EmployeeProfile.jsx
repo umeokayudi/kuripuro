@@ -40,6 +40,51 @@ function ReassignJob({ job, onDone }) {
   )
 }
 
+function RecentDays({ jobs, onDayClick }) {
+  const [openDay, setOpenDay] = useState(null)
+  const byDay = {}
+  jobs.forEach(j => {
+    if (!byDay[j.scheduled_date]) byDay[j.scheduled_date] = []
+    byDay[j.scheduled_date].push(j)
+  })
+  const days = Object.keys(byDay).sort((a,b) => b.localeCompare(a)).slice(0,10)
+
+  return (
+    <div>
+      {days.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No recent jobs.</div>}
+      {days.map(date => {
+        const dayJobs = byDay[date]
+        const done = dayJobs.filter(j=>j.status==='completed').length
+        const isOpen = openDay===date
+        return (
+          <div key={date} style={{marginBottom:6}}>
+            <div onClick={()=>setOpenDay(isOpen?null:date)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',borderRadius:8,background:'var(--surface2)',cursor:'pointer'}}>
+              <div style={{fontSize:13,fontWeight:500}}>{new Date(date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:11,color:'var(--text3)'}}>{done}/{dayJobs.length}</span>
+                <span style={{fontSize:11,color:done===dayJobs.length?'var(--green)':'var(--text3)'}}>{isOpen?'▲':'▼'}</span>
+              </div>
+            </div>
+            {isOpen&&(
+              <div style={{marginTop:4,paddingLeft:10}}>
+                {dayJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map((j,i)=>(
+                  <div key={j.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontSize:11,color:'var(--text3)',width:16}}>{i+1}</span>
+                      <span style={{fontSize:12,color:j.status==='completed'?'var(--text3)':'var(--text)',textDecoration:j.status==='completed'?'line-through':'none'}}>{j.title.replace(/ — .*/,'')}</span>
+                    </div>
+                    <span style={{fontSize:10,padding:'1px 6px',borderRadius:20,background:j.status==='completed'?'rgba(74,222,128,0.1)':'rgba(96,165,250,0.1)',color:j.status==='completed'?'var(--green)':'#60a5fa'}}>{j.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function EmployeeProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -218,19 +263,10 @@ export default function EmployeeProfile() {
 
             {/* Recent jobs */}
             <div className="card">
-              <div className="card-title">Recent Jobs</div>
-              {jobs.slice(0,5).map(j=>(
-                <div key={j.id} style={{padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:2}}>
-                    <span style={{fontWeight:500,fontSize:13}}>{j.title.replace(/ — .*/,'')}</span>
-                    <span className={`badge ${statusColor(j.status)}`}>{j.status}</span>
-                  </div>
-                  <div style={{fontSize:11,color:'var(--text3)'}}>{j.scheduled_date}{j.started_at&&` · ▶ ${new Date(j.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`}{j.completed_at&&` · 🏁 ${new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`}</div>
-                </div>
-              ))}
+              <div className="card-title" style={{marginBottom:12}}>Recent Jobs</div>
+              <RecentDays jobs={jobs.slice(0,30)} onDayClick={()=>setTab('jobs')} />
               <button className="btn btn-sm" style={{marginTop:10}} onClick={()=>setTab('jobs')}>View all →</button>
-            </div>
-          </div>
+            </div>          </div>
         </div>
       )}
 
