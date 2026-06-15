@@ -33,6 +33,7 @@ export default function Salary() {
     const { data } = await supabase.from('salary_payments').select('*')
       .eq('employee_id', selected.id)
       .eq('period', period)
+      .eq('payment_type', 'advance')
       .order('created_at')
     setAdvances(data || [])
   }
