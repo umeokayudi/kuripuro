@@ -11,7 +11,7 @@ export default function ServiceContracts() {
   const [selectedClient, setSelectedClient] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ location_name:'', location_address:'', service_type:'Basic Cleaning', price_per_visit:0, hours_per_visit:2, days_of_week:[], notes:'' })
+  const [form, setForm] = useState({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'' })
 
   useEffect(() => { loadClients() }, [])
   useEffect(() => { if (selectedClient) loadContracts(selectedClient) }, [selectedClient])
@@ -43,8 +43,8 @@ export default function ServiceContracts() {
   const handleSave = async () => {
     if (!form.location_name||!selectedClient) return toast.error('Fill required fields')
     const visits = calcVisits(form.days_of_week)
-    const revenue = visits * parseFloat(form.price_per_visit||0)
-    const payload = { client_id:selectedClient, ...form, price_per_visit:parseFloat(form.price_per_visit)||0, hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, monthly_revenue:revenue }
+    const revenue = form.billing_type==='fixed_monthly' ? parseFloat(form.fixed_monthly||0) : visits * parseFloat(form.price_per_visit||0)
+    const payload = { client_id:selectedClient, ...form, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, monthly_revenue:revenue }
 
     if (editing) {
       const { error } = await supabase.from('service_contracts').update(payload).eq('id',editing)
@@ -62,7 +62,7 @@ export default function ServiceContracts() {
     await supabase.from('clients').update({ monthly_revenue: totalRevenue }).eq('id', selectedClient)
 
     setShowForm(false); setEditing(null)
-    setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', price_per_visit:0, hours_per_visit:2, days_of_week:[], notes:'' })
+    setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'' })
     loadContracts(selectedClient)
   }
 
@@ -115,7 +115,7 @@ export default function ServiceContracts() {
           {/* Add button */}
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600}}>{client?.company_name} — Service Locations</div>
-            <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', price_per_visit:0, hours_per_visit:2, days_of_week:[], notes:'' })}}>
+            <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'' })}}>
               {showForm?'Cancel':'+ Add Location'}
             </button>
           </div>
@@ -131,7 +131,14 @@ export default function ServiceContracts() {
                     {SERVICE_TYPES.map(s=><option key={s}>{s}</option>)}
                   </select>
                 </div>
-                <div className="form-group"><label>Price per Visit (¥)</label><input type="number" value={form.price_per_visit} onChange={e=>upd('price_per_visit',e.target.value)} /></div>
+                <div className="form-group"><label>Billing Type</label>
+                  <select value={form.billing_type||'per_visit'} onChange={e=>upd('billing_type',e.target.value)}>
+                    <option value="per_visit">Per Visit</option>
+                    <option value="fixed_monthly">Fixed Monthly</option>
+                  </select>
+                </div>
+                {(form.billing_type||'per_visit')==='per_visit'&&<div className="form-group"><label>Price per Visit (¥)</label><input type="number" value={form.price_per_visit} onChange={e=>upd('price_per_visit',e.target.value)} /></div>}
+                {form.billing_type==='fixed_monthly'&&<div className="form-group"><label>Fixed Monthly (¥)</label><input type="number" value={form.fixed_monthly||0} onChange={e=>upd('fixed_monthly',e.target.value)} /></div>}
                 <div className="form-group"><label>Hours per Visit</label><input type="number" step="0.5" value={form.hours_per_visit} onChange={e=>upd('hours_per_visit',e.target.value)} /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address / Maps URL</label><input value={form.location_address} onChange={e=>upd('location_address',e.target.value)} placeholder="https://maps.app.goo.gl/..." /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}>
@@ -174,7 +181,7 @@ export default function ServiceContracts() {
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
                 <div>
                   <div style={{fontWeight:600,fontSize:14}}>{c.location_name}</div>
-                  <div style={{fontSize:12,color:'var(--text3)',marginTop:1}}>{c.service_type} · {c.hours_per_visit}h/visit</div>
+                  <div style={{fontSize:12,color:'var(--text3)',marginTop:1}}>{c.service_type} · {c.hours_per_visit}h/visit · <span style={{color:c.billing_type==='fixed_monthly'?'var(--amber)':'var(--text3)'}}>{c.billing_type==='fixed_monthly'?'Fixed Monthly':'Per Visit'}</span></div>
                   {c.location_address?.startsWith('http')&&<a href={c.location_address} target="_blank" rel="noreferrer" style={{fontSize:11,color:'#60a5fa',textDecoration:'none'}}>🗺 Maps</a>}
                   {c.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>🔑 {c.notes}</div>}
                 </div>
