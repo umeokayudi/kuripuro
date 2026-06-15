@@ -84,6 +84,10 @@ function AppContent() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/ryoshu" element={<Ryoshu />} />
               <Route path="/evaluations" element={<Evaluations />} />
+              <Route path="/schedule" element={<ScheduleGenerator />} />
+              <Route path="/contracts" element={<ServiceContracts />} />
+              <Route path="/faturas" element={<Faturas />} />
+              <Route path="/payments" element={<Payments />} />
               <Route path="/checkin" element={<Checkin />} />
               <Route path="/adminchat" element={<AdminChat />} />
               <Route path="/live" element={<LiveTracking />} />
