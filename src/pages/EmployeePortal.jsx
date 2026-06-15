@@ -321,7 +321,7 @@ export default function EmployeePortal() {
 
   const displayDate = (job) => job.scheduled_date
 
-  const todayJobs = jobs.filter(j=>j.scheduled_date===today||displayDate(j)===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  const todayJobs = jobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
 
   const S = {
     card: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:16, marginBottom:12 },
