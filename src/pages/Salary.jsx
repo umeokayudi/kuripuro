@@ -48,9 +48,7 @@ export default function Salary() {
       description: newAdv.desc || 'Advance payment',
       payment_type: 'advance',
       status: 'scheduled',
-      payment_type: 'advance',
-      status: 'scheduled',
-    })
+      })
     if (error) return toast.error(error.message)
     toast.success('Advance registered')
     setNewAdv({ amount:'', desc:'' })

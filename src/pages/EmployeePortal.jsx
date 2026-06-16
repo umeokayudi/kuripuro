@@ -643,7 +643,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} submitting={submitting} fmt={fmt} displayDate={displayDate} today={today} setSelectedJob={setSelectedJob} S={S} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} />
         )}
 
         {/* SPOTS */}
@@ -882,14 +882,15 @@ export default function EmployeePortal() {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
+  const beforePhotos = jobPhotos.filter(p=>p.slot==='start')
+  const afterPhotos = jobPhotos.filter(p=>p.slot==='end')
 
   return (
     <div>
-      {/* Header progress */}
       <div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'14px 16px',marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
           <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{done}/{total} locations</div>
@@ -909,7 +910,6 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 
         return (
           <div key={job.id} id={isActive?'active-job-card':undefined} style={{...S.card,marginBottom:10,opacity:isDone?0.6:1,border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(255,255,255,0.04)':'1px solid rgba(255,255,255,0.08)'}}>
-            {/* Job header */}
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isActive||isNext?12:0}}>
               <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,background:isDone?'rgba(74,222,128,0.2)':isActive?'rgba(74,222,128,0.15)':'rgba(255,255,255,0.06)',color:isDone?'#4ade80':isActive?'#4ade80':'rgba(255,255,255,0.4)'}}>
@@ -921,28 +921,54 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
-                {isActive&&<span style={{fontSize:13,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
-                {job.address&&job.address.startsWith('http')&&<a href={job.address} target="_blank" rel="noreferrer" style={{fontSize:18,textDecoration:'none'}}>🗺</a>}
+                {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
+                {job.address&&job.address.startsWith('http')&&<a href={job.address} target="_blank" rel="noreferrer" style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
               </div>
             </div>
 
-            {/* Active job controls */}
             {isActive&&(
               <div>
-                <div style={{display:'flex',gap:8,marginBottom:10}}>
-                  <PhotoGrid slot="active" />
+                {/* BEFORE photos */}
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE ({beforePhotos.length})</div>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {beforePhotos.map((p,i)=>(
+                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} />
+                    ))}
+                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
+                      <span style={{fontSize:20}}>📷</span>
+                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Before</span>
+                      <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
+                    </label>
+                  </div>
                 </div>
-                <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:70,boxSizing:'border-box',marginBottom:10}} />
-                <button onClick={()=>handleComplete(job)} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
+
+                <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:60,boxSizing:'border-box',marginBottom:12}} />
+
+                {/* AFTER photos */}
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 AFTER ({afterPhotos.length})</div>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {afterPhotos.map((p,i)=>(
+                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} />
+                    ))}
+                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
+                      <span style={{fontSize:20}}>📷</span>
+                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>After</span>
+                      <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
+                    </label>
+                  </div>
+                </div>
+
+                <button onClick={()=>handleComplete(null)} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
                   {submitting?'Saving...':'✅ Done → Next'}
                 </button>
               </div>
             )}
 
-            {/* Next job start button */}
             {isNext&&(
               <button onClick={()=>handleStart(job)} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
-                {submitting?'Starting...':'▶ Start — '+job.title.replace(/ — .*/,'')}
+                {submitting?'Starting...':'▶ Start — '+job.title.replace(/ — .*/,''))}
               </button>
             )}
           </div>
