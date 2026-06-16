@@ -276,20 +276,11 @@ export default function EmployeePortal() {
   }
 
   const handleComplete = async (sigDataUrl) => {
-    if (!activeJob) return
-    const endPhotos = jobPhotos.filter(p=>p.slot==='end')
+    if (!activeJob) { toast.error('No active job'); return }
     setSubmitting(true)
-    let gpsResult = { dist: null, override: false }
-    try {
-      gpsResult = await checkGPS(activeJob)
-      if (gpsResult.override) {
-        const proceed = window.confirm('⚠️ GPS: you are '+( gpsResult.dist?gpsResult.dist+'m away':'at unknown distance')+'. Log and continue?')
-        if (!proceed) { setSubmitting(false); return }
-      }
-    } catch(e) { /* GPS failed, continue anyway */ }
     let endPhotoUrl = null
-    for (let i=0;i<endPhotos.length;i++) {
-      const ext = endPhotos[i].file.name.split('.').pop()
+    const endPhotos = jobPhotos.filter(p=>p.slot==='end')
+     = endPhotos[i].file.name.split('.').pop()
       await supabase.storage.from('service-photos').upload(`jobs/${activeJob.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
       if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${activeJob.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
     }
