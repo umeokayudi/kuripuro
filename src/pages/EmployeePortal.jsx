@@ -276,7 +276,8 @@ export default function EmployeePortal() {
   }
 
   const handleComplete = async (sigDataUrl) => {
-    if (!activeJob) { toast.error('No active job'); return }
+    console.log('handleComplete called, activeJob:', activeJob?.id, 'submitting:', submitting)
+    if (!activeJob) { toast.error('No active job - please refresh'); return }
     setSubmitting(true)
     try {
       let endPhotoUrl = null
