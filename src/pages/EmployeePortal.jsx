@@ -275,33 +275,7 @@ export default function EmployeePortal() {
     setShowSignature(true)
   }
 
-  const handleComplete = async (sigDataUrl) => {
-    if (!activeJob) { toast.error('No active job'); return }
-    setSubmitting(true)
-    try {
-      let endPhotoUrl = null
-      const endPhotos = jobPhotos.filter(p=>p.slot==='end')
-      for (let i=0;i<endPhotos.length;i++) {
-        const ext = endPhotos[i].file.name.split('.').pop()
-        await supabase.storage.from('service-photos').upload(`jobs/${activeJob.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
-        if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${activeJob.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
-      }
-      await supabase.from('jobs').update({
-        status:'completed',
-        completed_at:new Date().toISOString(),
-        notes_employee:notes,
-        photo_end_url:endPhotoUrl,
-        signature_url:sigDataUrl||null
-      }).eq('id',activeJob.id)
-      clearInterval(timerRef.current)
-      setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
-      toast.success('🎉 Job completed!')
-      loadAll()
-    } catch(e) {
-      toast.error('Error: '+e.message)
-    }
-    setSubmitting(false)
-  }
+
     await supabase.from('jobs').update({ status:'completed',completed_at:new Date().toISOString(),notes_employee:notes,photo_end_url:endPhotoUrl,checklist_template:JSON.stringify(checklist),signature_url:sigDataUrl||null,gps_end_distance:gpsResult?.dist||null,gps_override:gpsResult?.override||false }).eq('id',activeJob.id)
     clearInterval(timerRef.current)
     setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
