@@ -91,7 +91,14 @@ export default function EmployeePortal() {
   useEffect(() => {
     if (activeJob?.started_at) {
       const start = new Date(activeJob.started_at)
-      timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now()-start)/1000)), 1000)
+      timerRef.current = setInterval(() => {
+        const secs = Math.floor((Date.now()-start)/1000)
+        setElapsed(secs)
+        if (secs === 3600) {
+          if (window.confirm('⚠️ 1 hour on this job. Everything ok?\nPress Cancel to go to the job.')) {}
+          else { setTab('shift') }
+        }
+      }, 1000)
     }
     return () => clearInterval(timerRef.current)
   }, [activeJob])
@@ -506,7 +513,7 @@ export default function EmployeePortal() {
         {tab==='home'&&(
           <div>
             {/* Active job banner */}
-            {activeJob&&<div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:'1px solid rgba(74,222,128,0.25)',borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
+            {activeJob&&<div onClick={()=>{setTab('shift');setTimeout(()=>{const el=document.getElementById('active-job-card');if(el)el.scrollIntoView({behavior:'smooth'})},100)}} style={{background:'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:'1px solid rgba(74,222,128,0.25)',borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div><div style={{fontSize:10,color:'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:3}}>● ACTIVE SHIFT</div><div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.split(' —')[0]}</div><div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>Tap to continue →</div></div>
                 <div style={{fontSize:28,fontWeight:700,color:'#4ade80',fontFamily:'monospace'}}>{fmt(elapsed)}</div>
