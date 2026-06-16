@@ -275,9 +275,10 @@ export default function EmployeePortal() {
     setShowSignature(true)
   }
 
-  const handleComplete = async (sigDataUrl) => {
-    console.log('handleComplete called, activeJob:', activeJob?.id, 'submitting:', submitting)
-    if (!activeJob) { toast.error('No active job - please refresh'); return }
+  const handleComplete = async (sigDataUrl, jobOverride) => {
+    const job = jobOverride || activeJob
+    console.log('handleComplete called, job:', job?.id, 'activeJob:', activeJob?.id)
+    if (!job) { toast.error('No active job - please refresh'); return }
     setSubmitting(true)
     try {
       let endPhotoUrl = null
@@ -287,7 +288,7 @@ export default function EmployeePortal() {
         await supabase.storage.from('service-photos').upload(`jobs/${activeJob.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
         if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${activeJob.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
       }
-      await supabase.from('jobs').update({ status:'completed', completed_at:new Date().toISOString(), notes_employee:notes, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null }).eq('id',activeJob.id)
+      await supabase.from('jobs').update({ status:'completed', completed_at:new Date().toISOString(), notes_employee:notes, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null }).eq('id',job.id)
       clearInterval(timerRef.current)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
       toast.success('🎉 Job completed!'); loadAll()
@@ -959,7 +960,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                   </div>
                 </div>
 
-                <button onClick={()=>handleComplete(null)} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
+                <button onClick={async()=>{ if(!activeJob){toast.error('No active job');return}; await handleComplete(null) }} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
                   {submitting?'Saving...':'✅ Done → Next'}
                 </button>
               </div>
