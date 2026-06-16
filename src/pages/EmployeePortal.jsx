@@ -968,7 +968,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 
             {isNext&&(
               <button onClick={()=>handleStart(job)} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
-                {submitting?'Starting...':'▶ Start — '+job.title.replace(/ — .*/,''))}
+                {submitting?'Starting...':'▶ Start — '+job.title.replace(/ — .*/,'')}
               </button>
             )}
           </div>
