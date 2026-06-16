@@ -276,14 +276,17 @@ export default function EmployeePortal() {
   }
 
   const handleComplete = async (sigDataUrl) => {
+    if (!activeJob) return
     const endPhotos = jobPhotos.filter(p=>p.slot==='end')
-    if (activeJob.photo_required&&endPhotos.length===0) return toast.error('📷 Photo required!')
     setSubmitting(true)
-    const gpsResult = await checkGPS(activeJob)
-    if (gpsResult.override) {
-      const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
-      if (!proceed) { setSubmitting(false); return }
-    }
+    let gpsResult = { dist: null, override: false }
+    try {
+      gpsResult = await checkGPS(activeJob)
+      if (gpsResult.override) {
+        const proceed = window.confirm('⚠️ GPS: you are '+( gpsResult.dist?gpsResult.dist+'m away':'at unknown distance')+'. Log and continue?')
+        if (!proceed) { setSubmitting(false); return }
+      }
+    } catch(e) { /* GPS failed, continue anyway */ }
     let endPhotoUrl = null
     for (let i=0;i<endPhotos.length;i++) {
       const ext = endPhotos[i].file.name.split('.').pop()
