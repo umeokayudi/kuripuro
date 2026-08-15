@@ -157,7 +157,7 @@ export default async function handler(req, res) {
 
     for (let iteration = 0; iteration < 6; iteration++) {
       const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -172,15 +172,14 @@ export default async function handler(req, res) {
       const data = await resp.json()
       const candidate = data?.candidates?.[0]
       const parts = candidate?.content?.parts || []
-      const functionCallPart = parts.find(p => p.functionCall)
-      const functionCall = functionCallPart?.functionCall
+      const functionCall = parts.find(p => p.functionCall)?.functionCall
 
       if (!functionCall) {
         finalText = parts.map(p => p.text || '').join('')
         break
       }
 
-      contents.push({ role: 'model', parts: [functionCallPart] })
+      contents.push({ role: 'model', parts: [{ functionCall }] })
 
       let toolResult
       try {
