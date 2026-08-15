@@ -100,6 +100,30 @@ export default function EmployeeProfile() {
   const [workDays, setWorkDays] = useState([])
   const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
   const [addingEval, setAddingEval] = useState(false)
+  const [analyzingId, setAnalyzingId] = useState(null)
+
+  const analyzePhoto = async (job) => {
+    if (!job.photo_end_url) return
+    setAnalyzingId(job.id)
+    try {
+      const resp = await fetch('/api/analyze-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoUrl: job.photo_end_url, locationName: job.title }),
+      })
+      const result = await resp.json()
+      await supabase.from('jobs').update({
+        photo_ai_score: result?.nota ?? null,
+        photo_ai_approved: result?.aprovado ?? null,
+        photo_ai_issues: result?.problemas?.length ? result.problemas.join(', ') : null,
+      }).eq('id', job.id)
+      toast.success(`Analisado: nota ${result?.nota ?? '?'}/10`)
+      loadAll()
+    } catch (e) {
+      toast.error('Erro ao analisar: ' + e.message)
+    }
+    setAnalyzingId(null)
+  }
 
   const EVAL_CATEGORIES = ['Quality','Punctuality','Behavior','Communication','Initiative','Cleanliness']
 
@@ -362,12 +386,33 @@ export default function EmployeeProfile() {
                   {j.status==='assigned'&&<ReassignJob job={j} onDone={loadAll} />}
                 </div>
               </div>
-              <div style={{fontSize:11,color:'var(--text3)',display:'flex',gap:12}}>
+              <div style={{fontSize:11,color:'var(--text3)',display:'flex',gap:12,flexWrap:'wrap'}}>
                 <span>{j.scheduled_date}</span>
                 {j.started_at&&<span>▶ {new Date(j.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
                 {j.completed_at&&<span>🏁 {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
                 {j.started_at&&j.completed_at&&<span>⏱ {Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000)}m</span>}
+                {j.checklist_total!=null&&<span style={{color:j.checklist_done<j.checklist_total?'var(--red)':'var(--green)'}}>✓ {j.checklist_done}/{j.checklist_total}</span>}
+                {j.photo_ai_score!=null&&(
+                  <span style={{color:j.photo_ai_approved?'var(--green)':'var(--red)'}}>
+                    📷 IA: {j.photo_ai_score}/10 {j.photo_ai_approved?'✅':'❌'}
+                  </span>
+                )}
               </div>
+              {j.photo_ai_issues&&(
+                <div style={{fontSize:11,color:'var(--red)',marginTop:3}}>⚠️ {j.photo_ai_issues}</div>
+              )}
+              {j.photo_end_url&&(
+                <div style={{display:'flex',gap:10,alignItems:'center',marginTop:2}}>
+                  <a href={j.photo_end_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:'var(--blue)'}}>Ver foto</a>
+                  <button
+                    onClick={()=>analyzePhoto(j)}
+                    disabled={analyzingId===j.id}
+                    style={{fontSize:11,color:'var(--text3)',background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'2px 8px',cursor:analyzingId===j.id?'not-allowed':'pointer'}}
+                  >
+                    {analyzingId===j.id?'Analisando...':j.photo_ai_score!=null?'🔄 Reanalisar com IA':'📷 Analisar com IA'}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
