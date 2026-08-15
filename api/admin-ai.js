@@ -179,7 +179,7 @@ export default async function handler(req, res) {
         break
       }
 
-      contents.push({ role: 'model', parts: [{ functionCall }] })
+      contents.push({ role: 'model', parts: [functionCallPart] })
 
       let toolResult
       try {
