@@ -172,14 +172,15 @@ export default async function handler(req, res) {
       const data = await resp.json()
       const candidate = data?.candidates?.[0]
       const parts = candidate?.content?.parts || []
-      const functionCall = parts.find(p => p.functionCall)?.functionCall
+      const functionCallPart = parts.find(p => p.functionCall)
+      const functionCall = functionCallPart?.functionCall
 
       if (!functionCall) {
         finalText = parts.map(p => p.text || '').join('')
         break
       }
 
-      contents.push({ role: 'model', parts: [{ functionCall }] })
+      contents.push({ role: 'model', parts: [functionCallPart] })
 
       let toolResult
       try {
