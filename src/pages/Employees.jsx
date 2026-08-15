@@ -88,6 +88,14 @@ export default function Employees() {
     loadEmployees()
   }
 
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`⚠️ Delete ${name}? This action cannot be undone.`)) return
+    const { error } = await supabase.from('employees').delete().eq('id', id)
+    if (error) return toast.error('Error deleting: ' + error.message)
+    toast.success(`${name} deleted successfully`)
+    loadEmployees()
+  }
+
   const handleComplaint = async () => {
     if (!recEmpId) return toast.error('Select employee')
     const emp = employees.find(e=>e.id===recEmpId)
@@ -163,9 +171,10 @@ export default function Employees() {
               <div style={{display:'flex',gap:8}}>
                 <button className="btn btn-sm btn-primary" onClick={()=>navigate('/employees/'+e.id)}>👤 Profile</button>
                 <button className="btn btn-sm" onClick={()=>handleDeactivate(e.id,e.is_active)}>{e.is_active?'Deactivate':'Activate'}</button>
+                <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(e.id,e.full_name)} style={{background:'#DC2626',color:'#fff'}}>🗑️ Delete</button>
               </div>
             </div>
-          )})}
+          )}))}
         </div>
       )}
 
