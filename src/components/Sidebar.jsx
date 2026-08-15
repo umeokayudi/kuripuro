@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
 
 const navItems = [
+  { to: '/ai',        label: 'AI Assistant', icon: Icons.sparkle },
   { to: '/',          label: 'Dashboard',  icon: Icons.dashboard },
   { to: '/jobs',      label: 'Jobs',       icon: Icons.list },
   { to: '/employees', label: 'Employees',  icon: Icons.users },
