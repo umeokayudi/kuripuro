@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+import AICallMode from './AICallMode'
 
 // Conversor bem simples de markdown -> JSX (bold, listas, quebras de linha)
 function formatText(text) {
@@ -29,8 +31,48 @@ export default function AIChatPanel({ compact = false }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [attachedImage, setAttachedImage] = useState(null) // { dataUrl, base64, mimeType }
+  const [callOpen, setCallOpen] = useState(false)
+  const [voiceReplies, setVoiceReplies] = useState(false)
+  const [recording, setRecording] = useState(false)
   const bottomRef = useRef(null)
   const fileInputRef = useRef(null)
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('ai_messages')
+          .select('*')
+          .order('created_at', { ascending: true })
+          .limit(50)
+        if (!error && data && data.length > 0) {
+          setMessages(data.map(d => ({
+            role: d.role,
+            content: d.content,
+            toolLog: d.tool_log || undefined,
+            image: d.image_url ? { dataUrl: d.image_url } : undefined,
+          })))
+        }
+      } catch (e) {
+        console.log('Could not load AI chat history:', e.message)
+      }
+    })()
+  }, [])
+
+  const persistMessage = async (msg) => {
+    try {
+      await supabase.from('ai_messages').insert({
+        role: msg.role,
+        content: msg.content,
+        tool_log: msg.toolLog || null,
+        image_url: msg.image?.dataUrl?.startsWith('data:') ? null : msg.image?.dataUrl || null,
+      })
+    } catch (e) {
+      console.log('Could not persist AI message:', e.message)
+    }
+  }
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
@@ -45,6 +87,53 @@ export default function AIChatPanel({ compact = false }) {
     reader.readAsDataURL(file)
   }
 
+  const speakText = (text) => {
+    if (!window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utter = new SpeechSynthesisUtterance(text)
+    utter.lang = 'pt-BR'
+    utter.rate = 1.05
+    window.speechSynthesis.speak(utter)
+  }
+
+  // Usado tanto pelo chat de texto quanto pelo modo ligação
+  const callAPI = async (allMessages) => {
+    const resp = await fetch('/api/admin-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: allMessages }),
+    })
+    const data = await resp.json()
+    if (data.error) throw new Error(data.error)
+    return data
+  }
+
+  // Chamado pelo AICallMode: manda texto transcrito, retorna só o texto da resposta
+  const sendFromCall = async (text) => {
+    const userMsg = { role: 'user', content: text }
+    const newMessages = [...messagesRef.current, userMsg]
+    setMessages(newMessages)
+    persistMessage(userMsg)
+    const data = await callAPI(newMessages)
+    const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
+    setMessages(m => [...m, replyMsg])
+    persistMessage(replyMsg)
+    return data.reply
+  }
+
+  const startVoiceInput = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { alert('Reconhecimento de voz não suportado nesse navegador. Tenta no Chrome.'); return }
+    const recognition = new SR()
+    recognition.lang = 'pt-BR'
+    recognition.interimResults = false
+    recognition.onstart = () => setRecording(true)
+    recognition.onresult = (e) => setInput(prev => (prev ? prev + ' ' : '') + e.results[0][0].transcript)
+    recognition.onerror = () => setRecording(false)
+    recognition.onend = () => setRecording(false)
+    recognition.start()
+  }
+
   const send = async () => {
     if ((!input.trim() && !attachedImage) || loading) return
     const userMsg = { role: 'user', content: input.trim() || '(foto anexada)', image: attachedImage }
@@ -53,20 +142,15 @@ export default function AIChatPanel({ compact = false }) {
     setInput('')
     setAttachedImage(null)
     setLoading(true)
+    persistMessage(userMsg)
     try {
-      const resp = await fetch('/api/admin-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages }),
-      })
-      const data = await resp.json()
-      if (data.error) {
-        setMessages(m => [...m, { role: 'assistant', content: `⚠️ Erro: ${data.error}` }])
-      } else {
-        setMessages(m => [...m, { role: 'assistant', content: data.reply, toolLog: data.toolLog }])
-      }
+      const data = await callAPI(newMessages)
+      const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
+      setMessages(m => [...m, replyMsg])
+      persistMessage(replyMsg)
+      if (voiceReplies) speakText(data.reply)
     } catch (e) {
-      setMessages(m => [...m, { role: 'assistant', content: `⚠️ Erro de conexão: ${e.message}` }])
+      setMessages(m => [...m, { role: 'assistant', content: `⚠️ Erro: ${e.message}` }])
     }
     setLoading(false)
   }
@@ -77,7 +161,24 @@ export default function AIChatPanel({ compact = false }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : 'calc(100vh - 140px)' }}>
-      {!compact && <div className="card-title" style={{ marginBottom: 12 }}>✨ Assistente de IA</div>}
+      {!compact && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>✨ Assistente de IA</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setVoiceReplies(v => !v)}
+              title="Ler respostas em voz alta"
+              style={{ border: '1px solid var(--border)', background: voiceReplies ? 'var(--navy)' : '#fff', color: voiceReplies ? '#fff' : 'var(--text)', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}
+            >{voiceReplies ? '🔊' : '🔇'}</button>
+            <button
+              onClick={() => setCallOpen(true)}
+              title="Ligar pro assistente"
+              style={{ border: 'none', background: 'linear-gradient(135deg,#4ade80,#22c55e)', color: '#fff', borderRadius: 10, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+            >📞 Ligar</button>
+          </div>
+        </div>
+      )}
+      {callOpen && <AICallMode onClose={() => setCallOpen(false)} sendToAI={sendFromCall} />}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, padding: compact ? '12px' : '0 4px 0 0' }}>
         {messages.map((m, i) => (
           <div key={i} style={{
@@ -153,6 +254,11 @@ export default function AIChatPanel({ compact = false }) {
           title="Anexar foto"
           style={{ border: '1px solid var(--border)', background: '#fff', borderRadius: 12, width: 42, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 17 }}
         >📷</button>
+        <button
+          onClick={startVoiceInput}
+          title="Falar em vez de digitar"
+          style={{ border: '1px solid var(--border)', background: recording ? '#fee2e2' : '#fff', borderRadius: 12, width: 42, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 17 }}
+        >{recording ? '🔴' : '🎤'}</button>
         <textarea
           value={input}
           onChange={e => setInput(e.target.value)}
