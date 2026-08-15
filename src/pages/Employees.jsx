@@ -174,7 +174,7 @@ export default function Employees() {
                 <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(e.id,e.full_name)} style={{background:'#DC2626',color:'#fff'}}>🗑️ Delete</button>
               </div>
             </div>
-          )}))}
+          )})}
         </div>
       )}
 
