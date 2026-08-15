@@ -89,11 +89,26 @@ export default function Employees() {
   }
 
   const handleDelete = async (id, name) => {
-    if (!window.confirm(`⚠️ Delete ${name}? This action cannot be undone.`)) return
-    const { error } = await supabase.from('employees').delete().eq('id', id)
-    if (error) return toast.error('Error deleting: ' + error.message)
-    toast.success(`${name} deleted successfully`)
-    loadEmployees()
+    if (!window.confirm(`⚠️ Delete ${name}? This will also delete all their jobs, payments, evaluations and history. This action cannot be undone.`)) return
+    try {
+      await supabase.from('jobs').delete().eq('employee_id', id)
+      await supabase.from('checkins').delete().eq('employee_id', id)
+      await supabase.from('complaints').delete().eq('employee_id', id)
+      await supabase.from('payroll').delete().eq('employee_id', id)
+      await supabase.from('evaluations').delete().eq('employee_id', id)
+      await supabase.from('salary_payments').delete().eq('employee_id', id)
+      await supabase.from('salary_advances').delete().eq('employee_id', id)
+      await supabase.from('transport_claims').delete().eq('employee_id', id)
+      await supabase.from('badges').delete().eq('employee_id', id)
+      await supabase.from('messages').delete().eq('employee_id', id)
+
+      const { error } = await supabase.from('employees').delete().eq('id', id)
+      if (error) return toast.error('Error deleting: ' + error.message)
+      toast.success(`${name} deleted successfully`)
+      loadEmployees()
+    } catch (err) {
+      toast.error('Error deleting: ' + err.message)
+    }
   }
 
   const handleComplaint = async () => {
