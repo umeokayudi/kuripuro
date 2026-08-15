@@ -30,6 +30,7 @@ export default function EmployeePortal() {
   const [gpsStatus, setGpsStatus] = useState('')
   const [salaryData, setSalaryData] = useState(null)
   const [payments, setPayments] = useState([])
+  const [weekDeductions, setWeekDeductions] = useState([])
   const [advances, setAdvances] = useState([])
   const [claims, setClaims] = useState([])
   const [messages, setMessages] = useState([])
@@ -124,7 +125,8 @@ export default function EmployeePortal() {
 
   const loadAll = async () => {
     const today = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}).split(' ')[0]
-    const [active, all, emp, pay, adv, clm, bdg] = await Promise.all([
+    const { start:weekStart, end:weekEnd } = getWeekRange()
+    const [active, all, emp, pay, adv, clm, bdg, weekPay] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(200),
       supabase.from('employees').select('*').eq('id',user.id).single(),
@@ -132,11 +134,13 @@ export default function EmployeePortal() {
       supabase.from('salary_advances').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(10),
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
       supabase.from('badges').select('*').eq('employee_id',user.id),
+      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
     ])
     const regular = (active.data||[]).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = (active.data||[]).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
     setJobs(regular); setSpotJobs(spots); setAllJobs(all.data||[])
     setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[])
+    setWeekDeductions(weekPay.data||[])
     setBadges(bdg.data||[])
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
     const inProgress = regular.find(j=>j.status==='in_progress')
@@ -177,6 +181,27 @@ export default function EmployeePortal() {
     if (!newMsg.trim()) return
     await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:newMsg.trim(), read:false })
     setNewMsg(''); loadMessages()
+  }
+
+  const getWeekRange = () => {
+    const now = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Tokyo'}))
+    const day = now.getDay()
+    const diffToMonday = day===0?-6:1-day
+    const monday = new Date(now); monday.setDate(now.getDate()+diffToMonday); monday.setHours(0,0,0,0)
+    const sunday = new Date(monday); sunday.setDate(monday.getDate()+6)
+    const f = d=>d.toISOString().split('T')[0]
+    return { start:f(monday), end:f(sunday) }
+  }
+
+  const weekSummary = () => {
+    const { start, end } = getWeekRange()
+    const weekJobs = allJobs.filter(j=>j.status==='completed'&&j.scheduled_date>=start&&j.scheduled_date<=end)
+    const gross = weekJobs.reduce((s,j)=>s+Number(j.value||0),0)
+    const deductions = weekDeductions.reduce((s,d)=>s+Number(d.amount||0),0)
+    const totalChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_total||0),0)
+    const doneChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_done||0),0)
+    const rate = totalChecklist>0 ? Math.round((doneChecklist/totalChecklist)*100) : 100
+    return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate }
   }
 
   const calcSalary = (allData, empInfo) => {
@@ -288,10 +313,37 @@ export default function EmployeePortal() {
         await supabase.storage.from('service-photos').upload(`jobs/${activeJob.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
         if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${activeJob.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
       }
-      await supabase.from('jobs').update({ status:'completed', completed_at:new Date().toISOString(), notes_employee:notes, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null }).eq('id',job.id)
+      const total = checklist.length
+      const done = checklist.filter(c=>c.done).length
+      const missed = total - done
+      const missedLabels = checklist.filter(c=>!c.done).map(c=>c.label)
+
+      await supabase.from('jobs').update({
+        status:'completed', completed_at:new Date().toISOString(), notes_employee:notes,
+        photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
+        checklist_total: total || null, checklist_done: total ? done : null,
+        checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
+      }).eq('id',job.id)
+
+      if (missed>0 && total>0 && Number(job.value||0)>0) {
+        const deductionAmount = Math.round(Number(job.value)*(missed/total))
+        if (deductionAmount>0) {
+          await supabase.from('salary_payments').insert({
+            employee_id: user.id, employee_name: user.name,
+            period: (job.scheduled_date||new Date().toISOString().split('T')[0]).slice(0,7),
+            amount: deductionAmount,
+            payment_date: job.scheduled_date||new Date().toISOString().split('T')[0],
+            description: `Checklist incompleto (${missed}/${total} itens) — ${job.title}: ${missedLabels.join(', ')}`,
+            status:'scheduled', payment_type:'deduction', is_deduction:true,
+          })
+        }
+      }
+
       clearInterval(timerRef.current)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
-      toast.success('🎉 Job completed!'); loadAll()
+      if (missed>0) toast(`Job completed — ${missed}/${total} item(s) not done, deduction applied`, {icon:'⚠️'})
+      else toast.success('🎉 Job completed — all items done!')
+      loadAll()
     } catch(e) { toast.error('Error: '+e.message) }
     setSubmitting(false)
   }
@@ -685,6 +737,37 @@ export default function EmployeePortal() {
               {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} spot ⚡</div>}
               {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>Projected full month: ¥{salaryData.projected.toLocaleString()}</div>}
             </div>
+            {(() => { const w = weekSummary(); return (
+              <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:18,padding:16,marginBottom:14}}>
+                <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>📅 This Week ({w.start} → {w.end})</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:16,fontWeight:800,color:'#4ade80'}}>¥{w.gross.toLocaleString()}</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Generated</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:16,fontWeight:800,color:w.deductions>0?'#f87171':'rgba(255,255,255,0.3)'}}>-¥{w.deductions.toLocaleString()}</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Deductions</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:16,fontWeight:800,color:'#c19c56'}}>¥{w.net.toLocaleString()}</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Net</div>
+                  </div>
+                </div>
+                <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
+                  <div style={{height:'100%',borderRadius:3,background:w.rate>=90?'linear-gradient(90deg,#4ade80,#22c55e)':w.rate>=70?'linear-gradient(90deg,#fbbf24,#f59e0b)':'linear-gradient(90deg,#f87171,#ef4444)',width:w.rate+'%',transition:'width 0.6s'}} />
+                </div>
+                <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginBottom:w.weekJobs.length?10:0}}>{w.doneChecklist}/{w.totalChecklist} checklist items done ({w.rate}%) · {w.weekJobs.length} jobs</div>
+                {w.weekJobs.map(j=>(
+                  <div key={j.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:'1px solid rgba(255,255,255,0.06)',fontSize:11}}>
+                    <div style={{color:'rgba(255,255,255,0.6)'}}>{j.scheduled_date} · {j.title}</div>
+                    <div style={{color:(j.checklist_total&&j.checklist_done<j.checklist_total)?'#f87171':'#4ade80',fontWeight:600}}>
+                      {j.checklist_total?`${j.checklist_done}/${j.checklist_total}`:'—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )})()}
             {/* PDF buttons */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
