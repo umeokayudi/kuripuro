@@ -75,7 +75,9 @@ export default function EmployeePortal() {
     // Ping presence every 60s
     const pingPresence = async () => {
       const update = { last_seen: new Date().toISOString(), is_online: true }
-      if (navigator.geolocation && localStorage.getItem('shareLocation') === 'yes') {
+      // Compartilha GPS automaticamente durante o expediente (job em andamento)
+      const working = document.body.getAttribute('data-working') === 'yes'
+      if (navigator.geolocation && working) {
         try {
           const pos = await new Promise((res, rej) =>
             navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 30000 }))
@@ -88,7 +90,7 @@ export default function EmployeePortal() {
       await supabase.from('employees').update(update).eq('id', user.id)
     }
     pingPresence()
-    const presencePoll = setInterval(pingPresence, 60000)
+    const presencePoll = setInterval(pingPresence, 30000)
     // Set offline on unmount
     return () => {
       clearInterval(clockRef.current)
@@ -99,6 +101,11 @@ export default function EmployeePortal() {
     }
 
   }, [])
+
+  useEffect(() => {
+    document.body.setAttribute('data-working', activeJob ? 'yes' : 'no')
+    return () => document.body.setAttribute('data-working', 'no')
+  }, [activeJob])
 
   useEffect(() => {
     if (activeJob?.started_at) {
