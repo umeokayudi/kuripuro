@@ -30,7 +30,23 @@ export default function LiveTracking() {
 
   useEffect(() => { load(); const t = setInterval(load, 30000); return ()=>clearInterval(t) }, [])
 
+  const [retros, setRetros] = useState([])
+
+  const loadRetros = async () => {
+    const { data } = await supabase.from('jobs')
+      .select('id,title,scheduled_date,employee_name,retro_report,retro_ai_summary,retro_value,value,checklist_done,checklist_total,admin_reviewed')
+      .not('retro_report','is',null).eq('admin_reviewed',false)
+      .order('scheduled_date',{ascending:false}).limit(20)
+    setRetros(data||[])
+  }
+
+  const approveRetro = async (id) => {
+    await supabase.from('jobs').update({ admin_reviewed:true }).eq('id',id)
+    loadRetros()
+  }
+
   const load = async () => {
+    loadRetros()
     const [e, j] = await Promise.all([
       supabase.from('employees').select('id,full_name,score,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').in('status',['assigned','in_progress']).order('scheduled_date'),
@@ -89,6 +105,25 @@ export default function LiveTracking() {
           </div>
         </div>
       </div>
+
+      {retros.length>0&&(
+        <div style={{background:'rgba(193,156,86,0.06)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:14,marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:'#c19c56',marginBottom:10}}>📝 Relatórios retroativos p/ revisar ({retros.length})</div>
+          {retros.map(r=>(
+            <div key={r.id} style={{background:'var(--surface)',borderRadius:10,padding:12,marginBottom:8,border:'1px solid var(--border)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600}}>{(r.title||'').replace(/ — .*/,'')} <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>· {r.employee_name} · {r.scheduled_date}</span></div>
+                  <div style={{fontSize:12,color:'var(--text2)',marginTop:4,fontStyle:'italic'}}>"{r.retro_report}"</div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>🤖 {r.retro_ai_summary} — {r.checklist_done}/{r.checklist_total} itens</div>
+                  <div style={{fontSize:12,marginTop:4}}><b>Pago: ¥{Number(r.retro_value||0).toLocaleString()}</b> {Number(r.value||0)>Number(r.retro_value||0)&&<span style={{color:'var(--red)'}}>(de ¥{Number(r.value).toLocaleString()})</span>}</div>
+                </div>
+                <button onClick={()=>approveRetro(r.id)} className="btn btn-sm" style={{background:'#16a34a',color:'#fff',border:'none',flexShrink:0}}>✓ Revisado</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
 
