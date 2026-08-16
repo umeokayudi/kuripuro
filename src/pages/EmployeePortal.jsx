@@ -379,18 +379,15 @@ export default function EmployeePortal() {
 
   const handleComplete = async (sigDataUrl, jobOverride) => {
     const job = jobOverride || activeJob
-    console.log('handleComplete called, job:', job?.id, 'activeJob:', activeJob?.id)
     if (!job) { toast.error('No active job - please refresh'); return }
-    // OBRIGATÓRIO: checklist completo + foto final antes de finalizar
-    const totalCk = checklist.length
-    const doneCk = checklist.filter(c=>c.done).length
+    // MÍNIMO: foto Before (start, tirada ao iniciar) + foto After
     const endPhotosCheck = jobPhotos.filter(p=>p.slot==='end')
-    if (totalCk > 0 && doneCk < totalCk) {
-      toast.error(`Marque todos os ${totalCk} itens do checklist antes de finalizar (${doneCk}/${totalCk} feitos)`)
-      return
-    }
     if (endPhotosCheck.length === 0) {
       toast.error('Tire ao menos 1 foto "After" antes de finalizar')
+      return
+    }
+    if (!job.photo_start_url) {
+      toast.error('Faltou a foto "Before" — ela é tirada ao iniciar o serviço')
       return
     }
     setSubmitting(true)
@@ -402,10 +399,24 @@ export default function EmployeePortal() {
         await supabase.storage.from('service-photos').upload(`jobs/${job.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
         if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${job.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
       }
+
+      // Checklist marcado pela pessoa (não obrigatório - pode finalizar com itens não feitos, leva multa)
       const total = checklist.length
       const done = checklist.filter(c=>c.done).length
       const missed = total - done
       const missedLabels = checklist.filter(c=>!c.done).map(c=>c.label)
+
+      // IA analisa as fotos Before/After e dá nota de qualidade
+      let aiScore = null, aiApproved = null, aiIssues = null
+      try {
+        const resp = await fetch('/api/analyze-photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photoUrl: endPhotoUrl, locationName: job.title }),
+        })
+        const ev = await resp.json()
+        aiScore = ev.nota ?? null; aiApproved = ev.aprovado ?? null
+        aiIssues = ev.problemas?.length ? ev.problemas.join(', ') : null
+      } catch(e){ console.log('AI photo skipped', e?.message) }
 
       const { error: coreErr } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(), notes_employee:notes,
@@ -416,9 +427,11 @@ export default function EmployeePortal() {
         await supabase.from('jobs').update({
           checklist_total: total || null, checklist_done: total ? done : null,
           checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
+          photo_ai_score: aiScore, photo_ai_approved: aiApproved, photo_ai_issues: aiIssues,
         }).eq('id',job.id)
       } catch(ex){ console.log('extra fields skipped', ex?.message) }
 
+      // Multa proporcional aos itens que a pessoa marcou como não feito
       if (missed>0 && total>0 && Number(job.value||0)>0) {
         const deductionAmount = Math.round(Number(job.value)*(missed/total))
         if (deductionAmount>0) {
@@ -427,7 +440,7 @@ export default function EmployeePortal() {
             period: (job.scheduled_date||new Date().toISOString().split('T')[0]).slice(0,7),
             amount: deductionAmount,
             payment_date: job.scheduled_date||new Date().toISOString().split('T')[0],
-            description: `Checklist incompleto (${missed}/${total} itens) — ${job.title}: ${missedLabels.join(', ')}`,
+            description: `Itens não feitos (${missed}/${total}) — ${job.title}: ${missedLabels.join(', ')}`,
             status:'scheduled', payment_type:'deduction', is_deduction:true,
           })
         }
@@ -435,8 +448,9 @@ export default function EmployeePortal() {
 
       clearInterval(timerRef.current)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
-      if (missed>0) toast(`Job completed — ${missed}/${total} item(s) not done, deduction applied`, {icon:'⚠️'})
-      else toast.success('🎉 Job completed — all items done!')
+      const scoreMsg = aiScore!=null ? ` · IA: ${aiScore}/10${aiApproved?' ✅':' ⚠️'}` : ''
+      if (missed>0) toast(`Concluído — ${done}/${total} itens feitos, multa aplicada${scoreMsg}`, {icon:'⚠️', duration:5000})
+      else toast.success(`🎉 Concluído — tudo feito!${scoreMsg}`)
       loadAll()
     } catch(e) { toast.error('Error: '+e.message) }
     setSubmitting(false)
@@ -1200,6 +1214,23 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                     </label>
                   </div>
                 </div>
+
+                {/* CHECKLIST clicável - marque o que fez */}
+                {checklist.length>0&&(()=>{ const dn=checklist.filter(c=>c.done).length; const pct=Math.round(dn/checklist.length*100); return (
+                  <div style={{marginBottom:12}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                      <span style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>✓ O QUE VOCÊ FEZ ({dn}/{checklist.length})</span>
+                      <span style={{fontSize:12,fontWeight:700,color:pct===100?'#4ade80':pct>=50?'#fbbf24':'#f87171'}}>{pct}%</span>
+                    </div>
+                    {checklist.map((c,i)=>(
+                      <div key={i} onClick={()=>setChecklist(cl=>cl.map((x,j)=>j===i?{...x,done:!x.done}:x))} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',marginBottom:5,borderRadius:10,cursor:'pointer',background:c.done?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.03)',border:`1px solid ${c.done?'rgba(74,222,128,0.3)':'rgba(255,255,255,0.06)'}`}}>
+                        <div style={{width:22,height:22,borderRadius:6,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,background:c.done?'#4ade80':'transparent',border:c.done?'none':'1.5px solid rgba(255,255,255,0.2)',color:'#0a1929',fontWeight:800}}>{c.done?'✓':''}</div>
+                        <span style={{fontSize:13,color:c.done?'#fff':'rgba(255,255,255,0.6)',textDecoration:c.done?'none':'none'}}>{c.label}</span>
+                      </div>
+                    ))}
+                    {dn<checklist.length&&<div style={{fontSize:11,color:'#f87171',marginTop:4}}>⚠️ Itens não marcados terão multa proporcional. Você pode refazer antes de finalizar.</div>}
+                  </div>
+                )})()}
 
                 <button onClick={async()=>{ if(!activeJob){toast.error('No active job');return}; await handleComplete(null) }} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
                   {submitting?'Saving...':'✅ Done → Next'}
