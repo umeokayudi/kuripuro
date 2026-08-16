@@ -72,7 +72,7 @@ export default function EmployeePortal() {
     loadAll()
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
     const msgPoll = setInterval(loadMessages, 1000)
-    // Ping presence + location every 60s
+    // Ping presence every 60s
     const pingPresence = async () => {
       const update = { last_seen: new Date().toISOString(), is_online: true }
       if (navigator.geolocation && localStorage.getItem('shareLocation') === 'yes') {
@@ -83,7 +83,7 @@ export default function EmployeePortal() {
           update.last_lng = pos.coords.longitude
           update.last_location_at = new Date().toISOString()
           update.location_sharing = true
-        } catch { /* sem permissão ou erro: não bloqueia o ping */ }
+        } catch {}
       }
       await supabase.from('employees').update(update).eq('id', user.id)
     }
@@ -199,14 +199,12 @@ export default function EmployeePortal() {
   }
 
   const getWeekRange = () => {
-    const tokyoStr = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}).split(' ')[0]
-    const [y,m,d] = tokyoStr.split('-').map(Number)
-    const utcDate = new Date(Date.UTC(y, m-1, d))
-    const day = utcDate.getUTCDay()
+    const now = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Tokyo'}))
+    const day = now.getDay()
     const diffToMonday = day===0?-6:1-day
-    const monday = new Date(utcDate); monday.setUTCDate(utcDate.getUTCDate()+diffToMonday)
-    const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate()+6)
-    const f = dt=>dt.toISOString().split('T')[0]
+    const monday = new Date(now); monday.setDate(now.getDate()+diffToMonday); monday.setHours(0,0,0,0)
+    const sunday = new Date(monday); sunday.setDate(monday.getDate()+6)
+    const f = d=>d.toISOString().split('T')[0]
     return { start:f(monday), end:f(sunday) }
   }
 
@@ -330,42 +328,22 @@ export default function EmployeePortal() {
         await supabase.storage.from('service-photos').upload(`jobs/${job.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
         if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${job.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
       }
-      let photoCheck = null
-      if (endPhotoUrl) {
-        try {
-          const resp = await fetch('/api/analyze-photo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ photoUrl: endPhotoUrl, locationName: job.title }),
-          })
-          photoCheck = await resp.json()
-        } catch (e) {
-          console.log('Photo analysis failed:', e.message)
-        }
-      }
-
       const total = checklist.length
       const done = checklist.filter(c=>c.done).length
       const missed = total - done
       const missedLabels = checklist.filter(c=>!c.done).map(c=>c.label)
 
-      // Campos essenciais primeiro (sempre existem) — garante que o job finaliza
       const { error: coreErr } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(), notes_employee:notes,
         photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
-
-      // Campos extras (podem não existir se o SQL não foi rodado) — não bloqueiam
       try {
         await supabase.from('jobs').update({
           checklist_total: total || null, checklist_done: total ? done : null,
           checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
-          photo_ai_score: photoCheck?.nota ?? null,
-          photo_ai_approved: photoCheck?.aprovado ?? null,
-          photo_ai_issues: photoCheck?.problemas?.length ? photoCheck.problemas.join(', ') : null,
         }).eq('id',job.id)
-      } catch (extraErr) { console.log('Extra fields skipped:', extraErr?.message) }
+      } catch(ex){ console.log('extra fields skipped', ex?.message) }
 
       if (missed>0 && total>0 && Number(job.value||0)>0) {
         const deductionAmount = Math.round(Number(job.value)*(missed/total))
@@ -381,23 +359,8 @@ export default function EmployeePortal() {
         }
       }
 
-      if (photoCheck?.aprovado === false && Number(job.value||0)>0) {
-        const photoDeduction = Math.round(Number(job.value)*0.3)
-        if (photoDeduction>0) {
-          await supabase.from('salary_payments').insert({
-            employee_id: user.id, employee_name: user.name,
-            period: (job.scheduled_date||new Date().toISOString().split('T')[0]).slice(0,7),
-            amount: photoDeduction,
-            payment_date: job.scheduled_date||new Date().toISOString().split('T')[0],
-            description: `Foto reprovada na análise de qualidade (nota ${photoCheck.nota}/10) — ${job.title}: ${(photoCheck.problemas||[]).join(', ')}`,
-            status:'scheduled', payment_type:'deduction', is_deduction:true,
-          })
-        }
-      }
-
       clearInterval(timerRef.current)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
-      if (photoCheck?.aprovado === false) toast(`⚠️ Photo quality flagged (${photoCheck.nota}/10): ${(photoCheck.problemas||[]).join(', ')}`, {icon:'📷', duration:6000})
       if (missed>0) toast(`Job completed — ${missed}/${total} item(s) not done, deduction applied`, {icon:'⚠️'})
       else toast.success('🎉 Job completed — all items done!')
       loadAll()
@@ -607,26 +570,6 @@ export default function EmployeePortal() {
                 {item.badge>0&&<span style={{background:item.key==='chat'?'#f87171':'#c19c56',color:'#0a1929',borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:800}}>{item.badge}</span>}
               </button>
             ))}
-            <div style={{height:1,background:'rgba(255,255,255,0.05)'}} />
-            <button onClick={()=>{
-              const now = localStorage.getItem('shareLocation')==='yes'
-              if (!now) {
-                navigator.geolocation?.getCurrentPosition(
-                  ()=>{ localStorage.setItem('shareLocation','yes'); toast.success('Localização compartilhada durante o turno'); setMenuOpen(false) },
-                  ()=>toast.error('Permissão de localização negada'),
-                )
-              } else {
-                localStorage.removeItem('shareLocation')
-                supabase.from('employees').update({ location_sharing:false }).eq('id',user.id)
-                toast('Compartilhamento de localização desligado')
-                setMenuOpen(false)
-              }
-            }} style={{width:'100%',padding:'14px 18px',border:'none',background:'none',color:'rgba(255,255,255,0.7)',fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',gap:12,textAlign:'left'}}>
-              <span style={{fontSize:18}}>📍</span>
-              <div style={{flex:1}}>Compartilhar localização
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.4)'}}>{typeof window!=='undefined'&&localStorage.getItem('shareLocation')==='yes'?'Ativado':'Desativado'}</div>
-              </div>
-            </button>
             <div style={{height:1,background:'rgba(255,255,255,0.05)'}} />
             <button onClick={logout} style={{width:'100%',padding:'14px 18px',border:'none',background:'none',color:'#f87171',fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',gap:12,textAlign:'left'}}>
               <span style={{fontSize:18}}>🚪</span> Logout
@@ -1038,6 +981,34 @@ export default function EmployeePortal() {
           <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>More</div>
         </button>
       </div>
+    </div>
+  )
+}
+
+function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
+  const past = (allJobs||[]).filter(j=>j.status==='completed').sort((a,b)=>(b.scheduled_date||'').localeCompare(a.scheduled_date||''))
+  const groups = {}
+  past.forEach(j=>{ (groups[j.scheduled_date]=groups[j.scheduled_date]||[]).push(j) })
+  const dates = Object.keys(groups).sort().reverse()
+  if (!dates.length) return <div style={{color:'rgba(255,255,255,0.4)',fontSize:13,padding:20,textAlign:'center'}}>Nenhum servico concluido ainda.</div>
+  return (
+    <div>
+      {dates.map(date=>(
+        <div key={date} style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:8}}>{date}{date===today?' (hoje)':''}</div>
+          {groups[date].map(j=>(
+            <div key={j.id} onClick={()=>setSelectedJob&&setSelectedJob(j)} style={{...(S?.card||{}),marginBottom:8,padding:12,cursor:'pointer',background:'rgba(255,255,255,0.03)',borderRadius:12,border:'1px solid rgba(255,255,255,0.06)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{(j.title||'').split(' — ')[0]}</div>
+                <div style={{fontSize:11,color:j.checklist_total&&j.checklist_done<j.checklist_total?'#f87171':'#4ade80',fontWeight:600}}>
+                  {j.checklist_total?`${j.checklist_done}/${j.checklist_total}`:'✓'}
+                </div>
+              </div>
+              {j.completed_at&&<div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:2}}>Concluido {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }
