@@ -319,6 +319,18 @@ export default function EmployeePortal() {
     const job = jobOverride || activeJob
     console.log('handleComplete called, job:', job?.id, 'activeJob:', activeJob?.id)
     if (!job) { toast.error('No active job - please refresh'); return }
+    // OBRIGATÓRIO: checklist completo + foto final antes de finalizar
+    const totalCk = checklist.length
+    const doneCk = checklist.filter(c=>c.done).length
+    const endPhotosCheck = jobPhotos.filter(p=>p.slot==='end')
+    if (totalCk > 0 && doneCk < totalCk) {
+      toast.error(`Marque todos os ${totalCk} itens do checklist antes de finalizar (${doneCk}/${totalCk} feitos)`)
+      return
+    }
+    if (endPhotosCheck.length === 0) {
+      toast.error('Tire ao menos 1 foto "After" antes de finalizar')
+      return
+    }
     setSubmitting(true)
     try {
       let endPhotoUrl = null
