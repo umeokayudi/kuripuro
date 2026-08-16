@@ -28,6 +28,11 @@ export default function EmployeePortal() {
   const [jobPhotos, setJobPhotos] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('')
+  const [retroJob, setRetroJob] = useState(null)
+  const [retroText, setRetroText] = useState('')
+  const [retroPhoto, setRetroPhoto] = useState(null)
+  const [retroEval, setRetroEval] = useState(null)
+  const [retroBusy, setRetroBusy] = useState(false)
   const [salaryData, setSalaryData] = useState(null)
   const [payments, setPayments] = useState([])
   const [weekDeductions, setWeekDeductions] = useState([])
@@ -297,6 +302,56 @@ export default function EmployeePortal() {
     toast('Declined.'); loadAll()
   }
 
+  // Relatório retroativo: trabalhador descreve o que fez, IA avalia contra o checklist
+  const openRetro = (job) => { setRetroJob(job); setRetroText(''); setRetroPhoto(null); setRetroEval(null) }
+
+  const submitRetro = async () => {
+    if (!retroText.trim()) { toast.error('Escreva o que você fez'); return }
+    if (!retroPhoto) { toast.error('Anexe uma foto do serviço (obrigatório)'); return }
+    setRetroBusy(true)
+    try {
+      const ck = retroJob.checklist_template ? retroJob.checklist_template.split('\n').filter(Boolean) : []
+      // 1. IA avalia
+      const resp = await fetch('/api/evaluate-report', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report: retroText, checklist: ck, jobValue: retroJob.value||0, jobTitle: retroJob.title }),
+      })
+      const ev = await resp.json()
+      if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
+      setRetroEval(ev)
+      // 2. Upload da foto
+      let photoUrl = null
+      const ext = retroPhoto.name.split('.').pop()
+      await supabase.storage.from('service-photos').upload(`jobs/${retroJob.id}/retro.${ext}`, retroPhoto, { upsert:true })
+      const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${retroJob.id}/retro.${ext}`)
+      photoUrl = pd.publicUrl
+      // 3. Finaliza o job com o valor da IA
+      const { error } = await supabase.from('jobs').update({
+        status:'completed', completed_at:new Date().toISOString(),
+        retro_report: retroText, retro_ai_summary: ev.resumo||null,
+        retro_value: ev.valor_final ?? retroJob.value, retro_time_min: ev.tempo_estimado_min ?? null,
+        photo_end_url: photoUrl, admin_reviewed: false,
+        checklist_total: ev.itens_total||null, checklist_done: ev.itens_feitos||null,
+        checklist_missed_items: (ev.nao_feitos||[]).join(', ')||null,
+      }).eq('id', retroJob.id)
+      if (error) throw error
+      // 4. Desconto se valor final < valor cheio
+      const desconto = Number(retroJob.value||0) - Number(ev.valor_final||0)
+      if (desconto > 0) {
+        await supabase.from('salary_payments').insert({
+          employee_id: user.id, employee_name: user.name,
+          period: (retroJob.scheduled_date||today).slice(0,7), amount: desconto,
+          payment_date: retroJob.scheduled_date||today,
+          description: `Relatório retroativo — ${retroJob.title}: ${(ev.nao_feitos||[]).join(', ')||'itens incompletos'}`,
+          status:'scheduled', payment_type:'deduction', is_deduction:true,
+        })
+      }
+      toast.success(`Relatório enviado! Valor: ¥${(ev.valor_final||0).toLocaleString()}`)
+      setTimeout(()=>{ setRetroJob(null); loadAll() }, 3500)
+    } catch(e) { toast.error('Erro: '+e.message) }
+    setRetroBusy(false)
+  }
+
   const handleStart = async (job) => {
     setSubmitting(true)
     const gpsResult = await checkGPS(job)
@@ -531,6 +586,41 @@ export default function EmployeePortal() {
         onCancel={()=>setShowSignature(false)}
       />}
 
+      {retroJob&&(
+        <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:480,maxHeight:'88vh',overflowY:'auto'}}>
+            <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4}}>📝 Relatório retroativo</div>
+            <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:14}}>{retroJob.title.replace(/ — .*/,'')} · {retroJob.scheduled_date}</div>
+
+            {!retroEval ? (<>
+              <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600}}>O que você fez e quanto tempo levou?</label>
+              <textarea value={retroText} onChange={e=>setRetroText(e.target.value)} rows={5} placeholder="Ex: Limpei as bancadas, o piso e esvaziei o lixo. Levei cerca de 25 minutos. Não deu tempo de limpar o vidro." style={{width:'100%',marginTop:6,marginBottom:12,borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'#fff',padding:12,fontSize:14,fontFamily:'inherit',resize:'none'}} />
+
+              <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600}}>Foto do serviço (obrigatória)</label>
+              <div style={{marginTop:6,marginBottom:16}}>
+                <input type="file" accept="image/*" id="retro-photo" style={{display:'none'}} onChange={e=>setRetroPhoto(e.target.files?.[0]||null)} />
+                <label htmlFor="retro-photo" style={{display:'inline-block',padding:'10px 16px',borderRadius:12,border:'1px dashed rgba(255,255,255,0.2)',color:retroPhoto?'#4ade80':'rgba(255,255,255,0.6)',fontSize:13,cursor:'pointer'}}>
+                  {retroPhoto?'✅ '+retroPhoto.name.substring(0,24):'📷 Anexar foto'}
+                </label>
+              </div>
+
+              <button onClick={submitRetro} disabled={retroBusy} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy?'not-allowed':'pointer'}}>
+                {retroBusy?'IA avaliando...':'Enviar para avaliação'}
+              </button>
+            </>) : (
+              <div style={{textAlign:'center'}}>
+                <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',marginBottom:8}}>{retroEval.itens_feitos}/{retroEval.itens_total} itens reconhecidos</div>
+                <div style={{fontSize:32,fontWeight:800,color:'#c19c56',marginBottom:4}}>¥{(retroEval.valor_final||0).toLocaleString()}</div>
+                {Number(retroJob.value||0)>Number(retroEval.valor_final||0)&&<div style={{fontSize:12,color:'#f87171',marginBottom:8}}>−¥{(Number(retroJob.value)-Number(retroEval.valor_final)).toLocaleString()} de desconto</div>}
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.6)',background:'rgba(255,255,255,0.04)',borderRadius:12,padding:12,marginTop:8}}>{retroEval.resumo}</div>
+                {(retroEval.nao_feitos||[]).length>0&&<div style={{fontSize:11,color:'#f87171',marginTop:8,textAlign:'left'}}>Não reconhecido: {retroEval.nao_feitos.join(', ')}</div>}
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:12}}>Finalizando...</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
@@ -734,7 +824,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} />
         )}
 
         {/* SPOTS */}
@@ -1032,7 +1122,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
@@ -1072,6 +1162,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
+                {!isDone&&!isActive&&openRetro&&<button onClick={()=>openRetro(job)} style={{fontSize:11,background:'rgba(193,156,86,0.15)',color:'#c19c56',border:'1px solid rgba(193,156,86,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer',fontWeight:600}}>📝 Relatório</button>}
                 {job.address&&job.address.startsWith('http')&&<a href={job.address} target="_blank" rel="noreferrer" style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
               </div>
             </div>
