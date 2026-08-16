@@ -1,5 +1,20 @@
 import { jsPDF } from 'jspdf'
 
+// Carrega uma imagem de URL como dataURL pra embutir no PDF
+async function loadImageDataUrl(url) {
+  try {
+    const resp = await fetch(url)
+    const blob = await resp.blob()
+    return await new Promise((res, rej) => {
+      const r = new FileReader()
+      r.onload = () => res(r.result)
+      r.onerror = rej
+      r.readAsDataURL(blob)
+    })
+  } catch { return null }
+}
+
+
 export async function generateDailyReport(date, jobs, employeeName) {
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
   const W = 210, margin = 14
@@ -118,6 +133,41 @@ export async function generateDailyReport(date, jobs, employeeName) {
       })
       y += 2
     })
+  }
+
+  // Photos section
+  const jobsWithPhotos = jobs.filter(j => j.photo_start_url || j.photo_end_url)
+  if (jobsWithPhotos.length > 0) {
+    doc.addPage(); y = margin
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(6, 13, 24)
+    doc.text('Service Photos', margin, y)
+    y += 8
+    const imgW = 82, imgH = 60, gap = 6
+    for (const j of jobsWithPhotos) {
+      if (y > 220) { doc.addPage(); y = margin }
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.setTextColor(50, 50, 50)
+      doc.text(j.title.replace(/ — .*/,'').substring(0, 50), margin, y)
+      y += 4
+      let x = margin
+      for (const [label, url] of [['Before', j.photo_start_url], ['After', j.photo_end_url]]) {
+        if (!url) continue
+        const data = await loadImageDataUrl(url)
+        if (data) {
+          try {
+            const fmt = data.includes('image/png') ? 'PNG' : 'JPEG'
+            doc.addImage(data, fmt, x, y, imgW, imgH)
+            doc.setFontSize(7); doc.setTextColor(120,120,120)
+            doc.text(label, x, y + imgH + 4)
+          } catch {}
+        }
+        x += imgW + gap
+      }
+      y += imgH + 10
+    }
   }
 
   // Signature area
