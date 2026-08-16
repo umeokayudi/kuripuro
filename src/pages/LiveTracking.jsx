@@ -6,6 +6,27 @@ export default function LiveTracking() {
   const [jobs, setJobs] = useState([])
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [photoInfo, setPhotoInfo] = useState(null)
+  const [cleaning, setCleaning] = useState(false)
+
+  const checkPhotos = async () => {
+    try {
+      const r = await fetch('/api/cleanup-photos')  // GET = preview
+      setPhotoInfo(await r.json())
+    } catch(e) { setPhotoInfo({ error: e.message }) }
+  }
+
+  const cleanPhotos = async () => {
+    if (!window.confirm('Apagar as fotos de jobs concluídos há mais de 60 dias? Isso não pode ser desfeito.')) return
+    setCleaning(true)
+    try {
+      const r = await fetch('/api/cleanup-photos', { method: 'POST' })
+      const res = await r.json()
+      alert(`${res.filesDeleted||0} foto(s) apagada(s).`)
+      setPhotoInfo(res)
+    } catch(e) { alert('Erro: '+e.message) }
+    setCleaning(false)
+  }
 
   useEffect(() => { load(); const t = setInterval(load, 30000); return ()=>clearInterval(t) }, [])
 
@@ -49,6 +70,24 @@ export default function LiveTracking() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <h2 style={{fontSize:18,fontWeight:700}}>Live Tracking</h2>
         <div style={{fontSize:12,color:'var(--text3)'}}>Auto-refresh 30s</div>
+      </div>
+
+      <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:14,marginBottom:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:600}}>📸 Armazenamento de fotos</div>
+            {photoInfo ? (
+              photoInfo.error ? <div style={{fontSize:12,color:'var(--red)'}}>Erro: {photoInfo.error}</div> :
+              <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>
+                {photoInfo.filesFound} foto(s) de jobs com +60 dias (antes de {photoInfo.cutoffDate}){photoInfo.mode==='deleted'?` — ${photoInfo.filesDeleted} apagadas`:''}
+              </div>
+            ) : <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>Clique em "Verificar" para ver quantas fotos antigas podem ser apagadas.</div>}
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={checkPhotos} className="btn btn-sm">Verificar</button>
+            <button onClick={cleanPhotos} disabled={cleaning} className="btn btn-sm" style={{background:'#DC2626',color:'#fff',border:'none'}}>{cleaning?'Limpando...':'🗑️ Limpar +60 dias'}</button>
+          </div>
+        </div>
       </div>
 
       {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
