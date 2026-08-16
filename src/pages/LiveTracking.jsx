@@ -11,7 +11,7 @@ export default function LiveTracking() {
 
   const load = async () => {
     const [e, j] = await Promise.all([
-      supabase.from('employees').select('id,full_name,score,is_active').eq('is_active',true).order('full_name'),
+      supabase.from('employees').select('id,full_name,score,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').in('status',['assigned','in_progress']).order('scheduled_date'),
     ])
     setEmployees(e.data||[])
@@ -24,6 +24,22 @@ export default function LiveTracking() {
   const getTodayJobs = (empId) => {
     const today = new Date().toISOString().split('T')[0]
     return jobs.filter(j=>j.employee_id===empId&&j.scheduled_date===today)
+  }
+
+  // Calcula atraso: primeiro job de hoje ainda não iniciado cujo horário-alvo já passou
+  const getLateness = (empId) => {
+    const now = new Date()
+    const nowTokyo = new Date(now.toLocaleString('en-US',{timeZone:'Asia/Tokyo'}))
+    const todayJobs = getTodayJobs(empId).filter(j=>j.status!=='completed'&&j.status!=='cancelled')
+    let worstLate = 0
+    for (const j of todayJobs) {
+      if (!j.scheduled_time || j.status==='in_progress') continue
+      const [h,m] = j.scheduled_time.split(':').map(Number)
+      const target = new Date(nowTokyo); target.setHours(h,m,0,0)
+      const lateMin = Math.round((nowTokyo - target)/60000)
+      if (lateMin > worstLate) worstLate = lateMin
+    }
+    return worstLate
   }
 
   const statusColor = s => s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
@@ -42,14 +58,20 @@ export default function LiveTracking() {
           const activeJob = getActiveJob(emp.id)
           const todayJobs = getTodayJobs(emp.id)
           const done = todayJobs.filter(j=>j.status==='completed').length
+          const lateMin = getLateness(emp.id)
+          const locFresh = emp.last_location_at && (Date.now() - new Date(emp.last_location_at)) < 5*60000
           return (
             <div key={emp.id} onClick={()=>setSelected(selected===emp.id?null:emp.id)}
-              style={{background:'var(--surface)',border:`1px solid ${activeJob?'rgba(74,222,128,0.3)':'var(--border)'}`,borderRadius:14,padding:14,cursor:'pointer',transition:'all 0.2s'}}>
+              style={{background:'var(--surface)',border:`1px solid ${lateMin>=15?'rgba(248,113,113,0.4)':activeJob?'rgba(74,222,128,0.3)':'var(--border)'}`,borderRadius:14,padding:14,cursor:'pointer',transition:'all 0.2s'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
                 <div>
-                  <div style={{fontWeight:600,fontSize:14}}>{emp.full_name.split(' ')[0]}</div>
+                  <div style={{fontWeight:600,fontSize:14,display:'flex',alignItems:'center',gap:6}}>
+                    {emp.full_name.split(' ')[0]}
+                    {lateMin>=5&&<span style={{background:'rgba(248,113,113,0.15)',color:'#f87171',borderRadius:6,padding:'1px 6px',fontSize:10,fontWeight:700}}>⏰ atrasado {lateMin}min</span>}
+                  </div>
                   <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
                     {activeJob?<span style={{color:'#4ade80',fontWeight:600}}>● Working</span>:todayJobs.length>0?<span style={{color:'var(--text3)'}}>● Idle</span>:<span style={{color:'rgba(255,255,255,0.2)'}}>○ No shift</span>}
+                    {locFresh&&<a href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 ver local</a>}
                   </div>
                 </div>
                 <div style={{textAlign:'right'}}>
