@@ -30,7 +30,7 @@ const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'))
 const Checkin = lazy(() => import('./pages/Checkin'))
 const SalaryPeriods = lazy(() => import('./pages/SalaryPeriods'))
 const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
-const AdminAI = lazy(() => import('./pages/AdminAI'))
+const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 
 function Clock() {
   const [now, setNow] = React.useState(new Date())
@@ -89,6 +89,7 @@ function AppContent() {
               <Route path="/employees" element={<Employees />} />
               <Route path="/salary" element={<Salary />} />
               <Route path="/clients" element={<Clients />} />
+              <Route path="/client-feedback" element={<ClientFeedback />} />
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/ryoshu" element={<Ryoshu />} />

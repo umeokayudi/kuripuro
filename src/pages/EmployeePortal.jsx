@@ -10,6 +10,8 @@ import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
 import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
+import { youtubeEmbedUrl } from '../lib/youtube'
+import { contractForJob, parseTrainingChecklist } from '../lib/training'
 
 const BADGE_DEFS = [
   { key:'first_job', name:'First Job', icon:'🎯', desc:'Complete your first job' },
@@ -70,6 +72,8 @@ export default function EmployeePortal() {
   const [signatureJob, setSignatureJob] = useState(null)
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [serviceContracts, setServiceContracts] = useState([])
+  const [trainingModal, setTrainingModal] = useState(null)
 
   useEffect(() => {
     const on = () => setIsOnline(true)
@@ -162,7 +166,7 @@ export default function EmployeePortal() {
     const today = tokyoToday()
     const { start:weekStart, end:weekEnd } = getWeekRange()
     const monthStart = today.slice(0, 7) + '-01'
-    const [active, all, emp, pay, adv, clm, bdg, weekPay, monthPay] = await Promise.all([
+    const [active, all, emp, pay, adv, clm, bdg, weekPay, monthPay, contractsRes] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
       supabase.from('employees').select('*').eq('id',user.id).single(),
@@ -172,6 +176,7 @@ export default function EmployeePortal() {
       supabase.from('badges').select('*').eq('employee_id',user.id),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
+      supabase.from('service_contracts').select('*').eq('is_active', true),
     ])
     const regular = (active.data||[]).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = (active.data||[]).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
@@ -180,6 +185,7 @@ export default function EmployeePortal() {
     setWeekDeductions(weekPay.data||[])
     setMonthDeductions(monthPay.data||[])
     setBadges(bdg.data||[])
+    setServiceContracts(contractsRes.data || [])
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
     const inProgress = regular.find(j=>j.status==='in_progress')
     if (inProgress) {
@@ -745,6 +751,7 @@ export default function EmployeePortal() {
         onConfirm={(sig)=>{ setShowSignature(false); handleComplete(sig) }}
         onCancel={()=>setShowSignature(false)}
       />}
+      {trainingModal&&<TrainingModal job={trainingModal.job} contract={trainingModal.contract} onClose={()=>setTrainingModal(null)} lang={lang} />}
 
       {retroJob&&(
         <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
@@ -991,7 +998,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} lang={lang} />
         )}
 
         {/* SPOTS */}
@@ -1331,7 +1338,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro, setSelectedJob }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
@@ -1357,6 +1364,8 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         const isDone = job.status==='completed'
         const isNext = !activeJob && job.status==='assigned' && todayJobs.slice(0,idx).every(j=>j.status==='completed')
         const instructions = keyboxForJob(job)
+        const trainingContract = contractForJob(job, serviceContracts)
+        const hasTraining = trainingContract?.training_video_url
 
         return (
           <div key={job.id} id={isActive?'active-job-card':undefined}
@@ -1459,6 +1468,11 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 
             {isNext&&(
               <div>
+                {hasTraining&&(
+                  <button type="button" onClick={()=>onOpenTraining({ job, contract: trainingContract })} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
+                    🎬 {lang === 'ja' ? '清掃マニュアルを見る' : 'View cleaning manual'}
+                  </button>
+                )}
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE ({beforePhotos.length}) — obrigatório</div>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -1640,6 +1654,46 @@ function SignatureModal({ onConfirm, onCancel, jobTitle }) {
             ✓ Confirm
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function TrainingModal({ job, contract, onClose, lang }) {
+  const embed = youtubeEmbedUrl(contract?.training_video_url)
+  const items = parseTrainingChecklist(contract?.training_checklist)
+  const loc = (job?.title || '').replace(/ — .*/, '')
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'flex-end' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, color: '#c19c56', fontWeight: 700 }}>🎬 {lang === 'ja' ? '清掃マニュアル' : 'Cleaning manual'}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 4 }}>{loc}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer' }}>✕</button>
+        </div>
+        {embed ? (
+          <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, borderRadius: 12, overflow: 'hidden', marginBottom: 14, background: '#000' }}>
+            <iframe title="Training" src={embed} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+          </div>
+        ) : (
+          <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13, marginBottom: 14 }}>Video URL invalid</div>
+        )}
+        {items.length > 0 && (
+          <div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8, letterSpacing: 1 }}>{lang === 'ja' ? '作業前チェックリスト' : 'Pre-work checklist'}</div>
+            {items.map((label, i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, padding: '10px 12px', marginBottom: 6, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ color: '#c19c56', fontWeight: 700 }}>{i + 1}.</span>
+                <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 1.45 }}>{label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={onClose} style={{ width: '100%', marginTop: 16, padding: 14, borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+          {lang === 'ja' ? '閉じて作業を開始' : 'Close and start work'}
+        </button>
       </div>
     </div>
   )

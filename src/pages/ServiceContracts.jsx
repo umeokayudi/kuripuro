@@ -11,7 +11,7 @@ export default function ServiceContracts() {
   const [selectedClient, setSelectedClient] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'' })
+  const [form, setForm] = useState({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
 
   useEffect(() => { loadClients() }, [])
   useEffect(() => { if (selectedClient) loadContracts(selectedClient) }, [selectedClient])
@@ -62,13 +62,13 @@ export default function ServiceContracts() {
     await supabase.from('clients').update({ monthly_revenue: totalRevenue }).eq('id', selectedClient)
 
     setShowForm(false); setEditing(null)
-    setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'' })
+    setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
     loadContracts(selectedClient)
   }
 
   const handleEdit = (c) => {
     setEditing(c.id)
-    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', service_type:c.service_type||'Basic Cleaning', price_per_visit:c.price_per_visit||0, hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'' })
+    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', service_type:c.service_type||'Basic Cleaning', price_per_visit:c.price_per_visit||0, hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'' })
     setShowForm(true)
   }
 
@@ -115,7 +115,7 @@ export default function ServiceContracts() {
           {/* Add button */}
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600}}>{client?.company_name} — Service Locations</div>
-            <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'' })}}>
+            <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })}}>
               {showForm?'Cancel':'+ Add Location'}
             </button>
           </div>
@@ -153,6 +153,8 @@ export default function ServiceContracts() {
                   </div>
                 </div>
                 <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 1234" /></div>
+                <div className="form-group" style={{gridColumn:'1/-1'}}><label>Training Video (YouTube URL)</label><input value={form.training_video_url} onChange={e=>upd('training_video_url',e.target.value)} placeholder="https://www.youtube.com/watch?v=..." /></div>
+                <div className="form-group" style={{gridColumn:'1/-1'}}><label>Training Checklist (one item per line)</label><textarea value={form.training_checklist} onChange={e=>upd('training_checklist',e.target.value)} rows={4} placeholder="Check hood filters&#10;Wipe all surfaces&#10;Mop floor" /></div>
               </div>
 
               {/* Preview calc */}
@@ -184,6 +186,7 @@ export default function ServiceContracts() {
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:1}}>{c.service_type} · {c.hours_per_visit}h/visit · <span style={{color:c.billing_type==='fixed_monthly'?'var(--amber)':'var(--text3)'}}>{c.billing_type==='fixed_monthly'?'Fixed Monthly':'Per Visit'}</span></div>
                   {c.location_address?.startsWith('http')&&<a href={c.location_address} target="_blank" rel="noreferrer" style={{fontSize:11,color:'#60a5fa',textDecoration:'none'}}>🗺 Maps</a>}
                   {c.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>🔑 {c.notes}</div>}
+                  {c.training_video_url&&<div style={{fontSize:11,color:'#60a5fa',marginTop:2}}>🎬 Training video configured</div>}
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:15,fontWeight:700,color:'var(--green)'}}>¥{Number(c.monthly_revenue||0).toLocaleString()}/mo</div>
