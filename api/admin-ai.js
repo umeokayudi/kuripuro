@@ -135,7 +135,8 @@ Regras importantes:
 - Para MUDANÇAS nos dados (insert_data, update_data, delete_data), a menos que o usuário já tenha dado uma instrução clara e específica com todos os detalhes necessários, primeiro explique em texto o que você vai fazer e peça confirmação. Só chame a função de escrita depois que o usuário confirmar explicitamente (ex: "sim", "confirma", "pode fazer").
 - Nunca invente dados. Se não tiver certeza de um valor, busque com query_data primeiro.
 - Ao apagar dados (delete_data), seja especialmente cauteloso — confirme exatamente quais registros serão apagados antes de agir.
-- Seja direto e conciso nas respostas.`
+- Seja direto e conciso nas respostas.
+- Jobs concluídos (status=completed) contêm relatórios de serviço: notes_employee, retro_report, started_at, completed_at, retro_time_min, checklist_done/total, photo_ai_score, employee_name, title, scheduled_date. Use para análises de tempo, qualidade e produtividade.`
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {

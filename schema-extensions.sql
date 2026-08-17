@@ -68,3 +68,35 @@ create policy if not exists "allow_all_employee_contracts" on employee_contracts
 create policy if not exists "allow_all_salary_periods" on salary_periods for all using (true);
 create policy if not exists "allow_all_salary_statements" on salary_statements for all using (true);
 create policy if not exists "allow_all_salary_complaints" on salary_complaints for all using (true);
+
+-- Service reports (synced from completed jobs)
+create table if not exists service_reports (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid unique,
+  employee_id uuid,
+  employee_name text,
+  client_name text,
+  job_title text,
+  report_date date,
+  time_in text,
+  time_out text,
+  duration_min integer,
+  report_type text,
+  notes_out text,
+  retro_ai_summary text,
+  checklist_done integer,
+  checklist_total integer,
+  checklist_missed_items text,
+  photo_ai_score numeric,
+  photo_ai_approved boolean,
+  photo_ai_issues text,
+  photo_before_url text,
+  photo_during_url text,
+  photo_after_url text,
+  signature_url text,
+  job_value numeric,
+  pdf_url text,
+  created_at timestamptz default now()
+);
+alter table service_reports enable row level security;
+create policy if not exists "allow_all_service_reports" on service_reports for all using (true);

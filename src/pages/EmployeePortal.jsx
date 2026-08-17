@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { generateDailyReport, generatePayslip, generatePayslipJP } from '../lib/generatePDF'
+import { syncServiceReport } from '../lib/jobReport'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
@@ -420,6 +421,8 @@ export default function EmployeePortal() {
         checklist_missed_items: (ev.nao_feitos||[]).join(', ')||null,
       }).eq('id', retroJob.id)
       if (error) throw error
+      const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).single()
+      if (completedRetro) syncServiceReport(supabase, completedRetro)
       // 4. Desconto se valor final < valor cheio
       const desconto = Number(retroJob.value||0) - Number(ev.valor_final||0)
       if (desconto > 0) {
@@ -532,6 +535,9 @@ export default function EmployeePortal() {
           photo_ai_score: aiScore, photo_ai_approved: aiApproved, photo_ai_issues: aiIssues,
         }).eq('id',job.id)
       } catch(ex){ console.log('extra fields skipped', ex?.message) }
+
+      const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).single()
+      if (completedJob) syncServiceReport(supabase, completedJob)
 
       // Multa proporcional aos itens que a pessoa marcou como não feito
       if (missed>0 && total>0 && Number(job.value||0)>0) {
