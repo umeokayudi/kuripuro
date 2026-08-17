@@ -1,34 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import {
+  SCHEDULE_EMPLOYEES, RESTAURANTS, buildMonthSchedule, scheduleStats, jobsToRows, SCHEDULE_RULES, DOW_PT,
+} from '../lib/scheduleGenerator'
 
-const EMPLOYEES = {
-  bemnet: { id: '417d0c0c-6de0-4f1e-978b-0fca021d7026', name: 'Bemnet Leykun Berhanu' },
-  gabriel: { id: 'afb5bd34-3b46-4e6c-acf9-ae3feb4dfced', name: 'Gabriel Guerra' },
-  solomon: { id: '0f605ec2-e956-4d6b-8a23-560d103b7c51', name: 'Solomon' },
-}
-
-const CLIENTS = {
-  ontheplanet: { id: '7138f082-0d38-43e4-bd77-00c4598690b3', name: 'On The Planet' },
-  atomicbar: { id: 'bf3f7ab5-24c4-4ec1-b25f-d91becb166de', name: 'Atomic Bar' },
-}
-
-const RESTAURANTS = [
-  { name: 'Ibushio', address: 'https://maps.app.goo.gl/xxDzKRfpJYpk2XtW6', notes: 'Key box: 0315', price: 50000/26, days: [1,2,3,4,5,6], deepClean: 7000 },
-  { name: 'Nyu Ibushio', address: 'https://maps.app.goo.gl/ZXqfCc5MNn1aicPHA', notes: 'Key box: 0625', price: 50000/26, days: [1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Horumon no Manmosu', address: 'https://maps.app.goo.gl/r12jwNF7RpEFZTtA8', notes: 'Key box: 4840', price: 50000/26, days: [1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Yakiniku Otoko Manmosu', address: 'https://maps.app.goo.gl/n8YnpXDyQXmuefJK7', notes: 'Key box: 0601', price: 50000/26, days: [1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Nyu Sakana Yakio', address: 'https://maps.app.goo.gl/ig73pcZ4Gxff4kjU6', notes: 'Key box B1: 1209 | Shutter: 549 | Black: 5493', price: 120000/30, days: [0,1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Kodama Shinbashi', address: 'https://maps.app.goo.gl/SFPkHjrQkJ3ie6x57', notes: 'Key box: 0606', price: 120000/30, days: [0,1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Kodama Kinshicho', address: 'https://maps.app.goo.gl/HseQiawXKs32KzNz7', notes: 'Key box: 5493', price: 120000/30, days: [0,1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Kodama Oimachi', address: 'https://maps.app.goo.gl/WZH9grtQtnPBvb9A6', notes: 'Key box: 3110', price: 100000/26, days: [1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Sakana Yakio Honten', address: 'https://maps.app.goo.gl/w9QHq1rX97N4J73d7', notes: 'Key box: 0919', price: 100000/26, days: [1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Sakana Yakio 2', address: 'https://maps.app.goo.gl/Kxrk58ofn6465Yew8', notes: 'Key box: 0808', price: 100000/26, days: [1,2,3,4,5,6], deepClean: 5000 },
-  { name: 'Tooda', address: 'https://maps.app.goo.gl/u5WefsYvHS3qi6lZ9', notes: 'Key box: 5493', price: 100000/26, days: [1,2,3,4,5,6], deepClean: 5000 },
-]
-
-// 7 days restaurants (Mon-Sun) for Bemnet Monday special
-const MON_ONLY = ['Nyu Sakana Yakio', 'Kodama Shinbashi', 'Kodama Kinshicho']
+const EMP_COLORS = Object.fromEntries(
+  Object.values(SCHEDULE_EMPLOYEES).map(e => [e.short, e.color])
+)
 
 export default function ScheduleGenerator() {
   const [month, setMonth] = useState(() => {
@@ -38,187 +17,196 @@ export default function ScheduleGenerator() {
   })
   const [preview, setPreview] = useState([])
   const [loading, setLoading] = useState(false)
-  const [generated, setGenerated] = useState(false)
+  const [existingCount, setExistingCount] = useState(0)
   const [includeYuraku, setIncludeYuraku] = useState(false)
+  const [enabled, setEnabled] = useState({ bemnet: true, gabriel: true, solomon: true })
+  const [expandedDay, setExpandedDay] = useState(null)
 
-  const getDaysInMonth = (yearMonth) => {
-    const [year, mon] = yearMonth.split('-').map(Number)
-    const days = []
-    const d = new Date(year, mon - 1, 1)
-    while (d.getMonth() === mon - 1) {
-      days.push(new Date(d))
-      d.setDate(d.getDate() + 1)
-    }
-    return days
+  useEffect(() => { loadExisting() }, [month])
+
+  const loadExisting = async () => {
+    const { count } = await supabase
+      .from('jobs')
+      .select('id', { count: 'exact', head: true })
+      .gte('scheduled_date', `${month}-01`)
+      .lte('scheduled_date', `${month}-31`)
+    setExistingCount(count || 0)
   }
 
-  const generatePreview = () => {
-    const days = getDaysInMonth(month)
-    const jobs = []
-    let jobId = 1
-
-    days.forEach(date => {
-      const dow = date.getDay() // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
-      const dateStr = date.toISOString().split('T')[0]
-      const isMon = dow === 1
-      const isTue = dow === 2
-      const isSatSun = dow === 0 || dow === 6
-      const isMonFri = dow >= 1 && dow <= 5
-
-      // MONDAY - Bemnet: Atomic 00:30 + 3 restaurants 06:00
-      if (isMon) {
-        jobs.push({ id: jobId++, date: dateStr, time: '00:30', employee: 'Bemnet', client: 'Atomic Bar', title: 'Atomic Bar — Basic Cleaning', address: 'https://share.google/dGNoA7mGwHxRtZtnn', notes: 'Monday night shift', seq: 1 })
-        MON_ONLY.forEach((name, i) => {
-          const r = RESTAURANTS.find(r => r.name === name)
-          jobs.push({ id: jobId++, date: dateStr, time: '06:00', employee: 'Bemnet', client: 'On The Planet', title: `${name} — Basic Cleaning`, address: r.address, notes: r.notes, seq: i + 2 })
-        })
-
-        // Solomon - Deep Clean every Tuesday
-        if (isTue) {
-        const solomonRests = [...RESTAURANTS]
-        if (includeYuraku) solomonRests.push({ name: 'Kodama Yurakucho', address: '', notes: 'Key box: TBD', deepClean: 7000 })
-        solomonRests.forEach((r, i) => {
-          jobs.push({ id: jobId++, date: dateStr, time: '00:30', employee: 'Solomon', client: 'On The Planet', title: `${r.name} — Deep Clean`, address: r.address || '', notes: r.notes || '', seq: i + 1, description: `Range Hood + AC + Grating + Grease Trap${r.deepClean === 7000 ? ' x2' : ''} | ¥${r.deepClean?.toLocaleString()}` })
-        })
-        } // end solomon tuesday
-      }
-
-      // TUE-FRI - Bemnet: all 11 restaurants
-      if (isMonFri && !isMon) {
-        RESTAURANTS.forEach((r, i) => {
-          if (r.days.includes(dow)) {
-            jobs.push({ id: jobId++, date: dateStr, time: '00:30', employee: 'Bemnet', client: 'On The Planet', title: `${r.name} — Basic Cleaning`, address: r.address, notes: r.notes, seq: i + 1 })
-          }
-        })
-      }
-
-      // SAT-SUN - Gabriel: all 11 restaurants
-      if (isSatSun) {
-        RESTAURANTS.forEach((r, i) => {
-          if (r.days.includes(dow)) {
-            jobs.push({ id: jobId++, date: dateStr, time: '00:30', employee: 'Gabriel', client: 'On The Planet', title: `${r.name} — Basic Cleaning`, address: r.address, notes: r.notes, seq: i + 1 })
-          }
-        })
-      }
-    })
-
+  const runPreview = () => {
+    const jobs = buildMonthSchedule(month, { includeYuraku, enabled })
     setPreview(jobs)
-    return jobs
+    if (!jobs.length) toast.error('Nenhum job gerado — verifique os funcionários ativos')
+    else toast.success(`${jobs.length} jobs no preview`)
   }
+
+  const stats = useMemo(() => scheduleStats(preview), [preview])
+
+  const byDate = useMemo(() => {
+    const acc = {}
+    preview.forEach(j => {
+      if (!acc[j.date]) acc[j.date] = []
+      acc[j.date].push(j)
+    })
+    return acc
+  }, [preview])
 
   const handleGenerate = async () => {
-    setLoading(true)
-    const jobs = generatePreview()
+    const jobs = preview.length ? preview : buildMonthSchedule(month, { includeYuraku, enabled })
+    if (!jobs.length) { toast.error('Gere o preview primeiro'); return }
 
-    // Check if jobs already exist for this month
-    const { data: existing } = await supabase.from('jobs').select('id').gte('scheduled_date', month + '-01').lte('scheduled_date', month + '-31')
-    if (existing && existing.length > 0) {
-      if (!confirm(`${existing.length} jobs already exist for ${month}. Delete and regenerate?`)) {
-        setLoading(false); return
-      }
-      await supabase.from('jobs').delete().gte('scheduled_date', month + '-01').lte('scheduled_date', month + '-31')
+    const summary = Object.entries(stats.byEmployee || scheduleStats(jobs).byEmployee)
+      .map(([n, c]) => `${n}: ${c}`)
+      .join(', ')
+
+    if (existingCount > 0) {
+      if (!confirm(`Já existem ${existingCount} jobs em ${month}.\n\nApagar e recriar ${jobs.length} jobs?\n\n${summary}`)) return
+      await supabase.from('jobs').delete().gte('scheduled_date', `${month}-01`).lte('scheduled_date', `${month}-31`)
+    } else if (!confirm(`Criar ${jobs.length} jobs para ${month}?\n\n${summary}`)) {
+      return
     }
 
-    const empMap = { Bemnet: EMPLOYEES.bemnet, Gabriel: EMPLOYEES.gabriel, Solomon: EMPLOYEES.solomon }
-    const clientMap = { 'On The Planet': CLIENTS.ontheplanet, 'Atomic Bar': CLIENTS.atomicbar }
-
-    const rows = jobs.map(j => ({
-      title: j.title,
-      employee_id: empMap[j.employee].id,
-      employee_name: empMap[j.employee].name,
-      client_id: clientMap[j.client].id,
-      client_name: j.client,
-      scheduled_date: j.date,
-      scheduled_time: j.time,
-      status: 'assigned',
-      job_category: 'regular',
-      sequence_order: j.seq,
-      address: j.address || null,
-      description: j.description || j.notes || null,
-    }))
-
-    // Insert in batches of 50
+    setLoading(true)
+    const rows = jobsToRows(jobs)
     for (let i = 0; i < rows.length; i += 50) {
       const { error } = await supabase.from('jobs').insert(rows.slice(i, i + 50))
       if (error) { toast.error(error.message); setLoading(false); return }
     }
-
-    toast.success(`✅ ${rows.length} jobs generated for ${month}!`)
-    setGenerated(true)
+    toast.success(`✅ ${rows.length} jobs criados!`)
     setLoading(false)
+    loadExisting()
   }
 
-  const byDate = preview.reduce((acc, j) => {
-    if (!acc[j.date]) acc[j.date] = []
-    acc[j.date].push(j)
-    return acc
-  }, {})
-
-  const empColors = { Bemnet: '#60a5fa', Gabriel: '#4ade80', Solomon: '#fbbf24' }
+  const toggleEmp = (key) => setEnabled(e => ({ ...e, [key]: !e[key] }))
 
   return (
     <div>
+      {/* Regras */}
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-title">🗓 Schedule Generator</div>
-        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 16 }}>
-          Auto-generates all jobs for a month based on contracts: Bemnet (Mon-Fri), Gabriel (Sat-Sun), Solomon (Deep Clean every Monday).
+        <div className="card-title">📋 Como funciona a escala</div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {SCHEDULE_RULES.map(r => (
+            <div key={r.who} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 12px', background: 'var(--surface2)', borderRadius: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: EMP_COLORS[r.who], marginTop: 5, flexShrink: 0 }} />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{r.who} <span style={{ fontWeight: 400, color: 'var(--text3)' }}>({r.when})</span></div>
+                <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 2 }}>{r.detail}</div>
+              </div>
+            </div>
+          ))}
         </div>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 10 }}>
+          {RESTAURANTS.length} restaurantes no contrato On The Planet + Atomic Bar (só segunda, Bemnet).
+        </div>
+      </div>
+
+      {/* Config */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-title">🗓 Gerador de Escala</div>
 
         <div className="grid-2" style={{ marginBottom: 14 }}>
           <div className="form-group">
-            <label>Month</label>
-            <input type="month" value={month} onChange={e => { setMonth(e.target.value); setPreview([]); setGenerated(false) }} />
+            <label>Mês</label>
+            <input type="month" value={month} onChange={e => { setMonth(e.target.value); setPreview([]) }} />
           </div>
           <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 24 }}>
-              <input type="checkbox" checked={includeYuraku} onChange={e => setIncludeYuraku(e.target.checked)} style={{ width: 16, height: 16 }} />
-              Include Kodama Yurakucho (from July)
+            <label>Jobs já no sistema</label>
+            <div style={{ padding: '10px 12px', background: existingCount ? 'rgba(251,191,36,0.1)' : 'var(--surface2)', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
+              {existingCount > 0 ? `⚠️ ${existingCount} jobs em ${month}` : '✓ Nenhum job neste mês'}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 8 }}>Incluir na geração</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {Object.entries(SCHEDULE_EMPLOYEES).map(([key, emp]) => (
+              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 10, border: `2px solid ${enabled[key] ? emp.color : 'var(--border)'}`, background: enabled[key] ? `${emp.color}15` : 'transparent', cursor: 'pointer', fontSize: 13 }}>
+                <input type="checkbox" checked={enabled[key]} onChange={() => toggleEmp(key)} style={{ accentColor: emp.color }} />
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: emp.color }} />
+                {emp.short}
+              </label>
+            ))}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}>
+              <input type="checkbox" checked={includeYuraku} onChange={e => setIncludeYuraku(e.target.checked)} />
+              + Kodama Yurakucho (Solomon, terça)
             </label>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn" onClick={() => { generatePreview(); }}>
-            👁 Preview
-          </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={runPreview}>👁 Ver preview</button>
           <button className="btn btn-primary" onClick={handleGenerate} disabled={loading}>
-            {loading ? '⏳ Generating...' : `✅ Generate Jobs for ${month}`}
+            {loading ? 'Criando...' : `✅ Gerar ${preview.length || '…'} jobs`}
           </button>
         </div>
-
-        {generated && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(74,222,128,0.1)', borderRadius: 10, border: '1px solid rgba(74,222,128,0.2)', color: 'var(--green)', fontSize: 13, fontWeight: 600 }}>
-            ✅ Jobs generated! Go to Jobs to view them.
-          </div>
-        )}
       </div>
 
+      {/* Stats + Preview */}
       {preview.length > 0 && (
         <div className="card">
-          <div className="card-title">Preview — {preview.length} jobs</div>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-            {Object.entries(empColors).map(([name, color]) => (
-              <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />
-                <span style={{ fontSize: 12, color: 'var(--text2)' }}>{name}</span>
+          <div className="card-title">Preview — {stats.total} jobs em {stats.days} dias</div>
+
+          <div className="grid-3" style={{ gap: 10, marginBottom: 16 }}>
+            {Object.entries(stats.byEmployee).map(([name, count]) => (
+              <div key={name} style={{ padding: 12, borderRadius: 10, background: `${EMP_COLORS[name]}12`, border: `1px solid ${EMP_COLORS[name]}30` }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{name}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: EMP_COLORS[name] }}>{count}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>jobs no mês</div>
               </div>
             ))}
           </div>
-          <div style={{ maxHeight: 500, overflowY: 'auto' }}>
-            {Object.keys(byDate).sort().map(date => (
-              <div key={date} style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })} — {byDate[date].length} jobs
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {byDate[date].map(j => (
-                    <span key={j.id} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: `${empColors[j.employee]}20`, color: empColors[j.employee], border: `1px solid ${empColors[j.employee]}40` }}>
-                      {j.employee[0]} · {j.title.split(' —')[0]}
-                    </span>
-                  ))}
-                </div>
+
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+            {DOW_PT.map((label, i) => (
+              <div key={label} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, background: 'var(--surface2)' }}>
+                {label}: <b>{stats.byDow[i]}</b>
               </div>
             ))}
+          </div>
+
+          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+            {Object.keys(byDate).sort().map(date => {
+              const dayJobs = byDate[date]
+              const dow = new Date(date + 'T12:00:00').getDay()
+              const isOpen = expandedDay === date
+              return (
+                <div key={date} style={{ marginBottom: 8, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                  <button
+                    onClick={() => setExpandedDay(isOpen ? null : date)}
+                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--surface2)', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>
+                      {DOW_PT[dow]} {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>{dayJobs.length} jobs {isOpen ? '▲' : '▼'}</span>
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding: '8px 14px 12px' }}>
+                      {dayJobs.sort((a, b) => a.time.localeCompare(b.time)).map(j => (
+                        <div key={j.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+                          <span style={{ color: 'var(--text3)', width: 42 }}>{j.time}</span>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: EMP_COLORS[j.employee], flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600, color: EMP_COLORS[j.employee], width: 56 }}>{j.employee[0]}</span>
+                          <span style={{ flex: 1 }}>{j.title.split(' —')[0]}</span>
+                          {j.type === 'deep' && <span className="badge badge-amber" style={{ fontSize: 10 }}>Deep</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!isOpen && (
+                    <div style={{ padding: '6px 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {dayJobs.slice(0, 8).map(j => (
+                        <span key={j.id} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 12, background: `${EMP_COLORS[j.employee]}18`, color: EMP_COLORS[j.employee] }}>
+                          {j.employee[0]}·{j.title.split(' —')[0].slice(0, 12)}
+                        </span>
+                      ))}
+                      {dayJobs.length > 8 && <span style={{ fontSize: 10, color: 'var(--text3)' }}>+{dayJobs.length - 8}</span>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

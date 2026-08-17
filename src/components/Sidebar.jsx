@@ -14,7 +14,7 @@ const navItems = [
   { to: '/salary-complaints', label: 'Salary Issues', icon: Icons.list },
   { to: '/cashflow',  label: 'Cashflow',   icon: Icons.chart },
   { to: '/reports',   label: 'Relatórios', icon: Icons.file },
-  { to: '/schedule', label: 'Schedule Gen', icon: Icons.list },
+  { to: '/schedule', label: 'Gerador Escala', icon: Icons.list },
   { to: '/contracts', label: 'Contracts', icon: Icons.file },
   { to: '/faturas', label: 'Faturas', icon: Icons.file },
   { to: '/ryoshu',    label: '領収書',      icon: Icons.receipt },
