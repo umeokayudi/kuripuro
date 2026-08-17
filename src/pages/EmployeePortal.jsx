@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { generateDailyReport, generatePayslip, generatePayslipJP } from '../lib/generatePDF'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
+import { prepareImageForUpload } from '../lib/imageUpload'
+import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
@@ -405,12 +407,12 @@ export default function EmployeePortal() {
       const ev = await resp.json()
       if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
       setRetroEval(ev)
-      // 2. Upload da foto
+      // 2. Upload da foto (sempre JPEG para funcionar em qualquer navegador)
       let photoUrl = null
-      const ext = retroPhoto.name.split('.').pop()
-      const { error: uploadErr } = await supabase.storage.from('service-photos').upload(`jobs/${retroJob.id}/retro.${ext}`, retroPhoto, { upsert:true })
+      const prepared = await prepareImageForUpload(retroPhoto)
+      const { error: uploadErr } = await supabase.storage.from('service-photos').upload(`jobs/${retroJob.id}/retro.jpg`, prepared, { upsert: true, contentType: 'image/jpeg' })
       if (uploadErr) throw new Error('Falha ao enviar foto: ' + uploadErr.message)
-      const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${retroJob.id}/retro.${ext}`)
+      const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${retroJob.id}/retro.jpg`)
       photoUrl = pd.publicUrl
       // 3. Finaliza o job com o valor da IA
       const { error } = await supabase.from('jobs').update({
@@ -445,11 +447,12 @@ export default function EmployeePortal() {
   const uploadSlotPhotos = async (jobId, photos, prefix) => {
     let firstUrl = null
     for (let i = 0; i < photos.length; i++) {
-      const ext = photos[i].file.name.split('.').pop()
-      const { error } = await supabase.storage.from('service-photos').upload(`jobs/${jobId}/${prefix}_${i}.${ext}`, photos[i].file, { upsert: true })
+      const prepared = await prepareImageForUpload(photos[i].file)
+      const path = `jobs/${jobId}/${prefix}_${i}.jpg`
+      const { error } = await supabase.storage.from('service-photos').upload(path, prepared, { upsert: true, contentType: 'image/jpeg' })
       if (error) throw new Error('Falha ao enviar foto: ' + error.message)
       if (i === 0) {
-        const { data: pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${jobId}/${prefix}_0.${ext}`)
+        const { data: pd } = supabase.storage.from('service-photos').getPublicUrl(path)
         firstUrl = pd.publicUrl
       }
     }
@@ -574,9 +577,11 @@ export default function EmployeePortal() {
   }
 
   const uploadFile = async (file, path) => {
-    const { error } = await supabase.storage.from('service-photos').upload(path,file,{upsert:true})
+    const prepared = await prepareImageForUpload(file)
+    const jpgPath = path.replace(/\.[^.]+$/, '.jpg')
+    const { error } = await supabase.storage.from('service-photos').upload(jpgPath, prepared, { upsert: true, contentType: 'image/jpeg' })
     if (error) throw new Error('Falha ao enviar foto: ' + error.message)
-    const { data } = supabase.storage.from('service-photos').getPublicUrl(path)
+    const { data } = supabase.storage.from('service-photos').getPublicUrl(jpgPath)
     return data.publicUrl
   }
 
@@ -663,14 +668,15 @@ export default function EmployeePortal() {
 
   const JobPhoto = ({ url, label }) => {
     const [failed, setFailed] = useState(false)
+    const displayUrl = viewablePhotoUrl(url)
     if (!url) return null
     return (
       <div>
         <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
         {failed ? (
-          <div style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.35)',fontSize:11,textAlign:'center',padding:8}}>📷 Foto não disponível</div>
+          <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
         ) : (
-          <img src={url} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
+          <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
         )}
       </div>
     )

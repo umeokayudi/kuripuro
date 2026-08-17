@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { jobToServiceReport, fmtDuration, jobReportType } from '../lib/jobReport'
+import { viewablePhotoUrl } from '../lib/photoUrl'
+import StorageImage from '../components/StorageImage'
 import toast from 'react-hot-toast'
 
 function typeBadge(type) {
@@ -17,6 +19,7 @@ export default function Reports() {
   const [filterDays, setFilterDays] = useState(30)
   const [aiAnalysis, setAiAnalysis] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const [lightbox, setLightbox] = useState(null)
 
   useEffect(() => { loadReports() }, [filterDays])
 
@@ -173,7 +176,7 @@ export default function Reports() {
                     <td>{typeBadge(r.report_type)}</td>
                     <td>{fmtDuration(r.duration_min)}</td>
                     <td>{r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</td>
-                    <td>{r.photo_ai_score != null ? `${r.photo_ai_score}/10` : '—'}</td>
+                    <td>{r.photo_ai_score != null ? `${r.photo_ai_score}/10` : (r.photo_after_url || r.photo_before_url) ? '📷' : '—'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => setSelected(r)}>Ler</button>
@@ -230,25 +233,47 @@ export default function Reports() {
               <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text3)' }}>Problemas na foto (IA): {selected.photo_ai_issues}</div>
             )}
 
-            <div className="grid-2" style={{ gap: 8 }}>
-              {selected.photo_before_url && (
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Antes</div>
-                  <img src={selected.photo_before_url} alt="antes" style={{ width: '100%', borderRadius: 8, aspectRatio: '1', objectFit: 'cover' }} />
+            {(selected.photo_before_url || selected.photo_after_url) && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>Fotos do serviço</div>
+                <div className="grid-2" style={{ gap: 8 }}>
+                  {selected.photo_before_url && (
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Antes</div>
+                      <StorageImage url={selected.photo_before_url} alt="antes" onClick={() => setLightbox(selected.photo_before_url)} />
+                      <a href={viewablePhotoUrl(selected.photo_before_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ marginTop: 6, width: '100%' }}>Abrir em tela cheia</a>
+                    </div>
+                  )}
+                  {selected.photo_after_url && (
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Depois</div>
+                      <StorageImage url={selected.photo_after_url} alt="depois" onClick={() => setLightbox(selected.photo_after_url)} />
+                      <a href={viewablePhotoUrl(selected.photo_after_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ marginTop: 6, width: '100%' }}>Abrir em tela cheia</a>
+                    </div>
+                  )}
                 </div>
-              )}
-              {selected.photo_after_url && (
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Depois</div>
-                  <img src={selected.photo_after_url} alt="depois" style={{ width: '100%', borderRadius: 8, aspectRatio: '1', objectFit: 'cover' }} />
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
               <button className="btn btn-danger" onClick={() => handleDelete(selected)}>🗑 Apagar relatório</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {lightbox && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setLightbox(null)}
+        >
+          <button onClick={() => setLightbox(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}>✕ Fechar</button>
+          <img
+            src={viewablePhotoUrl(lightbox)}
+            alt="foto ampliada"
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }}
+          />
         </div>
       )}
     </div>

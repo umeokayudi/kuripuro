@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import toast from 'react-hot-toast'
+import { viewablePhotoUrl } from '../lib/photoUrl'
 import ContractTab from '../components/ContractTab'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
