@@ -58,6 +58,22 @@ export default function Reports() {
     return { total: filtered.length, avg, byEmp }
   }, [filtered])
 
+  const handleDelete = async (report) => {
+    const label = `${report.employee_name} · ${report.client_name || report.job_title} · ${report.report_date}`
+    if (!confirm(`Apagar este relatório?\n\n${label}\n\nO job também será removido. Não dá para desfazer.`)) return
+
+    const [{ error: srErr }, { error: jobErr }] = await Promise.all([
+      supabase.from('service_reports').delete().eq('job_id', report.job_id),
+      supabase.from('jobs').delete().eq('id', report.job_id),
+    ])
+    if (jobErr) { toast.error(jobErr.message); return }
+    if (srErr) toast.error(srErr.message)
+
+    setReports(prev => prev.filter(r => r.job_id !== report.job_id))
+    if (selected?.job_id === report.job_id) setSelected(null)
+    toast.success('Relatório apagado')
+  }
+
   const runAiAnalysis = async () => {
     setAiLoading(true)
     setAiAnalysis('')
@@ -158,7 +174,12 @@ export default function Reports() {
                     <td>{fmtDuration(r.duration_min)}</td>
                     <td>{r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</td>
                     <td>{r.photo_ai_score != null ? `${r.photo_ai_score}/10` : '—'}</td>
-                    <td><button className="btn btn-sm" onClick={() => setSelected(r)}>Ler</button></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-sm" onClick={() => setSelected(r)}>Ler</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(r)}>Apagar</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -222,6 +243,10 @@ export default function Reports() {
                   <img src={selected.photo_after_url} alt="depois" style={{ width: '100%', borderRadius: 8, aspectRatio: '1', objectFit: 'cover' }} />
                 </div>
               )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+              <button className="btn btn-danger" onClick={() => handleDelete(selected)}>🗑 Apagar relatório</button>
             </div>
           </div>
         </div>
