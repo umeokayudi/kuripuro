@@ -1,17 +1,64 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
 
 export default function Clients() {
+  const { t } = useLang()
   const [tab, setTab] = useState('list')
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
+  const [portalClientId, setPortalClientId] = useState('')
+  const [portalUsers, setPortalUsers] = useState([])
+  const [portalForm, setPortalForm] = useState({ contact_name: '', email: '', password: '', location_name: '' })
+  const [contracts, setContracts] = useState([])
   const [form, setForm] = useState({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })
 
   const SERVICE_TYPES = ['Daily cleaning','Weekly cleaning','Night cleaning','Deep cleaning','Spot cleaning','Monthly cleaning']
 
   useEffect(() => { load() }, [])
+  useEffect(() => { if (portalClientId) loadPortal(portalClientId) }, [portalClientId])
+
+  const loadPortal = async (clientId) => {
+    const [{ data: users }, { data: cts }] = await Promise.all([
+      supabase.from('client_users').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
+      supabase.from('service_contracts').select('location_name').eq('client_id', clientId).eq('is_active', true),
+    ])
+    setPortalUsers(users || [])
+    setContracts(cts || [])
+  }
+
+  const createPortalUser = async () => {
+    if (!portalClientId || !portalForm.email || !portalForm.password || !portalForm.contact_name) {
+      return toast.error('Name, email and password required')
+    }
+    const client = clients.find(c => c.id === portalClientId)
+    const { error } = await supabase.from('client_users').insert({
+      client_id: portalClientId,
+      client_name: client?.company_name || '',
+      location_name: portalForm.location_name || null,
+      contact_name: portalForm.contact_name,
+      email: portalForm.email.trim().toLowerCase(),
+      password: portalForm.password,
+      is_active: true,
+    })
+    if (error) return toast.error(error.message)
+    toast.success('Portal account created!')
+    setPortalForm({ contact_name: '', email: '', password: '', location_name: '' })
+    loadPortal(portalClientId)
+  }
+
+  const togglePortalUser = async (id, active) => {
+    await supabase.from('client_users').update({ is_active: !active }).eq('id', id)
+    loadPortal(portalClientId)
+  }
+
+  const deletePortalUser = async (id) => {
+    if (!confirm('Delete this portal account?')) return
+    await supabase.from('client_users').delete().eq('id', id)
+    loadPortal(portalClientId)
+  }
 
   const load = async () => {
     setLoading(true)
@@ -64,6 +111,7 @@ export default function Clients() {
         <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>{setTab('list');setEditing(null);setForm({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })}}>List ({clients.length})</button>
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>{editing?'✏️ Edit':'+ Register'}</button>
         <button className={`tab-pill${tab==='services'?' active':''}`} onClick={()=>setTab('services')}>Services</button>
+        <button className={`tab-pill${tab==='portal'?' active':''}`} onClick={()=>setTab('portal')}>🔐 Portal</button>
       </div>
 
       {/* LIST */}
@@ -98,8 +146,9 @@ export default function Clients() {
                   </div>
                 </div>
                 {c.notes&&<div style={{fontSize:12,color:'var(--text2)',background:'var(--surface2)',borderRadius:8,padding:'8px 10px',marginBottom:10}}>{c.notes}</div>}
-                <div style={{display:'flex',gap:8}}>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <button className="btn btn-sm btn-primary" onClick={()=>handleEdit(c)}>✏️ Edit</button>
+                  <button className="btn btn-sm" onClick={()=>{setPortalClientId(c.id);setTab('portal')}}>🔐 Portal</button>
                   <button className="btn btn-sm" onClick={()=>handleToggle(c.id,c.is_active)}>{c.is_active?'Deactivate':'Activate'}</button>
                   <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(c.id,c.company_name)}>🗑 Delete</button>
                 </div>
@@ -168,6 +217,65 @@ export default function Clients() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* CLIENT PORTAL ACCOUNTS */}
+      {tab==='portal'&&(
+        <div>
+          <div className="card" style={{marginBottom:14}}>
+            <div className="card-title">🔐 Client Portal Accounts</div>
+            <div style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>
+              Create login for restaurant managers. They can see cleaning times, photos, chat, complaints and requests. Default UI is Japanese.
+            </div>
+            <div className="form-group">
+              <label>Client</label>
+              <select value={portalClientId} onChange={e=>setPortalClientId(e.target.value)}>
+                <option value="">— Select client —</option>
+                {clients.filter(c=>c.is_active).map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
+              </select>
+            </div>
+            {portalClientId && (
+              <>
+                <div className="grid-2" style={{marginTop:12}}>
+                  <div className="form-group"><label>Contact Name *</label><input value={portalForm.contact_name} onChange={e=>setPortalForm(f=>({...f,contact_name:e.target.value}))} placeholder="Tanaka Hiroshi" /></div>
+                  <div className="form-group"><label>Email *</label><input type="email" value={portalForm.email} onChange={e=>setPortalForm(f=>({...f,email:e.target.value}))} /></div>
+                  <div className="form-group"><label>Password *</label><input type="text" value={portalForm.password} onChange={e=>setPortalForm(f=>({...f,password:e.target.value}))} placeholder="min 6 chars" /></div>
+                  <div className="form-group"><label>Location (optional)</label>
+                    <select value={portalForm.location_name} onChange={e=>setPortalForm(f=>({...f,location_name:e.target.value}))}>
+                      <option value="">All locations</option>
+                      {contracts.map((ct,i)=><option key={i} value={ct.location_name}>{ct.location_name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <button className="btn btn-primary" onClick={createPortalUser} style={{marginTop:8}}>✅ Create Portal Login</button>
+              </>
+            )}
+          </div>
+
+          {portalClientId && (
+            <div className="card">
+              <div className="card-title">Portal Users ({portalUsers.length})</div>
+              {portalUsers.length===0 && <div style={{color:'var(--text3)',fontSize:13}}>No portal accounts yet.</div>}
+              <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Location</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  {portalUsers.map(u=>(
+                    <tr key={u.id}>
+                      <td style={{fontWeight:500}}>{u.contact_name}</td>
+                      <td style={{fontSize:12}}>{u.email}</td>
+                      <td style={{fontSize:12}}>{u.location_name||'All'}</td>
+                      <td><span className={`badge ${u.is_active?'badge-green':'badge-red'}`}>{u.is_active?'Active':'Inactive'}</span></td>
+                      <td style={{display:'flex',gap:4}}>
+                        <button className="btn btn-sm" onClick={()=>togglePortalUser(u.id,u.is_active)}>{u.is_active?'Disable':'Enable'}</button>
+                        <button className="btn btn-sm btn-danger" onClick={()=>deletePortalUser(u.id)}>✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import Login from './pages/Login'
 import EmployeePortal from './pages/EmployeePortal'
+import ClientPortal from './pages/ClientPortal'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Jobs = lazy(() => import('./pages/Jobs'))
@@ -62,6 +63,7 @@ function AppContent() {
 
   if (!user) return <Login />
   if (user.role === 'employee') return <><EmployeePortal /><AIFloatingWidget mode="employee" employeeId={user.id} employeeName={user.name} dark /></>
+  if (user.role === 'client') return <ClientPortal />
 
   return (
     <div className="app-shell">

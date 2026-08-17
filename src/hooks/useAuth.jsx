@@ -39,6 +39,27 @@ export function AuthProvider({ children }) {
       localStorage.setItem('kp_user', JSON.stringify(u))
       return { success: true }
     }
+    const { data: clientUser } = await supabase
+      .from('client_users')
+      .select('id, client_id, client_name, location_name, contact_name, email, is_active')
+      .eq('email', email.trim().toLowerCase())
+      .eq('password', password)
+      .eq('is_active', true)
+      .single()
+    if (clientUser) {
+      const u = {
+        id: clientUser.id,
+        name: clientUser.contact_name,
+        email: clientUser.email,
+        role: 'client',
+        client_id: clientUser.client_id,
+        client_name: clientUser.client_name,
+        location_name: clientUser.location_name,
+      }
+      setUser(u)
+      localStorage.setItem('kp_user', JSON.stringify(u))
+      return { success: true }
+    }
     return { success: false, error: 'Invalid email or password' }
   }
 

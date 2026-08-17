@@ -37,11 +37,14 @@ export function fmtTime(iso, lang = 'en') {
 /** Monta registro para service_reports a partir de um job concluído */
 export function jobToServiceReport(job, lang = 'en') {
   const duration = jobDurationMin(job)
+  const location = (job.title || '').replace(/ — .*/, '').trim()
   return {
     job_id: job.id,
     employee_id: job.employee_id,
     employee_name: job.employee_name,
-    client_name: (job.title || '').replace(/ — .*/, ''),
+    client_id: job.client_id || null,
+    client_name: location,
+    location_name: location,
     job_title: job.title,
     report_date: job.scheduled_date,
     time_in: job.started_at ? fmtTime(job.started_at, lang) : (job.scheduled_time || '—'),
@@ -49,6 +52,7 @@ export function jobToServiceReport(job, lang = 'en') {
     duration_min: duration,
     report_type: jobReportType(job),
     notes_out: jobReportText(job),
+    photo_comment: job.notes_employee || null,
     retro_ai_summary: job.retro_ai_summary || null,
     checklist_done: job.checklist_done,
     checklist_total: job.checklist_total,
