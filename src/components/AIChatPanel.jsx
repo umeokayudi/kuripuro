@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import AICallMode from './AICallMode'
+import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
 
 function formatText(text) {
   if (!text) return null
@@ -33,20 +34,29 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const [callOpen, setCallOpen] = useState(false)
   const [voiceReplies, setVoiceReplies] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [voices, setVoices] = useState([])
+  const [voiceName, setVoiceName] = useState(getSavedVoiceName())
+  const voiceRef = useRef(null)
   const bottomRef = useRef(null)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
+  useEffect(() => {
+    loadVoices().then(v => {
+      setVoices(v)
+      voiceRef.current = pickDefaultVoice(v)
+      if (!voiceName && voiceRef.current) setVoiceName(voiceRef.current.name)
+    })
+  }, [])
+
+  useEffect(() => {
+    const v = voices.find(x => x.name === voiceName)
+    if (v) { voiceRef.current = v; saveVoiceName(v.name) }
+  }, [voiceName, voices])
+
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  const speakText = (text) => {
-    if (!window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(text.replace(/\*\*/g, ''))
-    utter.lang = 'pt-BR'
-    utter.rate = 1.05
-    window.speechSynthesis.speak(utter)
-  }
+  const speakReply = (text) => speakText(text, { voice: voiceRef.current })
 
   const callAPI = async (allMessages) => {
     const endpoint = mode === 'employee' ? '/api/employee-ai' : '/api/admin-ai'
@@ -93,7 +103,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       const data = await callAPI(newMessages)
       const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
       setMessages(m => [...m, replyMsg])
-      if (voiceReplies) speakText(data.reply)
+      if (voiceReplies) speakReply(data.reply)
     } catch (e) {
       setMessages(m => [...m, { role: 'assistant', content: `⚠️ Erro: ${e.message}` }])
     }
@@ -111,7 +121,15 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
         <div style={{ fontSize: compact ? 12 : 14, fontWeight: 700, color: dark ? 'rgba(255,255,255,0.7)' : 'var(--text2)' }}>
           {mode === 'employee' ? '🤖 Meu Assistente' : '✨ Assistente Admin'}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {voices.filter(v => v.lang?.startsWith('pt')).length > 0 && (
+            <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title="Voz da IA"
+              style={{ fontSize: 11, padding: '5px 8px', borderRadius: 8, border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit', maxWidth: 130 }}>
+              {voices.filter(v => v.lang?.startsWith('pt')).map(v => (
+                <option key={v.name} value={v.name}>{v.name.split(' ')[0]}</option>
+              ))}
+            </select>
+          )}
           <button onClick={() => setVoiceReplies(v => !v)} title="Ler respostas em voz alta"
             style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: voiceReplies ? '#c19c56' : dark ? 'rgba(255,255,255,0.06)' : '#fff', color: voiceReplies ? '#0a1929' : dark ? '#fff' : 'var(--text)', borderRadius: 10, padding: '5px 9px', cursor: 'pointer', fontSize: 12 }}>
             {voiceReplies ? '🔊' : '🔇'}
