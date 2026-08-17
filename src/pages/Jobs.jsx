@@ -1,7 +1,21 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { geocodeAddress } from '../lib/geocode'
+import { geocodeAddress, isNavigableAddress } from '../lib/geocode'
 import toast from 'react-hot-toast'
+
+function applyGeocodeResult(result, setCoords) {
+  if (result?.lat != null && result?.lng != null) {
+    setCoords(result)
+    toast.success(`GPS: ${result.lat.toFixed(4)}, ${result.lng.toFixed(4)}`)
+    return true
+  }
+  if (result?.mapsLink) {
+    setCoords(null)
+    toast.success('Link do Google Maps válido — abre no app do Maps')
+    return true
+  }
+  return false
+}
 
 function DayScheduleView({ onClose }) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -160,7 +174,15 @@ export default function Jobs() {
   const handleLocationSelect = (locId) => {
     const loc = locations.find(l => l.id === locId)
     if (!loc) return
-    setForm(f => ({ ...f, location_id: locId, address: loc.address, gps_lat: loc.gps_lat || '', gps_lng: loc.gps_lng || '', title: f.title || loc.name }))
+    setForm(f => ({
+      ...f,
+      location_id: locId,
+      address: loc.address,
+      gps_lat: loc.gps_lat || '',
+      gps_lng: loc.gps_lng || '',
+      title: f.title || loc.name,
+      description: loc.notes || f.description,
+    }))
   }
 
   const handleGeocode = async () => {
@@ -168,8 +190,9 @@ export default function Jobs() {
     setGeocoding(true)
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
-    if (result) { setForm(f => ({ ...f, gps_lat: result.lat, gps_lng: result.lng })); toast.success(`GPS: ${result.lat.toFixed(4)}, ${result.lng.toFixed(4)}`) }
-    else toast.error('Address not found')
+    if (!applyGeocodeResult(result, coords => setForm(f => ({ ...f, gps_lat: coords.lat, gps_lng: coords.lng })))) {
+      toast.error('Endereço não encontrado — use link do Google Maps ou endereço completo')
+    }
   }
 
   const handleCreate = async () => {
@@ -336,6 +359,7 @@ export default function Jobs() {
               <button className="btn" onClick={handleGeocode} disabled={geocoding} style={{whiteSpace:'nowrap'}}>{geocoding?'...':'📍 Get GPS'}</button>
             </div>
             {form.gps_lat && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ GPS: {Number(form.gps_lat).toFixed(4)}, {Number(form.gps_lng).toFixed(4)}</div>}
+            {!form.gps_lat && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ Link do Maps válido</div>}
           </div>
 
           <div className="form-group"><label>Description / Instructions</label><textarea value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="Clean all rooms..." /></div>
@@ -385,8 +409,9 @@ function LocationsTab() {
     setGeocoding(true)
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
-    if (result) { setGps(result); toast.success(`GPS: ${result.lat.toFixed(4)}, ${result.lng.toFixed(4)}`) }
-    else toast.error('Not found')
+    if (!applyGeocodeResult(result, setGps)) {
+      toast.error('Endereço não encontrado — use link do Google Maps ou endereço completo')
+    }
   }
 
   const handleSave = async () => {
@@ -431,14 +456,15 @@ function LocationsTab() {
           </div>
         </div>
         <div className="form-group">
-          <label>Address</label>
+          <label>Endereço / Link Google Maps</label>
           <div style={{display:'flex',gap:8}}>
-            <input value={form.address} onChange={e=>upd('address',e.target.value)} placeholder="東京都..." style={{flex:1}} />
+            <input value={form.address} onChange={e=>upd('address',e.target.value)} placeholder="https://maps.app.goo.gl/... ou endereço" style={{flex:1}} />
             <button className="btn" onClick={handleGeocode} disabled={geocoding}>{geocoding?'...':'📍 GPS'}</button>
           </div>
           {gps && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}</div>}
+          {!gps && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ Link do Maps válido</div>}
         </div>
-        <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} /></div>
+        <div className="form-group"><label>Key box / Notas</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 0315" /></div>
         <button className="btn btn-primary" onClick={editingLoc ? handleUpdateLoc : handleSave}>{editingLoc ? 'Update Location' : 'Save Location'}</button>
         {editingLoc && <button className="btn" style={{ marginLeft: 8 }} onClick={() => { setEditingLoc(null); setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null) }}>Cancel Edit</button>}
       </div>
@@ -446,14 +472,15 @@ function LocationsTab() {
       <div className="card">
         <div className="card-title">Saved Locations</div>
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Address</th><th>GPS</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Type</th><th>Address</th><th>Key box</th><th>GPS</th><th></th></tr></thead>
           <tbody>
             {locations.filter(l=>l.is_active).map(l=>(
               <tr key={l.id}>
                 <td style={{fontWeight:500}}>{l.name}</td>
                 <td><span className={`badge ${l.location_type==='fixed'?'badge-green':'badge-amber'}`}>{l.location_type}</span></td>
-                <td style={{fontSize:12}}>{l.address}</td>
-                <td>{l.gps_lat ? <span className="badge badge-navy">✓</span> : '—'}</td>
+                <td style={{fontSize:12,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.address}</td>
+                <td style={{fontSize:12}}>{l.notes || '—'}</td>
+                <td>{l.gps_lat ? <span className="badge badge-navy">✓</span> : isNavigableAddress(l.address) ? <span className="badge badge-green">🗺</span> : '—'}</td>
                 <td style={{display:'flex',gap:4}}>
                   <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>✏️</button>
                   <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l.id)}>✕</button>

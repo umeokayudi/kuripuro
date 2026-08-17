@@ -72,10 +72,11 @@ export function contractsForActiveEmployees(activeEmployees) {
 
 export function locationsFromContracts(serviceContracts) {
   if (!serviceContracts?.length) return DEFAULT_LOCATIONS
+  const defaultByName = Object.fromEntries(DEFAULT_LOCATIONS.map(l => [l.name, l]))
   return serviceContracts.map(sc => ({
     name: sc.location_name,
-    address: sc.location_address || '',
-    notes: sc.notes || '',
+    address: sc.location_address || defaultByName[sc.location_name]?.address || '',
+    notes: sc.notes || defaultByName[sc.location_name]?.notes || '',
     days: (sc.days_of_week || []).map(d => DAY_MAP[d]).filter(d => d != null),
     deepClean: /deep/i.test(sc.service_type || '') ? 5000 : 5000,
     serviceType: sc.service_type || 'Basic Cleaning',
@@ -101,15 +102,22 @@ function getDaysInMonth(yearMonth) {
   return days
 }
 
+function jobInstructions(location, isDeep) {
+  const parts = []
+  if (location.notes) parts.push(location.notes)
+  if (isDeep) {
+    parts.push(`Range Hood + AC + Grating + Grease Trap | ¥${(location.deepClean || 5000).toLocaleString()}`)
+  }
+  return parts.length ? parts.join('\n') : null
+}
+
 function basicJob({ id, date, time, employee, empId, client, location, seq, type = 'basic' }) {
   const isDeep = /deep/i.test(location.serviceType || '')
   const title = `${location.name} — ${isDeep ? 'Deep Clean' : 'Basic Cleaning'}`
   return {
     id, date, time, employee, employeeId: empId, client: client || 'On The Planet',
     title, address: location.address, notes: location.notes, seq, type: isDeep ? 'deep' : type,
-    description: isDeep
-      ? `Range Hood + AC + Grating + Grease Trap | ¥${(location.deepClean || 5000).toLocaleString()}`
-      : undefined,
+    description: jobInstructions(location, isDeep),
   }
 }
 
@@ -188,6 +196,13 @@ export function scheduleStats(jobs) {
   return { total: jobs.length, byEmployee, byDow, days: new Set(jobs.map(j => j.date)).size }
 }
 
+export function keyboxForJob(job) {
+  if (job?.description) return job.description
+  const name = (job?.title || '').replace(/ — .*/, '')
+  const loc = DEFAULT_LOCATIONS.find(l => name.startsWith(l.name) || l.name === name)
+  return loc?.notes || ''
+}
+
 export function jobsToRows(jobs, contracts) {
   const empById = Object.fromEntries(contracts.map(c => [c.employeeId, c]))
   const clientMap = { 'On The Planet': SCHEDULE_CLIENTS.ontheplanet, 'Atomic Bar': SCHEDULE_CLIENTS.atomicbar }
@@ -204,6 +219,6 @@ export function jobsToRows(jobs, contracts) {
     job_category: 'regular',
     sequence_order: j.seq,
     address: j.address || null,
-    description: j.description || j.notes || null,
+    description: [j.notes, j.description].filter(Boolean).join('\n') || null,
   }))
 }

@@ -1,23 +1,36 @@
-export async function geocodeAddress(address) {
-  // If it's a Google Maps URL, try to extract coords from URL
-  if (address?.includes('maps.app.goo.gl') || address?.includes('share.google') || address?.includes('maps.google')) {
-    // Try to fetch the URL and extract coords from redirect
-    try {
-      // Extract coords from maps URLs with @lat,lng format
-      const coordMatch = address.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
-      if (coordMatch) return { lat: parseFloat(coordMatch[1]), lng: parseFloat(coordMatch[2]) }
-    } catch {}
-    return null
-  }
-  // Otherwise geocode the text address
-  try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`)
-    const data = await res.json()
-    if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
-  } catch {}
+function parseCoordsFromUrl(url) {
+  if (!url) return null
+  const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) }
+  const m2 = url.match(/[?&](?:q|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/)
+  if (m2) return { lat: parseFloat(m2[1]), lng: parseFloat(m2[2]) }
   return null
 }
 
+function isMapsUrl(address) {
+  return /goo\.gl|share\.google|maps\.google|google\.com\/maps/i.test(address || '')
+}
+
+export function isNavigableAddress(address) {
+  return isMapsUrl(address) || /^https?:\/\//i.test(address || '')
+}
+
+export async function geocodeAddress(address) {
+  if (!address) return null
+
+  const local = parseCoordsFromUrl(address)
+  if (local) return local
+
+  try {
+    const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`)
+    const data = await res.json()
+    if (data.lat != null && data.lng != null) return { lat: data.lat, lng: data.lng }
+    if (data.mapsLink) return { mapsLink: true }
+    if (!res.ok) return null
+  } catch {}
+
+  return null
+}
 
 export function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000

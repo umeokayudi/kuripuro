@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { generateDailyReport, generatePayslip, generatePayslipJP } from '../lib/generatePDF'
 import { syncServiceReport } from '../lib/jobReport'
+import { keyboxForJob } from '../lib/scheduleGenerator'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
@@ -679,6 +680,7 @@ export default function EmployeePortal() {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (job.checklist_template||'').split('\n').filter(Boolean)
     const dDate = displayDate(job)
+    const instructions = keyboxForJob(job)
     return (
       <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',zIndex:200,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={onClose}>
         <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
@@ -698,9 +700,9 @@ export default function EmployeePortal() {
               </div>
             ))}
           </div>
-          {job.description&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
+          {instructions&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:5}}>📋 Instructions / Key Box</div>
-            <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{job.description}</div>
+            <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{instructions}</div>
           </div>}
           {cl.length>0&&<div style={{marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : cl.length+' itens'}</div>
@@ -1348,6 +1350,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         const isActive = activeJob?.id===job.id
         const isDone = job.status==='completed'
         const isNext = !activeJob && job.status==='assigned' && todayJobs.slice(0,idx).every(j=>j.status==='completed')
+        const instructions = keyboxForJob(job)
 
         return (
           <div key={job.id} id={isActive?'active-job-card':undefined}
@@ -1360,7 +1363,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 </div>
                 <div>
                   <div style={{fontSize:14,fontWeight:600,color:isDone?'rgba(255,255,255,0.4)':'#fff',textDecoration:isDone?'line-through':'none'}}>{job.title.replace(/ — .*/,'')}</div>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{job.scheduled_time}{job.description&&` · ${job.description}`}</div>
+                  <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</div>
                 </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -1371,8 +1374,20 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </div>
             </div>
 
+            {isNext&&!isActive&&instructions&&(
+              <div style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>
+                🔑 {instructions.split('\n')[0]}
+              </div>
+            )}
+
             {isActive&&(
               <div>
+                {instructions&&(
+                  <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
+                    <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 Key box / Instruções</div>
+                    <div style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6,whiteSpace:'pre-line'}}>{instructions}</div>
+                  </div>
+                )}
                 {job.photo_start_url&&(
                   <div style={{marginBottom:12}}>
                     <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE</div>
