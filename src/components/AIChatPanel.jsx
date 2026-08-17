@@ -170,7 +170,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
                   <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {m.toolLog.length} consulta(s)</summary>
                   {m.toolLog.map((t, j) => (
                     <div key={j} style={{ fontSize: 10, color: t.ok ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
-                      {t.ok ? '✓' : '✗'} {t.name}
+                      {t.ok ? '✓' : '✗'} {t.name}{t.error ? `: ${t.error}` : ''}
                     </div>
                   ))}
                 </details>
