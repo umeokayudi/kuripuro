@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import ContractTab from '../components/ContractTab'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -218,7 +219,7 @@ export default function EmployeeProfile() {
 
       {/* Tabs */}
       <div className="tab-pills" style={{marginBottom:16}}>
-        {[['overview','Overview'],['evaluations',`Evaluations (${evals.length})`],['jobs',`Jobs (${jobs.length})`],['salary','Salary'],['edit','Edit']].map(([k,l])=>(
+        {[['overview','Overview'],['contract','📄 Contract'],['evaluations',`Evaluations (${evals.length})`],['jobs',`Jobs (${jobs.length})`],['salary','Salary'],['edit','Edit']].map(([k,l])=>(
           <button key={k} className={`tab-pill${tab===k?' active':''}`} onClick={()=>setTab(k)}>{l}</button>
         ))}
       </div>
@@ -292,6 +293,10 @@ export default function EmployeeProfile() {
               <button className="btn btn-sm" style={{marginTop:10}} onClick={()=>setTab('jobs')}>View all →</button>
             </div>          </div>
         </div>
+      )}
+
+      {tab==='contract'&&(
+        <ContractTab employeeId={id} employeeName={emp.full_name} emp={emp} onApplied={loadAll} />
       )}
 
       {/* EVALUATIONS */}

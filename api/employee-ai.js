@@ -3,7 +3,7 @@
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
 
-const EMPLOYEE_TABLES = ['jobs', 'salary_payments', 'transport_claims', 'messages', 'badges', 'checkins']
+const EMPLOYEE_TABLES = ['jobs', 'salary_payments', 'transport_claims', 'messages', 'badges', 'checkins', 'salary_statements', 'salary_complaints', 'employee_contracts']
 
 async function sbFetch(path) {
   const resp = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {

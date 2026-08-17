@@ -10,6 +10,8 @@ const navItems = [
   { to: '/employees', label: 'Employees',  icon: Icons.users },
   { to: '/clients',   label: 'Clients',    icon: Icons.building },
   { to: '/salary',    label: 'Salary',     icon: Icons.calc },
+  { to: '/salary-periods', label: 'Payroll Close', icon: Icons.calc },
+  { to: '/salary-complaints', label: 'Salary Issues', icon: Icons.list },
   { to: '/cashflow',  label: 'Cashflow',   icon: Icons.chart },
   { to: '/reports',   label: 'Reports',    icon: Icons.file },
   { to: '/schedule', label: 'Schedule Gen', icon: Icons.list },

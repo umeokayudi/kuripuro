@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
 import toast from 'react-hot-toast'
+import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
 
 const BADGE_DEFS = [
   { key:'first_job', name:'First Job', icon:'🎯', desc:'Complete your first job' },
@@ -53,7 +54,11 @@ export default function EmployeePortal() {
   const [claimReceipt, setClaimReceipt] = useState(null)
   const [claimPhotoPreview, setClaimPhotoPreview] = useState(null)
   const [claimReceiptPreview, setClaimReceiptPreview] = useState(null)
-  const [submittingClaim, setSubmittingClaim] = useState(false)
+  const [submittingComplaint, setSubmittingComplaint] = useState(false)
+  const [statement, setStatement] = useState(null)
+  const [complaintText, setComplaintText] = useState('')
+  const [complaintCategory, setComplaintCategory] = useState('hours')
+  const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showSignature, setShowSignature] = useState(false)
   const [signatureJob, setSignatureJob] = useState(null)
   const [unreadMsgs, setUnreadMsgs] = useState(0)
@@ -188,6 +193,49 @@ export default function EmployeePortal() {
     calcSalary(all.data||[], emp.data, monthPay.data||[])
     loadMessages()
     awardBadges(all.data||[], bdg.data||[])
+    loadStatement()
+  }
+
+  const loadStatement = async () => {
+    const period = getConfirmablePeriod()
+    const { data } = await supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle()
+    setStatement(data)
+  }
+
+  const confirmStatement = async () => {
+    if (!statement) return
+    const { error } = await supabase.from('salary_statements').update({
+      employee_confirmed_at: new Date().toISOString(), status: 'confirmed',
+    }).eq('id', statement.id)
+    if (error) return toast.error(error.message)
+    toast.success('Salário confirmado! Pagamento no dia 15.')
+    loadStatement()
+  }
+
+  const submitSalaryComplaint = async () => {
+    if (!complaintText.trim()) return toast.error('Descreva o problema')
+    setSubmittingComplaint(true)
+    try {
+      const { error } = await supabase.from('salary_complaints').insert({
+        employee_id: user.id, employee_name: user.name,
+        period: statement?.period || getConfirmablePeriod(),
+        statement_id: statement?.id || null,
+        category: complaintCategory,
+        description: complaintText.trim(),
+        status: 'pending',
+      })
+      if (error) throw error
+      if (statement) {
+        await supabase.from('salary_statements').update({
+          employee_disputed_at: new Date().toISOString(), status: 'disputed',
+        }).eq('id', statement.id)
+      }
+      toast.success('Reclamação enviada! Admin vai revisar.')
+      setComplaintText('')
+      setShowComplaintForm(false)
+      loadStatement()
+    } catch (e) { toast.error(e.message) }
+    setSubmittingComplaint(false)
   }
 
   const loadMessages = async () => {
@@ -723,7 +771,7 @@ export default function EmployeePortal() {
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v8</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v9</div>
             <div style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
@@ -960,6 +1008,47 @@ export default function EmployeePortal() {
         {/* SALARY */}
         {tab==='salary'&&(
           <div>
+            {statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period) && (
+              <div style={{background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.25)',borderRadius:20,padding:18,marginBottom:14}}>
+                <div style={{fontSize:10,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 CONFIRMAR SALÁRIO — {fmtPeriod(statement.period)}</div>
+                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>¥{Number(statement.net_total||0).toLocaleString()}</div>
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:12}}>
+                  Base ¥{Number(statement.base_salary||0).toLocaleString()} · Descontos -¥{Number(statement.deductions||0).toLocaleString()}
+                  <br />Confirme até {getPeriodDates(statement.period).confirmDeadline} · Pagamento {getPeriodDates(statement.period).payDate}
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  <button onClick={confirmStatement} style={{padding:'14px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontWeight:700,cursor:'pointer'}}>✅ Confirmar</button>
+                  <button onClick={()=>setShowComplaintForm(true)} style={{padding:'14px',borderRadius:14,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#f87171',fontWeight:700,cursor:'pointer'}}>⚠️ Contestar</button>
+                </div>
+              </div>
+            )}
+            {statement?.employee_confirmed_at && (
+              <div style={{background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#4ade80'}}>
+                ✓ Salário de {fmtPeriod(statement.period)} confirmado — pagamento em {getPeriodDates(statement.period).payDate}
+              </div>
+            )}
+            {statement?.employee_disputed_at && (
+              <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#f87171'}}>
+                ⚠ Salário de {fmtPeriod(statement.period)} contestado — aguardando admin
+              </div>
+            )}
+            {showComplaintForm && (
+              <div style={{...S.card,marginBottom:14}}>
+                <span style={S.label}>Reclamação de salário</span>
+                <select value={complaintCategory} onChange={e=>setComplaintCategory(e.target.value)} style={{...S.input,marginBottom:10}}>
+                  <option value="hours">Horas incorretas</option>
+                  <option value="deductions">Desconto indevido</option>
+                  <option value="rate">Valor/ taxa errada</option>
+                  <option value="missing">Pagamento faltando</option>
+                  <option value="other">Outro</option>
+                </select>
+                <textarea value={complaintText} onChange={e=>setComplaintText(e.target.value)} placeholder="Descreva o problema com o salário..." rows={3} style={{...S.input,marginBottom:10,resize:'none'}} />
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  <button onClick={submitSalaryComplaint} disabled={submittingComplaint} style={{padding:'12px',borderRadius:12,border:'none',background:'#f87171',color:'#fff',fontWeight:700,cursor:'pointer'}}>{submittingComplaint?'Enviando...':'Enviar reclamação'}</button>
+                  <button onClick={()=>setShowComplaintForm(false)} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'rgba(255,255,255,0.5)',cursor:'pointer'}}>Cancelar</button>
+                </div>
+              </div>
+            )}
             <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
               <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>Earned This Month</div>
                 <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>

@@ -27,7 +27,8 @@ const Deductions = lazy(() => import('./pages/Deductions'))
 const Payments = lazy(() => import('./pages/Payments'))
 const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'))
 const Checkin = lazy(() => import('./pages/Checkin'))
-const AdminAI = lazy(() => import('./pages/AdminAI'))
+const SalaryPeriods = lazy(() => import('./pages/SalaryPeriods'))
+const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 
 function Clock() {
   const [now, setNow] = React.useState(new Date())
@@ -97,6 +98,8 @@ function AppContent() {
               <Route path="/transport-claims" element={<TransportClaims />} />
               <Route path="/deductions" element={<Deductions />} />
               <Route path="/employees/:id" element={<EmployeeProfile />} />
+              <Route path="/salary-periods" element={<SalaryPeriods />} />
+              <Route path="/salary-complaints" element={<SalaryComplaints />} />
               <Route path="/ai" element={<AdminAI />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
