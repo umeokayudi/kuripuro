@@ -10,6 +10,9 @@ export default function Clients() {
   const [portalClientId, setPortalClientId] = useState('')
   const [portalUsers, setPortalUsers] = useState([])
   const [portalForm, setPortalForm] = useState({ contact_name: '', email: '', password: '', location_name: '' })
+  const [portalSchemaOk, setPortalSchemaOk] = useState(true)
+  const [portalSchemaChecking, setPortalSchemaChecking] = useState(false)
+  const [setupLoading, setSetupLoading] = useState(false)
   const [contracts, setContracts] = useState([])
   const [form, setForm] = useState({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })
 
@@ -17,12 +20,64 @@ export default function Clients() {
 
   useEffect(() => { load() }, [])
   useEffect(() => { if (portalClientId) loadPortal(portalClientId) }, [portalClientId])
+  useEffect(() => { if (tab === 'portal') checkPortalSchema() }, [tab])
+
+  const checkPortalSchema = async () => {
+    setPortalSchemaChecking(true)
+    const { error } = await supabase.from('client_users').select('id').limit(1)
+    const missing = error?.message?.includes('client_users') || error?.code === 'PGRST205'
+    setPortalSchemaOk(!missing)
+    setPortalSchemaChecking(false)
+    return !missing
+  }
+
+  const setupPortalSchema = async () => {
+    setSetupLoading(true)
+    try {
+      const resp = await fetch('/api/setup-portal-schema', { method: 'POST' })
+      const data = await resp.json()
+      if (!resp.ok) {
+        if (resp.status === 503) {
+          toast.error('Configure SUPABASE_DB_URL na Vercel ou rode o SQL manualmente (botão abaixo)')
+          return false
+        }
+        throw new Error(data.error || 'Setup failed')
+      }
+      toast.success('Tabelas do portal criadas!')
+      setPortalSchemaOk(true)
+      if (portalClientId) loadPortal(portalClientId)
+      return true
+    } catch (e) {
+      toast.error(e.message)
+      return false
+    } finally {
+      setSetupLoading(false)
+    }
+  }
+
+  const copyPortalSql = async () => {
+    try {
+      const resp = await fetch('/setup-portal-all.sql')
+      const sql = await resp.text()
+      await navigator.clipboard.writeText(sql)
+      toast.success('SQL copiado! Cole no Supabase SQL Editor e clique Run.')
+    } catch {
+      window.open('https://supabase.com/dashboard/project/fxsakrshmldmkdmbevna/sql/new', '_blank')
+      toast('Abra o SQL Editor do Supabase e rode setup-portal-all.sql do repositório')
+    }
+  }
 
   const loadPortal = async (clientId) => {
-    const [{ data: users }, { data: cts }] = await Promise.all([
+    const [{ data: users, error }, { data: cts }] = await Promise.all([
       supabase.from('client_users').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
       supabase.from('service_contracts').select('location_name').eq('client_id', clientId).eq('is_active', true),
     ])
+    if (error?.message?.includes('client_users')) {
+      setPortalSchemaOk(false)
+      setPortalUsers([])
+      setContracts(cts || [])
+      return
+    }
     setPortalUsers(users || [])
     setContracts(cts || [])
   }
@@ -30,6 +85,13 @@ export default function Clients() {
   const createPortalUser = async () => {
     if (!portalClientId || !portalForm.email || !portalForm.password || !portalForm.contact_name) {
       return toast.error('Name, email and password required')
+    }
+    if (!portalSchemaOk) {
+      const ok = await setupPortalSchema()
+      if (!ok) {
+        toast.error('Rode o SQL no Supabase primeiro (botão "Copiar SQL")')
+        return
+      }
     }
     const client = clients.find(c => c.id === portalClientId)
     const { error } = await supabase.from('client_users').insert({
@@ -41,7 +103,13 @@ export default function Clients() {
       password: portalForm.password,
       is_active: true,
     })
-    if (error) return toast.error(error.message)
+    if (error) {
+      if (error.message?.includes('client_users')) {
+        setPortalSchemaOk(false)
+        return toast.error('Tabela client_users não existe. Clique em "Copiar SQL" e rode no Supabase.')
+      }
+      return toast.error(error.message)
+    }
     toast.success('Portal account created!')
     setPortalForm({ contact_name: '', email: '', password: '', location_name: '' })
     loadPortal(portalClientId)
@@ -221,6 +289,26 @@ export default function Clients() {
       {/* CLIENT PORTAL ACCOUNTS */}
       {tab==='portal'&&(
         <div>
+          {!portalSchemaOk && (
+            <div className="card" style={{ marginBottom: 14, border: '1px solid rgba(248,113,113,0.4)', background: 'rgba(248,113,113,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--red)', marginBottom: 8 }}>
+                ⚠️ Banco do portal não configurado
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.55, marginBottom: 12 }}>
+                A tabela <code>client_users</code> ainda não existe no Supabase. Rode o SQL uma vez para poder criar logins do portal.
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <button className="btn btn-primary" onClick={copyPortalSql} type="button">📋 Copiar SQL</button>
+                <a className="btn" href="https://supabase.com/dashboard/project/fxsakrshmldmkdmbevna/sql/new" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>🔗 Abrir Supabase SQL</a>
+                <button className="btn" onClick={setupPortalSchema} disabled={setupLoading || portalSchemaChecking} type="button">
+                  {setupLoading ? 'Criando...' : '⚡ Criar tabelas automaticamente'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 10 }}>
+                Automático: adicione <code>SUPABASE_DB_URL</code> nas variáveis da Vercel (connection string do Supabase → Database → URI).
+              </div>
+            </div>
+          )}
           <div className="card" style={{marginBottom:14}}>
             <div className="card-title">🔐 Client Portal Accounts</div>
             <div style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>
