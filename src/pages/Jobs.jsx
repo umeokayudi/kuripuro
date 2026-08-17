@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress, isNavigableAddress } from '../lib/geocode'
+import {
+  CLEANING_TYPES, getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle,
+} from '../lib/cleaningType'
 import toast from 'react-hot-toast'
 
 function applyGeocodeResult(result, setCoords) {
@@ -71,6 +74,13 @@ function DayScheduleView({ onClose }) {
     loadJobs()
   }
 
+  const handleCleaningTypeChange = async (job, type) => {
+    const loc = locationNameFromTitle(job.title)
+    const { error } = await supabase.from('jobs').update({ title: applyCleaningTypeToTitle(loc, type) }).eq('id', job.id)
+    if (error) return toast.error(error.message)
+    loadJobs()
+  }
+
   const empGroups = employees.map(e => ({
     emp: e,
     jobs: jobs.filter(j => j.employee_id === e.id).sort((a, b) => (a.sequence_order || 99) - (b.sequence_order || 99)),
@@ -82,13 +92,14 @@ function DayScheduleView({ onClose }) {
 
   const JobCard = ({ j, idx }) => {
     const st = statusStyle(j.status)
-    const locName = j.title.replace(/ — .*/, '')
-    const serviceType = j.title.includes(' — ') ? j.title.split(' — ').slice(1).join(' — ') : ''
+    const locName = locationNameFromTitle(j.title)
+    const ctype = getCleaningType(j)
+    const ctypeCfg = CLEANING_TYPES[ctype]
     return (
       <div style={{
         background: 'var(--surface)',
         border: `1px solid var(--border)`,
-        borderLeft: `4px solid ${st.border}`,
+        borderLeft: `4px solid ${ctype === 'deep' ? ctypeCfg.color : st.border}`,
         borderRadius: 12,
         padding: '14px 16px',
         marginBottom: 10,
@@ -104,7 +115,7 @@ function DayScheduleView({ onClose }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{locName}</div>
-            {serviceType && <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>{serviceType}</div>}
+            <div style={{ fontSize: 13, color: ctypeCfg.color, fontWeight: 600, marginTop: 2 }}>{ctypeCfg.label}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 8 }}>
                 🕐 {j.scheduled_time || '00:30'}
@@ -138,6 +149,14 @@ function DayScheduleView({ onClose }) {
             <select value={j.employee_id || ''} onChange={e => handleReassign(j.id, e.target.value)}
               style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}>
               {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+            Tipo limpeza
+            <select value={ctype} onChange={e => handleCleaningTypeChange(j, e.target.value)}
+              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: `2px solid ${ctypeCfg.color}`, background: `${ctypeCfg.color}12`, color: ctypeCfg.color, fontWeight: 600 }}>
+              <option value="basic">🧹 Simples</option>
+              <option value="deep">✨ Profunda</option>
             </select>
           </label>
           <label style={{ fontSize: 11, color: 'var(--text3)' }}>
@@ -249,7 +268,7 @@ export default function Jobs() {
     title:'', client_id:'', client_name:'', employee_id:'', employee_name:'',
     scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'',
     value:0, description:'', checklist_template:'', photo_required:false,
-    location_id:'', job_category:'regular', spot_value:0
+    location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic'
   })
 
   useEffect(() => { loadAll() }, [])
@@ -300,8 +319,11 @@ export default function Jobs() {
     const emp = employees.find(e => e.id === form.employee_id)
     const cli = clients.find(c => c.id === form.client_id)
     const isSpot = form.job_category === 'spot'
+    const jobTitle = form.title.includes(' — ')
+      ? form.title
+      : applyCleaningTypeToTitle(form.title, form.cleaning_type)
     const { error } = await supabase.from('jobs').insert({
-      title: form.title,
+      title: jobTitle,
       client_id: form.client_id || null,
       client_name: cli?.company_name || '',
       employee_id: form.employee_id,
@@ -322,13 +344,22 @@ export default function Jobs() {
     })
     if (error) return toast.error(error.message)
     toast.success(isSpot ? 'Spot job sent! Waiting for employee response.' : 'Job created!')
-    setForm({ title:'', client_id:'', client_name:'', employee_id:'', employee_name:'', scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'', value:0, description:'', checklist_template:'', photo_required:false, location_id:'', job_category:'regular', spot_value:0 })
+    setForm({ title:'', client_id:'', client_name:'', employee_id:'', employee_name:'', scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'', value:0, description:'', checklist_template:'', photo_required:false, location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic' })
     loadAll()
     setTab('list')
   }
 
   const statusColor = s => ({ assigned:'badge-blue', in_progress:'badge-amber', completed:'badge-green', cancelled:'badge-red' }[s] || 'badge-navy')
   const spotStatusColor = s => ({ pending:'badge-amber', accepted:'badge-green', declined:'badge-red' }[s] || 'badge-navy')
+
+  const handleCleaningTypeChange = async (job, type) => {
+    const loc = locationNameFromTitle(job.title)
+    const newTitle = applyCleaningTypeToTitle(loc, type)
+    const { error } = await supabase.from('jobs').update({ title: newTitle }).eq('id', job.id)
+    if (error) return toast.error(error.message)
+    toast.success(type === 'deep' ? 'Limpeza profunda' : 'Limpeza simples')
+    loadAll()
+  }
 
   const handleCancel = async (id) => {
     await supabase.from('jobs').update({ status: 'cancelled' }).eq('id', id)
@@ -357,31 +388,57 @@ export default function Jobs() {
         <div>
           {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {jobs.length === 0 && !loading && <div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No jobs yet.</div></div>}
-          {regularJobs.map(j => (
-            <div key={j.id} className="card" style={{marginBottom:10}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:8}}>
-                <div>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontWeight:600,fontSize:15}}>{j.title}</span>
-                    {j.job_category==='spot' && <span className="badge badge-amber">⚡ Spot</span>}
+          {regularJobs.map(j => {
+            const ctype = getCleaningType(j)
+            const ctypeCfg = CLEANING_TYPES[ctype]
+            const locName = locationNameFromTitle(j.title)
+            return (
+            <div key={j.id} className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${ctypeCfg.color}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{locName}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
+                    👤 {j.employee_name || '—'} · 📅 {j.scheduled_date} · 🕐 {j.scheduled_time || '—'}
                   </div>
-                  <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{j.employee_name} · {j.scheduled_date} {j.scheduled_time}</div>
-                  <div style={{fontSize:12,color:'var(--text3)'}}>{j.address}</div>
+                  {j.address && (
+                    <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {j.address.startsWith('http') ? '🗺 Maps' : j.address}
+                    </div>
+                  )}
                 </div>
-                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
                   <span className={`badge ${statusColor(j.status)}`}>{j.status}</span>
-                  {j.job_category==='spot' && j.spot_status && <span className={`badge ${spotStatusColor(j.spot_status)}`}>{j.spot_status}</span>}
-                  <span style={{fontSize:13,fontWeight:600,color:'var(--green)'}}>¥{Number(j.value||j.spot_value||0).toLocaleString()}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value || j.spot_value || 0).toLocaleString()}</span>
                 </div>
               </div>
-              {j.description && <div style={{fontSize:12,color:'var(--text2)',background:'var(--surface2)',borderRadius:6,padding:'7px 10px',marginBottom:8}}>{j.description}</div>}
-              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                {j.photo_required && <span className="badge badge-amber">📷 Photo required</span>}
+
+              {j.description && (
+                <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }}>
+                  🔑 {j.description.split('\n')[0]}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  Tipo:
+                  <select
+                    value={ctype}
+                    onChange={e => handleCleaningTypeChange(j, e.target.value)}
+                    style={{ fontSize: 13, fontWeight: 600, padding: '6px 10px', borderRadius: 8, border: `2px solid ${ctypeCfg.color}`, background: `${ctypeCfg.color}15`, color: ctypeCfg.color }}
+                  >
+                    <option value="basic">🧹 Simples</option>
+                    <option value="deep">✨ Profunda</option>
+                  </select>
+                </label>
+                {j.photo_required && <span className="badge badge-amber">📷 Foto obrigatória</span>}
                 {j.gps_lat && <span className="badge badge-navy">📍 GPS</span>}
-                {j.status==='assigned' && <button className="btn btn-sm btn-danger" onClick={()=>handleCancel(j.id)}>Cancel</button>}
+                {j.address?.startsWith('http') && (
+                  <a href={j.address} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 Maps</a>
+                )}
+                {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>Cancelar</button>}
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
 
@@ -420,6 +477,18 @@ export default function Jobs() {
             <button type="button" onClick={()=>upd('job_category','spot')} style={{flex:1,padding:'10px',borderRadius:8,border:'2px solid',borderColor:form.job_category==='spot'?'#EF9F27':'var(--border)',background:form.job_category==='spot'?'#FAEEDA':'none',color:form.job_category==='spot'?'#854F0B':'var(--text2)',fontWeight:600,cursor:'pointer',fontSize:13}}>
               ⚡ Spot Job (employee must accept)
             </button>
+          </div>
+
+          <div className="form-group">
+            <label>Tipo de limpeza</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {Object.entries(CLEANING_TYPES).map(([key, cfg]) => (
+                <button key={key} type="button" onClick={() => upd('cleaning_type', key)}
+                  style={{ flex: 1, padding: '10px', borderRadius: 8, border: '2px solid', borderColor: form.cleaning_type === key ? cfg.color : 'var(--border)', background: form.cleaning_type === key ? `${cfg.color}18` : 'transparent', color: form.cleaning_type === key ? cfg.color : 'var(--text2)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                  {key === 'basic' ? '🧹' : '✨'} {cfg.short}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="form-group">
