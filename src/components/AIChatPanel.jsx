@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
+import { loadChatHistory, saveChatHistory } from '../lib/aiChatHistory'
 
 function formatText(text) {
   if (!text) return null
@@ -26,9 +27,13 @@ const WELCOME = {
 }
 
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false }) {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: WELCOME[mode] || WELCOME.admin },
-  ])
+  const welcome = useMemo(() => (
+    [{ role: 'assistant', content: WELCOME[mode] || WELCOME.admin }]
+  ), [mode])
+
+  const [messages, setMessages] = useState(() =>
+    loadChatHistory(mode, employeeId, welcome)
+  )
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [callOpen, setCallOpen] = useState(false)
@@ -55,6 +60,10 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   }, [voiceName, voices])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+
+  useEffect(() => {
+    saveChatHistory(mode, employeeId, messages)
+  }, [messages, mode, employeeId])
 
   const speakReply = (text) => speakText(text, { voice: voiceRef.current })
 
