@@ -3,10 +3,7 @@
 // Gemini para dar uma nota de qualidade da limpeza.
 // A chave fica só no servidor (env var GEMINI_API_KEY no Vercel).
 
-async function callGemini(body) {
-  const { geminiGenerate } = await import('./_gemini.js')
-  return geminiGenerate(body)
-}
+import { geminiGenerate } from './_gemini.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,7 +28,7 @@ export default async function handler(req, res) {
 {"nota": <número de 1 a 10>, "aprovado": <true ou false>, "problemas": [<lista curta de problemas visíveis, em português, vazia se não houver>]}
 Considere aprovado (true) apenas se nota >= 7. Seja objetivo: sujeira visível, lixo, bagunça, manchas, poeira acumulada, chão sujo são motivos para reprovar.`
 
-    const data = await callGemini({
+    const data = await geminiGenerate({
       contents: [{
         parts: [
           { inlineData: { mimeType: mediaType, data: base64 } },

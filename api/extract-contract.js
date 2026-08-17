@@ -1,5 +1,7 @@
 // Extrai dados de contrato de trabalho (PDF) via Gemini
 
+import { geminiGenerate } from './_gemini.js'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -31,7 +33,6 @@ Extraia os dados e retorne APENAS JSON válido (sem markdown) com esta estrutura
 Use null para campos não encontrados. Valores monetários só números.`
 
   try {
-    const { geminiGenerate } = await import('./_gemini.js')
     const data = await geminiGenerate({
       contents: [{
         role: 'user',

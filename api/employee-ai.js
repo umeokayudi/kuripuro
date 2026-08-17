@@ -1,5 +1,7 @@
 // Assistente de IA para funcionários — somente leitura dos próprios dados
 
+import { geminiGenerate } from './_gemini.js'
+
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
 
@@ -70,7 +72,6 @@ Regras:
 - Seja conciso — respostas curtas funcionam melhor em voz.`
 
   try {
-    const { geminiGenerate } = await import('./_gemini.js')
     const contents = messages.map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],

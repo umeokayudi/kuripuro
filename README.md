@@ -37,9 +37,16 @@ git push -u origin main
 
 Or with the standard pipeline (add env vars in Vercel dashboard):
 ```bash
-npm run build && git add . && git commit -m "deploy" && git push
-npx vercel --prod --yes
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
 ```
+
+**Importante:** `dist/` não vai mais pro Git (evita conflito no `git pull`). O Vercel gera o build na hora.
+
+Depois do deploy, teste: https://kuripuro.vercel.app/api/admin-ai  
+Deve retornar `{"ok":true,"build":"2026-08-17-v4",...}`
+
+Variável obrigatória no Vercel: `GEMINI_API_KEY` (https://aistudio.google.com/apikey)
 
 ## Features
 - **Dashboard** — revenue, profit, today's check-ins, complaints, profitability chart

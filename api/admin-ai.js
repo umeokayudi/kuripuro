@@ -4,6 +4,8 @@
 // salary_payments, complaints, evaluations, transport_claims) a partir de
 // comandos em linguagem natural.
 
+import { geminiGenerate, API_BUILD } from './_gemini.js'
+
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
 
@@ -135,6 +137,15 @@ Regras importantes:
 - Seja direto e conciso nas respostas.`
 
 export default async function handler(req, res) {
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      ok: true,
+      api: 'admin-ai',
+      build: API_BUILD,
+      geminiKey: !!process.env.GEMINI_API_KEY,
+    })
+  }
+
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' })
     return
@@ -156,7 +167,6 @@ export default async function handler(req, res) {
     let finalText = ''
 
     for (let iteration = 0; iteration < 6; iteration++) {
-      const { geminiGenerate } = await import('./_gemini.js')
       const data = await geminiGenerate({
         contents,
         tools: TOOLS,

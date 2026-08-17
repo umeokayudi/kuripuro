@@ -3,10 +3,7 @@
 // o Gemini pra decidir quais itens foram feitos, quanto tempo, e quanto ele
 // deve ganhar (desconto proporcional ao que não foi feito).
 
-async function callGemini(body) {
-  const { geminiGenerate } = await import('./_gemini.js')
-  return geminiGenerate(body)
-}
+import { geminiGenerate } from './_gemini.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
@@ -32,7 +29,7 @@ Responda APENAS com um JSON válido, sem texto fora dele, no formato exato:
 {"itens_feitos": <número>, "itens_total": ${checklistItems.length}, "nao_feitos": [<lista dos itens não feitos, em português>], "tempo_estimado_min": <minutos que o trabalhador diz ter levado, ou null se não mencionou>, "valor_final": <valor em ienes, = valor cheio menos desconto proporcional aos itens não feitos>, "resumo": "<1 frase explicando a avaliação>"}`
 
   try {
-    const data = await callGemini({
+    const data = await geminiGenerate({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: 'application/json' },
     })

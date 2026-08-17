@@ -69,10 +69,12 @@ export async function geminiGenerate(body) {
     if (ok) {
       try { return JSON.parse(text) } catch { throw new Error(`Gemini resposta inválida: ${text.slice(0, 200)}`) }
     }
-    lastErr = text
+    lastErr = `[${model}] ${text}`
     if (!retryable) break
   }
 
   cachedModels = null
   throw new Error(`Gemini API error: ${lastErr}`)
 }
+
+export const API_BUILD = '2026-08-17-v4'
