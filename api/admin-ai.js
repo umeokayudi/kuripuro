@@ -4,7 +4,7 @@
 // salary_payments, complaints, evaluations, transport_claims) a partir de
 // comandos em linguagem natural.
 
-import { geminiGenerate, API_BUILD } from './_gemini.js'
+import { API_BUILD } from './_gemini.js'
 import { runGeminiToolLoop } from './_tool-loop.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'

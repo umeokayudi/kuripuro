@@ -1,6 +1,5 @@
 // Assistente de IA para funcionários — somente leitura dos próprios dados
 
-import { geminiGenerate } from './_gemini.js'
 import { runGeminiToolLoop } from './_tool-loop.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
