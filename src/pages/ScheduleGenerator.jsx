@@ -1,12 +1,18 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { useLang, fill } from '../hooks/useLang'
 import {
   DEFAULT_LOCATIONS, buildMonthSchedule, scheduleStats, jobsToRows,
-  contractsForActiveEmployees, locationsFromContracts, DOW_PT,
+  contractsForActiveEmployees, locationsFromContracts, DOW_PT, DOW_JA,
 } from '../lib/scheduleGenerator'
 
 export default function ScheduleGenerator() {
+  const { lang, t } = useLang()
+  const s = t.schedule
+  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dowLabels = lang === 'ja' ? DOW_JA : DOW_PT
+
   const [month, setMonth] = useState(() => {
     const d = new Date()
     d.setMonth(d.getMonth() + 1)
@@ -48,12 +54,12 @@ export default function ScheduleGenerator() {
 
   const runPreview = () => {
     if (!contracts.length) {
-      toast.error('Nenhum funcionário ativo com contrato de escala configurado')
+      toast.error(s.noActiveContracts)
       return
     }
     const jobs = buildMonthSchedule(month, { contracts, locations, includeOptionalExtras: includeYuraku })
     setPreview(jobs)
-    toast.success(`${jobs.length} jobs · ${contracts.length} funcionário(s)`)
+    toast.success(fill(s.previewToast, { count: jobs.length, employees: contracts.length }))
   }
 
   const stats = useMemo(() => scheduleStats(preview), [preview])
@@ -65,15 +71,15 @@ export default function ScheduleGenerator() {
   }, [preview])
 
   const handleGenerate = async () => {
-    if (!contracts.length) { toast.error('Sem funcionários ativos com contrato'); return }
+    if (!contracts.length) { toast.error(s.noContractsToast); return }
     const jobs = preview.length ? preview : buildMonthSchedule(month, { contracts, locations, includeOptionalExtras: includeYuraku })
-    if (!jobs.length) { toast.error('Gere o preview primeiro'); return }
+    if (!jobs.length) { toast.error(s.previewFirst); return }
 
     const summary = Object.entries(scheduleStats(jobs).byEmployee).map(([n, c]) => `${n}: ${c}`).join(', ')
     if (existingCount > 0) {
-      if (!confirm(`Já existem ${existingCount} jobs em ${month}.\n\nApagar e recriar ${jobs.length}?\n\n${summary}`)) return
+      if (!confirm(fill(s.confirmReplace, { existing: existingCount, month, count: jobs.length, summary }))) return
       await supabase.from('jobs').delete().gte('scheduled_date', `${month}-01`).lte('scheduled_date', `${month}-31`)
-    } else if (!confirm(`Criar ${jobs.length} jobs?\n\n${summary}`)) return
+    } else if (!confirm(fill(s.confirmCreate, { count: jobs.length, summary }))) return
 
     setLoading(true)
     const rows = jobsToRows(jobs, contracts)
@@ -81,7 +87,7 @@ export default function ScheduleGenerator() {
       const { error } = await supabase.from('jobs').insert(rows.slice(i, i + 50))
       if (error) { toast.error(error.message); setLoading(false); return }
     }
-    toast.success(`✅ ${rows.length} jobs criados!`)
+    toast.success(fill(s.jobsCreated, { count: rows.length }))
     setLoading(false)
     loadExisting()
   }
@@ -89,13 +95,13 @@ export default function ScheduleGenerator() {
   return (
     <div>
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-title">📋 Contratos ativos na escala</div>
+        <div className="card-title">📋 {s.contractsTitle}</div>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
-          Só aparecem funcionários <b>ativos</b> no sistema com contrato configurado. Inativos somem automaticamente.
+          {s.contractsHint}
         </div>
         {contracts.length === 0 ? (
           <div style={{ padding: 16, background: 'var(--surface2)', borderRadius: 10, fontSize: 13, color: 'var(--text3)' }}>
-            Nenhum funcionário ativo com contrato de escala. Ative o funcionário em Employees ou peça para atualizar os contratos.
+            {s.noContracts}
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
@@ -106,48 +112,48 @@ export default function ScheduleGenerator() {
                   <div style={{ fontSize: 12, color: c.color, fontWeight: 600 }}>{c.label}</div>
                   <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{c.detail}</div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'center' }}>✓ sempre incluído</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'center' }}>{s.alwaysIncluded}</div>
               </div>
             ))}
           </div>
         )}
         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 10 }}>
-          {locations.length} locais · dados de Contracts ou lista padrão
+          {fill(s.locationsCount, { count: locations.length })}
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-title">🗓 Gerador de Escala</div>
+        <div className="card-title">🗓 {s.generator}</div>
 
         <div className="grid-2" style={{ marginBottom: 14 }}>
           <div className="form-group">
-            <label>Mês</label>
+            <label>{s.month}</label>
             <input type="month" value={month} onChange={e => { setMonth(e.target.value); setPreview([]) }} />
           </div>
           <div className="form-group">
-            <label>Jobs já no sistema</label>
+            <label>{s.existingJobs}</label>
             <div style={{ padding: '10px 12px', background: existingCount ? 'rgba(251,191,36,0.1)' : 'var(--surface2)', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
-              {existingCount > 0 ? `⚠️ ${existingCount} jobs em ${month}` : '✓ Nenhum job neste mês'}
+              {existingCount > 0 ? fill(s.jobsInMonth, { count: existingCount, month }) : s.noJobsMonth}
             </div>
           </div>
         </div>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 14, cursor: 'pointer' }}>
           <input type="checkbox" checked={includeYuraku} onChange={e => setIncludeYuraku(e.target.checked)} />
-          Incluir Kodama Yurakucho no deep clean de terça (Solomon)
+          {s.includeYuraku}
         </label>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button className="btn" onClick={runPreview} disabled={!contracts.length}>👁 Ver preview</button>
+          <button className="btn" onClick={runPreview} disabled={!contracts.length}>👁 {s.preview}</button>
           <button className="btn btn-primary" onClick={handleGenerate} disabled={loading || !contracts.length}>
-            {loading ? 'Criando...' : `✅ Gerar ${preview.length || '…'} jobs`}
+            {loading ? s.creating : `✅ ${fill(s.generate, { count: preview.length || '…' })}`}
           </button>
         </div>
       </div>
 
       {preview.length > 0 && (
         <div className="card">
-          <div className="card-title">Preview — {stats.total} jobs em {stats.days} dias</div>
+          <div className="card-title">{fill(s.previewTitle, { total: stats.total, days: stats.days })}</div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
             {contracts.map(c => (
@@ -159,7 +165,7 @@ export default function ScheduleGenerator() {
           </div>
 
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {DOW_PT.map((label, i) => (
+            {dowLabels.map((label, i) => (
               <div key={label} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, background: 'var(--surface2)' }}>
                 {label}: <b>{stats.byDow[i]}</b>
               </div>
@@ -176,9 +182,9 @@ export default function ScheduleGenerator() {
                   <button type="button" onClick={() => setExpandedDay(isOpen ? null : date)}
                     style={{ width: '100%', display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface2)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>
-                      {DOW_PT[dow]} {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                      {dowLabels[dow]} {new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
                     </span>
-                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>{dayJobs.length} jobs {isOpen ? '▲' : '▼'}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>{dayJobs.length} {s.jobsLabel} {isOpen ? '▲' : '▼'}</span>
                   </button>
                   {isOpen ? (
                     <div style={{ padding: '8px 14px 12px' }}>
@@ -188,7 +194,7 @@ export default function ScheduleGenerator() {
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: empColors[j.employee] || '#999' }} />
                           <span style={{ fontWeight: 600, width: 70, color: empColors[j.employee] }}>{j.employee}</span>
                           <span style={{ flex: 1 }}>{j.title.split(' —')[0]}</span>
-                          {j.type === 'deep' && <span className="badge badge-amber" style={{ fontSize: 10 }}>Deep</span>}
+                          {j.type === 'deep' && <span className="badge badge-amber" style={{ fontSize: 10 }}>{t.jobs.deep}</span>}
                         </div>
                       ))}
                     </div>

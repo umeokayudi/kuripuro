@@ -1,18 +1,24 @@
 import { createContext, useContext, useState } from 'react'
-import { translations } from '../i18n/translations'
+import { translations, fill } from '../i18n/translations'
 
 const LangContext = createContext()
 
+function readStoredLang() {
+  const stored = localStorage.getItem('kp_lang') || localStorage.getItem('emp_lang')
+  if (stored === 'jp') return 'ja'
+  return (stored === 'en' || stored === 'ja') ? stored : 'en'
+}
+
 export function LangProvider({ children }) {
-  const stored = localStorage.getItem('kp_lang')
-  const validLang = (stored === 'en' || stored === 'ja') ? stored : 'en'
-  const [lang, setLang] = useState(validLang)
+  const [lang, setLang] = useState(readStoredLang)
 
   const t = translations[lang]
 
   const switchLang = (l) => {
-    setLang(l)
-    localStorage.setItem('kp_lang', l)
+    const next = l === 'jp' ? 'ja' : l
+    setLang(next)
+    localStorage.setItem('kp_lang', next)
+    localStorage.setItem('emp_lang', next)
   }
 
   return (
@@ -23,3 +29,4 @@ export function LangProvider({ children }) {
 }
 
 export const useLang = () => useContext(LangContext)
+export { fill }

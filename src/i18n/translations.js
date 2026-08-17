@@ -1,3 +1,5 @@
+import { kuripuroEn, kuripuroJa } from './kuripuro'
+
 export const translations = {
   en: {
     appName: 'KuriPuro by JBM',
@@ -182,6 +184,7 @@ export const translations = {
       yen: '¥',
       hours: 'h',
     },
+    ...kuripuroEn,
   },
 
   ja: {
@@ -367,5 +370,8 @@ export const translations = {
       yen: '¥',
       hours: '時間',
     },
+    ...kuripuroJa,
   },
 }
+
+export { fill } from './kuripuro'

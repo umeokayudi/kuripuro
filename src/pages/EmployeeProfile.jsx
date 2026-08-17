@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
+import toast from 'react-hot-toast'
 import ContractTab from '../components/ContractTab'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -408,7 +409,7 @@ export default function EmployeeProfile() {
               )}
               {j.photo_end_url&&(
                 <div style={{display:'flex',gap:10,alignItems:'center',marginTop:2}}>
-                  <a href={j.photo_end_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:'var(--blue)'}}>Ver foto</a>
+                  <a href={viewablePhotoUrl(j.photo_end_url)} target="_blank" rel="noreferrer" style={{fontSize:11,color:'var(--blue)'}}>Ver foto</a>
                   <button
                     onClick={()=>analyzePhoto(j)}
                     disabled={analyzingId===j.id}

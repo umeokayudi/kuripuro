@@ -17,30 +17,68 @@ function durationMin(job) {
 function compactJob(j) {
   const dur = durationMin(j)
   return {
-    funcionario: j.employee_name,
-    local: j.title,
-    data: j.scheduled_date,
-    tipo: j.retro_report ? 'retroativo' : 'ao_vivo',
-    duracao_min: dur,
+    employee: j.employee_name,
+    location: j.title,
+    date: j.scheduled_date,
+    type: j.retro_report ? 'retroactive' : 'live',
+    duration_min: dur,
     checklist: j.checklist_total ? `${j.checklist_done || 0}/${j.checklist_total}` : null,
-    itens_nao_feitos: j.checklist_missed_items || null,
-    nota_ia_foto: j.photo_ai_score,
-    foto_aprovada: j.photo_ai_approved,
-    problemas_foto: j.photo_ai_issues,
-    relatorio: (j.retro_report || j.notes_employee || '').slice(0, 400),
-    resumo_ia_retro: j.retro_ai_summary,
-    valor: j.retro_value ?? j.value,
+    missed_items: j.checklist_missed_items || null,
+    photo_ai_score: j.photo_ai_score,
+    photo_approved: j.photo_ai_approved,
+    photo_issues: j.photo_ai_issues,
+    report: (j.retro_report || j.notes_employee || '').slice(0, 400),
+    ai_summary: j.retro_ai_summary,
+    value: j.retro_value ?? j.value,
   }
+}
+
+const PROMPTS = {
+  en: (rows, days) => `You are an operations consultant for KuriPuro (restaurant/bar cleaning in Japan).
+Analyze the service reports below (${rows.length} jobs in the last ${days} days) and produce a report in English with:
+
+1. **Overall summary** — volume, trends
+2. **Time per employee** — average, fastest, slowest, outliers
+3. **Quality** — checklist, AI photo scores, recurring issues
+4. **Patterns** — locations that take longer, days/times, service types
+5. **Suggested goals** — 3-5 SMART goals for the team (time, quality, checklist)
+6. **Alerts** — employees or locations needing attention
+
+Be specific with numbers. Use bullet points. Do not invent data beyond the JSON.
+
+DATA:
+${JSON.stringify(rows, null, 0)}`,
+
+  ja: (rows, days) => `あなたはKuriPuro（日本のレストラン・バー清掃会社）のオペレーションコンサルタントです。
+以下のサービスレポート（過去${days}日間、${rows.length}件）を分析し、日本語でレポートを作成してください：
+
+1. **全体概要** — 件数、傾向
+2. **従業員別作業時間** — 平均、最速、最遅、外れ値
+3. **品質** — チェックリスト、AI写真スコア、繰り返しの問題
+4. **パターン** — 時間がかかる店舗、曜日・時間帯、サービス種別
+5. **推奨目標** — チーム向けSMART目標を3〜5個（時間、品質、チェックリスト）
+6. **アラート** — 注意が必要な従業員や店舗
+
+具体的な数値を使ってください。箇条書きで。JSONにないデータは作らないでください。
+
+データ:
+${JSON.stringify(rows, null, 0)}`,
+}
+
+const EMPTY = {
+  en: 'No completed service reports in this period.',
+  ja: 'この期間に完了したサービスレポートはありません。',
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { days = 30, employeeName } = req.body || {}
+  const { days = 30, employeeName, lang = 'en' } = req.body || {}
+  const locale = lang === 'ja' ? 'ja' : 'en'
   const since = new Date(Date.now() - Number(days) * 86400000).toISOString().split('T')[0]
 
   try {
-    let url = `${SUPABASE_URL}/rest/v1/jobs?select=*&status=eq.completed&scheduled_date=gte.${since}&order=completed_at.desc&limit=200`
+    const url = `${SUPABASE_URL}/rest/v1/jobs?select=*&status=eq.completed&scheduled_date=gte.${since}&order=completed_at.desc&limit=200`
 
     const resp = await fetch(url, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
@@ -54,32 +92,20 @@ export default async function handler(req, res) {
       jobs = Array.isArray(jobs) ? jobs : []
     }
 
-    const rows = (Array.isArray(jobs) ? jobs : []).map(compactJob)
+    const rows = jobs.map(compactJob)
     if (!rows.length) {
-      return res.status(200).json({ analysis: 'Nenhum relatório de serviço concluído no período.', count: 0 })
+      return res.status(200).json({ analysis: EMPTY[locale], count: 0 })
     }
 
-    const prompt = `Você é consultor de operações do KuriPuro (limpeza de restaurantes/bares no Japão).
-Analise os relatórios de serviço abaixo (${rows.length} jobs nos últimos ${days} dias) e produza um relatório em português com:
-
-1. **Resumo geral** — volume, tendências
-2. **Tempo por funcionário** — média, mais rápido, mais lento, outliers
-3. **Qualidade** — checklist, notas da IA nas fotos, problemas recorrentes
-4. **Padrões** — locais que demoram mais, dias/horários, tipos de serviço
-5. **Metas sugeridas** — 3-5 metas SMART para a equipe (tempo, qualidade, checklist)
-6. **Alertas** — funcionários ou locais que precisam atenção
-
-Seja específico com números. Use bullet points. Não invente dados além do JSON.
-
-DADOS:
-${JSON.stringify(rows, null, 0)}`
+    const prompt = PROMPTS[locale](rows, days)
 
     const data = await geminiGenerate({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 2500 },
     })
 
-    const analysis = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '(sem análise)'
+    const fallback = locale === 'ja' ? '（分析なし）' : '(no analysis)'
+    const analysis = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || fallback
     res.status(200).json({ analysis, count: rows.length, periodDays: days })
   } catch (err) {
     res.status(500).json({ error: err.message })

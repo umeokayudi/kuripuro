@@ -5,6 +5,7 @@ import { keyboxForJob } from '../lib/scheduleGenerator'
 import { prepareImageForUpload } from '../lib/imageUpload'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
+import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
 import toast from 'react-hot-toast'
@@ -23,6 +24,8 @@ const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/To
 
 export default function EmployeePortal() {
   const { user, logout } = useAuth()
+  const { lang, switchLang, t: tr } = useLang()
+  const e = tr.employee
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
   const [jobs, setJobs] = useState([])
@@ -67,9 +70,6 @@ export default function EmployeePortal() {
   const [signatureJob, setSignatureJob] = useState(null)
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
-  const [lang, setLang] = useState(localStorage.getItem('emp_lang')||'en')
-  const t = (en, jp) => lang==='jp' ? jp : en
-  const setLanguage = (l) => { setLang(l); localStorage.setItem('emp_lang', l) }
 
   useEffect(() => {
     const on = () => setIsOnline(true)
@@ -648,22 +648,22 @@ export default function EmployeePortal() {
 
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
   const menuItems = [
-    {key:'home',icon:'🏠',label:t('Dashboard','ダッシュボード')},
-    {key:'shift',icon:'🗺',label:t("Today's Shift",'本日のシフト')},
-    {key:'spots',icon:'⚡',label:t('Spot Jobs','スポット'),badge:spotJobs.length},
-    {key:'history',icon:'📅',label:t('All Jobs','全作業')},
-    {key:'salary',icon:'💴',label:t('Salary','給与')},
-    {key:'transport',icon:'🚃',label:t('Transport','交通費')},
-    {key:'chat',icon:'💬',label:t('Chat','チャット'),badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
-    {key:'calendar',icon:'📆',label:t('Calendar','カレンダー')},
-    {key:'achievements',icon:'🏆',label:t('Achievements','実績')},
+    {key:'home',icon:'🏠',label:e.dashboard},
+    {key:'shift',icon:'🗺',label:e.todayShift},
+    {key:'spots',icon:'⚡',label:e.spotJobs,badge:spotJobs.length},
+    {key:'history',icon:'📅',label:e.allJobs},
+    {key:'salary',icon:'💴',label:e.salary},
+    {key:'transport',icon:'🚃',label:e.transport},
+    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
+    {key:'calendar',icon:'📆',label:e.calendar},
+    {key:'achievements',icon:'🏆',label:e.achievements},
   ]
 
   const bottomTabs = [
-    {key:'home',label:t('Home','ホーム'),icon:'○'},
-    {key:'shift',label:t('Shift','シフト'),icon:'▶'},
-    {key:'salary',label:t('Salary','給与'),icon:'¥'},
-    {key:'chat',label:t('Chat','チャット'),icon:'✉',badge:unreadMsgs},
+    {key:'home',label:e.home,icon:'○'},
+    {key:'shift',label:e.shift,icon:'▶'},
+    {key:'salary',label:e.salary,icon:'¥'},
+    {key:'chat',label:e.chat,icon:'✉',badge:unreadMsgs},
   ]
 
   const JobPhoto = ({ url, label }) => {
@@ -794,8 +794,8 @@ export default function EmployeePortal() {
               <div style={{fontSize:20,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
               <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>Score</div>
             </div>
-            <button onClick={()=>setLanguage(lang==='en'?'jp':'en')} style={{height:40,padding:'0 10px',borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',color:'rgba(255,255,255,0.6)',fontSize:12,fontWeight:600}}>
-              {lang==='en'?'JP':'EN'}
+            <button onClick={()=>switchLang(lang==='en'?'ja':'en')} style={{height:40,padding:'0 10px',borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',color:'rgba(255,255,255,0.6)',fontSize:12,fontWeight:600}}>
+              {lang==='en'?'日本語':'EN'}
             </button>
             <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
               🔔
@@ -1110,7 +1110,7 @@ export default function EmployeePortal() {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
                 const month = new Date().toISOString().slice(0,7)
-                if (lang==='jp') {
+                if (lang==='ja') {
                   const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
                   doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('給与明細ダウンロード完了!')
@@ -1120,14 +1120,14 @@ export default function EmployeePortal() {
                   toast.success('Payslip downloaded!')
                 }
               }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:13,fontWeight:600,cursor:'pointer',gridColumn:'1/-1'}}>
-                📄 {lang==='jp'?'給与明細をダウンロード':'Download Payslip'}
+                📄 {e.downloadPayslip}
               </button>
             </div>
             <div style={{marginBottom:14}}>
               <button onClick={async()=>{
                 const today2 = tokyoToday()
                 const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
-                if (!todayJobsForPDF.length) return toast.error(t('No jobs today','本日の作業なし'))
+                if (!todayJobsForPDF.length) return toast.error(e.noJobsToday)
                 const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
                 doc.save(`report_${today2}.pdf`)
                 toast.success('Report downloaded!')

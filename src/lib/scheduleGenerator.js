@@ -26,6 +26,8 @@ const MON_MORNING_EXTRA = ['Nyu Sakana Yakio', 'Kodama Shinbashi', 'Kodama Kinsh
 const DAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
 const PALETTE = ['#60a5fa', '#4ade80', '#fbbf24', '#c084fc', '#f472b6', '#38bdf8']
 export const DOW_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+export const DOW_JA = ['日', '月', '火', '水', '木', '金', '土']
+export const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /**
  * Contrato de escala por funcionário (employee_id do Supabase).

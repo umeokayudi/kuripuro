@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
-import { LangProvider } from './hooks/useLang'
+import { LangProvider, useLang } from './hooks/useLang'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import Sidebar from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
@@ -48,12 +48,14 @@ function Clock() {
 
 function AppContent() {
   const { user, loading, logout } = useAuth()
+  const { t } = useLang()
+  const a = t.app
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ textAlign:'center' }}>
         <div style={{ fontSize:24, fontWeight:700, color:'#c19c56' }}>KuriPuro</div>
-        <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)', marginTop:8 }}>Loading...</div>
+        <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)', marginTop:8 }}>{a.loading}</div>
       </div>
     </div>
   )
@@ -67,18 +69,18 @@ function AppContent() {
       <AIFloatingWidget mode="admin" />
       <div className="main">
         <header className="topbar">
-          <span className="topbar-title">KuriPuro Admin</span>
+          <span className="topbar-title">{a.admin}</span>
           <div className="topbar-right">
             <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
             <span style={{ color:'var(--text3)' }}>·</span>
             <Clock />
             <button onClick={logout} style={{ marginLeft:8, padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)', background:'#f4f6f9', color:'#1a2636', fontSize:13, fontWeight:600, cursor:'pointer' }}>
-              Logout
+              {t.sidebar.logout}
             </button>
           </div>
         </header>
         <main className="page-content">
-          <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>Loading...</div>}>
+          <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/jobs" element={<Jobs />} />

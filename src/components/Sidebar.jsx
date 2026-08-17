@@ -4,29 +4,30 @@ import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
 
 const navItems = [
-  { to: '/ai',        label: 'AI Assistant', icon: Icons.sparkle },
-  { to: '/',          label: 'Dashboard',  icon: Icons.dashboard },
-  { to: '/jobs',      label: 'Jobs',       icon: Icons.list },
-  { to: '/employees', label: 'Employees',  icon: Icons.users },
-  { to: '/clients',   label: 'Clients',    icon: Icons.building },
-  { to: '/salary',    label: 'Salary',     icon: Icons.calc },
-  { to: '/salary-periods', label: 'Payroll Close', icon: Icons.calc },
-  { to: '/salary-complaints', label: 'Salary Issues', icon: Icons.list },
-  { to: '/cashflow',  label: 'Cashflow',   icon: Icons.chart },
-  { to: '/reports',   label: 'Relatórios', icon: Icons.file },
-  { to: '/schedule', label: 'Gerador Escala', icon: Icons.list },
-  { to: '/contracts', label: 'Contracts', icon: Icons.file },
-  { to: '/faturas', label: 'Faturas', icon: Icons.file },
-  { to: '/ryoshu',    label: '領収書',      icon: Icons.receipt },
-  { to: '/adminchat', label: 'Chat',        icon: Icons.users },
-  { to: '/live',      label: 'Live Track',  icon: Icons.users },
-  { to: '/transport-claims', label: 'Transport', icon: Icons.list },
-  { to: '/deductions', label: 'Deductions', icon: Icons.calc },
+  { to: '/ai',        key: 'ai', icon: Icons.sparkle },
+  { to: '/',          key: 'dashboard', icon: Icons.dashboard },
+  { to: '/jobs',      key: 'jobs', icon: Icons.list },
+  { to: '/employees', key: 'employees', icon: Icons.users },
+  { to: '/clients',   key: 'clients', icon: Icons.building },
+  { to: '/salary',    key: 'salary', icon: Icons.calc },
+  { to: '/salary-periods', key: 'payrollClose', icon: Icons.calc },
+  { to: '/salary-complaints', key: 'salaryIssues', icon: Icons.list },
+  { to: '/cashflow',  key: 'cashflow', icon: Icons.chart },
+  { to: '/reports',   key: 'reports', icon: Icons.file },
+  { to: '/schedule', key: 'schedule', icon: Icons.list },
+  { to: '/contracts', key: 'contracts', icon: Icons.file },
+  { to: '/faturas', key: 'faturas', icon: Icons.file },
+  { to: '/ryoshu',    key: 'ryoshu', icon: Icons.receipt },
+  { to: '/adminchat', key: 'chat', icon: Icons.users },
+  { to: '/live',      key: 'liveTrack', icon: Icons.users },
+  { to: '/transport-claims', key: 'transport', icon: Icons.list },
+  { to: '/deductions', key: 'deductions', icon: Icons.calc },
 ]
 
 export default function Sidebar() {
-  const { lang, switchLang } = useLang()
-  const { logout, user } = useAuth()
+  const { lang, switchLang, t } = useLang()
+  const { logout } = useAuth()
+  const s = t.sidebar
 
   return (
     <aside className="sidebar">
@@ -35,9 +36,9 @@ export default function Sidebar() {
         <div className="sub">by JBM · Admin</div>
       </div>
       <nav className="sidebar-nav">
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {navItems.map(({ to, key, icon: Icon }) => (
           <NavLink key={to} to={to} end={to==='/'} className={({ isActive }) => `nav-item${isActive?' active':''}`}>
-            <Icon />{label}
+            <Icon />{s[key]}
           </NavLink>
         ))}
       </nav>
@@ -47,7 +48,7 @@ export default function Sidebar() {
           <button className={`lang-btn${lang==='ja'?' active':''}`} onClick={()=>switchLang('ja')}>日本語</button>
         </div>
         <button onClick={logout} style={{ background:'rgba(255,255,255,0.06)', border:'none', color:'rgba(255,255,255,0.5)', padding:'7px 14px', borderRadius:8, cursor:'pointer', fontSize:12, width:'100%' }}>
-          Logout
+          {s.logout}
         </button>
       </div>
     </aside>

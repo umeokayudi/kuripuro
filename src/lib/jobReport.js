@@ -17,23 +17,25 @@ export function jobReportType(job) {
   return 'ao vivo'
 }
 
-export function fmtDuration(min) {
+export function fmtDuration(min, lang = 'en') {
   if (min == null) return '—'
-  if (min < 60) return `${min} min`
+  if (min < 60) return lang === 'ja' ? `${min}分` : `${min} min`
   const h = Math.floor(min / 60)
   const m = min % 60
+  if (lang === 'ja') return m ? `${h}時間${m}分` : `${h}時間`
   return m ? `${h}h ${m}min` : `${h}h`
 }
 
-export function fmtTime(iso) {
+export function fmtTime(iso, lang = 'en') {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
+    const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+    return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
   } catch { return '—' }
 }
 
 /** Monta registro para service_reports a partir de um job concluído */
-export function jobToServiceReport(job) {
+export function jobToServiceReport(job, lang = 'en') {
   const duration = jobDurationMin(job)
   return {
     job_id: job.id,
@@ -42,8 +44,8 @@ export function jobToServiceReport(job) {
     client_name: (job.title || '').replace(/ — .*/, ''),
     job_title: job.title,
     report_date: job.scheduled_date,
-    time_in: job.started_at ? fmtTime(job.started_at) : (job.scheduled_time || '—'),
-    time_out: job.completed_at ? fmtTime(job.completed_at) : '—',
+    time_in: job.started_at ? fmtTime(job.started_at, lang) : (job.scheduled_time || '—'),
+    time_out: job.completed_at ? fmtTime(job.completed_at, lang) : '—',
     duration_min: duration,
     report_type: jobReportType(job),
     notes_out: jobReportText(job),

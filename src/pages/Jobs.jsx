@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress, isNavigableAddress } from '../lib/geocode'
 import {
-  CLEANING_TYPES, getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle,
+  getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
 } from '../lib/cleaningType'
+import { useLang, fill } from '../hooks/useLang'
 import toast from 'react-hot-toast'
 
-function applyGeocodeResult(result, setCoords) {
+function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
     setCoords(result)
     toast.success(`GPS: ${result.lat.toFixed(4)}, ${result.lng.toFixed(4)}`)
@@ -14,23 +15,29 @@ function applyGeocodeResult(result, setCoords) {
   }
   if (result?.mapsLink) {
     setCoords(null)
-    toast.success('Link do Google Maps válido — abre no app do Maps')
+    toast.success(mapsMsg)
     return true
   }
   return false
 }
 
-function statusStyle(status) {
-  const map = {
-    assigned: { bg: 'rgba(96,165,250,0.12)', border: '#60a5fa', label: 'Pendente', text: '#93c5fd' },
-    in_progress: { bg: 'rgba(251,191,36,0.14)', border: '#fbbf24', label: 'Em andamento', text: '#fcd34d' },
-    completed: { bg: 'rgba(74,222,128,0.12)', border: '#4ade80', label: 'Concluído', text: '#86efac' },
-    cancelled: { bg: 'rgba(248,113,113,0.1)', border: '#f87171', label: 'Cancelado', text: '#fca5a5' },
+function statusStyle(status, labels) {
+  const colors = {
+    assigned: { bg: 'rgba(96,165,250,0.12)', border: '#60a5fa', text: '#93c5fd' },
+    in_progress: { bg: 'rgba(251,191,36,0.14)', border: '#fbbf24', text: '#fcd34d' },
+    completed: { bg: 'rgba(74,222,128,0.12)', border: '#4ade80', text: '#86efac' },
+    cancelled: { bg: 'rgba(248,113,113,0.1)', border: '#f87171', text: '#fca5a5' },
   }
-  return map[status] || map.assigned
+  const c = colors[status] || colors.assigned
+  return { ...c, label: labels[status] || status }
 }
 
 function DayScheduleView({ onClose }) {
+  const { lang, t } = useLang()
+  const jt = t.jobs
+  const st = t.status
+  const CLEANING_TYPES = cleaningTypesForLang(lang)
+  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [jobs, setJobs] = useState([])
   const [employees, setEmployees] = useState([])
@@ -68,9 +75,9 @@ function DayScheduleView({ onClose }) {
   }
 
   const handleDelete = async (jobId, title) => {
-    if (!confirm(`Apagar job?\n\n${title}`)) return
+    if (!confirm(fill(jt.deleteJobConfirm, { title }))) return
     await supabase.from('jobs').delete().eq('id', jobId)
-    toast.success('Job apagado')
+    toast.success(jt.jobDeleted)
     loadJobs()
   }
 
@@ -88,10 +95,10 @@ function DayScheduleView({ onClose }) {
 
   const unassigned = jobs.filter(j => !j.employee_id)
   const done = jobs.filter(j => j.status === 'completed').length
-  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })
 
   const JobCard = ({ j, idx }) => {
-    const st = statusStyle(j.status)
+    const stl = statusStyle(j.status, st)
     const locName = locationNameFromTitle(j.title)
     const ctype = getCleaningType(j)
     const ctypeCfg = CLEANING_TYPES[ctype]
@@ -99,7 +106,7 @@ function DayScheduleView({ onClose }) {
       <div style={{
         background: 'var(--surface)',
         border: `1px solid var(--border)`,
-        borderLeft: `4px solid ${ctype === 'deep' ? ctypeCfg.color : st.border}`,
+        borderLeft: `4px solid ${ctype === 'deep' ? ctypeCfg.color : stl.border}`,
         borderRadius: 12,
         padding: '14px 16px',
         marginBottom: 10,
@@ -109,7 +116,7 @@ function DayScheduleView({ onClose }) {
             width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 13, fontWeight: 800,
-            background: st.bg, color: st.text, border: `2px solid ${st.border}`,
+            background: stl.bg, color: stl.text, border: `2px solid ${stl.border}`,
           }}>
             {j.status === 'completed' ? '✓' : idx + 1}
           </div>
@@ -120,8 +127,8 @@ function DayScheduleView({ onClose }) {
               <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 8 }}>
                 🕐 {j.scheduled_time || '00:30'}
               </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: st.text, background: st.bg, padding: '4px 10px', borderRadius: 8 }}>
-                {st.label}
+              <span style={{ fontSize: 12, fontWeight: 600, color: stl.text, background: stl.bg, padding: '4px 10px', borderRadius: 8 }}>
+                {stl.label}
               </span>
               {j.value > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value).toLocaleString()}</span>}
             </div>
@@ -132,7 +139,7 @@ function DayScheduleView({ onClose }) {
             )}
             {j.address?.startsWith('http') && (
               <a href={j.address} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#60a5fa', textDecoration: 'none', fontWeight: 600 }}>
-                🗺 Abrir no Maps
+                🗺 {jt.openMaps}
               </a>
             )}
           </div>
@@ -140,38 +147,38 @@ function DayScheduleView({ onClose }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
           <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            Horário
+            {jt.time}
             <input type="time" defaultValue={j.scheduled_time || '00:30'} onBlur={e => handleTimeChange(j.id, e.target.value)}
               style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }} />
           </label>
           <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            Funcionário
+            {jt.employee}
             <select value={j.employee_id || ''} onChange={e => handleReassign(j.id, e.target.value)}
               style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}>
               {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
             </select>
           </label>
           <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            Tipo limpeza
+            {jt.cleaningType}
             <select value={ctype} onChange={e => handleCleaningTypeChange(j, e.target.value)}
               style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: `2px solid ${ctypeCfg.color}`, background: `${ctypeCfg.color}12`, color: ctypeCfg.color, fontWeight: 600 }}>
-              <option value="basic">🧹 Simples</option>
-              <option value="deep">✨ Profunda</option>
+              <option value="basic">{jt.filterBasic}</option>
+              <option value="deep">{jt.filterDeep}</option>
             </select>
           </label>
           <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            Status
+            {jt.status}
             <select value={j.status} onChange={e => handleStatusChange(j.id, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: st.text, fontWeight: 600 }}>
-              <option value="assigned">Pendente</option>
-              <option value="in_progress">Em andamento</option>
-              <option value="completed">Concluído</option>
-              <option value="cancelled">Cancelado</option>
+              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: stl.text, fontWeight: 600 }}>
+              <option value="assigned">{st.assigned}</option>
+              <option value="in_progress">{st.in_progress}</option>
+              <option value="completed">{st.completed}</option>
+              <option value="cancelled">{st.cancelled}</option>
             </select>
           </label>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
             <button className="btn btn-danger" onClick={() => handleDelete(j.id, locName)} style={{ width: '100%', fontSize: 13, padding: '9px 12px' }}>
-              🗑 Apagar
+              🗑 {jt.deleteJob}
             </button>
           </div>
         </div>
@@ -184,9 +191,9 @@ function DayScheduleView({ onClose }) {
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '16px 20px', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button className="btn" onClick={onClose}>← Voltar</button>
+            <button className="btn" onClick={onClose}>← {jt.back}</button>
             <div>
-              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>📅 Escala do Dia</h2>
+              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>📅 {jt.dayScheduleTitle}</h2>
               <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2, textTransform: 'capitalize' }}>{dateLabel}</div>
             </div>
           </div>
@@ -196,10 +203,10 @@ function DayScheduleView({ onClose }) {
 
         <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
           {[
-            ['Total', jobs.length, 'var(--text)'],
-            ['Concluídos', done, '#4ade80'],
-            ['Pendentes', jobs.filter(j => j.status === 'assigned').length, '#60a5fa'],
-            ['Em andamento', jobs.filter(j => j.status === 'in_progress').length, '#fbbf24'],
+            [jt.total, jobs.length, 'var(--text)'],
+            [st.completed, done, '#4ade80'],
+            [st.assigned, jobs.filter(j => j.status === 'assigned').length, '#60a5fa'],
+            [st.in_progress, jobs.filter(j => j.status === 'in_progress').length, '#fbbf24'],
           ].map(([label, val, color]) => (
             <div key={label} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 16px', minWidth: 90 }}>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
@@ -210,13 +217,13 @@ function DayScheduleView({ onClose }) {
       </div>
 
       <div style={{ padding: '20px', maxWidth: 900, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-        {loading && <div style={{ color: 'var(--text3)', fontSize: 14, padding: 20 }}>Carregando...</div>}
+        {loading && <div style={{ color: 'var(--text3)', fontSize: 14, padding: 20 }}>{t.app.loading}</div>}
 
         {!loading && jobs.length === 0 && (
           <div className="card" style={{ textAlign: 'center', padding: 40 }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>Nenhum job neste dia</div>
-            <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>Escolha outra data ou gere a escala no Gerador Escala</div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>{jt.noJobsDay}</div>
+            <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{jt.chooseDate}</div>
           </div>
         )}
 
@@ -234,7 +241,7 @@ function DayScheduleView({ onClose }) {
               }} />
               {emp.full_name}
               <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>
-                {empJobs.filter(j => j.status === 'completed').length}/{empJobs.length} feitos
+                {fill(jt.doneOfTotal, { done: empJobs.filter(j => j.status === 'completed').length, total: empJobs.length })}
               </span>
             </div>
             {empJobs.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
@@ -244,7 +251,7 @@ function DayScheduleView({ onClose }) {
         {unassigned.length > 0 && (
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: '#fbbf24', marginBottom: 12, padding: '10px 14px', background: 'rgba(251,191,36,0.1)', borderRadius: 12, border: '1px solid rgba(251,191,36,0.25)' }}>
-              ⚠️ Sem funcionário ({unassigned.length})
+              ⚠️ {jt.noEmployee} ({unassigned.length})
             </div>
             {unassigned.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
           </div>
@@ -255,6 +262,10 @@ function DayScheduleView({ onClose }) {
 }
 
 export default function Jobs() {
+  const { lang, t } = useLang()
+  const jt = t.jobs
+  const st = t.status
+  const CLEANING_TYPES = cleaningTypesForLang(lang)
   const [tab, setTab] = useState('list')
   const [cleaningFilter, setCleaningFilter] = useState('all')
   const [jobs, setJobs] = useState([])
@@ -310,7 +321,7 @@ export default function Jobs() {
     setGeocoding(true)
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
-    if (!applyGeocodeResult(result, coords => setForm(f => ({ ...f, gps_lat: coords.lat, gps_lng: coords.lng })))) {
+    if (!applyGeocodeResult(result, coords => setForm(f => ({ ...f, gps_lat: coords.lat, gps_lng: coords.lng })), jt.mapsValid)) {
       toast.error('Endereço não encontrado — use link do Google Maps ou endereço completo')
     }
   }
@@ -358,7 +369,7 @@ export default function Jobs() {
     const newTitle = applyCleaningTypeToTitle(loc, type)
     const { error } = await supabase.from('jobs').update({ title: newTitle }).eq('id', job.id)
     if (error) return toast.error(error.message)
-    toast.success(type === 'deep' ? 'Limpeza profunda' : 'Limpeza simples')
+    toast.success(type === 'deep' ? jt.deep : jt.simple)
     loadAll()
   }
 
@@ -377,24 +388,24 @@ export default function Jobs() {
     <div>
       {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-        <button className="btn btn-primary" onClick={()=>setShowDaySchedule(true)}>📅 Escala do Dia</button>
+        <button className="btn btn-primary" onClick={()=>setShowDaySchedule(true)}>📅 {jt.daySchedule}</button>
       </div>
       <div className="tab-pills">
-        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>All Jobs</button>
+        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{jt.allJobs}</button>
         <button className={`tab-pill${tab==='spot'?' active':''}`} onClick={()=>setTab('spot')}>
-          ⚡ Spot Jobs {spotJobs.filter(j=>j.spot_status==='pending').length > 0 && <span className="badge badge-amber" style={{marginLeft:4}}>{spotJobs.filter(j=>j.spot_status==='pending').length}</span>}
+          ⚡ {jt.spotJobs} {spotJobs.filter(j=>j.spot_status==='pending').length > 0 && <span className="badge badge-amber" style={{marginLeft:4}}>{spotJobs.filter(j=>j.spot_status==='pending').length}</span>}
         </button>
-        <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>+ New Job</button>
-        <button className={`tab-pill${tab==='locations'?' active':''}`} onClick={()=>setTab('locations')}>📍 Locations</button>
+        <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>+ {jt.newJob}</button>
+        <button className={`tab-pill${tab==='locations'?' active':''}`} onClick={()=>setTab('locations')}>📍 {jt.locations}</button>
       </div>
 
       {tab==='list' && (
         <div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
             {[
-              { key: 'all', label: 'Todos', count: regularJobs.length, color: 'var(--navy)' },
-              { key: 'basic', label: '🧹 Simples', count: basicJobs.length, color: CLEANING_TYPES.basic.color },
-              { key: 'deep', label: '✨ Profunda', count: deepJobs.length, color: CLEANING_TYPES.deep.color },
+              { key: 'all', label: jt.filterAll, count: regularJobs.length, color: 'var(--navy)' },
+              { key: 'basic', label: jt.filterBasic, count: basicJobs.length, color: CLEANING_TYPES.basic.color },
+              { key: 'deep', label: jt.filterDeep, count: deepJobs.length, color: CLEANING_TYPES.deep.color },
             ].map(f => (
               <button key={f.key} type="button" onClick={() => setCleaningFilter(f.key)}
                 style={{
@@ -409,11 +420,11 @@ export default function Jobs() {
             ))}
           </div>
 
-          {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
+          {loading && <div style={{color:'var(--text3)',fontSize:13}}>{t.app.loading}</div>}
           {filteredJobs.length === 0 && !loading && (
             <div className="card">
               <div style={{color:'var(--text3)',fontSize:13}}>
-                {cleaningFilter === 'all' ? 'Nenhum job ainda.' : `Nenhum job ${cleaningFilter === 'deep' ? 'profundo' : 'simples'}.`}
+                {cleaningFilter === 'all' ? jt.noJobs : fill(jt.noJobsFilter, { type: cleaningFilter === 'deep' ? jt.deep : jt.simple })}
               </div>
             </div>
           )}
@@ -428,7 +439,7 @@ export default function Jobs() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                     <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{locName}</div>
                     <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: `${ctypeCfg.color}20`, color: ctypeCfg.color, border: `1px solid ${ctypeCfg.color}50` }}>
-                      {ctype === 'deep' ? '✨ Profunda' : '🧹 Simples'}
+                      {ctype === 'deep' ? jt.filterDeep : jt.filterBasic}
                     </span>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
@@ -436,12 +447,12 @@ export default function Jobs() {
                   </div>
                   {j.address && (
                     <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {j.address.startsWith('http') ? '🗺 Maps' : j.address}
+                      {j.address.startsWith('http') ? `🗺 ${jt.maps}` : j.address}
                     </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                  <span className={`badge ${statusColor(j.status)}`}>{j.status}</span>
+                  <span className={`badge ${statusColor(j.status)}`}>{st[j.status] || j.status}</span>
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value || j.spot_value || 0).toLocaleString()}</span>
                 </div>
               </div>
@@ -454,22 +465,22 @@ export default function Jobs() {
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  Tipo:
+                  {jt.type}:
                   <select
                     value={ctype}
                     onChange={e => handleCleaningTypeChange(j, e.target.value)}
                     style={{ fontSize: 13, fontWeight: 600, padding: '6px 10px', borderRadius: 8, border: `2px solid ${ctypeCfg.color}`, background: `${ctypeCfg.color}15`, color: ctypeCfg.color }}
                   >
-                    <option value="basic">🧹 Simples</option>
-                    <option value="deep">✨ Profunda</option>
+                    <option value="basic">{jt.filterBasic}</option>
+                    <option value="deep">{jt.filterDeep}</option>
                   </select>
                 </label>
-                {j.photo_required && <span className="badge badge-amber">📷 Foto obrigatória</span>}
+                {j.photo_required && <span className="badge badge-amber">📷 {jt.photoRequired}</span>}
                 {j.gps_lat && <span className="badge badge-navy">📍 GPS</span>}
                 {j.address?.startsWith('http') && (
-                  <a href={j.address} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 Maps</a>
+                  <a href={j.address} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 {jt.maps}</a>
                 )}
-                {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>Cancelar</button>}
+                {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>{jt.cancel}</button>}
               </div>
             </div>
           )})}
@@ -591,6 +602,8 @@ export default function Jobs() {
 }
 
 function LocationsTab() {
+  const { t } = useLang()
+  const jt = t.jobs
   const [locations, setLocations] = useState([])
   const [showDaySchedule, setShowDaySchedule] = useState(false)
   const [editingLoc, setEditingLoc] = useState(null)
@@ -612,7 +625,7 @@ function LocationsTab() {
     setGeocoding(true)
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
-    if (!applyGeocodeResult(result, setGps)) {
+    if (!applyGeocodeResult(result, setGps, jt.mapsValid)) {
       toast.error('Endereço não encontrado — use link do Google Maps ou endereço completo')
     }
   }

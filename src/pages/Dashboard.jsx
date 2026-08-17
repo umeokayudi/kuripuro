@@ -1,11 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatTuesday, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
+import { useLang, fill } from '../hooks/useLang'
 import toast from 'react-hot-toast'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 
 export default function Dashboard() {
+  const { lang, t } = useLang()
+  const d = t.dashboard
+  const slotLabels = { ...d, status: t.status }
+  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+
   const [clients, setClients] = useState([])
   const [employees, setEmployees] = useState([])
   const [todayJobs, setTodayJobs] = useState([])
@@ -43,17 +49,17 @@ export default function Dashboard() {
 
   useEffect(() => {
     load()
-    const t = setInterval(() => setClock(new Date()), 1000)
-    const r = setInterval(load, 15000)
-    return () => { clearInterval(t); clearInterval(r) }
+    const tick = setInterval(() => setClock(new Date()), 1000)
+    const refresh = setInterval(load, 15000)
+    return () => { clearInterval(tick); clearInterval(refresh) }
   }, [progressMonth])
 
   const cancelStaleJobs = async () => {
     const today = tokyoToday()
-    if (!window.confirm(`Cancelar todos os jobs "assigned" anteriores a ${today}?`)) return
+    if (!window.confirm(fill(d.cancelStaleConfirm, { today }))) return
     const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).eq('status', 'assigned').lt('scheduled_date', today)
     if (error) return toast.error(error.message)
-    toast.success('Jobs obsoletos cancelados')
+    toast.success(d.staleCancelled)
     load()
   }
 
@@ -64,7 +70,7 @@ export default function Dashboard() {
 
   const byEmp = {}
   todayJobs.forEach(j => {
-    const k = j.employee_name || 'Unknown'
+    const k = j.employee_name || '—'
     if (!byEmp[k]) byEmp[k] = []
     byEmp[k].push(j)
   })
@@ -76,7 +82,7 @@ export default function Dashboard() {
   const statusColor = s => ({ assigned: '#60a5fa', in_progress: '#fbbf24', completed: '#4ade80', cancelled: 'rgba(255,255,255,0.2)' }[s] || '#60a5fa')
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
-  const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
 
   const closeDetail = () => { setDetailLoc(null); setDetailTuesday(null) }
 
@@ -84,7 +90,7 @@ export default function Dashboard() {
     if (!detailLoc && !detailTuesday) return null
     const title = detailLoc
       ? `${detailLoc} — ${monthLabel}`
-      : `Terça ${formatTuesday(detailTuesday)} — todos os restaurantes`
+      : fill(d.tuesdayTitle, { date: formatTuesday(detailTuesday, lang) })
 
     const rows = detailLoc
       ? deepProgress.tuesdays.map(date => ({ date, job: deepProgress.byLocation[detailLoc]?.byDate[date] || null, loc: detailLoc }))
@@ -96,18 +102,18 @@ export default function Dashboard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
               <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Clique fora para fechar</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{d.closeOutside}</div>
             </div>
             <button onClick={closeDetail} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
           </div>
 
           <div style={{ display: 'grid', gap: 8 }}>
             {rows.map(({ date, job, loc }) => {
-              const slot = tuesdaySlotInfo(job)
-              const dateLabel = detailLoc ? formatTuesday(date) : loc
+              const slot = tuesdaySlotInfo(job, slotLabels)
+              const dateLabel = detailLoc ? formatTuesday(date, lang) : loc
               const sub = detailLoc
-                ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : 'Sem job criado')
-                : (job ? formatTuesday(date) + ` · ${job.employee_name || '—'}` : 'Sem job criado')
+                ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : d.noJob)
+                : (job ? formatTuesday(date, lang) + ` · ${job.employee_name || '—'}` : d.noJob)
               return (
                 <div key={`${loc}-${date}`} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: `${slot.color}10`, border: `1px solid ${slot.color}35` }}>
                   <div style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{slot.icon}</div>
@@ -123,9 +129,9 @@ export default function Dashboard() {
 
           {detailLoc && deepProgress.byLocation[detailLoc] && (
             <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 10, fontSize: 13 }}>
-              <b>Resumo:</b> {deepProgress.byLocation[detailLoc].completed}/{deepProgress.byLocation[detailLoc].expected} concluídas
+              <b>{d.summary}:</b> {fill(d.summaryLine, { completed: deepProgress.byLocation[detailLoc].completed, expected: deepProgress.byLocation[detailLoc].expected })}
               {deepProgress.byLocation[detailLoc].missing > 0 && (
-                <span style={{ color: '#f87171' }}> · {deepProgress.byLocation[detailLoc].missing} terça(s) sem agendar</span>
+                <span style={{ color: '#f87171' }}>{fill(d.missingTuesdays, { n: deepProgress.byLocation[detailLoc].missing })}</span>
               )}
             </div>
           )}
@@ -139,10 +145,10 @@ export default function Dashboard() {
       <DetailModal />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>KuriPuro Admin</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{t.app.admin}</h2>
           <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
-            {clock.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Tokyo' })}
-            {lastUpdate && <span style={{ marginLeft: 10 }}>· Updated {lastUpdate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}</span>}
+            {clock.toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Tokyo' })}
+            {lastUpdate && <span style={{ marginLeft: 10 }}>· {d.updated} {lastUpdate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}</span>}
             <button onClick={load} style={{ marginLeft: 10, fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text3)', cursor: 'pointer' }}>🔄</button>
           </div>
         </div>
@@ -153,13 +159,18 @@ export default function Dashboard() {
 
       {staleCount > 0 && (
         <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ {staleCount} jobs assigned obsoletos (datas passadas)</span>
-          <button onClick={cancelStaleJobs} className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', flexShrink: 0 }}>Cancelar obsoletos</button>
+          <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ {fill(d.staleJobs, { count: staleCount })}</span>
+          <button onClick={cancelStaleJobs} className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', flexShrink: 0 }}>{d.cancelStale}</button>
         </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 20 }}>
-        {[['Monthly Revenue', fmt(revenue), 'var(--text)'], ['Net Profit', fmt(profit), 'var(--green)'], ['Active Employees', employees.length, 'var(--text)'], ['Today Jobs', todayJobs.length, 'var(--text)']].map(([l, v, c]) => (
+        {[
+          [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
+          [d.netProfit, fmt(profit), 'var(--green)'],
+          [d.activeEmployees, employees.length, 'var(--text)'],
+          [d.todayJobs, todayJobs.length, 'var(--text)'],
+        ].map(([l, v, c]) => (
           <div key={l} className="card" style={{ padding: '18px 20px' }}>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 6 }}>{l}</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: c }}>{v}</div>
@@ -170,9 +181,9 @@ export default function Dashboard() {
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #fbbf24' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>✨ On The Planet — Limpezas Profundas</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{d.deepCleanTitle}</div>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-              Contrato: toda terça-feira · {deepProgress.tuesdays.length} terça(s) em {monthLabel} · {deepProgress.totals.expected} entregas previstas
+              {fill(d.deepContract, { tuesdays: deepProgress.tuesdays.length, month: monthLabel, expected: deepProgress.totals.expected })}
             </div>
           </div>
           <input type="month" value={progressMonth} onChange={e => setProgressMonth(e.target.value)}
@@ -181,10 +192,10 @@ export default function Dashboard() {
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
           {[
-            ['Concluídas', deepProgress.totals.completed, '#4ade80'],
-            ['Pendentes', deepProgress.totals.pending, '#60a5fa'],
-            ['Faltam agendar', Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#f87171'],
-            ['Progresso', `${deepProgress.totals.pct}%`, '#fbbf24'],
+            [d.completed, deepProgress.totals.completed, '#4ade80'],
+            [d.pending, deepProgress.totals.pending, '#60a5fa'],
+            [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#f87171'],
+            [d.progress, `${deepProgress.totals.pct}%`, '#fbbf24'],
           ].map(([l, v, c]) => (
             <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 16px', minWidth: 100 }}>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
@@ -199,17 +210,17 @@ export default function Dashboard() {
 
         {deepProgress.tuesdaySummary.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>Por terça-feira</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byTuesday}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {deepProgress.tuesdaySummary.map(({ date, expected, done }) => {
                 const ok = done >= expected
-                const d = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })
+                const shortDate = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })
                 return (
                   <button key={date} type="button" onClick={() => { setDetailTuesday(date); setDetailLoc(null) }}
                     style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.1)', border: `1px solid ${ok ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.25)'}`, fontSize: 12, textAlign: 'left' }}>
-                    <div style={{ fontWeight: 700 }}>Ter {d}</div>
-                    <div style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 600 }}>{done}/{expected}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>ver detalhes →</div>
+                    <div style={{ fontWeight: 700 }}>{fill(d.tuesdayShort, { date: shortDate })}</div>
+                    <div style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 600 }}>{fill(d.doneOf, { done, expected })}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{d.clickTuesday}</div>
                   </button>
                 )
               })}
@@ -217,7 +228,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>Por restaurante</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byRestaurant}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
           {Object.entries(deepProgress.byLocation).map(([loc, data]) => {
             const pct = data.expected ? Math.round((data.completed / data.expected) * 100) : 0
@@ -227,14 +238,14 @@ export default function Dashboard() {
                 style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
-                  <span>{data.completed}/{data.expected} feitas</span>
+                  <span>{fill(d.doneCount, { done: data.completed, expected: data.expected })}</span>
                   <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{pct}%</span>
                 </div>
                 <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
                 </div>
-                {data.missing > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {data.missing} não agendada(s)</div>}
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>clique para ver cada terça →</div>
+                {data.missing > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: data.missing })}</div>}
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{d.clickRestaurant}</div>
               </button>
             )
           })}
@@ -243,14 +254,14 @@ export default function Dashboard() {
 
       {todayJobs.length > 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 600, marginBottom: 12 }}>Today's Jobs ({tokyoToday()})</div>
+          <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.todayJobsTitle} ({tokyoToday()})</div>
           {Object.entries(byEmp).map(([name, jobs]) => (
             <div key={name} style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 6 }}>{name}</div>
               {jobs.map(j => (
                 <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                   <span>{j.title?.replace(/ — .*/, '')} · {j.scheduled_time || '—'}</span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: statusColor(j.status) }}>{j.status}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: statusColor(j.status) }}>{t.status[j.status] || j.status}</span>
                 </div>
               ))}
             </div>
@@ -260,8 +271,8 @@ export default function Dashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="card">
-          <div style={{ fontWeight: 600, marginBottom: 12 }}>Recent Evaluations</div>
-          {evals.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>No evaluations yet.</div>}
+          <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.recentEvals}</div>
+          {evals.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{d.noEvals}</div>}
           {evals.map(e => (
             <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
               <div><div style={{ fontSize: 13, fontWeight: 500 }}>{e.employee_name}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{e.category} · {e.eval_date}</div></div>
@@ -271,8 +282,8 @@ export default function Dashboard() {
         </div>
 
         <div className="card">
-          <div style={{ fontWeight: 600, marginBottom: 12 }}>Profit by Client</div>
-          {sortedClients.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>No clients yet.</div>}
+          <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.profitByClient}</div>
+          {sortedClients.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{d.noClients}</div>}
           {sortedClients.map(c => {
             const p = Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0)
             const pct = Math.round(p / maxProfit * 100)
@@ -289,7 +300,7 @@ export default function Dashboard() {
           })}
         </div>
       </div>
-      {loading && <div style={{ color: 'var(--text3)', fontSize: 12, marginTop: 8 }}>Updating...</div>}
+      {loading && <div style={{ color: 'var(--text3)', fontSize: 12, marginTop: 8 }}>{d.updating}</div>}
     </div>
   )
 }
