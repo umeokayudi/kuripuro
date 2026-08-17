@@ -256,6 +256,7 @@ function DayScheduleView({ onClose }) {
 
 export default function Jobs() {
   const [tab, setTab] = useState('list')
+  const [cleaningFilter, setCleaningFilter] = useState('all')
   const [jobs, setJobs] = useState([])
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
@@ -368,6 +369,9 @@ export default function Jobs() {
 
   const spotJobs = jobs.filter(j => j.job_category === 'spot')
   const regularJobs = jobs.filter(j => j.job_category !== 'spot')
+  const basicJobs = regularJobs.filter(j => getCleaningType(j) === 'basic')
+  const deepJobs = regularJobs.filter(j => getCleaningType(j) === 'deep')
+  const filteredJobs = cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs
 
   return (
     <div>
@@ -386,9 +390,34 @@ export default function Jobs() {
 
       {tab==='list' && (
         <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+            {[
+              { key: 'all', label: 'Todos', count: regularJobs.length, color: 'var(--navy)' },
+              { key: 'basic', label: '🧹 Simples', count: basicJobs.length, color: CLEANING_TYPES.basic.color },
+              { key: 'deep', label: '✨ Profunda', count: deepJobs.length, color: CLEANING_TYPES.deep.color },
+            ].map(f => (
+              <button key={f.key} type="button" onClick={() => setCleaningFilter(f.key)}
+                style={{
+                  padding: '10px 18px', borderRadius: 10, border: '2px solid',
+                  borderColor: cleaningFilter === f.key ? f.color : 'var(--border)',
+                  background: cleaningFilter === f.key ? `${f.color}18` : 'var(--surface)',
+                  color: cleaningFilter === f.key ? f.color : 'var(--text2)',
+                  fontWeight: 700, fontSize: 14, cursor: 'pointer',
+                }}>
+                {f.label} <span style={{ opacity: 0.85 }}>({f.count})</span>
+              </button>
+            ))}
+          </div>
+
           {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {jobs.length === 0 && !loading && <div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No jobs yet.</div></div>}
-          {regularJobs.map(j => {
+          {filteredJobs.length === 0 && !loading && (
+            <div className="card">
+              <div style={{color:'var(--text3)',fontSize:13}}>
+                {cleaningFilter === 'all' ? 'Nenhum job ainda.' : `Nenhum job ${cleaningFilter === 'deep' ? 'profundo' : 'simples'}.`}
+              </div>
+            </div>
+          )}
+          {filteredJobs.map(j => {
             const ctype = getCleaningType(j)
             const ctypeCfg = CLEANING_TYPES[ctype]
             const locName = locationNameFromTitle(j.title)
@@ -396,7 +425,12 @@ export default function Jobs() {
             <div key={j.id} className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${ctypeCfg.color}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{locName}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{locName}</div>
+                    <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: `${ctypeCfg.color}20`, color: ctypeCfg.color, border: `1px solid ${ctypeCfg.color}50` }}>
+                      {ctype === 'deep' ? '✨ Profunda' : '🧹 Simples'}
+                    </span>
+                  </div>
                   <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
                     👤 {j.employee_name || '—'} · 📅 {j.scheduled_date} · 🕐 {j.scheduled_time || '—'}
                   </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { buildDeepCleanProgress, currentYearMonth } from '../lib/cleaningType'
+import { buildDeepCleanProgress, currentYearMonth, formatTuesday, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import toast from 'react-hot-toast'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
@@ -13,6 +13,8 @@ export default function Dashboard() {
   const [evals, setEvals] = useState([])
   const [monthJobs, setMonthJobs] = useState([])
   const [progressMonth, setProgressMonth] = useState(currentYearMonth())
+  const [detailLoc, setDetailLoc] = useState(null)
+  const [detailTuesday, setDetailTuesday] = useState(null)
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
   const [lastUpdate, setLastUpdate] = useState(null)
@@ -76,8 +78,65 @@ export default function Dashboard() {
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
+  const closeDetail = () => { setDetailLoc(null); setDetailTuesday(null) }
+
+  const DetailModal = () => {
+    if (!detailLoc && !detailTuesday) return null
+    const title = detailLoc
+      ? `${detailLoc} — ${monthLabel}`
+      : `Terça ${formatTuesday(detailTuesday)} — todos os restaurantes`
+
+    const rows = detailLoc
+      ? deepProgress.tuesdays.map(date => ({ date, job: deepProgress.byLocation[detailLoc]?.byDate[date] || null, loc: detailLoc }))
+      : DEEP_CLEAN_LOCATIONS.map(loc => ({ date: detailTuesday, job: deepProgress.byLocation[loc]?.byDate[detailTuesday] || null, loc }))
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={closeDetail}>
+        <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 24, maxWidth: 520, width: '100%', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Clique fora para fechar</div>
+            </div>
+            <button onClick={closeDetail} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          </div>
+
+          <div style={{ display: 'grid', gap: 8 }}>
+            {rows.map(({ date, job, loc }) => {
+              const slot = tuesdaySlotInfo(job)
+              const dateLabel = detailLoc ? formatTuesday(date) : loc
+              const sub = detailLoc
+                ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : 'Sem job criado')
+                : (job ? formatTuesday(date) + ` · ${job.employee_name || '—'}` : 'Sem job criado')
+              return (
+                <div key={`${loc}-${date}`} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: `${slot.color}10`, border: `1px solid ${slot.color}35` }}>
+                  <div style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{slot.icon}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{dateLabel}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{sub}</div>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: slot.color, textAlign: 'right' }}>{slot.label}</div>
+                </div>
+              )
+            })}
+          </div>
+
+          {detailLoc && deepProgress.byLocation[detailLoc] && (
+            <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 10, fontSize: 13 }}>
+              <b>Resumo:</b> {deepProgress.byLocation[detailLoc].completed}/{deepProgress.byLocation[detailLoc].expected} concluídas
+              {deepProgress.byLocation[detailLoc].missing > 0 && (
+                <span style={{ color: '#f87171' }}> · {deepProgress.byLocation[detailLoc].missing} terça(s) sem agendar</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
+      <DetailModal />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>KuriPuro Admin</h2>
@@ -146,10 +205,12 @@ export default function Dashboard() {
                 const ok = done >= expected
                 const d = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })
                 return (
-                  <div key={date} style={{ padding: '8px 12px', borderRadius: 8, background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.1)', border: `1px solid ${ok ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.25)'}`, fontSize: 12 }}>
+                  <button key={date} type="button" onClick={() => { setDetailTuesday(date); setDetailLoc(null) }}
+                    style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.1)', border: `1px solid ${ok ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.25)'}`, fontSize: 12, textAlign: 'left' }}>
                     <div style={{ fontWeight: 700 }}>Ter {d}</div>
                     <div style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 600 }}>{done}/{expected}</div>
-                  </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>ver detalhes →</div>
+                  </button>
                 )
               })}
             </div>
@@ -162,7 +223,8 @@ export default function Dashboard() {
             const pct = data.expected ? Math.round((data.completed / data.expected) * 100) : 0
             const ok = data.completed >= data.expected
             return (
-              <div key={loc} style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
+              <button key={loc} type="button" onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }}
+                style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
                   <span>{data.completed}/{data.expected} feitas</span>
@@ -172,7 +234,8 @@ export default function Dashboard() {
                   <div style={{ height: '100%', width: `${pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
                 </div>
                 {data.missing > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {data.missing} não agendada(s)</div>}
-              </div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>clique para ver cada terça →</div>
+              </button>
             )
           })}
         </div>

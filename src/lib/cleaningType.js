@@ -116,3 +116,19 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
 export function currentYearMonth() {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 7)
 }
+
+export function jobStatusLabel(status) {
+  return { assigned: 'Pendente', in_progress: 'Em andamento', completed: 'Concluído', cancelled: 'Cancelado' }[status] || status
+}
+
+export function tuesdaySlotInfo(job) {
+  if (!job) return { state: 'missing', label: 'Não agendado', icon: '❌', color: '#f87171' }
+  if (job.status === 'completed') return { state: 'done', label: 'Concluído', icon: '✅', color: '#4ade80' }
+  if (job.status === 'in_progress') return { state: 'progress', label: 'Em andamento', icon: '🔄', color: '#fbbf24' }
+  if (job.status === 'assigned') return { state: 'pending', label: 'Agendado', icon: '⏳', color: '#60a5fa' }
+  return { state: 'other', label: jobStatusLabel(job.status), icon: '·', color: 'var(--text3)' }
+}
+
+export function formatTuesday(date) {
+  return new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })
+}
