@@ -1,4 +1,5 @@
 const VOICE_KEY = 'kp_ai_voice'
+let resumeTimer = null
 
 export function getSavedVoiceName() {
   return localStorage.getItem(VOICE_KEY) || ''
@@ -18,7 +19,7 @@ export function loadVoices() {
     }
     pick()
     window.speechSynthesis.onvoiceschanged = pick
-    setTimeout(() => resolve(window.speechSynthesis.getVoices()), 300)
+    setTimeout(() => resolve(window.speechSynthesis.getVoices()), 500)
   })
 }
 
@@ -39,20 +40,72 @@ export function cleanForSpeech(text) {
     .replace(/\*\*/g, '')
     .replace(/[#*_`]/g, '')
     .replace(/\n+/g, '. ')
+    .replace(/\s+/g, ' ')
     .trim()
+}
+
+function startResumeHack() {
+  if (resumeTimer) return
+  resumeTimer = setInterval(() => {
+    if (window.speechSynthesis?.speaking) {
+      window.speechSynthesis.resume()
+    } else {
+      clearInterval(resumeTimer)
+      resumeTimer = null
+    }
+  }, 8000)
+}
+
+export function stopSpeaking() {
+  if (resumeTimer) {
+    clearInterval(resumeTimer)
+    resumeTimer = null
+  }
+  window.speechSynthesis?.cancel()
+}
+
+/** Unlock TTS on iOS/Safari — must run from a user gesture */
+export function unlockSpeech() {
+  if (!window.speechSynthesis) return
+  const utter = new SpeechSynthesisUtterance(' ')
+  utter.volume = 0.01
+  utter.rate = 10
+  window.speechSynthesis.speak(utter)
+  window.speechSynthesis.cancel()
 }
 
 export function speakText(text, { voice, rate = 1.02, onStart, onEnd } = {}) {
   return new Promise((resolve) => {
-    if (!window.speechSynthesis || !text) { resolve(); return }
-    window.speechSynthesis.cancel()
-    const utter = new SpeechSynthesisUtterance(cleanForSpeech(text))
+    const cleaned = cleanForSpeech(text)
+    if (!window.speechSynthesis || !cleaned) { onEnd?.(); resolve(); return }
+
+    stopSpeaking()
+    const utter = new SpeechSynthesisUtterance(cleaned)
     utter.lang = voice?.lang || 'pt-BR'
     if (voice) utter.voice = voice
     utter.rate = rate
-    utter.onstart = () => onStart?.()
-    utter.onend = () => { onEnd?.(); resolve() }
-    utter.onerror = () => { onEnd?.(); resolve() }
+
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      if (resumeTimer) {
+        clearInterval(resumeTimer)
+        resumeTimer = null
+      }
+      onEnd?.()
+      resolve()
+    }
+
+    utter.onstart = () => {
+      onStart?.()
+      startResumeHack()
+    }
+    utter.onend = finish
+    utter.onerror = finish
+
     window.speechSynthesis.speak(utter)
+    // Safari sometimes never fires onend
+    setTimeout(finish, Math.min(60000, cleaned.length * 120 + 3000))
   })
 }

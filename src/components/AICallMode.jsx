@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
-import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { loadVoices, pickDefaultVoice, speakText, stopSpeaking, unlockSpeech, getSavedVoiceName, saveVoiceName } from '../lib/voice'
+
+const SILENCE_MS = 1400
 
 export default function AICallMode({ onClose, sendToAI }) {
   const [status, setStatus] = useState('connecting')
@@ -8,11 +10,16 @@ export default function AICallMode({ onClose, sendToAI }) {
   const [voices, setVoices] = useState([])
   const [voiceName, setVoiceName] = useState(getSavedVoiceName())
 
-  const recognitionRef = useRef(null)
-  const shouldListenRef = useRef(true)
-  const transcriptRef = useRef('')
-  const voiceRef = useRef(null)
+  const activeRef = useRef(true)
   const busyRef = useRef(false)
+  const recognitionRef = useRef(null)
+  const silenceTimerRef = useRef(null)
+  const transcriptRef = useRef('')
+  const finalRef = useRef('')
+  const voiceRef = useRef(null)
+  const sendToAIRef = useRef(sendToAI)
+
+  sendToAIRef.current = sendToAI
 
   useEffect(() => {
     loadVoices().then(v => {
@@ -27,108 +34,182 @@ export default function AICallMode({ onClose, sendToAI }) {
     if (v) { voiceRef.current = v; saveVoiceName(v.name) }
   }, [voiceName, voices])
 
-  const stopRecognition = () => {
-    try { recognitionRef.current?.abort() } catch {}
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = null
+    }
+  }
+
+  const detachRecognition = () => {
+    const rec = recognitionRef.current
     recognitionRef.current = null
+    if (!rec) return
+    rec.onstart = null
+    rec.onresult = null
+    rec.onerror = null
+    rec.onend = null
+    try { rec.stop() } catch {}
+    try { rec.abort() } catch {}
   }
 
   const speak = async (text) => {
-    stopRecognition()
+    detachRecognition()
+    clearSilenceTimer()
     setStatus('speaking')
     await speakText(text, { voice: voiceRef.current, onEnd: () => setStatus('idle') })
   }
 
-  const startListening = () => {
-    if (!shouldListenRef.current || busyRef.current) return
+  const processUtterance = useCallback(async (forcedText) => {
+    if (!activeRef.current || busyRef.current) return
+
+    const text = (forcedText || transcriptRef.current || finalRef.current).trim()
+    if (!text) return
+
+    busyRef.current = true
+    clearSilenceTimer()
+    detachRecognition()
+    transcriptRef.current = ''
+    finalRef.current = ''
+    setTranscript('')
+
+    setLog(l => [...l, { role: 'user', text }])
+    setStatus('thinking')
+
+    try {
+      const reply = await sendToAIRef.current(text)
+      const replyText = (reply || 'Não consegui responder agora.').slice(0, 800)
+      setLog(l => [...l, { role: 'assistant', text: replyText }])
+      await speak(replyText)
+    } catch (e) {
+      const errMsg = e?.message || 'erro desconhecido'
+      setLog(l => [...l, { role: 'system', text: `Erro: ${errMsg}` }])
+      await speak('Desculpa, tive um erro. Pode repetir?')
+    }
+
+    busyRef.current = false
+    if (activeRef.current) {
+      setTimeout(() => startListeningRef.current?.(), 600)
+    }
+  }, [])
+
+  const scheduleSilenceCheck = useCallback(() => {
+    clearSilenceTimer()
+    silenceTimerRef.current = setTimeout(() => {
+      if (!activeRef.current || busyRef.current) return
+      const text = (finalRef.current + ' ' + transcriptRef.current).trim()
+      if (text) processUtterance(text)
+    }, SILENCE_MS)
+  }, [processUtterance])
+
+  const startListeningRef = useRef(null)
+
+  startListeningRef.current = () => {
+    if (!activeRef.current || busyRef.current) return
+
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) {
       setStatus('idle')
-      setLog(l => [...l, { role: 'system', text: 'Reconhecimento de voz não suportado. Use Chrome.' }])
+      setLog(l => [...l, { role: 'system', text: 'Reconhecimento de voz não suportado. Use Chrome ou Safari.' }])
       return
     }
 
-    stopRecognition()
+    detachRecognition()
+    finalRef.current = ''
+    transcriptRef.current = ''
+
     const recognition = new SR()
     recognition.lang = 'pt-BR'
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
+    recognition.maxAlternatives = 1
 
     recognition.onstart = () => setStatus('listening')
 
     recognition.onresult = (event) => {
-      let text = ''
-      for (let i = 0; i < event.results.length; i++) {
-        text += event.results[i][0].transcript
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const chunk = event.results[i][0]?.transcript || ''
+        if (event.results[i].isFinal) {
+          finalRef.current = `${finalRef.current} ${chunk}`.trim()
+        } else {
+          interim += chunk
+        }
       }
-      transcriptRef.current = text.trim()
-      setTranscript(transcriptRef.current)
+      const display = `${finalRef.current} ${interim}`.trim()
+      transcriptRef.current = display
+      setTranscript(display)
+      if (display) scheduleSilenceCheck()
     }
 
     recognition.onerror = (e) => {
-      if (e.error === 'aborted' || e.error === 'no-speech') return
-      setLog(l => [...l, { role: 'system', text: `Erro de voz: ${e.error}` }])
-    }
-
-    recognition.onend = async () => {
-      if (!shouldListenRef.current) return
-      const finalText = transcriptRef.current.trim()
-      transcriptRef.current = ''
-      setTranscript('')
-
-      if (!finalText) {
-        setTimeout(() => { if (shouldListenRef.current && !busyRef.current) startListening() }, 400)
+      if (e.error === 'aborted') return
+      if (e.error === 'no-speech') {
+        if (activeRef.current && !busyRef.current) {
+          setTimeout(() => startListeningRef.current?.(), 300)
+        }
         return
       }
-
-      busyRef.current = true
-      setLog(l => [...l, { role: 'user', text: finalText }])
-      setStatus('thinking')
-
-      try {
-        const reply = await sendToAI(finalText)
-        const replyText = reply || 'Não consegui responder agora.'
-        setLog(l => [...l, { role: 'assistant', text: replyText }])
-        await speak(replyText)
-      } catch (e) {
-        await speak('Desculpa, tive um erro. Pode repetir?')
+      setLog(l => [...l, { role: 'system', text: `Erro de voz: ${e.error}` }])
+      if (activeRef.current && !busyRef.current) {
+        setTimeout(() => startListeningRef.current?.(), 800)
       }
+    }
 
-      busyRef.current = false
-      if (shouldListenRef.current) {
-        setTimeout(() => startListening(), 500)
+    recognition.onend = () => {
+      if (!activeRef.current || busyRef.current) return
+      const pending = (finalRef.current + ' ' + transcriptRef.current).trim()
+      if (pending) {
+        processUtterance(pending)
+        return
       }
+      setTimeout(() => {
+        if (activeRef.current && !busyRef.current && !recognitionRef.current) {
+          startListeningRef.current?.()
+        }
+      }, 400)
     }
 
     recognitionRef.current = recognition
-    try { recognition.start() } catch {}
+    try {
+      recognition.start()
+    } catch (e) {
+      setLog(l => [...l, { role: 'system', text: `Microfone: ${e.message}` }])
+      setStatus('idle')
+    }
   }
 
   useEffect(() => {
-    shouldListenRef.current = true
+    activeRef.current = true
+    unlockSpeech()
+
     ;(async () => {
       await speak('Oi! Pode falar, estou ouvindo.')
-      startListening()
+      startListeningRef.current?.()
     })()
+
     return () => {
-      shouldListenRef.current = false
+      activeRef.current = false
       busyRef.current = false
-      stopRecognition()
-      window.speechSynthesis?.cancel()
+      clearSilenceTimer()
+      detachRecognition()
+      stopSpeaking()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const hangUp = () => {
-    shouldListenRef.current = false
+    activeRef.current = false
     busyRef.current = false
-    stopRecognition()
-    window.speechSynthesis?.cancel()
+    clearSilenceTimer()
+    detachRecognition()
+    stopSpeaking()
     onClose()
   }
 
   const statusLabel = {
     connecting: 'Conectando...',
-    listening: 'Ouvindo... fale agora',
+    listening: 'Ouvindo... fale e pause',
     thinking: 'Pensando...',
     speaking: 'Falando...',
     idle: 'Pronto',
@@ -185,9 +266,21 @@ export default function AICallMode({ onClose, sendToAI }) {
       </div>
 
       <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>{statusLabel}</div>
-      {transcript && <div style={{ fontSize: 13, opacity: 0.6, marginBottom: 12, maxWidth: 320, textAlign: 'center' }}>"{transcript}"</div>}
+      {transcript && (
+        <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 8, maxWidth: 320, textAlign: 'center' }}>
+          "{transcript}"
+        </div>
+      )}
+      {transcript && status === 'listening' && (
+        <button onClick={() => processUtterance()} style={{
+          marginBottom: 12, padding: '8px 16px', borderRadius: 20, border: 'none',
+          background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+        }}>
+          Enviar agora
+        </button>
+      )}
 
-      <div style={{ width: '100%', maxWidth: 380, maxHeight: 220, overflowY: 'auto', marginTop: 12, marginBottom: 24 }}>
+      <div style={{ width: '100%', maxWidth: 380, maxHeight: 180, overflowY: 'auto', marginTop: 8, marginBottom: 20 }}>
         {log.slice(-8).map((l, i) => (
           <div key={i} style={{
             fontSize: 12.5, marginBottom: 8, opacity: 0.85,

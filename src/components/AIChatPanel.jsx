@@ -64,15 +64,17 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       ? { messages: allMessages, employeeId, employeeName }
       : { messages: allMessages }
     const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const data = await resp.json()
-    if (data.error) throw new Error(data.error)
+    let data
+    try { data = await resp.json() } catch { throw new Error(`Resposta inválida (${resp.status})`) }
+    if (!resp.ok || data.error) throw new Error(data.error || `Erro ${resp.status}`)
     return data
   }
 
   const sendFromCall = async (text) => {
     const userMsg = { role: 'user', content: text }
-    const newMessages = [...messagesRef.current, userMsg]
-    setMessages(newMessages)
+    const history = messagesRef.current.slice(-6)
+    const newMessages = [...history, userMsg]
+    setMessages(m => [...m, userMsg])
     const data = await callAPI(newMessages)
     const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
     setMessages(m => [...m, replyMsg])
