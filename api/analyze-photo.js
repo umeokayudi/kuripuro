@@ -1,8 +1,23 @@
 // api/analyze-photo.js
 // Recebe a URL de uma foto (já hospedada no Supabase Storage) e usa o
-// modelo de visão da Anthropic (Claude Haiku) para dar uma nota de
-// qualidade da limpeza. A chave da API fica só no servidor (env var
-// ANTHROPIC_API_KEY no Vercel), nunca é exposta no navegador.
+// Gemini para dar uma nota de qualidade da limpeza.
+// A chave fica só no servidor (env var GEMINI_API_KEY no Vercel).
+
+async function callGemini(body) {
+  const models = ['gemini-3.5-flash', 'gemini-2.5-pro']
+  let lastErr
+  for (const model of models) {
+    try {
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+      )
+      if (!resp.ok) { lastErr = new Error(await resp.text()); continue }
+      return await resp.json()
+    } catch (e) { lastErr = e }
+  }
+  throw lastErr
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -27,34 +42,17 @@ export default async function handler(req, res) {
 {"nota": <número de 1 a 10>, "aprovado": <true ou false>, "problemas": [<lista curta de problemas visíveis, em português, vazia se não houver>]}
 Considere aprovado (true) apenas se nota >= 7. Seja objetivo: sujeira visível, lixo, bagunça, manchas, poeira acumulada, chão sujo são motivos para reprovar.`
 
-    const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: prompt },
-          ],
-        }],
-      }),
+    const data = await callGemini({
+      contents: [{
+        parts: [
+          { inlineData: { mimeType: mediaType, data: base64 } },
+          { text: prompt },
+        ],
+      }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 300 },
     })
 
-    if (!claudeResp.ok) {
-      const errText = await claudeResp.text()
-      throw new Error(`Anthropic API error: ${errText}`)
-    }
-
-    const data = await claudeResp.json()
-    const textBlock = (data.content || []).find(c => c.type === 'text')
-    const raw = textBlock ? textBlock.text : '{}'
+    const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '{}'
     const cleaned = raw.replace(/```json|```/g, '').trim()
 
     let parsed

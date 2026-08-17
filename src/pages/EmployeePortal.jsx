@@ -352,20 +352,32 @@ export default function EmployeePortal() {
     setRetroBusy(false)
   }
 
+  const uploadSlotPhotos = async (jobId, photos, prefix) => {
+    let firstUrl = null
+    for (let i = 0; i < photos.length; i++) {
+      const ext = photos[i].file.name.split('.').pop()
+      await supabase.storage.from('service-photos').upload(`jobs/${jobId}/${prefix}_${i}.${ext}`, photos[i].file, { upsert: true })
+      if (i === 0) {
+        const { data: pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${jobId}/${prefix}_0.${ext}`)
+        firstUrl = pd.publicUrl
+      }
+    }
+    return firstUrl
+  }
+
   const handleStart = async (job) => {
+    const startPhotos = jobPhotos.filter(p => p.slot === 'start')
+    if (startPhotos.length === 0) {
+      toast.error('Tire ao menos 1 foto "Before" antes de iniciar')
+      return
+    }
     setSubmitting(true)
     const gpsResult = await checkGPS(job)
     if (gpsResult.override) {
       const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
       if (!proceed) { setSubmitting(false); setGpsStatus(''); return }
     }
-    let photoUrl = null
-    const startPhotos = jobPhotos.filter(p=>p.slot==='start')
-    for (let i=0;i<startPhotos.length;i++) {
-      const ext = startPhotos[i].file.name.split('.').pop()
-      await supabase.storage.from('service-photos').upload(`jobs/${job.id}/start_${i}.${ext}`,startPhotos[i].file,{upsert:true})
-      if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${job.id}/start_0.${ext}`); photoUrl=pd.publicUrl }
-    }
+    const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
     const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().single()
     if (error) { toast.error(error.message); setSubmitting(false); return }
     setChecklist(job.checklist_template?job.checklist_template.split('\n').filter(Boolean).map(l=>({label:l,done:false})):[])
@@ -386,19 +398,22 @@ export default function EmployeePortal() {
       toast.error('Tire ao menos 1 foto "After" antes de finalizar')
       return
     }
-    if (!job.photo_start_url) {
-      toast.error('Faltou a foto "Before" — ela é tirada ao iniciar o serviço')
-      return
-    }
     setSubmitting(true)
     try {
+      let startPhotoUrl = job.photo_start_url
+      const startPhotos = jobPhotos.filter(p => p.slot === 'start')
+      if (!startPhotoUrl && startPhotos.length > 0) {
+        startPhotoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
+      }
+      if (!startPhotoUrl) {
+        toast.error('Faltou a foto "Before" — tire ao iniciar o serviço')
+        setSubmitting(false)
+        return
+      }
+
       let endPhotoUrl = null
       const endPhotos = jobPhotos.filter(p=>p.slot==='end')
-      for (let i=0;i<endPhotos.length;i++) {
-        const ext = endPhotos[i].file.name.split('.').pop()
-        await supabase.storage.from('service-photos').upload(`jobs/${job.id}/end_${i}.${ext}`,endPhotos[i].file,{upsert:true})
-        if (i===0) { const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${job.id}/end_0.${ext}`); endPhotoUrl=pd.publicUrl }
-      }
+      endPhotoUrl = await uploadSlotPhotos(job.id, endPhotos, 'end')
 
       // Checklist marcado pela pessoa (não obrigatório - pode finalizar com itens não feitos, leva multa)
       const total = checklist.length
@@ -420,7 +435,7 @@ export default function EmployeePortal() {
 
       const { error: coreErr } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(), notes_employee:notes,
-        photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
+        photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
       try {
@@ -639,7 +654,7 @@ export default function EmployeePortal() {
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v4</div>
             <div style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
@@ -1183,34 +1198,42 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 
             {isActive&&(
               <div>
-                {/* BEFORE photos */}
-                <div style={{marginBottom:12}}>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE ({beforePhotos.length})</div>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                    {beforePhotos.map((p,i)=>(
-                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} />
-                    ))}
-                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                      <span style={{fontSize:20}}>📷</span>
-                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Before</span>
-                      <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                    </label>
+                {job.photo_start_url&&(
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE</div>
+                    <img src={job.photo_start_url} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before" />
                   </div>
-                </div>
+                )}
+
+                {!job.photo_start_url&&(
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:'#f87171',marginBottom:6,letterSpacing:1}}>📷 BEFORE (obrigatório)</div>
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                      {beforePhotos.map((p,i)=>(
+                        <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before preview" />
+                      ))}
+                      <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(248,113,113,0.4)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
+                        <span style={{fontSize:20}}>📷</span>
+                        <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Before</span>
+                        <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
+                      </label>
+                    </div>
+                  </div>
+                )}
 
                 <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:60,boxSizing:'border-box',marginBottom:12}} />
 
                 {/* AFTER photos */}
                 <div style={{marginBottom:12}}>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 AFTER ({afterPhotos.length})</div>
+                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 AFTER ({afterPhotos.length}) — obrigatório</div>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                     {afterPhotos.map((p,i)=>(
-                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} />
+                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="After preview" />
                     ))}
                     <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
                       <span style={{fontSize:20}}>📷</span>
                       <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>After</span>
-                      <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
+                      <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
                     </label>
                   </div>
                 </div>
@@ -1239,9 +1262,24 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
             )}
 
             {isNext&&(
-              <button onClick={()=>handleStart(job)} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
-                {submitting?'Starting...':'▶ Start — '+job.title.replace(/ — .*/,'')}
-              </button>
+              <div>
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE ({beforePhotos.length}) — obrigatório</div>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {beforePhotos.map((p,i)=>(
+                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before preview" />
+                    ))}
+                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
+                      <span style={{fontSize:20}}>📷</span>
+                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Before</span>
+                      <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
+                    </label>
+                  </div>
+                </div>
+                <button onClick={()=>handleStart(job)} disabled={submitting||beforePhotos.length===0} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||beforePhotos.length===0?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting||beforePhotos.length===0?'not-allowed':'pointer'}}>
+                  {submitting?'Starting...':beforePhotos.length===0?'📷 Tire a foto Before primeiro':'▶ Start — '+job.title.replace(/ — .*/,'')}
+                </button>
+              </div>
             )}
           </div>
         )
