@@ -212,6 +212,7 @@ export default function ClientPortal() {
 
   const statusLabel = (s) => ({ assigned: tr.status.assigned, in_progress: tr.status.in_progress, completed: tr.status.completed, cancelled: tr.status.cancelled }[s] || s)
   const complaintCat = (k) => ({ quality: c.catQuality, missed: c.catMissed, damage: c.catDamage, late: c.catLate, other: c.catOther }[k] || k)
+  const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
   const bottomTabs = [
     { key: 'home', icon: '🏠', label: c.home },
@@ -262,8 +263,6 @@ export default function ClientPortal() {
     if (existing) setRatingForm({ stars: existing.stars, comment: existing.comment || '' })
     else setRatingForm({ stars: 5, comment: '' })
   }, [selectedVisit?.id, ratings])
-
-  const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
   const VisitDetail = () => {
     if (!selectedVisit) return null
