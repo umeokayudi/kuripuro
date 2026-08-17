@@ -322,7 +322,8 @@ export default function EmployeePortal() {
       // 2. Upload da foto
       let photoUrl = null
       const ext = retroPhoto.name.split('.').pop()
-      await supabase.storage.from('service-photos').upload(`jobs/${retroJob.id}/retro.${ext}`, retroPhoto, { upsert:true })
+      const { error: uploadErr } = await supabase.storage.from('service-photos').upload(`jobs/${retroJob.id}/retro.${ext}`, retroPhoto, { upsert:true })
+      if (uploadErr) throw new Error('Falha ao enviar foto: ' + uploadErr.message)
       const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${retroJob.id}/retro.${ext}`)
       photoUrl = pd.publicUrl
       // 3. Finaliza o job com o valor da IA
@@ -356,7 +357,8 @@ export default function EmployeePortal() {
     let firstUrl = null
     for (let i = 0; i < photos.length; i++) {
       const ext = photos[i].file.name.split('.').pop()
-      await supabase.storage.from('service-photos').upload(`jobs/${jobId}/${prefix}_${i}.${ext}`, photos[i].file, { upsert: true })
+      const { error } = await supabase.storage.from('service-photos').upload(`jobs/${jobId}/${prefix}_${i}.${ext}`, photos[i].file, { upsert: true })
+      if (error) throw new Error('Falha ao enviar foto: ' + error.message)
       if (i === 0) {
         const { data: pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${jobId}/${prefix}_0.${ext}`)
         firstUrl = pd.publicUrl
@@ -499,11 +501,16 @@ export default function EmployeePortal() {
 
   const fmt = s=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
   const scoreColor = s=>s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}).split(' ')[0]
 
   const displayDate = (job) => job.scheduled_date
 
-  const todayJobs = jobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  const getNextShiftJob = (jobList) => [...(jobList||[])]
+    .filter(j => j.scheduled_date >= today && ['assigned','in_progress'].includes(j.status))
+    .sort((a,b) => `${a.scheduled_date} ${a.scheduled_time||'00:00'}`.localeCompare(`${b.scheduled_date} ${b.scheduled_time||'00:00'}`))[0] || null
+
+  const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  const nextShiftJob = getNextShiftJob(allJobs)
 
   const S = {
     card: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:16, marginBottom:12 },
@@ -553,6 +560,21 @@ export default function EmployeePortal() {
     {key:'chat',label:t('Chat','チャット'),icon:'✉',badge:unreadMsgs},
   ]
 
+  const JobPhoto = ({ url, label }) => {
+    const [failed, setFailed] = useState(false)
+    if (!url) return null
+    return (
+      <div>
+        <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
+        {failed ? (
+          <div style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.35)',fontSize:11,textAlign:'center',padding:8}}>📷 Foto não disponível</div>
+        ) : (
+          <img src={url} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
+        )}
+      </div>
+    )
+  }
+
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (() => { try { return JSON.parse(job.checklist_template||'[]') } catch { return [] } })()
@@ -591,8 +613,8 @@ export default function EmployeePortal() {
           {(job.photo_start_url||job.photo_end_url)&&<div style={{marginBottom:14}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Photos</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              {job.photo_start_url&&<div><div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>START</div><img src={job.photo_start_url} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} /></div>}
-              {job.photo_end_url&&<div><div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>END</div><img src={job.photo_end_url} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} /></div>}
+              <JobPhoto url={job.photo_start_url} label="START" />
+              <JobPhoto url={job.photo_end_url} label="END" />
             </div>
           </div>}
           {job.address?.startsWith('http')&&<a href={job.address} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 Open in Google Maps</a>}
@@ -654,7 +676,7 @@ export default function EmployeePortal() {
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v4</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v5</div>
             <div style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
@@ -763,10 +785,8 @@ export default function EmployeePortal() {
             )}
 
             {/* Countdown to next upcoming job */}
-            {todayJobs.length===0&&jobs.length>0&&!activeJob&&(()=>{
-              const nextJob = jobs.find(j=>j.status==='assigned')
-              if (!nextJob) return null
-              const nextDate = new Date(nextJob.scheduled_date+'T'+(nextJob.scheduled_time||'00:30')+':00')
+            {todayJobs.length===0&&nextShiftJob&&!activeJob&&(()=>{
+              const nextDate = new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')
               const diffMs = nextDate - new Date()
               const diffH = Math.floor(diffMs/3600000)
               const diffM = Math.floor((diffMs%3600000)/60000)
@@ -775,7 +795,7 @@ export default function EmployeePortal() {
                 <div style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12}}>
                   <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>⏰ NEXT SHIFT</div>
                   <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>{diffH>0?`${diffH}h ${diffM}m`:`${diffM}m`} away</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>{nextJob.title.split(' —')[0]} · {nextJob.scheduled_date} {nextJob.scheduled_time}</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>{nextShiftJob.title.split(' —')[0]} · {nextShiftJob.scheduled_date} {nextShiftJob.scheduled_time}</div>
                 </div>
               )
             })()}
@@ -785,7 +805,7 @@ export default function EmployeePortal() {
               <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:18,padding:'24px 20px',textAlign:'center',marginBottom:14}}>
                 <div style={{fontSize:36,marginBottom:8}}>☀️</div>
                 <div style={{fontSize:15,fontWeight:600,color:'rgba(255,255,255,0.6)'}}>No shift today</div>
-                {jobs.length>0&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>Next: {displayDate(jobs[0])} · {jobs[0].scheduled_time}</div>}
+                {nextShiftJob&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>Next: {nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</div>}
               </div>
             )}
 
@@ -1124,25 +1144,30 @@ export default function EmployeePortal() {
 }
 
 function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
-  const past = (allJobs||[]).filter(j=>j.status==='completed').sort((a,b)=>(b.scheduled_date||'').localeCompare(a.scheduled_date||''))
+  const statusColor = { completed:'#4ade80', assigned:'#60a5fa', in_progress:'#fbbf24', cancelled:'rgba(255,255,255,0.3)' }
+  const statusLabel = { completed:'Concluído', assigned:'Pendente', in_progress:'Em andamento', cancelled:'Cancelado' }
   const groups = {}
-  past.forEach(j=>{ (groups[j.scheduled_date]=groups[j.scheduled_date]||[]).push(j) })
+  ;(allJobs||[]).forEach(j => { (groups[j.scheduled_date] = groups[j.scheduled_date] || []).push(j) })
   const dates = Object.keys(groups).sort().reverse()
-  if (!dates.length) return <div style={{color:'rgba(255,255,255,0.4)',fontSize:13,padding:20,textAlign:'center'}}>Nenhum servico concluido ainda.</div>
+  if (!dates.length) return <div style={{color:'rgba(255,255,255,0.4)',fontSize:13,padding:20,textAlign:'center'}}>Nenhum serviço encontrado.</div>
   return (
     <div>
       {dates.map(date=>(
         <div key={date} style={{marginBottom:16}}>
-          <div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:8}}>{date}{date===today?' (hoje)':''}</div>
-          {groups[date].map(j=>(
+          <div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:8}}>{date}{date===today?' (hoje)':''} · {groups[date].length} serviço{groups[date].length>1?'s':''}</div>
+          {groups[date].sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map(j=>(
             <div key={j.id} onClick={()=>setSelectedJob&&setSelectedJob(j)} style={{...(S?.card||{}),marginBottom:8,padding:12,cursor:'pointer',background:'rgba(255,255,255,0.03)',borderRadius:12,border:'1px solid rgba(255,255,255,0.06)'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{(j.title||'').split(' — ')[0]}</div>
-                <div style={{fontSize:11,color:j.checklist_total&&j.checklist_done<j.checklist_total?'#f87171':'#4ade80',fontWeight:600}}>
-                  {j.checklist_total?`${j.checklist_done}/${j.checklist_total}`:'✓'}
+                <div style={{fontSize:10,color:statusColor[j.status]||'rgba(255,255,255,0.4)',fontWeight:600}}>
+                  {j.status==='completed' && j.checklist_total ? `${j.checklist_done ?? 0}/${j.checklist_total}` : (statusLabel[j.status]||j.status)}
                 </div>
               </div>
-              {j.completed_at&&<div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:2}}>Concluido {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>}
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:2}}>
+                {j.scheduled_time||'—'}
+                {j.completed_at&&` · Concluído ${new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`}
+                {(j.photo_start_url||j.photo_end_url)&&' · 📷'}
+              </div>
             </div>
           ))}
         </div>
