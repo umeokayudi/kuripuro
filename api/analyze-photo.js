@@ -4,19 +4,8 @@
 // A chave fica só no servidor (env var GEMINI_API_KEY no Vercel).
 
 async function callGemini(body) {
-  const models = ['gemini-3.5-flash', 'gemini-2.5-pro']
-  let lastErr
-  for (const model of models) {
-    try {
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
-      )
-      if (!resp.ok) { lastErr = new Error(await resp.text()); continue }
-      return await resp.json()
-    } catch (e) { lastErr = e }
-  }
-  throw lastErr
+  const { geminiGenerate } = await import('./_gemini.js')
+  return geminiGenerate(body)
 }
 
 export default async function handler(req, res) {

@@ -156,20 +156,12 @@ export default async function handler(req, res) {
     let finalText = ''
 
     for (let iteration = 0; iteration < 6; iteration++) {
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            contents,
-            tools: TOOLS,
-            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-          }),
-        }
-      )
-      if (!resp.ok) throw new Error(`Gemini API error: ${await resp.text()}`)
-      const data = await resp.json()
+      const { geminiGenerate } = await import('./_gemini.js')
+      const data = await geminiGenerate({
+        contents,
+        tools: TOOLS,
+        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      })
       const candidate = data?.candidates?.[0]
       const parts = candidate?.content?.parts || []
       const functionCall = parts.find(p => p.functionCall)?.functionCall
@@ -179,7 +171,7 @@ export default async function handler(req, res) {
         break
       }
 
-      contents.push({ role: 'model', parts: [functionCallPart] })
+      contents.push({ role: 'model', parts: [{ functionCall }] })
 
       let toolResult
       try {

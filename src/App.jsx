@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast'
 import { LangProvider } from './hooks/useLang'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import Sidebar from './components/Sidebar'
+import AIFloatingWidget from './components/AIFloatingWidget'
 import Login from './pages/Login'
 import EmployeePortal from './pages/EmployeePortal'
 
@@ -56,11 +57,12 @@ function AppContent() {
   )
 
   if (!user) return <Login />
-  if (user.role === 'employee') return <EmployeePortal />
+  if (user.role === 'employee') return <><EmployeePortal /><AIFloatingWidget mode="employee" employeeId={user.id} employeeName={user.name} dark /></>
 
   return (
     <div className="app-shell">
       <Sidebar />
+      <AIFloatingWidget mode="admin" />
       <div className="main">
         <header className="topbar">
           <span className="topbar-title">KuriPuro Admin</span>

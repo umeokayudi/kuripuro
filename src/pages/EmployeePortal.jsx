@@ -79,7 +79,7 @@ export default function EmployeePortal() {
   useEffect(() => {
     loadAll()
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
-    const msgPoll = setInterval(loadMessages, 1000)
+    const msgPoll = setInterval(loadMessages, 10000)
     // Ping presence every 60s
     const pingPresence = async () => {
       const update = { last_seen: new Date().toISOString(), is_online: true }
@@ -175,7 +175,11 @@ export default function EmployeePortal() {
     const inProgress = regular.find(j=>j.status==='in_progress')
     if (inProgress) {
       setActiveJob(inProgress)
-      setChecklist(inProgress.checklist_template?inProgress.checklist_template.split('\n').filter(Boolean).map(l=>({label:l,done:false})):[])
+      let ck = []
+      const saved = localStorage.getItem(`kp_ck_${inProgress.id}`)
+      if (saved) { try { ck = JSON.parse(saved) } catch {} }
+      if (!ck.length) ck = inProgress.checklist_template ? inProgress.checklist_template.split('\n').filter(Boolean).map(l => ({ label: l, done: false })) : []
+      setChecklist(ck)
     } else {
       setActiveJob(null)
       clearInterval(timerRef.current)
@@ -226,10 +230,17 @@ export default function EmployeePortal() {
     return { start:f(monday), end:f(sunday) }
   }
 
+  useEffect(() => {
+    if (activeJob?.id && checklist.length) {
+      localStorage.setItem(`kp_ck_${activeJob.id}`, JSON.stringify(checklist))
+    }
+  }, [checklist, activeJob?.id])
+
   const weekSummary = () => {
     const { start, end } = getWeekRange()
     const weekJobs = allJobs.filter(j=>j.status==='completed'&&j.scheduled_date>=start&&j.scheduled_date<=end)
-    const gross = weekJobs.reduce((s,j)=>s+Number(j.value||0),0)
+    const jobEarned = (j) => Number(j.retro_value ?? j.value ?? 0)
+    const gross = weekJobs.reduce((s,j)=>s+jobEarned(j),0)
     const deductions = weekDeductions.reduce((s,d)=>s+Number(d.amount||0),0)
     const totalChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_total||0),0)
     const doneChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_done??0),0)
@@ -263,13 +274,21 @@ export default function EmployeePortal() {
     const fixedMax = empInfo?.fixed_salary||0
     const monthlyDays = empInfo?.monthly_work_days||22
     const dailyRate = fixedMax/monthlyDays
-    let base = empInfo?.salary_type==='fixed' ? Math.min(Math.round(dailyRate*workedDays),fixedMax)
-             : empInfo?.salary_type==='hourly' ? Math.round((totalMins/60)*(empInfo?.hourly_rate||0))
-             : Math.round(fixedMax+(totalMins/60)*(empInfo?.hourly_rate||0))
-    const now = new Date()
-    const daysInMonth = new Date(now.getFullYear(),now.getMonth()+1,0).getDate()
+    const jobPay = (j) => Number(j.retro_value ?? j.value ?? 0)
+    let base = 0
+    if (empInfo?.salary_type==='fixed') base = Math.min(Math.round(dailyRate*workedDays),fixedMax)
+    else if (empInfo?.salary_type==='hourly') base = Math.round((totalMins/60)*(empInfo?.hourly_rate||0))
+    else if (empInfo?.salary_type==='per_job') base = completed.reduce((s,j)=>s+Math.round(jobPay(j)*((empInfo.job_bonus_rate||100)/100)),0)
+    else if (empInfo?.salary_type==='mixed') {
+      const fixedPart = Math.min(Math.round(dailyRate*workedDays), fixedMax)
+      const hourlyPart = Math.round((totalMins/60)*(empInfo?.hourly_rate||0))
+      const bonusPart = completed.reduce((s,j)=>s+Math.round(jobPay(j)*((empInfo.job_bonus_rate||0)/100)),0)
+      base = fixedPart + hourlyPart + bonusPart
+    } else base = Math.round(fixedMax+(totalMins/60)*(empInfo?.hourly_rate||0))
+    const tokyoNow = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Tokyo'}))
+    const daysInMonth = new Date(tokyoNow.getFullYear(),tokyoNow.getMonth()+1,0).getDate()
     let remain = 0
-    for (let d=now.getDate()+1;d<=daysInMonth;d++) { const day=new Date(now.getFullYear(),now.getMonth(),d).getDay(); if(day!==0&&day!==6) remain++ }
+    for (let d=tokyoNow.getDate()+1;d<=daysInMonth;d++) { const day=new Date(tokyoNow.getFullYear(),tokyoNow.getMonth(),d).getDay(); if(day!==0&&day!==6) remain++ }
     setSalaryData({ jobs:completed.length, hours:(totalMins/60).toFixed(1), base, spotEarned, deductions, net:Math.max(0,base+spotEarned-deductions), total:base+spotEarned, workedDays, fixedMax, dailyRate:Math.round(dailyRate), projected:Math.min(base+Math.round(dailyRate*remain),fixedMax) })
   }
 
@@ -281,6 +300,10 @@ export default function EmployeePortal() {
     if (done.length>=5&&!earned.includes('jobs_5')) toAward.push('jobs_5')
     if (done.length>=10&&!earned.includes('jobs_10')) toAward.push('jobs_10')
     if (done.length>=25&&!earned.includes('jobs_25')) toAward.push('jobs_25')
+    const spotsAccepted = allData.filter(j=>j.job_category==='spot'&&(j.spot_status==='accepted'||j.status==='completed'))
+    if (spotsAccepted.length>=5&&!earned.includes('spot_master')) toAward.push('spot_master')
+    const { start, end } = getWeekRange()
+    if (done.filter(j=>j.scheduled_date>=start&&j.scheduled_date<=end).length>=5&&!earned.includes('perfect_week')) toAward.push('perfect_week')
     for (const key of toAward) {
       const def = BADGE_DEFS.find(b=>b.key===key)
       await supabase.from('badges').insert({ employee_id:user.id, badge_key:key, badge_name:def?.name })
@@ -319,7 +342,7 @@ export default function EmployeePortal() {
   const openRetro = (job) => { setRetroJob(job); setRetroText(''); setRetroPhoto(null); setRetroEval(null) }
 
   const submitRetro = async () => {
-    if (!retroText.trim()) { toast.error('Escreva o que você fez'); return }
+    if (!retroText.trim() || retroText.trim().length < 15) { toast.error('Descreva em pelo menos 15 caracteres o que você fez'); return }
     if (!retroPhoto) { toast.error('Anexe uma foto do serviço (obrigatório)'); return }
     setRetroBusy(true)
     try {
@@ -352,13 +375,14 @@ export default function EmployeePortal() {
       // 4. Desconto se valor final < valor cheio
       const desconto = Number(retroJob.value||0) - Number(ev.valor_final||0)
       if (desconto > 0) {
-        await supabase.from('salary_payments').insert({
+        const { error: dedErr } = await supabase.from('salary_payments').insert({
           employee_id: user.id, employee_name: user.name,
           period: (retroJob.scheduled_date||today).slice(0,7), amount: desconto,
           payment_date: retroJob.scheduled_date||today,
           description: `Relatório retroativo — ${retroJob.title}: ${(ev.nao_feitos||[]).join(', ')||'itens incompletos'}`,
           status:'scheduled', payment_type:'deduction', is_deduction:true,
         })
+        if (dedErr) throw new Error('Desconto não registrado: ' + dedErr.message)
       }
       toast.success(`Relatório enviado! Valor: ¥${(ev.valor_final||0).toLocaleString()}`)
       setTimeout(()=>{ setRetroJob(null); loadAll() }, 3500)
@@ -465,7 +489,7 @@ export default function EmployeePortal() {
       if (missed>0 && total>0 && Number(job.value||0)>0) {
         const deductionAmount = Math.round(Number(job.value)*(missed/total))
         if (deductionAmount>0) {
-          await supabase.from('salary_payments').insert({
+          const { error: dedErr } = await supabase.from('salary_payments').insert({
             employee_id: user.id, employee_name: user.name,
             period: (job.scheduled_date||tokyoToday()).slice(0,7),
             amount: deductionAmount,
@@ -473,10 +497,12 @@ export default function EmployeePortal() {
             description: `Itens não feitos (${missed}/${total}) — ${job.title}: ${missedLabels.join(', ')}`,
             status:'scheduled', payment_type:'deduction', is_deduction:true,
           })
+          if (dedErr) throw new Error('Desconto não registrado: ' + dedErr.message)
         }
       }
 
       clearInterval(timerRef.current)
+      localStorage.removeItem(`kp_ck_${job.id}`)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
       const scoreMsg = aiScore!=null ? ` · IA: ${aiScore}/10${aiApproved?' ✅':' ⚠️'}` : ''
       if (missed>0) toast(`Concluído — ${done}/${total} itens feitos, multa aplicada${scoreMsg}`, {icon:'⚠️', duration:5000})
@@ -502,15 +528,19 @@ export default function EmployeePortal() {
   const handleSubmitClaim = async () => {
     if (!claimForm.amount) return toast.error('Enter amount')
     setSubmittingClaim(true)
-    const id = Date.now()
-    const photoUrl = claimPhoto ? await uploadFile(claimPhoto,`claims/${user.id}/${id}_p.${claimPhoto.name.split('.').pop()}`) : null
-    const receiptUrl = claimReceipt ? await uploadFile(claimReceipt,`claims/${user.id}/${id}_r.${claimReceipt.name.split('.').pop()}`) : null
-    const job = allJobs.find(j=>j.id===claimForm.job_id)
-    await supabase.from('transport_claims').insert({ employee_id:user.id, employee_name:user.name, job_id:claimForm.job_id||null, job_title:job?.title||null, amount:parseFloat(claimForm.amount), route:claimForm.route, description:claimForm.description, photo_url:photoUrl, receipt_url:receiptUrl, status:'pending' })
-    toast.success('Claim submitted!')
-    setClaimForm({ job_id:'', amount:'', route:'', description:'' })
-    setClaimPhoto(null); setClaimReceipt(null); setClaimPhotoPreview(null); setClaimReceiptPreview(null)
-    loadAll(); setSubmittingClaim(false)
+    try {
+      const id = Date.now()
+      const photoUrl = claimPhoto ? await uploadFile(claimPhoto,`claims/${user.id}/${id}_p.${claimPhoto.name.split('.').pop()}`) : null
+      const receiptUrl = claimReceipt ? await uploadFile(claimReceipt,`claims/${user.id}/${id}_r.${claimReceipt.name.split('.').pop()}`) : null
+      const job = allJobs.find(j=>j.id===claimForm.job_id)
+      const { error } = await supabase.from('transport_claims').insert({ employee_id:user.id, employee_name:user.name, job_id:claimForm.job_id||null, job_title:job?.title||null, amount:parseFloat(claimForm.amount), route:claimForm.route, description:claimForm.description, photo_url:photoUrl, receipt_url:receiptUrl, status:'pending' })
+      if (error) throw error
+      toast.success('Claim submitted!')
+      setClaimForm({ job_id:'', amount:'', route:'', description:'' })
+      setClaimPhoto(null); setClaimReceipt(null); setClaimPhotoPreview(null); setClaimReceiptPreview(null)
+      loadAll()
+    } catch(e) { toast.error(e.message) }
+    setSubmittingClaim(false)
   }
 
   const fmt = s=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
@@ -693,7 +723,7 @@ export default function EmployeePortal() {
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v7</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v8</div>
             <div style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
@@ -1027,14 +1057,9 @@ export default function EmployeePortal() {
             )}
             {(() => {
               const todayStr = tokyoToday()
-              const parseDate = (desc) => {
-                if (!desc) return null
-                const jun = desc.match(/Jun (\d+)/); if (jun) return '2026-06-'+jun[1].padStart(2,'0')
-                const jul = desc.match(/Jul (\d+)/); if (jul) return '2026-07-'+jul[1].padStart(2,'0')
-                return null
-              }
-              const received = advances.filter(a=>{ const d=parseDate(a.description); return d&&d<todayStr })
-              const pending = advances.filter(a=>{ const d=parseDate(a.description); return !d||d>=todayStr })
+              const parseAdvDate = (a) => (a.received_at || a.created_at || '').slice(0, 10) || null
+              const received = advances.filter(a => { const d = parseAdvDate(a); return d && d < todayStr })
+              const pending = advances.filter(a => { const d = parseAdvDate(a); return !d || d >= todayStr })
               return (<>
                 {received.length>0&&<div style={{marginBottom:14}}>
                   <span style={S.label}>Advances Received</span>
@@ -1310,7 +1335,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                   </div>
                 )})()}
 
-                <button onClick={async()=>{ if(!activeJob){toast.error('No active job');return}; await handleComplete(null) }} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
+                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; handleCompleteWithSig(activeJob) }} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
                   {submitting?'Saving...':'✅ Done → Next'}
                 </button>
               </div>

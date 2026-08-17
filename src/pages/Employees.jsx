@@ -136,7 +136,7 @@ export default function Employees() {
         <div>
           {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {employees.map(e=>{
-            const days = e.work_days ? JSON.parse(e.work_days) : []
+            const days = (() => { try { return e.work_days ? JSON.parse(e.work_days) : [] } catch { return [] } })()
             return (
             <div key={e.id} className="card" style={{marginBottom:12}}>
               <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}>

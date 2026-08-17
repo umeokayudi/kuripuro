@@ -77,6 +77,8 @@ export default function Salary() {
         return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
       }, 0)
       base = Math.round((totalMins / 60) * (selected.hourly_rate || 0))
+    } else if (selected.salary_type === 'per_job') {
+      base = jobs.reduce((s,j) => s + Math.round(Number(j.retro_value ?? j.value ?? 0) * ((selected.job_bonus_rate||100)/100)), 0)
     } else {
       // mixed
       const totalMins = jobs.reduce((s,j) => {

@@ -134,7 +134,10 @@ export default function AdminChat() {
                 {selected.full_name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
               </div>
               {selected.full_name}
-              <span style={{ fontSize:11, color:'var(--green)', marginLeft:4 }}>● online</span>
+              {(() => {
+                const on = selected.last_seen && (Date.now() - new Date(selected.last_seen)) < 120000
+                return <span style={{ fontSize: 11, color: on ? 'var(--green)' : 'var(--text3)', marginLeft: 4 }}>{on ? '● online' : '○ offline'}</span>
+              })()}
             </div>
 
             {/* Messages */}

@@ -37,6 +37,7 @@ function DayScheduleView({ onClose }) {
 
   const handleTimeChange = async (jobId, time) => {
     await supabase.from('jobs').update({ scheduled_time:time }).eq('id',jobId)
+    loadJobs()
   }
 
   const handleDelete = async (jobId) => {
@@ -233,7 +234,7 @@ export default function Jobs() {
         <div>
           {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {jobs.length === 0 && !loading && <div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No jobs yet.</div></div>}
-          {jobs.map(j => (
+          {regularJobs.map(j => (
             <div key={j.id} className="card" style={{marginBottom:10}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:8}}>
                 <div>
@@ -419,7 +420,7 @@ function LocationsTab() {
     <div>
       {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
       <div className="card" style={{marginBottom:14}}>
-        <div className="card-title">Save New Location</div>
+        <div className="card-title">{editingLoc ? 'Edit Location' : 'Save New Location'}</div>
         <div className="grid-2">
           <div className="form-group"><label>Name</label><input value={form.name} onChange={e=>upd('name',e.target.value)} placeholder="Hotel Grand" /></div>
           <div className="form-group"><label>Type</label>
@@ -438,7 +439,8 @@ function LocationsTab() {
           {gps && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}</div>}
         </div>
         <div className="form-group"><label>Notes</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} /></div>
-        <button className="btn btn-primary" onClick={handleSave}>Save Location</button>
+        <button className="btn btn-primary" onClick={editingLoc ? handleUpdateLoc : handleSave}>{editingLoc ? 'Update Location' : 'Save Location'}</button>
+        {editingLoc && <button className="btn" style={{ marginLeft: 8 }} onClick={() => { setEditingLoc(null); setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null) }}>Cancel Edit</button>}
       </div>
 
       <div className="card">

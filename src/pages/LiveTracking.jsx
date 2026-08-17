@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import toast from 'react-hot-toast'
 
 export default function LiveTracking() {
   const [employees, setEmployees] = useState([])
@@ -11,7 +12,8 @@ export default function LiveTracking() {
 
   const checkPhotos = async () => {
     try {
-      const r = await fetch('/api/cleanup-photos')  // GET = preview
+      const r = await fetch('/api/cleanup-photos')
+      if (!r.ok) throw new Error('HTTP ' + r.status)
       setPhotoInfo(await r.json())
     } catch(e) { setPhotoInfo({ error: e.message }) }
   }
@@ -21,10 +23,12 @@ export default function LiveTracking() {
     setCleaning(true)
     try {
       const r = await fetch('/api/cleanup-photos', { method: 'POST' })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
       const res = await r.json()
-      alert(`${res.filesDeleted||0} foto(s) apagada(s).`)
+      if (res.error) throw new Error(res.error)
+      toast.success(`${res.filesDeleted||0} foto(s) apagada(s).`)
       setPhotoInfo(res)
-    } catch(e) { alert('Erro: '+e.message) }
+    } catch(e) { toast.error('Erro: '+e.message) }
     setCleaning(false)
   }
 
@@ -41,7 +45,9 @@ export default function LiveTracking() {
   }
 
   const approveRetro = async (id) => {
-    await supabase.from('jobs').update({ admin_reviewed:true }).eq('id',id)
+    const { error } = await supabase.from('jobs').update({ admin_reviewed: true }).eq('id', id)
+    if (error) return toast.error(error.message)
+    toast.success('Retro revisado')
     loadRetros()
   }
 
@@ -145,7 +151,7 @@ export default function LiveTracking() {
                   </div>
                   <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
                     {activeJob?<span style={{color:'#4ade80',fontWeight:600}}>● Working</span>:todayJobs.length>0?<span style={{color:'var(--text3)'}}>● Idle</span>:<span style={{color:'rgba(255,255,255,0.2)'}}>○ No shift</span>}
-                    {locFresh&&<a href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 ver local</a>}
+                    {locFresh && emp.location_sharing !== false && <a href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 ver local</a>}
                   </div>
                 </div>
                 <div style={{textAlign:'right'}}>
