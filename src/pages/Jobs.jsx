@@ -17,6 +17,16 @@ function applyGeocodeResult(result, setCoords) {
   return false
 }
 
+function statusStyle(status) {
+  const map = {
+    assigned: { bg: 'rgba(96,165,250,0.12)', border: '#60a5fa', label: 'Pendente', text: '#93c5fd' },
+    in_progress: { bg: 'rgba(251,191,36,0.14)', border: '#fbbf24', label: 'Em andamento', text: '#fcd34d' },
+    completed: { bg: 'rgba(74,222,128,0.12)', border: '#4ade80', label: 'Concluído', text: '#86efac' },
+    cancelled: { bg: 'rgba(248,113,113,0.1)', border: '#f87171', label: 'Cancelado', text: '#fca5a5' },
+  }
+  return map[status] || map.assigned
+}
+
 function DayScheduleView({ onClose }) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [jobs, setJobs] = useState([])
@@ -27,109 +37,199 @@ function DayScheduleView({ onClose }) {
   useEffect(() => { loadJobs() }, [date])
 
   const loadEmps = async () => {
-    const { data } = await supabase.from('employees').select('id,full_name').eq('is_active',true).order('full_name')
-    setEmployees(data||[])
+    const { data } = await supabase.from('employees').select('id,full_name').eq('is_active', true).order('full_name')
+    setEmployees(data || [])
   }
 
   const loadJobs = async () => {
     setLoading(true)
     const { data } = await supabase.from('jobs').select('*').eq('scheduled_date', date).order('sequence_order')
-    setJobs(data||[])
+    setJobs(data || [])
     setLoading(false)
   }
 
   const handleReassign = async (jobId, empId) => {
-    const emp = employees.find(e=>e.id===empId)
-    await supabase.from('jobs').update({ employee_id:empId, employee_name:emp?.full_name }).eq('id',jobId)
+    const emp = employees.find(e => e.id === empId)
+    await supabase.from('jobs').update({ employee_id: empId, employee_name: emp?.full_name }).eq('id', jobId)
     loadJobs()
   }
 
   const handleStatusChange = async (jobId, status) => {
-    await supabase.from('jobs').update({ status }).eq('id',jobId)
+    await supabase.from('jobs').update({ status }).eq('id', jobId)
     loadJobs()
   }
 
   const handleTimeChange = async (jobId, time) => {
-    await supabase.from('jobs').update({ scheduled_time:time }).eq('id',jobId)
+    await supabase.from('jobs').update({ scheduled_time: time }).eq('id', jobId)
     loadJobs()
   }
 
-  const handleDelete = async (jobId) => {
-    if (!confirm('Delete this job?')) return
-    await supabase.from('jobs').delete().eq('id',jobId)
+  const handleDelete = async (jobId, title) => {
+    if (!confirm(`Apagar job?\n\n${title}`)) return
+    await supabase.from('jobs').delete().eq('id', jobId)
+    toast.success('Job apagado')
     loadJobs()
   }
 
-  const empGroups = employees.map(e=>({
+  const empGroups = employees.map(e => ({
     emp: e,
-    jobs: jobs.filter(j=>j.employee_id===e.id).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
-  })).filter(g=>g.jobs.length>0)
+    jobs: jobs.filter(j => j.employee_id === e.id).sort((a, b) => (a.sequence_order || 99) - (b.sequence_order || 99)),
+  })).filter(g => g.jobs.length > 0)
 
-  const unassigned = jobs.filter(j=>!j.employee_id)
+  const unassigned = jobs.filter(j => !j.employee_id)
+  const done = jobs.filter(j => j.status === 'completed').length
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
 
-  const statusColor = s => ({assigned:'#60a5fa',in_progress:'#fbbf24',completed:'#4ade80',cancelled:'rgba(255,255,255,0.2)'}[s])
+  const JobCard = ({ j, idx }) => {
+    const st = statusStyle(j.status)
+    const locName = j.title.replace(/ — .*/, '')
+    const serviceType = j.title.includes(' — ') ? j.title.split(' — ').slice(1).join(' — ') : ''
+    return (
+      <div style={{
+        background: 'var(--surface)',
+        border: `1px solid var(--border)`,
+        borderLeft: `4px solid ${st.border}`,
+        borderRadius: 12,
+        padding: '14px 16px',
+        marginBottom: 10,
+      }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 800,
+            background: st.bg, color: st.text, border: `2px solid ${st.border}`,
+          }}>
+            {j.status === 'completed' ? '✓' : idx + 1}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{locName}</div>
+            {serviceType && <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>{serviceType}</div>}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 8 }}>
+                🕐 {j.scheduled_time || '00:30'}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: st.text, background: st.bg, padding: '4px 10px', borderRadius: 8 }}>
+                {st.label}
+              </span>
+              {j.value > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value).toLocaleString()}</span>}
+            </div>
+            {j.description && (
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8, background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
+                🔑 {j.description.split('\n')[0]}
+              </div>
+            )}
+            {j.address?.startsWith('http') && (
+              <a href={j.address} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#60a5fa', textDecoration: 'none', fontWeight: 600 }}>
+                🗺 Abrir no Maps
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+            Horário
+            <input type="time" defaultValue={j.scheduled_time || '00:30'} onBlur={e => handleTimeChange(j.id, e.target.value)}
+              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }} />
+          </label>
+          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+            Funcionário
+            <select value={j.employee_id || ''} onChange={e => handleReassign(j.id, e.target.value)}
+              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}>
+              {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
+            Status
+            <select value={j.status} onChange={e => handleStatusChange(j.id, e.target.value)}
+              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: st.text, fontWeight: 600 }}>
+              <option value="assigned">Pendente</option>
+              <option value="in_progress">Em andamento</option>
+              <option value="completed">Concluído</option>
+              <option value="cancelled">Cancelado</option>
+            </select>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button className="btn btn-danger" onClick={() => handleDelete(j.id, locName)} style={{ width: '100%', fontSize: 13, padding: '9px 12px' }}>
+              🗑 Apagar
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:100,display:'flex',flexDirection:'column',overflow:'auto'}}>
-      <div style={{background:'var(--surface)',borderBottom:'1px solid var(--border)',padding:'14px 20px',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:10}}>
-        <div style={{display:'flex',alignItems:'center',gap:14}}>
-          <button className="btn" onClick={onClose}>← Back</button>
-          <h2 style={{fontSize:17,fontWeight:700,margin:0}}>Day Schedule</h2>
-          <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{padding:'7px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text)',fontSize:13}} />
-        </div>
-        <div style={{fontSize:13,color:'var(--text3)'}}>{jobs.length} jobs · {new Date(date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
-      </div>
-
-      <div style={{padding:20}}>
-        {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-
-        {empGroups.map(({emp, jobs:empJobs})=>(
-          <div key={emp.id} style={{marginBottom:20}}>
-            <div style={{fontSize:14,fontWeight:700,color:'var(--text)',marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
-              <div style={{width:8,height:8,borderRadius:'50%',background:empJobs.every(j=>j.status==='completed')?'#4ade80':empJobs.some(j=>j.status==='in_progress')?'#fbbf24':'#60a5fa'}} />
-              {emp.full_name} <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>({empJobs.length} jobs · {empJobs.filter(j=>j.status==='completed').length} done)</span>
-            </div>
-            <div style={{border:'1px solid var(--border)',borderRadius:12,overflow:'hidden'}}>
-              {empJobs.map((j,idx)=>(
-                <div key={j.id} style={{display:'grid',gridTemplateColumns:'28px 1fr auto auto auto auto',gap:8,alignItems:'center',padding:'10px 14px',borderBottom:idx<empJobs.length-1?'1px solid rgba(255,255,255,0.04)':'none',background:j.status==='completed'?'rgba(74,222,128,0.03)':j.status==='in_progress'?'rgba(251,191,36,0.05)':'transparent'}}>
-                  <div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,background:j.status==='completed'?'#4ade80':j.status==='in_progress'?'rgba(251,191,36,0.2)':'rgba(255,255,255,0.06)',color:j.status==='completed'?'#0a1929':j.status==='in_progress'?'#fbbf24':'var(--text3)'}}>{j.status==='completed'?'✓':idx+1}</div>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:500,color:j.status==='completed'?'var(--text3)':'var(--text)',textDecoration:j.status==='completed'?'line-through':'none'}}>{j.title.replace(/ — .*/,'')}</div>
-                    {j.description&&<div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>{j.description.substring(0,50)}</div>}
-                  </div>
-                  <input type="time" defaultValue={j.scheduled_time||'00:30'} onBlur={e=>handleTimeChange(j.id,e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text)',width:72}} />
-                  <select value={j.employee_id||''} onChange={e=>handleReassign(j.id,e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text)'}}>
-                    {employees.map(e=><option key={e.id} value={e.id}>{e.full_name.split(' ')[0]}</option>)}
-                  </select>
-                  <select value={j.status} onChange={e=>handleStatusChange(j.id,e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:statusColor(j.status)}}>
-                    {['assigned','in_progress','completed','cancelled'].map(s=><option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <button onClick={()=>handleDelete(j.id)} style={{fontSize:11,padding:'3px 8px',borderRadius:6,border:'1px solid rgba(248,113,113,0.2)',background:'rgba(248,113,113,0.08)',color:'#f87171',cursor:'pointer'}}>✕</button>
-                </div>
-              ))}
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--bg, #0a1929)', zIndex: 200, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '16px 20px', position: 'sticky', top: 0, zIndex: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button className="btn" onClick={onClose}>← Voltar</button>
+            <div>
+              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>📅 Escala do Dia</h2>
+              <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2, textTransform: 'capitalize' }}>{dateLabel}</div>
             </div>
           </div>
-        ))}
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 14, fontWeight: 600 }} />
+        </div>
 
-        {unassigned.length>0&&(
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:14,fontWeight:700,color:'#fbbf24',marginBottom:10}}>⚠️ Unassigned ({unassigned.length})</div>
-            <div style={{border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,overflow:'hidden'}}>
-              {unassigned.map((j,idx)=>(
-                <div key={j.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'center',padding:'10px 14px',borderBottom:idx<unassigned.length-1?'1px solid rgba(255,255,255,0.04)':'none'}}>
-                  <div style={{fontSize:13}}>{j.title.replace(/ — .*/,'')}</div>
-                  <select onChange={e=>handleReassign(j.id,e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'1px solid var(--border)',background:'var(--surface2)',color:'var(--text)'}}>
-                    <option value="">Assign to...</option>
-                    {employees.map(e=><option key={e.id} value={e.id}>{e.full_name.split(' ')[0]}</option>)}
-                  </select>
-                  <button onClick={()=>handleDelete(j.id)} style={{fontSize:11,padding:'3px 8px',borderRadius:6,border:'1px solid rgba(248,113,113,0.2)',background:'rgba(248,113,113,0.08)',color:'#f87171',cursor:'pointer'}}>✕</button>
-                </div>
-              ))}
+        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+          {[
+            ['Total', jobs.length, 'var(--text)'],
+            ['Concluídos', done, '#4ade80'],
+            ['Pendentes', jobs.filter(j => j.status === 'assigned').length, '#60a5fa'],
+            ['Em andamento', jobs.filter(j => j.status === 'in_progress').length, '#fbbf24'],
+          ].map(([label, val, color]) => (
+            <div key={label} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 16px', minWidth: 90 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
             </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: '20px', maxWidth: 900, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+        {loading && <div style={{ color: 'var(--text3)', fontSize: 14, padding: 20 }}>Carregando...</div>}
+
+        {!loading && jobs.length === 0 && (
+          <div className="card" style={{ textAlign: 'center', padding: 40 }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Nenhum job neste dia</div>
+            <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>Escolha outra data ou gere a escala no Gerador Escala</div>
           </div>
         )}
 
-        {jobs.length===0&&!loading&&<div style={{textAlign:'center',padding:40,color:'var(--text3)',fontSize:13}}>No jobs for this day.</div>}
+        {empGroups.map(({ emp, jobs: empJobs }) => (
+          <div key={emp.id} style={{ marginBottom: 24 }}>
+            <div style={{
+              fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 12,
+              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+              background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)',
+            }}>
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%',
+                background: empJobs.every(j => j.status === 'completed') ? '#4ade80'
+                  : empJobs.some(j => j.status === 'in_progress') ? '#fbbf24' : '#60a5fa',
+              }} />
+              {emp.full_name}
+              <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>
+                {empJobs.filter(j => j.status === 'completed').length}/{empJobs.length} feitos
+              </span>
+            </div>
+            {empJobs.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
+          </div>
+        ))}
+
+        {unassigned.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#fbbf24', marginBottom: 12, padding: '10px 14px', background: 'rgba(251,191,36,0.1)', borderRadius: 12, border: '1px solid rgba(251,191,36,0.25)' }}>
+              ⚠️ Sem funcionário ({unassigned.length})
+            </div>
+            {unassigned.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -242,7 +342,7 @@ export default function Jobs() {
     <div>
       {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-        <button className="btn btn-primary" onClick={()=>setShowDaySchedule(true)}>📅 Day Schedule</button>
+        <button className="btn btn-primary" onClick={()=>setShowDaySchedule(true)}>📅 Escala do Dia</button>
       </div>
       <div className="tab-pills">
         <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>All Jobs</button>
