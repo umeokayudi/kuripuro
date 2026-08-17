@@ -38,6 +38,7 @@ export default function EmployeePortal() {
   const [salaryData, setSalaryData] = useState(null)
   const [payments, setPayments] = useState([])
   const [weekDeductions, setWeekDeductions] = useState([])
+  const [monthDeductions, setMonthDeductions] = useState([])
   const [advances, setAdvances] = useState([])
   const [claims, setClaims] = useState([])
   const [messages, setMessages] = useState([])
@@ -151,7 +152,8 @@ export default function EmployeePortal() {
   const loadAll = async () => {
     const today = tokyoToday()
     const { start:weekStart, end:weekEnd } = getWeekRange()
-    const [active, all, emp, pay, adv, clm, bdg, weekPay] = await Promise.all([
+    const monthStart = today.slice(0, 7) + '-01'
+    const [active, all, emp, pay, adv, clm, bdg, weekPay, monthPay] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
       supabase.from('employees').select('*').eq('id',user.id).single(),
@@ -160,12 +162,14 @@ export default function EmployeePortal() {
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
       supabase.from('badges').select('*').eq('employee_id',user.id),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
+      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
     ])
     const regular = (active.data||[]).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = (active.data||[]).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
     setJobs(regular); setSpotJobs(spots); setAllJobs(all.data||[])
     setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[])
     setWeekDeductions(weekPay.data||[])
+    setMonthDeductions(monthPay.data||[])
     setBadges(bdg.data||[])
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
     const inProgress = regular.find(j=>j.status==='in_progress')
@@ -177,7 +181,7 @@ export default function EmployeePortal() {
       clearInterval(timerRef.current)
       setElapsed(0)
     }
-    calcSalary(all.data||[], emp.data)
+    calcSalary(all.data||[], emp.data, monthPay.data||[])
     loadMessages()
     awardBadges(all.data||[], bdg.data||[])
   }
@@ -228,17 +232,24 @@ export default function EmployeePortal() {
     const gross = weekJobs.reduce((s,j)=>s+Number(j.value||0),0)
     const deductions = weekDeductions.reduce((s,d)=>s+Number(d.amount||0),0)
     const totalChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_total||0),0)
-    const doneChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_done||0),0)
+    const doneChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_done??0),0)
     const rate = totalChecklist>0 ? Math.round((doneChecklist/totalChecklist)*100) : 100
     return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate }
   }
 
-  const calcSalary = (allData, empInfo) => {
+  const jobMinutes = (j) => {
+    if (j.started_at && j.completed_at) return (new Date(j.completed_at) - new Date(j.started_at)) / 60000
+    if (j.retro_time_min) return Number(j.retro_time_min)
+    return 45
+  }
+
+  const calcSalary = (allData, empInfo, deductionsList = []) => {
     const todayStr = tokyoToday()
     const month = todayStr.slice(0, 7)
     const completed = allData.filter(j=>j.status==='completed'&&j.scheduled_date?.startsWith(month)&&j.scheduled_date<=todayStr)
-    const totalMins = completed.reduce((s,j)=>{ if(!j.started_at||!j.completed_at) return s; return s+(new Date(j.completed_at)-new Date(j.started_at))/60000 },0)
+    const totalMins = completed.reduce((s,j)=>s+jobMinutes(j),0)
     const spotEarned = completed.filter(j=>j.job_category==='spot').reduce((s,j)=>s+Number(j.spot_value||0),0)
+    const deductions = (deductionsList||[]).reduce((s,d)=>s+Number(d.amount||0),0)
     const workedDaySet = new Set()
     completed.filter(j=>j.counts_as_work_day!==false).forEach(j=>{
       if (!j.scheduled_date) return
@@ -259,7 +270,7 @@ export default function EmployeePortal() {
     const daysInMonth = new Date(now.getFullYear(),now.getMonth()+1,0).getDate()
     let remain = 0
     for (let d=now.getDate()+1;d<=daysInMonth;d++) { const day=new Date(now.getFullYear(),now.getMonth(),d).getDay(); if(day!==0&&day!==6) remain++ }
-    setSalaryData({ jobs:completed.length, hours:(totalMins/60).toFixed(1), base, spotEarned, total:base+spotEarned, workedDays, fixedMax, dailyRate:Math.round(dailyRate), projected:Math.min(base+Math.round(dailyRate*remain),fixedMax) })
+    setSalaryData({ jobs:completed.length, hours:(totalMins/60).toFixed(1), base, spotEarned, deductions, net:Math.max(0,base+spotEarned-deductions), total:base+spotEarned, workedDays, fixedMax, dailyRate:Math.round(dailyRate), projected:Math.min(base+Math.round(dailyRate*remain),fixedMax) })
   }
 
   const awardBadges = async (allData, existing) => {
@@ -513,6 +524,8 @@ export default function EmployeePortal() {
     .sort((a,b) => `${a.scheduled_date} ${a.scheduled_time||'00:00'}`.localeCompare(`${b.scheduled_date} ${b.scheduled_time||'00:00'}`))[0] || null
 
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  const todayPendingJobs = todayJobs.filter(j=>['assigned','in_progress'].includes(j.status))
+  const todayAllDone = todayJobs.length>0 && todayPendingJobs.length===0
   const nextShiftJob = getNextShiftJob(allJobs)
 
   const S = {
@@ -680,7 +693,7 @@ export default function EmployeePortal() {
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v6</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v7</div>
             <div style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
@@ -692,12 +705,9 @@ export default function EmployeePortal() {
             <button onClick={()=>setLanguage(lang==='en'?'jp':'en')} style={{height:40,padding:'0 10px',borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',color:'rgba(255,255,255,0.6)',fontSize:12,fontWeight:600}}>
               {lang==='en'?'JP':'EN'}
             </button>
-            <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>
-              🔔
-              {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
-            </button>
             <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
               🔔
+              {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
             </button>
             <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,position:'relative'}}>
               {[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
@@ -756,13 +766,13 @@ export default function EmployeePortal() {
               </div>
             </div>}
 
-            {/* Today shift card */}
-            {todayJobs.length>0&&!activeJob&&(
+            {/* Today shift — pendente */}
+            {todayPendingJobs.length>0&&!activeJob&&(
               <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 NEXT SHIFT</div>
+                  <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 TURNO DE HOJE</div>
                   {(()=>{
-                    const nj=todayJobs.find(j=>j.status==='assigned')
+                    const nj=todayPendingJobs.find(j=>j.status==='assigned')
                     if(!nj) return null
                     const nd=new Date(nj.scheduled_date+'T'+(nj.scheduled_time||'00:30')+':00')
                     const diffMs=nd-new Date()
@@ -773,7 +783,7 @@ export default function EmployeePortal() {
                   })()}
                 </div>
                 <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} locations</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{todayJobs.filter(j=>j.status==='completed').length} done · {todayJobs.filter(j=>j.status==='assigned').length} remaining</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{todayJobs.filter(j=>j.status==='completed').length} done · {todayPendingJobs.length} remaining</div>
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginBottom:12}}>⏱ Est. {Math.round(todayJobs.length*0.75)}h total · avg 45min/location</div>
                 <div style={{height:5,background:'rgba(255,255,255,0.1)',borderRadius:3,overflow:'hidden',marginBottom:10}}>
                   <div style={{height:'100%',width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%',background:'linear-gradient(90deg,#c19c56,#e8c47a)',borderRadius:3,transition:'width 0.4s'}} />
@@ -785,6 +795,18 @@ export default function EmployeePortal() {
                   </div>
                   <div style={{fontSize:13,fontWeight:600,color:'#c19c56'}}>Start →</div>
                 </div>
+              </div>
+            )}
+
+            {/* Turno de hoje concluído */}
+            {todayAllDone&&!activeJob&&(
+              <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:'1px solid rgba(74,222,128,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
+                <div style={{fontSize:10,color:'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:8}}>✅ TURNO DE HOJE CONCLUÍDO</div>
+                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} locations</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>Tudo feito! Toque para revisar os serviços</div>
+                {nextShiftJob&&nextShiftJob.scheduled_date>today&&(
+                  <div style={{fontSize:11,color:'#60a5fa',marginTop:4}}>Próximo turno: {nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</div>
+                )}
               </div>
             )}
 
@@ -877,7 +899,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} />
         )}
 
         {/* SPOTS */}
@@ -910,8 +932,9 @@ export default function EmployeePortal() {
           <div>
             <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
               <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>Earned This Month</div>
-              <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{(salaryData?.total||0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>of ¥{(salaryData?.fixedMax||0).toLocaleString()} max</div>
+                <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>líquido · bruto ¥{(salaryData?.total||0).toLocaleString()} · descontos ¥{(salaryData?.deductions||0).toLocaleString()}</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>of ¥{(salaryData?.fixedMax||0).toLocaleString()} max</div>
               <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 14px 5px',overflow:'hidden'}}>
                 <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
               </div>
@@ -941,10 +964,10 @@ export default function EmployeePortal() {
                 </div>
                 <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginBottom:w.weekJobs.length?10:0}}>{w.doneChecklist}/{w.totalChecklist} checklist items done ({w.rate}%) · {w.weekJobs.length} jobs</div>
                 {w.weekJobs.map(j=>(
-                  <div key={j.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:'1px solid rgba(255,255,255,0.06)',fontSize:11}}>
+                  <div key={j.id} onClick={()=>setSelectedJob(j)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:'1px solid rgba(255,255,255,0.06)',fontSize:11,cursor:'pointer'}}>
                     <div style={{color:'rgba(255,255,255,0.6)'}}>{j.scheduled_date} · {j.title}</div>
-                    <div style={{color:(j.checklist_total&&j.checklist_done<j.checklist_total)?'#f87171':'#4ade80',fontWeight:600}}>
-                      {j.checklist_total?`${j.checklist_done}/${j.checklist_total}`:'—'}
+                    <div style={{color:(j.checklist_total&&(j.checklist_done??0)<j.checklist_total)?'#f87171':'#4ade80',fontWeight:600}}>
+                      {j.checklist_total?`${j.checklist_done??0}/${j.checklist_total}`:'✓'}
                     </div>
                   </div>
                 ))}
@@ -1180,7 +1203,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro, setSelectedJob }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
@@ -1207,8 +1230,10 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         const isNext = !activeJob && job.status==='assigned' && todayJobs.slice(0,idx).every(j=>j.status==='completed')
 
         return (
-          <div key={job.id} id={isActive?'active-job-card':undefined} style={{...S.card,marginBottom:10,opacity:isDone?0.6:1,border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(255,255,255,0.04)':'1px solid rgba(255,255,255,0.08)'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isActive||isNext?12:0}}>
+          <div key={job.id} id={isActive?'active-job-card':undefined}
+            onClick={()=>{ if(isDone&&setSelectedJob) setSelectedJob(job) }}
+            style={{...S.card,marginBottom:10,opacity:isDone?0.85:1,cursor:isDone?'pointer':'default',border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(74,222,128,0.2)':'1px solid rgba(255,255,255,0.08)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isActive||isNext||isDone?8:0}}>
               <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,background:isDone?'rgba(74,222,128,0.2)':isActive?'rgba(74,222,128,0.15)':'rgba(255,255,255,0.06)',color:isDone?'#4ade80':isActive?'#4ade80':'rgba(255,255,255,0.4)'}}>
                   {isDone?'✓':idx+1}
@@ -1220,8 +1245,9 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
-                {!isDone&&!isActive&&openRetro&&<button onClick={()=>openRetro(job)} style={{fontSize:11,background:'rgba(193,156,86,0.15)',color:'#c19c56',border:'1px solid rgba(193,156,86,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer',fontWeight:600}}>📝 Relatório</button>}
-                {job.address&&job.address.startsWith('http')&&<a href={job.address} target="_blank" rel="noreferrer" style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
+                {isDone&&<span style={{fontSize:10,color:'#4ade80',fontWeight:600}}>Ver detalhes ›</span>}
+                {!isDone&&!isActive&&openRetro&&<button onClick={(e)=>{ e.stopPropagation(); openRetro(job) }} style={{fontSize:11,background:'rgba(193,156,86,0.15)',color:'#c19c56',border:'1px solid rgba(193,156,86,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer',fontWeight:600}}>📝 Relatório</button>}
+                {job.address&&job.address.startsWith('http')&&<a href={job.address} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
               </div>
             </div>
 
