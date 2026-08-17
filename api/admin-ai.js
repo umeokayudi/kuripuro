@@ -5,6 +5,7 @@
 // comandos em linguagem natural.
 
 import { geminiGenerate, API_BUILD } from './_gemini.js'
+import { runGeminiToolLoop } from './_tool-loop.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
@@ -163,42 +164,14 @@ export default async function handler(req, res) {
       parts: [{ text: m.content }],
     }))
 
-    const toolLog = []
-    let finalText = ''
+    const { reply, toolLog } = await runGeminiToolLoop({
+      contents,
+      tools: TOOLS,
+      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      executeTool,
+    })
 
-    for (let iteration = 0; iteration < 6; iteration++) {
-      const data = await geminiGenerate({
-        contents,
-        tools: TOOLS,
-        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-      })
-      const candidate = data?.candidates?.[0]
-      const parts = candidate?.content?.parts || []
-      const functionCall = parts.find(p => p.functionCall)?.functionCall
-
-      if (!functionCall) {
-        finalText = parts.map(p => p.text || '').join('')
-        break
-      }
-
-      contents.push({ role: 'model', parts: [{ functionCall }] })
-
-      let toolResult
-      try {
-        toolResult = await executeTool(functionCall.name, functionCall.args || {})
-        toolLog.push({ name: functionCall.name, args: functionCall.args, ok: true })
-      } catch (err) {
-        toolResult = { error: err.message }
-        toolLog.push({ name: functionCall.name, args: functionCall.args, ok: false, error: err.message })
-      }
-
-      contents.push({
-        role: 'user',
-        parts: [{ functionResponse: { name: functionCall.name, response: { result: toolResult } } }],
-      })
-    }
-
-    res.status(200).json({ reply: finalText || '(sem resposta)', toolLog })
+    res.status(200).json({ reply, toolLog })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

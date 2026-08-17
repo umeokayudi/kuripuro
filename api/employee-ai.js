@@ -1,6 +1,7 @@
 // Assistente de IA para funcionários — somente leitura dos próprios dados
 
 import { geminiGenerate } from './_gemini.js'
+import { runGeminiToolLoop } from './_tool-loop.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
@@ -77,37 +78,15 @@ Regras:
       parts: [{ text: m.content }],
     }))
 
-    const toolLog = []
-    let finalText = ''
+    const { reply, toolLog } = await runGeminiToolLoop({
+      contents,
+      tools: TOOLS,
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+      executeTool: (_name, args) => queryEmployeeData(employeeId, args || {}),
+      maxIterations: 5,
+    })
 
-    for (let i = 0; i < 5; i++) {
-      const data = await geminiGenerate({ contents, tools: TOOLS, systemInstruction: { parts: [{ text: systemInstruction }] } })
-      const parts = data?.candidates?.[0]?.content?.parts || []
-      const functionCall = parts.find(p => p.functionCall)?.functionCall
-
-      if (!functionCall) {
-        finalText = parts.map(p => p.text || '').join('')
-        break
-      }
-
-      contents.push({ role: 'model', parts: [{ functionCall }] })
-
-      let toolResult
-      try {
-        toolResult = await queryEmployeeData(employeeId, functionCall.args || {})
-        toolLog.push({ name: functionCall.name, args: functionCall.args, ok: true })
-      } catch (err) {
-        toolResult = { error: err.message }
-        toolLog.push({ name: functionCall.name, args: functionCall.args, ok: false, error: err.message })
-      }
-
-      contents.push({
-        role: 'user',
-        parts: [{ functionResponse: { name: functionCall.name, response: { result: toolResult } } }],
-      })
-    }
-
-    res.status(200).json({ reply: finalText || '(sem resposta)', toolLog })
+    res.status(200).json({ reply, toolLog })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
