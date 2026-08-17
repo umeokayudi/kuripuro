@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
 
 export default function Clients() {
-  const { t } = useLang()
   const [tab, setTab] = useState('list')
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
