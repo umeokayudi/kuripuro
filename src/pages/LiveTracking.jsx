@@ -59,7 +59,7 @@ export default function LiveTracking() {
   const getEmpJobs = (empId) => jobs.filter(j=>j.employee_id===empId)
   const getActiveJob = (empId) => jobs.find(j=>j.employee_id===empId&&j.status==='in_progress')
   const getTodayJobs = (empId) => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
     return jobs.filter(j=>j.employee_id===empId&&j.scheduled_date===today)
   }
 
@@ -182,7 +182,7 @@ export default function LiveTracking() {
       {selected&&(()=>{
         const emp = employees.find(e=>e.id===selected)
         const empJobs = getEmpJobs(selected)
-        const today = new Date().toISOString().split('T')[0]
+        const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
         const todayJobs = empJobs.filter(j=>j.scheduled_date===today)
         const upcoming = empJobs.filter(j=>j.scheduled_date>today).slice(0,5)
         if (!emp) return null

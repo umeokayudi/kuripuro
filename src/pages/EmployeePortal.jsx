@@ -14,6 +14,8 @@ const BADGE_DEFS = [
   { key:'perfect_week', name:'Perfect Week', icon:'🔥', desc:'5 jobs in one week' },
 ]
 
+const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+
 export default function EmployeePortal() {
   const { user, logout } = useAuth()
   const [tab, setTab] = useState('home')
@@ -147,11 +149,11 @@ export default function EmployeePortal() {
   }
 
   const loadAll = async () => {
-    const today = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}).split(' ')[0]
+    const today = tokyoToday()
     const { start:weekStart, end:weekEnd } = getWeekRange()
     const [active, all, emp, pay, adv, clm, bdg, weekPay] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
-      supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(200),
+      supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
       supabase.from('employees').select('*').eq('id',user.id).single(),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).gte('payment_date',today).order('payment_date').limit(10),
       supabase.from('salary_advances').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(10),
@@ -216,7 +218,7 @@ export default function EmployeePortal() {
     const diffToMonday = day===0?-6:1-day
     const monday = new Date(now); monday.setDate(now.getDate()+diffToMonday); monday.setHours(0,0,0,0)
     const sunday = new Date(monday); sunday.setDate(monday.getDate()+6)
-    const f = d=>d.toISOString().split('T')[0]
+    const f = d => d.toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
     return { start:f(monday), end:f(sunday) }
   }
 
@@ -232,8 +234,8 @@ export default function EmployeePortal() {
   }
 
   const calcSalary = (allData, empInfo) => {
-    const month = new Date().toISOString().slice(0,7)
-    const todayStr = new Date().toISOString().split('T')[0]
+    const todayStr = tokyoToday()
+    const month = todayStr.slice(0, 7)
     const completed = allData.filter(j=>j.status==='completed'&&j.scheduled_date?.startsWith(month)&&j.scheduled_date<=todayStr)
     const totalMins = completed.reduce((s,j)=>{ if(!j.started_at||!j.completed_at) return s; return s+(new Date(j.completed_at)-new Date(j.started_at))/60000 },0)
     const spotEarned = completed.filter(j=>j.job_category==='spot').reduce((s,j)=>s+Number(j.spot_value||0),0)
@@ -454,9 +456,9 @@ export default function EmployeePortal() {
         if (deductionAmount>0) {
           await supabase.from('salary_payments').insert({
             employee_id: user.id, employee_name: user.name,
-            period: (job.scheduled_date||new Date().toISOString().split('T')[0]).slice(0,7),
+            period: (job.scheduled_date||tokyoToday()).slice(0,7),
             amount: deductionAmount,
-            payment_date: job.scheduled_date||new Date().toISOString().split('T')[0],
+            payment_date: job.scheduled_date||tokyoToday(),
             description: `Itens não feitos (${missed}/${total}) — ${job.title}: ${missedLabels.join(', ')}`,
             status:'scheduled', payment_type:'deduction', is_deduction:true,
           })
@@ -480,7 +482,8 @@ export default function EmployeePortal() {
   }
 
   const uploadFile = async (file, path) => {
-    await supabase.storage.from('service-photos').upload(path,file,{upsert:true})
+    const { error } = await supabase.storage.from('service-photos').upload(path,file,{upsert:true})
+    if (error) throw new Error('Falha ao enviar foto: ' + error.message)
     const { data } = supabase.storage.from('service-photos').getPublicUrl(path)
     return data.publicUrl
   }
@@ -501,7 +504,7 @@ export default function EmployeePortal() {
 
   const fmt = s=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
   const scoreColor = s=>s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
-  const today = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Tokyo'}).split(' ')[0]
+  const today = tokyoToday()
 
   const displayDate = (job) => job.scheduled_date
 
@@ -577,7 +580,7 @@ export default function EmployeePortal() {
 
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
-    const cl = (() => { try { return JSON.parse(job.checklist_template||'[]') } catch { return [] } })()
+    const cl = (job.checklist_template||'').split('\n').filter(Boolean)
     const dDate = displayDate(job)
     return (
       <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',zIndex:200,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={onClose}>
@@ -603,8 +606,8 @@ export default function EmployeePortal() {
             <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{job.description}</div>
           </div>}
           {cl.length>0&&<div style={{marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {cl.filter(t=>t.done).length}/{cl.length}</div>
-            {cl.map((t,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:t.done?'#4ade80':'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{t.done&&<span style={{fontSize:12,color:'#080f1a',fontWeight:900}}>✓</span>}</div><span style={{fontSize:13,color:t.done?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.75)',textDecoration:t.done?'line-through':'none'}}>{t.label}</span></div>)}
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : cl.length+' itens'}</div>
+            {cl.map((label,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:10,color:'rgba(255,255,255,0.4)'}}>{i+1}</div><span style={{fontSize:13,color:'rgba(255,255,255,0.75)'}}>{label}</span></div>)}
           </div>}
           {job.notes_employee&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>Your Notes</div>
@@ -618,6 +621,7 @@ export default function EmployeePortal() {
             </div>
           </div>}
           {job.address?.startsWith('http')&&<a href={job.address} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 Open in Google Maps</a>}
+          {job.status==='assigned'&&!activeJob&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 Relatório retroativo</button>}
           <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>Close</button>
         </div>
       </div>
@@ -676,7 +680,7 @@ export default function EmployeePortal() {
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v5</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v6</div>
             <div style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
@@ -965,7 +969,7 @@ export default function EmployeePortal() {
             </div>
             <div style={{marginBottom:14}}>
               <button onClick={async()=>{
-                const today2 = new Date().toISOString().split('T')[0]
+                const today2 = tokyoToday()
                 const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
                 if (!todayJobsForPDF.length) return toast.error(t('No jobs today','本日の作業なし'))
                 const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
@@ -999,7 +1003,7 @@ export default function EmployeePortal() {
               </div>
             )}
             {(() => {
-              const todayStr = new Date().toISOString().split('T')[0]
+              const todayStr = tokyoToday()
               const parseDate = (desc) => {
                 if (!desc) return null
                 const jun = desc.match(/Jun (\d+)/); if (jun) return '2026-06-'+jun[1].padStart(2,'0')
