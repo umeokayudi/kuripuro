@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import toast from 'react-hot-toast'
 
 export default function Clients() {
@@ -12,7 +13,6 @@ export default function Clients() {
   const [portalForm, setPortalForm] = useState({ contact_name: '', email: '', password: '', location_name: '' })
   const [portalSchemaOk, setPortalSchemaOk] = useState(true)
   const [portalSchemaChecking, setPortalSchemaChecking] = useState(false)
-  const [setupLoading, setSetupLoading] = useState(false)
   const [contracts, setContracts] = useState([])
   const [form, setForm] = useState({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })
 
@@ -31,40 +31,18 @@ export default function Clients() {
     return !missing
   }
 
-  const setupPortalSchema = async () => {
-    setSetupLoading(true)
+  const copyPortalSql = async () => {
     try {
-      const resp = await fetch('/api/setup-portal-schema', { method: 'POST' })
-      const data = await resp.json()
-      if (!resp.ok) {
-        if (resp.status === 503) {
-          toast.error('Configure SUPABASE_DB_URL na Vercel ou rode o SQL manualmente (botão abaixo)')
-          return false
-        }
-        throw new Error(data.error || 'Setup failed')
-      }
-      toast.success('Tabelas do portal criadas!')
-      setPortalSchemaOk(true)
-      if (portalClientId) loadPortal(portalClientId)
-      return true
-    } catch (e) {
-      toast.error(e.message)
-      return false
-    } finally {
-      setSetupLoading(false)
+      await navigator.clipboard.writeText(PORTAL_SETUP_SQL)
+      toast.success('✅ SQL copiado! Agora abra o Supabase e cole com Ctrl+V → Run')
+    } catch {
+      toast.error('Não foi possível copiar — selecione o SQL abaixo manualmente')
     }
   }
 
-  const copyPortalSql = async () => {
-    try {
-      const resp = await fetch('/setup-portal-all.sql')
-      const sql = await resp.text()
-      await navigator.clipboard.writeText(sql)
-      toast.success('SQL copiado! Cole no Supabase SQL Editor e clique Run.')
-    } catch {
-      window.open('https://supabase.com/dashboard/project/fxsakrshmldmkdmbevna/sql/new', '_blank')
-      toast('Abra o SQL Editor do Supabase e rode setup-portal-all.sql do repositório')
-    }
+  const openSupabaseSql = () => {
+    window.open(SUPABASE_SQL_URL, '_blank')
+    toast('Cole o SQL (Ctrl+V) e clique RUN')
   }
 
   const loadPortal = async (clientId) => {
@@ -87,11 +65,7 @@ export default function Clients() {
       return toast.error('Name, email and password required')
     }
     if (!portalSchemaOk) {
-      const ok = await setupPortalSchema()
-      if (!ok) {
-        toast.error('Rode o SQL no Supabase primeiro (botão "Copiar SQL")')
-        return
-      }
+      return toast.error('Primeiro rode o SQL no Supabase (botão COPIAR SQL acima)')
     }
     const client = clients.find(c => c.id === portalClientId)
     const { error } = await supabase.from('client_users').insert({
@@ -290,23 +264,28 @@ export default function Clients() {
       {tab==='portal'&&(
         <div>
           {!portalSchemaOk && (
-            <div className="card" style={{ marginBottom: 14, border: '1px solid rgba(248,113,113,0.4)', background: 'rgba(248,113,113,0.06)' }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--red)', marginBottom: 8 }}>
-                ⚠️ Banco do portal não configurado
+            <div className="card" style={{ marginBottom: 14, border: '2px solid #f87171', background: 'rgba(248,113,113,0.08)' }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: '#f87171', marginBottom: 10 }}>
+                ⚠️ Passo obrigatório (só 1 vez)
               </div>
-              <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.55, marginBottom: 12 }}>
-                A tabela <code>client_users</code> ainda não existe no Supabase. Rode o SQL uma vez para poder criar logins do portal.
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <button className="btn btn-primary" onClick={copyPortalSql} type="button">📋 Copiar SQL</button>
-                <a className="btn" href="https://supabase.com/dashboard/project/fxsakrshmldmkdmbevna/sql/new" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>🔗 Abrir Supabase SQL</a>
-                <button className="btn" onClick={setupPortalSchema} disabled={setupLoading || portalSchemaChecking} type="button">
-                  {setupLoading ? 'Criando...' : '⚡ Criar tabelas automaticamente'}
+              <ol style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.8, margin: '0 0 16px 18px', padding: 0 }}>
+                <li>Clique <b>COPIAR SQL</b></li>
+                <li>Clique <b>ABRIR SUPABASE</b></li>
+                <li>Cole (Ctrl+V) e clique <b>RUN</b></li>
+                <li>Volte aqui e crie o login</li>
+              </ol>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <button className="btn btn-primary" onClick={copyPortalSql} type="button" style={{ fontSize: 15, padding: '12px 20px', fontWeight: 800 }}>
+                  📋 COPIAR SQL
+                </button>
+                <button className="btn" onClick={openSupabaseSql} type="button" style={{ fontSize: 15, padding: '12px 20px', fontWeight: 700 }}>
+                  🔗 ABRIR SUPABASE
+                </button>
+                <button className="btn" onClick={checkPortalSchema} disabled={portalSchemaChecking} type="button">
+                  {portalSchemaChecking ? '...' : '🔄 Já rodei o SQL'}
                 </button>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 10 }}>
-                Automático: adicione <code>SUPABASE_DB_URL</code> nas variáveis da Vercel (connection string do Supabase → Database → URI).
-              </div>
+              <textarea readOnly value={PORTAL_SETUP_SQL} onClick={e => e.target.select()} style={{ width: '100%', height: 120, marginTop: 14, fontSize: 10, fontFamily: 'monospace', background: '#0a1525', color: '#94a3b8', border: '1px solid var(--border)', borderRadius: 8, padding: 10, boxSizing: 'border-box' }} />
             </div>
           )}
           <div className="card" style={{marginBottom:14}}>
