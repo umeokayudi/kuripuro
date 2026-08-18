@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress, isNavigableAddress } from '../lib/geocode'
 import {
@@ -21,6 +21,50 @@ function applyGeocodeResult(result, setCoords, mapsMsg) {
   return false
 }
 
+function toDateStr(d) {
+  return d.toISOString().split('T')[0]
+}
+
+function shiftDate(dateStr, days) {
+  const d = new Date(dateStr + 'T12:00:00')
+  d.setDate(d.getDate() + days)
+  return toDateStr(d)
+}
+
+function buildCalendarDays(yearMonth) {
+  const [y, m] = yearMonth.split('-').map(Number)
+  const first = new Date(y, m - 1, 1)
+  const last = new Date(y, m, 0)
+  let startPad = first.getDay() - 1
+  if (startPad < 0) startPad = 6
+  const days = []
+  for (let i = 0; i < startPad; i++) days.push(null)
+  for (let d = 1; d <= last.getDate(); d++) {
+    days.push(`${yearMonth}-${String(d).padStart(2, '0')}`)
+  }
+  return days
+}
+
+function dayDotColor(stats) {
+  if (!stats?.total) return null
+  if (stats.completed >= stats.total) return '#4ade80'
+  if (stats.completed > 0) return '#fbbf24'
+  return '#60a5fa'
+}
+
+function ProgressBar({ pct, height = 10, style }) {
+  const safe = Math.min(100, Math.max(0, pct))
+  return (
+    <div style={{ height, background: 'var(--surface2)', borderRadius: height / 2, overflow: 'hidden', ...style }}>
+      <div style={{
+        height: '100%', width: `${safe}%`,
+        background: safe >= 100 ? '#4ade80' : 'linear-gradient(90deg,#60a5fa,#4ade80)',
+        borderRadius: height / 2, transition: 'width 0.35s ease',
+      }} />
+    </div>
+  )
+}
+
 function statusStyle(status, labels) {
   const colors = {
     assigned: { bg: 'rgba(96,165,250,0.12)', border: '#60a5fa', text: '#93c5fd' },
@@ -38,13 +82,18 @@ function DayScheduleView({ onClose }) {
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState(toDateStr(new Date()))
+  const [calMonth, setCalMonth] = useState(() => toDateStr(new Date()).slice(0, 7))
+  const [showCalendar, setShowCalendar] = useState(false)
   const [jobs, setJobs] = useState([])
+  const [monthJobStats, setMonthJobStats] = useState({})
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => { loadEmps() }, [])
   useEffect(() => { loadJobs() }, [date])
+  useEffect(() => { loadMonthStats(calMonth) }, [calMonth])
+  useEffect(() => { setCalMonth(date.slice(0, 7)) }, [date])
 
   const loadEmps = async () => {
     const { data } = await supabase.from('employees').select('id,full_name').eq('is_active', true).order('full_name')
@@ -58,6 +107,38 @@ function DayScheduleView({ onClose }) {
     setLoading(false)
   }
 
+  const loadMonthStats = async (ym) => {
+    const { data } = await supabase.from('jobs')
+      .select('scheduled_date, status')
+      .gte('scheduled_date', `${ym}-01`)
+      .lte('scheduled_date', `${ym}-31`)
+    const stats = {}
+    for (const j of data || []) {
+      if (!stats[j.scheduled_date]) stats[j.scheduled_date] = { total: 0, completed: 0 }
+      stats[j.scheduled_date].total++
+      if (j.status === 'completed') stats[j.scheduled_date].completed++
+    }
+    setMonthJobStats(stats)
+  }
+
+  const selectDate = (ds) => {
+    setDate(ds)
+    setShowCalendar(false)
+  }
+
+  const shiftCalMonth = (delta) => {
+    const [y, m] = calMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setCalMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  const calendarDays = useMemo(() => buildCalendarDays(calMonth), [calMonth])
+  const weekDays = lang === 'ja'
+    ? ['月', '火', '水', '木', '金', '土', '日']
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
+  const todayStr = toDateStr(new Date())
+
   const handleReassign = async (jobId, empId) => {
     const emp = employees.find(e => e.id === empId)
     await supabase.from('jobs').update({ employee_id: empId, employee_name: emp?.full_name }).eq('id', jobId)
@@ -67,6 +148,7 @@ function DayScheduleView({ onClose }) {
   const handleStatusChange = async (jobId, status) => {
     await supabase.from('jobs').update({ status }).eq('id', jobId)
     loadJobs()
+    loadMonthStats(calMonth)
   }
 
   const handleTimeChange = async (jobId, time) => {
@@ -79,6 +161,7 @@ function DayScheduleView({ onClose }) {
     await supabase.from('jobs').delete().eq('id', jobId)
     toast.success(jt.jobDeleted)
     loadJobs()
+    loadMonthStats(calMonth)
   }
 
   const handleCleaningTypeChange = async (job, type) => {
@@ -95,7 +178,11 @@ function DayScheduleView({ onClose }) {
 
   const unassigned = jobs.filter(j => !j.employee_id)
   const done = jobs.filter(j => j.status === 'completed').length
+  const inProgress = jobs.filter(j => j.status === 'in_progress').length
+  const pending = jobs.filter(j => j.status === 'assigned').length
+  const progressPct = jobs.length ? Math.round((done / jobs.length) * 100) : 0
   const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })
+  const dateShort = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   const JobCard = ({ j, idx }) => {
     const stl = statusStyle(j.status, st)
@@ -197,16 +284,92 @@ function DayScheduleView({ onClose }) {
               <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2, textTransform: 'capitalize' }}>{dateLabel}</div>
             </div>
           </div>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
-            style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 14, fontWeight: 600 }} />
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+            <button className="btn" onClick={() => setDate(shiftDate(date, -1))} title={jt.prevDay}>◀ {jt.prevDay}</button>
+            <button
+              className="btn"
+              onClick={() => setShowCalendar(v => !v)}
+              style={{ fontWeight: 700, minWidth: 130, background: showCalendar ? 'var(--navy)' : 'var(--surface2)', color: showCalendar ? '#fff' : 'var(--text)' }}
+            >
+              📅 {dateShort}
+            </button>
+            <button className="btn" onClick={() => setDate(shiftDate(date, 1))} title={jt.nextDay}>{jt.nextDay} ▶</button>
+            {date !== todayStr && (
+              <button className="btn btn-primary" onClick={() => setDate(todayStr)}>{jt.today}</button>
+            )}
+          </div>
+        </div>
+
+        {showCalendar && (
+          <div style={{
+            marginTop: 14, padding: 14, background: 'var(--surface2)', borderRadius: 14,
+            border: '1px solid var(--border)', maxWidth: 360,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <button type="button" className="btn btn-sm" onClick={() => shiftCalMonth(-1)}>◀</button>
+              <div style={{ fontWeight: 800, fontSize: 14, textTransform: 'capitalize' }}>{monthLabel}</div>
+              <button type="button" className="btn btn-sm" onClick={() => shiftCalMonth(1)}>▶</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+              {weekDays.map(w => (
+                <div key={w} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text3)', padding: '2px 0' }}>{w}</div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+              {calendarDays.map((ds, i) => {
+                if (!ds) return <div key={`pad-${i}`} />
+                const dayNum = Number(ds.split('-')[2])
+                const stats = monthJobStats[ds]
+                const dot = dayDotColor(stats)
+                const isSelected = ds === date
+                const isToday = ds === todayStr
+                return (
+                  <button
+                    key={ds}
+                    type="button"
+                    onClick={() => selectDate(ds)}
+                    style={{
+                      aspectRatio: '1', borderRadius: 10, border: '2px solid',
+                      borderColor: isSelected ? 'var(--navy)' : isToday ? '#60a5fa' : 'transparent',
+                      background: isSelected ? 'var(--navy)' : isToday ? 'rgba(96,165,250,0.12)' : 'var(--surface)',
+                      color: isSelected ? '#fff' : 'var(--text)',
+                      fontWeight: isSelected || isToday ? 800 : 600,
+                      fontSize: 13, cursor: 'pointer', padding: 0,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                    }}
+                  >
+                    <span>{dayNum}</span>
+                    {dot && <span style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? '#fff' : dot }} />}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 10, color: 'var(--text3)', flexWrap: 'wrap' }}>
+              <span>● {st.completed}</span>
+              <span style={{ color: '#fbbf24' }}>● {st.in_progress}</span>
+              <span style={{ color: '#60a5fa' }}>● {st.assigned}</span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 14, background: 'var(--surface2)', borderRadius: 12, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{jt.checkingProgress}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: progressPct >= 100 ? '#4ade80' : '#60a5fa' }}>
+              {fill(jt.progressSummary, { done, total: jobs.length, pct: progressPct })}
+            </div>
+          </div>
+          <ProgressBar pct={progressPct} height={12} />
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
           {[
             [jt.total, jobs.length, 'var(--text)'],
             [st.completed, done, '#4ade80'],
-            [st.assigned, jobs.filter(j => j.status === 'assigned').length, '#60a5fa'],
-            [st.in_progress, jobs.filter(j => j.status === 'in_progress').length, '#fbbf24'],
+            [st.assigned, pending, '#60a5fa'],
+            [st.in_progress, inProgress, '#fbbf24'],
+            [jt.progress, `${progressPct}%`, progressPct >= 100 ? '#4ade80' : '#fbbf24'],
           ].map(([label, val, color]) => (
             <div key={label} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 16px', minWidth: 90 }}>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
@@ -227,26 +390,34 @@ function DayScheduleView({ onClose }) {
           </div>
         )}
 
-        {empGroups.map(({ emp, jobs: empJobs }) => (
+        {empGroups.map(({ emp, jobs: empJobs }) => {
+          const empDone = empJobs.filter(j => j.status === 'completed').length
+          const empPct = empJobs.length ? Math.round((empDone / empJobs.length) * 100) : 0
+          return (
           <div key={emp.id} style={{ marginBottom: 24 }}>
             <div style={{
               fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 12,
-              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)',
+              padding: '10px 14px', background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)',
             }}>
-              <div style={{
-                width: 10, height: 10, borderRadius: '50%',
-                background: empJobs.every(j => j.status === 'completed') ? '#4ade80'
-                  : empJobs.some(j => j.status === 'in_progress') ? '#fbbf24' : '#60a5fa',
-              }} />
-              {emp.full_name}
-              <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>
-                {fill(jt.doneOfTotal, { done: empJobs.filter(j => j.status === 'completed').length, total: empJobs.length })}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <div style={{
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: empJobs.every(j => j.status === 'completed') ? '#4ade80'
+                    : empJobs.some(j => j.status === 'in_progress') ? '#fbbf24' : '#60a5fa',
+                }} />
+                {emp.full_name}
+                <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>
+                  {fill(jt.doneOfTotal, { done: empDone, total: empJobs.length })}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: empPct >= 100 ? '#4ade80' : '#60a5fa', marginLeft: 'auto' }}>
+                  {empPct}%
+                </span>
+              </div>
+              <ProgressBar pct={empPct} height={6} />
             </div>
             {empJobs.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
           </div>
-        ))}
+        )})}
 
         {unassigned.length > 0 && (
           <div style={{ marginBottom: 24 }}>
@@ -383,6 +554,8 @@ export default function Jobs() {
   const basicJobs = regularJobs.filter(j => getCleaningType(j) === 'basic')
   const deepJobs = regularJobs.filter(j => getCleaningType(j) === 'deep')
   const filteredJobs = cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs
+  const listCompleted = filteredJobs.filter(j => j.status === 'completed').length
+  const listPct = filteredJobs.length ? Math.round((listCompleted / filteredJobs.length) * 100) : 0
 
   return (
     <div>
@@ -419,6 +592,21 @@ export default function Jobs() {
               </button>
             ))}
           </div>
+
+          {!loading && filteredJobs.length > 0 && (
+            <div style={{
+              marginBottom: 16, padding: '14px 16px', background: 'var(--surface)',
+              borderRadius: 12, border: '1px solid var(--border)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{jt.checkingProgress}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: listPct >= 100 ? '#4ade80' : '#60a5fa' }}>
+                  {fill(jt.progressSummary, { done: listCompleted, total: filteredJobs.length, pct: listPct })}
+                </div>
+              </div>
+              <ProgressBar pct={listPct} height={10} />
+            </div>
+          )}
 
           {loading && <div style={{color:'var(--text3)',fontSize:13}}>{t.app.loading}</div>}
           {filteredJobs.length === 0 && !loading && (
