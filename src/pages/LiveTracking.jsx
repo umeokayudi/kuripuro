@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 
 export default function LiveTracking() {
@@ -164,7 +165,7 @@ export default function LiveTracking() {
                 <div style={{background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.15)',borderRadius:8,padding:'8px 10px',marginBottom:8}}>
                   <div style={{fontSize:11,fontWeight:600,color:'#4ade80',marginBottom:2}}>▶ {activeJob.title.replace(/ — .*/,'').substring(0,25)}</div>
                   <div style={{fontSize:10,color:'var(--text3)'}}>Started: {activeJob.started_at?new Date(activeJob.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'}</div>
-                  {activeJob.address?.startsWith('http')&&<a href={activeJob.address} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 View location</a>}
+                  {hasMapsLink(activeJob.address, activeJob.title)&&<a href={mapsOpenUrl(activeJob.address, activeJob.title)} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 View location</a>}
                 </div>
               )}
 
@@ -212,7 +213,7 @@ export default function LiveTracking() {
                   </div>
                 </div>
                 <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                  {j.address?.startsWith('http')&&<a href={j.address} target="_blank" rel="noreferrer" className="btn btn-sm">🗺</a>}
+                  {hasMapsLink(j.address, j.title)&&<a href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" className="btn btn-sm">🗺</a>}
                   <span className={`badge ${j.status==='completed'?'badge-green':j.status==='in_progress'?'badge-amber':'badge-blue'}`}>{j.status}</span>
                 </div>
               </div>

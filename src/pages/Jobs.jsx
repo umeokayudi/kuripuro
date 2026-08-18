@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { geocodeAddress, isNavigableAddress } from '../lib/geocode'
+import { geocodeAddress } from '../lib/geocode'
+import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
 } from '../lib/cleaningType'
@@ -224,8 +225,8 @@ function DayScheduleView({ onClose }) {
                 🔑 {j.description.split('\n')[0]}
               </div>
             )}
-            {j.address?.startsWith('http') && (
-              <a href={j.address} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#60a5fa', textDecoration: 'none', fontWeight: 600 }}>
+            {hasMapsLink(j.address, locName) && (
+              <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#60a5fa', textDecoration: 'none', fontWeight: 600 }}>
                 🗺 {jt.openMaps}
               </a>
             )}
@@ -665,8 +666,8 @@ export default function Jobs() {
                 </label>
                 {j.photo_required && <span className="badge badge-amber">📷 {jt.photoRequired}</span>}
                 {j.gps_lat && <span className="badge badge-navy">📍 GPS</span>}
-                {j.address?.startsWith('http') && (
-                  <a href={j.address} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 {jt.maps}</a>
+                {hasMapsLink(j.address, locName) && (
+                  <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 {jt.maps}</a>
                 )}
                 {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>{jt.cancel}</button>}
               </div>
@@ -884,7 +885,7 @@ function LocationsTab() {
                 <td><span className={`badge ${l.location_type==='fixed'?'badge-green':'badge-amber'}`}>{l.location_type}</span></td>
                 <td style={{fontSize:12,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.address}</td>
                 <td style={{fontSize:12}}>{l.notes || '—'}</td>
-                <td>{l.gps_lat ? <span className="badge badge-navy">✓</span> : isNavigableAddress(l.address) ? <span className="badge badge-green">🗺</span> : '—'}</td>
+                <td>{l.gps_lat ? <span className="badge badge-navy">✓</span> : hasMapsLink(l.address, l.name) ? <span className="badge badge-green">🗺</span> : '—'}</td>
                 <td style={{display:'flex',gap:4}}>
                   <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>✏️</button>
                   <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l.id)}>✕</button>

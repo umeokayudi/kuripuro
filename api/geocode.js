@@ -34,7 +34,7 @@ function parseCoordsFromHtml(html) {
 }
 
 function isMapsUrl(url) {
-  return /goo\.gl|share\.google|maps\.google|google\.com\/maps/i.test(url || '')
+  return /goo\.gl|maps\.app|share\.google|maps\.google|google\.com\/maps/i.test(url || '')
 }
 
 async function resolveMapsUrl(address) {
