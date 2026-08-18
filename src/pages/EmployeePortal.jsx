@@ -64,6 +64,7 @@ export default function EmployeePortal() {
   const [claimPhotoPreview, setClaimPhotoPreview] = useState(null)
   const [claimReceiptPreview, setClaimReceiptPreview] = useState(null)
   const [submittingComplaint, setSubmittingComplaint] = useState(false)
+  const [submittingClaim, setSubmittingClaim] = useState(false)
   const [statement, setStatement] = useState(null)
   const [complaintText, setComplaintText] = useState('')
   const [complaintCategory, setComplaintCategory] = useState('hours')
@@ -171,7 +172,7 @@ export default function EmployeePortal() {
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
       supabase.from('employees').select('*').eq('id',user.id).single(),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).gte('payment_date',today).order('payment_date').limit(10),
-      supabase.from('salary_advances').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(10),
+      supabase.from('salary_payments').select('*').eq('employee_id', user.id).eq('payment_type', 'advance').order('payment_date', { ascending: false }).limit(10),
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
       supabase.from('badges').select('*').eq('employee_id',user.id),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
@@ -1149,9 +1150,10 @@ export default function EmployeePortal() {
             )}
             {(() => {
               const todayStr = tokyoToday()
-              const parseAdvDate = (a) => (a.received_at || a.created_at || '').slice(0, 10) || null
-              const received = advances.filter(a => { const d = parseAdvDate(a); return d && d < todayStr })
-              const pending = advances.filter(a => { const d = parseAdvDate(a); return !d || d >= todayStr })
+              const parseAdvDate = (a) => (a.payment_date || a.received_at || a.created_at || '').slice(0, 10) || null
+              const isReceived = (a) => a.status === 'paid' || (parseAdvDate(a) && parseAdvDate(a) < todayStr)
+              const received = advances.filter(isReceived)
+              const pending = advances.filter(a => !isReceived(a))
               return (<>
                 {received.length>0&&<div style={{marginBottom:14}}>
                   <span style={S.label}>Advances Received</span>

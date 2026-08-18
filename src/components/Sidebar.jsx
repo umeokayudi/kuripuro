@@ -4,7 +4,6 @@ import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
 
 const navItems = [
-  { to: '/ai',        key: 'ai', icon: Icons.sparkle },
   { to: '/',          key: 'dashboard', icon: Icons.dashboard },
   { to: '/jobs',      key: 'jobs', icon: Icons.list },
   { to: '/employees', key: 'employees', icon: Icons.users },
@@ -13,6 +12,7 @@ const navItems = [
   { to: '/evaluations', key: 'evaluations', icon: Icons.users },
   { to: '/salary',    key: 'salary', icon: Icons.calc },
   { to: '/salary-periods', key: 'payrollClose', icon: Icons.calc },
+  { to: '/payments',  key: 'payments', icon: Icons.calc },
   { to: '/salary-complaints', key: 'salaryIssues', icon: Icons.list },
   { to: '/cashflow',  key: 'cashflow', icon: Icons.chart },
   { to: '/reports',   key: 'reports', icon: Icons.file },

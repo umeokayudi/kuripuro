@@ -27,7 +27,6 @@ const LiveTracking = lazy(() => import('./pages/LiveTracking'))
 const Deductions = lazy(() => import('./pages/Deductions'))
 const Payments = lazy(() => import('./pages/Payments'))
 const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'))
-const Checkin = lazy(() => import('./pages/Checkin'))
 const SalaryPeriods = lazy(() => import('./pages/SalaryPeriods'))
 const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
@@ -99,7 +98,6 @@ function AppContent() {
               <Route path="/contracts" element={<ServiceContracts />} />
               <Route path="/faturas" element={<Faturas />} />
               <Route path="/payments" element={<Payments />} />
-              <Route path="/checkin" element={<Checkin />} />
               <Route path="/adminchat" element={<AdminChat />} />
               <Route path="/live" element={<LiveTracking />} />
               <Route path="/transport-claims" element={<TransportClaims />} />

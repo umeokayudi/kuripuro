@@ -73,12 +73,17 @@ export function jobToServiceReport(job, lang = 'en') {
 export async function syncServiceReport(supabase, job) {
   if (!job?.id || job.status !== 'completed') return
   const row = jobToServiceReport(job)
-  try {
-    const { data: existing } = await supabase.from('service_reports').select('id').eq('job_id', job.id).maybeSingle()
-    if (existing?.id) {
-      await supabase.from('service_reports').update(row).eq('job_id', job.id)
-    } else {
-      await supabase.from('service_reports').insert(row)
-    }
-  } catch {}
+  const { data: existing, error: findErr } = await supabase
+    .from('service_reports')
+    .select('id')
+    .eq('job_id', job.id)
+    .maybeSingle()
+  if (findErr) throw findErr
+  if (existing?.id) {
+    const { error } = await supabase.from('service_reports').update(row).eq('job_id', job.id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase.from('service_reports').insert(row)
+    if (error) throw error
+  }
 }

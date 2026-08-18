@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
 
     const { data: emp } = await supabase
       .from('employees')
-      .select('id, full_name, email, password, is_active, contract_type, hourly_rate')
+      .select('id, full_name, email, password, is_active, contract_type, hourly_rate, fixed_salary, salary_type, score')
       .eq('email', em)
       .eq('password', pw)
       .eq('is_active', true)
@@ -54,7 +54,7 @@ export function AuthProvider({ children }) {
     if (clientUser) {
       const u = {
         id: clientUser.id,
-        name: clientUser.contact_name?.trim() || clientUser.contact_name,
+        name: clientUser.contact_name?.trim() || clientUser.client_name || clientUser.email,
         email: clientUser.email,
         role: 'client',
         client_id: clientUser.client_id,
