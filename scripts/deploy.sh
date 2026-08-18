@@ -1,28 +1,24 @@
 #!/usr/bin/env bash
+# Deploy KuriPuro para Vercel pelo terminal
 set -euo pipefail
 
-echo "==> KuriPuro deploy"
-echo "==> Branch: $(git branch --show-current)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
 
-git fetch origin main
-git checkout main
-git pull origin main
-
-echo "==> Limpando dist local (gerado no build)"
-rm -rf dist
-
-echo "==> Instalando dependências"
-npm install
-
-echo "==> Build"
+echo "=== Build ==="
 npm run build
 
-echo "==> Deploy Vercel (produção)"
-npx vercel --prod --force --yes
+echo ""
+echo "=== Deploy Vercel (production) ==="
+if [ -z "${VERCEL_TOKEN:-}" ]; then
+  echo "Sem VERCEL_TOKEN — vai pedir login interativo (vercel login)"
+  npx vercel@latest --prod
+else
+  npx vercel@latest --prod --token "$VERCEL_TOKEN"
+fi
 
 echo ""
-echo "==> Teste se atualizou:"
-echo "    curl -s https://kuripuro.vercel.app/api/admin-ai | head"
+echo "=== Verificar ==="
+sleep 5
+curl -s "https://kuripuro.vercel.app/api/version" || true
 echo ""
-echo "Deve mostrar: {\"ok\":true,\"api\":\"admin-ai\",\"build\":\"2026-08-17-v4\"...}"
-echo "Se ainda der erro gemini-1.5-flash, o deploy NÃO atualizou a API."
