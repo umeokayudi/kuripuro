@@ -1,4 +1,4 @@
-import { DEFAULT_LOCATIONS, SCHEDULE_CLIENTS } from './scheduleGenerator'
+import { SCHEDULE_CLIENTS, OTP_BASIC_LOCATIONS, ATOMIC_LOCATION } from './serviceCatalog'
 
 export const DEFAULT_PORTAL_PASSWORD = 'Kuripuro2026'
 
@@ -19,16 +19,10 @@ export function normalizeLoginKey(value) {
   return (value || '').trim().toLowerCase()
 }
 
-/** Lojas extras (deep clean opcional, etc.) — também ganham conta portal */
-const EXTRA_PORTAL_LOCATIONS = [
-  { name: 'Kodama Yurakucho', address: '', notes: 'Key box: TBD', days: [2], serviceType: 'Deep Cleaning' },
-]
-
 /** All On The Planet + Atomic store locations with client linkage */
 export function getPortalStores() {
-  return [...DEFAULT_LOCATIONS, ...EXTRA_PORTAL_LOCATIONS].map(loc => {
-    const isAtomic = loc.client === 'Atomic Bar' || loc.name === 'Atomic Bar'
-    const client = isAtomic ? SCHEDULE_CLIENTS.atomicbar : SCHEDULE_CLIENTS.ontheplanet
+  const otpStores = OTP_BASIC_LOCATIONS.map(loc => {
+    const client = SCHEDULE_CLIENTS.ontheplanet
     return {
       location_name: loc.name,
       client_id: client.id,
@@ -37,10 +31,22 @@ export function getPortalStores() {
       email: portalEmailForStore(loc.name),
       location_address: loc.address || '',
       notes: loc.notes || '',
-      service_type: loc.serviceType || 'Basic Cleaning',
-      days_of_week: (loc.days || []).map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]),
+      service_type: 'Basic Cleaning',
+      days_of_week: loc.days.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]),
     }
   })
+  const atomicStore = [{
+    location_name: ATOMIC_LOCATION.name,
+    client_id: SCHEDULE_CLIENTS.atomicbar.id,
+    client_name: SCHEDULE_CLIENTS.atomicbar.name,
+    contact_name: ATOMIC_LOCATION.name,
+    email: portalEmailForStore(ATOMIC_LOCATION.name),
+    location_address: ATOMIC_LOCATION.address || '',
+    notes: ATOMIC_LOCATION.notes || '',
+    service_type: 'Basic Cleaning',
+    days_of_week: ['Mon'],
+  }]
+  return [...otpStores, ...atomicStore]
 }
 
 function resolveClientId(store, clients) {
@@ -110,9 +116,7 @@ export async function provisionAllStoreAccounts(supabase, clients = []) {
         location_name: store.location_name,
         location_address: store.location_address,
         service_type: store.service_type,
-        billing_type: 'per_visit',
         price_per_visit: 0,
-        fixed_monthly: 0,
         hours_per_visit: 2,
         days_of_week: store.days_of_week,
         visits_per_month: visits,

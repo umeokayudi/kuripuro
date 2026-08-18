@@ -138,7 +138,7 @@ export default function EmployeeProfile() {
       supabase.from('jobs').select('*').eq('employee_id', id).order('scheduled_date', { ascending:false }).limit(30),
       supabase.from('evaluations').select('*').eq('employee_id', id).order('created_at', { ascending:false }),
       supabase.from('salary_payments').select('*').eq('employee_id', id).order('payment_date', { ascending:true }),
-      supabase.from('salary_advances').select('*').eq('employee_id', id).order('created_at', { ascending:false }),
+      supabase.from('salary_payments').select('*').eq('employee_id', id).eq('payment_type', 'advance').order('payment_date', { ascending:false }),
     ])
     setEmp(e.data); setForm(e.data||{})
     setWorkDays(e.data?.work_days ? JSON.parse(e.data.work_days) : [])
