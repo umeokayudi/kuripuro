@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatTuesday, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
+import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
@@ -18,6 +20,7 @@ export default function Dashboard() {
   const [staleCount, setStaleCount] = useState(0)
   const [evals, setEvals] = useState([])
   const [monthJobs, setMonthJobs] = useState([])
+  const [clientRatings, setClientRatings] = useState([])
   const [progressMonth, setProgressMonth] = useState(currentYearMonth())
   const [detailLoc, setDetailLoc] = useState(null)
   const [detailTuesday, setDetailTuesday] = useState(null)
@@ -29,13 +32,14 @@ export default function Dashboard() {
     const today = tokyoToday()
     const monthStart = progressMonth + '-01'
     const monthEnd = progressMonth + '-31'
-    const [c, e, j, ev, stale, mj] = await Promise.all([
+    const [c, e, j, ev, stale, mj, cr] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
       supabase.from('evaluations').select('*').order('created_at', { ascending: false }).limit(5),
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
+      supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
     ])
     setClients(c.data || [])
     setEmployees(e.data || [])
@@ -43,6 +47,7 @@ export default function Dashboard() {
     setEvals(ev.data || [])
     setStaleCount(stale.count || 0)
     setMonthJobs(mj.data || [])
+    setClientRatings(cr.data || [])
     setLastUpdate(new Date())
     setLoading(false)
   }
@@ -83,6 +88,15 @@ export default function Dashboard() {
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
+
+  const ratings30 = ratingsInPeriod(clientRatings, 30)
+  const ratings7 = ratingsInPeriod(clientRatings, 7)
+  const satisfactionByClient = groupRatingsByClient(ratings30, clients)
+  const atRisk = satisfactionByClient.filter(x => x.avg != null && x.avg < 3.5)
+  const overallAvg = avgStars(ratings30)
+  const weeklyAvg = avgStars(ratings7)
+  const monthlyAvg = overallAvg
+  const levelColor = l => ({ excellent: 'var(--green)', good: '#60a5fa', warning: '#EF9F27', critical: 'var(--red)', none: 'var(--text3)' }[l] || 'var(--text3)')
 
   const closeDetail = () => { setDetailLoc(null); setDetailTuesday(null) }
 
@@ -176,6 +190,62 @@ export default function Dashboard() {
             <div style={{ fontSize: 28, fontWeight: 700, color: c }}>{v}</div>
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{d.satisfactionTitle}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{d.satisfactionSubtitle}</div>
+          </div>
+          <Link to="/client-feedback" style={{ fontSize: 12, color: '#c19c56', fontWeight: 600, textDecoration: 'none' }}>{d.viewFeedback}</Link>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+          {[
+            [d.avgRating, overallAvg != null ? overallAvg.toFixed(1) + ' ★' : '—'],
+            [d.weeklyAvg, weeklyAvg != null ? weeklyAvg.toFixed(1) : '—'],
+            [d.monthlyAvg, monthlyAvg != null ? monthlyAvg.toFixed(1) : '—'],
+            [d.ratingsCount, ratings30.length],
+          ].map(([l, v]) => (
+            <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#EF9F27' }}>{v}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+
+        {atRisk.length > 0 && (
+          <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--red)' }}>
+            ⚠️ {d.atRiskClients}: {atRisk.map(x => x.client.company_name).join(', ')}
+          </div>
+        )}
+
+        {satisfactionByClient.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}>{d.noRatingsYet}</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+            {satisfactionByClient.map(({ client, avg, count, level }) => (
+              <div key={client.id} style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--surface2)', border: `1px solid ${levelColor(level)}30` }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.company_name}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: levelColor(level) }}>{avg != null ? starsDisplay(avg) : '—'}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{count} {d.ratingsCount.toLowerCase()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 10 }}>{d.employeeScores}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {[...employees].sort((a, b) => (b.score || 100) - (a.score || 100)).slice(0, 8).map(emp => (
+              <div key={emp.id} style={{ padding: '6px 12px', borderRadius: 20, background: 'var(--surface2)', fontSize: 12 }}>
+                <span style={{ fontWeight: 600 }}>{emp.full_name}</span>
+                <span style={{ marginLeft: 8, fontWeight: 700, color: (emp.score || 100) >= 70 ? 'var(--green)' : 'var(--red)' }}>{emp.score || 100}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #fbbf24' }}>

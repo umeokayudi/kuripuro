@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import toast from 'react-hot-toast'
 
 export default function Clients() {
@@ -10,6 +11,8 @@ export default function Clients() {
   const [portalClientId, setPortalClientId] = useState('')
   const [portalUsers, setPortalUsers] = useState([])
   const [portalForm, setPortalForm] = useState({ contact_name: '', email: '', password: '', location_name: '' })
+  const [portalSchemaOk, setPortalSchemaOk] = useState(true)
+  const [portalSchemaChecking, setPortalSchemaChecking] = useState(false)
   const [contracts, setContracts] = useState([])
   const [form, setForm] = useState({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })
 
@@ -17,12 +20,81 @@ export default function Clients() {
 
   useEffect(() => { load() }, [])
   useEffect(() => { if (portalClientId) loadPortal(portalClientId) }, [portalClientId])
+  useEffect(() => { if (tab === 'portal') checkPortalSchema() }, [tab])
+
+  const [storageOk, setStorageOk] = useState(true)
+  const [autoSetupBusy, setAutoSetupBusy] = useState(false)
+
+  const checkStorage = async () => {
+    const testPath = `jobs/_healthcheck/${Date.now()}.jpg`
+    const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' })
+    const { error } = await supabase.storage.from('service-photos').upload(testPath, blob, { upsert: true })
+    if (error) {
+      setStorageOk(false)
+      return false
+    }
+    await supabase.storage.from('service-photos').remove([testPath]).catch(() => {})
+    setStorageOk(true)
+    return true
+  }
+
+  const checkPortalSchema = async () => {
+    setPortalSchemaChecking(true)
+    const { error } = await supabase.from('client_users').select('id').limit(1)
+    const missing = error?.message?.includes('client_users') || error?.code === 'PGRST205'
+    setPortalSchemaOk(!missing)
+    if (!missing) await checkStorage()
+    setPortalSchemaChecking(false)
+    return !missing
+  }
+
+  const runAutoSetup = async () => {
+    setAutoSetupBusy(true)
+    try {
+      const resp = await fetch('/api/setup-portal-schema', { method: 'POST' })
+      const data = await resp.json()
+      if (!resp.ok) {
+        if (resp.status === 503) {
+          toast.error('Configure SUPABASE_DB_URL na Vercel ou use COPIAR SQL')
+          openSupabaseSql()
+        } else {
+          toast.error(data.error || 'Setup falhou')
+        }
+        return
+      }
+      toast.success(data.message || 'Setup concluído!')
+      await checkPortalSchema()
+    } catch (e) {
+      toast.error(e.message)
+    }
+    setAutoSetupBusy(false)
+  }
+
+  const copyPortalSql = async () => {
+    try {
+      await navigator.clipboard.writeText(PORTAL_SETUP_SQL)
+      toast.success('✅ SQL copiado! Agora abra o Supabase e cole com Ctrl+V → Run')
+    } catch {
+      toast.error('Não foi possível copiar — selecione o SQL abaixo manualmente')
+    }
+  }
+
+  const openSupabaseSql = () => {
+    window.open(SUPABASE_SQL_URL, '_blank')
+    toast('Cole o SQL (Ctrl+V) e clique RUN')
+  }
 
   const loadPortal = async (clientId) => {
-    const [{ data: users }, { data: cts }] = await Promise.all([
+    const [{ data: users, error }, { data: cts }] = await Promise.all([
       supabase.from('client_users').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
       supabase.from('service_contracts').select('location_name').eq('client_id', clientId).eq('is_active', true),
     ])
+    if (error?.message?.includes('client_users')) {
+      setPortalSchemaOk(false)
+      setPortalUsers([])
+      setContracts(cts || [])
+      return
+    }
     setPortalUsers(users || [])
     setContracts(cts || [])
   }
@@ -30,6 +102,9 @@ export default function Clients() {
   const createPortalUser = async () => {
     if (!portalClientId || !portalForm.email || !portalForm.password || !portalForm.contact_name) {
       return toast.error('Name, email and password required')
+    }
+    if (!portalSchemaOk) {
+      return toast.error('Primeiro rode o SQL no Supabase (botão COPIAR SQL acima)')
     }
     const client = clients.find(c => c.id === portalClientId)
     const { error } = await supabase.from('client_users').insert({
@@ -41,7 +116,13 @@ export default function Clients() {
       password: portalForm.password,
       is_active: true,
     })
-    if (error) return toast.error(error.message)
+    if (error) {
+      if (error.message?.includes('client_users')) {
+        setPortalSchemaOk(false)
+        return toast.error('Tabela client_users não existe. Clique em "Copiar SQL" e rode no Supabase.')
+      }
+      return toast.error(error.message)
+    }
     toast.success('Portal account created!')
     setPortalForm({ contact_name: '', email: '', password: '', location_name: '' })
     loadPortal(portalClientId)
@@ -221,6 +302,42 @@ export default function Clients() {
       {/* CLIENT PORTAL ACCOUNTS */}
       {tab==='portal'&&(
         <div>
+          {(!portalSchemaOk || !storageOk) && (
+            <div className="card" style={{ marginBottom: 14, border: '2px solid #f87171', background: 'rgba(248,113,113,0.08)' }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: '#f87171', marginBottom: 10 }}>
+                ⚠️ Configuração necessária (só 1 vez)
+              </div>
+              {!portalSchemaOk && (
+                <p style={{ fontSize: 14, color: 'var(--text2)', margin: '0 0 12px' }}>
+                  Tabelas do portal do cliente ainda não existem no Supabase.
+                </p>
+              )}
+              {portalSchemaOk && !storageOk && (
+                <p style={{ fontSize: 14, color: 'var(--text2)', margin: '0 0 12px' }}>
+                  Bucket de fotos (<code>service-photos</code>) não configurado — relatórios com foto não funcionam.
+                </p>
+              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                <button className="btn btn-primary" onClick={runAutoSetup} disabled={autoSetupBusy} type="button" style={{ fontSize: 15, padding: '12px 20px', fontWeight: 800 }}>
+                  {autoSetupBusy ? 'Configurando...' : '⚡ Configurar automaticamente'}
+                </button>
+                <button className="btn btn-primary" onClick={copyPortalSql} type="button" style={{ fontSize: 15, padding: '12px 20px', fontWeight: 800 }}>
+                  📋 COPIAR SQL
+                </button>
+                <button className="btn" onClick={openSupabaseSql} type="button" style={{ fontSize: 15, padding: '12px 20px', fontWeight: 700 }}>
+                  🔗 ABRIR SUPABASE
+                </button>
+                <button className="btn" onClick={checkPortalSchema} disabled={portalSchemaChecking} type="button">
+                  {portalSchemaChecking ? '...' : '🔄 Verificar'}
+                </button>
+              </div>
+              <ol style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: 0, paddingLeft: 18 }}>
+                <li>Automático: adicione <code>SUPABASE_DB_URL</code> na Vercel e clique em Configurar automaticamente</li>
+                <li>Manual: COPIAR SQL → ABRIR SUPABASE → RUN</li>
+              </ol>
+              <textarea readOnly value={PORTAL_SETUP_SQL} onClick={e => e.target.select()} style={{ width: '100%', height: 120, marginTop: 14, fontSize: 10, fontFamily: 'monospace', background: '#0a1525', color: '#94a3b8', border: '1px solid var(--border)', borderRadius: 8, padding: 10, boxSizing: 'border-box' }} />
+            </div>
+          )}
           <div className="card" style={{marginBottom:14}}>
             <div className="card-title">🔐 Client Portal Accounts</div>
             <div style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>

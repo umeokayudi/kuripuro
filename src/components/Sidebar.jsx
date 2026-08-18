@@ -9,6 +9,8 @@ const navItems = [
   { to: '/jobs',      key: 'jobs', icon: Icons.list },
   { to: '/employees', key: 'employees', icon: Icons.users },
   { to: '/clients',   key: 'clients', icon: Icons.building },
+  { to: '/client-feedback', key: 'clientFeedback', icon: Icons.receipt },
+  { to: '/evaluations', key: 'evaluations', icon: Icons.users },
   { to: '/salary',    key: 'salary', icon: Icons.calc },
   { to: '/salary-periods', key: 'payrollClose', icon: Icons.calc },
   { to: '/salary-complaints', key: 'salaryIssues', icon: Icons.list },
