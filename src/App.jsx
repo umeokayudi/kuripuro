@@ -31,6 +31,7 @@ const Checkin = lazy(() => import('./pages/Checkin'))
 const SalaryPeriods = lazy(() => import('./pages/SalaryPeriods'))
 const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
+const AdminAI = lazy(() => import('./pages/AdminAI'))
 
 function Clock() {
   const [now, setNow] = React.useState(new Date())
