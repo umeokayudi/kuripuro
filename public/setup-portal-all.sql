@@ -117,3 +117,30 @@ create index if not exists idx_client_complaints_client on client_complaints(cli
 create index if not exists idx_client_requests_client on client_requests(client_id, created_at desc);
 create index if not exists idx_client_ratings_client on client_ratings(client_id, created_at desc);
 create index if not exists idx_jobs_client_date on jobs(client_id, scheduled_date);
+
+-- === Storage: fotos de serviço (obrigatório para relatórios com foto) ===
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'service-photos',
+  'service-photos',
+  true,
+  10485760,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+)
+on conflict (id) do update set public = true;
+
+drop policy if exists "service_photos_select" on storage.objects;
+create policy "service_photos_select" on storage.objects
+  for select to anon, authenticated using (bucket_id = 'service-photos');
+
+drop policy if exists "service_photos_insert" on storage.objects;
+create policy "service_photos_insert" on storage.objects
+  for insert to anon, authenticated with check (bucket_id = 'service-photos');
+
+drop policy if exists "service_photos_update" on storage.objects;
+create policy "service_photos_update" on storage.objects
+  for update to anon, authenticated using (bucket_id = 'service-photos');
+
+drop policy if exists "service_photos_delete" on storage.objects;
+create policy "service_photos_delete" on storage.objects
+  for delete to anon, authenticated using (bucket_id = 'service-photos');

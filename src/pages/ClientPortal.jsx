@@ -296,12 +296,14 @@ export default function ClientPortal() {
                     <div>
                       <div className="cp-time-lbl" style={{ marginBottom: 6 }}>{c.before}</div>
                       <StorageImage url={selectedVisit.photo_start_url} alt={c.before} onClick={() => setLightbox(selectedVisit.photo_start_url)} />
+                      <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ marginTop: 8, display: 'block', textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'}</a>
                     </div>
                   )}
                   {selectedVisit.photo_end_url && (
                     <div>
                       <div className="cp-time-lbl" style={{ marginBottom: 6 }}>{c.after}</div>
                       <StorageImage url={selectedVisit.photo_end_url} alt={c.after} onClick={() => setLightbox(selectedVisit.photo_end_url)} />
+                      <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ marginTop: 8, display: 'block', textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'}</a>
                     </div>
                   )}
                 </div>
