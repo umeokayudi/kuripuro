@@ -1,8 +1,6 @@
 // api/admin-ai.js
 // Assistente de IA para o admin do KuriPuro. Usa Gemini com "function calling"
-// pra poder consultar e alterar dados no Supabase (jobs, employees, clients,
-// salary_payments, complaints, evaluations, transport_claims) a partir de
-// comandos em linguagem natural.
+// pra poder consultar e alterar dados no Supabase a partir de linguagem natural.
 
 import { API_BUILD } from './_gemini.js'
 import { runGeminiToolLoop } from './_tool-loop.js'
@@ -13,7 +11,7 @@ const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5c
 const ALLOWED_TABLES = [
   'employees', 'jobs', 'clients', 'salary_payments', 'complaints',
   'evaluations', 'transport_claims', 'badges', 'checkins', 'messages',
-  'client_users', 'client_messages', 'client_complaints', 'client_compliments',
+  'locations', 'client_users', 'client_messages', 'client_complaints', 'client_compliments',
   'client_ratings', 'client_requests', 'service_contracts', 'service_reports',
 ]
 
@@ -41,8 +39,18 @@ function checkTable(table) {
   }
 }
 
+/** filters: { col: value } → eq, ou { col: { op: 'ilike', value: '%x%' } } */
 function buildQuery(filters = {}) {
-  const parts = Object.entries(filters).map(([k, v]) => `${k}=eq.${encodeURIComponent(v)}`)
+  if (!filters || typeof filters !== 'object' || Array.isArray(filters)) return ''
+  const parts = []
+  for (const [k, v] of Object.entries(filters)) {
+    if (v === null || v === undefined || v === '') continue
+    if (typeof v === 'object' && v.op && v.value !== undefined) {
+      parts.push(`${k}=${v.op}.${encodeURIComponent(String(v.value))}`)
+    } else {
+      parts.push(`${k}=eq.${encodeURIComponent(String(v))}`)
+    }
+  }
   return parts.join('&')
 }
 
@@ -50,51 +58,52 @@ const TOOLS = [{
   functionDeclarations: [
     {
       name: 'query_data',
-      description: 'Busca registros de uma tabela do sistema. Use para responder perguntas sobre dados existentes.',
+      description: 'Busca registros de uma tabela. Para nomes parciais use filters com op ilike, ex: {"full_name": {"op": "ilike", "value": "%leticia%"}}',
       parameters: {
         type: 'OBJECT',
         properties: {
-          table: { type: 'STRING', description: `Nome da tabela: ${ALLOWED_TABLES.join(', ')}` },
-          select: { type: 'STRING', description: 'Colunas a retornar, separadas por vírgula. Use "*" para todas.' },
-          filters: { type: 'OBJECT', description: 'Filtros de igualdade, ex: {"employee_id": "abc123"}' },
-          limit: { type: 'NUMBER', description: 'Máximo de registros a retornar (padrão 50)' },
+          table: { type: 'STRING', description: `Tabela: ${ALLOWED_TABLES.join(', ')}` },
+          select: { type: 'STRING', description: 'Colunas separadas por vírgula ou "*"' },
+          filters: { type: 'OBJECT', description: 'Filtros: igualdade {"status":"assigned"} ou ilike {"full_name":{"op":"ilike","value":"%nome%"}}' },
+          order: { type: 'STRING', description: 'Ordenação PostgREST, ex: scheduled_date.asc' },
+          limit: { type: 'NUMBER', description: 'Máximo de registros (padrão 50)' },
         },
         required: ['table'],
       },
     },
     {
       name: 'insert_data',
-      description: 'Insere um novo registro em uma tabela. SEMPRE confirme com o usuário antes de chamar esta função.',
+      description: 'Insere registro(s). Para vários jobs, chame várias vezes ou passe array em data.rows. Confirme com usuário antes de criar jobs em massa.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          table: { type: 'STRING', description: `Nome da tabela: ${ALLOWED_TABLES.join(', ')}` },
-          data: { type: 'OBJECT', description: 'Campos e valores do novo registro' },
+          table: { type: 'STRING', description: `Tabela: ${ALLOWED_TABLES.join(', ')}` },
+          data: { type: 'OBJECT', description: 'Campos do registro, ou { rows: [ {...}, {...} ] } para lote' },
         },
         required: ['table', 'data'],
       },
     },
     {
       name: 'update_data',
-      description: 'Atualiza registros existentes em uma tabela que combinam com os filtros. SEMPRE confirme com o usuário antes de chamar esta função.',
+      description: 'Atualiza registros que combinam com os filtros. Confirme antes de alterar.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          table: { type: 'STRING', description: `Nome da tabela: ${ALLOWED_TABLES.join(', ')}` },
-          filters: { type: 'OBJECT', description: 'Filtros de igualdade pra identificar quais registros mudar, ex: {"id": "abc123"}' },
-          changes: { type: 'OBJECT', description: 'Campos e novos valores' },
+          table: { type: 'STRING' },
+          filters: { type: 'OBJECT' },
+          changes: { type: 'OBJECT' },
         },
         required: ['table', 'filters', 'changes'],
       },
     },
     {
       name: 'delete_data',
-      description: 'Apaga registros de uma tabela que combinam com os filtros. Ação PERMANENTE. SEMPRE confirme explicitamente com o usuário antes de chamar esta função.',
+      description: 'Apaga registros. Ação permanente — confirme antes.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          table: { type: 'STRING', description: `Nome da tabela: ${ALLOWED_TABLES.join(', ')}` },
-          filters: { type: 'OBJECT', description: 'Filtros de igualdade pra identificar quais registros apagar' },
+          table: { type: 'STRING' },
+          filters: { type: 'OBJECT' },
         },
         required: ['table', 'filters'],
       },
@@ -106,39 +115,47 @@ async function executeTool(name, args) {
   if (name === 'query_data') {
     checkTable(args.table)
     const query = buildQuery(args.filters)
-    const select = args.select || '*'
+    const select = encodeURIComponent(args.select || '*')
     const limit = args.limit || 50
-    const path = `${args.table}?select=${select}${query ? '&' + query : ''}&limit=${limit}`
+    const order = args.order ? `&order=${encodeURIComponent(args.order)}` : ''
+    const path = `${args.table}?select=${select}${query ? '&' + query : ''}${order}&limit=${limit}`
     return await sbFetch(path)
   }
   if (name === 'insert_data') {
     checkTable(args.table)
+    const rows = args.data?.rows
+    if (Array.isArray(rows) && rows.length) {
+      return await sbFetch(args.table, { method: 'POST', body: JSON.stringify(rows) })
+    }
     return await sbFetch(args.table, { method: 'POST', body: JSON.stringify([args.data]) })
   }
   if (name === 'update_data') {
     checkTable(args.table)
     const query = buildQuery(args.filters)
+    if (!query) throw new Error('update_data exige filters')
     return await sbFetch(`${args.table}?${query}`, { method: 'PATCH', body: JSON.stringify(args.changes) })
   }
   if (name === 'delete_data') {
     checkTable(args.table)
     const query = buildQuery(args.filters)
+    if (!query) throw new Error('delete_data exige filters')
     return await sbFetch(`${args.table}?${query}`, { method: 'DELETE' })
   }
   throw new Error(`Função desconhecida: ${name}`)
 }
 
-const SYSTEM_INSTRUCTION = `Você é o assistente de IA do painel administrativo do KuriPuro (sistema de gestão de limpeza de restaurantes/bares do grupo Umeoka).
-Você tem acesso de leitura E escrita ao banco de dados via as funções query_data, insert_data, update_data e delete_data, nas tabelas: ${ALLOWED_TABLES.join(', ')}.
+const SYSTEM_INSTRUCTION = `Você é o assistente de IA do painel administrativo do KuriPuro (gestão de limpeza de restaurantes/bares).
+Tabelas: ${ALLOWED_TABLES.join(', ')}.
 
-Regras importantes:
+Regras:
 - Responda sempre em português.
-- Para PERGUNTAS e ANÁLISES (ex: "quantos jobs o André completou essa semana", "qual funcionário tem mais reclamações"), use query_data livremente sem pedir confirmação.
-- Para MUDANÇAS nos dados (insert_data, update_data, delete_data), a menos que o usuário já tenha dado uma instrução clara e específica com todos os detalhes necessários, primeiro explique em texto o que você vai fazer e peça confirmação. Só chame a função de escrita depois que o usuário confirmar explicitamente (ex: "sim", "confirma", "pode fazer").
-- Nunca invente dados. Se não tiver certeza de um valor, busque com query_data primeiro.
-- Ao apagar dados (delete_data), seja especialmente cauteloso — confirme exatamente quais registros serão apagados antes de agir.
-- Seja direto e conciso nas respostas.
-- Jobs concluídos (status=completed) contêm relatórios de serviço: notes_employee, retro_report, started_at, completed_at, retro_time_min, checklist_done/total, photo_ai_score, employee_name, title, scheduled_date. Use para análises de tempo, qualidade e produtividade.`
+- Use query_data para buscar dados. Para nomes use ilike: {"full_name":{"op":"ilike","value":"%leticia%"}}.
+- Para CRIAR jobs de escala: 1) busque employee_id e full_name em employees; 2) use insert_data em jobs com campos obrigatórios: title (ex: "Kodama Kinshicho — Limpeza básica"), employee_id, employee_name, scheduled_date (YYYY-MM-DD), scheduled_time (ex: "00:30"), status "assigned", address (URL maps ou texto), client_id/client_name se souber.
+- Locais comuns (título do job): Kodama Kinshicho, Kodama Oimachi, Kodama Yurakucho, Kodama Shinbashi, Ibushio, etc.
+- Para agendar vários dias, crie um job por dia por local (várias chamadas insert_data ou data.rows em lote).
+- Para mudanças (insert/update/delete), se o pedido já for claro e específico, execute. Se ambíguo, explique e peça confirmação.
+- Nunca invente IDs — busque antes com query_data.
+- Seja direto. Ao final, resuma o que foi feito (quantos jobs criados, datas, funcionário).`
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
@@ -172,6 +189,7 @@ export default async function handler(req, res) {
       tools: TOOLS,
       systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
       executeTool,
+      maxIterations: 14,
     })
 
     res.status(200).json({ reply, toolLog })

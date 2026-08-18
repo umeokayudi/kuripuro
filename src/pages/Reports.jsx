@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { jobToServiceReport, fmtDuration } from '../lib/jobReport'
+import { jobToServiceReport, fmtDuration, syncServiceReport } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import StorageImage from '../components/StorageImage'
 import { useLang, fill } from '../hooks/useLang'
@@ -32,19 +32,45 @@ export default function Reports() {
 
   const loadReports = async () => {
     setLoading(true)
-    const since = new Date(Date.now() - filterDays * 86400000).toISOString().split('T')[0]
+    const sinceIso = new Date(Date.now() - filterDays * 86400000).toISOString()
+    const sinceDate = sinceIso.split('T')[0]
 
-    const { data: jobs } = await supabase
+    const { data: srData, error: srErr } = await supabase
+      .from('service_reports')
+      .select('*')
+      .gte('report_date', sinceDate)
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (!srErr && srData?.length) {
+      setReports(srData)
+      setLoading(false)
+      return
+    }
+
+    const { data: jobs, error: jobErr } = await supabase
       .from('jobs')
       .select('*')
       .eq('status', 'completed')
-      .gte('scheduled_date', since)
+      .gte('completed_at', sinceIso)
       .order('completed_at', { ascending: false })
       .limit(100)
+
+    if (jobErr) {
+      toast.error(jobErr.message)
+      setReports([])
+      setLoading(false)
+      return
+    }
 
     const mapped = (jobs || []).map(j => jobToServiceReport(j, lang))
     setReports(mapped)
     setLoading(false)
+
+    // Backfill service_reports in background
+    for (const j of jobs || []) {
+      syncServiceReport(supabase, j).catch(() => {})
+    }
   }
 
   const employees = useMemo(() =>

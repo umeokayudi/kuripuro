@@ -31,7 +31,8 @@ async function queryEmployeeData(employeeId, args) {
   const select = (args.select || '*').replace(/password/gi, '')
   const limit = Math.min(args.limit || 30, 50)
   const query = buildQuery(filters)
-  return sbFetch(`${table}?select=${select}&${query}&limit=${limit}&order=created_at.desc`)
+  const order = table === 'jobs' ? 'scheduled_date.desc' : 'created_at.desc'
+  return sbFetch(`${table}?select=${select}&${query}&limit=${limit}&order=${order}`)
 }
 
 const TOOLS = [{

@@ -59,7 +59,7 @@ export default function ClientPortal() {
   }
 
   useEffect(() => {
-    if (lang !== 'ja') switchLang('ja')
+    if (!localStorage.getItem('kp_lang') && lang !== 'ja') switchLang('ja')
   }, [])
 
   useEffect(() => {
@@ -83,6 +83,11 @@ export default function ClientPortal() {
     else setRatingForm({ stars: 5, comment: '' })
   }, [selectedVisit?.id, ratings])
 
+  const filterByLocation = (rows) => {
+    if (!user?.location_name) return rows || []
+    return (rows || []).filter(r => !r.location_name || r.location_name === user.location_name)
+  }
+
   const loadAll = async () => {
     if (!user?.client_id) return
     const since = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
@@ -99,12 +104,12 @@ export default function ClientPortal() {
 
     setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
     setContracts(contractsRes.data || [])
-    setMessages(msgsRes.data || [])
-    setComplaints(compRes.data || [])
-    setCompliments(cmplRes.data || [])
+    setMessages(filterByLocation(msgsRes.data))
+    setComplaints(filterByLocation(compRes.data))
+    setCompliments(filterByLocation(cmplRes.data))
     setRatings(ratRes.data || [])
-    setRequests(reqRes.data || [])
-    setUnreadMsgs((msgsRes.data || []).filter(m => m.sender === 'admin' && !m.read).length)
+    setRequests(filterByLocation(reqRes.data))
+    setUnreadMsgs(filterByLocation(msgsRes.data).filter(m => m.sender === 'admin' && !m.read).length)
     setLoading(false)
     await supabase.from('client_users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
   }
