@@ -2,9 +2,9 @@ import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 
 /** Carrega .env.local na raiz do projeto (Vite / Mac) */
-export function loadEnvLocal() {
+export function loadEnvLocal({ override = true } = {}) {
   const path = resolve(process.cwd(), '.env.local')
-  if (!existsSync(path)) return
+  if (!existsSync(path)) return false
   for (const line of readFileSync(path, 'utf8').split('\n')) {
     const trimmed = line.trim()
     if (!trimmed || trimmed.startsWith('#')) continue
@@ -15,6 +15,7 @@ export function loadEnvLocal() {
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1)
     }
-    if (!process.env[key]) process.env[key] = val
+    if (override || !process.env[key]) process.env[key] = val
   }
+  return true
 }
