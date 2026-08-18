@@ -1,10 +1,6 @@
 #!/usr/bin/env node
-/**
- * Gera e insere jobs de agosto/2026 (OTP + Atomic + Duskin).
- * Marca limpezas básicas até COMPLETE_UNTIL como completed.
- *
- * Uso: node scripts/seed-august-2026.mjs
- */
+import { loadEnvLocal } from './_loadEnv.mjs'
+loadEnvLocal()
 import {
   buildMonthSchedule,
   jobsToRows,

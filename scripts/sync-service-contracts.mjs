@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-/**
- * Sincroniza service_contracts com o catálogo de serviços (dias, preços, Duskin, Matsunaga).
- * Uso: SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (ou anon) node scripts/sync-service-contracts.mjs
- */
+import { loadEnvLocal } from './_loadEnv.mjs'
+loadEnvLocal()
 import {
   SCHEDULE_CLIENTS,
   OTP_BASIC_LOCATIONS,

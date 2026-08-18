@@ -11,6 +11,7 @@
     "setup:supabase": "node scripts/run-supabase-setup.mjs",
     "setup:contracts": "node scripts/sync-service-contracts.mjs",
     "seed:august": "node scripts/seed-august-2026.mjs",
+    "setup:august": "node scripts/sync-service-contracts.mjs && node scripts/seed-august-2026.mjs",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh"
   },
