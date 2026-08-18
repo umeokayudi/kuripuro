@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { findClientUserForLogin, clientUserToSession } from '../lib/clientCredentials'
 
 const AuthContext = createContext()
 
@@ -44,29 +45,24 @@ export function AuthProvider({ children }) {
       return { success: true }
     }
 
-    const { data: clientUser } = await supabase
-      .from('client_users')
-      .select('id, client_id, client_name, location_name, contact_name, email, is_active')
-      .eq('email', em)
-      .eq('password', pw)
-      .eq('is_active', true)
-      .single()
+    const clientUser = await findClientUserForLogin(supabase, email, pw)
     if (clientUser) {
-      const u = {
-        id: clientUser.id,
-        name: clientUser.contact_name?.trim() || clientUser.client_name || clientUser.email,
-        email: clientUser.email,
-        role: 'client',
-        client_id: clientUser.client_id,
-        client_name: clientUser.client_name,
-        location_name: clientUser.location_name,
-      }
+      const u = clientUserToSession(clientUser)
       setUser(u)
       localStorage.setItem('kp_user', JSON.stringify(u))
       return { success: true }
     }
 
-    return { success: false, error: 'Invalid email or password' }
+    return { success: false, error: 'Invalid login or password' }
+  }
+
+  const updateSession = (patch) => {
+    setUser(prev => {
+      if (!prev) return prev
+      const next = { ...prev, ...patch }
+      localStorage.setItem('kp_user', JSON.stringify(next))
+      return next
+    })
   }
 
   const logout = () => {
@@ -75,7 +71,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateSession }}>
       {children}
     </AuthContext.Provider>
   )

@@ -1,3 +1,5 @@
+export { isMapsUrl, isNavigableAddress } from './mapsLink.js'
+
 function parseCoordsFromUrl(url) {
   if (!url) return null
   const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
@@ -5,14 +7,6 @@ function parseCoordsFromUrl(url) {
   const m2 = url.match(/[?&](?:q|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/)
   if (m2) return { lat: parseFloat(m2[1]), lng: parseFloat(m2[2]) }
   return null
-}
-
-function isMapsUrl(address) {
-  return /goo\.gl|share\.google|maps\.google|google\.com\/maps/i.test(address || '')
-}
-
-export function isNavigableAddress(address) {
-  return isMapsUrl(address) || /^https?:\/\//i.test(address || '')
 }
 
 export async function geocodeAddress(address) {

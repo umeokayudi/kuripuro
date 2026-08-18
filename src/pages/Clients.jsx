@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
+import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } from '../lib/portalStores'
 import toast from 'react-hot-toast'
 
 export default function Clients() {
@@ -11,6 +12,9 @@ export default function Clients() {
   const [portalClientId, setPortalClientId] = useState('')
   const [portalUsers, setPortalUsers] = useState([])
   const [portalForm, setPortalForm] = useState({ contact_name: '', email: '', password: '', location_name: '' })
+  const [editingPortalUser, setEditingPortalUser] = useState(null)
+  const [editPortalForm, setEditPortalForm] = useState({ contact_name: '', email: '', password: '', location_name: '' })
+  const [bulkProvisionBusy, setBulkProvisionBusy] = useState(false)
   const [portalSchemaOk, setPortalSchemaOk] = useState(true)
   const [portalSchemaChecking, setPortalSchemaChecking] = useState(false)
   const [contracts, setContracts] = useState([])
@@ -137,6 +141,54 @@ export default function Clients() {
     if (!confirm('Delete this portal account?')) return
     await supabase.from('client_users').delete().eq('id', id)
     loadPortal(portalClientId)
+  }
+
+  const openEditPortalUser = (u) => {
+    setEditingPortalUser(u)
+    setEditPortalForm({
+      contact_name: u.contact_name || '',
+      email: u.email || '',
+      password: '',
+      location_name: u.location_name || '',
+    })
+  }
+
+  const saveEditPortalUser = async () => {
+    if (!editingPortalUser) return
+    if (!editPortalForm.email?.trim()) return toast.error('Email required')
+    const patch = {
+      contact_name: editPortalForm.contact_name.trim(),
+      email: editPortalForm.email.trim().toLowerCase(),
+      location_name: editPortalForm.location_name || null,
+    }
+    if (editPortalForm.password?.trim()) {
+      if (editPortalForm.password.trim().length < 6) return toast.error('Password min 6 chars')
+      patch.password = editPortalForm.password.trim()
+    }
+    const client = clients.find(c => c.id === portalClientId)
+    if (client) patch.client_name = client.company_name
+    const { error } = await supabase.from('client_users').update(patch).eq('id', editingPortalUser.id)
+    if (error) return toast.error(error.message)
+    toast.success('Portal account updated')
+    setEditingPortalUser(null)
+    loadPortal(portalClientId)
+  }
+
+  const provisionAllStores = async () => {
+    if (!portalSchemaOk) return toast.error('Primeiro rode o SQL no Supabase')
+    if (!confirm(`Criar/atualizar ${getPortalStores().length} contas (On The Planet + Atomic)?\nSenha padrão: ${DEFAULT_PORTAL_PASSWORD}`)) return
+    setBulkProvisionBusy(true)
+    try {
+      const results = await provisionAllStoreAccounts(supabase, clients)
+      const msg = `✅ ${results.created} criadas, ${results.updated} atualizadas, ${results.contracts} contratos novos`
+      if (results.errors.length) toast.error(`${results.errors.length} erros — veja console`)
+      else toast.success(msg)
+      if (results.errors.length) console.warn('Portal provision errors:', results.errors)
+      if (portalClientId) loadPortal(portalClientId)
+    } catch (e) {
+      toast.error(e.message)
+    }
+    setBulkProvisionBusy(false)
   }
 
   const load = async () => {
@@ -341,7 +393,12 @@ export default function Clients() {
           <div className="card" style={{marginBottom:14}}>
             <div className="card-title">🔐 Client Portal Accounts</div>
             <div style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>
-              Create login for restaurant managers. They can see cleaning times, photos, chat, complaints and requests. Default UI is Japanese.
+              Uma conta por loja. Login com <b>nome do local</b> ou email. Senha padrão: <code>{DEFAULT_PORTAL_PASSWORD}</code>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+              <button className="btn btn-primary" onClick={provisionAllStores} disabled={bulkProvisionBusy || !portalSchemaOk} type="button">
+                {bulkProvisionBusy ? 'Criando...' : '🏪 Criar contas de todas as lojas (OTP + Atomic)'}
+              </button>
             </div>
             <div className="form-group">
               <label>Client</label>
@@ -373,15 +430,19 @@ export default function Clients() {
               <div className="card-title">Portal Users ({portalUsers.length})</div>
               {portalUsers.length===0 && <div style={{color:'var(--text3)',fontSize:13}}>No portal accounts yet.</div>}
               <table>
-                <thead><tr><th>Name</th><th>Email</th><th>Location</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Login</th><th>Location</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                   {portalUsers.map(u=>(
                     <tr key={u.id}>
                       <td style={{fontWeight:500}}>{u.contact_name}</td>
-                      <td style={{fontSize:12}}>{u.email}</td>
+                      <td style={{fontSize:12}}>
+                        <div>{u.location_name || '—'}</div>
+                        <div style={{color:'var(--text3)',fontSize:11}}>{u.email}</div>
+                      </td>
                       <td style={{fontSize:12}}>{u.location_name||'All'}</td>
                       <td><span className={`badge ${u.is_active?'badge-green':'badge-red'}`}>{u.is_active?'Active':'Inactive'}</span></td>
                       <td style={{display:'flex',gap:4}}>
+                        <button className="btn btn-sm btn-primary" onClick={()=>openEditPortalUser(u)}>✏️</button>
                         <button className="btn btn-sm" onClick={()=>togglePortalUser(u.id,u.is_active)}>{u.is_active?'Disable':'Enable'}</button>
                         <button className="btn btn-sm btn-danger" onClick={()=>deletePortalUser(u.id)}>✕</button>
                       </td>
@@ -389,6 +450,30 @@ export default function Clients() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {editingPortalUser && (
+            <div className="card" style={{ marginTop: 14, border: '2px solid var(--gold, #c19c56)' }}>
+              <div className="card-title">✏️ Editar conta — {editingPortalUser.contact_name}</div>
+              <div className="grid-2" style={{ marginTop: 12 }}>
+                <div className="form-group"><label>Nome / contato</label><input value={editPortalForm.contact_name} onChange={e=>setEditPortalForm(f=>({...f,contact_name:e.target.value}))} /></div>
+                <div className="form-group"><label>Email *</label><input type="email" value={editPortalForm.email} onChange={e=>setEditPortalForm(f=>({...f,email:e.target.value}))} /></div>
+                <div className="form-group"><label>Nova senha (vazio = manter)</label><input type="text" value={editPortalForm.password} onChange={e=>setEditPortalForm(f=>({...f,password:e.target.value}))} placeholder="min 6 chars" /></div>
+                <div className="form-group"><label>Local</label>
+                  <select value={editPortalForm.location_name} onChange={e=>setEditPortalForm(f=>({...f,location_name:e.target.value}))}>
+                    <option value="">All locations</option>
+                    {contracts.map((ct,i)=><option key={i} value={ct.location_name}>{ct.location_name}</option>)}
+                    {editPortalForm.location_name && !contracts.some(c=>c.location_name===editPortalForm.location_name) && (
+                      <option value={editPortalForm.location_name}>{editPortalForm.location_name}</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="btn btn-primary" onClick={saveEditPortalUser}>✅ Salvar</button>
+                <button className="btn" onClick={()=>setEditingPortalUser(null)}>Cancelar</button>
+              </div>
             </div>
           )}
         </div>

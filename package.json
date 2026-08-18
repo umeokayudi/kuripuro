@@ -9,6 +9,10 @@
     "preview": "vite preview",
     "vercel-build": "npm run build",
     "setup:supabase": "node scripts/run-supabase-setup.mjs",
+    "setup:contracts": "node scripts/sync-service-contracts.mjs",
+    "seed:august": "node scripts/seed-august-2026.mjs",
+    "setup:august": "node scripts/setup-august-now.mjs",
+    "fix:maps": "node scripts/fix-maps-urls.mjs",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh"
   },

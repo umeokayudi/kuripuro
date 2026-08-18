@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
@@ -184,7 +185,7 @@ export default function ServiceContracts() {
                 <div>
                   <div style={{fontWeight:600,fontSize:14}}>{c.location_name}</div>
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:1}}>{c.service_type} · {c.hours_per_visit}h/visit · <span style={{color:c.billing_type==='fixed_monthly'?'var(--amber)':'var(--text3)'}}>{c.billing_type==='fixed_monthly'?'Fixed Monthly':'Per Visit'}</span></div>
-                  {c.location_address?.startsWith('http')&&<a href={c.location_address} target="_blank" rel="noreferrer" style={{fontSize:11,color:'#60a5fa',textDecoration:'none'}}>🗺 Maps</a>}
+                  {hasMapsLink(c.location_address, c.location_name)&&<a href={mapsOpenUrl(c.location_address, c.location_name)} target="_blank" rel="noreferrer" style={{fontSize:11,color:'#60a5fa',textDecoration:'none'}}>🗺 Maps</a>}
                   {c.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>🔑 {c.notes}</div>}
                   {c.training_video_url&&<div style={{fontSize:11,color:'#60a5fa',marginTop:2}}>🎬 Training video configured</div>}
                 </div>

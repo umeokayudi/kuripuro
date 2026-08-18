@@ -25,6 +25,13 @@ export function reportMatchesClientUser(report, user) {
   return true
 }
 
+export function ratingMatchesClientUser(rating, user) {
+  if (!rating || !user?.client_id) return false
+  if (rating.client_id && rating.client_id !== user.client_id) return false
+  if (user.location_name && rating.location_name && rating.location_name !== user.location_name) return false
+  return true
+}
+
 export function fmtVisitTime(job, lang = 'ja') {
   const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   if (job.started_at) {

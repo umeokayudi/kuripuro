@@ -21,7 +21,7 @@ export default function ScheduleGenerator() {
   const [preview, setPreview] = useState([])
   const [loading, setLoading] = useState(false)
   const [existingCount, setExistingCount] = useState(0)
-  const [includeYuraku, setIncludeYuraku] = useState(false)
+  const [includeDuskin, setIncludeDuskin] = useState(true)
   const [contracts, setContracts] = useState([])
   const [locations, setLocations] = useState(DEFAULT_LOCATIONS)
   const [expandedDay, setExpandedDay] = useState(null)
@@ -57,7 +57,7 @@ export default function ScheduleGenerator() {
       toast.error(s.noActiveContracts)
       return
     }
-    const jobs = buildMonthSchedule(month, { contracts, locations, includeOptionalExtras: includeYuraku })
+    const jobs = buildMonthSchedule(month, { contracts, locations, includeDuskin })
     setPreview(jobs)
     toast.success(fill(s.previewToast, { count: jobs.length, employees: contracts.length }))
   }
@@ -72,7 +72,7 @@ export default function ScheduleGenerator() {
 
   const handleGenerate = async () => {
     if (!contracts.length) { toast.error(s.noContractsToast); return }
-    const jobs = preview.length ? preview : buildMonthSchedule(month, { contracts, locations, includeOptionalExtras: includeYuraku })
+    const jobs = preview.length ? preview : buildMonthSchedule(month, { contracts, locations, includeDuskin })
     if (!jobs.length) { toast.error(s.previewFirst); return }
 
     const summary = Object.entries(scheduleStats(jobs).byEmployee).map(([n, c]) => `${n}: ${c}`).join(', ')
@@ -139,8 +139,8 @@ export default function ScheduleGenerator() {
         </div>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 14, cursor: 'pointer' }}>
-          <input type="checkbox" checked={includeYuraku} onChange={e => setIncludeYuraku(e.target.checked)} />
-          {s.includeYuraku}
+          <input type="checkbox" checked={includeDuskin} onChange={e => setIncludeDuskin(e.target.checked)} />
+          {s.includeDuskin || 'Incluir Duskin (domingos do mês)'}
         </label>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

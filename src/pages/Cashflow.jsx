@@ -2,6 +2,16 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
+/** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
+function normalizeEntry(row) {
+  if (!row) return row
+  return {
+    ...row,
+    type: row.type || row.entry_type,
+    date: row.date || row.entry_date,
+  }
+}
+
 export default function Cashflow() {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
@@ -15,8 +25,9 @@ export default function Cashflow() {
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('caixa_movimentos').select('*').order('date', { ascending:false }).limit(100)
-    setEntries(data||[])
+    const { data, error } = await supabase.from('cashflow').select('*').order('entry_date', { ascending:false }).limit(100)
+    if (error) return toast.error(error.message)
+    setEntries((data || []).map(normalizeEntry))
     setLoading(false)
   }
 
@@ -24,10 +35,12 @@ export default function Cashflow() {
 
   const handleAdd = async () => {
     if (!form.amount||!form.description) return toast.error('Fill all fields')
-    const { error } = await supabase.from('caixa_movimentos').insert({
-      type: form.type, category: form.category,
+    const { error } = await supabase.from('cashflow').insert({
+      entry_type: form.type,
+      category: form.category,
       amount: parseFloat(form.amount),
-      description: form.description, date: form.date
+      description: form.description,
+      entry_date: form.date,
     })
     if (error) return toast.error(error.message)
     toast.success('Entry added!')
@@ -36,7 +49,7 @@ export default function Cashflow() {
   }
 
   const handleDelete = async (id) => {
-    await supabase.from('caixa_movimentos').delete().eq('id', id)
+    await supabase.from('cashflow').delete().eq('id', id)
     toast('Entry removed.'); load()
   }
 
