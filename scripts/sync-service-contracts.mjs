@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { loadEnvLocal } from './_loadEnv.mjs'
-loadEnvLocal()
+import { getSupabaseEnv, assertSupabaseKey, supabaseHeaders } from './_supabaseEnv.mjs'
 import {
   SCHEDULE_CLIENTS,
   OTP_BASIC_LOCATIONS,
@@ -13,20 +12,10 @@ import {
   monthlyRevenue,
 } from '../src/lib/serviceCatalog.js'
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co'
-const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+const { url: SUPABASE_URL, key: KEY } = getSupabaseEnv()
+await assertSupabaseKey(SUPABASE_URL, KEY)
 
-if (!KEY) {
-  console.error('Defina SUPABASE_SERVICE_ROLE_KEY ou VITE_SUPABASE_ANON_KEY')
-  process.exit(1)
-}
-
-const headers = {
-  apikey: KEY,
-  Authorization: `Bearer ${KEY}`,
-  'Content-Type': 'application/json',
-  Prefer: 'return=representation',
-}
+const headers = supabaseHeaders(KEY)
 
 async function sb(method, path, body) {
   const resp = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { loadEnvLocal } from './_loadEnv.mjs'
-loadEnvLocal()
+import { getSupabaseEnv, assertSupabaseKey, supabaseHeaders } from './_supabaseEnv.mjs'
 import {
   buildMonthSchedule,
   jobsToRows,
@@ -12,15 +11,10 @@ import {
 const MONTH = process.env.SEED_MONTH || '2026-08'
 const COMPLETE_UNTIL = process.env.COMPLETE_UNTIL || '2026-08-17'
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co'
-const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
+const { url: SUPABASE_URL, key: KEY } = getSupabaseEnv()
+await assertSupabaseKey(SUPABASE_URL, KEY)
 
-const headers = {
-  apikey: KEY,
-  Authorization: `Bearer ${KEY}`,
-  'Content-Type': 'application/json',
-  Prefer: 'return=representation',
-}
+const headers = supabaseHeaders(KEY)
 
 async function sb(method, path, body) {
   const resp = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
