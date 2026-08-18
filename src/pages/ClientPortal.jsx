@@ -6,15 +6,16 @@ import { fmtDuration } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import StorageImage from '../components/StorageImage'
 import {
-  jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd,
+  jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
 } from '../lib/clientPortal'
+import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import './client-portal.css'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 
 export default function ClientPortal() {
-  const { user, logout } = useAuth()
+  const { user, logout, updateSession } = useAuth()
   const { lang, switchLang, t: tr } = useLang()
   const c = tr.client
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
@@ -49,6 +50,8 @@ export default function ClientPortal() {
   const [ratingForm, setRatingForm] = useState({ stars: 5, comment: '' })
   const [complimentForm, setComplimentForm] = useState({ job_id: '', message: '' })
   const [submittingRating, setSubmittingRating] = useState(false)
+  const [credForm, setCredForm] = useState({ currentPassword: '', newEmail: '', newPassword: '' })
+  const [savingCreds, setSavingCreds] = useState(false)
 
   const msgEndRef = useRef()
 
@@ -107,7 +110,7 @@ export default function ClientPortal() {
     setMessages(filterByLocation(msgsRes.data))
     setComplaints(filterByLocation(compRes.data))
     setCompliments(filterByLocation(cmplRes.data))
-    setRatings(ratRes.data || [])
+    setRatings((ratRes.data || []).filter(r => ratingMatchesClientUser(r, user)))
     setRequests(filterByLocation(reqRes.data))
     setUnreadMsgs(filterByLocation(msgsRes.data).filter(m => m.sender === 'admin' && !m.read).length)
     setLoading(false)
@@ -175,6 +178,20 @@ export default function ClientPortal() {
     loadAll()
   }
 
+  const saveCredentials = async () => {
+    if (!credForm.currentPassword.trim()) return toast.error(c.currentPassword)
+    if (!credForm.newEmail.trim() && !credForm.newPassword.trim()) {
+      return toast.error(c.newEmail)
+    }
+    setSavingCreds(true)
+    const result = await updateClientCredentials(supabase, user.id, credForm)
+    setSavingCreds(false)
+    if (!result.success) return toast.error(result.error)
+    if (result.email) updateSession({ email: result.email })
+    toast.success(c.credentialsUpdated)
+    setCredForm({ currentPassword: '', newEmail: '', newPassword: '' })
+  }
+
   const submitRequest = async () => {
     if (!requestForm.description.trim()) return toast.error(c.requestDesc)
     const { error } = await supabase.from('client_requests').insert({
@@ -212,6 +229,7 @@ export default function ClientPortal() {
     { key: 'chat', icon: '💬', label: c.chat, badge: unreadMsgs },
     { key: 'complaints', icon: '⚠️', label: c.complaints },
     { key: 'requests', icon: '📝', label: c.requests },
+    { key: 'settings', icon: '⚙️', label: c.settings },
   ]
 
   const avgRating = ratings.length
@@ -579,6 +597,46 @@ export default function ClientPortal() {
                     <div style={{ fontSize: 14, lineHeight: 1.5 }}>{rq.description}</div>
                   </div>
                 ))}
+              </>
+            )}
+
+            {!loading && tab === 'settings' && (
+              <>
+                <div className="cp-section-title">{c.settingsTitle}</div>
+                <div className="cp-card" style={{ marginBottom: 16 }}>
+                  <div className="cp-field">
+                    <span className="cp-label">{c.company}</span>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>{user.client_name}</div>
+                  </div>
+                  {user.location_name && (
+                    <div className="cp-field">
+                      <span className="cp-label">{c.store}</span>
+                      <div style={{ fontSize: 15, fontWeight: 600 }}>{user.location_name}</div>
+                    </div>
+                  )}
+                  <div className="cp-field">
+                    <span className="cp-label">{c.email}</span>
+                    <div style={{ fontSize: 14 }}>{user.email}</div>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text3)', margin: '0 0 12px', lineHeight: 1.5 }}>{c.loginHint}</p>
+                </div>
+                <div className="cp-card">
+                  <div className="cp-field">
+                    <span className="cp-label">{c.currentPassword}</span>
+                    <input type="password" className="cp-input" value={credForm.currentPassword} onChange={e => setCredForm(f => ({ ...f, currentPassword: e.target.value }))} autoComplete="current-password" />
+                  </div>
+                  <div className="cp-field">
+                    <span className="cp-label">{c.newEmail}</span>
+                    <input type="email" className="cp-input" value={credForm.newEmail} onChange={e => setCredForm(f => ({ ...f, newEmail: e.target.value }))} placeholder={user.email} autoComplete="email" />
+                  </div>
+                  <div className="cp-field">
+                    <span className="cp-label">{c.newPassword}</span>
+                    <input type="password" className="cp-input" value={credForm.newPassword} onChange={e => setCredForm(f => ({ ...f, newPassword: e.target.value }))} autoComplete="new-password" />
+                  </div>
+                  <button type="button" className="cp-btn cp-btn-gold" onClick={saveCredentials} disabled={savingCreds}>
+                    {savingCreds ? c.loading : c.saveCredentials}
+                  </button>
+                </div>
               </>
             )}
           </main>

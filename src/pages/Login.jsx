@@ -32,8 +32,8 @@ export default function Login() {
         <div style={{ fontSize:16, fontWeight:600, color:'#fff', marginBottom:22, textAlign:'center' }}>{a.signIn}</div>
         <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-            <label style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{a.email}</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required style={IS} />
+            <label style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{a.login || a.email}</label>
+            <input type="text" value={email} onChange={e=>setEmail(e.target.value)} placeholder={a.loginPlaceholder || 'your@email.com'} required style={IS} autoComplete="username" />
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
             <label style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{a.password}</label>

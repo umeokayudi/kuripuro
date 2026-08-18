@@ -215,6 +215,7 @@ export function jobsToRows(jobs, contracts) {
     employee_name: empById[j.employeeId]?.employeeName || j.employee,
     client_id: clientMap[j.client]?.id || SCHEDULE_CLIENTS.ontheplanet.id,
     client_name: j.client,
+    location_name: (j.title || '').replace(/ — .*/, '').trim(),
     scheduled_date: j.date,
     scheduled_time: j.time,
     status: 'assigned',
