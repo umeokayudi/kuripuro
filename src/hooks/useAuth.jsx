@@ -14,11 +14,14 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = async (email, password) => {
+    const em = email.trim().toLowerCase()
+    const pw = password.trim()
+
     const { data: admin } = await supabase
       .from('admins')
       .select('*')
-      .eq('email', email.trim().toLowerCase())
-      .eq('password', password)
+      .eq('email', em)
+      .eq('password', pw)
       .single()
     if (admin) {
       const u = { id: admin.id, name: admin.name, email: admin.email, role: 'admin' }
@@ -26,11 +29,12 @@ export function AuthProvider({ children }) {
       localStorage.setItem('kp_user', JSON.stringify(u))
       return { success: true }
     }
+
     const { data: emp } = await supabase
       .from('employees')
       .select('id, full_name, email, password, is_active, contract_type, hourly_rate')
-      .eq('email', email.trim().toLowerCase())
-      .eq('password', password)
+      .eq('email', em)
+      .eq('password', pw)
       .eq('is_active', true)
       .single()
     if (emp) {
@@ -39,17 +43,18 @@ export function AuthProvider({ children }) {
       localStorage.setItem('kp_user', JSON.stringify(u))
       return { success: true }
     }
+
     const { data: clientUser } = await supabase
       .from('client_users')
       .select('id, client_id, client_name, location_name, contact_name, email, is_active')
-      .eq('email', email.trim().toLowerCase())
-      .eq('password', password)
+      .eq('email', em)
+      .eq('password', pw)
       .eq('is_active', true)
       .single()
     if (clientUser) {
       const u = {
         id: clientUser.id,
-        name: clientUser.contact_name,
+        name: clientUser.contact_name?.trim() || clientUser.contact_name,
         email: clientUser.email,
         role: 'client',
         client_id: clientUser.client_id,
@@ -60,6 +65,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem('kp_user', JSON.stringify(u))
       return { success: true }
     }
+
     return { success: false, error: 'Invalid email or password' }
   }
 
