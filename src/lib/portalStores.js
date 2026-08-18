@@ -19,9 +19,14 @@ export function normalizeLoginKey(value) {
   return (value || '').trim().toLowerCase()
 }
 
+/** Lojas extras (deep clean opcional, etc.) — também ganham conta portal */
+const EXTRA_PORTAL_LOCATIONS = [
+  { name: 'Kodama Yurakucho', address: '', notes: 'Key box: TBD', days: [2], serviceType: 'Deep Cleaning' },
+]
+
 /** All On The Planet + Atomic store locations with client linkage */
 export function getPortalStores() {
-  return DEFAULT_LOCATIONS.map(loc => {
+  return [...DEFAULT_LOCATIONS, ...EXTRA_PORTAL_LOCATIONS].map(loc => {
     const isAtomic = loc.client === 'Atomic Bar' || loc.name === 'Atomic Bar'
     const client = isAtomic ? SCHEDULE_CLIENTS.atomicbar : SCHEDULE_CLIENTS.ontheplanet
     return {
