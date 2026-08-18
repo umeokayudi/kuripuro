@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { generateDailyReport, generatePayslip, generatePayslipJP } from '../lib/generatePDF'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
-import { prepareImageForUpload } from '../lib/imageUpload'
+import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
@@ -414,12 +414,7 @@ export default function EmployeePortal() {
       if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
       setRetroEval(ev)
       // 2. Upload da foto (sempre JPEG para funcionar em qualquer navegador)
-      let photoUrl = null
-      const prepared = await prepareImageForUpload(retroPhoto)
-      const { error: uploadErr } = await supabase.storage.from('service-photos').upload(`jobs/${retroJob.id}/retro.jpg`, prepared, { upsert: true, contentType: 'image/jpeg' })
-      if (uploadErr) throw new Error('Falha ao enviar foto: ' + uploadErr.message)
-      const { data:pd } = supabase.storage.from('service-photos').getPublicUrl(`jobs/${retroJob.id}/retro.jpg`)
-      photoUrl = pd.publicUrl
+      const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
       // 3. Finaliza o job com o valor da IA
       const { error } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(),
@@ -451,18 +446,12 @@ export default function EmployeePortal() {
   }
 
   const uploadSlotPhotos = async (jobId, photos, prefix) => {
-    let firstUrl = null
+    let firstPath = null
     for (let i = 0; i < photos.length; i++) {
-      const prepared = await prepareImageForUpload(photos[i].file)
-      const path = `jobs/${jobId}/${prefix}_${i}.jpg`
-      const { error } = await supabase.storage.from('service-photos').upload(path, prepared, { upsert: true, contentType: 'image/jpeg' })
-      if (error) throw new Error('Falha ao enviar foto: ' + error.message)
-      if (i === 0) {
-        const { data: pd } = supabase.storage.from('service-photos').getPublicUrl(path)
-        firstUrl = pd.publicUrl
-      }
+      const path = await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, photos[i].file)
+      if (i === 0) firstPath = path
     }
-    return firstUrl
+    return firstPath
   }
 
   const handleStart = async (job) => {
@@ -582,14 +571,7 @@ export default function EmployeePortal() {
     setJobPhotos(p=>[...p, ...toAdd.map(file=>({ file, preview:URL.createObjectURL(file), slot, id:Date.now()+Math.random() }))])
   }
 
-  const uploadFile = async (file, path) => {
-    const prepared = await prepareImageForUpload(file)
-    const jpgPath = path.replace(/\.[^.]+$/, '.jpg')
-    const { error } = await supabase.storage.from('service-photos').upload(jpgPath, prepared, { upsert: true, contentType: 'image/jpeg' })
-    if (error) throw new Error('Falha ao enviar foto: ' + error.message)
-    const { data } = supabase.storage.from('service-photos').getPublicUrl(jpgPath)
-    return data.publicUrl
-  }
+  const uploadFile = async (file, path) => uploadJobPhoto(path, file)
 
   const handleSubmitClaim = async () => {
     if (!claimForm.amount) return toast.error('Enter amount')
@@ -1406,7 +1388,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 {job.photo_start_url&&(
                   <div style={{marginBottom:12}}>
                     <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE</div>
-                    <img src={job.photo_start_url} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before" />
+                    <img src={viewablePhotoUrl(job.photo_start_url)} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before" />
                   </div>
                 )}
 

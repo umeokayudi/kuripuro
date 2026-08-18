@@ -1,9 +1,8 @@
 // api/analyze-photo.js
-// Recebe a URL de uma foto (já hospedada no Supabase Storage) e usa o
-// Gemini para dar uma nota de qualidade da limpeza.
-// A chave fica só no servidor (env var GEMINI_API_KEY no Vercel).
+// Recebe a URL/path de uma foto e usa o Gemini para dar nota de qualidade.
 
 import { geminiGenerate } from './_gemini.js'
+import { fetchStorageBuffer } from './_storage.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -18,11 +17,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const imgResp = await fetch(photoUrl)
-    if (!imgResp.ok) throw new Error('Could not fetch photo')
-    const buffer = await imgResp.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString('base64')
-    const mediaType = imgResp.headers.get('content-type') || 'image/jpeg'
+    const { buffer, contentType } = await fetchStorageBuffer(photoUrl)
+    const base64 = buffer.toString('base64')
+    const mediaType = contentType || 'image/jpeg'
 
     const prompt = `Você é um inspetor de qualidade de limpeza de restaurante/bar. Analise esta foto tirada após a limpeza de "${locationName || 'um local'}". Responda APENAS com um JSON válido, sem nenhum texto fora dele, no formato exato:
 {"nota": <número de 1 a 10>, "aprovado": <true ou false>, "problemas": [<lista curta de problemas visíveis, em português, vazia se não houver>]}
