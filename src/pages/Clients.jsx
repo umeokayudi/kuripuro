@@ -22,13 +22,52 @@ export default function Clients() {
   useEffect(() => { if (portalClientId) loadPortal(portalClientId) }, [portalClientId])
   useEffect(() => { if (tab === 'portal') checkPortalSchema() }, [tab])
 
+  const [storageOk, setStorageOk] = useState(true)
+  const [autoSetupBusy, setAutoSetupBusy] = useState(false)
+
+  const checkStorage = async () => {
+    const testPath = `jobs/_healthcheck/${Date.now()}.jpg`
+    const blob = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' })
+    const { error } = await supabase.storage.from('service-photos').upload(testPath, blob, { upsert: true })
+    if (error) {
+      setStorageOk(false)
+      return false
+    }
+    await supabase.storage.from('service-photos').remove([testPath]).catch(() => {})
+    setStorageOk(true)
+    return true
+  }
+
   const checkPortalSchema = async () => {
     setPortalSchemaChecking(true)
     const { error } = await supabase.from('client_users').select('id').limit(1)
     const missing = error?.message?.includes('client_users') || error?.code === 'PGRST205'
     setPortalSchemaOk(!missing)
+    if (!missing) await checkStorage()
     setPortalSchemaChecking(false)
     return !missing
+  }
+
+  const runAutoSetup = async () => {
+    setAutoSetupBusy(true)
+    try {
+      const resp = await fetch('/api/setup-portal-schema', { method: 'POST' })
+      const data = await resp.json()
+      if (!resp.ok) {
+        if (resp.status === 503) {
+          toast.error('Configure SUPABASE_DB_URL na Vercel ou use COPIAR SQL')
+          openSupabaseSql()
+        } else {
+          toast.error(data.error || 'Setup falhou')
+        }
+        return
+      }
+      toast.success(data.message || 'Setup concluído!')
+      await checkPortalSchema()
+    } catch (e) {
+      toast.error(e.message)
+    }
+    setAutoSetupBusy(false)
   }
 
   const copyPortalSql = async () => {
@@ -263,18 +302,25 @@ export default function Clients() {
       {/* CLIENT PORTAL ACCOUNTS */}
       {tab==='portal'&&(
         <div>
-          {!portalSchemaOk && (
+          {(!portalSchemaOk || !storageOk) && (
             <div className="card" style={{ marginBottom: 14, border: '2px solid #f87171', background: 'rgba(248,113,113,0.08)' }}>
               <div style={{ fontWeight: 800, fontSize: 16, color: '#f87171', marginBottom: 10 }}>
-                ⚠️ Passo obrigatório (só 1 vez)
+                ⚠️ Configuração necessária (só 1 vez)
               </div>
-              <ol style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.8, margin: '0 0 16px 18px', padding: 0 }}>
-                <li>Clique <b>COPIAR SQL</b></li>
-                <li>Clique <b>ABRIR SUPABASE</b></li>
-                <li>Cole (Ctrl+V) e clique <b>RUN</b></li>
-                <li>Volte aqui e crie o login</li>
-              </ol>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {!portalSchemaOk && (
+                <p style={{ fontSize: 14, color: 'var(--text2)', margin: '0 0 12px' }}>
+                  Tabelas do portal do cliente ainda não existem no Supabase.
+                </p>
+              )}
+              {portalSchemaOk && !storageOk && (
+                <p style={{ fontSize: 14, color: 'var(--text2)', margin: '0 0 12px' }}>
+                  Bucket de fotos (<code>service-photos</code>) não configurado — relatórios com foto não funcionam.
+                </p>
+              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                <button className="btn btn-primary" onClick={runAutoSetup} disabled={autoSetupBusy} type="button" style={{ fontSize: 15, padding: '12px 20px', fontWeight: 800 }}>
+                  {autoSetupBusy ? 'Configurando...' : '⚡ Configurar automaticamente'}
+                </button>
                 <button className="btn btn-primary" onClick={copyPortalSql} type="button" style={{ fontSize: 15, padding: '12px 20px', fontWeight: 800 }}>
                   📋 COPIAR SQL
                 </button>
@@ -282,9 +328,13 @@ export default function Clients() {
                   🔗 ABRIR SUPABASE
                 </button>
                 <button className="btn" onClick={checkPortalSchema} disabled={portalSchemaChecking} type="button">
-                  {portalSchemaChecking ? '...' : '🔄 Já rodei o SQL'}
+                  {portalSchemaChecking ? '...' : '🔄 Verificar'}
                 </button>
               </div>
+              <ol style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: 0, paddingLeft: 18 }}>
+                <li>Automático: adicione <code>SUPABASE_DB_URL</code> na Vercel e clique em Configurar automaticamente</li>
+                <li>Manual: COPIAR SQL → ABRIR SUPABASE → RUN</li>
+              </ol>
               <textarea readOnly value={PORTAL_SETUP_SQL} onClick={e => e.target.select()} style={{ width: '100%', height: 120, marginTop: 14, fontSize: 10, fontFamily: 'monospace', background: '#0a1525', color: '#94a3b8', border: '1px solid var(--border)', borderRadius: 8, padding: 10, boxSizing: 'border-box' }} />
             </div>
           )}
