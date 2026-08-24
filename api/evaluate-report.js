@@ -1,32 +1,35 @@
 // api/evaluate-report.js
-// Recebe o relatório retroativo do trabalhador + o checklist do job e usa
-// o Gemini pra decidir quais itens foram feitos, quanto tempo, e quanto ele
-// deve ganhar (desconto proporcional ao que não foi feito).
+// Relatório retroativo — IA analisa só o texto vs checklist (sem valor/pagamento).
 
 import { geminiGenerate } from './_gemini.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
 
-  const { report, checklist, jobValue, jobTitle } = req.body || {}
+  const { report, checklist, jobTitle, markedDone } = req.body || {}
   if (!report) { res.status(400).json({ error: 'report is required' }); return }
 
   const checklistItems = Array.isArray(checklist) ? checklist : []
+  const marked = Array.isArray(markedDone) ? markedDone : []
 
-  const prompt = `Você avalia relatórios de trabalho de limpeza de restaurante/bar. O trabalhador escreveu um relatório retroativo do que fez no serviço "${jobTitle || 'um local'}".
+  const prompt = `Você avalia relatórios de trabalho de limpeza de restaurante/bar.
 
-CHECKLIST ESPERADO deste serviço (${checklistItems.length} itens):
+IMPORTANTE: valor, pagamento e desconto NÃO fazem parte desta análise. Não calcule nem mencione dinheiro. Vá direto para a análise do relatório contra o checklist.
+
+Serviço: "${jobTitle || 'um local'}"
+
+CHECKLIST ESPERADO (${checklistItems.length} itens):
 ${checklistItems.map((c, i) => `${i + 1}. ${c}`).join('\n') || '(sem checklist definido)'}
 
-RELATÓRIO DO TRABALHADOR:
+${marked.length ? `ITENS MARCADOS PELO FUNCIONÁRIO COMO FEITOS (${marked.length}):\n${marked.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n` : ''}
+
+RELATÓRIO DO FUNCIONÁRIO:
 "${report}"
 
-VALOR CHEIO do serviço: ¥${jobValue || 0}
+Com base no relatório (e nos itens marcados, se houver), indique quais itens do checklist ficaram claramente comprovados no texto. Se o relatório não menciona ou não deixa claro que um item foi feito, considere NÃO feito.
 
-Sua tarefa: com base APENAS no relatório, decida quais itens do checklist foram claramente feitos. Se o relatório não menciona ou não deixa claro que um item foi feito, considere NÃO feito. Seja justo mas rigoroso — o pagamento depende disso.
-
-Responda APENAS com um JSON válido, sem texto fora dele, no formato exato:
-{"itens_feitos": <número>, "itens_total": ${checklistItems.length}, "nao_feitos": [<lista dos itens não feitos, em português>], "tempo_estimado_min": <minutos que o trabalhador diz ter levado, ou null se não mencionou>, "valor_final": <valor em ienes, = valor cheio menos desconto proporcional aos itens não feitos>, "resumo": "<1 frase explicando a avaliação>"}`
+Responda APENAS com JSON válido, sem texto fora dele:
+{"itens_feitos": <número>, "itens_total": ${checklistItems.length}, "nao_feitos": [<itens não comprovados no relatório, em português>], "tempo_estimado_min": <minutos mencionados ou null>, "resumo": "<1 frase sobre a análise do relatório vs checklist — sem mencionar valor ou pagamento>"}`
 
   try {
     const data = await geminiGenerate({

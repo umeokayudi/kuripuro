@@ -118,3 +118,9 @@ export function initChecklistState(job) {
 export function checklistComplete(checklist) {
   return checklist.length > 0 && checklist.every(c => c.done)
 }
+
+/** Use in-memory checklist or build from job template */
+export function resolveChecklistForJob(job, checklistState) {
+  if (checklistState?.length) return checklistState
+  return initChecklistState(job)
+}
