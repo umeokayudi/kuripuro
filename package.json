@@ -16,7 +16,8 @@
     "fix:checklists": "node scripts/fix-checklists.mjs",
     "test:add-service": "node scripts/test-employee-add-service.mjs",
     "setup:all": "bash scripts/setup-all.sh",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy": "bash scripts/deploy.sh",
+    "verify:production": "node scripts/verify-production.mjs",
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
