@@ -5,6 +5,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Garantir link com projeto kuripuro (evita deploy em outro app)
+export VERCEL_ORG_ID="${VERCEL_ORG_ID:-team_G3qVUPQ27CLe8cPtxEBsrkxw}"
+export VERCEL_PROJECT_ID="${VERCEL_PROJECT_ID:-prj_CwcXzleb2pOrKitSu6DFh7CRsvJU}"
+mkdir -p .vercel
+cat > .vercel/project.json <<EOF
+{"orgId":"${VERCEL_ORG_ID}","projectId":"${VERCEL_PROJECT_ID}"}
+EOF
+
 echo "=== Build ==="
 npm run build
 
