@@ -19,7 +19,12 @@ jobs:
       - run: npm ci
 
       - name: Deploy production
-        run: npx vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+        run: |
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::VERCEL_TOKEN secret is not set. Add it in GitHub Settings → Secrets."
+            exit 1
+          fi
+          npx vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
