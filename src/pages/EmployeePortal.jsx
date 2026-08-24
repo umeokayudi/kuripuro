@@ -415,7 +415,7 @@ export default function EmployeePortal() {
       .from('jobs')
       .select('id, title, employee_id, employee_name, status, started_at, scheduled_date')
       .eq('scheduled_date', date)
-      .in('status', ['assigned', 'in_progress'])
+      .in('status', ['assigned', 'in_progress', 'completed'])
     setTodayAllJobs(data || [])
     setShowAddService(true)
   }
@@ -428,6 +428,9 @@ export default function EmployeePortal() {
     if (option?.state === 'blocked') {
       return toast.error(e.addServiceBlocked)
     }
+    if (option?.state === 'done_today') {
+      return toast.error(e.addServiceDoneToday)
+    }
     const date = tokyoToday()
     setAddServiceBusy(true)
     try {
@@ -439,12 +442,16 @@ export default function EmployeePortal() {
       })
       if (!result.ok) {
         if (result.error === 'already_yours') toast.error(e.addServiceAlreadyYours)
+        else if (result.error === 'already_done_today') toast.error(e.addServiceDoneToday)
+        else if (result.error === 'blocked') toast.error(e.addServiceBlocked)
         else if (result.error === 'transfer_race') toast.error(e.addServiceRace)
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
       if (result.action === 'transferred') {
         toast.success(fill(e.addServiceTransferred, { location: location.name, name: result.fromEmployee || '—' }))
+      } else if (result.action === 'claimed') {
+        toast.success(fill(e.addServiceClaimed, { location: location.name }))
       } else {
         toast.success(fill(e.addServiceSuccess, { location: location.name }))
       }
@@ -1782,6 +1789,8 @@ function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }
 
   const badge = (opt) => {
     if (opt.state === 'mine') return { text: labels.addServiceMine, color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
+    if (opt.state === 'done_today') return { text: labels.addServiceDoneToday, color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' }
+    if (opt.state === 'claim') return { text: labels.addServiceClaim, color: '#34d399', bg: 'rgba(52,211,153,0.12)' }
     if (opt.state === 'transfer') return { text: fill(labels.addServiceTransfer, { name: opt.fromEmployee }), color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
     if (opt.state === 'blocked') return { text: labels.addServiceBlocked, color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
     return { text: labels.addServiceAvailable, color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' }
@@ -1789,7 +1798,9 @@ function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }
 
   const confirmLabel = picked?.state === 'transfer'
     ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
-    : labels.addServiceConfirm
+    : picked?.state === 'claim'
+      ? labels.addServiceClaimConfirm
+      : labels.addServiceConfirm
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
@@ -1830,7 +1841,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }
           {filtered.map(opt => {
             const b = badge(opt)
             const selected = picked?.location?.name === opt.location.name
-            const disabled = opt.state === 'mine' || opt.state === 'blocked'
+            const disabled = opt.state === 'mine' || opt.state === 'blocked' || opt.state === 'done_today'
             return (
               <button
                 key={opt.location.name}
@@ -1858,7 +1869,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }
 
         <button
           type="button"
-          disabled={!picked || busy || picked.state === 'mine' || picked.state === 'blocked'}
+          disabled={!picked || busy || picked.state === 'mine' || picked.state === 'blocked' || picked.state === 'done_today'}
           onClick={() => picked && onAdd(picked.location, cleaningType, picked)}
           style={{
             width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
