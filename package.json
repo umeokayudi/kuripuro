@@ -13,6 +13,7 @@
     "seed:august": "node scripts/seed-august-2026.mjs",
     "setup:august": "node scripts/setup-august-now.mjs",
     "fix:maps": "node scripts/fix-maps-urls.mjs",
+    "fix:checklists": "node scripts/fix-checklists.mjs",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh"
   },
