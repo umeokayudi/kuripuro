@@ -14,6 +14,11 @@ import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } fro
 import { youtubeEmbedUrl } from '../lib/youtube'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
 import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate } from '../lib/jobChecklist'
+import {
+  manualAddLocations,
+  buildAddServiceOptions,
+  employeeAddService,
+} from '../lib/employeeAddJob'
 
 const BADGE_DEFS = [
   { key:'first_job', name:'First Job', icon:'🎯', desc:'Complete your first job' },
@@ -77,6 +82,9 @@ export default function EmployeePortal() {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [serviceContracts, setServiceContracts] = useState([])
   const [trainingModal, setTrainingModal] = useState(null)
+  const [showAddService, setShowAddService] = useState(false)
+  const [addServiceBusy, setAddServiceBusy] = useState(false)
+  const [todayAllJobs, setTodayAllJobs] = useState([])
 
   useEffect(() => {
     const on = () => setIsOnline(true)
@@ -399,6 +407,53 @@ export default function EmployeePortal() {
   const handleDeclineSpot = async (job) => {
     await supabase.from('jobs').update({ spot_status:'declined',status:'cancelled',spot_responded_at:new Date().toISOString() }).eq('id',job.id)
     toast('Declined.'); loadAll()
+  }
+
+  const openAddService = async () => {
+    const date = tokyoToday()
+    const { data } = await supabase
+      .from('jobs')
+      .select('id, title, employee_id, employee_name, status, started_at, scheduled_date')
+      .eq('scheduled_date', date)
+      .in('status', ['assigned', 'in_progress'])
+    setTodayAllJobs(data || [])
+    setShowAddService(true)
+  }
+
+  const handleAddService = async (location, cleaningType, option) => {
+    if (addServiceBusy) return
+    if (option?.state === 'mine') {
+      return toast.error(e.addServiceAlreadyYours)
+    }
+    if (option?.state === 'blocked') {
+      return toast.error(e.addServiceBlocked)
+    }
+    const date = tokyoToday()
+    setAddServiceBusy(true)
+    try {
+      const result = await employeeAddService(supabase, {
+        employee: { id: user.id, name: user.name },
+        location,
+        date,
+        cleaningType,
+      })
+      if (!result.ok) {
+        if (result.error === 'already_yours') toast.error(e.addServiceAlreadyYours)
+        else if (result.error === 'transfer_race') toast.error(e.addServiceRace)
+        else toast.error(result.detail || e.addServiceFailed)
+        return
+      }
+      if (result.action === 'transferred') {
+        toast.success(fill(e.addServiceTransferred, { location: location.name, name: result.fromEmployee || '—' }))
+      } else {
+        toast.success(fill(e.addServiceSuccess, { location: location.name }))
+      }
+      setShowAddService(false)
+      await loadAll()
+      setTab('shift')
+    } finally {
+      setAddServiceBusy(false)
+    }
   }
 
   // Relatório retroativo: trabalhador descreve o que fez, IA avalia contra o checklist
@@ -743,6 +798,16 @@ export default function EmployeePortal() {
         onCancel={()=>setShowSignature(false)}
       />}
       {trainingModal&&<TrainingModal job={trainingModal.job} contract={trainingModal.contract} onClose={()=>setTrainingModal(null)} lang={lang} />}
+      {showAddService&&(
+        <AddServiceModal
+          employeeId={user.id}
+          todayJobs={todayAllJobs}
+          labels={e}
+          busy={addServiceBusy}
+          onClose={()=>!addServiceBusy&&setShowAddService(false)}
+          onAdd={handleAddService}
+        />
+      )}
 
       {retroJob&&(
         <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
@@ -989,7 +1054,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} labels={e} lang={lang} />
         )}
 
         {/* SPOTS */}
@@ -1330,7 +1395,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
@@ -1339,6 +1404,15 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 
   return (
     <div>
+      {onOpenAddService&&(
+        <button
+          type="button"
+          onClick={onOpenAddService}
+          style={{width:'100%',padding:'14px 16px',marginBottom:14,borderRadius:14,border:'1px dashed rgba(96,165,250,0.35)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:14,fontWeight:700,cursor:'pointer'}}
+        >
+          + {labels?.addService || 'Add service'}
+        </button>
+      )}
       <div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'14px 16px',marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
           <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{done}/{total} locations</div>
@@ -1688,6 +1762,112 @@ function TrainingModal({ job, contract, onClose, lang }) {
         )}
         <button onClick={onClose} style={{ width: '100%', marginTop: 16, padding: 14, borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
           {lang === 'ja' ? '閉じて作業を開始' : 'Close and start work'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }) {
+  const [search, setSearch] = useState('')
+  const [cleaningType, setCleaningType] = useState('basic')
+  const [picked, setPicked] = useState(null)
+
+  const locations = manualAddLocations()
+  const options = buildAddServiceOptions(locations, todayJobs, employeeId)
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
+    : options
+
+  const badge = (opt) => {
+    if (opt.state === 'mine') return { text: labels.addServiceMine, color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
+    if (opt.state === 'transfer') return { text: fill(labels.addServiceTransfer, { name: opt.fromEmployee }), color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
+    if (opt.state === 'blocked') return { text: labels.addServiceBlocked, color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
+    return { text: labels.addServiceAvailable, color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' }
+  }
+
+  const confirmLabel = picked?.state === 'transfer'
+    ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
+    : labels.addServiceConfirm
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+          <div style={{ flex: 1, marginRight: 12 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>+ {labels.addServiceTitle}</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 6, lineHeight: 1.5 }}>{labels.addServiceHint}</div>
+          </div>
+          <button type="button" onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: busy ? 'not-allowed' : 'pointer' }}>✕</button>
+        </div>
+
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder={labels.addServiceSearch}
+          style={{ width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14, marginBottom: 12, boxSizing: 'border-box' }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          {['basic', 'deep'].map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setCleaningType(t)}
+              style={{
+                flex: 1, padding: '10px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                background: cleaningType === t ? 'rgba(96,165,250,0.2)' : 'rgba(255,255,255,0.05)',
+                color: cleaningType === t ? '#60a5fa' : 'rgba(255,255,255,0.45)',
+              }}
+            >
+              {t === 'basic' ? labels.basicCleaning : labels.deepCleaning}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ maxHeight: '45vh', overflowY: 'auto', marginBottom: 14 }}>
+          {filtered.map(opt => {
+            const b = badge(opt)
+            const selected = picked?.location?.name === opt.location.name
+            const disabled = opt.state === 'mine' || opt.state === 'blocked'
+            return (
+              <button
+                key={opt.location.name}
+                type="button"
+                disabled={disabled}
+                onClick={() => setPicked(opt)}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, borderRadius: 12,
+                  border: selected ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                  background: selected ? 'rgba(96,165,250,0.1)' : 'rgba(255,255,255,0.03)',
+                  cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.55 : 1,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{opt.location.name}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{opt.location.group}</div>
+                  </div>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '4px 8px', borderRadius: 20, color: b.color, background: b.bg, whiteSpace: 'nowrap' }}>{b.text}</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        <button
+          type="button"
+          disabled={!picked || busy || picked.state === 'mine' || picked.state === 'blocked'}
+          onClick={() => picked && onAdd(picked.location, cleaningType, picked)}
+          style={{
+            width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
+            background: picked && !busy ? 'linear-gradient(135deg,#60a5fa,#3b82f6)' : 'rgba(255,255,255,0.08)',
+            color: picked && !busy ? '#fff' : 'rgba(255,255,255,0.3)',
+            cursor: picked && !busy ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {busy ? '...' : picked ? confirmLabel : labels.addServiceConfirm}
         </button>
       </div>
     </div>
