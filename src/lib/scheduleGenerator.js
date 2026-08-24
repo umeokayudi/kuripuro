@@ -8,6 +8,7 @@ import {
   DUSKIN_SITES,
   SEVEN_DAY_MONDAY_MORNING,
 } from './serviceCatalog.js'
+import { checklistTemplateForJob } from './jobChecklist.js'
 
 export { SCHEDULE_CLIENTS } from './serviceCatalog.js'
 export { OTP_BASIC_LOCATIONS, ATOMIC_LOCATION } from './serviceCatalog.js'
@@ -310,6 +311,7 @@ export function jobsToRows(jobs, contracts) {
     sequence_order: j.seq,
     address: j.address || null,
     description: [j.notes, j.description].filter(Boolean).join('\n') || null,
+    checklist_template: checklistTemplateForJob({ title: j.title }) || null,
     ...(j.completed_at ? { completed_at: j.completed_at } : { completed_at: null }),
   }))
 }

@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
+import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate } from '../lib/jobChecklist'
 
 const BADGE_DEFS = [
   { key:'first_job', name:'First Job', icon:'🎯', desc:'Complete your first job' },
@@ -195,7 +196,7 @@ export default function EmployeePortal() {
       let ck = []
       const saved = localStorage.getItem(`kp_ck_${inProgress.id}`)
       if (saved) { try { ck = JSON.parse(saved) } catch {} }
-      if (!ck.length) ck = inProgress.checklist_template ? inProgress.checklist_template.split('\n').filter(Boolean).map(l => ({ label: l, done: false })) : []
+      if (!ck.length) ck = initChecklistState(inProgress)
       setChecklist(ck)
     } else {
       setActiveJob(null)
@@ -406,7 +407,7 @@ export default function EmployeePortal() {
     if (!retroPhoto) { toast.error('Anexe uma foto do serviço (obrigatório)'); return }
     setRetroBusy(true)
     try {
-      const ck = retroJob.checklist_template ? retroJob.checklist_template.split('\n').filter(Boolean) : []
+      const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
       // 1. IA avalia
       const resp = await fetch('/api/evaluate-report', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -471,7 +472,7 @@ export default function EmployeePortal() {
     const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
     const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().single()
     if (error) { toast.error(error.message); setSubmitting(false); return }
-    setChecklist(job.checklist_template?job.checklist_template.split('\n').filter(Boolean).map(l=>({label:l,done:false})):[])
+    setChecklist(initChecklistState(job))
     setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!'); setSubmitting(false)
   }
 
@@ -487,6 +488,10 @@ export default function EmployeePortal() {
     const endPhotosCheck = jobPhotos.filter(p=>p.slot==='end')
     if (endPhotosCheck.length === 0) {
       toast.error('Tire ao menos 1 foto "After" antes de finalizar')
+      return
+    }
+    if (checklist.length > 0 && !checklistComplete(checklist)) {
+      toast.error('Marque todos os itens do checklist antes de finalizar')
       return
     }
     setSubmitting(true)
@@ -506,7 +511,7 @@ export default function EmployeePortal() {
       const endPhotos = jobPhotos.filter(p=>p.slot==='end')
       endPhotoUrl = await uploadSlotPhotos(job.id, endPhotos, 'end')
 
-      // Checklist marcado pela pessoa (não obrigatório - pode finalizar com itens não feitos, leva multa)
+      // Checklist obrigatório — todos os itens devem estar marcados
       const total = checklist.length
       const done = checklist.filter(c=>c.done).length
       const missed = total - done
@@ -540,7 +545,7 @@ export default function EmployeePortal() {
       const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).single()
       if (completedJob) syncServiceReport(supabase, completedJob)
 
-      // Multa proporcional aos itens que a pessoa marcou como não feito
+      // Multa só se houver checklist parcial (não deveria ocorrer com bloqueio acima)
       if (missed>0 && total>0 && Number(job.value||0)>0) {
         const deductionAmount = Math.round(Number(job.value)*(missed/total))
         if (deductionAmount>0) {
@@ -1429,24 +1434,27 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 </div>
 
                 {/* CHECKLIST clicável - marque o que fez */}
-                {checklist.length>0&&(()=>{ const dn=checklist.filter(c=>c.done).length; const pct=Math.round(dn/checklist.length*100); return (
+                {checklist.length>0&&(()=>{ const dn=checklist.filter(c=>c.done).length; const pct=Math.round(dn/checklist.length*100); const allDone=dn===checklist.length; return (
                   <div style={{marginBottom:12}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                      <span style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>✓ O QUE VOCÊ FEZ ({dn}/{checklist.length})</span>
-                      <span style={{fontSize:12,fontWeight:700,color:pct===100?'#4ade80':pct>=50?'#fbbf24':'#f87171'}}>{pct}%</span>
+                      <span style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>✓ CHECKLIST OBRIGATÓRIO ({dn}/{checklist.length})</span>
+                      <span style={{fontSize:12,fontWeight:700,color:allDone?'#4ade80':pct>=50?'#fbbf24':'#f87171'}}>{pct}%</span>
+                    </div>
+                    <div style={{height:4,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden',marginBottom:8}}>
+                      <div style={{height:'100%',width:`${pct}%`,background:allDone?'#4ade80':'linear-gradient(90deg,#f87171,#4ade80)',transition:'width 0.3s'}} />
                     </div>
                     {checklist.map((c,i)=>(
                       <div key={i} onClick={()=>setChecklist(cl=>cl.map((x,j)=>j===i?{...x,done:!x.done}:x))} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',marginBottom:5,borderRadius:10,cursor:'pointer',background:c.done?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.03)',border:`1px solid ${c.done?'rgba(74,222,128,0.3)':'rgba(255,255,255,0.06)'}`}}>
                         <div style={{width:22,height:22,borderRadius:6,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,background:c.done?'#4ade80':'transparent',border:c.done?'none':'1.5px solid rgba(255,255,255,0.2)',color:'#0a1929',fontWeight:800}}>{c.done?'✓':''}</div>
-                        <span style={{fontSize:13,color:c.done?'#fff':'rgba(255,255,255,0.6)',textDecoration:c.done?'none':'none'}}>{c.label}</span>
+                        <span style={{fontSize:13,color:c.done?'#fff':'rgba(255,255,255,0.6)'}}>{c.label}</span>
                       </div>
                     ))}
-                    {dn<checklist.length&&<div style={{fontSize:11,color:'#f87171',marginTop:4}}>⚠️ Itens não marcados terão multa proporcional. Você pode refazer antes de finalizar.</div>}
+                    {!allDone&&<div style={{fontSize:11,color:'#f87171',marginTop:4}}>⚠️ Marque todos os itens para poder finalizar o serviço.</div>}
                   </div>
                 )})()}
 
-                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; handleCompleteWithSig(activeJob) }} disabled={submitting} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting?'not-allowed':'pointer'}}>
-                  {submitting?'Saving...':'✅ Done → Next'}
+                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; if(checklist.length>0&&!checklistComplete(checklist)){toast.error('Checklist incompleto');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||(checklist.length>0&&!checklistComplete(checklist))} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||(checklist.length>0&&!checklistComplete(checklist))?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||(checklist.length>0&&!checklistComplete(checklist))?'not-allowed':'pointer'}}>
+                  {submitting?'Saving...':checklist.length>0&&!checklistComplete(checklist)?`✓ Checklist ${checklist.filter(c=>c.done).length}/${checklist.length}`:'✅ Done → Next'}
                 </button>
               </div>
             )}

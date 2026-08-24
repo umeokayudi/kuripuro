@@ -11,6 +11,7 @@ import {
   visitsPerMonth,
   monthlyRevenue,
 } from '../src/lib/serviceCatalog.js'
+import { checklistTemplateForJob } from '../src/lib/jobChecklist.js'
 
 const { url: SUPABASE_URL, key: KEY } = getSupabaseEnv()
 await assertSupabaseKey(SUPABASE_URL, KEY)
@@ -57,6 +58,7 @@ async function main() {
       visits_per_month: visitsPerMonth(loc.days),
       monthly_revenue: monthlyRevenue(loc.pricePerVisit, loc.days),
       notes: loc.notes,
+      training_checklist: checklistTemplateForJob({ title: loc.name }),
       is_active: true,
     }
     try {
@@ -79,6 +81,7 @@ async function main() {
       visits_per_month: 4,
       monthly_revenue: ATOMIC_LOCATION.pricePerVisit * 4,
       notes: ATOMIC_LOCATION.notes,
+      training_checklist: checklistTemplateForJob({ title: ATOMIC_LOCATION.name }),
       is_active: true,
     })
     stats[r]++

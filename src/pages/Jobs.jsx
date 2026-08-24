@@ -6,6 +6,7 @@ import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
 } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
+import { checklistTemplateForJob } from '../lib/jobChecklist'
 import toast from 'react-hot-toast'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
@@ -485,6 +486,7 @@ export default function Jobs() {
       gps_lng: loc.gps_lng || '',
       title: f.title || loc.name,
       description: loc.notes || f.description,
+      checklist_template: checklistTemplateForJob({ title: loc.name }) || f.checklist_template,
     }))
   }
 
@@ -506,6 +508,7 @@ export default function Jobs() {
     const jobTitle = form.title.includes(' — ')
       ? form.title
       : applyCleaningTypeToTitle(form.title, form.cleaning_type)
+    const checklistTemplate = form.checklist_template || checklistTemplateForJob({ title: jobTitle })
     const { error } = await supabase.from('jobs').insert({
       title: jobTitle,
       client_id: form.client_id || null,
@@ -520,7 +523,7 @@ export default function Jobs() {
       value: parseFloat(form.value) || 0,
       spot_value: parseFloat(form.spot_value) || 0,
       description: form.description,
-      checklist_template: form.checklist_template,
+      checklist_template: checklistTemplate,
       photo_required: form.photo_required,
       job_category: form.job_category,
       status: 'assigned',
