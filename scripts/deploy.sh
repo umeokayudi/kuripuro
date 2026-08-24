@@ -10,12 +10,13 @@ npm run build
 
 echo ""
 echo "=== Deploy Vercel (production) ==="
-if [ -z "${VERCEL_TOKEN:-}" ]; then
-  echo "Sem VERCEL_TOKEN — vai pedir login interativo (vercel login)"
-  npx vercel@latest --prod
+DEPLOY_ARGS=(--prod --yes)
+if [ -n "${VERCEL_TOKEN:-}" ]; then
+  DEPLOY_ARGS+=(--token "$VERCEL_TOKEN")
 else
-  npx vercel@latest --prod --token "$VERCEL_TOKEN"
+  echo "Sem VERCEL_TOKEN — vai pedir login interativo (vercel login)"
 fi
+npx vercel@latest "${DEPLOY_ARGS[@]}"
 
 echo ""
 echo "=== Verificar ==="
