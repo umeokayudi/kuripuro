@@ -13,7 +13,7 @@ import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
-import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate } from '../lib/jobChecklist'
+import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate, resolveChecklistForJob } from '../lib/jobChecklist'
 import {
   manualAddLocations,
   buildAddServiceOptions,
@@ -48,6 +48,7 @@ export default function EmployeePortal() {
   const [submitting, setSubmitting] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('')
   const [retroJob, setRetroJob] = useState(null)
+  const [retroChecklist, setRetroChecklist] = useState([])
   const [retroText, setRetroText] = useState('')
   const [retroPhoto, setRetroPhoto] = useState(null)
   const [retroEval, setRetroEval] = useState(null)
@@ -139,6 +140,12 @@ export default function EmployeePortal() {
     document.body.setAttribute('data-working', activeJob ? 'yes' : 'no')
     return () => document.body.setAttribute('data-working', 'no')
   }, [activeJob])
+
+  useEffect(() => {
+    if (activeJob?.id) {
+      setChecklist(prev => resolveChecklistForJob(activeJob, prev))
+    }
+  }, [activeJob?.id])
 
   useEffect(() => {
     hourWarnedRef.current = false
@@ -464,50 +471,54 @@ export default function EmployeePortal() {
   }
 
   // Relatório retroativo: trabalhador descreve o que fez, IA avalia contra o checklist
-  const openRetro = (job) => { setRetroJob(job); setRetroText(''); setRetroPhoto(null); setRetroEval(null) }
+  const openRetro = (job) => {
+    setRetroJob(job)
+    setRetroText('')
+    setRetroPhoto(null)
+    setRetroEval(null)
+    setRetroChecklist(initChecklistState(job))
+  }
 
   const submitRetro = async () => {
+    if (!checklistComplete(retroChecklist)) {
+      toast.error('Marque todos os itens do checklist antes de enviar')
+      return
+    }
     if (!retroText.trim() || retroText.trim().length < 15) { toast.error('Descreva em pelo menos 15 caracteres o que você fez'); return }
     if (!retroPhoto) { toast.error('Anexe uma foto do serviço (obrigatório)'); return }
     setRetroBusy(true)
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
-      // 1. IA avalia
+      const markedDone = retroChecklist.filter(c => c.done).map(c => c.label)
       const resp = await fetch('/api/evaluate-report', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report: retroText, checklist: ck, jobValue: retroJob.value||0, jobTitle: retroJob.title }),
+        body: JSON.stringify({
+          report: retroText,
+          checklist: ck,
+          jobTitle: retroJob.title,
+          markedDone,
+        }),
       })
       const ev = await resp.json()
       if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
       setRetroEval(ev)
-      // 2. Upload da foto (sempre JPEG para funcionar em qualquer navegador)
       const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
-      // 3. Finaliza o job com o valor da IA
+      const total = retroChecklist.length
+      const done = retroChecklist.filter(c => c.done).length
+      const missedLabels = retroChecklist.filter(c => !c.done).map(c => c.label)
       const { error } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(),
         retro_report: retroText, retro_ai_summary: ev.resumo||null,
-        retro_value: ev.valor_final ?? retroJob.value, retro_time_min: ev.tempo_estimado_min ?? null,
+        retro_time_min: ev.tempo_estimado_min ?? null,
         photo_end_url: photoUrl, admin_reviewed: false,
-        checklist_total: ev.itens_total||null, checklist_done: ev.itens_feitos||null,
-        checklist_missed_items: (ev.nao_feitos||[]).join(', ')||null,
+        checklist_total: total || null, checklist_done: total ? done : null,
+        checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id', retroJob.id)
       if (error) throw error
       const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).single()
       if (completedRetro) syncServiceReport(supabase, completedRetro)
-      // 4. Desconto se valor final < valor cheio
-      const desconto = Number(retroJob.value||0) - Number(ev.valor_final||0)
-      if (desconto > 0) {
-        const { error: dedErr } = await supabase.from('salary_payments').insert({
-          employee_id: user.id, employee_name: user.name,
-          period: (retroJob.scheduled_date||today).slice(0,7), amount: desconto,
-          payment_date: retroJob.scheduled_date||today,
-          description: `Relatório retroativo — ${retroJob.title}: ${(ev.nao_feitos||[]).join(', ')||'itens incompletos'}`,
-          status:'scheduled', payment_type:'deduction', is_deduction:true,
-        })
-        if (dedErr) throw new Error('Desconto não registrado: ' + dedErr.message)
-      }
-      toast.success(`Relatório enviado! Valor: ¥${(ev.valor_final||0).toLocaleString()}`)
-      setTimeout(()=>{ setRetroJob(null); loadAll() }, 3500)
+      toast.success('Relatório enviado!')
+      setTimeout(()=>{ setRetroJob(null); setRetroChecklist([]); loadAll() }, 2500)
     } catch(e) { toast.error('Erro: '+e.message) }
     setRetroBusy(false)
   }
@@ -554,7 +565,9 @@ export default function EmployeePortal() {
       toast.error('Tire ao menos 1 foto "After" antes de finalizar')
       return
     }
-    if (checklist.length > 0 && !checklistComplete(checklist)) {
+    const requiredChecklist = resolveChecklistForJob(job, checklist)
+    if (requiredChecklist.length > 0 && !checklistComplete(requiredChecklist)) {
+      if (checklist.length !== requiredChecklist.length) setChecklist(requiredChecklist)
       toast.error('Marque todos os itens do checklist antes de finalizar')
       return
     }
@@ -576,10 +589,10 @@ export default function EmployeePortal() {
       endPhotoUrl = await uploadSlotPhotos(job.id, endPhotos, 'end')
 
       // Checklist obrigatório — todos os itens devem estar marcados
-      const total = checklist.length
-      const done = checklist.filter(c=>c.done).length
+      const total = requiredChecklist.length
+      const done = requiredChecklist.filter(c=>c.done).length
       const missed = total - done
-      const missedLabels = checklist.filter(c=>!c.done).map(c=>c.label)
+      const missedLabels = requiredChecklist.filter(c=>!c.done).map(c=>c.label)
 
       // IA analisa as fotos Before/After e dá nota de qualidade
       let aiScore = null, aiApproved = null, aiIssues = null
@@ -823,7 +836,9 @@ export default function EmployeePortal() {
             <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:14}}>{retroJob.title.replace(/ — .*/,'')} · {retroJob.scheduled_date}</div>
 
             {!retroEval ? (<>
-              <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600}}>O que você fez e quanto tempo levou?</label>
+              <ChecklistPicker checklist={retroChecklist} setChecklist={setRetroChecklist} />
+
+              <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600,marginTop:12,display:'block'}}>O que você fez e quanto tempo levou?</label>
               <textarea value={retroText} onChange={e=>setRetroText(e.target.value)} rows={5} placeholder="Ex: Limpei as bancadas, o piso e esvaziei o lixo. Levei cerca de 25 minutos. Não deu tempo de limpar o vidro." style={{width:'100%',marginTop:6,marginBottom:12,borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'#fff',padding:12,fontSize:14,fontFamily:'inherit',resize:'none'}} />
 
               <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600}}>Foto do serviço (obrigatória)</label>
@@ -834,15 +849,14 @@ export default function EmployeePortal() {
                 </label>
               </div>
 
-              <button onClick={submitRetro} disabled={retroBusy} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy?'not-allowed':'pointer'}}>
-                {retroBusy?'IA avaliando...':'Enviar para avaliação'}
+              <button onClick={submitRetro} disabled={retroBusy || !checklistComplete(retroChecklist)} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!checklistComplete(retroChecklist)?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!checklistComplete(retroChecklist)?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!checklistComplete(retroChecklist)?'not-allowed':'pointer'}}>
+                {retroBusy?'Analisando relatório...':!checklistComplete(retroChecklist)?`✓ Checklist ${retroChecklist.filter(c=>c.done).length}/${retroChecklist.length}`:'Enviar para análise'}
               </button>
             </>) : (
               <div style={{textAlign:'center'}}>
-                <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',marginBottom:8}}>{retroEval.itens_feitos}/{retroEval.itens_total} itens reconhecidos</div>
-                <div style={{fontSize:32,fontWeight:800,color:'#c19c56',marginBottom:4}}>¥{(retroEval.valor_final||0).toLocaleString()}</div>
-                {Number(retroJob.value||0)>Number(retroEval.valor_final||0)&&<div style={{fontSize:12,color:'#f87171',marginBottom:8}}>−¥{(Number(retroJob.value)-Number(retroEval.valor_final)).toLocaleString()} de desconto</div>}
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.6)',background:'rgba(255,255,255,0.04)',borderRadius:12,padding:12,marginTop:8}}>{retroEval.resumo}</div>
+                <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',marginBottom:8}}>✓ Checklist marcado · {retroEval.itens_feitos}/{retroEval.itens_total} itens reconhecidos no relatório</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>Valor/pagamento não faz parte desta análise.</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.6)',background:'rgba(255,255,255,0.04)',borderRadius:12,padding:12,marginTop:8,textAlign:'left',lineHeight:1.6}}>{retroEval.resumo}</div>
                 {(retroEval.nao_feitos||[]).length>0&&<div style={{fontSize:11,color:'#f87171',marginTop:8,textAlign:'left'}}>Não reconhecido: {retroEval.nao_feitos.join(', ')}</div>}
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:12}}>Finalizando...</div>
               </div>
@@ -1468,7 +1482,10 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </div>
             )}
 
-            {isActive&&(
+            {isActive&&(() => {
+              const jobChecklist = resolveChecklistForJob(job, checklist)
+              const checklistBlocked = jobChecklist.length > 0 && !checklistComplete(jobChecklist)
+              return (
               <div>
                 {instructions&&(
                   <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
@@ -1516,31 +1533,13 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                   </div>
                 </div>
 
-                {/* CHECKLIST clicável - marque o que fez */}
-                {checklist.length>0&&(()=>{ const dn=checklist.filter(c=>c.done).length; const pct=Math.round(dn/checklist.length*100); const allDone=dn===checklist.length; return (
-                  <div style={{marginBottom:12}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                      <span style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:1}}>✓ CHECKLIST OBRIGATÓRIO ({dn}/{checklist.length})</span>
-                      <span style={{fontSize:12,fontWeight:700,color:allDone?'#4ade80':pct>=50?'#fbbf24':'#f87171'}}>{pct}%</span>
-                    </div>
-                    <div style={{height:4,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden',marginBottom:8}}>
-                      <div style={{height:'100%',width:`${pct}%`,background:allDone?'#4ade80':'linear-gradient(90deg,#f87171,#4ade80)',transition:'width 0.3s'}} />
-                    </div>
-                    {checklist.map((c,i)=>(
-                      <div key={i} onClick={()=>setChecklist(cl=>cl.map((x,j)=>j===i?{...x,done:!x.done}:x))} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',marginBottom:5,borderRadius:10,cursor:'pointer',background:c.done?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.03)',border:`1px solid ${c.done?'rgba(74,222,128,0.3)':'rgba(255,255,255,0.06)'}`}}>
-                        <div style={{width:22,height:22,borderRadius:6,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,background:c.done?'#4ade80':'transparent',border:c.done?'none':'1.5px solid rgba(255,255,255,0.2)',color:'#0a1929',fontWeight:800}}>{c.done?'✓':''}</div>
-                        <span style={{fontSize:13,color:c.done?'#fff':'rgba(255,255,255,0.6)'}}>{c.label}</span>
-                      </div>
-                    ))}
-                    {!allDone&&<div style={{fontSize:11,color:'#f87171',marginTop:4}}>⚠️ Marque todos os itens para poder finalizar o serviço.</div>}
-                  </div>
-                )})()}
+                <ChecklistPicker checklist={jobChecklist} setChecklist={setChecklist} />
 
-                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; if(checklist.length>0&&!checklistComplete(checklist)){toast.error('Checklist incompleto');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||(checklist.length>0&&!checklistComplete(checklist))} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||(checklist.length>0&&!checklistComplete(checklist))?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||(checklist.length>0&&!checklistComplete(checklist))?'not-allowed':'pointer'}}>
-                  {submitting?'Saving...':checklist.length>0&&!checklistComplete(checklist)?`✓ Checklist ${checklist.filter(c=>c.done).length}/${checklist.length}`:'✅ Done → Next'}
+                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; if(checklistBlocked){toast.error('Checklist incompleto');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||checklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||checklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||checklistBlocked?'not-allowed':'pointer'}}>
+                  {submitting?'Saving...':checklistBlocked?`✓ Checklist ${jobChecklist.filter(c=>c.done).length}/${jobChecklist.length}`:'✅ Done → Next'}
                 </button>
               </div>
-            )}
+            )})()}
 
             {isNext&&(
               <div>
@@ -1771,6 +1770,31 @@ function TrainingModal({ job, contract, onClose, lang }) {
           {lang === 'ja' ? '閉じて作業を開始' : 'Close and start work'}
         </button>
       </div>
+    </div>
+  )
+}
+
+function ChecklistPicker({ checklist, setChecklist }) {
+  if (!checklist?.length) return null
+  const done = checklist.filter(c => c.done).length
+  const pct = Math.round(done / checklist.length * 100)
+  const allDone = done === checklist.length
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>✓ CHECKLIST OBRIGATÓRIO ({done}/{checklist.length})</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: allDone ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171' }}>{pct}%</span>
+      </div>
+      <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden', marginBottom: 8 }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: allDone ? '#4ade80' : 'linear-gradient(90deg,#f87171,#4ade80)', transition: 'width 0.3s' }} />
+      </div>
+      {checklist.map((c, i) => (
+        <div key={i} onClick={() => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, done: !x.done } : x))} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', marginBottom: 5, borderRadius: 10, cursor: 'pointer', background: c.done ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${c.done ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.06)'}` }}>
+          <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, background: c.done ? '#4ade80' : 'transparent', border: c.done ? 'none' : '1.5px solid rgba(255,255,255,0.2)', color: '#0a1929', fontWeight: 800 }}>{c.done ? '✓' : ''}</div>
+          <span style={{ fontSize: 13, color: c.done ? '#fff' : 'rgba(255,255,255,0.6)' }}>{c.label}</span>
+        </div>
+      ))}
+      {!allDone && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>⚠️ Marque todos os itens para poder finalizar o serviço.</div>}
     </div>
   )
 }
