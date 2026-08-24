@@ -87,6 +87,7 @@ export default function EmployeePortal() {
   }, [])
   const timerRef = useRef()
   const clockRef = useRef()
+  const hourWarnedRef = useRef(false)
   const photoInputRef = useRef()
   const claimPhotoRef = useRef()
   const claimReceiptRef = useRef()
@@ -132,14 +133,15 @@ export default function EmployeePortal() {
   }, [activeJob])
 
   useEffect(() => {
+    hourWarnedRef.current = false
     if (activeJob?.started_at) {
       const start = new Date(activeJob.started_at)
       timerRef.current = setInterval(() => {
         const secs = Math.floor((Date.now()-start)/1000)
         setElapsed(secs)
-        if (secs === 3600) {
-          if (window.confirm('⚠️ 1 hour on this job. Everything ok?\nPress Cancel to go to the job.')) {}
-          else { setTab('shift') }
+        if (secs === 3600 && !hourWarnedRef.current) {
+          hourWarnedRef.current = true
+          toast('⏱️ 1 hour on this job — everything ok?', { duration: 8000 })
         }
       }, 1000)
     }
