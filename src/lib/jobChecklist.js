@@ -15,6 +15,23 @@ const BASE_ITEMS = [
   'Luzes apagadas',
 ]
 
+/** Atomic Bar — bar/noturno (diferente dos restaurantes OTP) */
+const ATOMIC_BAR_ITEMS = [
+  'Retirar TODO o lixo (bar, salao, banheiro, cozinha)',
+  'Esvaziar todas as lixeiras e sacos de lixo',
+  'Limpar vidros, espelhos e portas de vidro',
+  'Limpar balcao e area do bar (sem manchas)',
+  'Limpar mesas, banquetas e cadeiras',
+  'Piso sem marca alcool (salao inteiro)',
+  'Limpeza vaso banheiro (sem marca, sujeira borda)',
+  'Limpar pia e torneiras do banheiro',
+  'Organizar copos, garrafas e utensilios no lugar',
+  'Ventilacao / ar-condicionado ligado conforme padrao',
+  'Verificacao pos-video (sujeira piso e vidros)',
+  'Chave no keybox',
+  'Luzes apagadas',
+]
+
 function withExtras(base, { afterFloor = [], replaceVentilation = null } = {}) {
   const items = [...base]
   const floorIdx = items.findIndex(i => i.startsWith('Piso sem marca'))
@@ -28,7 +45,7 @@ function withExtras(base, { afterFloor = [], replaceVentilation = null } = {}) {
 
 /** Checklist por loja — fonte única (KuriPuro OTP) */
 export const LOCATION_CHECKLISTS = {
-  'Atomic Bar': [...BASE_ITEMS],
+  'Atomic Bar': [...ATOMIC_BAR_ITEMS],
   'Ibushio': [...BASE_ITEMS],
   'Nyu Ibushio': [...BASE_ITEMS],
   'Yakiniku Otoko Manmosu': [...BASE_ITEMS],
@@ -84,10 +101,9 @@ export function getChecklistItems(locationName) {
 }
 
 export function checklistTemplateForJob(job) {
-  const custom = (job?.checklist_template || '').trim()
-  if (custom) return custom
-  const items = getChecklistItems(job?.title || job?.location_name || '')
-  return items.join('\n')
+  const catalogItems = getChecklistItems(job?.title || job?.location_name || '')
+  if (catalogItems.length) return catalogItems.join('\n')
+  return (job?.checklist_template || '').trim()
 }
 
 export function parseChecklistTemplate(template) {
