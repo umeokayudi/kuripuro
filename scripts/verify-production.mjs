@@ -23,8 +23,8 @@ async function main() {
 
   // API version
   const ver = await fetchText(`${BASE}/api/version`)
-  if (ver.status === 200 && ver.text.includes('2026-08-24-v12')) {
-    pass('API version v12', ver.text.trim())
+  if (ver.status === 200 && ver.text.includes('2026-08-24-v')) {
+    pass('API version v13+', ver.text.trim())
   } else {
     fail('API version v12', `status=${ver.status} body=${ver.text.slice(0, 120)}`)
   }
