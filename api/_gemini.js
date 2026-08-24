@@ -77,4 +77,4 @@ export async function geminiGenerate(body) {
   throw new Error(`Gemini API error: ${lastErr}`)
 }
 
-export const API_BUILD = '2026-08-18-v10'
+export const API_BUILD = '2026-08-24-v11'
