@@ -1,5 +1,18 @@
+import {
+  getCleaningType,
+  normalizeDeepComponents,
+  parseDeepComponents,
+} from './cleaningType'
+
 function locationNameFromTitle(title) {
   return (title || '').replace(/ — .*/, '').trim()
+}
+
+const DEEP_COMPONENT_CHECKLIST = {
+  range_hood: 'Range Hood — limpeza completa (filtros, duto, superficie)',
+  ac: 'AC Cleaning — filtros e unidade interna',
+  grating: 'Grating — grelha limpa sem gordura',
+  grease_trap: 'Grease Trap — esvaziado e higienizado',
 }
 
 const BASE_ITEMS = [
@@ -100,9 +113,17 @@ export function getChecklistItems(locationName) {
   return LOCATION_CHECKLISTS[key] ? [...LOCATION_CHECKLISTS[key]] : []
 }
 
-export function checklistTemplateForJob(job) {
+export function checklistTemplateForJob(job, deepComponents) {
   const catalogItems = getChecklistItems(job?.title || job?.location_name || '')
-  if (catalogItems.length) return catalogItems.join('\n')
+  const isDeep = getCleaningType(job) === 'deep'
+  const comps = normalizeDeepComponents(
+    deepComponents?.length ? deepComponents : (isDeep ? parseDeepComponents(job) : [])
+  )
+  const deepItems = comps.map(id => DEEP_COMPONENT_CHECKLIST[id]).filter(Boolean)
+  const items = isDeep && deepItems.length
+    ? [...catalogItems, ...deepItems]
+    : catalogItems
+  if (items.length) return items.join('\n')
   return (job?.checklist_template || '').trim()
 }
 
