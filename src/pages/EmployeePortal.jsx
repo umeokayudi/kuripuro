@@ -18,7 +18,14 @@ import {
   manualAddLocations,
   buildAddServiceOptions,
   employeeAddService,
+  ALL_DEEP_COMPONENT_IDS,
 } from '../lib/employeeAddJob'
+import {
+  DEEP_CLEAN_COMPONENTS,
+  deepComponentLabel,
+  getCleaningType,
+  cleaningTypesForLang,
+} from '../lib/cleaningType'
 
 const BADGE_DEFS = [
   { key:'first_job', name:'First Job', icon:'🎯', desc:'Complete your first job' },
@@ -427,7 +434,7 @@ export default function EmployeePortal() {
     setShowAddService(true)
   }
 
-  const handleAddService = async (location, cleaningType, option) => {
+  const handleAddService = async (location, cleaningType, deepComponents, option) => {
     if (addServiceBusy) return
     if (option?.state === 'mine') {
       return toast.error(e.addServiceAlreadyYours)
@@ -446,12 +453,14 @@ export default function EmployeePortal() {
         location,
         date,
         cleaningType,
+        deepComponents: cleaningType === 'deep' ? deepComponents : [],
       })
       if (!result.ok) {
         if (result.error === 'already_yours') toast.error(e.addServiceAlreadyYours)
         else if (result.error === 'already_done_today') toast.error(e.addServiceDoneToday)
         else if (result.error === 'blocked') toast.error(e.addServiceBlocked)
         else if (result.error === 'transfer_race') toast.error(e.addServiceRace)
+        else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
@@ -516,7 +525,13 @@ export default function EmployeePortal() {
       }).eq('id', retroJob.id)
       if (error) throw error
       const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).single()
-      if (completedRetro) syncServiceReport(supabase, completedRetro)
+      if (completedRetro) {
+        try {
+          await syncServiceReport(supabase, completedRetro)
+        } catch (syncErr) {
+          console.error('service_report sync failed', syncErr?.message)
+        }
+      }
       toast.success('Relatório enviado!')
       setTimeout(()=>{ setRetroJob(null); setRetroChecklist([]); loadAll() }, 2500)
     } catch(e) { toast.error('Erro: '+e.message) }
@@ -620,7 +635,13 @@ export default function EmployeePortal() {
       } catch(ex){ console.log('extra fields skipped', ex?.message) }
 
       const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).single()
-      if (completedJob) syncServiceReport(supabase, completedJob)
+      if (completedJob) {
+        try {
+          await syncServiceReport(supabase, completedJob)
+        } catch (syncErr) {
+          console.error('service_report sync failed', syncErr?.message)
+        }
+      }
 
       // Multa só se houver checklist parcial (não deveria ocorrer com bloqueio acima)
       if (missed>0 && total>0 && Number(job.value||0)>0) {
@@ -823,6 +844,7 @@ export default function EmployeePortal() {
           employeeId={user.id}
           todayJobs={todayAllJobs}
           labels={e}
+          lang={lang}
           busy={addServiceBusy}
           onClose={()=>!addServiceBusy&&setShowAddService(false)}
           onAdd={handleAddService}
@@ -1465,7 +1487,19 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 </div>
                 <div>
                   <div style={{fontSize:14,fontWeight:600,color:isDone?'rgba(255,255,255,0.4)':'#fff',textDecoration:isDone?'line-through':'none'}}>{job.title.replace(/ — .*/,'')}</div>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3,flexWrap:'wrap'}}>
+                    {(() => {
+                      const ct = getCleaningType(job)
+                      const cfg = cleaningTypesForLang(lang)[ct]
+                      if (!cfg) return null
+                      return (
+                        <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:cfg.color,background:ct==='deep'?'rgba(251,191,36,0.15)':'rgba(96,165,250,0.15)'}}>
+                          {cfg.short}
+                        </span>
+                      )
+                    })()}
+                    <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
+                  </div>
                 </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -1799,13 +1833,18 @@ function ChecklistPicker({ checklist, setChecklist }) {
   )
 }
 
-function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }) {
+function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, onAdd }) {
   const [search, setSearch] = useState('')
   const [cleaningType, setCleaningType] = useState('basic')
+  const [deepComponents, setDeepComponents] = useState([...ALL_DEEP_COMPONENT_IDS])
   const [picked, setPicked] = useState(null)
 
+  const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
-  const options = buildAddServiceOptions(locations, todayJobs, employeeId)
+  const visibleLocations = cleaningType === 'deep'
+    ? locations.filter(loc => loc.group === 'OTP')
+    : locations
+  const options = buildAddServiceOptions(visibleLocations, todayJobs, employeeId, cleaningType)
   const q = search.trim().toLowerCase()
   const filtered = q
     ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
@@ -1819,6 +1858,25 @@ function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }
     if (opt.state === 'blocked') return { text: labels.addServiceBlocked, color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
     return { text: labels.addServiceAvailable, color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' }
   }
+
+  const toggleDeepComponent = (id) => {
+    setDeepComponents(prev => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) return prev
+        return prev.filter(c => c !== id)
+      }
+      return [...prev, id]
+    })
+  }
+
+  const switchCleaningType = (t) => {
+    setCleaningType(t)
+    setPicked(null)
+    if (t === 'deep') setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
+  }
+
+  const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
+  const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && picked.state !== 'done_today'
 
   const confirmLabel = picked?.state === 'transfer'
     ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
@@ -1849,17 +1907,43 @@ function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }
             <button
               key={t}
               type="button"
-              onClick={() => setCleaningType(t)}
+              onClick={() => switchCleaningType(t)}
               style={{
                 flex: 1, padding: '10px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                background: cleaningType === t ? 'rgba(96,165,250,0.2)' : 'rgba(255,255,255,0.05)',
-                color: cleaningType === t ? '#60a5fa' : 'rgba(255,255,255,0.45)',
+                background: cleaningType === t ? (t === 'deep' ? 'rgba(251,191,36,0.2)' : 'rgba(96,165,250,0.2)') : 'rgba(255,255,255,0.05)',
+                color: cleaningType === t ? (t === 'deep' ? '#fbbf24' : '#60a5fa') : 'rgba(255,255,255,0.45)',
               }}
             >
-              {t === 'basic' ? labels.basicCleaning : labels.deepCleaning}
+              {typeLabels[t]?.short || (t === 'basic' ? labels.basicCleaning : labels.deepCleaning)}
             </button>
           ))}
         </div>
+
+        {cleaningType === 'deep' && (
+          <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#fbbf24', marginBottom: 8, letterSpacing: 0.3 }}>{labels.deepComponentsTitle}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {DEEP_CLEAN_COMPONENTS.map(comp => {
+                const on = deepComponents.includes(comp.id)
+                return (
+                  <button
+                    key={comp.id}
+                    type="button"
+                    onClick={() => toggleDeepComponent(comp.id)}
+                    style={{
+                      padding: '10px 12px', borderRadius: 10, border: on ? '1px solid rgba(251,191,36,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                      background: on ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.04)',
+                      color: on ? '#fbbf24' : 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    {on ? '✓ ' : ''}{deepComponentLabel(comp.id, lang)}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 8 }}>{labels.deepComponentsHint}</div>
+          </div>
+        )}
 
         <div style={{ maxHeight: '45vh', overflowY: 'auto', marginBottom: 14 }}>
           {filtered.map(opt => {
@@ -1893,13 +1977,13 @@ function AddServiceModal({ employeeId, todayJobs, labels, busy, onClose, onAdd }
 
         <button
           type="button"
-          disabled={!picked || busy || picked.state === 'mine' || picked.state === 'blocked' || picked.state === 'done_today'}
-          onClick={() => picked && onAdd(picked.location, cleaningType, picked)}
+          disabled={!canConfirm || busy}
+          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked)}
           style={{
             width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
-            background: picked && !busy ? 'linear-gradient(135deg,#60a5fa,#3b82f6)' : 'rgba(255,255,255,0.08)',
-            color: picked && !busy ? '#fff' : 'rgba(255,255,255,0.3)',
-            cursor: picked && !busy ? 'pointer' : 'not-allowed',
+            background: canConfirm && !busy ? 'linear-gradient(135deg,#60a5fa,#3b82f6)' : 'rgba(255,255,255,0.08)',
+            color: canConfirm && !busy ? '#fff' : 'rgba(255,255,255,0.3)',
+            cursor: canConfirm && !busy ? 'pointer' : 'not-allowed',
           }}
         >
           {busy ? '...' : picked ? confirmLabel : labels.addServiceConfirm}

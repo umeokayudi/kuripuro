@@ -283,6 +283,9 @@ export const kuripuroEn = {
     addServiceRace: 'Someone else took this job just now',
     basicCleaning: 'Basic',
     deepCleaning: 'Deep',
+    deepComponentsTitle: 'Deep clean components',
+    deepComponentsHint: 'Select at least one component. Full deep clean = all four.',
+    deepComponentsRequired: 'Select at least one deep clean component',
   },
   client: {
     portal: 'Client Portal',
@@ -658,6 +661,9 @@ export const kuripuroJa = {
     addServiceRace: '他の人が先に引き継ぎました',
     basicCleaning: '基本',
     deepCleaning: '深層',
+    deepComponentsTitle: '深層清掃の項目',
+    deepComponentsHint: '最低1つ選択してください。4つすべてで完全な深層清掃です。',
+    deepComponentsRequired: '深層清掃の項目を1つ以上選択してください',
   },
   client: {
     portal: 'クライアントポータル',

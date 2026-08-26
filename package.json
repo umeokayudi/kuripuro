@@ -15,6 +15,7 @@
     "fix:maps": "node scripts/fix-maps-urls.mjs",
     "fix:checklists": "node scripts/fix-checklists.mjs",
     "test:add-service": "node scripts/test-employee-add-service.mjs",
+    "test:deep-clean": "node scripts/test-deep-clean-photos.mjs",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh",
     "verify:production": "node scripts/verify-production.mjs"

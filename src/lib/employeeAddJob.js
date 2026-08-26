@@ -5,16 +5,23 @@ import {
   MATSUNAGA_SPOT,
   SCHEDULE_CLIENTS,
 } from './serviceCatalog'
-import { locationNameFromTitle, applyCleaningTypeToTitle } from './cleaningType'
+import {
+  locationNameFromTitle,
+  buildJobTitle,
+  buildDeepCleanDescription,
+  calculateJobValue,
+  jobMatchesLocationAndType,
+  titleMatchesLocation,
+  getCleaningType,
+  DEFAULT_DEEP_CLEAN_PRICE,
+  ALL_DEEP_COMPONENT_IDS,
+} from './cleaningType'
 import { checklistTemplateForJob } from './jobChecklist'
 
-export function titleMatchesLocation(title, locationName) {
-  const loc = locationNameFromTitle(title)
-  return loc.toLowerCase() === (locationName || '').trim().toLowerCase()
-}
+export { titleMatchesLocation }
 
-function jobsAtLocation(jobs, locationName) {
-  return (jobs || []).filter(j => titleMatchesLocation(j.title, locationName))
+function jobsAtLocationAndType(jobs, locationName, cleaningType) {
+  return (jobs || []).filter(j => jobMatchesLocationAndType(j, locationName, cleaningType))
 }
 
 /** All locations an employee can add manually */
@@ -26,6 +33,7 @@ export function manualAddLocations() {
     clientId: SCHEDULE_CLIENTS.ontheplanet.id,
     clientName: SCHEDULE_CLIENTS.ontheplanet.name,
     pricePerVisit: loc.pricePerVisit || 0,
+    deepCleanPrice: loc.deepCleanPrice || DEFAULT_DEEP_CLEAN_PRICE,
     scheduledTime: '00:30',
     group: 'OTP',
   }))
@@ -36,6 +44,7 @@ export function manualAddLocations() {
     clientId: SCHEDULE_CLIENTS.atomicbar.id,
     clientName: SCHEDULE_CLIENTS.atomicbar.name,
     pricePerVisit: ATOMIC_LOCATION.pricePerVisit || 0,
+    deepCleanPrice: 0,
     scheduledTime: ATOMIC_LOCATION.scheduledTime || '21:00',
     group: 'Atomic',
   }]
@@ -46,6 +55,7 @@ export function manualAddLocations() {
     clientId: SCHEDULE_CLIENTS.duskin.id,
     clientName: SCHEDULE_CLIENTS.duskin.name,
     pricePerVisit: 0,
+    deepCleanPrice: 0,
     scheduledTime: '09:00',
     group: 'Duskin',
   }))
@@ -56,34 +66,36 @@ export function manualAddLocations() {
     clientId: SCHEDULE_CLIENTS.matsunaga.id,
     clientName: SCHEDULE_CLIENTS.matsunaga.name,
     pricePerVisit: 0,
+    deepCleanPrice: 0,
     scheduledTime: '10:00',
     group: 'Spot',
   }]
   return [...otp, ...atomic, ...duskin, ...matsunaga]
 }
 
-/** Build UI rows: mine | transfer | claim | done_today | blocked | available */
-export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId) {
+/** Build UI rows — respects basic vs deep as separate services */
+export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, cleaningType = 'basic') {
   const jobs = todayJobs || []
   const active = jobs.filter(j => j.status === 'assigned' || j.status === 'in_progress')
   const completed = jobs.filter(j => j.status === 'completed')
+  const matchLoc = (j, locName) => jobMatchesLocationAndType(j, locName, cleaningType)
 
   return locations.map(loc => {
     const mine = active.find(j =>
-      j.employee_id === currentEmployeeId && titleMatchesLocation(j.title, loc.name)
+      j.employee_id === currentEmployeeId && matchLoc(j, loc.name)
     )
     if (mine) {
       return { location: loc, state: 'mine', job: mine }
     }
 
-    const doneToday = completed.find(j => titleMatchesLocation(j.title, loc.name))
+    const doneToday = completed.find(j => matchLoc(j, loc.name))
     if (doneToday) {
       return { location: loc, state: 'done_today', job: doneToday }
     }
 
     const unassigned = active.find(j =>
       !j.employee_id &&
-      titleMatchesLocation(j.title, loc.name) &&
+      matchLoc(j, loc.name) &&
       j.status === 'assigned' &&
       !j.started_at
     )
@@ -94,7 +106,7 @@ export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId) 
     const other = active.find(j =>
       j.employee_id &&
       j.employee_id !== currentEmployeeId &&
-      titleMatchesLocation(j.title, loc.name) &&
+      matchLoc(j, loc.name) &&
       j.status === 'assigned' &&
       !j.started_at
     )
@@ -109,7 +121,7 @@ export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId) 
 
     const blocked = active.find(j =>
       j.employee_id !== currentEmployeeId &&
-      titleMatchesLocation(j.title, loc.name)
+      matchLoc(j, loc.name)
     )
     if (blocked) {
       return {
@@ -146,11 +158,30 @@ async function notifyTransfer(supabase, { fromEmployeeId, fromEmployeeName, toEm
   })
 }
 
+function buildJobPayload(location, { cleaningType, deepComponents }) {
+  const title = buildJobTitle(location.name, { cleaningType, deepComponents })
+  const description = buildDeepCleanDescription({
+    deepComponents: cleaningType === 'deep' ? deepComponents : [],
+    baseNotes: location.notes || '',
+  })
+  const value = calculateJobValue({
+    cleaningType,
+    deepComponents,
+    basicPrice: location.pricePerVisit || 0,
+    deepPrice: location.deepCleanPrice || DEFAULT_DEEP_CLEAN_PRICE,
+  })
+  const checklist = checklistTemplateForJob({ title, description }, deepComponents)
+  return { title, description, value, checklist }
+}
+
 async function reassignJob(supabase, {
   job,
   employee,
   date,
   title,
+  description,
+  value,
+  checklist,
   fromEmployeeId,
   fromEmployeeName,
   actionLabel,
@@ -165,8 +196,10 @@ async function reassignJob(supabase, {
       employee_id: employee.id,
       employee_name: employee.name,
       title,
+      description: [description, job.description, transferNote].filter(Boolean).join('\n'),
+      value,
+      checklist_template: checklist || job.checklist_template,
       sequence_order: nextSeq,
-      description: [job.description, transferNote].filter(Boolean).join('\n'),
     })
     .eq('id', job.id)
     .eq('status', 'assigned')
@@ -194,22 +227,24 @@ async function reassignJob(supabase, {
 
 /**
  * Employee adds a service for today.
- * If another employee has it assigned (not started), transfer to current user.
- * If unassigned job exists, claim it.
- * Otherwise create a new job (unless already completed today).
+ * basic and deep are separate services at the same location.
  */
 export async function employeeAddService(supabase, {
   employee,
   location,
   date,
   cleaningType = 'basic',
+  deepComponents = [],
 }) {
   if (!employee?.id || !location?.name || !date) {
     return { ok: false, error: 'invalid_input' }
   }
 
-  const title = applyCleaningTypeToTitle(location.name, cleaningType)
-  const checklist = checklistTemplateForJob({ title })
+  if (cleaningType === 'deep' && (!deepComponents?.length)) {
+    return { ok: false, error: 'deep_components_required' }
+  }
+
+  const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })
 
   const { data: myActive } = await supabase
     .from('jobs')
@@ -218,7 +253,7 @@ export async function employeeAddService(supabase, {
     .eq('scheduled_date', date)
     .in('status', ['assigned', 'in_progress'])
 
-  if ((myActive || []).some(j => titleMatchesLocation(j.title, location.name))) {
+  if ((myActive || []).some(j => jobMatchesLocationAndType(j, location.name, cleaningType))) {
     return { ok: false, error: 'already_yours' }
   }
 
@@ -230,7 +265,7 @@ export async function employeeAddService(supabase, {
 
   if (dayErr) return { ok: false, error: 'fetch_failed', detail: dayErr.message }
 
-  const atLocation = jobsAtLocation(dayJobs, location.name)
+  const atLocation = jobsAtLocationAndType(dayJobs, location.name, cleaningType)
   const completed = atLocation.find(j => j.status === 'completed')
   if (completed) {
     return { ok: false, error: 'already_done_today' }
@@ -245,6 +280,9 @@ export async function employeeAddService(supabase, {
       employee,
       date,
       title,
+      description,
+      value,
+      checklist,
       fromEmployeeId: null,
       fromEmployeeName: null,
       actionLabel: 'assumiu serviço sem atribuição',
@@ -266,6 +304,9 @@ export async function employeeAddService(supabase, {
       employee,
       date,
       title,
+      description,
+      value,
+      checklist,
       fromEmployeeId: transferJob.employee_id,
       fromEmployeeName: transferJob.employee_name,
       actionLabel: 'assumiu',
@@ -297,8 +338,8 @@ export async function employeeAddService(supabase, {
     scheduled_date: date,
     scheduled_time: location.scheduledTime || '00:30',
     address: location.address || '',
-    description: location.notes || null,
-    value: location.pricePerVisit || 0,
+    description,
+    value,
     checklist_template: checklist || null,
     status: 'assigned',
     job_category: 'regular',
@@ -309,3 +350,5 @@ export async function employeeAddService(supabase, {
   if (insErr) return { ok: false, error: 'create_failed', detail: insErr.message }
   return { ok: true, action: 'created', job: created }
 }
+
+export { ALL_DEEP_COMPONENT_IDS }
