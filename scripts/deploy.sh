@@ -6,8 +6,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 # Garantir link com projeto kuripuro (evita deploy em outro app)
-export VERCEL_ORG_ID="${VERCEL_ORG_ID:-team_G3qVUPQ27CLe8cPtxEBsrkxw}"
-export VERCEL_PROJECT_ID="${VERCEL_PROJECT_ID:-prj_CwcXzleb2pOrKitSu6DFh7CRsvJU}"
+# KuriPuro — lock project (ignore VERCEL_PROJECT_ID from env — pode ser bebidas-control)
+KURIPURO_ORG_ID="team_G3qVUPQ27CLe8cPtxEBsrkxw"
+KURIPURO_PROJECT_ID="prj_CwcXzleb2pOrKitSu6DFh7CRsvJU"
+export VERCEL_ORG_ID="$KURIPURO_ORG_ID"
+export VERCEL_PROJECT_ID="$KURIPURO_PROJECT_ID"
 mkdir -p .vercel
 cat > .vercel/project.json <<EOF
 {"orgId":"${VERCEL_ORG_ID}","projectId":"${VERCEL_PROJECT_ID}"}
@@ -25,19 +28,9 @@ if [ -z "${VERCEL_TOKEN:-}" ]; then
   exit 1
 fi
 
-echo "=== Sync Vercel env (production) ==="
-if [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
-  printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | npx vercel@latest env add SUPABASE_SERVICE_ROLE_KEY production --force --token "$VERCEL_TOKEN" 2>/dev/null || true
-  echo "SUPABASE_SERVICE_ROLE_KEY → production"
-fi
-if [ -n "${GEMINI_API_KEY:-}" ]; then
-  printf '%s' "$GEMINI_API_KEY" | npx vercel@latest env add GEMINI_API_KEY production --force --token "$VERCEL_TOKEN" 2>/dev/null || true
-  echo "GEMINI_API_KEY → production"
-fi
-
 echo ""
 echo "=== Deploy Vercel (production) ==="
-npx vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+bash "$ROOT/scripts/ci-deploy.sh"
 
 echo ""
 echo "=== Verificar ==="

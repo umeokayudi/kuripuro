@@ -5,8 +5,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-export VERCEL_ORG_ID="${VERCEL_ORG_ID:-team_G3qVUPQ27CLe8cPtxEBsrkxw}"
-export VERCEL_PROJECT_ID="${VERCEL_PROJECT_ID:-prj_CwcXzleb2pOrKitSu6DFh7CRsvJU}"
+# KuriPuro — NUNCA usar VERCEL_PROJECT_ID do ambiente (pode apontar para bebidas-control)
+KURIPURO_ORG_ID="team_G3qVUPQ27CLe8cPtxEBsrkxw"
+KURIPURO_PROJECT_ID="prj_CwcXzleb2pOrKitSu6DFh7CRsvJU"
+
+export VERCEL_ORG_ID="$KURIPURO_ORG_ID"
+export VERCEL_PROJECT_ID="$KURIPURO_PROJECT_ID"
 
 mkdir -p .vercel
 cat > .vercel/project.json <<EOF

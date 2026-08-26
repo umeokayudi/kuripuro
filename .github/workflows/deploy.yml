@@ -42,6 +42,7 @@ jobs:
           VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Project IDs hardcoded in ci-deploy.sh — do not pass VERCEL_PROJECT_ID from secrets
         run: bash scripts/ci-deploy.sh
 
       - name: Verify production
