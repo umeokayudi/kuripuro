@@ -18,6 +18,8 @@
     "test:deep-clean": "npx vite-node scripts/test-deep-clean-photos.mjs",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh",
+    "deploy:ci": "bash scripts/ci-deploy.sh",
+    "setup:deploy-secrets": "bash scripts/setup-deploy-secrets.sh",
     "verify:production": "node scripts/verify-production.mjs"
   },
   "dependencies": {
