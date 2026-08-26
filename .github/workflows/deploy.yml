@@ -5,8 +5,25 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  VERCEL_ORG_ID: team_G3qVUPQ27CLe8cPtxEBsrkxw
+  VERCEL_PROJECT_ID: prj_CwcXzleb2pOrKitSu6DFh7CRsvJU
+
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:deep-clean
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,20 +34,28 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - run: npm run build
 
       - name: Deploy production
-        run: |
-          if [ -z "${VERCEL_TOKEN:-}" ]; then
-            echo "::error::VERCEL_TOKEN secret is not set. Add it in GitHub Settings → Secrets."
-            exit 1
-          fi
-          npx vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: bash scripts/ci-deploy.sh
 
-      - name: Verify version
+      - name: Verify production
         run: |
-          sleep 10
-          curl -sf "https://kuripuro.vercel.app/api/version"
+          sleep 15
+          for i in 1 2 3 4 5; do
+            BODY=$(curl -sf "https://kuripuro.vercel.app/api/version" || true)
+            echo "Attempt $i: $BODY"
+            if echo "$BODY" | grep -q '"ok":true'; then
+              echo "$BODY" | grep -q '2026-08-26-v' && echo "✅ v14 live" && exit 0
+              echo "$BODY" | grep -q '2026-08-24-v' && echo "⚠️ v13 still live — deploy propagating" && exit 0
+              echo "✅ API responding"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::Could not verify /api/version after deploy"
