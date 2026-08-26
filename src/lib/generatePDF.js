@@ -1,9 +1,12 @@
 import { jsPDF } from 'jspdf'
+import { viewablePhotoUrl } from './photoUrl'
 
 // Carrega uma imagem de URL como dataURL pra embutir no PDF
 async function loadImageDataUrl(url) {
+  if (!url) return null
   try {
-    const resp = await fetch(url)
+    const resp = await fetch(viewablePhotoUrl(url))
+    if (!resp.ok) return null
     const blob = await resp.blob()
     return await new Promise((res, rej) => {
       const r = new FileReader()

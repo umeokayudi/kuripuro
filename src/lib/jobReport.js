@@ -70,6 +70,37 @@ export function jobToServiceReport(job, lang = 'en') {
   }
 }
 
+/** Preenche fotos e campos faltantes do relatório a partir do job original */
+export function mergeReportWithJob(report, job, lang = 'en') {
+  if (!report || !job) return report
+  const fromJob = jobToServiceReport(job, lang)
+  return {
+    ...report,
+    photo_before_url: report.photo_before_url || fromJob.photo_before_url,
+    photo_after_url: report.photo_after_url || fromJob.photo_after_url,
+    signature_url: report.signature_url || fromJob.signature_url,
+    photo_ai_score: report.photo_ai_score ?? fromJob.photo_ai_score,
+    photo_ai_approved: report.photo_ai_approved ?? fromJob.photo_ai_approved,
+    photo_ai_issues: report.photo_ai_issues || fromJob.photo_ai_issues,
+    checklist_done: report.checklist_done ?? fromJob.checklist_done,
+    checklist_total: report.checklist_total ?? fromJob.checklist_total,
+    checklist_missed_items: report.checklist_missed_items || fromJob.checklist_missed_items,
+    notes_out: report.notes_out || fromJob.notes_out,
+    retro_ai_summary: report.retro_ai_summary || fromJob.retro_ai_summary,
+    duration_min: report.duration_min ?? fromJob.duration_min,
+    time_in: report.time_in && report.time_in !== '—' ? report.time_in : fromJob.time_in,
+    time_out: report.time_out && report.time_out !== '—' ? report.time_out : fromJob.time_out,
+    job_value: report.job_value ?? fromJob.job_value,
+  }
+}
+
+export function reportNeedsPhotoSync(report, job) {
+  if (!job) return false
+  const jobHasPhotos = !!(job.photo_start_url || job.photo_end_url)
+  const reportHasPhotos = !!(report?.photo_before_url || report?.photo_after_url)
+  return jobHasPhotos && !reportHasPhotos
+}
+
 export async function syncServiceReport(supabase, job) {
   if (!job?.id || job.status !== 'completed') return
   const row = jobToServiceReport(job)

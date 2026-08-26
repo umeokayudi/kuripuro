@@ -525,7 +525,13 @@ export default function EmployeePortal() {
       }).eq('id', retroJob.id)
       if (error) throw error
       const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).single()
-      if (completedRetro) syncServiceReport(supabase, completedRetro)
+      if (completedRetro) {
+        try {
+          await syncServiceReport(supabase, completedRetro)
+        } catch (syncErr) {
+          console.error('service_report sync failed', syncErr?.message)
+        }
+      }
       toast.success('Relatório enviado!')
       setTimeout(()=>{ setRetroJob(null); setRetroChecklist([]); loadAll() }, 2500)
     } catch(e) { toast.error('Erro: '+e.message) }
@@ -629,7 +635,13 @@ export default function EmployeePortal() {
       } catch(ex){ console.log('extra fields skipped', ex?.message) }
 
       const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).single()
-      if (completedJob) syncServiceReport(supabase, completedJob)
+      if (completedJob) {
+        try {
+          await syncServiceReport(supabase, completedJob)
+        } catch (syncErr) {
+          console.error('service_report sync failed', syncErr?.message)
+        }
+      }
 
       // Multa só se houver checklist parcial (não deveria ocorrer com bloqueio acima)
       if (missed>0 && total>0 && Number(job.value||0)>0) {
