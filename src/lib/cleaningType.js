@@ -1,4 +1,4 @@
-import { DEFAULT_LOCATIONS, SCHEDULE_CLIENTS } from './scheduleGenerator'
+import { OTP_BASIC_LOCATIONS, SCHEDULE_CLIENTS } from './serviceCatalog'
 
 export const CLEANING_TYPES = {
   basic: { label: 'Basic cleaning', suffix: 'Basic Cleaning', short: 'Basic', color: '#60a5fa' },
@@ -30,9 +30,7 @@ export function deepComponentLabel(id, lang = 'en') {
   return lang === 'ja' ? item.labelJa : item.label
 }
 
-export const DEEP_CLEAN_LOCATIONS = DEFAULT_LOCATIONS
-  .filter(l => l.name !== 'Atomic Bar')
-  .map(l => l.name)
+export const DEEP_CLEAN_LOCATIONS = OTP_BASIC_LOCATIONS.map(l => l.name)
 
 export const ONTHEPLANET_CLIENT_ID = SCHEDULE_CLIENTS.ontheplanet.id
 

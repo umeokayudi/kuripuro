@@ -36,4 +36,4 @@ echo ""
 echo "=== Verificar ==="
 sleep 8
 curl -sf "https://kuripuro.vercel.app/api/version" && echo ""
-echo "Esperado: build 2026-08-26-v14"
+echo "Esperado: build 2026-08-28-v15"
