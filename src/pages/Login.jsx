@@ -32,12 +32,12 @@ export default function Login() {
         <div style={{ fontSize:16, fontWeight:600, color:'#fff', marginBottom:22, textAlign:'center' }}>{a.signIn}</div>
         <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-            <label style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{a.login || a.email}</label>
-            <input type="text" value={email} onChange={e=>setEmail(e.target.value)} placeholder={a.loginPlaceholder || 'your@email.com'} required style={IS} autoComplete="username" />
+            <label htmlFor="login-email" style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{a.login || a.email}</label>
+            <input id="login-email" name="email" type="text" value={email} onChange={e=>setEmail(e.target.value)} placeholder={a.loginPlaceholder || 'your@email.com'} required style={IS} autoComplete="username" />
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-            <label style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{a.password}</label>
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required style={IS} />
+            <label htmlFor="login-password" style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{a.password}</label>
+            <input id="login-password" name="password" type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required style={IS} autoComplete="current-password" />
           </div>
           {error && <div style={{ background:'rgba(248,113,113,0.12)', borderRadius:8, padding:'9px 12px', fontSize:13, color:'#f87171', textAlign:'center' }}>{error}</div>}
           <button type="submit" disabled={loading} style={{ padding:'13px', borderRadius:10, border:'none', background:'#c19c56', color:'#0d2137', fontWeight:700, fontSize:15, cursor:'pointer', marginTop:4 }}>

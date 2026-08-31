@@ -52,9 +52,8 @@ jobs:
             BODY=$(curl -sf "https://kuripuro.vercel.app/api/version" || true)
             echo "Attempt $i: $BODY"
             if echo "$BODY" | grep -q '"ok":true'; then
-              echo "$BODY" | grep -q '2026-08-26-v' && echo "✅ v14 live" && exit 0
-              echo "$BODY" | grep -q '2026-08-24-v' && echo "⚠️ v13 still live — deploy propagating" && exit 0
-              echo "✅ API responding"
+              echo "$BODY" | grep -q '2026-08-28-v' && echo "✅ v15+ live" && exit 0
+              echo "✅ API responding: $BODY"
               exit 0
             fi
             sleep 10

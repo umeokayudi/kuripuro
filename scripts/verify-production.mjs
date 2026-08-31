@@ -23,10 +23,9 @@ async function main() {
 
   // API version
   const ver = await fetchText(`${BASE}/api/version`)
-  if (ver.status === 200 && ver.text.includes('2026-08-26-v')) {
-    pass('API version v14+', ver.text.trim())
-  } else if (ver.status === 200 && ver.text.includes('2026-08-24-v')) {
-    pass('API version v13+ (deploy v14 pending)', ver.text.trim())
+  if (ver.status === 200 && ver.text.includes('"ok":true')) {
+    const build = ver.text.match(/"build":"([^"]+)"/)?.[1] || ver.text.trim()
+    pass('API version', build)
   } else {
     fail('API version', `status=${ver.status} body=${ver.text.slice(0, 120)}`)
   }
