@@ -61,9 +61,7 @@ async function main() {
       monthly_revenue: isDeepOnly
         ? monthlyRevenue(loc.deepCleanPrice || 5000, loc.days)
         : monthlyRevenue(loc.pricePerVisit, loc.days),
-      notes: isDeepOnly
-        ? `${loc.notes || ''} · Deep seg+qua · Manutenção no dia de folga`.trim()
-        : loc.notes,
+      notes: isDeepOnly ? (loc.notes || '') : loc.notes,
       training_checklist: checklistTemplateForJob({ title: isDeepOnly ? `${loc.name} — Deep Clean` : loc.name }),
       is_active: true,
     }
