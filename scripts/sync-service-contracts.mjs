@@ -61,9 +61,7 @@ async function main() {
       monthly_revenue: isDeepOnly
         ? monthlyRevenue(loc.deepCleanPrice || 5000, loc.days)
         : monthlyRevenue(loc.pricePerVisit, loc.days),
-      notes: isDeepOnly
-        ? `${loc.notes || ''} · Contrato: somente deep clean (terças)`.trim()
-        : loc.notes,
+      notes: isDeepOnly ? (loc.notes || '') : loc.notes,
       training_checklist: checklistTemplateForJob({ title: isDeepOnly ? `${loc.name} — Deep Clean` : loc.name }),
       is_active: true,
     }
@@ -150,6 +148,35 @@ async function main() {
     }
   }
 
+  // Manutenção no dia de folga — contratos por local deep-only
+  for (const loc of OTP_BASIC_LOCATIONS.filter(l => l.deepOnly)) {
+    const restName = daysToDowNames([loc.restDay])[0] || 'Sun'
+    const maintNotes = `Dia de folga (${restName}): Grease Trap 2x/mês; Stove, Range Hood, Grating, AC 1x/mês`
+    for (const svc of [
+      { type: 'Grease Trap', freq: '2x por mês', visits: 2 },
+      { type: 'Stove', freq: '1x por mês', visits: 1 },
+      { type: 'Range Hood', freq: '1x por mês', visits: 1 },
+      { type: 'Grill Cleaning', freq: '1x por mês', visits: 1 },
+      { type: 'AC Cleaning', freq: '1x por mês', visits: 1 },
+    ]) {
+      try {
+        const r = await upsertContract(SCHEDULE_CLIENTS.ontheplanet.id, `${loc.name} — ${svc.type}`, {
+          service_type: svc.type,
+          price_per_visit: 5000,
+          hours_per_visit: 2,
+          days_of_week: [restName],
+          visits_per_month: svc.visits,
+          monthly_revenue: 5000 * svc.visits,
+          notes: `${maintNotes}. ${svc.freq}. ${loc.notes || ''}`.trim(),
+          is_active: true,
+        })
+        stats[r]++
+      } catch (e) {
+        stats.errors.push(`${loc.name} ${svc.type}: ${e.message}`)
+      }
+    }
+  }
+
   // Cancelar limpeza básica futura nos locais deep-only
   const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 10)
   const deepOnlyFilter = OTP_DEEP_ONLY_NAMES.map(n => `title.ilike.${encodeURIComponent(`${n} — Basic%`)}`).join(',')
@@ -168,6 +195,29 @@ async function main() {
     }
   } catch (e) {
     stats.errors.push(`cancel basic jobs: ${e.message}`)
+  }
+
+  // Cancelar deep clean na terça nos locais deep-only (agora seg+qua)
+  const tuesdayDeepFilter = OTP_DEEP_ONLY_NAMES.map(n => `title.ilike.${encodeURIComponent(`${n} — Deep%`)}`).join(',')
+  try {
+    const futureTuesdayDeep = await sb(
+      'GET',
+      `jobs?select=id,title,scheduled_date&scheduled_date=gte.${today}&status=in.(assigned,in_progress)&or=(${tuesdayDeepFilter})`
+    )
+    const wrongDay = (futureTuesdayDeep || []).filter(j => {
+      const dow = new Date(j.scheduled_date + 'T12:00:00').getDay()
+      return dow === 2
+    })
+    if (wrongDay.length) {
+      const ids = wrongDay.map(j => j.id).join(',')
+      await sb('PATCH', `jobs?id=in.(${ids})`, { status: 'cancelled' })
+      stats.cancelledTuesdayDeepJobs = wrongDay.length
+      console.log(`Cancelled ${wrongDay.length} Tuesday deep clean jobs for deep-only OTP locations`)
+    } else {
+      stats.cancelledTuesdayDeepJobs = 0
+    }
+  } catch (e) {
+    stats.errors.push(`cancel tuesday deep jobs: ${e.message}`)
   }
 
   console.log(JSON.stringify(stats, null, 2))

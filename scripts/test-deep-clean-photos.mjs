@@ -13,7 +13,8 @@ import {
 } from '../src/lib/cleaningType.js'
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
 import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../src/lib/jobReport.js'
-import { isOtpDeepOnlyLocation, otpBasicScheduleLocations } from '../src/lib/serviceCatalog.js'
+import { isOtpDeepOnlyLocation, otpBasicScheduleLocations, otpDeepOnlyLocations } from '../src/lib/serviceCatalog.js'
+import { expectedDeepCleanDatesForLocation, weekdaysInMonth } from '../src/lib/cleaningType.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -118,6 +119,18 @@ function testOtpDeepOnlyContracts() {
   const basicLocs = otpBasicScheduleLocations().map(l => l.name)
   assert(!basicLocs.includes('Ibushio'), 'Ibushio excluded from basic schedule')
   assert(basicLocs.includes('Kodama Shinbashi'), 'Kodama in basic schedule')
+
+  const deepOnly = otpDeepOnlyLocations()
+  assert(deepOnly.length === 4, `deep-only count ${deepOnly.length}`)
+  assert(deepOnly[0].deepCleanDays?.includes(1), 'Mon deep clean')
+  assert(deepOnly[0].deepCleanDays?.includes(3), 'Wed deep clean')
+  assert(deepOnly.find(l => l.name === 'Ibushio')?.restDay === 0, 'Ibushio rest Sunday')
+  assert(deepOnly.find(l => l.name === 'Nyu Ibushio')?.restDay === 1, 'Nyu Ibushio rest Monday')
+
+  const sepDates = expectedDeepCleanDatesForLocation('Ibushio', '2026-09')
+  assert(sepDates.length >= 8, `Ibushio Mon+Wed in Sep: ${sepDates.length}`)
+  const kodamaDates = expectedDeepCleanDatesForLocation('Kodama Shinbashi', '2026-09')
+  assert(kodamaDates.length === weekdaysInMonth('2026-09', [2]).length, 'Kodama still Tuesday only')
 }
 
 async function main() {
