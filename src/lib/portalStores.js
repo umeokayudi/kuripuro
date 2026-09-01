@@ -31,7 +31,7 @@ export function getPortalStores() {
       email: portalEmailForStore(loc.name),
       location_address: loc.address || '',
       notes: loc.notes || '',
-      service_type: 'Basic Cleaning',
+      service_type: loc.deepOnly ? 'Deep Cleaning' : 'Basic Cleaning',
       days_of_week: loc.days.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]),
     }
   })

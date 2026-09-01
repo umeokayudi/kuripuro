@@ -3,6 +3,7 @@ import { getSupabaseEnv, assertSupabaseKey, supabaseHeaders } from './_supabaseE
 import {
   SCHEDULE_CLIENTS,
   OTP_BASIC_LOCATIONS,
+  OTP_DEEP_ONLY_NAMES,
   ATOMIC_LOCATION,
   DUSKIN_SITES,
   MATSUNAGA_SPOT,
@@ -49,16 +50,21 @@ async function main() {
 
   for (const loc of OTP_BASIC_LOCATIONS) {
     const days = daysToDowNames(loc.days)
+    const isDeepOnly = !!loc.deepOnly
     const payload = {
       location_address: loc.address || '',
-      service_type: 'Basic Cleaning',
-      price_per_visit: loc.pricePerVisit,
-      hours_per_visit: 2,
+      service_type: isDeepOnly ? 'Deep Cleaning' : 'Basic Cleaning',
+      price_per_visit: isDeepOnly ? (loc.deepCleanPrice || 5000) : loc.pricePerVisit,
+      hours_per_visit: isDeepOnly ? 3 : 2,
       days_of_week: days,
       visits_per_month: visitsPerMonth(loc.days),
-      monthly_revenue: monthlyRevenue(loc.pricePerVisit, loc.days),
-      notes: loc.notes,
-      training_checklist: checklistTemplateForJob({ title: loc.name }),
+      monthly_revenue: isDeepOnly
+        ? monthlyRevenue(loc.deepCleanPrice || 5000, loc.days)
+        : monthlyRevenue(loc.pricePerVisit, loc.days),
+      notes: isDeepOnly
+        ? `${loc.notes || ''} · Contrato: somente deep clean (terças)`.trim()
+        : loc.notes,
+      training_checklist: checklistTemplateForJob({ title: isDeepOnly ? `${loc.name} — Deep Clean` : loc.name }),
       is_active: true,
     }
     try {
@@ -142,6 +148,26 @@ async function main() {
     } catch (e) {
       stats.errors.push(`${svc.serviceType}: ${e.message}`)
     }
+  }
+
+  // Cancelar limpeza básica futura nos locais deep-only
+  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 10)
+  const deepOnlyFilter = OTP_DEEP_ONLY_NAMES.map(n => `title.ilike.${encodeURIComponent(`${n} — Basic%`)}`).join(',')
+  try {
+    const futureBasic = await sb(
+      'GET',
+      `jobs?select=id,title,scheduled_date&scheduled_date=gte.${today}&status=in.(assigned,in_progress)&or=(${deepOnlyFilter})`
+    )
+    if (futureBasic?.length) {
+      const ids = futureBasic.map(j => j.id).join(',')
+      await sb('PATCH', `jobs?id=in.(${ids})`, { status: 'cancelled' })
+      stats.cancelledBasicJobs = futureBasic.length
+      console.log(`Cancelled ${futureBasic.length} future basic cleaning jobs for deep-only OTP locations`)
+    } else {
+      stats.cancelledBasicJobs = 0
+    }
+  } catch (e) {
+    stats.errors.push(`cancel basic jobs: ${e.message}`)
   }
 
   console.log(JSON.stringify(stats, null, 2))
