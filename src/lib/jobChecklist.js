@@ -13,6 +13,7 @@ const DEEP_COMPONENT_CHECKLIST = {
   ac: 'AC Cleaning — filtros e unidade interna',
   grating: 'Grating — grelha limpa sem gordura',
   grease_trap: 'Grease Trap — esvaziado e higienizado',
+  stove: 'Stove — fogões limpos e sem gordura',
 }
 
 const BASE_ITEMS = [

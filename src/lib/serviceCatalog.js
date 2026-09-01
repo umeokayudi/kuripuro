@@ -10,15 +10,25 @@ export const SCHEDULE_CLIENTS = {
 const SUN = 0
 const MON = 1
 const TUE = 2
+const WED = 3
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
 const MON_SAT = [1, 2, 3, 4, 5, 6] // folga domingo
 const TUE_SUN = [0, 2, 3, 4, 5, 6] // folga segunda
-const TUE_ONLY = [TUE] // deep clean OTP — toda terça
+const MON_WED = [MON, WED] // deep clean OTP deep-only
+
+/** Manutenção no dia de folga — grease trap 2x/mês; demais 1x/mês */
+export const OTP_REST_DAY_MAINTENANCE = {
+  greaseTrap: 2,
+  stove: 1,
+  rangeHood: 1,
+  grating: 1,
+  ac: 1,
+}
 
 /** Limpeza básica diária — On The Planet */
 export const DEFAULT_DEEP_CLEAN_PRICE = 5000
 
-/** Contrato alterado: cancelaram limpeza básica — somente deep clean (terças) */
+/** Contrato deep-only: limpeza profunda seg+qua; manutenção no dia de folga */
 export const OTP_DEEP_ONLY_NAMES = [
   'Ibushio',
   'Nyu Ibushio',
@@ -31,11 +41,69 @@ export function isOtpDeepOnlyLocation(name) {
   return OTP_DEEP_ONLY_NAMES.some(loc => loc.toLowerCase() === n)
 }
 
+export function restDayForLocation(loc) {
+  if (loc?.restDay != null) return loc.restDay
+  const operating = new Set(loc?.operatingDays || loc?.days || [])
+  return ALL_DAYS.find(d => !operating.has(d))
+}
+
+export function otpDeepOnlyLocation(name) {
+  return OTP_BASIC_LOCATIONS.find(l => l.deepOnly && l.name === name) || null
+}
+
 export const OTP_BASIC_LOCATIONS = [
-  { name: 'Ibushio', deepOnly: true, address: 'https://www.google.com/maps/place/%E3%80%92105-0004+Tokyo,+Minato+City,+Shinbashi,+3+Chome%E2%88%9216%E2%88%9210+2F+%E7%87%BB%E7%94%B7/data=!4m2!3m1!1s0x60188bea2243a255:0x3335729416b3d811!18m1!1e1', notes: 'Key box: 0315', days: TUE_ONLY, pricePerVisit: 0, deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE },
-  { name: 'Nyu Ibushio', deepOnly: true, address: 'https://www.google.com/maps/place/%E3%80%92105-0004+Tokyo,+Minato+City,+Shinbashi,+4+Chome%E2%88%9214%E2%88%9214+1AUN%E3%83%93%E3%83%AB+2%E9%9A%8E+%E7%87%BB%E8%A3%BD%C3%97%E3%83%8F%E3%82%A4%E3%83%9C%E3%83%BC%E3%83%AB+%E3%83%8B%E3%83%A5%E3%83%BC%E3%82%A4%E3%83%96%E3%82%B7%E3%82%AA+%E6%96%B0%E6%A9%8B/data=!4m2!3m1!1s0x60188b03ade593e1:0x97fecfa767905aa0!18m1!1e1', notes: 'Key box: 0625', days: TUE_ONLY, pricePerVisit: 0, deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE },
-  { name: 'Horumon no Manmosu', deepOnly: true, address: 'https://www.google.com/maps/place/Hormonal+Mammoth,+AUN%E3%83%93%E3%83%AB+3%E9%9A%8E+4+Chome-14-1+Shinbashi,+Minato+City,+Tokyo+105-0004/data=!4m2!3m1!1s0x60188b00378ec33d:0x5bcc2d79007831e2!18m1!1e1', notes: 'Key box: 4840', days: TUE_ONLY, pricePerVisit: 0, deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE },
-  { name: 'Yakiniku Otoko Manmosu', deepOnly: true, address: 'https://www.google.com/maps/search/?api=1&query=%E7%84%BC%E8%82%89%E7%94%B7%E3%83%9E%E3%83%B3%E3%83%A2%E3%82%B9%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%AF%E5%8C%BA%E6%96%B0%E6%A9%8B3-19-4', notes: 'Key box: 0601', days: TUE_ONLY, pricePerVisit: 0, deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE },
+  {
+    name: 'Ibushio',
+    deepOnly: true,
+    operatingDays: MON_SAT,
+    restDay: SUN,
+    deepCleanDays: MON_WED,
+    maintenanceOnRestDay: OTP_REST_DAY_MAINTENANCE,
+    address: 'https://www.google.com/maps/place/%E3%80%92105-0004+Tokyo,+Minato+City,+Shinbashi,+3+Chome%E2%88%9216%E2%88%9210+2F+%E7%87%BB%E7%94%B7/data=!4m2!3m1!1s0x60188bea2243a255:0x3335729416b3d811!18m1!1e1',
+    notes: 'Key box: 0315 · Folga domingo · Deep seg+qua · Manutenção no domingo',
+    days: MON_WED,
+    pricePerVisit: 0,
+    deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE,
+  },
+  {
+    name: 'Nyu Ibushio',
+    deepOnly: true,
+    operatingDays: TUE_SUN,
+    restDay: MON,
+    deepCleanDays: MON_WED,
+    maintenanceOnRestDay: OTP_REST_DAY_MAINTENANCE,
+    address: 'https://www.google.com/maps/place/%E3%80%92105-0004+Tokyo,+Minato+City,+Shinbashi,+4+Chome%E2%88%9214%E2%88%9214+1AUN%E3%83%93%E3%83%AB+2%E9%9A%8E+%E7%87%BB%E8%A3%BD%C3%97%E3%83%8F%E3%82%A4%E3%83%9C%E3%83%BC%E3%83%AB+%E3%83%8B%E3%83%A5%E3%83%BC%E3%82%A4%E3%83%96%E3%82%B7%E3%82%AA+%E6%96%B0%E6%A9%8B/data=!4m2!3m1!1s0x60188b03ade593e1:0x97fecfa767905aa0!18m1!1e1',
+    notes: 'Key box: 0625 · Folga segunda · Deep seg+qua · Manutenção na segunda',
+    days: MON_WED,
+    pricePerVisit: 0,
+    deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE,
+  },
+  {
+    name: 'Horumon no Manmosu',
+    deepOnly: true,
+    operatingDays: TUE_SUN,
+    restDay: MON,
+    deepCleanDays: MON_WED,
+    maintenanceOnRestDay: OTP_REST_DAY_MAINTENANCE,
+    address: 'https://www.google.com/maps/place/Hormonal+Mammoth,+AUN%E3%83%93%E3%83%AB+3%E9%9A%8E+4+Chome-14-1+Shinbashi,+Minato+City,+Tokyo+105-0004/data=!4m2!3m1!1s0x60188b00378ec33d:0x5bcc2d79007831e2!18m1!1e1',
+    notes: 'Key box: 4840 · Folga segunda · Deep seg+qua · Manutenção na segunda',
+    days: MON_WED,
+    pricePerVisit: 0,
+    deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE,
+  },
+  {
+    name: 'Yakiniku Otoko Manmosu',
+    deepOnly: true,
+    operatingDays: TUE_SUN,
+    restDay: MON,
+    deepCleanDays: MON_WED,
+    maintenanceOnRestDay: OTP_REST_DAY_MAINTENANCE,
+    address: 'https://www.google.com/maps/search/?api=1&query=%E7%84%BC%E8%82%89%E7%94%B7%E3%83%9E%E3%83%B3%E3%83%A2%E3%82%B9%20%E6%9D%B1%E4%BA%AC%E9%83%BD%E6%B8%AF%E5%8C%BA%E6%96%B0%E6%A9%8B3-19-4',
+    notes: 'Key box: 0601 · Folga segunda · Deep seg+qua · Manutenção na segunda',
+    days: MON_WED,
+    pricePerVisit: 0,
+    deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE,
+  },
   { name: 'Nyu Sakana Yakio', address: 'https://www.google.com/maps/place/%E3%80%92105-0004+Tokyo,+Minato+City,+Shinbashi,+4+Chome%E2%88%9214%E2%88%921+AUN%E3%83%93%E3%83%AB+B1F,1F+%E3%83%8B%E3%83%A5%E3%83%BC%E3%82%B5%E3%82%AB%E3%83%8A%E3%83%A4%E3%82%AD%E3%82%AA/data=!4m2!3m1!1s0x60188bf114c1be87:0xb3de1028c1566a9c!18m1!1e1', notes: 'Key box B1: 1209', days: ALL_DAYS, pricePerVisit: 4000, deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE },
   { name: 'Kodama Shinbashi', address: 'https://www.google.com/maps/place/Uogosho+Kodama+The+Great+Fish+Merchant,+1F+A+4+Chome-19-10+Shinbashi,+Minato+City,+Tokyo+105-0004/data=!4m2!3m1!1s0x60188bc3da4fd7cd:0x2eaff7292663c436!18m1!1e1', notes: 'Key box: 0606', days: ALL_DAYS, pricePerVisit: 4000, deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE },
   { name: 'Kodama Kinshicho', address: 'https://www.google.com/maps/place/%E3%80%92130-0022+Tokyo,+Sumida+City,+Kotobashi,+3+Chome%E2%88%9213%E2%88%928+1F%E3%83%BBB+1F+%E9%AD%9A%E8%B1%AA%E5%95%86%E3%82%B3%E3%83%80%E3%83%9E%E9%8C%A6%E7%B8%84%E7%94%BA/data=!4m2!3m1!1s0x60188940d455d1d1:0xa93f3cb57bf2538c!18m1!1e1', notes: 'Key box: 5493', days: ALL_DAYS, pricePerVisit: 4000, deepCleanPrice: DEFAULT_DEEP_CLEAN_PRICE },
@@ -107,4 +175,9 @@ export const SEVEN_DAY_MONDAY_MORNING = ['Nyu Sakana Yakio', 'Kodama Shinbashi',
 /** Locais OTP com limpeza básica diária (exclui deep-only) */
 export function otpBasicScheduleLocations() {
   return OTP_BASIC_LOCATIONS.filter(loc => !loc.deepOnly)
+}
+
+/** Locais OTP deep-only (Ibushio, Manmosu, etc.) */
+export function otpDeepOnlyLocations() {
+  return OTP_BASIC_LOCATIONS.filter(loc => loc.deepOnly)
 }

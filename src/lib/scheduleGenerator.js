@@ -5,6 +5,7 @@ import {
   SCHEDULE_CLIENTS,
   OTP_BASIC_LOCATIONS,
   otpBasicScheduleLocations,
+  otpDeepOnlyLocations,
   ATOMIC_LOCATION,
   DUSKIN_SITES,
   SEVEN_DAY_MONDAY_MORNING,
@@ -53,6 +54,12 @@ export const EMPLOYEE_SCHEDULE_CONTRACTS = [
     detail: 'Todos os restaurantes OTP nos dias do contrato. Segunda: Atomic até 21:00.',
     template: 'otp_basic',
     mondayAtomic: true,
+  },
+  {
+    employeeId: '583d1ad6-1046-41db-8944-8f69120be41d',
+    label: 'OTP · deep-only seg+qua + manutenção folga',
+    detail: 'Ibushio, Nyu Ibushio, Horumon, Manmosu — deep seg+qua; grease trap 2x/mês; fogão, range hood, grelha e ar 1x/mês no dia de folga.',
+    template: 'otp_deep_only',
   },
   {
     employeeId: '583d1ad6-1046-41db-8944-8f69120be41d',
@@ -164,6 +171,50 @@ function duskinJobsForSunday(dateStr, emp, empId, jobIdStart) {
   return { jobs, nextId: jobId, add }
 }
 
+function restDayDatesInMonth(month, restDow) {
+  return getDaysInMonth(month).filter(d => d.getDay() === restDow).map(dateStrLocal)
+}
+
+function addOtpDeepOnlyMaintenance(month, contract, jobs, jobIdRef) {
+  const emp = contract.shortName
+  const empId = contract.employeeId
+
+  otpDeepOnlyLocations().forEach((loc, locIdx) => {
+    const restDates = restDayDatesInMonth(month, loc.restDay)
+  const greaseSlots = [0, 2]
+    greaseSlots.forEach((slot, i) => {
+      const date = restDates[slot]
+      if (!date) return
+      jobs.push(makeJob({
+        id: jobIdRef.value++,
+        date,
+        time: '09:00',
+        employee: emp,
+        empId,
+        location: loc,
+        seq: locIdx * 10 + i + 1,
+        serviceLabel: 'Grease Trap',
+        category: 'maintenance',
+      }))
+    })
+
+    const monthlyDate = restDates[1]
+    if (monthlyDate) {
+      jobs.push(makeJob({
+        id: jobIdRef.value++,
+        date: monthlyDate,
+        time: '10:30',
+        employee: emp,
+        empId,
+        location: loc,
+        seq: locIdx * 10 + 5,
+        serviceLabel: 'Stove + Range Hood + Grating + AC Cleaning',
+        category: 'maintenance',
+      }))
+    }
+  })
+}
+
 export function buildMonthSchedule(month, {
   contracts = [],
   locations = DEFAULT_LOCATIONS,
@@ -172,6 +223,14 @@ export function buildMonthSchedule(month, {
   const days = getDaysInMonth(month)
   const jobs = []
   let jobId = 1
+  const jobIdRef = { value: jobId }
+
+  contracts.forEach(contract => {
+    if (contract.template === 'otp_deep_only') {
+      addOtpDeepOnlyMaintenance(month, contract, jobs, jobIdRef)
+    }
+  })
+  jobId = jobIdRef.value
 
   const basicLocs = locations.filter(l =>
     l.name !== 'Atomic Bar' &&
@@ -225,6 +284,22 @@ export function buildMonthSchedule(month, {
             location: loc,
             seq: isMon ? i + 2 : i + 1,
             serviceLabel: 'Basic Cleaning',
+          }))
+        })
+      }
+
+      if (contract.template === 'otp_deep_only' && (dow === 1 || dow === 3)) {
+        otpDeepOnlyLocations().forEach((loc, i) => {
+          jobs.push(makeJob({
+            id: jobId++,
+            date: dateStr,
+            time: '00:30',
+            employee: emp,
+            empId,
+            location: loc,
+            seq: i + 1,
+            serviceLabel: 'Deep Clean',
+            category: 'deep',
           }))
         })
       }

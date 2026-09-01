@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { buildDeepCleanProgress, currentYearMonth, formatTuesday, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
+import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
@@ -103,12 +103,12 @@ export default function Dashboard() {
   const DetailModal = () => {
     if (!detailLoc && !detailTuesday) return null
     const title = detailLoc
-      ? `${detailLoc} — ${monthLabel}`
-      : fill(d.tuesdayTitle, { date: formatTuesday(detailTuesday, lang) })
+      ? `${detailLoc} — ${monthLabel}${deepProgress.byLocation[detailLoc]?.schedule ? ` (${deepProgress.byLocation[detailLoc].schedule})` : ''}`
+      : fill(d.tuesdayTitle, { date: formatScheduleDate(detailTuesday, lang) })
 
     const rows = detailLoc
-      ? deepProgress.tuesdays.map(date => ({ date, job: deepProgress.byLocation[detailLoc]?.byDate[date] || null, loc: detailLoc }))
-      : DEEP_CLEAN_LOCATIONS.map(loc => ({ date: detailTuesday, job: deepProgress.byLocation[loc]?.byDate[detailTuesday] || null, loc }))
+      ? (deepProgress.byLocation[detailLoc]?.expectedDates || []).map(date => ({ date, job: deepProgress.byLocation[detailLoc]?.byDate[date] || null, loc: detailLoc }))
+      : DEEP_CLEAN_LOCATIONS.filter(loc => deepProgress.byLocation[loc]?.expectedDates?.includes(detailTuesday)).map(loc => ({ date: detailTuesday, job: deepProgress.byLocation[loc]?.byDate[detailTuesday] || null, loc }))
 
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={closeDetail}>
@@ -124,10 +124,10 @@ export default function Dashboard() {
           <div style={{ display: 'grid', gap: 8 }}>
             {rows.map(({ date, job, loc }) => {
               const slot = tuesdaySlotInfo(job, slotLabels)
-              const dateLabel = detailLoc ? formatTuesday(date, lang) : loc
+              const dateLabel = detailLoc ? formatScheduleDate(date, lang) : loc
               const sub = detailLoc
                 ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : d.noJob)
-                : (job ? formatTuesday(date, lang) + ` · ${job.employee_name || '—'}` : d.noJob)
+                : (job ? formatScheduleDate(date, lang) + ` · ${job.employee_name || '—'}` : d.noJob)
               return (
                 <div key={`${loc}-${date}`} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: `${slot.color}10`, border: `1px solid ${slot.color}35` }}>
                   <div style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{slot.icon}</div>
@@ -253,7 +253,7 @@ export default function Dashboard() {
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{d.deepCleanTitle}</div>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-              {fill(d.deepContract, { tuesdays: deepProgress.tuesdays.length, month: monthLabel, expected: deepProgress.totals.expected })}
+              {fill(d.deepContract, { month: monthLabel, expected: deepProgress.totals.expected })}
             </div>
           </div>
           <input type="month" value={progressMonth} onChange={e => setProgressMonth(e.target.value)}
@@ -307,6 +307,7 @@ export default function Dashboard() {
               <button key={loc} type="button" onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }}
                 style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{data.schedule || 'Tue'}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
                   <span>{fill(d.doneCount, { done: data.completed, expected: data.expected })}</span>
                   <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{pct}%</span>

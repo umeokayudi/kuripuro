@@ -1,4 +1,10 @@
-import { OTP_BASIC_LOCATIONS, SCHEDULE_CLIENTS } from './serviceCatalog'
+import {
+  OTP_BASIC_LOCATIONS,
+  SCHEDULE_CLIENTS,
+  isOtpDeepOnlyLocation,
+  otpDeepOnlyLocations,
+  otpDeepOnlyLocation,
+} from './serviceCatalog'
 
 export const CLEANING_TYPES = {
   basic: { label: 'Basic cleaning', suffix: 'Basic Cleaning', short: 'Basic', color: '#60a5fa' },
@@ -10,12 +16,21 @@ const CLEANING_TYPES_JA = {
   deep: { label: '深層清掃', suffix: 'Deep Clean', short: '深層', color: '#fbbf24' },
 }
 
-/** Componentes do deep clean OTP (terça-feira / contrato) */
+/** Componentes do deep clean OTP */
 export const DEEP_CLEAN_COMPONENTS = [
   { id: 'range_hood', label: 'Range Hood', labelJa: 'レンジフード' },
   { id: 'ac', label: 'AC Cleaning', labelJa: 'エアコン清掃' },
   { id: 'grating', label: 'Grating', labelJa: 'グレーティング' },
   { id: 'grease_trap', label: 'Grease Trap', labelJa: 'グリストラップ' },
+]
+
+/** Manutenção no dia de folga (deep-only OTP) */
+export const REST_DAY_MAINTENANCE_COMPONENTS = [
+  { id: 'grease_trap', label: 'Grease Trap', timesPerMonth: 2 },
+  { id: 'stove', label: 'Stove', timesPerMonth: 1 },
+  { id: 'range_hood', label: 'Range Hood', timesPerMonth: 1 },
+  { id: 'grating', label: 'Grating', timesPerMonth: 1 },
+  { id: 'ac', label: 'AC Cleaning', timesPerMonth: 1 },
 ]
 
 export const ALL_DEEP_COMPONENT_IDS = DEEP_CLEAN_COMPONENTS.map(c => c.id)
@@ -32,6 +47,19 @@ export function deepComponentLabel(id, lang = 'en') {
 
 export const DEEP_CLEAN_LOCATIONS = OTP_BASIC_LOCATIONS.map(l => l.name)
 
+/** OTP com deep clean às terças (restaurantes com limpeza básica) */
+export const OTP_TUESDAY_DEEP_LOCATIONS = OTP_BASIC_LOCATIONS
+  .filter(l => !l.deepOnly)
+  .map(l => l.name)
+
+/** OTP deep-only — deep clean seg+qua */
+export const OTP_DEEP_ONLY_LOCATION_NAMES = otpDeepOnlyLocations().map(l => l.name)
+
+export const OTP_DEEP_CLEAN_DAYS = {
+  tuesday: [2],
+  monWed: [1, 3],
+}
+
 export const ONTHEPLANET_CLIENT_ID = SCHEDULE_CLIENTS.ontheplanet.id
 
 export const DEFAULT_DEEP_CLEAN_PRICE = 5000
@@ -43,7 +71,7 @@ export function locationNameFromTitle(title) {
 export function getCleaningType(job) {
   const t = `${job?.title || ''} ${job?.description || ''}`.toLowerCase()
   if (/deep\s*clean|profunda|limpeza profunda/.test(t)) return 'deep'
-  if (/range hood|grease trap|grating|ac cleaning|レンジフード|グリストラップ/.test(t)) return 'deep'
+  if (/range hood|grease trap|grating|ac cleaning|stove|fog[aã]o|レンジフード|グリストラップ|コンロ/.test(t)) return 'deep'
   return 'basic'
 }
 
@@ -122,14 +150,36 @@ export function isOnThePlanetJob(job) {
 }
 
 export function tuesdaysInMonth(yearMonth) {
+  return weekdaysInMonth(yearMonth, [2])
+}
+
+export function weekdaysInMonth(yearMonth, dows = []) {
   const [year, mon] = yearMonth.split('-').map(Number)
+  const want = new Set(dows)
   const dates = []
   const d = new Date(year, mon - 1, 1)
   while (d.getMonth() === mon - 1) {
-    if (d.getDay() === 2) dates.push(d.toISOString().slice(0, 10))
+    if (want.has(d.getDay())) dates.push(d.toISOString().slice(0, 10))
     d.setDate(d.getDate() + 1)
   }
   return dates
+}
+
+export function restDaysInMonth(yearMonth, restDow) {
+  return weekdaysInMonth(yearMonth, [restDow])
+}
+
+export function expectedDeepCleanDatesForLocation(locName, yearMonth) {
+  if (isOtpDeepOnlyLocation(locName)) {
+    const cfg = otpDeepOnlyLocation(locName)
+    return weekdaysInMonth(yearMonth, cfg?.deepCleanDays || OTP_DEEP_CLEAN_DAYS.monWed)
+  }
+  return tuesdaysInMonth(yearMonth)
+}
+
+export function deepCleanScheduleLabel(locName) {
+  if (isOtpDeepOnlyLocation(locName)) return 'Mon + Wed'
+  return 'Tue'
 }
 
 function matchLocation(title) {
@@ -137,10 +187,12 @@ function matchLocation(title) {
   return DEEP_CLEAN_LOCATIONS.find(loc => name === loc || name.startsWith(loc)) || null
 }
 
-/** Progresso mensal de deep clean On The Planet (contrato: toda terça, todos os restaurantes) */
+/** Progresso mensal de deep clean On The Planet */
 export function buildDeepCleanProgress(jobs, yearMonth) {
   const tuesdays = tuesdaysInMonth(yearMonth)
-  const expectedPerLocation = tuesdays.length
+  const mondays = weekdaysInMonth(yearMonth, [1])
+  const wednesdays = weekdaysInMonth(yearMonth, [3])
+  const slotDates = [...new Set([...tuesdays, ...mondays, ...wednesdays])].sort()
 
   const monthJobs = (jobs || []).filter(j =>
     j.scheduled_date?.startsWith(yearMonth)
@@ -155,12 +207,14 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
   let totalPending = 0
 
   DEEP_CLEAN_LOCATIONS.forEach(loc => {
+    const expectedDates = expectedDeepCleanDatesForLocation(loc, yearMonth)
     const locJobs = monthJobs.filter(j => matchLocation(j.title) === loc)
     const byDate = {}
-    tuesdays.forEach(d => { byDate[d] = locJobs.find(j => j.scheduled_date === d) || null })
+    expectedDates.forEach(d => { byDate[d] = locJobs.find(j => j.scheduled_date === d) || null })
 
     const completed = locJobs.filter(j => j.status === 'completed').length
     const pending = locJobs.filter(j => j.status === 'assigned' || j.status === 'in_progress').length
+    const expectedPerLocation = expectedDates.length
 
     byLocation[loc] = {
       expected: expectedPerLocation,
@@ -169,21 +223,26 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
       missing: Math.max(0, expectedPerLocation - locJobs.length),
       byDate,
       jobs: locJobs,
+      schedule: deepCleanScheduleLabel(loc),
+      expectedDates,
     }
     totalExpected += expectedPerLocation
     totalCompleted += completed
     totalPending += pending
   })
 
-  const tuesdaySummary = tuesdays.map(date => {
+  const tuesdaySummary = slotDates.map(date => {
     const dayJobs = monthJobs.filter(j => j.scheduled_date === date)
+    const expected = DEEP_CLEAN_LOCATIONS.filter(loc =>
+      expectedDeepCleanDatesForLocation(loc, yearMonth).includes(date)
+    ).length
     const done = dayJobs.filter(j => j.status === 'completed').length
-    return { date, expected: DEEP_CLEAN_LOCATIONS.length, done, total: dayJobs.length }
-  })
+    return { date, expected, done, total: dayJobs.length, dow: new Date(date + 'T12:00:00').getDay() }
+  }).filter(row => row.expected > 0)
 
   return {
     yearMonth,
-    tuesdays,
+    tuesdays: slotDates,
     byLocation,
     tuesdaySummary,
     totals: {
@@ -213,7 +272,12 @@ export function tuesdaySlotInfo(job, labels) {
   return { state: 'other', label: jobStatusLabel(job.status, labels?.status), icon: '·', color: 'var(--text3)' }
 }
 
-export function formatTuesday(date, lang = 'en') {
+export function formatScheduleDate(date, lang = 'en') {
   const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   return new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+/** @deprecated use formatScheduleDate */
+export function formatTuesday(date, lang = 'en') {
+  return formatScheduleDate(date, lang)
 }
