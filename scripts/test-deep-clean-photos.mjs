@@ -13,6 +13,7 @@ import {
 } from '../src/lib/cleaningType.js'
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
 import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../src/lib/jobReport.js'
+import { isOtpDeepOnlyLocation, otpBasicScheduleLocations } from '../src/lib/serviceCatalog.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -107,10 +108,24 @@ function testReportPhotos() {
   assert(!reportNeedsPhotoSync(merged, job), 'no sync after merge')
 }
 
+function testOtpDeepOnlyContracts() {
+  assert(isOtpDeepOnlyLocation('Ibushio'), 'Ibushio deep-only')
+  assert(isOtpDeepOnlyLocation('Nyu Ibushio'), 'Nyu Ibushio deep-only')
+  assert(isOtpDeepOnlyLocation('Horumon no Manmosu'), 'Horumon deep-only')
+  assert(isOtpDeepOnlyLocation('Yakiniku Otoko Manmosu'), 'Manmosu deep-only')
+  assert(!isOtpDeepOnlyLocation('Kodama Shinbashi'), 'Kodama still basic')
+
+  const basicLocs = otpBasicScheduleLocations().map(l => l.name)
+  assert(!basicLocs.includes('Ibushio'), 'Ibushio excluded from basic schedule')
+  assert(basicLocs.includes('Kodama Shinbashi'), 'Kodama in basic schedule')
+}
+
 async function main() {
   console.log('=== Deep clean + photo report unit tests ===\n')
   testCleaningType()
   console.log('✅ cleaningType')
+  testOtpDeepOnlyContracts()
+  console.log('✅ OTP deep-only contracts')
   testAddServiceOptions()
   console.log('✅ buildAddServiceOptions')
   testReportPhotos()

@@ -4,6 +4,7 @@ import {
   DUSKIN_SITES,
   MATSUNAGA_SPOT,
   SCHEDULE_CLIENTS,
+  isOtpDeepOnlyLocation,
 } from './serviceCatalog'
 import {
   locationNameFromTitle,
@@ -36,6 +37,7 @@ export function manualAddLocations() {
     deepCleanPrice: loc.deepCleanPrice || DEFAULT_DEEP_CLEAN_PRICE,
     scheduledTime: '00:30',
     group: 'OTP',
+    deepOnly: !!loc.deepOnly,
   }))
   const atomic = [{
     name: ATOMIC_LOCATION.name,
@@ -238,6 +240,10 @@ export async function employeeAddService(supabase, {
 }) {
   if (!employee?.id || !location?.name || !date) {
     return { ok: false, error: 'invalid_input' }
+  }
+
+  if (cleaningType === 'basic' && (location.deepOnly || isOtpDeepOnlyLocation(location.name))) {
+    return { ok: false, error: 'basic_not_available' }
   }
 
   if (cleaningType === 'deep' && (!deepComponents?.length)) {

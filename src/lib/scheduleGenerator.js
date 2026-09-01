@@ -4,9 +4,11 @@
 import {
   SCHEDULE_CLIENTS,
   OTP_BASIC_LOCATIONS,
+  otpBasicScheduleLocations,
   ATOMIC_LOCATION,
   DUSKIN_SITES,
   SEVEN_DAY_MONDAY_MORNING,
+  isOtpDeepOnlyLocation,
 } from './serviceCatalog.js'
 import { checklistTemplateForJob } from './jobChecklist.js'
 
@@ -15,7 +17,7 @@ export { OTP_BASIC_LOCATIONS, ATOMIC_LOCATION } from './serviceCatalog.js'
 
 /** @deprecated use OTP_BASIC_LOCATIONS — mantido para compat */
 export const DEFAULT_LOCATIONS = [
-  ...OTP_BASIC_LOCATIONS.map(l => ({
+  ...otpBasicScheduleLocations().map(l => ({
     name: l.name,
     address: l.address,
     notes: l.notes,
@@ -171,7 +173,11 @@ export function buildMonthSchedule(month, {
   const jobs = []
   let jobId = 1
 
-  const basicLocs = locations.filter(l => l.name !== 'Atomic Bar' && !/deep/i.test(l.serviceType || ''))
+  const basicLocs = locations.filter(l =>
+    l.name !== 'Atomic Bar' &&
+    !/deep/i.test(l.serviceType || '') &&
+    !isOtpDeepOnlyLocation(l.name)
+  )
   const atomicLoc = locations.find(l => l.name === 'Atomic Bar') || {
     ...ATOMIC_LOCATION,
     days: ATOMIC_LOCATION.days,

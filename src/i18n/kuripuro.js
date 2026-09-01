@@ -286,9 +286,7 @@ export const kuripuroEn = {
     deepComponentsTitle: 'Deep clean components',
     deepComponentsHint: 'Select at least one component. Full deep clean = all four.',
     deepComponentsRequired: 'Select at least one deep clean component',
-  },
-  client: {
-    portal: 'Client Portal',
+    basicNotAvailable: 'This location no longer has basic cleaning — use Deep Clean',
     welcome: 'Welcome',
     home: 'Home',
     schedule: 'Schedule',
@@ -664,9 +662,7 @@ export const kuripuroJa = {
     deepComponentsTitle: '深層清掃の項目',
     deepComponentsHint: '最低1つ選択してください。4つすべてで完全な深層清掃です。',
     deepComponentsRequired: '深層清掃の項目を1つ以上選択してください',
-  },
-  client: {
-    portal: 'クライアントポータル',
+    basicNotAvailable: 'この店舗は基本清掃の契約がありません — 深層清掃を選択してください',
     welcome: 'ようこそ',
     home: 'ホーム',
     schedule: 'スケジュール',

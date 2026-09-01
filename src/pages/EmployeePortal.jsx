@@ -461,6 +461,7 @@ export default function EmployeePortal() {
         else if (result.error === 'blocked') toast.error(e.addServiceBlocked)
         else if (result.error === 'transfer_race') toast.error(e.addServiceRace)
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
+        else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
@@ -1843,7 +1844,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   const locations = manualAddLocations()
   const visibleLocations = cleaningType === 'deep'
     ? locations.filter(loc => loc.group === 'OTP')
-    : locations
+    : locations.filter(loc => !loc.deepOnly)
   const options = buildAddServiceOptions(visibleLocations, todayJobs, employeeId, cleaningType)
   const q = search.trim().toLowerCase()
   const filtered = q
