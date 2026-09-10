@@ -4,6 +4,7 @@ import { useLang, fill } from '../hooks/useLang'
 import { avgStars, starsDisplay } from '../lib/satisfaction'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
+import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
@@ -130,6 +131,18 @@ export default function ClientFeedback() {
     )
   }
 
+  const renderClientPhoto = (url) => {
+    if (!url) return null
+    return (
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{f.clientPhoto}</div>
+        <button type="button" onClick={() => setLightbox(url)} style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>
+          <img src={viewablePhotoUrl(url)} alt="" style={{ width: 72, height: 72, borderRadius: 10, objectFit: 'cover' }} />
+        </button>
+      </div>
+    )
+  }
+
   const tabLabel = {
     ratings: f.tabRatings,
     complaints: f.tabComplaints,
@@ -180,6 +193,7 @@ export default function ClientFeedback() {
                 <div style={{ fontSize: 18, color: '#EF9F27', fontWeight: 700 }}>{starsDisplay(r.stars)}</div>
               </div>
               {r.comment && <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 8, lineHeight: 1.5 }}>{r.comment}</div>}
+              {renderClientPhoto(r.photo_url)}
               {renderJobPhotos(r.job_id)}
             </div>
           ))}
@@ -197,6 +211,7 @@ export default function ClientFeedback() {
               </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>{row.category} · {row.employee_name || '—'} · {new Date(row.created_at).toLocaleDateString()}</div>
               <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>
+              {renderClientPhoto(row.photo_url)}
               {renderJobPhotos(row.job_id)}
               <textarea value={draft(row.id) || row.admin_response || ''} onChange={e => setResponseDraft(d => ({ ...d, [row.id]: e.target.value }))} placeholder={f.adminResponse} rows={2} style={{ width: '100%', marginBottom: 8 }} />
               <div style={{ display: 'flex', gap: 8 }}>

@@ -79,6 +79,8 @@ const STATEMENTS = [
     created_at timestamptz default now(),
     resolved_at timestamptz
   )`,
+  `alter table client_complaints add column if not exists photo_url text`,
+  `alter table client_ratings add column if not exists photo_url text`,
   `alter table service_reports add column if not exists client_id uuid references clients(id)`,
   `alter table service_reports add column if not exists location_name text`,
   `alter table service_reports add column if not exists photo_comment text`,

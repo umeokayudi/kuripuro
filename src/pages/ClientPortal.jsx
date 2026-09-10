@@ -12,6 +12,7 @@ import {
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
+import { uploadJobPhoto } from '../lib/uploadPhoto'
 import './client-portal.css'
 
 function sanitizePostgrestToken(value) {
@@ -85,6 +86,11 @@ export default function ClientPortal() {
   const [ratingForm, setRatingForm] = useState({ stars: 5, comment: '' })
   const [complimentForm, setComplimentForm] = useState({ job_id: '', message: '' })
   const [submittingRating, setSubmittingRating] = useState(false)
+  const [submittingComplaint, setSubmittingComplaint] = useState(false)
+  const [complaintPhoto, setComplaintPhoto] = useState(null)
+  const [complaintPhotoPreview, setComplaintPhotoPreview] = useState(null)
+  const [ratingPhoto, setRatingPhoto] = useState(null)
+  const [ratingPhotoPreview, setRatingPhotoPreview] = useState(null)
   const [credForm, setCredForm] = useState({ currentPassword: '', newEmail: '', newPassword: '' })
   const [savingCreds, setSavingCreds] = useState(false)
 
@@ -183,6 +189,48 @@ export default function ClientPortal() {
     else setRatingForm({ stars: 5, comment: '' })
   }, [selectedVisit?.id, ratings])
 
+  useEffect(() => {
+    setRatingPhoto(null)
+    setRatingPhotoPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+  }, [selectedVisit?.id])
+
+  useEffect(() => () => {
+    if (complaintPhotoPreview) URL.revokeObjectURL(complaintPhotoPreview)
+    if (ratingPhotoPreview) URL.revokeObjectURL(ratingPhotoPreview)
+  }, [complaintPhotoPreview, ratingPhotoPreview])
+
+  const clearComplaintPhoto = () => {
+    setComplaintPhoto(null)
+    if (complaintPhotoPreview) URL.revokeObjectURL(complaintPhotoPreview)
+    setComplaintPhotoPreview(null)
+  }
+
+  const clearRatingPhoto = () => {
+    setRatingPhoto(null)
+    if (ratingPhotoPreview) URL.revokeObjectURL(ratingPhotoPreview)
+    setRatingPhotoPreview(null)
+  }
+
+  const pickComplaintPhoto = (file) => {
+    clearComplaintPhoto()
+    setComplaintPhoto(file)
+    setComplaintPhotoPreview(URL.createObjectURL(file))
+  }
+
+  const pickRatingPhoto = (file) => {
+    clearRatingPhoto()
+    setRatingPhoto(file)
+    setRatingPhotoPreview(URL.createObjectURL(file))
+  }
+
+  const uploadFeedbackPhoto = async (folder, id, file) => {
+    if (!file) return null
+    return uploadJobPhoto(`client-portal/${folder}/${id}.jpg`, file)
+  }
+
   const filteredVisits = useMemo(() => {
     const done = jobs.filter(j => j.status === 'completed')
     return done.filter(j => j.scheduled_date >= visitRange.from && j.scheduled_date <= visitRange.to)
@@ -227,32 +275,80 @@ export default function ClientPortal() {
 
   const submitComplaint = async () => {
     if (!complaintForm.description.trim()) return toast.error(c.complaintDesc)
+    if (submittingComplaint) return
+    setSubmittingComplaint(true)
     const job = jobs.find(j => j.id === complaintForm.job_id)
-    const { error } = await supabase.from('client_complaints').insert({
-      client_id: user.client_id, client_user_id: user.id, job_id: complaintForm.job_id || null,
-      location_name: job ? locationFromJob(job) : user.location_name, employee_name: job?.employee_name || null,
-      category: complaintForm.category, description: complaintForm.description.trim(), status: 'open',
-    })
-    if (error) return toast.error(error.message)
-    toast.success(c.complaintSent)
-    setComplaintForm({ job_id: '', category: 'quality', description: '' })
-    setShowComplaintForm(false)
-    loadAll({ silent: true })
+    const complaintId = crypto.randomUUID()
+    try {
+      let photo_url = null
+      if (complaintPhoto) {
+        photo_url = await uploadFeedbackPhoto('complaints', complaintId, complaintPhoto)
+      }
+      const payload = {
+        id: complaintId,
+        client_id: user.client_id,
+        client_user_id: user.id,
+        job_id: complaintForm.job_id || null,
+        location_name: job ? locationFromJob(job) : user.location_name,
+        employee_name: job?.employee_name || null,
+        category: complaintForm.category,
+        description: complaintForm.description.trim(),
+        status: 'open',
+        photo_url,
+      }
+      let { error } = await supabase.from('client_complaints').insert(payload)
+      if (error?.message?.includes('photo_url')) {
+        const { photo_url: _drop, ...withoutPhoto } = payload
+        ;({ error } = await supabase.from('client_complaints').insert(withoutPhoto))
+      }
+      if (error) throw error
+      toast.success(c.complaintSent)
+      setComplaintForm({ job_id: '', category: 'quality', description: '' })
+      clearComplaintPhoto()
+      setShowComplaintForm(false)
+      loadAll({ silent: true })
+    } catch (err) {
+      toast.error(err?.message || 'Failed to submit complaint')
+    } finally {
+      setSubmittingComplaint(false)
+    }
   }
 
   const submitRating = async (job) => {
     if (!ratingForm.stars) return
+    if (submittingRating) return
     setSubmittingRating(true)
-    const { error } = await supabase.from('client_ratings').upsert({
-      client_id: user.client_id, client_user_id: user.id, job_id: job.id,
-      employee_name: job.employee_name, location_name: locationFromJob(job),
-      stars: ratingForm.stars, comment: ratingForm.comment.trim() || null,
-    }, { onConflict: 'job_id' })
-    setSubmittingRating(false)
-    if (error) return toast.error(error.message)
-    toast.success(c.ratingSent)
-    setRatingForm({ stars: 5, comment: '' })
-    loadAll({ silent: true })
+    const existing = ratings.find(r => r.job_id === job.id)
+    try {
+      let photo_url = existing?.photo_url || null
+      if (ratingPhoto) {
+        photo_url = await uploadFeedbackPhoto('ratings', job.id, ratingPhoto)
+      }
+      const payload = {
+        client_id: user.client_id,
+        client_user_id: user.id,
+        job_id: job.id,
+        employee_name: job.employee_name,
+        location_name: locationFromJob(job),
+        stars: ratingForm.stars,
+        comment: ratingForm.comment.trim() || null,
+        photo_url,
+      }
+      let { error } = await supabase.from('client_ratings').upsert(payload, { onConflict: 'job_id' })
+      if (error?.message?.includes('photo_url')) {
+        const { photo_url: _drop, ...withoutPhoto } = payload
+        ;({ error } = await supabase.from('client_ratings').upsert(withoutPhoto, { onConflict: 'job_id' }))
+      }
+      if (error) throw error
+      toast.success(c.ratingSent)
+      setRatingForm({ stars: 5, comment: '' })
+      clearRatingPhoto()
+      loadAll({ silent: true })
+    } catch (err) {
+      toast.error(err?.message || 'Failed to submit rating')
+    } finally {
+      setSubmittingRating(false)
+    }
   }
 
   const submitCompliment = async () => {
@@ -395,6 +491,17 @@ export default function ClientPortal() {
                 ))}
               </div>
               <textarea className="cp-textarea" value={ratingForm.comment} onChange={e => setRatingForm(f => ({ ...f, comment: e.target.value }))} placeholder={c.ratingComment} rows={2} style={{ marginBottom: 12 }} />
+              <FeedbackPhotoField
+                label={c.ratingPhotoOptional}
+                attachLabel={c.attachPhotoOptional}
+                removeLabel={c.removePhoto}
+                file={ratingPhoto}
+                preview={ratingPhotoPreview}
+                existingUrl={ratingForJob(selectedVisit.id)?.photo_url}
+                onPick={pickRatingPhoto}
+                onClear={clearRatingPhoto}
+                onViewExisting={setLightbox}
+              />
               <button type="button" className="cp-btn cp-btn-gold" onClick={() => submitRating(selectedVisit)} disabled={submittingRating}>
                 {ratingForJob(selectedVisit.id) ? c.updateRating : c.submitRating}
               </button>
@@ -685,7 +792,18 @@ export default function ClientPortal() {
                           <span className="cp-label">{c.complaintDesc}</span>
                           <textarea className="cp-textarea" value={complaintForm.description} onChange={e => setComplaintForm(f => ({ ...f, description: e.target.value }))} rows={4} />
                         </div>
-                        <button type="button" className="cp-btn cp-btn-gold" onClick={submitComplaint}>{c.submitComplaint}</button>
+                        <FeedbackPhotoField
+                          label={c.attachPhotoOptional}
+                          attachLabel={c.attachPhotoOptional}
+                          removeLabel={c.removePhoto}
+                          file={complaintPhoto}
+                          preview={complaintPhotoPreview}
+                          onPick={pickComplaintPhoto}
+                          onClear={clearComplaintPhoto}
+                        />
+                        <button type="button" className="cp-btn cp-btn-gold" onClick={submitComplaint} disabled={submittingComplaint}>
+                          {submittingComplaint ? c.loading : c.submitComplaint}
+                        </button>
                       </div>
                     )}
                     <div className="cp-section-title">{c.complaintHistory}</div>
@@ -697,6 +815,11 @@ export default function ClientPortal() {
                         </div>
                         <div className="cp-card-date" style={{ margin: '8px 0' }}>{cp.location_name} · {new Date(cp.created_at).toLocaleDateString('ja-JP')}</div>
                         <div style={{ fontSize: 14, lineHeight: 1.5 }}>{cp.description}</div>
+                        {cp.photo_url && (
+                          <button type="button" onClick={() => setLightbox(cp.photo_url)} style={{ marginTop: 10, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>
+                            <img src={viewablePhotoUrl(cp.photo_url)} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: 'cover' }} />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </>
@@ -826,6 +949,53 @@ export default function ClientPortal() {
             </nav>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function FeedbackPhotoField({
+  label,
+  attachLabel,
+  removeLabel,
+  file,
+  preview,
+  existingUrl,
+  onPick,
+  onClear,
+  onViewExisting,
+}) {
+  const thumb = preview || (existingUrl ? viewablePhotoUrl(existingUrl) : null)
+  return (
+    <div className="cp-field">
+      <span className="cp-label">{label}</span>
+      {thumb && (
+        <button
+          type="button"
+          onClick={() => existingUrl && !file && onViewExisting?.(existingUrl)}
+          style={{ display: 'block', marginBottom: 8, padding: 0, border: 'none', background: 'none', cursor: existingUrl && !file && onViewExisting ? 'pointer' : 'default' }}
+        >
+          <img src={thumb} alt="" style={{ width: 72, height: 72, borderRadius: 10, objectFit: 'cover' }} />
+        </button>
+      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={{ display: 'inline-block', padding: '10px 14px', borderRadius: 10, border: '1px dashed rgba(255,255,255,0.2)', color: file ? '#4ade80' : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: 13 }}>
+          {file ? `✅ ${file.name.slice(0, 22)}` : `📷 ${attachLabel}`}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) onPick(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
+        {file && (
+          <button type="button" className="cp-btn" onClick={onClear}>{removeLabel}</button>
+        )}
       </div>
     </div>
   )
