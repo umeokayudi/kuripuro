@@ -413,7 +413,7 @@ export default function Clients() {
                   <div className="form-group"><label>Contact Name *</label><input value={portalForm.contact_name} onChange={e=>setPortalForm(f=>({...f,contact_name:e.target.value}))} placeholder="Tanaka Hiroshi" /></div>
                   <div className="form-group"><label>Email *</label><input type="email" value={portalForm.email} onChange={e=>setPortalForm(f=>({...f,email:e.target.value}))} /></div>
                   <div className="form-group"><label>Password *</label><input type="text" value={portalForm.password} onChange={e=>setPortalForm(f=>({...f,password:e.target.value}))} placeholder="min 6 chars" /></div>
-                  <div className="form-group"><label>Location (optional)</label>
+                  <div className="form-group"><label>店舗（任意）</label>
                     <select value={portalForm.location_name} onChange={e=>setPortalForm(f=>({...f,location_name:e.target.value}))}>
                       <option value="">All locations</option>
                       {contracts.map((ct,i)=><option key={i} value={ct.location_name}>{ct.location_name}</option>)}
