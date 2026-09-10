@@ -1,6 +1,8 @@
 // Cria tabelas do portal do cliente no Supabase (DDL)
 // Requer SUPABASE_DB_URL na Vercel (Settings → Database → Connection string URI)
 
+import { requireAdminSecretStrict } from './_auth.js'
+
 const STATEMENTS = [
   `create table if not exists client_users (
     id uuid primary key default gen_random_uuid(),
@@ -122,6 +124,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'POST only' })
   }
+
+  if (!requireAdminSecretStrict(req, res)) return
 
   const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL
   if (!dbUrl) {

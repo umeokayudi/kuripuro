@@ -4,15 +4,19 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
 import { fmtDuration } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
-import StorageImage from '../components/StorageImage'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
 } from '../lib/clientPortal'
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
+import { tokyoToday } from '../lib/dates'
 import './client-portal.css'
 
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+function sanitizePostgrestToken(value) {
+  return String(value || '').replace(/[%(),.\\]/g, '').trim()
+}
 
 const filterByLocation = (rows, locationName) => {
   if (!locationName) return rows || []
@@ -75,8 +79,12 @@ export default function ClientPortal() {
     const since = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
 
     try {
+      const locToken = sanitizePostgrestToken(user.location_name)
+      const locOrFilter = locToken
+        ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${locToken}%)`
+        : `client_id.eq.${user.client_id}`
       const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
-        supabase.from('jobs').select('*').eq('client_id', user.client_id).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
+        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
         supabase.from('service_contracts').select('location_name').eq('client_id', user.client_id).eq('is_active', true),
         supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at').limit(100),
         supabase.from('client_complaints').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
@@ -112,9 +120,11 @@ export default function ClientPortal() {
 
   const markMessagesRead = useCallback(async () => {
     if (!user?.client_id) return
-    await supabase.from('client_messages').update({ read: true }).eq('client_id', user.client_id).eq('sender', 'admin').eq('read', false)
+    let q = supabase.from('client_messages').update({ read: true }).eq('client_id', user.client_id).eq('sender', 'admin').eq('read', false)
+    if (user.location_name) q = q.eq('location_name', user.location_name)
+    await q
     setUnreadMsgs(0)
-  }, [user?.client_id])
+  }, [user?.client_id, user?.location_name])
 
   useEffect(() => {
     if (!localStorage.getItem('kp_lang') && lang !== 'ja') switchLang('ja')
@@ -297,6 +307,18 @@ export default function ClientPortal() {
             </div>
           </div>
         )}
+        {job.status === 'completed' && (job.photo_start_url || job.photo_end_url) && (
+          <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
+            <JobPhotos
+              photoStartUrl={job.photo_start_url}
+              photoEndUrl={job.photo_end_url}
+              beforeLabel={c.before}
+              afterLabel={c.after}
+              size={52}
+              onPhotoClick={setLightbox}
+            />
+          </div>
+        )}
         {onClick && <div className="cp-card-link">{c.viewDetails} →</div>}
         {rating && <div className="cp-stars">{'★'.repeat(rating.stars)}{'☆'.repeat(5 - rating.stars)}</div>}
       </div>
@@ -345,20 +367,20 @@ export default function ClientPortal() {
             {(selectedVisit.photo_start_url || selectedVisit.photo_end_url) && (
               <div className="cp-field">
                 <span className="cp-label">{c.photos}</span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <JobPhotos
+                  photoStartUrl={selectedVisit.photo_start_url}
+                  photoEndUrl={selectedVisit.photo_end_url}
+                  beforeLabel={c.before}
+                  afterLabel={c.after}
+                  variant="full"
+                  onPhotoClick={setLightbox}
+                />
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   {selectedVisit.photo_start_url && (
-                    <div>
-                      <div className="cp-time-lbl" style={{ marginBottom: 6 }}>{c.before}</div>
-                      <StorageImage url={selectedVisit.photo_start_url} alt={c.before} onClick={() => setLightbox(selectedVisit.photo_start_url)} />
-                      <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ marginTop: 8, display: 'block', textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'}</a>
-                    </div>
+                    <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.before})</a>
                   )}
                   {selectedVisit.photo_end_url && (
-                    <div>
-                      <div className="cp-time-lbl" style={{ marginBottom: 6 }}>{c.after}</div>
-                      <StorageImage url={selectedVisit.photo_end_url} alt={c.after} onClick={() => setLightbox(selectedVisit.photo_end_url)} />
-                      <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ marginTop: 8, display: 'block', textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'}</a>
-                    </div>
+                    <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.after})</a>
                   )}
                 </div>
               </div>
@@ -381,10 +403,7 @@ export default function ClientPortal() {
       )}
 
       {lightbox && (
-        <div className="cp-lightbox" onClick={() => setLightbox(null)}>
-          <button type="button" className="cp-logout" style={{ position: 'absolute', top: 16, right: 16 }} onClick={() => setLightbox(null)}>✕ {c.close}</button>
-          <img src={viewablePhotoUrl(lightbox)} alt="" onClick={e => e.stopPropagation()} />
-        </div>
+        <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={c.close} />
       )}
 
       <div className="cp-layout">

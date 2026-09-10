@@ -2,8 +2,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { jobToServiceReport, fmtDuration, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
-import StorageImage from '../components/StorageImage'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill } from '../hooks/useLang'
+import { apiPost } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 
 function typeBadge(type, tr) {
@@ -120,12 +122,8 @@ export default function Reports() {
     const label = `${report.employee_name} · ${report.client_name || report.job_title} · ${report.report_date}`
     if (!confirm(fill(tr.deleteConfirm, { label }))) return
 
-    const [{ error: srErr }, { error: jobErr }] = await Promise.all([
-      supabase.from('service_reports').delete().eq('job_id', report.job_id),
-      supabase.from('jobs').delete().eq('id', report.job_id),
-    ])
-    if (jobErr) { toast.error(jobErr.message); return }
-    if (srErr) toast.error(srErr.message)
+    const { error: srErr } = await supabase.from('service_reports').delete().eq('job_id', report.job_id)
+    if (srErr) { toast.error(srErr.message); return }
 
     setReports(prev => prev.filter(r => r.job_id !== report.job_id))
     if (selected?.job_id === report.job_id) setSelected(null)
@@ -136,10 +134,10 @@ export default function Reports() {
     setAiLoading(true)
     setAiAnalysis('')
     try {
-      const resp = await fetch('/api/analyze-reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: filterDays, employeeName: filterEmp || undefined, lang }),
+      const resp = await apiPost('/api/analyze-reports', {
+        days: filterDays,
+        employeeName: filterEmp || undefined,
+        lang,
       })
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
@@ -231,7 +229,19 @@ export default function Reports() {
                     <td>{typeBadge(r.report_type, tr)}</td>
                     <td>{fmtDuration(r.duration_min, lang)}</td>
                     <td>{r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</td>
-                    <td>{r.photo_ai_score != null ? `${r.photo_ai_score}/10` : (r.photo_after_url || r.photo_before_url) ? '📷' : '—'}</td>
+                    <td>
+                      {r.photo_ai_score != null && <span style={{ marginRight: 6 }}>{r.photo_ai_score}/10</span>}
+                      {(r.photo_after_url || r.photo_before_url) ? (
+                        <JobPhotos
+                          photoStartUrl={r.photo_before_url}
+                          photoEndUrl={r.photo_after_url}
+                          beforeLabel={tr.before}
+                          afterLabel={tr.after}
+                          size={44}
+                          onPhotoClick={setLightbox}
+                        />
+                      ) : (r.photo_ai_score == null ? '—' : null)}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => setSelected(r)}>{tr.read}</button>
@@ -298,20 +308,20 @@ export default function Reports() {
             {(selected.photo_before_url || selected.photo_after_url) && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>{tr.servicePhotos}</div>
-                <div className="grid-2" style={{ gap: 8 }}>
+                <JobPhotos
+                  photoStartUrl={selected.photo_before_url}
+                  photoEndUrl={selected.photo_after_url}
+                  beforeLabel={tr.before}
+                  afterLabel={tr.after}
+                  variant="full"
+                  onPhotoClick={setLightbox}
+                />
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   {selected.photo_before_url && (
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.before}</div>
-                      <StorageImage url={selected.photo_before_url} alt={tr.before} onClick={() => setLightbox(selected.photo_before_url)} />
-                      <a href={viewablePhotoUrl(selected.photo_before_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ marginTop: 6, width: '100%' }}>{tr.openFullscreen}</a>
-                    </div>
+                    <a href={viewablePhotoUrl(selected.photo_before_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ flex: 1 }}>{tr.openFullscreen} ({tr.before})</a>
                   )}
                   {selected.photo_after_url && (
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.after}</div>
-                      <StorageImage url={selected.photo_after_url} alt={tr.after} onClick={() => setLightbox(selected.photo_after_url)} />
-                      <a href={viewablePhotoUrl(selected.photo_after_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ marginTop: 6, width: '100%' }}>{tr.openFullscreen}</a>
-                    </div>
+                    <a href={viewablePhotoUrl(selected.photo_after_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ flex: 1 }}>{tr.openFullscreen} ({tr.after})</a>
                   )}
                 </div>
               </div>
@@ -324,20 +334,7 @@ export default function Reports() {
         </div>
       )}
 
-      {lightbox && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
-          onClick={() => setLightbox(null)}
-        >
-          <button onClick={() => setLightbox(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}>✕ {tr.close}</button>
-          <img
-            src={viewablePhotoUrl(lightbox)}
-            alt=""
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }}
-          />
-        </div>
-      )}
+      <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={tr.close} />
     </div>
   )
 }

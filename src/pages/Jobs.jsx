@@ -7,6 +7,8 @@ import {
 } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
@@ -142,6 +144,11 @@ function DayScheduleView({ onClose }) {
   const todayStr = toDateStr(new Date())
 
   const handleReassign = async (jobId, empId) => {
+    if (!empId) {
+      await supabase.from('jobs').update({ employee_id: null, employee_name: null }).eq('id', jobId)
+      loadJobs()
+      return
+    }
     const emp = employees.find(e => e.id === empId)
     await supabase.from('jobs').update({ employee_id: empId, employee_name: emp?.full_name }).eq('id', jobId)
     loadJobs()
@@ -244,6 +251,7 @@ function DayScheduleView({ onClose }) {
             {jt.employee}
             <select value={j.employee_id || ''} onChange={e => handleReassign(j.id, e.target.value)}
               style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}>
+              <option value="">{jt.unassigned}</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
             </select>
           </label>
@@ -449,6 +457,7 @@ export default function Jobs() {
   const [editingLoc, setEditingLoc] = useState(null)
   const [loading, setLoading] = useState(true)
   const [geocoding, setGeocoding] = useState(false)
+  const [lightbox, setLightbox] = useState(null)
   const [form, setForm] = useState({
     title:'', client_id:'', client_name:'', employee_id:'', employee_name:'',
     scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'',
@@ -655,6 +664,20 @@ export default function Jobs() {
                 </div>
               )}
 
+              {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{jt.servicePhotos}</div>
+                  <JobPhotos
+                    photoStartUrl={j.photo_start_url}
+                    photoEndUrl={j.photo_end_url}
+                    beforeLabel={jt.before}
+                    afterLabel={jt.after}
+                    variant="full"
+                    onPhotoClick={setLightbox}
+                  />
+                </div>
+              )}
+
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {jt.type}:
@@ -789,6 +812,8 @@ export default function Jobs() {
       )}
 
       {tab==='locations' && <LocationsTab />}
+
+      <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={t.reports?.close || 'Close'} />
     </div>
   )
 }

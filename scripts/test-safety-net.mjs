@@ -32,6 +32,7 @@ function testNoHooksViolationPatterns() {
     'src/pages/EmployeePortal.jsx',
     'src/pages/LiveTracking.jsx',
     'src/pages/AdminChat.jsx',
+    'src/components/JobPhotos.jsx',
   ]
   for (const file of files) {
     const src = readFileSync(file, 'utf8')

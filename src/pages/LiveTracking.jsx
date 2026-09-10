@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { apiFetch } from '../lib/apiFetch'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 
 export default function LiveTracking() {
@@ -11,10 +14,11 @@ export default function LiveTracking() {
   const [photoInfo, setPhotoInfo] = useState(null)
   const [cleaning, setCleaning] = useState(false)
   const [retros, setRetros] = useState([])
+  const [lightbox, setLightbox] = useState(null)
 
   const checkPhotos = async () => {
     try {
-      const r = await fetch('/api/cleanup-photos')
+      const r = await apiFetch('/api/cleanup-photos')
       if (!r.ok) throw new Error('HTTP ' + r.status)
       setPhotoInfo(await r.json())
     } catch(e) { setPhotoInfo({ error: e.message }) }
@@ -24,7 +28,7 @@ export default function LiveTracking() {
     if (!window.confirm('Apagar as fotos de jobs concluídos há mais de 60 dias? Isso não pode ser desfeito.')) return
     setCleaning(true)
     try {
-      const r = await fetch('/api/cleanup-photos', { method: 'POST' })
+      const r = await apiFetch('/api/cleanup-photos', { method: 'POST' })
       if (!r.ok) throw new Error('HTTP ' + r.status)
       const res = await r.json()
       if (res.error) throw new Error(res.error)
@@ -38,7 +42,7 @@ export default function LiveTracking() {
 
   const loadRetros = async () => {
     const { data } = await supabase.from('jobs')
-      .select('id,title,scheduled_date,employee_name,retro_report,retro_ai_summary,retro_value,value,checklist_done,checklist_total,admin_reviewed')
+      .select('id,title,scheduled_date,employee_name,retro_report,retro_ai_summary,retro_value,value,checklist_done,checklist_total,admin_reviewed,photo_start_url,photo_end_url')
       .not('retro_report','is',null).eq('admin_reviewed',false)
       .order('scheduled_date',{ascending:false}).limit(20)
     setRetros(data||[])
@@ -53,12 +57,16 @@ export default function LiveTracking() {
 
   const load = async () => {
     loadRetros()
-    const [e, j] = await Promise.all([
+    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+    const [e, activeRes, completedTodayRes] = await Promise.all([
       supabase.from('employees').select('id,full_name,score,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').in('status',['assigned','in_progress']).order('scheduled_date'),
+      supabase.from('jobs').select('*').eq('status','completed').eq('scheduled_date', today),
     ])
     setEmployees(e.data||[])
-    setJobs(j.data||[])
+    const byId = new Map()
+    for (const j of [...(activeRes.data||[]), ...(completedTodayRes.data||[])]) byId.set(j.id, j)
+    setJobs([...byId.values()])
     setLoading(false)
   }
 
@@ -123,6 +131,18 @@ export default function LiveTracking() {
                   <div style={{fontSize:12,color:'var(--text2)',marginTop:4,fontStyle:'italic'}}>"{r.retro_report}"</div>
                   <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>🤖 {r.retro_ai_summary} — {r.checklist_done}/{r.checklist_total} itens</div>
                   <div style={{fontSize:12,marginTop:4}}><b>Pago: ¥{Number(r.retro_value||0).toLocaleString()}</b> {Number(r.value||0)>Number(r.retro_value||0)&&<span style={{color:'var(--red)'}}>(de ¥{Number(r.value).toLocaleString()})</span>}</div>
+                  {(r.photo_start_url || r.photo_end_url) && (
+                    <div style={{ marginTop: 8 }}>
+                      <JobPhotos
+                        photoStartUrl={r.photo_start_url}
+                        photoEndUrl={r.photo_end_url}
+                        beforeLabel="Antes"
+                        afterLabel="Depois"
+                        size={52}
+                        onPhotoClick={setLightbox}
+                      />
+                    </div>
+                  )}
                 </div>
                 <button onClick={()=>approveRetro(r.id)} className="btn btn-sm" style={{background:'#16a34a',color:'#fff',border:'none',flexShrink:0}}>✓ Revisado</button>
               </div>
@@ -212,6 +232,16 @@ export default function LiveTracking() {
                   </div>
                 </div>
                 <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
+                    <JobPhotos
+                      photoStartUrl={j.photo_start_url}
+                      photoEndUrl={j.photo_end_url}
+                      beforeLabel="Antes"
+                      afterLabel="Depois"
+                      size={40}
+                      onPhotoClick={setLightbox}
+                    />
+                  )}
                   {hasMapsLink(j.address, j.title)&&<a href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" className="btn btn-sm">🗺</a>}
                   <span className={`badge ${j.status==='completed'?'badge-green':j.status==='in_progress'?'badge-amber':'badge-blue'}`}>{j.status}</span>
                 </div>
@@ -232,6 +262,8 @@ export default function LiveTracking() {
           </div>
         )
       })()}
+
+      <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} />
     </div>
   )
 }

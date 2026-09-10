@@ -19,6 +19,9 @@
     "test:portal-auth": "npx vite-node scripts/test-portal-auth.mjs",
     "test:add-service": "node scripts/test-employee-add-service.mjs",
     "test:deep-clean": "npx vite-node scripts/test-deep-clean-photos.mjs",
+    "test:salary-calc": "npx vite-node scripts/test-salary-calc.mjs",
+    "test:past-service": "npx vite-node scripts/test-past-service.mjs",
+    "lint": "eslint src api scripts --ext .js,.jsx,.mjs --max-warnings 80",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh",
     "deploy:ci": "bash scripts/ci-deploy.sh",
@@ -37,7 +40,9 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.1.4",
-    "vite-plugin-pwa": "^1.3.0"
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "vite": "^5.1.4"
   }
 }

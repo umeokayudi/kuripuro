@@ -2,11 +2,14 @@
 import { spawnSync } from 'child_process'
 
 const steps = [
+  ['npm run lint', 'lint'],
   ['npm run build', 'build'],
+  ['npm run test:salary-calc', 'salary-calc'],
   ['npm run test:safety-net', 'safety-net'],
   ['npm run test:deep-clean', 'deep-clean'],
   ['npm run test:portal-auth', 'portal-auth'],
   ['npm run test:add-service', 'add-service'],
+  ['npm run test:past-service', 'past-service'],
 ]
 
 console.log('=== KuriPuro full test suite ===\n')

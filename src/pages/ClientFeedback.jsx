@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useLang, fill } from '../hooks/useLang'
 import { avgStars, starsDisplay } from '../lib/satisfaction'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
@@ -17,6 +19,8 @@ export default function ClientFeedback() {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [responseDraft, setResponseDraft] = useState({})
+  const [jobPhotos, setJobPhotos] = useState({})
+  const [lightbox, setLightbox] = useState(null)
 
   const load = async () => {
     const [r, cp, cm, rq, cl] = await Promise.all([
@@ -26,11 +30,30 @@ export default function ClientFeedback() {
       supabase.from('client_requests').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('clients').select('id, company_name'),
     ])
-    setRatings(r.data || [])
-    setComplaints(cp.data || [])
-    setCompliments(cm.data || [])
+    const ratingsData = r.data || []
+    const complaintsData = cp.data || []
+    const complimentsData = cm.data || []
+    setRatings(ratingsData)
+    setComplaints(complaintsData)
+    setCompliments(complimentsData)
     setRequests(rq.data || [])
     setClients(cl.data || [])
+
+    const jobIds = [...new Set([
+      ...ratingsData.map(x => x.job_id),
+      ...complaintsData.map(x => x.job_id),
+      ...complimentsData.map(x => x.job_id),
+    ].filter(Boolean))]
+    if (jobIds.length) {
+      const { data: jobs } = await supabase
+        .from('jobs')
+        .select('id,photo_start_url,photo_end_url')
+        .in('id', jobIds)
+      setJobPhotos(Object.fromEntries((jobs || []).map(j => [j.id, j])))
+    } else {
+      setJobPhotos({})
+    }
+
     setLoading(false)
   }
 
@@ -87,6 +110,26 @@ export default function ClientFeedback() {
     requests: openRequests || null,
   }
 
+  const photosFor = (jobId) => jobId ? jobPhotos[jobId] : null
+
+  const renderJobPhotos = (jobId) => {
+    const job = photosFor(jobId)
+    if (!job?.photo_start_url && !job?.photo_end_url) return null
+    return (
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{f.servicePhotos}</div>
+        <JobPhotos
+          photoStartUrl={job.photo_start_url}
+          photoEndUrl={job.photo_end_url}
+          beforeLabel={f.before}
+          afterLabel={f.after}
+          size={48}
+          onPhotoClick={setLightbox}
+        />
+      </div>
+    )
+  }
+
   const tabLabel = {
     ratings: f.tabRatings,
     complaints: f.tabComplaints,
@@ -137,6 +180,7 @@ export default function ClientFeedback() {
                 <div style={{ fontSize: 18, color: '#EF9F27', fontWeight: 700 }}>{starsDisplay(r.stars)}</div>
               </div>
               {r.comment && <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 8, lineHeight: 1.5 }}>{r.comment}</div>}
+              {renderJobPhotos(r.job_id)}
             </div>
           ))}
         </div>
@@ -153,6 +197,7 @@ export default function ClientFeedback() {
               </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>{row.category} · {row.employee_name || '—'} · {new Date(row.created_at).toLocaleDateString()}</div>
               <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>
+              {renderJobPhotos(row.job_id)}
               <textarea value={draft(row.id) || row.admin_response || ''} onChange={e => setResponseDraft(d => ({ ...d, [row.id]: e.target.value }))} placeholder={f.adminResponse} rows={2} style={{ width: '100%', marginBottom: 8 }} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-sm btn-primary" onClick={() => saveComplaint(row)}>{f.saveResponse}</button>
@@ -176,6 +221,7 @@ export default function ClientFeedback() {
               </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>{row.employee_name || '—'} · {new Date(row.created_at).toLocaleDateString()}</div>
               <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>👏 {row.message}</div>
+              {renderJobPhotos(row.job_id)}
               <textarea value={draft(row.id) || row.admin_response || ''} onChange={e => setResponseDraft(d => ({ ...d, [row.id]: e.target.value }))} placeholder={f.adminResponse} rows={2} style={{ width: '100%', marginBottom: 8 }} />
               <button className="btn btn-sm btn-primary" onClick={() => saveCompliment(row)}>{f.saveResponse}</button>
             </div>
@@ -210,6 +256,8 @@ export default function ClientFeedback() {
           ))}
         </div>
       )}
+
+      <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} />
     </div>
   )
 }
