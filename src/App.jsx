@@ -5,6 +5,7 @@ import { LangProvider, useLang } from './hooks/useLang'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import Sidebar from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
+import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
@@ -72,12 +73,20 @@ function AppContent() {
 
   if (!user) return <Login />
   if (user.role === 'employee') return (
-    <Suspense fallback={<PortalLoading />}>
-      <EmployeePortal />
-      <AIFloatingWidget mode="employee" employeeId={user.id} employeeName={user.name} dark />
-    </Suspense>
+    <PortalErrorBoundary label="Employee portal">
+      <Suspense fallback={<PortalLoading />}>
+        <EmployeePortal />
+        <AIFloatingWidget mode="employee" employeeId={user.id} employeeName={user.name} dark />
+      </Suspense>
+    </PortalErrorBoundary>
   )
-  if (user.role === 'client') return <Suspense fallback={<PortalLoading />}><ClientPortal /></Suspense>
+  if (user.role === 'client') return (
+    <PortalErrorBoundary label="Client portal">
+      <Suspense fallback={<PortalLoading />}>
+        <ClientPortal />
+      </Suspense>
+    </PortalErrorBoundary>
+  )
 
   return (
     <div className="app-shell">

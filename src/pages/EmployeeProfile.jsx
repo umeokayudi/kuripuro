@@ -134,7 +134,7 @@ export default function EmployeeProfile() {
   const loadAll = async () => {
     setLoading(true)
     const [e, j, ev, p, adv] = await Promise.all([
-      supabase.from('employees').select('*').eq('id', id).single(),
+      supabase.from('employees').select('id,full_name,email,phone,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active,work_days,notes,hire_date').eq('id', id).maybeSingle(),
       supabase.from('jobs').select('*').eq('employee_id', id).order('scheduled_date', { ascending:false }).limit(30),
       supabase.from('evaluations').select('*').eq('employee_id', id).order('created_at', { ascending:false }),
       supabase.from('salary_payments').select('*').eq('employee_id', id).order('payment_date', { ascending:true }),

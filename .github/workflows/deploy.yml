@@ -19,8 +19,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm run build
-      - run: npm run test:deep-clean
+      - run: npm test
 
   deploy:
     needs: test
