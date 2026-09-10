@@ -13,6 +13,7 @@ import {
 } from '../src/lib/cleaningType.js'
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
 import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../src/lib/jobReport.js'
+import { viewablePhotoUrl, isStoragePhotoUrl } from '../src/lib/photoUrl.js'
 import { isOtpDeepOnlyLocation, otpBasicScheduleLocations, otpDeepOnlyLocations } from '../src/lib/serviceCatalog.js'
 import { expectedDeepCleanDatesForLocation, weekdaysInMonth, isDeepCleanAllowedOnDate } from '../src/lib/cleaningType.js'
 
@@ -80,6 +81,15 @@ function testAddServiceOptions() {
   ]
   const deepOpts2 = buildAddServiceOptions(locations, deepMine, employeeId, 'deep')
   assert(deepOpts2[0].state === 'mine', `deep mine: ${deepOpts2[0].state}`)
+}
+
+function testViewablePhotoUrl() {
+  const path = 'jobs/job-1/end_0.jpg'
+  assert(isStoragePhotoUrl(path), 'storage path detect')
+  const proxied = viewablePhotoUrl(path)
+  assert(proxied.startsWith('/api/photo?url='), `proxy url: ${proxied}`)
+  assert(viewablePhotoUrl('data:image/png;base64,x') === 'data:image/png;base64,x', 'data url passthrough')
+  assert(viewablePhotoUrl(null) === null, 'null safe')
 }
 
 function testReportPhotos() {
@@ -150,6 +160,8 @@ async function main() {
   console.log('✅ OTP deep-only contracts')
   testAddServiceOptions()
   console.log('✅ buildAddServiceOptions')
+  testViewablePhotoUrl()
+  console.log('✅ viewablePhotoUrl proxy')
   testReportPhotos()
   console.log('✅ jobReport photo merge')
   console.log('\n✅ All unit tests passed')

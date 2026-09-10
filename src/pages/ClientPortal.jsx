@@ -4,7 +4,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
 import { fmtDuration } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
-import StorageImage from '../components/StorageImage'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
 } from '../lib/clientPortal'
@@ -297,6 +298,18 @@ export default function ClientPortal() {
             </div>
           </div>
         )}
+        {job.status === 'completed' && (job.photo_start_url || job.photo_end_url) && (
+          <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
+            <JobPhotos
+              photoStartUrl={job.photo_start_url}
+              photoEndUrl={job.photo_end_url}
+              beforeLabel={c.before}
+              afterLabel={c.after}
+              size={52}
+              onPhotoClick={setLightbox}
+            />
+          </div>
+        )}
         {onClick && <div className="cp-card-link">{c.viewDetails} →</div>}
         {rating && <div className="cp-stars">{'★'.repeat(rating.stars)}{'☆'.repeat(5 - rating.stars)}</div>}
       </div>
@@ -345,20 +358,20 @@ export default function ClientPortal() {
             {(selectedVisit.photo_start_url || selectedVisit.photo_end_url) && (
               <div className="cp-field">
                 <span className="cp-label">{c.photos}</span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <JobPhotos
+                  photoStartUrl={selectedVisit.photo_start_url}
+                  photoEndUrl={selectedVisit.photo_end_url}
+                  beforeLabel={c.before}
+                  afterLabel={c.after}
+                  variant="full"
+                  onPhotoClick={setLightbox}
+                />
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   {selectedVisit.photo_start_url && (
-                    <div>
-                      <div className="cp-time-lbl" style={{ marginBottom: 6 }}>{c.before}</div>
-                      <StorageImage url={selectedVisit.photo_start_url} alt={c.before} onClick={() => setLightbox(selectedVisit.photo_start_url)} />
-                      <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ marginTop: 8, display: 'block', textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'}</a>
-                    </div>
+                    <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.before})</a>
                   )}
                   {selectedVisit.photo_end_url && (
-                    <div>
-                      <div className="cp-time-lbl" style={{ marginBottom: 6 }}>{c.after}</div>
-                      <StorageImage url={selectedVisit.photo_end_url} alt={c.after} onClick={() => setLightbox(selectedVisit.photo_end_url)} />
-                      <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ marginTop: 8, display: 'block', textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'}</a>
-                    </div>
+                    <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.after})</a>
                   )}
                 </div>
               </div>
@@ -381,10 +394,7 @@ export default function ClientPortal() {
       )}
 
       {lightbox && (
-        <div className="cp-lightbox" onClick={() => setLightbox(null)}>
-          <button type="button" className="cp-logout" style={{ position: 'absolute', top: 16, right: 16 }} onClick={() => setLightbox(null)}>✕ {c.close}</button>
-          <img src={viewablePhotoUrl(lightbox)} alt="" onClick={e => e.stopPropagation()} />
-        </div>
+        <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={c.close} />
       )}
 
       <div className="cp-layout">

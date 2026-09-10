@@ -7,6 +7,8 @@ import {
 } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
@@ -449,6 +451,7 @@ export default function Jobs() {
   const [editingLoc, setEditingLoc] = useState(null)
   const [loading, setLoading] = useState(true)
   const [geocoding, setGeocoding] = useState(false)
+  const [lightbox, setLightbox] = useState(null)
   const [form, setForm] = useState({
     title:'', client_id:'', client_name:'', employee_id:'', employee_name:'',
     scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'',
@@ -655,6 +658,20 @@ export default function Jobs() {
                 </div>
               )}
 
+              {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{jt.servicePhotos}</div>
+                  <JobPhotos
+                    photoStartUrl={j.photo_start_url}
+                    photoEndUrl={j.photo_end_url}
+                    beforeLabel={jt.before}
+                    afterLabel={jt.after}
+                    variant="full"
+                    onPhotoClick={setLightbox}
+                  />
+                </div>
+              )}
+
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {jt.type}:
@@ -789,6 +806,8 @@ export default function Jobs() {
       )}
 
       {tab==='locations' && <LocationsTab />}
+
+      <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={t.reports?.close || 'Close'} />
     </div>
   )
 }
