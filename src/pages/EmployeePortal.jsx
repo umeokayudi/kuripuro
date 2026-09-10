@@ -529,7 +529,7 @@ export default function EmployeePortal() {
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id', retroJob.id)
       if (error) throw error
-      const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).single()
+      const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).maybeSingle()
       if (completedRetro) {
         try {
           await syncServiceReport(supabase, completedRetro)
@@ -565,8 +565,8 @@ export default function EmployeePortal() {
       if (!proceed) { setSubmitting(false); setGpsStatus(''); return }
     }
     const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
-    const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().single()
-    if (error) { toast.error(error.message); setSubmitting(false); return }
+    const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
+    if (error || !data) { toast.error(error?.message || 'Could not start job'); setSubmitting(false); return }
     setChecklist(initChecklistState(job))
     setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!'); setSubmitting(false)
   }
@@ -639,7 +639,7 @@ export default function EmployeePortal() {
         }).eq('id',job.id)
       } catch(ex){ console.log('extra fields skipped', ex?.message) }
 
-      const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).single()
+      const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).maybeSingle()
       if (completedJob) {
         try {
           await syncServiceReport(supabase, completedJob)
