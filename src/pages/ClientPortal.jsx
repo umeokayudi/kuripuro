@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
@@ -14,23 +14,16 @@ import './client-portal.css'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 
+const filterByLocation = (rows, locationName) => {
+  if (!locationName) return rows || []
+  return (rows || []).filter(r => !r.location_name || r.location_name === locationName)
+}
+
 export default function ClientPortal() {
   const { user, logout, updateSession } = useAuth()
   const { lang, switchLang, t: tr } = useLang()
   const c = tr?.client
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
-
-  if (!c) {
-    return (
-      <div style={{ minHeight: '100vh', background: '#0d2137', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Client portal unavailable</div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginBottom: 16 }}>Translation bundle failed to load. Please refresh or contact support.</div>
-          <button type="button" onClick={logout} style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: '#c19c56', color: '#0d2137', fontWeight: 700, cursor: 'pointer' }}>Logout</button>
-        </div>
-      </div>
-    )
-  }
 
   const [desktopMode, setDesktopMode] = useState(() => {
     const saved = localStorage.getItem('cp_view_mode')
@@ -73,39 +66,10 @@ export default function ClientPortal() {
     localStorage.setItem('cp_view_mode', next ? 'desktop' : 'mobile')
   }
 
-  useEffect(() => {
-    if (!localStorage.getItem('kp_lang') && lang !== 'ja') switchLang('ja')
-  }, [])
-
-  useEffect(() => {
-    loadAll()
-    const tick = setInterval(() => setClock(new Date()), 1000)
-    const refresh = setInterval(loadAll, 20000)
-    return () => { clearInterval(tick); clearInterval(refresh) }
-  }, [user?.id])
-
-  useEffect(() => {
-    if (tab === 'chat') {
-      markMessagesRead()
-      setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 150)
-    }
-  }, [tab, messages])
-
-  useEffect(() => {
-    if (!selectedVisit) return
-    const existing = ratings.find(r => r.job_id === selectedVisit.id)
-    if (existing) setRatingForm({ stars: existing.stars, comment: existing.comment || '' })
-    else setRatingForm({ stars: 5, comment: '' })
-  }, [selectedVisit?.id, ratings])
-
-  const filterByLocation = (rows) => {
-    if (!user?.location_name) return rows || []
-    return (rows || []).filter(r => !r.location_name || r.location_name === user.location_name)
-  }
-
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     if (!user?.client_id) {
       setLoading(false)
+      toast.error(c?.sessionExpired || 'Session expired. Please log in again.')
       return
     }
     const since = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
@@ -132,23 +96,61 @@ export default function ClientPortal() {
 
       setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
       setContracts(contractsRes.data || [])
-      setMessages(filterByLocation(msgsRes.data))
-      setComplaints(filterByLocation(compRes.data))
-      setCompliments(filterByLocation(cmplRes.data))
+      setMessages(filterByLocation(msgsRes.data, user.location_name))
+      setComplaints(filterByLocation(compRes.data, user.location_name))
+      setCompliments(filterByLocation(cmplRes.data, user.location_name))
       setRatings((ratRes.data || []).filter(r => ratingMatchesClientUser(r, user)))
-      setRequests(filterByLocation(reqRes.data))
-      setUnreadMsgs(filterByLocation(msgsRes.data).filter(m => m.sender === 'admin' && !m.read).length)
+      setRequests(filterByLocation(reqRes.data, user.location_name))
+      setUnreadMsgs(filterByLocation(msgsRes.data, user.location_name).filter(m => m.sender === 'admin' && !m.read).length)
       await supabase.from('client_users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
     } catch (err) {
       toast.error(err?.message || 'Failed to load portal data')
     } finally {
       setLoading(false)
     }
-  }
+  }, [user, c?.sessionExpired])
 
-  const markMessagesRead = async () => {
+  const markMessagesRead = useCallback(async () => {
+    if (!user?.client_id) return
     await supabase.from('client_messages').update({ read: true }).eq('client_id', user.client_id).eq('sender', 'admin').eq('read', false)
     setUnreadMsgs(0)
+  }, [user?.client_id])
+
+  useEffect(() => {
+    if (!localStorage.getItem('kp_lang') && lang !== 'ja') switchLang('ja')
+  }, [])
+
+  useEffect(() => {
+    if (!c) return
+    loadAll()
+    const tick = setInterval(() => setClock(new Date()), 1000)
+    const refresh = setInterval(loadAll, 20000)
+    return () => { clearInterval(tick); clearInterval(refresh) }
+  }, [user?.id, c, loadAll])
+
+  useEffect(() => {
+    if (!c || tab !== 'chat') return
+    markMessagesRead()
+    setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 150)
+  }, [tab, messages, c, markMessagesRead])
+
+  useEffect(() => {
+    if (!selectedVisit) return
+    const existing = ratings.find(r => r.job_id === selectedVisit.id)
+    if (existing) setRatingForm({ stars: existing.stars, comment: existing.comment || '' })
+    else setRatingForm({ stars: 5, comment: '' })
+  }, [selectedVisit?.id, ratings])
+
+  if (!c) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0d2137', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Client portal unavailable</div>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginBottom: 16 }}>Translation bundle failed to load. Please refresh or contact support.</div>
+          <button type="button" onClick={logout} style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: '#c19c56', color: '#0d2137', fontWeight: 700, cursor: 'pointer' }}>Logout</button>
+        </div>
+      </div>
+    )
   }
 
   const sendMessage = async () => {
@@ -210,7 +212,7 @@ export default function ClientPortal() {
   const saveCredentials = async () => {
     if (!credForm.currentPassword.trim()) return toast.error(c.currentPassword)
     if (!credForm.newEmail.trim() && !credForm.newPassword.trim()) {
-      return toast.error(c.newEmail)
+      return toast.error(c.nothingToUpdate)
     }
     setSavingCreds(true)
     const result = await updateClientCredentials(supabase, user.id, credForm)
@@ -567,7 +569,7 @@ export default function ClientPortal() {
                         <div className="cp-field">
                           <span className="cp-label">{c.complimentAbout}</span>
                           <select className="cp-select" value={complimentForm.job_id} onChange={e => setComplimentForm(f => ({ ...f, job_id: e.target.value }))}>
-                            <option value="">{c.generalComplaint}</option>
+                            <option value="">{c.generalCompliment}</option>
                             {completed.map(j => <option key={j.id} value={j.id}>{locationFromJob(j)} · {j.scheduled_date}</option>)}
                           </select>
                         </div>

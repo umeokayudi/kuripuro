@@ -46,7 +46,7 @@ export async function updateClientCredentials(supabase, userId, { currentPasswor
     .from('client_users')
     .select('id, email, password')
     .eq('id', userId)
-    .single()
+    .maybeSingle()
 
   if (fetchErr || !row) return { success: false, error: fetchErr?.message || 'Account not found' }
   if (row.password !== (currentPassword || '').trim()) {

@@ -42,11 +42,11 @@ export default function Deductions() {
       is_deduction: true,
     })
     if (error) return toast.error(error.message)
-    // Also deduct score
-    await supabase.rpc || await supabase.from('employees').select('score').eq('id',form.employee_id).single().then(async ({data}) => {
-      const newScore = Math.max(0,(data?.score||100)-5)
-      await supabase.from('employees').update({score:newScore}).eq('id',form.employee_id)
-    })
+    const { data: empScore } = await supabase.from('employees').select('score').eq('id', form.employee_id).maybeSingle()
+    if (empScore) {
+      const newScore = Math.max(0, (empScore.score || 100) - 5)
+      await supabase.from('employees').update({ score: newScore }).eq('id', form.employee_id)
+    }
     toast.success('Deduction added!')
     setForm({ employee_id:'', amount:'', description:'', payment_date:new Date().toISOString().split('T')[0], deduction_type:'damage' })
     load()

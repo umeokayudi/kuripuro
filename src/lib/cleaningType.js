@@ -153,13 +153,20 @@ export function tuesdaysInMonth(yearMonth) {
   return weekdaysInMonth(yearMonth, [2])
 }
 
+function localDateStr(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export function weekdaysInMonth(yearMonth, dows = []) {
   const [year, mon] = yearMonth.split('-').map(Number)
   const want = new Set(dows)
   const dates = []
   const d = new Date(year, mon - 1, 1)
   while (d.getMonth() === mon - 1) {
-    if (want.has(d.getDay())) dates.push(d.toISOString().slice(0, 10))
+    if (want.has(d.getDay())) dates.push(localDateStr(d))
     d.setDate(d.getDate() + 1)
   }
   return dates
