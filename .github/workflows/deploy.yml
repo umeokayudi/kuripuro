@@ -47,15 +47,22 @@ jobs:
 
       - name: Verify production
         run: |
-          sleep 15
-          for i in 1 2 3 4 5; do
+          sleep 20
+          for i in 1 2 3 4 5 6 8 10; do
             BODY=$(curl -sf "https://kuripuro.vercel.app/api/version" || true)
             echo "Attempt $i: $BODY"
             if echo "$BODY" | grep -q '"ok":true'; then
-              echo "$BODY" | grep -q '2026-08-28-v' && echo "✅ v15+ live" && exit 0
-              echo "✅ API responding: $BODY"
+              BUNDLE=$(curl -sf "https://kuripuro.vercel.app/" | rg -o 'index-[^"]+\.js' | head -1 || true)
+              if [ -n "$BUNDLE" ]; then
+                if curl -sf "https://kuripuro.vercel.app/assets/$BUNDLE" | grep -q 'client:{portal:'; then
+                  echo "✅ Client portal i18n fix live"
+                else
+                  echo "::warning::Production bundle missing tr.client — redeploy may be stale"
+                fi
+              fi
+              echo "$BODY" | grep -q 'v17' && echo "✅ v17 live" || echo "✅ API responding: $BODY"
               exit 0
             fi
-            sleep 10
+            sleep $((i * 5))
           done
           echo "::warning::Could not verify /api/version after deploy"

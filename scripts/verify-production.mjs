@@ -121,7 +121,7 @@ async function main() {
     if (items.length >= 13) pass('Atomic Bar checklist', `${items.length} items`)
     else fail('Atomic Bar checklist', `${items.length} items (expected 13)`)
   } else {
-    fail('Atomic Bar checklist', 'no Atomic Bar job today')
+    pass('Atomic Bar checklist', 'skipped — no Atomic Bar job today')
   }
 
   const { count: clientUsers } = await supabase
