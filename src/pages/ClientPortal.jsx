@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
-import { fmtDuration } from '../lib/jobReport'
+import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -21,6 +21,29 @@ function sanitizePostgrestToken(value) {
 const filterByLocation = (rows, locationName) => {
   if (!locationName) return rows || []
   return (rows || []).filter(r => !r.location_name || r.location_name === locationName)
+}
+
+function monthBounds(ym) {
+  const [y, m] = ym.split('-').map(Number)
+  const from = `${y}-${String(m).padStart(2, '0')}-01`
+  const lastDay = new Date(y, m, 0).getDate()
+  const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  return { from, to }
+}
+
+function visitRangeForPreset(preset, today) {
+  if (preset === 'all') return { from: '2000-01-01', to: today }
+  if (preset === '90d') {
+    const from = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
+    return { from, to: today }
+  }
+  if (preset === 'lastMonth') {
+    const [y, m] = today.split('-').map(Number)
+    const d = new Date(y, m - 2, 1)
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    return monthBounds(ym)
+  }
+  return { from: `${today.slice(0, 7)}-01`, to: today }
 }
 
 export default function ClientPortal() {
@@ -50,6 +73,9 @@ export default function ClientPortal() {
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
+  const [visitPreset, setVisitPreset] = useState('month')
+  const [visitRange, setVisitRange] = useState(() => visitRangeForPreset('month', tokyoToday()))
+  const loadedOnceRef = useRef(false)
 
   const [complaintForm, setComplaintForm] = useState({ job_id: '', category: 'quality', description: '' })
   const [requestForm, setRequestForm] = useState({ location_name: '', description: '', preferred_date: '' })
@@ -70,13 +96,14 @@ export default function ClientPortal() {
     localStorage.setItem('cp_view_mode', next ? 'desktop' : 'mobile')
   }
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async ({ silent = false } = {}) => {
     if (!user?.client_id) {
       setLoading(false)
       toast.error(c?.sessionExpired || 'Session expired. Please log in again.')
       return
     }
-    const since = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
+    const since = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]
+    if (!silent && !loadedOnceRef.current) setLoading(true)
 
     try {
       const locToken = sanitizePostgrestToken(user.location_name)
@@ -115,6 +142,7 @@ export default function ClientPortal() {
       toast.error(err?.message || 'Failed to load portal data')
     } finally {
       setLoading(false)
+      loadedOnceRef.current = true
     }
   }, [user, c?.sessionExpired])
 
@@ -132,11 +160,15 @@ export default function ClientPortal() {
 
   useEffect(() => {
     if (!c) return
-    loadAll()
-    const tick = setInterval(() => setClock(new Date()), 1000)
-    const refresh = setInterval(loadAll, 20000)
-    return () => { clearInterval(tick); clearInterval(refresh) }
+    loadAll({ silent: false })
+    const refresh = setInterval(() => loadAll({ silent: true }), 20000)
+    return () => clearInterval(refresh)
   }, [user?.id, c, loadAll])
+
+  useEffect(() => {
+    const tick = setInterval(() => setClock(new Date()), 60000)
+    return () => clearInterval(tick)
+  }, [])
 
   useEffect(() => {
     if (!c || tab !== 'chat') return
@@ -150,6 +182,25 @@ export default function ClientPortal() {
     if (existing) setRatingForm({ stars: existing.stars, comment: existing.comment || '' })
     else setRatingForm({ stars: 5, comment: '' })
   }, [selectedVisit?.id, ratings])
+
+  const filteredVisits = useMemo(() => {
+    const done = jobs.filter(j => j.status === 'completed')
+    return done.filter(j => j.scheduled_date >= visitRange.from && j.scheduled_date <= visitRange.to)
+  }, [jobs, visitRange.from, visitRange.to])
+
+  const visitStats = useMemo(() => {
+    let minutes = 0
+    let withDuration = 0
+    for (const job of filteredVisits) {
+      const min = jobDurationMin(job)
+      if (min != null) {
+        minutes += min
+        withDuration += 1
+      }
+    }
+    const avg = withDuration ? Math.round(minutes / withDuration) : null
+    return { count: filteredVisits.length, minutes, avg }
+  }, [filteredVisits])
 
   if (!c) {
     return (
@@ -171,7 +222,7 @@ export default function ClientPortal() {
     })
     if (error) return toast.error(error.message)
     setNewMsg('')
-    loadAll()
+    loadAll({ silent: true })
   }
 
   const submitComplaint = async () => {
@@ -186,7 +237,7 @@ export default function ClientPortal() {
     toast.success(c.complaintSent)
     setComplaintForm({ job_id: '', category: 'quality', description: '' })
     setShowComplaintForm(false)
-    loadAll()
+    loadAll({ silent: true })
   }
 
   const submitRating = async (job) => {
@@ -201,7 +252,7 @@ export default function ClientPortal() {
     if (error) return toast.error(error.message)
     toast.success(c.ratingSent)
     setRatingForm({ stars: 5, comment: '' })
-    loadAll()
+    loadAll({ silent: true })
   }
 
   const submitCompliment = async () => {
@@ -216,7 +267,7 @@ export default function ClientPortal() {
     toast.success(c.complimentSent)
     setComplimentForm({ job_id: '', message: '' })
     setShowComplimentForm(false)
-    loadAll()
+    loadAll({ silent: true })
   }
 
   const saveCredentials = async () => {
@@ -245,7 +296,12 @@ export default function ClientPortal() {
     toast.success(c.requestSent)
     setRequestForm({ location_name: user.location_name || '', description: '', preferred_date: '' })
     setShowRequestForm(false)
-    loadAll()
+    loadAll({ silent: true })
+  }
+
+  const applyVisitPreset = (preset) => {
+    setVisitPreset(preset)
+    setVisitRange(visitRangeForPreset(preset, tokyoToday()))
   }
 
   const today = tokyoToday()
@@ -276,61 +332,6 @@ export default function ClientPortal() {
   const avgRating = ratings.length
     ? (ratings.reduce((s, r) => s + r.stars, 0) / ratings.length).toFixed(1)
     : '—'
-
-  const VisitCard = ({ job, onClick }) => {
-    const rating = ratingForJob(job.id)
-    return (
-      <div
-        className={`cp-card ${cardStatusClass(job.status)}${onClick ? ' clickable' : ''}`}
-        onClick={onClick}
-        role={onClick ? 'button' : undefined}
-      >
-        <div className="cp-card-top">
-          <div>
-            <div className="cp-card-loc">{locationFromJob(job)}</div>
-            <div className="cp-card-date">{job.scheduled_date} · {job.scheduled_time || '—'}</div>
-          </div>
-          <span className={`cp-badge ${statusClass(job.status)}`}>{statusLabel(job.status)}</span>
-        </div>
-        {job.employee_name && (
-          <div className="cp-card-cleaner">👤 {c.cleaner}: <b>{job.employee_name}</b></div>
-        )}
-        {(job.started_at || job.status === 'completed') && (
-          <div className="cp-time-grid">
-            <div className="cp-time-box">
-              <div className="cp-time-lbl">{c.entryTime}</div>
-              <div className="cp-time-val">{fmtVisitTime(job, lang)}</div>
-            </div>
-            <div className="cp-time-box">
-              <div className="cp-time-lbl">{c.exitTime}</div>
-              <div className="cp-time-val">{fmtVisitEnd(job, lang)}</div>
-            </div>
-          </div>
-        )}
-        {job.status === 'completed' && (job.photo_start_url || job.photo_end_url) && (
-          <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
-            <JobPhotos
-              photoStartUrl={job.photo_start_url}
-              photoEndUrl={job.photo_end_url}
-              beforeLabel={c.before}
-              afterLabel={c.after}
-              size={52}
-              onPhotoClick={setLightbox}
-            />
-          </div>
-        )}
-        {onClick && <div className="cp-card-link">{c.viewDetails} →</div>}
-        {rating && <div className="cp-stars">{'★'.repeat(rating.stars)}{'☆'.repeat(5 - rating.stars)}</div>}
-      </div>
-    )
-  }
-
-  const Empty = ({ icon, text }) => (
-    <div className="cp-empty">
-      <div className="cp-empty-icon">{icon}</div>
-      <div className="cp-empty-text">{text}</div>
-    </div>
-  )
 
   return (
     <div className={`cp-shell ${desktopMode ? 'cp-desktop' : 'cp-mobile'}`}>
@@ -445,7 +446,9 @@ export default function ClientPortal() {
               {desktopMode && (
                 <div>
                   <div className="cp-header-title">{navItems.find(n => n.key === tab)?.label || c.home}</div>
-                  <div className="cp-header-meta">{today}</div>
+                  <div className="cp-header-meta">
+                    {tab === 'visits' ? `${visitRange.from} — ${visitRange.to}` : today}
+                  </div>
                 </div>
               )}
               <div className="cp-header-actions">
@@ -478,21 +481,46 @@ export default function ClientPortal() {
           </header>
 
           <main className="cp-content">
-            {loading && <div className="cp-loading">{c.loading}</div>}
-
-            {!loading && tab === 'home' && (
+            {loading ? (
+              <div className="cp-loading">{c.loading}</div>
+            ) : tab === 'home' && (
               <>
                 <div className="cp-section-title"><span>📅</span> {c.today} — {today}</div>
                 <div className="cp-visit-grid">
                   {todayJobs.length === 0
-                    ? <Empty icon="✨" text={c.noVisitsToday} />
-                    : todayJobs.map(j => <VisitCard key={j.id} job={j} onClick={j.status === 'completed' ? () => setSelectedVisit(j) : undefined} />)}
+                    ? <PortalEmpty icon="✨" text={c.noVisitsToday} />
+                    : todayJobs.map(j => (
+                      <VisitCard
+                        key={j.id}
+                        job={j}
+                        labels={c}
+                        lang={lang}
+                        statusLabel={statusLabel}
+                        statusClass={statusClass}
+                        cardStatusClass={cardStatusClass}
+                        rating={ratingForJob(j.id)}
+                        onPhotoClick={setLightbox}
+                        onClick={j.status === 'completed' ? () => setSelectedVisit(j) : undefined}
+                      />
+                    ))}
                 </div>
                 {upcoming.length > 0 && (
                   <>
                     <div className="cp-section-title" style={{ marginTop: 24 }}><span>🗓</span> {c.upcoming}</div>
                     <div className="cp-visit-grid">
-                      {upcoming.map(j => <VisitCard key={j.id} job={j} />)}
+                      {upcoming.map(j => (
+                        <VisitCard
+                          key={j.id}
+                          job={j}
+                          labels={c}
+                          lang={lang}
+                          statusLabel={statusLabel}
+                          statusClass={statusClass}
+                          cardStatusClass={cardStatusClass}
+                          rating={ratingForJob(j.id)}
+                          onPhotoClick={setLightbox}
+                        />
+                      ))}
                     </div>
                   </>
                 )}
@@ -501,11 +529,104 @@ export default function ClientPortal() {
 
             {!loading && tab === 'visits' && (
               <>
+                <div className="cp-period-bar">
+                  <div className="cp-period-label">📅 {c.visitPeriod}</div>
+                  <div className="cp-period-pills">
+                    {[
+                      ['month', c.visitThisMonth],
+                      ['lastMonth', c.visitLastMonth],
+                      ['90d', c.visitLast90],
+                      ['all', c.visitAll],
+                    ].map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`cp-period-pill${visitPreset === key ? ' active' : ''}`}
+                        onClick={() => applyVisitPreset(key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="cp-period-inputs">
+                    <label>
+                      {c.visitFrom}
+                      <input
+                        type="date"
+                        className="cp-input"
+                        value={visitRange.from}
+                        max={visitRange.to}
+                        onChange={e => {
+                          setVisitPreset('custom')
+                          setVisitRange(r => ({ ...r, from: e.target.value }))
+                        }}
+                      />
+                    </label>
+                    <label>
+                      {c.visitTo}
+                      <input
+                        type="date"
+                        className="cp-input"
+                        value={visitRange.to}
+                        min={visitRange.from}
+                        max={today}
+                        onChange={e => {
+                          setVisitPreset('custom')
+                          setVisitRange(r => ({ ...r, to: e.target.value }))
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <label className="cp-period-label" style={{ marginBottom: 6 }}>{c.visitPeriod}</label>
+                    <input
+                      type="month"
+                      className="cp-input"
+                      value={visitRange.from.slice(0, 7)}
+                      max={today.slice(0, 7)}
+                      onChange={e => {
+                        const bounds = monthBounds(e.target.value)
+                        const to = bounds.to > today ? today : bounds.to
+                        setVisitPreset('custom')
+                        setVisitRange({ from: bounds.from, to })
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="cp-period-stats">
+                  <div className="cp-period-stat">
+                    <div className="cp-period-stat-val">{visitStats.count}</div>
+                    <div className="cp-period-stat-lbl">{c.visitTotalVisits}</div>
+                  </div>
+                  <div className="cp-period-stat">
+                    <div className="cp-period-stat-val">{fmtDuration(visitStats.minutes, lang)}</div>
+                    <div className="cp-period-stat-lbl">{c.visitTotalHours}</div>
+                  </div>
+                  <div className="cp-period-stat">
+                    <div className="cp-period-stat-val">{fmtDuration(visitStats.avg, lang)}</div>
+                    <div className="cp-period-stat-lbl">{c.visitAvgDuration}</div>
+                  </div>
+                </div>
+
                 <div className="cp-section-title"><span>📋</span> {c.visits}</div>
                 <div className="cp-visit-grid">
-                  {completed.length === 0
-                    ? <Empty icon="📋" text={c.noVisits} />
-                    : completed.map(j => <VisitCard key={j.id} job={j} onClick={() => setSelectedVisit(j)} />)}
+                  {filteredVisits.length === 0
+                    ? <PortalEmpty icon="📋" text={completed.length === 0 ? c.noVisits : c.noVisitsInPeriod} />
+                    : filteredVisits.map(j => (
+                      <VisitCard
+                        key={j.id}
+                        job={j}
+                        labels={c}
+                        lang={lang}
+                        statusLabel={statusLabel}
+                        statusClass={statusClass}
+                        cardStatusClass={cardStatusClass}
+                        rating={ratingForJob(j.id)}
+                        onPhotoClick={setLightbox}
+                        onClick={() => setSelectedVisit(j)}
+                      />
+                    ))}
                 </div>
               </>
             )}
@@ -513,7 +634,7 @@ export default function ClientPortal() {
             {!loading && tab === 'chat' && (
               <div className="cp-chat">
                 <div className="cp-chat-msgs">
-                  {messages.length === 0 && <Empty icon="💬" text={c.noMessages} />}
+                  {messages.length === 0 && <PortalEmpty icon="💬" text={c.noMessages} />}
                   {messages.map(m => (
                     <div key={m.id} className={`cp-bubble ${m.sender === 'client' ? 'client' : 'admin'}`}>
                       {m.content}
@@ -568,7 +689,7 @@ export default function ClientPortal() {
                       </div>
                     )}
                     <div className="cp-section-title">{c.complaintHistory}</div>
-                    {complaints.length === 0 ? <Empty icon="✅" text={c.noComplaints} /> : complaints.map(cp => (
+                    {complaints.length === 0 ? <PortalEmpty icon="✅" text={c.noComplaints} /> : complaints.map(cp => (
                       <div key={cp.id} className="cp-card">
                         <div className="cp-card-top">
                           <span style={{ color: '#f87171', fontWeight: 700, fontSize: 12 }}>{complaintCat(cp.category)}</span>
@@ -600,7 +721,7 @@ export default function ClientPortal() {
                       </div>
                     )}
                     <div className="cp-section-title">{c.complimentHistory}</div>
-                    {compliments.length === 0 ? <Empty icon="👏" text={c.noCompliments} /> : compliments.map(cm => (
+                    {compliments.length === 0 ? <PortalEmpty icon="👏" text={c.noCompliments} /> : compliments.map(cm => (
                       <div key={cm.id} className="cp-card status-completed">
                         <div className="cp-card-date" style={{ marginBottom: 8 }}>{cm.location_name} · {new Date(cm.created_at).toLocaleDateString('ja-JP')}</div>
                         <div style={{ fontSize: 14, lineHeight: 1.5 }}>👏 {cm.message}</div>
@@ -637,7 +758,7 @@ export default function ClientPortal() {
                   </div>
                 )}
                 <div className="cp-section-title">{c.requestHistory}</div>
-                {requests.length === 0 ? <Empty icon="📝" text={c.noRequests} /> : requests.map(rq => (
+                {requests.length === 0 ? <PortalEmpty icon="📝" text={c.noRequests} /> : requests.map(rq => (
                   <div key={rq.id} className="cp-card">
                     <div className="cp-card-top">
                       <span style={{ fontWeight: 700, fontSize: 13 }}>{rq.ticket_number || `#${rq.id.slice(0, 8)}`}</span>
@@ -706,6 +827,72 @@ export default function ClientPortal() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function PortalEmpty({ icon, text }) {
+  return (
+    <div className="cp-empty">
+      <div className="cp-empty-icon">{icon}</div>
+      <div className="cp-empty-text">{text}</div>
+    </div>
+  )
+}
+
+function VisitCard({
+  job,
+  labels,
+  lang,
+  statusLabel,
+  statusClass,
+  cardStatusClass,
+  rating,
+  onClick,
+  onPhotoClick,
+}) {
+  return (
+    <div
+      className={`cp-card ${cardStatusClass(job.status)}${onClick ? ' clickable' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+    >
+      <div className="cp-card-top">
+        <div>
+          <div className="cp-card-loc">{locationFromJob(job)}</div>
+          <div className="cp-card-date">{job.scheduled_date} · {job.scheduled_time || '—'}</div>
+        </div>
+        <span className={`cp-badge ${statusClass(job.status)}`}>{statusLabel(job.status)}</span>
+      </div>
+      {job.employee_name && (
+        <div className="cp-card-cleaner">👤 {labels.cleaner}: <b>{job.employee_name}</b></div>
+      )}
+      {(job.started_at || job.status === 'completed') && (
+        <div className="cp-time-grid">
+          <div className="cp-time-box">
+            <div className="cp-time-lbl">{labels.entryTime}</div>
+            <div className="cp-time-val">{fmtVisitTime(job, lang)}</div>
+          </div>
+          <div className="cp-time-box">
+            <div className="cp-time-lbl">{labels.exitTime}</div>
+            <div className="cp-time-val">{fmtVisitEnd(job, lang)}</div>
+          </div>
+        </div>
+      )}
+      {job.status === 'completed' && (job.photo_start_url || job.photo_end_url) && (
+        <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
+          <JobPhotos
+            photoStartUrl={job.photo_start_url}
+            photoEndUrl={job.photo_end_url}
+            beforeLabel={labels.before}
+            afterLabel={labels.after}
+            size={52}
+            onPhotoClick={onPhotoClick}
+          />
+        </div>
+      )}
+      {onClick && <div className="cp-card-link">{labels.viewDetails} →</div>}
+      {rating && <div className="cp-stars">{'★'.repeat(rating.stars)}{'☆'.repeat(5 - rating.stars)}</div>}
     </div>
   )
 }

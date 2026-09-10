@@ -293,6 +293,92 @@
   font-size: 16px;
 }
 
+.cp-period-bar {
+  background: var(--cp-card);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.cp-period-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--cp-muted);
+  margin-bottom: 10px;
+}
+
+.cp-period-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cp-period-pill {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--cp-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--cp-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cp-period-pill.active {
+  background: var(--cp-gold-dim);
+  border-color: rgba(212, 168, 83, 0.35);
+  color: var(--cp-gold);
+}
+
+.cp-period-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.cp-period-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--cp-muted);
+  font-weight: 600;
+}
+
+.cp-period-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.cp-period-stat {
+  background: var(--cp-card);
+  border: 1px solid var(--cp-border);
+  border-radius: 14px;
+  padding: 12px 10px;
+  text-align: center;
+}
+
+.cp-period-stat-val {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--cp-gold);
+  line-height: 1.1;
+}
+
+.cp-period-stat-lbl {
+  font-size: 10px;
+  color: var(--cp-muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
 /* —— Cards —— */
 .cp-card {
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
