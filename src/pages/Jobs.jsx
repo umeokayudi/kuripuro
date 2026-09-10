@@ -144,6 +144,11 @@ function DayScheduleView({ onClose }) {
   const todayStr = toDateStr(new Date())
 
   const handleReassign = async (jobId, empId) => {
+    if (!empId) {
+      await supabase.from('jobs').update({ employee_id: null, employee_name: null }).eq('id', jobId)
+      loadJobs()
+      return
+    }
     const emp = employees.find(e => e.id === empId)
     await supabase.from('jobs').update({ employee_id: empId, employee_name: emp?.full_name }).eq('id', jobId)
     loadJobs()
@@ -246,6 +251,7 @@ function DayScheduleView({ onClose }) {
             {jt.employee}
             <select value={j.employee_id || ''} onChange={e => handleReassign(j.id, e.target.value)}
               style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}>
+              <option value="">{jt.unassigned}</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
             </select>
           </label>

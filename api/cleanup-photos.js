@@ -46,14 +46,17 @@ export default async function handler(req, res) {
 
     let deleted = 0
     if (!dryRun && toDelete.length) {
-      const resp = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}`, {
-        method: 'DELETE',
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefixes: toDelete }),
-      })
-      if (resp.ok) {
-        deleted = toDelete.length
-        // limpa as URLs no banco
+      const BATCH = 100
+      for (let i = 0; i < toDelete.length; i += BATCH) {
+        const batch = toDelete.slice(i, i + BATCH)
+        const resp = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}`, {
+          method: 'DELETE',
+          headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(batch),
+        })
+        if (resp.ok) deleted += batch.length
+      }
+      if (deleted > 0) {
         for (const j of oldJobs) {
           await sb(`jobs?id=eq.${j.id}`, { method: 'PATCH', body: JSON.stringify({ photo_start_url: null, photo_end_url: null }) })
         }

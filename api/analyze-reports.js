@@ -75,10 +75,10 @@ export default async function handler(req, res) {
 
   const { days = 30, employeeName, lang = 'en' } = req.body || {}
   const locale = lang === 'ja' ? 'ja' : 'en'
-  const since = new Date(Date.now() - Number(days) * 86400000).toISOString().split('T')[0]
+  const sinceIso = new Date(Date.now() - Number(days) * 86400000).toISOString()
 
   try {
-    const url = `${SUPABASE_URL}/rest/v1/jobs?select=*&status=eq.completed&scheduled_date=gte.${since}&order=completed_at.desc&limit=200`
+    const url = `${SUPABASE_URL}/rest/v1/jobs?select=*&status=eq.completed&completed_at=gte.${sinceIso}&order=completed_at.desc&limit=200`
 
     const resp = await fetch(url, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },

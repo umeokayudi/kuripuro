@@ -38,7 +38,6 @@ export default function JobPhotos({
             key={url}
             url={url}
             alt={label}
-            title={label}
             onClick={onPhotoClick ? (e) => { e?.stopPropagation?.(); onPhotoClick(url) } : undefined}
             style={thumbStyle(size)}
           />

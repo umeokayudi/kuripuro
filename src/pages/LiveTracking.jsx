@@ -56,12 +56,16 @@ export default function LiveTracking() {
 
   const load = async () => {
     loadRetros()
-    const [e, j] = await Promise.all([
+    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+    const [e, activeRes, completedTodayRes] = await Promise.all([
       supabase.from('employees').select('id,full_name,score,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').in('status',['assigned','in_progress']).order('scheduled_date'),
+      supabase.from('jobs').select('*').eq('status','completed').eq('scheduled_date', today),
     ])
     setEmployees(e.data||[])
-    setJobs(j.data||[])
+    const byId = new Map()
+    for (const j of [...(activeRes.data||[]), ...(completedTodayRes.data||[])]) byId.set(j.id, j)
+    setJobs([...byId.values()])
     setLoading(false)
   }
 

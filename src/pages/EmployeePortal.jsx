@@ -515,7 +515,6 @@ export default function EmployeePortal() {
       })
       const ev = await resp.json()
       if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
-      setRetroEval(ev)
       const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
       const total = retroChecklist.length
       const done = retroChecklist.filter(c => c.done).length
@@ -529,6 +528,7 @@ export default function EmployeePortal() {
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id', retroJob.id)
       if (error) throw error
+      setRetroEval(ev)
       const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).maybeSingle()
       if (completedRetro) {
         try {
@@ -539,7 +539,7 @@ export default function EmployeePortal() {
       }
       toast.success('Relatório enviado!')
       setTimeout(()=>{ setRetroJob(null); setRetroChecklist([]); loadAll() }, 2500)
-    } catch(e) { toast.error('Erro: '+e.message) }
+    } catch(e) { setRetroEval(null); toast.error('Erro: '+e.message) }
     setRetroBusy(false)
   }
 
@@ -559,16 +559,27 @@ export default function EmployeePortal() {
       return
     }
     setSubmitting(true)
-    const gpsResult = await checkGPS(job)
-    if (gpsResult.override) {
-      const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
-      if (!proceed) { setSubmitting(false); setGpsStatus(''); return }
+    try {
+      const { data: otherActive } = await supabase.from('jobs').select('id,title').eq('employee_id', user.id).eq('status', 'in_progress').maybeSingle()
+      if (otherActive && otherActive.id !== job.id) {
+        toast.error('Você já tem um serviço em andamento. Finalize antes de iniciar outro.')
+        return
+      }
+      const gpsResult = await checkGPS(job)
+      if (gpsResult.override) {
+        const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
+        if (!proceed) { setGpsStatus(''); return }
+      }
+      const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
+      const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
+      if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
+      setChecklist(initChecklistState(job))
+      setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!')
+    } catch (e) {
+      toast.error(e?.message || 'Erro ao iniciar serviço')
+    } finally {
+      setSubmitting(false)
     }
-    const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
-    const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
-    if (error || !data) { toast.error(error?.message || 'Could not start job'); setSubmitting(false); return }
-    setChecklist(initChecklistState(job))
-    setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!'); setSubmitting(false)
   }
 
   const handleCompleteWithSig = (job) => {
@@ -839,9 +850,9 @@ export default function EmployeePortal() {
 
       {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
       {showSignature&&<SignatureModal
-        jobTitle={activeJob?.title||''}
-        onConfirm={(sig)=>{ setShowSignature(false); handleComplete(sig) }}
-        onCancel={()=>setShowSignature(false)}
+        jobTitle={signatureJob?.title||activeJob?.title||''}
+        onConfirm={(sig)=>{ const job = signatureJob || activeJob; setShowSignature(false); setSignatureJob(null); handleComplete(sig, job) }}
+        onCancel={()=>{ setShowSignature(false); setSignatureJob(null) }}
       />}
       {trainingModal&&<TrainingModal job={trainingModal.job} contract={trainingModal.contract} onClose={()=>setTrainingModal(null)} lang={lang} />}
       {showAddService&&(

@@ -76,8 +76,11 @@ export default function ClientPortal() {
     const since = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
 
     try {
+      const locOrFilter = user.location_name
+        ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${user.location_name}%)`
+        : `client_id.eq.${user.client_id}`
       const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
-        supabase.from('jobs').select('*').eq('client_id', user.client_id).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
+        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
         supabase.from('service_contracts').select('location_name').eq('client_id', user.client_id).eq('is_active', true),
         supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at').limit(100),
         supabase.from('client_complaints').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
@@ -113,9 +116,11 @@ export default function ClientPortal() {
 
   const markMessagesRead = useCallback(async () => {
     if (!user?.client_id) return
-    await supabase.from('client_messages').update({ read: true }).eq('client_id', user.client_id).eq('sender', 'admin').eq('read', false)
+    let q = supabase.from('client_messages').update({ read: true }).eq('client_id', user.client_id).eq('sender', 'admin').eq('read', false)
+    if (user.location_name) q = q.eq('location_name', user.location_name)
+    await q
     setUnreadMsgs(0)
-  }, [user?.client_id])
+  }, [user?.client_id, user?.location_name])
 
   useEffect(() => {
     if (!localStorage.getItem('kp_lang') && lang !== 'ja') switchLang('ja')

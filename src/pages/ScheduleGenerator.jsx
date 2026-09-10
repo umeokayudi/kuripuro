@@ -78,7 +78,11 @@ export default function ScheduleGenerator() {
     const summary = Object.entries(scheduleStats(jobs).byEmployee).map(([n, c]) => `${n}: ${c}`).join(', ')
     if (existingCount > 0) {
       if (!confirm(fill(s.confirmReplace, { existing: existingCount, month, count: jobs.length, summary }))) return
-      await supabase.from('jobs').delete().gte('scheduled_date', `${month}-01`).lte('scheduled_date', `${month}-31`)
+      await supabase.from('jobs').delete()
+        .gte('scheduled_date', `${month}-01`)
+        .lte('scheduled_date', `${month}-31`)
+        .eq('status', 'assigned')
+        .neq('job_category', 'spot')
     } else if (!confirm(fill(s.confirmCreate, { count: jobs.length, summary }))) return
 
     setLoading(true)

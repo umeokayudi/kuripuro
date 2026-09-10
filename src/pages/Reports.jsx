@@ -121,12 +121,8 @@ export default function Reports() {
     const label = `${report.employee_name} · ${report.client_name || report.job_title} · ${report.report_date}`
     if (!confirm(fill(tr.deleteConfirm, { label }))) return
 
-    const [{ error: srErr }, { error: jobErr }] = await Promise.all([
-      supabase.from('service_reports').delete().eq('job_id', report.job_id),
-      supabase.from('jobs').delete().eq('id', report.job_id),
-    ])
-    if (jobErr) { toast.error(jobErr.message); return }
-    if (srErr) toast.error(srErr.message)
+    const { error: srErr } = await supabase.from('service_reports').delete().eq('job_id', report.job_id)
+    if (srErr) { toast.error(srErr.message); return }
 
     setReports(prev => prev.filter(r => r.job_id !== report.job_id))
     if (selected?.job_id === report.job_id) setSelected(null)
