@@ -362,4 +362,151 @@ export async function employeeAddService(supabase, {
   return { ok: true, action: 'created', job: created }
 }
 
+export function isJobFullyRegistered(job) {
+  if (!job || job.status !== 'completed') return false
+  return !!(job.retro_report || (job.photo_end_url && job.completed_at))
+}
+
+/**
+ * Prepare or create a job for retroactive "already completed" registration.
+ * Allows past dates and re-opens incomplete completed jobs.
+ */
+export async function preparePastServiceJob(supabase, {
+  employee,
+  location,
+  date,
+  cleaningType = 'basic',
+  deepComponents = [],
+}) {
+  if (!employee?.id || !location?.name || !date) {
+    return { ok: false, error: 'invalid_input' }
+  }
+
+  if (cleaningType === 'basic' && (location.deepOnly || isOtpDeepOnlyLocation(location.name))) {
+    return { ok: false, error: 'basic_not_available' }
+  }
+
+  if (cleaningType === 'deep' && !deepComponents?.length) {
+    return { ok: false, error: 'deep_components_required' }
+  }
+
+  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+  if (cleaningType === 'deep' && date >= today && !isDeepCleanAllowedOnDate(location.name, date)) {
+    return { ok: false, error: 'wrong_deep_day' }
+  }
+
+  const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })
+
+  const { data: dayJobs, error: dayErr } = await supabase
+    .from('jobs')
+    .select('*')
+    .eq('scheduled_date', date)
+    .neq('status', 'cancelled')
+
+  if (dayErr) return { ok: false, error: 'fetch_failed', detail: dayErr.message }
+
+  const atLocation = jobsAtLocationAndType(dayJobs, location.name, cleaningType)
+  const mine = atLocation.find(j => j.employee_id === employee.id)
+
+  if (mine) {
+    if (isJobFullyRegistered(mine)) {
+      return { ok: false, error: 'already_registered', job: mine }
+    }
+    if (mine.status === 'completed' || mine.status === 'assigned') {
+      return { ok: true, action: 'retro_existing', job: mine }
+    }
+    if (mine.status === 'in_progress') {
+      return { ok: false, error: 'in_progress', job: mine }
+    }
+  }
+
+  const completedOther = atLocation.find(j => j.status === 'completed' && j.employee_id === employee.id)
+  if (completedOther && !isJobFullyRegistered(completedOther)) {
+    return { ok: true, action: 'retro_existing', job: completedOther }
+  }
+
+  const registered = atLocation.find(j => isJobFullyRegistered(j))
+  if (registered) {
+    return { ok: false, error: 'already_registered', job: registered }
+  }
+
+  const blocking = atLocation.find(j =>
+    j.status === 'in_progress' && j.employee_id && j.employee_id !== employee.id,
+  )
+  if (blocking) {
+    return { ok: false, error: 'blocked', job: blocking }
+  }
+
+  const transferJob = atLocation.find(j =>
+    j.employee_id &&
+    j.employee_id !== employee.id &&
+    j.status === 'assigned' &&
+    !j.started_at,
+  )
+  if (transferJob) {
+    const result = await reassignJob(supabase, {
+      job: transferJob,
+      employee,
+      date,
+      title,
+      description,
+      value,
+      checklist,
+      fromEmployeeId: transferJob.employee_id,
+      fromEmployeeName: transferJob.employee_name,
+      actionLabel: 'registrou serviço já realizado',
+    })
+    if (!result.ok) return result
+    return { ok: true, action: 'transferred', job: result.job, fromEmployee: transferJob.employee_name }
+  }
+
+  const unassigned = atLocation.find(j => !j.employee_id && j.status === 'assigned' && !j.started_at)
+  if (unassigned) {
+    const result = await reassignJob(supabase, {
+      job: unassigned,
+      employee,
+      date,
+      title,
+      description,
+      value,
+      checklist,
+      fromEmployeeId: null,
+      fromEmployeeName: null,
+      actionLabel: 'registrou serviço sem atribuição',
+    })
+    if (!result.ok) return result
+    return { ok: true, action: 'claimed', job: result.job }
+  }
+
+  const nextSeq = await nextSequenceOrder(supabase, employee.id, date)
+  const { data: created, error: insErr } = await supabase.from('jobs').insert({
+    title,
+    employee_id: employee.id,
+    employee_name: employee.name,
+    client_id: location.clientId || null,
+    client_name: location.clientName || 'On The Planet',
+    scheduled_date: date,
+    scheduled_time: location.scheduledTime || '00:30',
+    address: location.address || '',
+    description,
+    value,
+    checklist_template: checklist || null,
+    status: 'assigned',
+    job_category: 'regular',
+    sequence_order: nextSeq,
+    photo_required: false,
+  }).select().single()
+
+  if (insErr) return { ok: false, error: 'create_failed', detail: insErr.message }
+  return { ok: true, action: 'created', job: created }
+}
+
+/** Retro report: at least 70% of checklist items (or all if ≤3 items). */
+export function checklistCompleteForRetro(checklist) {
+  if (!checklist?.length) return true
+  const done = checklist.filter(c => c.done).length
+  const required = checklist.length <= 3 ? checklist.length : Math.ceil(checklist.length * 0.7)
+  return done >= required
+}
+
 export { ALL_DEEP_COMPONENT_IDS }

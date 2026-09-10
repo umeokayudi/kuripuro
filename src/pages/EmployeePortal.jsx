@@ -17,6 +17,9 @@ import {
   manualAddLocations,
   buildAddServiceOptions,
   employeeAddService,
+  preparePastServiceJob,
+  checklistCompleteForRetro,
+  isJobFullyRegistered,
   ALL_DEEP_COMPONENT_IDS,
 } from '../lib/employeeAddJob'
 import {
@@ -25,7 +28,7 @@ import {
   getCleaningType,
   cleaningTypesForLang,
 } from '../lib/cleaningType'
-import { tokyoToday } from '../lib/dates'
+import { tokyoToday, recentTokyoDates } from '../lib/dates'
 import { calcEmployeeMonthlySalary, jobMinutes } from '../lib/salaryCalc'
 
 const BADGE_DEFS = [
@@ -91,6 +94,9 @@ export default function EmployeePortal() {
   const [trainingModal, setTrainingModal] = useState(null)
   const [showAddService, setShowAddService] = useState(false)
   const [addServiceBusy, setAddServiceBusy] = useState(false)
+  const [showPastService, setShowPastService] = useState(false)
+  const [pastServiceBusy, setPastServiceBusy] = useState(false)
+  const [pastServicePrefill, setPastServicePrefill] = useState(null)
   const [todayAllJobs, setTodayAllJobs] = useState([])
   const [userScrolled, setUserScrolled] = useState(false)
 
@@ -390,11 +396,52 @@ export default function EmployeePortal() {
     const date = tokyoToday()
     const { data } = await supabase
       .from('jobs')
-      .select('id, title, employee_id, employee_name, status, started_at, scheduled_date')
+      .select('id, title, employee_id, employee_name, status, started_at, scheduled_date, retro_report, photo_end_url, completed_at')
       .eq('scheduled_date', date)
       .in('status', ['assigned', 'in_progress', 'completed'])
     setTodayAllJobs(data || [])
     setShowAddService(true)
+  }
+
+  const openPastService = (prefill = null) => {
+    setPastServicePrefill(prefill)
+    setShowPastService(true)
+  }
+
+  const handlePastService = async ({ location, date, cleaningType, deepComponents }) => {
+    if (pastServiceBusy) return
+    setPastServiceBusy(true)
+    try {
+      const result = await preparePastServiceJob(supabase, {
+        employee: { id: user.id, name: user.name },
+        location,
+        date,
+        cleaningType,
+        deepComponents: cleaningType === 'deep' ? deepComponents : [],
+      })
+      if (!result.ok) {
+        if (result.error === 'already_registered') toast.error(e.pastServiceAlreadyDone)
+        else if (result.error === 'in_progress') toast.error(e.pastServiceInProgress)
+        else if (result.error === 'blocked') toast.error(e.pastServiceBlocked)
+        else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
+        else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
+        else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
+        else toast.error(result.detail || e.addServiceFailed)
+        return
+      }
+      setShowPastService(false)
+      setPastServicePrefill(null)
+      await loadAll()
+      if (result.action === 'transferred') {
+        toast.success(fill(e.addServiceTransferred, { location: location.name, name: result.fromEmployee || '—' }))
+      } else {
+        toast.success(fill(e.pastServiceSuccess, { location: location.name }))
+      }
+      openRetro(result.job)
+      setTab('shift')
+    } finally {
+      setPastServiceBusy(false)
+    }
   }
 
   const handleAddService = async (location, cleaningType, deepComponents, option) => {
@@ -406,7 +453,10 @@ export default function EmployeePortal() {
       return toast.error(e.addServiceBlocked)
     }
     if (option?.state === 'done_today') {
-      return toast.error(e.addServiceDoneToday)
+      if (isJobFullyRegistered(option.job)) return toast.error(e.pastServiceAlreadyDone)
+      setShowAddService(false)
+      await handlePastService({ location, date: tokyoToday(), cleaningType, deepComponents })
+      return
     }
     const date = tokyoToday()
     setAddServiceBusy(true)
@@ -453,13 +503,18 @@ export default function EmployeePortal() {
     setRetroChecklist(initChecklistState(job))
   }
 
+  const retroChecklistRequired = retroChecklist.length <= 3
+    ? retroChecklist.length
+    : Math.ceil(retroChecklist.length * 0.7)
+  const retroChecklistOk = checklistCompleteForRetro(retroChecklist)
+
   const submitRetro = async () => {
-    if (!checklistComplete(retroChecklist)) {
-      toast.error('Marque todos os itens do checklist antes de enviar')
+    if (!retroChecklistOk) {
+      toast.error(fill(e.retroChecklistIncomplete, { required: retroChecklistRequired, total: retroChecklist.length }))
       return
     }
-    if (!retroText.trim() || retroText.trim().length < 15) { toast.error('Descreva em pelo menos 15 caracteres o que você fez'); return }
-    if (!retroPhoto) { toast.error('Anexe uma foto do serviço (obrigatório)'); return }
+    if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return }
+    if (!retroPhoto) { toast.error(e.retroPhotoRequired); return }
     setRetroBusy(true)
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
@@ -497,7 +552,7 @@ export default function EmployeePortal() {
           console.error('service_report sync failed', syncErr?.message)
         }
       }
-      toast.success('Relatório enviado!')
+      toast.success(e.retroSuccess)
       setTimeout(()=>{ setRetroJob(null); setRetroChecklist([]); loadAll() }, 2500)
     } catch(e) { setRetroEval(null); toast.error('Erro: '+e.message) }
     setRetroBusy(false)
@@ -826,29 +881,40 @@ export default function EmployeePortal() {
           onAdd={handleAddService}
         />
       )}
+      {showPastService&&(
+        <PastServiceModal
+          labels={e}
+          lang={lang}
+          busy={pastServiceBusy}
+          prefill={pastServicePrefill}
+          onClose={()=>!pastServiceBusy&&setShowPastService(false)}
+          onSubmit={handlePastService}
+        />
+      )}
 
       {retroJob&&(
         <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
           <div onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:480,maxHeight:'88vh',overflowY:'auto'}}>
-            <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4}}>📝 Relatório retroativo</div>
+            <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4}}>📝 {e.retroTitle}</div>
             <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:14}}>{retroJob.title.replace(/ — .*/,'')} · {retroJob.scheduled_date}</div>
 
             {!retroEval ? (<>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:8}}>{e.retroChecklistHint}</div>
               <ChecklistPicker checklist={retroChecklist} setChecklist={setRetroChecklist} />
 
-              <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600,marginTop:12,display:'block'}}>O que você fez e quanto tempo levou?</label>
-              <textarea value={retroText} onChange={e=>setRetroText(e.target.value)} rows={5} placeholder="Ex: Limpei as bancadas, o piso e esvaziei o lixo. Levei cerca de 25 minutos. Não deu tempo de limpar o vidro." style={{width:'100%',marginTop:6,marginBottom:12,borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'#fff',padding:12,fontSize:14,fontFamily:'inherit',resize:'none'}} />
+              <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600,marginTop:12,display:'block'}}>{e.retroTextLabel}</label>
+              <textarea value={retroText} onChange={e=>setRetroText(e.target.value)} rows={5} placeholder={e.retroTextPlaceholder} style={{width:'100%',marginTop:6,marginBottom:12,borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'#fff',padding:12,fontSize:14,fontFamily:'inherit',resize:'none'}} />
 
-              <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600}}>Foto do serviço (obrigatória)</label>
+              <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600}}>{e.retroPhotoLabel}</label>
               <div style={{marginTop:6,marginBottom:16}}>
                 <input type="file" accept="image/*" id="retro-photo" style={{display:'none'}} onChange={e=>setRetroPhoto(e.target.files?.[0]||null)} />
                 <label htmlFor="retro-photo" style={{display:'inline-block',padding:'10px 16px',borderRadius:12,border:'1px dashed rgba(255,255,255,0.2)',color:retroPhoto?'#4ade80':'rgba(255,255,255,0.6)',fontSize:13,cursor:'pointer'}}>
-                  {retroPhoto?'✅ '+retroPhoto.name.substring(0,24):'📷 Anexar foto'}
+                  {retroPhoto?'✅ '+retroPhoto.name.substring(0,24):`📷 ${e.retroPhotoAttach}`}
                 </label>
               </div>
 
-              <button onClick={submitRetro} disabled={retroBusy || !checklistComplete(retroChecklist)} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!checklistComplete(retroChecklist)?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!checklistComplete(retroChecklist)?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!checklistComplete(retroChecklist)?'not-allowed':'pointer'}}>
-                {retroBusy?'Analisando relatório...':!checklistComplete(retroChecklist)?`✓ Checklist ${retroChecklist.filter(c=>c.done).length}/${retroChecklist.length}`:'Enviar para análise'}
+              <button onClick={submitRetro} disabled={retroBusy || !retroChecklistOk} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk?'not-allowed':'pointer'}}>
+                {retroBusy?e.retroSubmitting:!retroChecklistOk?fill(e.retroChecklistProgress,{done:retroChecklist.filter(c=>c.done).length,required:retroChecklistRequired}):e.retroSubmit}
               </button>
             </>) : (
               <div style={{textAlign:'center'}}>
@@ -939,6 +1005,17 @@ export default function EmployeePortal() {
                 <div style={{fontSize:28,fontWeight:700,color:'#4ade80',fontFamily:'monospace'}}>{fmt(elapsed)}</div>
               </div>
             </div>}
+
+            {!activeJob&&(
+              <button
+                type="button"
+                onClick={()=>openPastService()}
+                style={{width:'100%',padding:'14px 16px',marginBottom:12,borderRadius:16,border:'1px solid rgba(193,156,86,0.35)',background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(232,196,122,0.08))',color:'#e8c47a',fontSize:14,fontWeight:800,cursor:'pointer',textAlign:'left'}}
+              >
+                ✓ {e.pastServiceButton}
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',fontWeight:500,marginTop:4}}>{e.pastServiceHint}</div>
+              </button>
+            )}
 
             {/* Today shift — pendente */}
             {todayPendingJobs.length>0&&!activeJob&&(
@@ -1073,7 +1150,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} labels={e} lang={lang} />
         )}
 
         {/* SPOTS */}
@@ -1416,7 +1493,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
@@ -1425,6 +1502,15 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 
   return (
     <div>
+      {onOpenPastService&&(
+        <button
+          type="button"
+          onClick={()=>onOpenPastService()}
+          style={{width:'100%',padding:'14px 16px',marginBottom:10,borderRadius:14,border:'1px solid rgba(193,156,86,0.35)',background:'linear-gradient(135deg,rgba(193,156,86,0.18),rgba(232,196,122,0.1))',color:'#e8c47a',fontSize:14,fontWeight:800,cursor:'pointer'}}
+        >
+          ✓ {labels?.pastServiceButton || 'Already did this'}
+        </button>
+      )}
       {onOpenAddService&&(
         <button
           type="button"
@@ -1830,7 +1916,10 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
 
   const badge = (opt) => {
     if (opt.state === 'mine') return { text: labels.addServiceMine, color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
-    if (opt.state === 'done_today') return { text: labels.addServiceDoneToday, color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' }
+    if (opt.state === 'done_today') {
+      if (isJobFullyRegistered(opt.job)) return { text: labels.addServiceDoneToday, color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' }
+      return { text: labels.addServiceDoneTodayRetro, color: '#e8c47a', bg: 'rgba(193,156,86,0.15)' }
+    }
     if (opt.state === 'claim') return { text: labels.addServiceClaim, color: '#34d399', bg: 'rgba(52,211,153,0.12)' }
     if (opt.state === 'transfer') return { text: fill(labels.addServiceTransfer, { name: opt.fromEmployee }), color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
     if (opt.state === 'blocked') return { text: labels.addServiceBlocked, color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
@@ -1854,13 +1943,16 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   }
 
   const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
-  const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && picked.state !== 'done_today'
+  const doneNeedsRetro = picked?.state === 'done_today' && !isJobFullyRegistered(picked.job)
+  const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || doneNeedsRetro)
 
-  const confirmLabel = picked?.state === 'transfer'
-    ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
-    : picked?.state === 'claim'
-      ? labels.addServiceClaimConfirm
-      : labels.addServiceConfirm
+  const confirmLabel = picked?.state === 'done_today' && doneNeedsRetro
+    ? labels.addServiceDoneTodayRetro
+    : picked?.state === 'transfer'
+      ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
+      : picked?.state === 'claim'
+        ? labels.addServiceClaimConfirm
+        : labels.addServiceConfirm
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
@@ -1927,7 +2019,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           {filtered.map(opt => {
             const b = badge(opt)
             const selected = picked?.location?.name === opt.location.name
-            const disabled = opt.state === 'mine' || opt.state === 'blocked' || opt.state === 'done_today'
+            const disabled = opt.state === 'mine' || opt.state === 'blocked' || (opt.state === 'done_today' && isJobFullyRegistered(opt.job))
             return (
               <button
                 key={opt.location.name}
@@ -1965,6 +2057,166 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           }}
         >
           {busy ? '...' : picked ? confirmLabel : labels.addServiceConfirm}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
+  const [search, setSearch] = useState('')
+  const [date, setDate] = useState(prefill?.date || tokyoToday())
+  const [cleaningType, setCleaningType] = useState(prefill?.cleaningType || 'basic')
+  const [deepComponents, setDeepComponents] = useState(prefill?.deepComponents || [...ALL_DEEP_COMPONENT_IDS])
+  const [picked, setPicked] = useState(prefill?.location ? { location: prefill.location } : null)
+
+  const typeLabels = cleaningTypesForLang(lang)
+  const locations = manualAddLocations()
+  const visibleLocations = cleaningType === 'deep'
+    ? locations.filter(loc => loc.group === 'OTP')
+    : locations.filter(loc => !loc.deepOnly)
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? visibleLocations.filter(loc => loc.name.toLowerCase().includes(q) || (loc.group || '').toLowerCase().includes(q))
+    : visibleLocations
+  const dateOptions = recentTokyoDates(14)
+
+  const toggleDeepComponent = (id) => {
+    setDeepComponents(prev => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) return prev
+        return prev.filter(c => c !== id)
+      }
+      return [...prev, id]
+    })
+  }
+
+  const switchCleaningType = (t) => {
+    setCleaningType(t)
+    setPicked(null)
+    if (t === 'deep') setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
+  }
+
+  const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
+  const canConfirm = picked && deepReady
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 270, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+          <div style={{ flex: 1, marginRight: 12 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: '#e8c47a' }}>✓ {labels.pastServiceTitle}</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 6, lineHeight: 1.5 }}>{labels.pastServiceHint}</div>
+          </div>
+          <button type="button" onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: busy ? 'not-allowed' : 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.45)', marginBottom: 8, letterSpacing: 0.3 }}>{labels.pastServiceDate}</div>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 14, paddingBottom: 4 }}>
+          {dateOptions.map(d => {
+            const isToday = d === tokyoToday()
+            const selected = d === date
+            const label = isToday ? `${d.slice(5)} (today)` : d.slice(5)
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDate(d)}
+                style={{
+                  flexShrink: 0, padding: '8px 12px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                  background: selected ? 'rgba(193,156,86,0.25)' : 'rgba(255,255,255,0.05)',
+                  color: selected ? '#e8c47a' : 'rgba(255,255,255,0.45)',
+                }}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder={labels.addServiceSearch}
+          style={{ width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14, marginBottom: 12, boxSizing: 'border-box' }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          {['basic', 'deep'].map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => switchCleaningType(t)}
+              style={{
+                flex: 1, padding: '10px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                background: cleaningType === t ? (t === 'deep' ? 'rgba(251,191,36,0.2)' : 'rgba(96,165,250,0.2)') : 'rgba(255,255,255,0.05)',
+                color: cleaningType === t ? (t === 'deep' ? '#fbbf24' : '#60a5fa') : 'rgba(255,255,255,0.45)',
+              }}
+            >
+              {typeLabels[t]?.short || (t === 'basic' ? labels.basicCleaning : labels.deepCleaning)}
+            </button>
+          ))}
+        </div>
+
+        {cleaningType === 'deep' && (
+          <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#fbbf24', marginBottom: 8, letterSpacing: 0.3 }}>{labels.deepComponentsTitle}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {DEEP_CLEAN_COMPONENTS.map(comp => {
+                const on = deepComponents.includes(comp.id)
+                return (
+                  <button
+                    key={comp.id}
+                    type="button"
+                    onClick={() => toggleDeepComponent(comp.id)}
+                    style={{
+                      padding: '10px 12px', borderRadius: 10, border: on ? '1px solid rgba(251,191,36,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                      background: on ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.04)',
+                      color: on ? '#fbbf24' : 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    {on ? '✓ ' : ''}{deepComponentLabel(comp.id, lang)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div style={{ maxHeight: '38vh', overflowY: 'auto', marginBottom: 14 }}>
+          {filtered.map(loc => {
+            const selected = picked?.location?.name === loc.name
+            return (
+              <button
+                key={loc.name}
+                type="button"
+                onClick={() => setPicked({ location: loc })}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, borderRadius: 12,
+                  border: selected ? '1px solid rgba(193,156,86,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                  background: selected ? 'rgba(193,156,86,0.12)' : 'rgba(255,255,255,0.03)',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{loc.name}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{loc.group}</div>
+              </button>
+            )
+          })}
+        </div>
+
+        <button
+          type="button"
+          disabled={!canConfirm || busy}
+          onClick={() => picked && onSubmit({ location: picked.location, date, cleaningType, deepComponents })}
+          style={{
+            width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
+            background: canConfirm && !busy ? 'linear-gradient(135deg,#c19c56,#e8c47a)' : 'rgba(255,255,255,0.08)',
+            color: canConfirm && !busy ? '#0a1929' : 'rgba(255,255,255,0.3)',
+            cursor: canConfirm && !busy ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {busy ? '...' : labels.pastServiceConfirm}
         </button>
       </div>
     </div>

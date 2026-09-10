@@ -12,6 +12,19 @@ export function tokyoYearMonth(date = new Date()) {
   return date.toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 7)
 }
 
+/** Last N calendar days in Tokyo, including today (newest first). */
+export function recentTokyoDates(count = 7) {
+  const dates = []
+  let cursor = tokyoToday()
+  for (let i = 0; i < count; i++) {
+    dates.push(cursor)
+    const [y, m, d] = cursor.split('-').map(Number)
+    const prev = new Date(Date.UTC(y, m - 1, d - 1))
+    cursor = prev.toISOString().slice(0, 10)
+  }
+  return dates
+}
+
 export function workedDayKey(job) {
   if (!job?.scheduled_date || job.counts_as_work_day === false) return null
   const hour = parseInt((job.scheduled_time || '12:00').split(':')[0], 10)
