@@ -127,6 +127,9 @@ function testOtpDeepOnlyContracts() {
   assert(deepOnly.find(l => l.name === 'Ibushio')?.restDay === 0, 'Ibushio rest Sunday')
   assert(deepOnly.find(l => l.name === 'Nyu Ibushio')?.restDay === 1, 'Nyu Ibushio rest Monday')
 
+  const sepMondays = weekdaysInMonth('2026-09', [1])
+  assert(sepMondays[0] === '2026-09-07', `Sep 2026 first Monday (local): ${sepMondays[0]}`)
+
   const sepDates = expectedDeepCleanDatesForLocation('Ibushio', '2026-09')
   assert(sepDates.length >= 8, `Ibushio Mon+Wed in Sep: ${sepDates.length}`)
   const kodamaDates = expectedDeepCleanDatesForLocation('Kodama Shinbashi', '2026-09')
