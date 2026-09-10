@@ -23,6 +23,7 @@ const navItems = [
   { to: '/adminchat', key: 'chat', icon: Icons.users },
   { to: '/live',      key: 'liveTrack', icon: Icons.users },
   { to: '/transport-claims', key: 'transport', icon: Icons.list },
+  { to: '/equipment-requests', key: 'equipmentRequests', icon: Icons.list },
   { to: '/deductions', key: 'deductions', icon: Icons.calc },
 ]
 

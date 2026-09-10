@@ -82,6 +82,11 @@ export default function EmployeePortal() {
   const [claimReceiptPreview, setClaimReceiptPreview] = useState(null)
   const [submittingComplaint, setSubmittingComplaint] = useState(false)
   const [submittingClaim, setSubmittingClaim] = useState(false)
+  const [equipmentRequests, setEquipmentRequests] = useState([])
+  const [equipmentForm, setEquipmentForm] = useState({ category: 'supplies', item_name: '', quantity: '1', reason: '' })
+  const [equipmentPhoto, setEquipmentPhoto] = useState(null)
+  const [equipmentPhotoPreview, setEquipmentPhotoPreview] = useState(null)
+  const [submittingEquipment, setSubmittingEquipment] = useState(false)
   const [statement, setStatement] = useState(null)
   const [complaintText, setComplaintText] = useState('')
   const [complaintCategory, setComplaintCategory] = useState('hours')
@@ -106,6 +111,7 @@ export default function EmployeePortal() {
   const photoInputRef = useRef()
   const claimPhotoRef = useRef()
   const claimReceiptRef = useRef()
+  const equipmentPhotoRef = useRef()
   const msgEndRef = useRef()
   const chatContainerRef = useRef()
 
@@ -202,13 +208,14 @@ export default function EmployeePortal() {
     const today = tokyoToday()
     const { start:weekStart, end:weekEnd } = getWeekRange()
     const monthStart = today.slice(0, 7) + '-01'
-    const [active, all, emp, pay, adv, clm, bdg, weekPay, monthPay, contractsRes] = await Promise.all([
+    const [active, all, emp, pay, adv, clm, eqp, bdg, weekPay, monthPay, contractsRes] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
       supabase.from('employees').select('id,full_name,email,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active').eq('id',user.id).maybeSingle(),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).gte('payment_date',today).order('payment_date').limit(10),
       supabase.from('salary_payments').select('*').eq('employee_id', user.id).eq('payment_type', 'advance').order('payment_date', { ascending: false }).limit(10),
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
+      supabase.from('equipment_requests').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(30),
       supabase.from('badges').select('*').eq('employee_id',user.id),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
@@ -217,7 +224,7 @@ export default function EmployeePortal() {
     const regular = (active.data||[]).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = (active.data||[]).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
     setJobs(regular); setSpotJobs(spots); setAllJobs(all.data||[])
-    setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[])
+    setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[]); setEquipmentRequests(eqp.data||[])
     setWeekDeductions(weekPay.data||[])
     setMonthDeductions(monthPay.data||[])
     setBadges(bdg.data||[])
@@ -727,6 +734,46 @@ export default function EmployeePortal() {
     setSubmittingClaim(false)
   }
 
+  const equipmentStatusLabel = (status) => ({
+    pending: e.equipmentStatusPending,
+    approved: e.equipmentStatusApproved,
+    rejected: e.equipmentStatusRejected,
+    fulfilled: e.equipmentStatusFulfilled,
+  }[status] || status)
+
+  const handleSubmitEquipment = async () => {
+    if (!equipmentForm.item_name.trim()) return toast.error(e.equipmentItemRequired)
+    if (!equipmentForm.reason.trim() || equipmentForm.reason.trim().length < 10) return toast.error(e.equipmentReasonRequired)
+    setSubmittingEquipment(true)
+    try {
+      const id = Date.now()
+      const photoUrl = equipmentPhoto
+        ? await uploadFile(equipmentPhoto, `equipment/${user.id}/${id}.${equipmentPhoto.name.split('.').pop()}`)
+        : null
+      const qty = Math.max(1, parseInt(equipmentForm.quantity, 10) || 1)
+      const { error } = await supabase.from('equipment_requests').insert({
+        employee_id: user.id,
+        employee_name: user.name,
+        category: equipmentForm.category,
+        item_name: equipmentForm.item_name.trim(),
+        quantity: qty,
+        reason: equipmentForm.reason.trim(),
+        photo_url: photoUrl,
+        status: 'pending',
+      })
+      if (error) throw error
+      toast.success(e.equipmentSubmitSuccess)
+      setEquipmentForm({ category: 'supplies', item_name: '', quantity: '1', reason: '' })
+      setEquipmentPhoto(null)
+      if (equipmentPhotoPreview) URL.revokeObjectURL(equipmentPhotoPreview)
+      setEquipmentPhotoPreview(null)
+      loadAll()
+    } catch (err) {
+      toast.error(err.message)
+    }
+    setSubmittingEquipment(false)
+  }
+
   const fmt = s=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
   const scoreColor = s=>s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
   const today = tokyoToday()
@@ -778,6 +825,7 @@ export default function EmployeePortal() {
     {key:'history',icon:'📅',label:e.allJobs},
     {key:'salary',icon:'💴',label:e.salary},
     {key:'transport',icon:'🚃',label:e.transport},
+    {key:'equipment',icon:'🧰',label:e.equipment},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
     {key:'achievements',icon:'🏆',label:e.achievements},
@@ -1340,6 +1388,70 @@ export default function EmployeePortal() {
                 </div>}
               </>)
             })()}
+          </div>
+        )}
+
+        {/* EQUIPMENT */}
+        {tab==='equipment'&&(
+          <div>
+            <span style={S.label}>{e.equipmentSubmitTitle}</span>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 12, lineHeight: 1.5 }}>{e.equipmentSubmitHint}</div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 20, padding: 18, marginBottom: 16 }}>
+              <div style={{ marginBottom: 10 }}>
+                <span style={S.label}>{e.equipmentCategory}</span>
+                <select value={equipmentForm.category} onChange={ev => setEquipmentForm(f => ({ ...f, category: ev.target.value }))} style={{ ...S.input, appearance: 'none' }}>
+                  <option value="supplies">{e.equipmentCatSupplies}</option>
+                  <option value="tools">{e.equipmentCatTools}</option>
+                  <option value="uniform">{e.equipmentCatUniform}</option>
+                  <option value="safety">{e.equipmentCatSafety}</option>
+                  <option value="other">{e.equipmentCatOther}</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <span style={S.label}>{e.equipmentItem} *</span>
+                <input value={equipmentForm.item_name} onChange={ev => setEquipmentForm(f => ({ ...f, item_name: ev.target.value }))} placeholder={e.equipmentItemPlaceholder} style={S.input} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <span style={S.label}>{e.equipmentQuantity}</span>
+                <input type="number" min="1" value={equipmentForm.quantity} onChange={ev => setEquipmentForm(f => ({ ...f, quantity: ev.target.value }))} style={S.input} />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <span style={S.label}>{e.equipmentReason} *</span>
+                <textarea value={equipmentForm.reason} onChange={ev => setEquipmentForm(f => ({ ...f, reason: ev.target.value }))} placeholder={e.equipmentReasonPlaceholder} rows={4} style={{ ...S.input, resize: 'none' }} />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <span style={S.label}>{e.equipmentPhoto}</span>
+                <div onClick={() => equipmentPhotoRef.current?.click()} style={{ aspectRatio: '2.2/1', borderRadius: 12, overflow: 'hidden', cursor: 'pointer', border: equipmentPhotoPreview ? '2px solid #4ade80' : '2px dashed rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5, color: 'rgba(255,255,255,0.3)' }}>
+                  {equipmentPhotoPreview ? <img src={equipmentPhotoPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <><span style={{ fontSize: 26 }}>📷</span><span style={{ fontSize: 10 }}>{e.equipmentPhotoAttach}</span></>}
+                </div>
+                <input ref={equipmentPhotoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={ev => {
+                  const file = ev.target.files?.[0]
+                  if (equipmentPhotoPreview) URL.revokeObjectURL(equipmentPhotoPreview)
+                  setEquipmentPhoto(file || null)
+                  setEquipmentPhotoPreview(file ? URL.createObjectURL(file) : null)
+                }} />
+              </div>
+              <button onClick={handleSubmitEquipment} disabled={submittingEquipment} style={{ width: '100%', padding: '15px', borderRadius: 14, border: 'none', background: submittingEquipment ? 'rgba(255,255,255,0.07)' : 'linear-gradient(135deg,#c19c56,#e8c47a)', color: submittingEquipment ? 'rgba(255,255,255,0.25)' : '#0a1929', fontSize: 15, fontWeight: 700, cursor: submittingEquipment ? 'not-allowed' : 'pointer' }}>
+                {submittingEquipment ? e.equipmentSubmitting : `📤 ${e.equipmentSubmit}`}
+              </button>
+            </div>
+            <span style={S.label}>{e.equipmentMyRequests}</span>
+            {equipmentRequests.length === 0 && <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 13, padding: '20px 0' }}>{e.equipmentNoRequests}</div>}
+            {equipmentRequests.map(r => (
+              <div key={r.id} style={S.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{r.item_name}{r.quantity > 1 ? ` × ${r.quantity}` : ''}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>{(r.created_at || '').slice(0, 10)}</div>
+                  </div>
+                  <span style={{ fontSize: 9, borderRadius: 20, padding: '3px 9px', fontWeight: 600, textTransform: 'uppercase', background: r.status === 'approved' || r.status === 'fulfilled' ? 'rgba(74,222,128,0.12)' : r.status === 'rejected' ? 'rgba(248,113,113,0.12)' : 'rgba(251,191,36,0.12)', color: r.status === 'approved' || r.status === 'fulfilled' ? '#4ade80' : r.status === 'rejected' ? '#f87171' : '#fbbf24', border: `1px solid rgba(${r.status === 'approved' || r.status === 'fulfilled' ? '74,222,128' : r.status === 'rejected' ? '248,113,113' : '251,191,36'},0.2)` }}>
+                    {equipmentStatusLabel(r.status)}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5, marginTop: 6 }}>{r.reason}</div>
+                {r.admin_note && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '6px 8px', marginTop: 8 }}>{e.equipmentAdminNote}: {r.admin_note}</div>}
+              </div>
+            ))}
           </div>
         )}
 
