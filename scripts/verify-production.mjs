@@ -38,10 +38,19 @@ async function main() {
     fail('Homepage loads', `HTTP ${home.status}`)
   }
 
-  // Bundle features
-  const bundleMatch = home.text.match(/assets\/index-[^"]+\.js/)
-  if (bundleMatch) {
-    const bundle = await fetchText(`${BASE}/${bundleMatch[0]}`)
+  // Bundle features (main index + lazy-imported chunks referenced inside it)
+  const indexMatch = home.text.match(/assets\/index-[^"]+\.js/)
+  let bundleText = ''
+  if (indexMatch) {
+    const indexBundle = await fetchText(`${BASE}/${indexMatch[0]}`)
+    bundleText = indexBundle.text
+    const lazyChunks = [...new Set(indexBundle.text.match(/assets\/[^"']+\.js/g) || [])]
+    for (const p of lazyChunks) {
+      const chunk = await fetchText(`${BASE}/${p}`)
+      bundleText += `\n${chunk.text}`
+    }
+  }
+  if (bundleText) {
     const features = [
       'Add service manually',
       'Checklist incompleto',
@@ -52,11 +61,11 @@ async function main() {
       'client:{portal:',
     ]
     for (const f of features) {
-      if (bundle.text.includes(f)) pass(`Bundle: ${f}`)
+      if (bundleText.includes(f)) pass(`Bundle: ${f}`)
       else fail(`Bundle: ${f}`, 'not found')
     }
   } else {
-    fail('Bundle detection', 'no index bundle in HTML')
+    fail('Bundle detection', 'no JS chunks in HTML')
   }
 
   // Admin AI endpoint
