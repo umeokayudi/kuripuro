@@ -49,6 +49,7 @@ async function main() {
       'Open in Google Maps',
       'progressSummary',
       '1 hour on this job',
+      'client:{portal:',
     ]
     for (const f of features) {
       if (bundle.text.includes(f)) pass(`Bundle: ${f}`)
