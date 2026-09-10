@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { apiPost } from '../lib/apiFetch'
 import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
 import { loadChatHistory, saveChatHistory } from '../lib/aiChatHistory'
@@ -72,7 +73,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     const body = mode === 'employee'
       ? { messages: allMessages, employeeId, employeeName }
       : { messages: allMessages }
-    const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const resp = await apiPost(endpoint, body)
     let data
     try { data = await resp.json() } catch { throw new Error(`Resposta inválida (${resp.status})`) }
     if (!resp.ok || data.error) throw new Error(data.error || `Erro ${resp.status}`)

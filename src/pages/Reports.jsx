@@ -5,6 +5,7 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill } from '../hooks/useLang'
+import { apiPost } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 
 function typeBadge(type, tr) {
@@ -133,10 +134,10 @@ export default function Reports() {
     setAiLoading(true)
     setAiAnalysis('')
     try {
-      const resp = await fetch('/api/analyze-reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: filterDays, employeeName: filterEmp || undefined, lang }),
+      const resp = await apiPost('/api/analyze-reports', {
+        days: filterDays,
+        employeeName: filterEmp || undefined,
+        lang,
       })
       const data = await resp.json()
       if (data.error) throw new Error(data.error)

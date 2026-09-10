@@ -11,9 +11,12 @@ import {
 } from '../lib/clientPortal'
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
+import { tokyoToday } from '../lib/dates'
 import './client-portal.css'
 
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+function sanitizePostgrestToken(value) {
+  return String(value || '').replace(/[%(),.\\]/g, '').trim()
+}
 
 const filterByLocation = (rows, locationName) => {
   if (!locationName) return rows || []
@@ -76,8 +79,9 @@ export default function ClientPortal() {
     const since = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
 
     try {
-      const locOrFilter = user.location_name
-        ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${user.location_name}%)`
+      const locToken = sanitizePostgrestToken(user.location_name)
+      const locOrFilter = locToken
+        ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${locToken}%)`
         : `client_id.eq.${user.client_id}`
       const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
         supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } from '../lib/portalStores'
+import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 
 export default function Clients() {
@@ -55,7 +56,7 @@ export default function Clients() {
   const runAutoSetup = async () => {
     setAutoSetupBusy(true)
     try {
-      const resp = await fetch('/api/setup-portal-schema', { method: 'POST' })
+      const resp = await apiFetch('/api/setup-portal-schema', { method: 'POST' })
       const data = await resp.json()
       if (!resp.ok) {
         if (resp.status === 503) {
@@ -412,7 +413,7 @@ export default function Clients() {
                 <div className="grid-2" style={{marginTop:12}}>
                   <div className="form-group"><label>Contact Name *</label><input value={portalForm.contact_name} onChange={e=>setPortalForm(f=>({...f,contact_name:e.target.value}))} placeholder="Tanaka Hiroshi" /></div>
                   <div className="form-group"><label>Email *</label><input type="email" value={portalForm.email} onChange={e=>setPortalForm(f=>({...f,email:e.target.value}))} /></div>
-                  <div className="form-group"><label>Password *</label><input type="text" value={portalForm.password} onChange={e=>setPortalForm(f=>({...f,password:e.target.value}))} placeholder="min 6 chars" /></div>
+                  <div className="form-group"><label>Password *</label><input type="password" value={portalForm.password} onChange={e=>setPortalForm(f=>({...f,password:e.target.value}))} placeholder="min 6 chars" /></div>
                   <div className="form-group"><label>店舗（任意）</label>
                     <select value={portalForm.location_name} onChange={e=>setPortalForm(f=>({...f,location_name:e.target.value}))}>
                       <option value="">All locations</option>
@@ -459,7 +460,7 @@ export default function Clients() {
               <div className="grid-2" style={{ marginTop: 12 }}>
                 <div className="form-group"><label>Nome / contato</label><input value={editPortalForm.contact_name} onChange={e=>setEditPortalForm(f=>({...f,contact_name:e.target.value}))} /></div>
                 <div className="form-group"><label>Email *</label><input type="email" value={editPortalForm.email} onChange={e=>setEditPortalForm(f=>({...f,email:e.target.value}))} /></div>
-                <div className="form-group"><label>Nova senha (vazio = manter)</label><input type="text" value={editPortalForm.password} onChange={e=>setEditPortalForm(f=>({...f,password:e.target.value}))} placeholder="min 6 chars" /></div>
+                <div className="form-group"><label>Nova senha (vazio = manter)</label><input type="password" value={editPortalForm.password} onChange={e=>setEditPortalForm(f=>({...f,password:e.target.value}))} placeholder="min 6 chars" /></div>
                 <div className="form-group"><label>Local</label>
                   <select value={editPortalForm.location_name} onChange={e=>setEditPortalForm(f=>({...f,location_name:e.target.value}))}>
                     <option value="">All locations</option>

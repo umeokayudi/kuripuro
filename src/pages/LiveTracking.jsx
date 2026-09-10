@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { apiFetch } from '../lib/apiFetch'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
@@ -17,7 +18,7 @@ export default function LiveTracking() {
 
   const checkPhotos = async () => {
     try {
-      const r = await fetch('/api/cleanup-photos')
+      const r = await apiFetch('/api/cleanup-photos')
       if (!r.ok) throw new Error('HTTP ' + r.status)
       setPhotoInfo(await r.json())
     } catch(e) { setPhotoInfo({ error: e.message }) }
@@ -27,7 +28,7 @@ export default function LiveTracking() {
     if (!window.confirm('Apagar as fotos de jobs concluídos há mais de 60 dias? Isso não pode ser desfeito.')) return
     setCleaning(true)
     try {
-      const r = await fetch('/api/cleanup-photos', { method: 'POST' })
+      const r = await apiFetch('/api/cleanup-photos', { method: 'POST' })
       if (!r.ok) throw new Error('HTTP ' + r.status)
       const res = await r.json()
       if (res.error) throw new Error(res.error)

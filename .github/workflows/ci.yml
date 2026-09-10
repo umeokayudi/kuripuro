@@ -19,3 +19,7 @@ jobs:
 
       - run: npm ci
       - run: npm test
+        env:
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          TEST_PORTAL_USER: ${{ secrets.TEST_PORTAL_USER }}
+          TEST_PORTAL_PASSWORD: ${{ secrets.TEST_PORTAL_PASSWORD }}

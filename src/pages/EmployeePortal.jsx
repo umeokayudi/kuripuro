@@ -25,6 +25,8 @@ import {
   getCleaningType,
   cleaningTypesForLang,
 } from '../lib/cleaningType'
+import { tokyoToday } from '../lib/dates'
+import { calcEmployeeMonthlySalary, jobMinutes } from '../lib/salaryCalc'
 
 const BADGE_DEFS = [
   { key:'first_job', name:'First Job', icon:'🎯', desc:'Complete your first job' },
@@ -34,8 +36,6 @@ const BADGE_DEFS = [
   { key:'spot_master', name:'Spot Master', icon:'⚡', desc:'Accept 5 spot jobs' },
   { key:'perfect_week', name:'Perfect Week', icon:'🔥', desc:'5 jobs in one week' },
 ]
-
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 
 export default function EmployeePortal() {
   const { user, logout } = useAuth()
@@ -147,7 +147,7 @@ export default function EmployeePortal() {
       supabase.from('employees').update({ is_online: false }).eq('id', user.id)
     }
 
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
     document.body.setAttribute('data-working', activeJob ? 'yes' : 'no')
@@ -336,48 +336,8 @@ export default function EmployeePortal() {
     return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate }
   }
 
-  const jobMinutes = (j) => {
-    if (j.started_at && j.completed_at) return (new Date(j.completed_at) - new Date(j.started_at)) / 60000
-    if (j.retro_time_min) return Number(j.retro_time_min)
-    return 45
-  }
-
   const calcSalary = (allData, empInfo, deductionsList = []) => {
-    const todayStr = tokyoToday()
-    const month = todayStr.slice(0, 7)
-    const completed = allData.filter(j=>j.status==='completed'&&j.scheduled_date?.startsWith(month)&&j.scheduled_date<=todayStr)
-    const totalMins = completed.reduce((s,j)=>s+jobMinutes(j),0)
-    const spotEarned = completed.filter(j=>j.job_category==='spot').reduce((s,j)=>s+Number(j.spot_value||0),0)
-    const deductions = (deductionsList||[]).reduce((s,d)=>s+Number(d.amount||0),0)
-    const workedDaySet = new Set()
-    completed.filter(j=>j.counts_as_work_day!==false).forEach(j=>{
-      if (!j.scheduled_date) return
-      const hour = parseInt((j.scheduled_time||'12:00').split(':')[0])
-      if (hour < 6) {
-        const d = new Date(j.scheduled_date+'T12:00:00'); d.setDate(d.getDate()-1)
-        workedDaySet.add(d.toISOString().split('T')[0])
-      } else workedDaySet.add(j.scheduled_date)
-    })
-    const workedDays = workedDaySet.size
-    const fixedMax = empInfo?.fixed_salary||0
-    const monthlyDays = empInfo?.monthly_work_days||22
-    const dailyRate = fixedMax/monthlyDays
-    const jobPay = (j) => Number(j.retro_value ?? j.value ?? 0)
-    let base = 0
-    if (empInfo?.salary_type==='fixed') base = Math.min(Math.round(dailyRate*workedDays),fixedMax)
-    else if (empInfo?.salary_type==='hourly') base = Math.round((totalMins/60)*(empInfo?.hourly_rate||0))
-    else if (empInfo?.salary_type==='per_job') base = completed.reduce((s,j)=>s+Math.round(jobPay(j)*((empInfo.job_bonus_rate||100)/100)),0)
-    else if (empInfo?.salary_type==='mixed') {
-      const fixedPart = Math.min(Math.round(dailyRate*workedDays), fixedMax)
-      const hourlyPart = Math.round((totalMins/60)*(empInfo?.hourly_rate||0))
-      const bonusPart = completed.reduce((s,j)=>s+Math.round(jobPay(j)*((empInfo.job_bonus_rate||0)/100)),0)
-      base = fixedPart + hourlyPart + bonusPart
-    } else base = Math.round(fixedMax+(totalMins/60)*(empInfo?.hourly_rate||0))
-    const tokyoNow = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Tokyo'}))
-    const daysInMonth = new Date(tokyoNow.getFullYear(),tokyoNow.getMonth()+1,0).getDate()
-    let remain = 0
-    for (let d=tokyoNow.getDate()+1;d<=daysInMonth;d++) { const day=new Date(tokyoNow.getFullYear(),tokyoNow.getMonth(),d).getDay(); if(day!==0&&day!==6) remain++ }
-    setSalaryData({ jobs:completed.length, hours:(totalMins/60).toFixed(1), base, spotEarned, deductions, net:Math.max(0,base+spotEarned-deductions), total:base+spotEarned, workedDays, fixedMax, dailyRate:Math.round(dailyRate), projected:Math.min(base+Math.round(dailyRate*remain),fixedMax) })
+    setSalaryData(calcEmployeeMonthlySalary(empInfo, allData, deductionsList))
   }
 
   const awardBadges = async (allData, existing) => {
@@ -394,8 +354,8 @@ export default function EmployeePortal() {
     if (done.filter(j=>j.scheduled_date>=start&&j.scheduled_date<=end).length>=5&&!earned.includes('perfect_week')) toAward.push('perfect_week')
     for (const key of toAward) {
       const def = BADGE_DEFS.find(b=>b.key===key)
-      await supabase.from('badges').insert({ employee_id:user.id, badge_key:key, badge_name:def?.name })
-      toast.success(`🏆 Badge: ${def?.name}!`)
+      const { error } = await supabase.from('badges').insert({ employee_id:user.id, badge_key:key, badge_name:def?.name })
+      if (!error) toast.success(`🏆 Badge: ${def?.name}!`)
     }
   }
 

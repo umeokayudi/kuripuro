@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
  * Read-only portal login smoke test (live Supabase).
+ * Credentials from env — never hardcode production passwords in source.
  */
 import { createClient } from '@supabase/supabase-js'
 import { findClientUserForLogin } from '../src/lib/clientCredentials.js'
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co'
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY
+const TEST_USER = process.env.TEST_PORTAL_USER
+const TEST_PASSWORD = process.env.TEST_PORTAL_PASSWORD
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -14,14 +17,23 @@ function assert(cond, msg) {
 
 async function main() {
   console.log('=== Portal auth smoke (read-only) ===\n')
+
+  if (!SUPABASE_ANON_KEY) {
+    console.log('⏭️  Skipped: VITE_SUPABASE_ANON_KEY not set')
+    return
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-  const user = await findClientUserForLogin(supabase, 'Ibushio', 'Kuripuro2026')
-  assert(user?.client_id, 'Ibushio login by store name')
-  assert(user?.location_name, 'Ibushio has location_name')
-  console.log('✅ Client login by store name (Ibushio)')
+  if (TEST_USER && TEST_PASSWORD) {
+    const user = await findClientUserForLogin(supabase, TEST_USER, TEST_PASSWORD)
+    assert(user?.client_id, `${TEST_USER} login`)
+    console.log(`✅ Client login (${TEST_USER})`)
+  } else {
+    console.log('⏭️  Skipped login test: set TEST_PORTAL_USER and TEST_PORTAL_PASSWORD in CI secrets')
+  }
 
-  const bad = await findClientUserForLogin(supabase, 'Ibushio', 'wrong-password')
+  const bad = await findClientUserForLogin(supabase, '___invalid_user___', 'wrong-password')
   assert(!bad, 'wrong password returns null')
   console.log('✅ Wrong password rejected')
 

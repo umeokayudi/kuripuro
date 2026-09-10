@@ -4,6 +4,8 @@
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
+import { requireAdminSecret } from './_auth.js'
+
 const BUCKET = 'service-photos'
 const DAYS = 60
 
@@ -32,6 +34,7 @@ async function listFolder(prefix) {
 
 export default async function handler(req, res) {
   try {
+    if (req.method === 'POST' && !requireAdminSecret(req, res)) return
     const dryRun = req.method === 'GET' // GET = só reporta, POST = apaga de verdade
     const cutoff = new Date(Date.now() - DAYS * 86400000).toISOString().split('T')[0]
 

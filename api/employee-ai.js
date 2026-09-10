@@ -1,6 +1,7 @@
 // Assistente de IA para funcionários — somente leitura dos próprios dados
 
 import { runGeminiToolLoop } from './_tool-loop.js'
+import { requireAdminSecret } from './_auth.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
@@ -54,6 +55,8 @@ const TOOLS = [{
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  if (!requireAdminSecret(req, res)) return
 
   const { messages, employeeId, employeeName } = req.body || {}
   if (!messages?.length || !employeeId) {

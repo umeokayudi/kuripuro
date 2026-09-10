@@ -3,7 +3,11 @@
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   || process.env.SUPABASE_ANON_KEY
-  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
+  || (process.env.NODE_ENV === 'production' ? null : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo')
+
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.VERCEL_ENV === 'production') {
+  console.warn('[storage] SUPABASE_SERVICE_ROLE_KEY missing in production — photo proxy may fail')
+}
 
 const DEFAULT_BUCKET = 'service-photos'
 
@@ -34,6 +38,7 @@ export function parseStorageRef(input) {
 }
 
 function storageHeaders(extra = {}) {
+  if (!SUPABASE_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY required')
   return {
     apikey: SUPABASE_KEY,
     Authorization: `Bearer ${SUPABASE_KEY}`,
