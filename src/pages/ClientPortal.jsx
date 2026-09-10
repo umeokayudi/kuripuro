@@ -17,8 +17,20 @@ const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/To
 export default function ClientPortal() {
   const { user, logout, updateSession } = useAuth()
   const { lang, switchLang, t: tr } = useLang()
-  const c = tr.client
+  const c = tr?.client
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+
+  if (!c) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0d2137', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Client portal unavailable</div>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginBottom: 16 }}>Translation bundle failed to load. Please refresh or contact support.</div>
+          <button type="button" onClick={logout} style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: '#c19c56', color: '#0d2137', fontWeight: 700, cursor: 'pointer' }}>Logout</button>
+        </div>
+      </div>
+    )
+  }
 
   const [desktopMode, setDesktopMode] = useState(() => {
     const saved = localStorage.getItem('cp_view_mode')
@@ -92,29 +104,46 @@ export default function ClientPortal() {
   }
 
   const loadAll = async () => {
-    if (!user?.client_id) return
+    if (!user?.client_id) {
+      setLoading(false)
+      return
+    }
     const since = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
 
-    const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
-      supabase.from('jobs').select('*').eq('client_id', user.client_id).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
-      supabase.from('service_contracts').select('location_name').eq('client_id', user.client_id).eq('is_active', true),
-      supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at').limit(100),
-      supabase.from('client_complaints').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
-      supabase.from('client_compliments').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
-      supabase.from('client_ratings').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(100),
-      supabase.from('client_requests').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
-    ])
+    try {
+      const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
+        supabase.from('jobs').select('*').eq('client_id', user.client_id).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
+        supabase.from('service_contracts').select('location_name').eq('client_id', user.client_id).eq('is_active', true),
+        supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at').limit(100),
+        supabase.from('client_complaints').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
+        supabase.from('client_compliments').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
+        supabase.from('client_ratings').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(100),
+        supabase.from('client_requests').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
+      ])
 
-    setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
-    setContracts(contractsRes.data || [])
-    setMessages(filterByLocation(msgsRes.data))
-    setComplaints(filterByLocation(compRes.data))
-    setCompliments(filterByLocation(cmplRes.data))
-    setRatings((ratRes.data || []).filter(r => ratingMatchesClientUser(r, user)))
-    setRequests(filterByLocation(reqRes.data))
-    setUnreadMsgs(filterByLocation(msgsRes.data).filter(m => m.sender === 'admin' && !m.read).length)
-    setLoading(false)
-    await supabase.from('client_users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
+      const firstErr = [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes]
+        .map(r => r.error?.message)
+        .find(Boolean)
+      if (firstErr?.includes('client_') || firstErr?.includes('PGRST205')) {
+        toast.error('Portal tables missing. Ask admin to run portal setup in Clients.')
+      } else if (firstErr) {
+        toast.error(firstErr)
+      }
+
+      setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
+      setContracts(contractsRes.data || [])
+      setMessages(filterByLocation(msgsRes.data))
+      setComplaints(filterByLocation(compRes.data))
+      setCompliments(filterByLocation(cmplRes.data))
+      setRatings((ratRes.data || []).filter(r => ratingMatchesClientUser(r, user)))
+      setRequests(filterByLocation(reqRes.data))
+      setUnreadMsgs(filterByLocation(msgsRes.data).filter(m => m.sender === 'admin' && !m.read).length)
+      await supabase.from('client_users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
+    } catch (err) {
+      toast.error(err?.message || 'Failed to load portal data')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const markMessagesRead = async () => {
