@@ -10,6 +10,7 @@ export default function LiveTracking() {
   const [loading, setLoading] = useState(true)
   const [photoInfo, setPhotoInfo] = useState(null)
   const [cleaning, setCleaning] = useState(false)
+  const [retros, setRetros] = useState([])
 
   const checkPhotos = async () => {
     try {
@@ -34,8 +35,6 @@ export default function LiveTracking() {
   }
 
   useEffect(() => { load(); const t = setInterval(load, 30000); return ()=>clearInterval(t) }, [])
-
-  const [retros, setRetros] = useState([])
 
   const loadRetros = async () => {
     const { data } = await supabase.from('jobs')

@@ -6,8 +6,9 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import Sidebar from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import Login from './pages/Login'
-import EmployeePortal from './pages/EmployeePortal'
-import ClientPortal from './pages/ClientPortal'
+
+const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
+const ClientPortal = lazy(() => import('./pages/ClientPortal'))
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Jobs = lazy(() => import('./pages/Jobs'))
@@ -31,6 +32,14 @@ const SalaryPeriods = lazy(() => import('./pages/SalaryPeriods'))
 const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
+
+function PortalLoading() {
+  return (
+    <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ fontSize:13, color:'rgba(255,255,255,0.45)' }}>Loading...</div>
+    </div>
+  )
+}
 
 function Clock() {
   const [now, setNow] = React.useState(new Date())
@@ -62,8 +71,13 @@ function AppContent() {
   )
 
   if (!user) return <Login />
-  if (user.role === 'employee') return <><EmployeePortal /><AIFloatingWidget mode="employee" employeeId={user.id} employeeName={user.name} dark /></>
-  if (user.role === 'client') return <ClientPortal />
+  if (user.role === 'employee') return (
+    <Suspense fallback={<PortalLoading />}>
+      <EmployeePortal />
+      <AIFloatingWidget mode="employee" employeeId={user.id} employeeName={user.name} dark />
+    </Suspense>
+  )
+  if (user.role === 'client') return <Suspense fallback={<PortalLoading />}><ClientPortal /></Suspense>
 
   return (
     <div className="app-shell">

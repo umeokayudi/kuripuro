@@ -15,6 +15,9 @@ export default function AdminChat() {
   const pollRef = useRef()
   const msgPollRef = useRef()
   const msgEndRef = useRef()
+  const [userScrolled, setUserScrolled] = useState(false)
+  const [newMsgCount, setNewMsgCount] = useState(0)
+  const chatContainerRef = useRef()
 
   useEffect(() => {
     loadList()
@@ -36,10 +39,6 @@ export default function AdminChat() {
     }
     return () => clearInterval(msgPollRef.current)
   }, [selected, mode])
-
-  const [userScrolled, setUserScrolled] = useState(false)
-  const [newMsgCount, setNewMsgCount] = useState(0)
-  const chatContainerRef = useRef()
 
   useEffect(() => {
     if (!userScrolled) {

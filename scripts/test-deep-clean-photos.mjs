@@ -14,7 +14,7 @@ import {
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
 import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../src/lib/jobReport.js'
 import { isOtpDeepOnlyLocation, otpBasicScheduleLocations, otpDeepOnlyLocations } from '../src/lib/serviceCatalog.js'
-import { expectedDeepCleanDatesForLocation, weekdaysInMonth } from '../src/lib/cleaningType.js'
+import { expectedDeepCleanDatesForLocation, weekdaysInMonth, isDeepCleanAllowedOnDate } from '../src/lib/cleaningType.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -134,6 +134,12 @@ function testOtpDeepOnlyContracts() {
   assert(sepDates.length >= 8, `Ibushio Mon+Wed in Sep: ${sepDates.length}`)
   const kodamaDates = expectedDeepCleanDatesForLocation('Kodama Shinbashi', '2026-09')
   assert(kodamaDates.length === weekdaysInMonth('2026-09', [2]).length, 'Kodama still Tuesday only')
+
+  assert(isDeepCleanAllowedOnDate('Ibushio', '2026-09-07'), 'Ibushio deep Mon ok')
+  assert(isDeepCleanAllowedOnDate('Ibushio', '2026-09-09'), 'Ibushio deep Wed ok')
+  assert(!isDeepCleanAllowedOnDate('Ibushio', '2026-09-08'), 'Ibushio deep not Tue')
+  assert(isDeepCleanAllowedOnDate('Kodama Shinbashi', '2026-09-08'), 'Kodama deep Tue ok')
+  assert(!isDeepCleanAllowedOnDate('Kodama Shinbashi', '2026-09-07'), 'Kodama deep not Mon')
 }
 
 async function main() {

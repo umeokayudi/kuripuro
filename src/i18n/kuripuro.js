@@ -287,6 +287,7 @@ export const kuripuroEn = {
     deepComponentsHint: 'Select at least one component. Full deep clean = all four.',
     deepComponentsRequired: 'Select at least one deep clean component',
     basicNotAvailable: 'This location no longer has basic cleaning — use Deep Clean',
+    wrongDeepDay: 'Deep clean for this location is only allowed on Mon/Wed (or Tue for basic-schedule restaurants)',
   },
   client: {
     portal: 'Client Portal',
@@ -670,6 +671,7 @@ export const kuripuroJa = {
     deepComponentsHint: '最低1つ選択してください。4つすべてで完全な深層清掃です。',
     deepComponentsRequired: '深層清掃の項目を1つ以上選択してください',
     basicNotAvailable: 'この店舗は基本清掃の契約がありません — 深層清掃を選択してください',
+    wrongDeepDay: 'この店舗の深層清掃は月・水（または火曜）のみ追加できます',
   },
   client: {
     portal: 'クライアントポータル',
