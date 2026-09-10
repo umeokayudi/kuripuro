@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { generateDailyReport, generatePayslip, generatePayslipJP } from '../lib/generatePDF'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
@@ -93,6 +92,16 @@ export default function EmployeePortal() {
   const [showAddService, setShowAddService] = useState(false)
   const [addServiceBusy, setAddServiceBusy] = useState(false)
   const [todayAllJobs, setTodayAllJobs] = useState([])
+  const [userScrolled, setUserScrolled] = useState(false)
+
+  const timerRef = useRef()
+  const clockRef = useRef()
+  const hourWarnedRef = useRef(false)
+  const photoInputRef = useRef()
+  const claimPhotoRef = useRef()
+  const claimReceiptRef = useRef()
+  const msgEndRef = useRef()
+  const chatContainerRef = useRef()
 
   useEffect(() => {
     const on = () => setIsOnline(true)
@@ -101,13 +110,10 @@ export default function EmployeePortal() {
     window.addEventListener('offline', off)
     return () => { window.removeEventListener('online',on); window.removeEventListener('offline',off) }
   }, [])
-  const timerRef = useRef()
-  const clockRef = useRef()
-  const hourWarnedRef = useRef(false)
-  const photoInputRef = useRef()
-  const claimPhotoRef = useRef()
-  const claimReceiptRef = useRef()
-  const msgEndRef = useRef()
+
+  useEffect(() => () => {
+    jobPhotos.forEach(p => { if (p.preview) URL.revokeObjectURL(p.preview) })
+  }, [jobPhotos])
 
   useEffect(() => {
     loadAll()
@@ -170,9 +176,6 @@ export default function EmployeePortal() {
     return () => clearInterval(timerRef.current)
   }, [activeJob])
 
-  const [userScrolled, setUserScrolled] = useState(false)
-  const chatContainerRef = useRef()
-
   useEffect(() => {
     if (tab==='chat') {
       markRead()
@@ -196,14 +199,14 @@ export default function EmployeePortal() {
     const [active, all, emp, pay, adv, clm, bdg, weekPay, monthPay, contractsRes] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
-      supabase.from('employees').select('*').eq('id',user.id).single(),
+      supabase.from('employees').select('id,full_name,email,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active').eq('id',user.id).maybeSingle(),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).gte('payment_date',today).order('payment_date').limit(10),
       supabase.from('salary_payments').select('*').eq('employee_id', user.id).eq('payment_type', 'advance').order('payment_date', { ascending: false }).limit(10),
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
       supabase.from('badges').select('*').eq('employee_id',user.id),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
-      supabase.from('service_contracts').select('*').eq('is_active', true),
+      supabase.from('service_contracts').select('location_name,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
     ])
     const regular = (active.data||[]).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = (active.data||[]).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
@@ -462,6 +465,7 @@ export default function EmployeePortal() {
         else if (result.error === 'transfer_race') toast.error(e.addServiceRace)
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
+        else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
@@ -830,8 +834,8 @@ export default function EmployeePortal() {
   return (
     <div style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif',paddingBottom:70}}>
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
-      <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
-      <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
+      <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
+      <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
 
       {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
       {showSignature&&<SignatureModal
@@ -1217,6 +1221,7 @@ export default function EmployeePortal() {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
                 const month = new Date().toISOString().slice(0,7)
+                const { generatePayslipJP, generatePayslip } = await import('../lib/generatePDF')
                 if (lang==='ja') {
                   const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
                   doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
@@ -1235,6 +1240,7 @@ export default function EmployeePortal() {
                 const today2 = tokyoToday()
                 const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
                 if (!todayJobsForPDF.length) return toast.error(e.noJobsToday)
+                const { generateDailyReport } = await import('../lib/generatePDF')
                 const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
                 doc.save(`report_${today2}.pdf`)
                 toast.success('Report downloaded!')

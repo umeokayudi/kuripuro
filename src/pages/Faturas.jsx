@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
 
 export default function Faturas() {
@@ -94,8 +95,14 @@ export default function Faturas() {
 
   const handlePrint = (f) => {
     const w = window.open('', '_blank')
+    const clientName = escapeHtml(f.client_name)
+    const issueDate = escapeHtml(f.issue_date)
+    const periodStart = escapeHtml(f.period_start || '—')
+    const periodEnd = escapeHtml(f.period_end || '—')
+    const dueDate = escapeHtml(f.due_date || '—')
+    const notes = escapeHtml(f.notes)
     w.document.write(`
-      <html><head><title>請求書 - ${f.client_name}</title>
+      <html><head><title>請求書 - ${clientName}</title>
       <style>
         body{font-family:'Hiragino Sans',sans-serif;padding:40px;max-width:600px;margin:0 auto;color:#333}
         h1{text-align:center;font-size:22px;margin-bottom:6px}
@@ -111,8 +118,8 @@ export default function Faturas() {
         <h1>請求書</h1>
         <div class="sub">KuriPuro by JBM</div>
         <table style="border:none">
-          <tr><td style="border:none"><strong>請求先:</strong> ${f.client_name} 御中</td><td style="border:none;text-align:right"><strong>発行日:</strong> ${f.issue_date}</td></tr>
-          <tr><td style="border:none"><strong>対象期間:</strong> ${f.period_start||'—'} 〜 ${f.period_end||'—'}</td><td style="border:none;text-align:right"><strong>支払期限:</strong> ${f.due_date||'—'}</td></tr>
+          <tr><td style="border:none"><strong>請求先:</strong> ${clientName} 御中</td><td style="border:none;text-align:right"><strong>発行日:</strong> ${issueDate}</td></tr>
+          <tr><td style="border:none"><strong>対象期間:</strong> ${periodStart} 〜 ${periodEnd}</td><td style="border:none;text-align:right"><strong>支払期限:</strong> ${dueDate}</td></tr>
         </table>
         <table>
           <thead><tr><th>内容</th><th>数量</th><th>単価</th><th>金額</th></tr></thead>
@@ -123,7 +130,7 @@ export default function Faturas() {
           <tr><td style="border:none">消費税 (${f.tax_rate}%)</td><td style="border:none;text-align:right">¥${Number(f.tax_amount||0).toLocaleString()}</td></tr>
           <tr class="total-row"><td style="border-top:2px solid #333">合計金額</td><td style="border-top:2px solid #333;text-align:right">¥${Number(f.total||0).toLocaleString()}</td></tr>
         </table>
-        ${f.notes?`<p style="margin-top:20px;font-size:13px;color:#666">備考: ${f.notes}</p>`:''}
+        ${f.notes?`<p style="margin-top:20px;font-size:13px;color:#666">備考: ${notes}</p>`:''}
         <div class="footer">KuriPuro by JBM<br>振込先等については別途ご連絡いたします</div>
       </body></html>
     `)

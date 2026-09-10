@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
 
 export default function Ryoshu() {
@@ -56,6 +57,9 @@ export default function Ryoshu() {
 
   const handlePrint = (r) => {
     const w = window.open('', '_blank')
+    const clientName = escapeHtml(r.client_name)
+    const issueDate = escapeHtml(r.issue_date)
+    const description = escapeHtml(r.description || 'サービス代として')
     w.document.write(`
       <html><head><title>領収書</title>
       <style>body{font-family:sans-serif;padding:40px;max-width:400px;margin:0 auto}
@@ -66,9 +70,9 @@ export default function Ryoshu() {
       </style></head>
       <body>
         <h1>領収書</h1>
-        <div class="row"><span>発行日</span><span>${r.issue_date}</span></div>
-        <div class="row"><span>宛名</span><span>${r.client_name} 御中</span></div>
-        <div class="row"><span>但し書き</span><span>${r.description||'サービス代として'}</span></div>
+        <div class="row"><span>発行日</span><span>${issueDate}</span></div>
+        <div class="row"><span>宛名</span><span>${clientName} 御中</span></div>
+        <div class="row"><span>但し書き</span><span>${description}</span></div>
         <div class="row"><span>小計</span><span>¥${Number(r.amount||0).toLocaleString()}</span></div>
         <div class="row"><span>消費税 (${r.tax_rate}%)</span><span>¥${Number(r.tax_amount||0).toLocaleString()}</span></div>
         <div class="row total"><span>合計金額</span><span>¥${Number(r.total_amount||0).toLocaleString()}</span></div>

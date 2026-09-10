@@ -60,6 +60,19 @@ export const OTP_DEEP_CLEAN_DAYS = {
   monWed: [1, 3],
 }
 
+export function allowedDeepCleanDaysForLocation(locName) {
+  if (isOtpDeepOnlyLocation(locName)) {
+    const cfg = otpDeepOnlyLocation(locName)
+    return cfg?.deepCleanDays || OTP_DEEP_CLEAN_DAYS.monWed
+  }
+  return OTP_DEEP_CLEAN_DAYS.tuesday
+}
+
+export function isDeepCleanAllowedOnDate(locName, dateStr) {
+  const dow = new Date(`${dateStr}T12:00:00`).getDay()
+  return allowedDeepCleanDaysForLocation(locName).includes(dow)
+}
+
 export const ONTHEPLANET_CLIENT_ID = SCHEDULE_CLIENTS.ontheplanet.id
 
 export const DEFAULT_DEEP_CLEAN_PRICE = 5000
