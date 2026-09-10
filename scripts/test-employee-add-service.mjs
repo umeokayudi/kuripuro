@@ -10,9 +10,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const ANDRE = { id: '583d1ad6-1046-41db-8944-8f69120be41d', name: 'André Felipe Almeida' }
 const SASAKI = { id: '37e0fa79-c5eb-49c8-b896-db2a4f9aeb16', name: 'Sasaki Kazuma' }
-const DATE = '2026-08-24'
 const TEST_LOC = 'Horumon no Manmosu'
 const CLIENT_ID = '7138f082-0d38-43e4-bd77-00c4598690b3'
+
+const RUN_TAG = `ci-${process.env.GITHUB_RUN_ID || `local-${Date.now()}`}`
+const DATE = process.env.GITHUB_ACTIONS
+  ? `2026-08-${String(10 + (Number(process.env.GITHUB_RUN_ID || Date.now()) % 20)).padStart(2, '0')}`
+  : '2026-08-24'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
@@ -28,18 +32,22 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg)
 }
 
-async function main() {
-  console.log('=== Employee add service DB tests ===\n')
+async function sleep(ms) {
+  await new Promise(r => setTimeout(r, ms))
+}
 
-  // Remove any leftover test jobs for this location today
+async function main() {
+  console.log('=== Employee add service DB tests ===')
+  console.log(`date=${DATE} tag=${RUN_TAG}\n`)
+
   const { data: existing } = await supabase
     .from('jobs')
-    .select('id, title, employee_id, status')
+    .select('id, description')
     .eq('scheduled_date', DATE)
     .ilike('title', `${TEST_LOC}%`)
 
   for (const j of existing || []) {
-    if (j.employee_id === SASAKI.id || matches(j.title, TEST_LOC)) {
+    if ((j.description || '').includes(RUN_TAG)) {
       await supabase.from('jobs').delete().eq('id', j.id)
     }
   }
@@ -53,6 +61,7 @@ async function main() {
     scheduled_date: DATE,
     scheduled_time: '00:30',
     address: 'https://maps.google.com',
+    description: RUN_TAG,
     status: 'assigned',
     job_category: 'regular',
     sequence_order: 99,
@@ -62,40 +71,40 @@ async function main() {
   if (createErr) throw createErr
   console.log(`Created test job ${created.id} for Sasaki`)
 
-  // Simulate transfer (what employeeAddService does)
-  let transferJob = null
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const { data } = await supabase.from('jobs').select('*').eq('id', created.id).maybeSingle()
-    if (data) {
-      transferJob = data
-      break
-    }
-    await new Promise(r => setTimeout(r, 400))
-  }
-  assert(transferJob, 'Test job not found after create')
-
   const newTitle = `${TEST_LOC} — Deep Cleaning`
-  const { data: updated, error: updErr } = await supabase
-    .from('jobs')
-    .update({
-      employee_id: ANDRE.id,
-      employee_name: ANDRE.name,
-      title: newTitle,
-      sequence_order: 15,
-      description: `${transferJob?.description || ''}\n[test] André assumiu de Sasaki`.trim(),
-    })
-    .eq('id', created.id)
-    .eq('status', 'assigned')
-    .is('started_at', null)
-    .select()
-    .maybeSingle()
+  let updated = null
+  let updErr = null
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: transferJob } = await supabase.from('jobs').select('*').eq('id', created.id).maybeSingle()
+    if (!transferJob) {
+      await sleep(400)
+      continue
+    }
+    const result = await supabase
+      .from('jobs')
+      .update({
+        employee_id: ANDRE.id,
+        employee_name: ANDRE.name,
+        title: newTitle,
+        sequence_order: 15,
+        description: `${transferJob.description || ''}\n[test] André assumiu de Sasaki`.trim(),
+      })
+      .eq('id', created.id)
+      .eq('status', 'assigned')
+      .is('started_at', null)
+      .select()
+      .maybeSingle()
+    updated = result.data
+    updErr = result.error
+    if (updated) break
+    await sleep(400)
+  }
 
-  assert(!updErr && updated, `Transfer update failed: ${updErr?.message}`)
+  assert(!updErr && updated, `Transfer update failed: ${updErr?.message || 'no row updated'}`)
   assert(updated.employee_id === ANDRE.id, 'Not assigned to André')
   assert(updated.title.includes('Deep'), `Title not updated: ${updated.title}`)
   console.log('Transfer OK:', updated.title)
 
-  // Duplicate: André already has it
   const { data: andreJobs } = await supabase
     .from('jobs')
     .select('id, title')
@@ -107,7 +116,6 @@ async function main() {
   assert(alreadyYours, 'André should already have Horumon')
   console.log('Already-yours detection OK')
 
-  // Completed block
   await supabase.from('jobs').update({ status: 'completed' }).eq('id', created.id)
   const { data: dayJobs } = await supabase
     .from('jobs')
