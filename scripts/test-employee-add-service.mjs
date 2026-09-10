@@ -63,11 +63,16 @@ async function main() {
   console.log(`Created test job ${created.id} for Sasaki`)
 
   // Simulate transfer (what employeeAddService does)
-  const { data: transferJob } = await supabase
-    .from('jobs')
-    .select('*')
-    .eq('id', created.id)
-    .single()
+  let transferJob = null
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data } = await supabase.from('jobs').select('*').eq('id', created.id).maybeSingle()
+    if (data) {
+      transferJob = data
+      break
+    }
+    await new Promise(r => setTimeout(r, 400))
+  }
+  assert(transferJob, 'Test job not found after create')
 
   const newTitle = `${TEST_LOC} — Deep Cleaning`
   const { data: updated, error: updErr } = await supabase
@@ -77,7 +82,7 @@ async function main() {
       employee_name: ANDRE.name,
       title: newTitle,
       sequence_order: 15,
-      description: `${transferJob.description || ''}\n[test] André assumiu de Sasaki`.trim(),
+      description: `${transferJob?.description || ''}\n[test] André assumiu de Sasaki`.trim(),
     })
     .eq('id', created.id)
     .eq('status', 'assigned')
