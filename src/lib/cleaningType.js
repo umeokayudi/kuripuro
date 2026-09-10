@@ -22,6 +22,7 @@ export const DEEP_CLEAN_COMPONENTS = [
   { id: 'ac', label: 'AC Cleaning', labelJa: 'エアコン清掃' },
   { id: 'grating', label: 'Grating', labelJa: 'グレーティング' },
   { id: 'grease_trap', label: 'Grease Trap', labelJa: 'グリストラップ' },
+  { id: 'other', label: 'Other', labelJa: 'その他' },
 ]
 
 /** Manutenção no dia de folga (deep-only OTP) */
@@ -117,7 +118,9 @@ export function buildJobTitle(locName, { cleaningType = 'basic', deepComponents 
 
 export function normalizeDeepComponents(deepComponents) {
   const list = Array.isArray(deepComponents) ? deepComponents : []
-  return ALL_DEEP_COMPONENT_IDS.filter(id => list.includes(id))
+  const known = ALL_DEEP_COMPONENT_IDS.filter(id => list.includes(id))
+  if (known.length) return known
+  return list.filter(id => id === 'other')
 }
 
 export function buildDeepCleanDescription({ deepComponents = [], baseNotes = '' } = {}) {

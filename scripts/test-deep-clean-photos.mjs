@@ -48,7 +48,7 @@ function testCleaningType() {
   assert(fullValue === 5000, `full value: ${fullValue}`)
 
   const partialValue = calculateJobValue({ cleaningType: 'deep', deepComponents: ['ac'], deepPrice: 5000 })
-  assert(partialValue === 1250, `partial value: ${partialValue}`)
+  assert(partialValue === 1000, `partial value: ${partialValue}`)
 
   const basicJob = { title: 'Ibushio — Basic Cleaning' }
   const deepJob = { title: 'Ibushio — Deep Clean' }

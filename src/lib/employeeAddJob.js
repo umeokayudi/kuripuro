@@ -1,7 +1,6 @@
 import {
   OTP_BASIC_LOCATIONS,
   ATOMIC_LOCATION,
-  DUSKIN_SITES,
   MATSUNAGA_SPOT,
   SCHEDULE_CLIENTS,
   isOtpDeepOnlyLocation,
@@ -14,6 +13,7 @@ import {
   jobMatchesLocationAndType,
   titleMatchesLocation,
   getCleaningType,
+  parseDeepComponents,
   isDeepCleanAllowedOnDate,
   DEFAULT_DEEP_CLEAN_PRICE,
   ALL_DEEP_COMPONENT_IDS,
@@ -51,17 +51,6 @@ export function manualAddLocations() {
     scheduledTime: ATOMIC_LOCATION.scheduledTime || '21:00',
     group: 'Atomic',
   }]
-  const duskin = Object.values(DUSKIN_SITES).map(site => ({
-    name: site.name,
-    address: '',
-    notes: site.notes || '',
-    clientId: SCHEDULE_CLIENTS.duskin.id,
-    clientName: SCHEDULE_CLIENTS.duskin.name,
-    pricePerVisit: 0,
-    deepCleanPrice: 0,
-    scheduledTime: '09:00',
-    group: 'Duskin',
-  }))
   const matsunaga = [{
     name: MATSUNAGA_SPOT.name,
     address: '',
@@ -73,7 +62,31 @@ export function manualAddLocations() {
     scheduledTime: '10:00',
     group: 'Spot',
   }]
-  return [...otp, ...atomic, ...duskin, ...matsunaga]
+  return [...otp, ...atomic, ...matsunaga]
+}
+
+export function isDuskinJob(job) {
+  if (!job) return false
+  if (job.job_category === 'duskin') return true
+  if (/duskin/i.test(job.client_name || '')) return true
+  if (/duskin/i.test(job.title || '')) return true
+  return false
+}
+
+/** Prefill past-service modal from a cancelled overdue job */
+export function pastServicePrefillFromJob(job) {
+  if (!job) return null
+  const locName = locationNameFromTitle(job.title)
+  const location = manualAddLocations().find(l => l.name.toLowerCase() === locName.toLowerCase())
+  if (!location) return null
+  const cleaningType = getCleaningType(job)
+  const deepComponents = parseDeepComponents(job)
+  return {
+    location,
+    date: job.scheduled_date,
+    cleaningType,
+    deepComponents: cleaningType === 'deep' ? deepComponents : [],
+  }
 }
 
 /** Build UI rows — respects basic vs deep as separate services */
