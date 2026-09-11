@@ -11,6 +11,7 @@ const steps = [
   ['npm run test:add-service', 'add-service'],
   ['npm run test:past-service', 'past-service'],
   ['npm run test:job-overdue', 'job-overdue'],
+  ['npm run test:employee-pay', 'employee-pay'],
 ]
 
 console.log('=== KuriPuro full test suite ===\n')
