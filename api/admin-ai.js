@@ -11,7 +11,7 @@ const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5c
 
 const ALLOWED_TABLES = [
   'employees', 'jobs', 'clients', 'salary_payments', 'complaints',
-  'evaluations', 'transport_claims', 'badges', 'checkins', 'messages',
+  'evaluations', 'transport_claims', 'equipment_requests', 'badges', 'checkins', 'messages',
   'locations', 'client_users', 'client_messages', 'client_complaints', 'client_compliments',
   'client_ratings', 'client_requests', 'service_contracts', 'service_reports',
 ]

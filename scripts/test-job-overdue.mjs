@@ -13,7 +13,8 @@ function assert(cond, msg) {
 
 console.log('=== Job overdue unit tests ===\n')
 
-const now = new Date(2026, 8, 10, 18, 0, 0) // 2026-09-10 18:00 Tokyo-style local
+// Fixed instant: 2026-09-10 18:00 Tokyo
+const now = new Date('2026-09-10T18:00:00+09:00')
 
 assert(OVERDUE_SKIP_HOURS === 8, 'skip threshold is 8h')
 assert(OVERDUE_CRITICAL_HOURS === 12, 'critical threshold is 12h')

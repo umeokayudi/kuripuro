@@ -69,6 +69,27 @@ create policy if not exists "allow_all_salary_periods" on salary_periods for all
 create policy if not exists "allow_all_salary_statements" on salary_statements for all using (true);
 create policy if not exists "allow_all_salary_complaints" on salary_complaints for all using (true);
 
+-- Employee equipment / work-improvement requests
+create table if not exists equipment_requests (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid references employees(id) on delete cascade,
+  employee_name text,
+  category text default 'other',
+  item_name text not null,
+  quantity integer default 1,
+  reason text not null,
+  photo_url text,
+  status text default 'pending',
+  admin_note text,
+  reviewed_at timestamptz,
+  fulfilled_at timestamptz,
+  created_at timestamptz default now()
+);
+
+alter table equipment_requests enable row level security;
+create policy if not exists "allow_all_equipment_requests" on equipment_requests for all using (true);
+create index if not exists idx_equipment_requests_employee on equipment_requests(employee_id, created_at desc);
+
 -- Service reports (synced from completed jobs)
 create table if not exists service_reports (
   id uuid primary key default gen_random_uuid(),

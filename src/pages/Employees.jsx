@@ -99,6 +99,7 @@ export default function Employees() {
       await supabase.from('salary_payments').delete().eq('employee_id', id)
       await supabase.from('salary_advances').delete().eq('employee_id', id)
       await supabase.from('transport_claims').delete().eq('employee_id', id)
+      await supabase.from('equipment_requests').delete().eq('employee_id', id)
       await supabase.from('badges').delete().eq('employee_id', id)
       await supabase.from('messages').delete().eq('employee_id', id)
 

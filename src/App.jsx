@@ -31,6 +31,7 @@ const Payments = lazy(() => import('./pages/Payments'))
 const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'))
 const SalaryPeriods = lazy(() => import('./pages/SalaryPeriods'))
 const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
+const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
 
@@ -128,6 +129,7 @@ function AppContent() {
               <Route path="/employees/:id" element={<EmployeeProfile />} />
               <Route path="/salary-periods" element={<SalaryPeriods />} />
               <Route path="/salary-complaints" element={<SalaryComplaints />} />
+              <Route path="/equipment-requests" element={<EquipmentRequests />} />
               <Route path="/ai" element={<AdminAI />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
