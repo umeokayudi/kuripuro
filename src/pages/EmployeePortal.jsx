@@ -20,8 +20,15 @@ import {
   preparePastServiceJob,
   checklistCompleteForRetro,
   isJobFullyRegistered,
+  isDuskinJob,
+  pastServicePrefillFromJob,
   ALL_DEEP_COMPONENT_IDS,
 } from '../lib/employeeAddJob'
+import {
+  isOverdueAssignedJob,
+  isCriticallyOverdueJob,
+  hoursPastScheduled,
+} from '../lib/jobOverdue'
 import {
   DEEP_CLEAN_COMPONENTS,
   deepComponentLabel,
@@ -97,6 +104,7 @@ export default function EmployeePortal() {
   const [showPastService, setShowPastService] = useState(false)
   const [pastServiceBusy, setPastServiceBusy] = useState(false)
   const [pastServicePrefill, setPastServicePrefill] = useState(null)
+  const [overdueBusy, setOverdueBusy] = useState(null)
   const [todayAllJobs, setTodayAllJobs] = useState([])
   const [userScrolled, setUserScrolled] = useState(false)
 
@@ -214,9 +222,11 @@ export default function EmployeePortal() {
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
       supabase.from('service_contracts').select('location_name,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
     ])
-    const regular = (active.data||[]).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
-    const spots = (active.data||[]).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
-    setJobs(regular); setSpotJobs(spots); setAllJobs(all.data||[])
+    const visible = (list) => (list || []).filter(j => !isDuskinJob(j))
+    const regular = visible(active.data).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
+    const spots = visible(active.data).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
+    const allVisible = visible(all.data)
+    setJobs(regular); setSpotJobs(spots); setAllJobs(allVisible)
     setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[])
     setWeekDeductions(weekPay.data||[])
     setMonthDeductions(monthPay.data||[])
@@ -236,9 +246,9 @@ export default function EmployeePortal() {
       clearInterval(timerRef.current)
       setElapsed(0)
     }
-    calcSalary(all.data||[], emp.data, monthPay.data||[])
+    calcSalary(allVisible, emp.data, monthPay.data||[])
     loadMessages()
-    awardBadges(all.data||[], bdg.data||[])
+    awardBadges(allVisible, bdg.data||[])
     loadStatement()
   }
 
@@ -399,13 +409,45 @@ export default function EmployeePortal() {
       .select('id, title, employee_id, employee_name, status, started_at, scheduled_date, retro_report, photo_end_url, completed_at')
       .eq('scheduled_date', date)
       .in('status', ['assigned', 'in_progress', 'completed'])
-    setTodayAllJobs(data || [])
+    setTodayAllJobs((data || []).filter(j => !isDuskinJob(j)))
     setShowAddService(true)
   }
 
   const openPastService = (prefill = null) => {
     setPastServicePrefill(prefill)
     setShowPastService(true)
+  }
+
+  const handleOverdueCancel = async (job) => {
+    if (overdueBusy) return
+    setOverdueBusy(job.id)
+    try {
+      const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).eq('id', job.id).eq('status', 'assigned')
+      if (error) throw error
+      toast.success(e.overdueCancelSuccess)
+      await loadAll()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setOverdueBusy(null)
+    }
+  }
+
+  const handleOverdueNotDone = async (job) => {
+    if (overdueBusy) return
+    setOverdueBusy(job.id)
+    try {
+      const prefill = pastServicePrefillFromJob(job)
+      const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).eq('id', job.id).eq('status', 'assigned')
+      if (error) throw error
+      await loadAll()
+      openPastService(prefill)
+      toast.success(prefill ? e.overdueNotDoneSuccess : e.overdueNotDoneNoLocation)
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setOverdueBusy(null)
+    }
   }
 
   const handlePastService = async ({ location, date, cleaningType, deepComponents }) => {
@@ -1150,7 +1192,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
         )}
 
         {/* SPOTS */}
@@ -1493,7 +1535,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
@@ -1535,7 +1577,10 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
       {todayJobs.map((job,idx)=>{
         const isActive = activeJob?.id===job.id
         const isDone = job.status==='completed'
-        const isNext = !activeJob && job.status==='assigned' && todayJobs.slice(0,idx).every(j=>j.status==='completed')
+        const isOverdue = !isDone && !isActive && job.status==='assigned' && isOverdueAssignedJob(job)
+        const isCritical = isOverdue && isCriticallyOverdueJob(job)
+        const overdueHours = isOverdue ? Math.floor(hoursPastScheduled(job)) : 0
+        const isNext = !activeJob && job.status==='assigned' && !isOverdue && todayJobs.slice(0,idx).every(j=>j.status==='completed' || isOverdueAssignedJob(j))
         const instructions = keyboxForJob(job)
         const trainingContract = contractForJob(job, serviceContracts)
         const hasTraining = trainingContract?.training_video_url
@@ -1569,10 +1614,39 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
                 {isDone&&<span style={{fontSize:10,color:'#4ade80',fontWeight:600}}>Ver detalhes ›</span>}
-                {!isDone&&!isActive&&openRetro&&<button onClick={(e)=>{ e.stopPropagation(); openRetro(job) }} style={{fontSize:11,background:'rgba(193,156,86,0.15)',color:'#c19c56',border:'1px solid rgba(193,156,86,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer',fontWeight:600}}>📝 Relatório</button>}
+                {!isDone&&!isActive&&!isOverdue&&openRetro&&<button onClick={(e)=>{ e.stopPropagation(); openRetro(job) }} style={{fontSize:11,background:'rgba(193,156,86,0.15)',color:'#c19c56',border:'1px solid rgba(193,156,86,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer',fontWeight:600}}>📝 Relatório</button>}
                 {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
               </div>
             </div>
+
+            {isOverdue&&(
+              <div style={{background:isCritical?'rgba(248,113,113,0.12)':'rgba(251,191,36,0.1)',border:`1px solid ${isCritical?'rgba(248,113,113,0.35)':'rgba(251,191,36,0.3)'}`,borderRadius:12,padding:'12px',marginBottom:10}}>
+                <div style={{fontSize:12,color:isCritical?'#f87171':'#fbbf24',fontWeight:700,marginBottom:4}}>
+                  {isCritical ? labels.overdueCriticalTitle : labels.overdueTitle}
+                </div>
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.55)',marginBottom:10,lineHeight:1.5}}>
+                  {fill(labels.overdueHint, { hours: overdueHours })}
+                </div>
+                <div style={{display:'flex',gap:8}}>
+                  <button
+                    type="button"
+                    disabled={overdueBusy===job.id}
+                    onClick={(e)=>{ e.stopPropagation(); onOverdueNotDone?.(job) }}
+                    style={{flex:1,padding:'12px 10px',borderRadius:10,border:'none',background:overdueBusy===job.id?'rgba(255,255,255,0.08)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:overdueBusy===job.id?'rgba(255,255,255,0.3)':'#0a1929',fontSize:12,fontWeight:800,cursor:overdueBusy===job.id?'not-allowed':'pointer'}}
+                  >
+                    {labels.overdueNotDone}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={overdueBusy===job.id}
+                    onClick={(e)=>{ e.stopPropagation(); onOverdueCancel?.(job) }}
+                    style={{flex:1,padding:'12px 10px',borderRadius:10,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.7)',fontSize:12,fontWeight:700,cursor:overdueBusy===job.id?'not-allowed':'pointer'}}
+                  >
+                    {labels.overdueCancel}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {isNext&&!isActive&&instructions&&(
               <div style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>

@@ -10,6 +10,7 @@ const steps = [
   ['npm run test:portal-auth', 'portal-auth'],
   ['npm run test:add-service', 'add-service'],
   ['npm run test:past-service', 'past-service'],
+  ['npm run test:job-overdue', 'job-overdue'],
 ]
 
 console.log('=== KuriPuro full test suite ===\n')
