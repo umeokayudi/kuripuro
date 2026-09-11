@@ -132,6 +132,10 @@ function jobInstructions(location, serviceLabel) {
 
 function makeJob({ id, date, time, employee, empId, client, location, seq, serviceLabel, category = 'regular' }) {
   const title = `${location.name} — ${serviceLabel || 'Basic Cleaning'}`
+  const isDeep = /deep/i.test(serviceLabel || '')
+  const value = isDeep
+    ? (location.deepClean || location.deepCleanPrice || 5000)
+    : (location.price || location.pricePerVisit || 0)
   return {
     id,
     date,
@@ -143,9 +147,10 @@ function makeJob({ id, date, time, employee, empId, client, location, seq, servi
     address: location.address || null,
     notes: location.notes,
     seq,
-    type: /deep/i.test(serviceLabel || '') ? 'deep' : 'basic',
+    type: isDeep ? 'deep' : 'basic',
     category,
     description: jobInstructions(location, serviceLabel),
+    value,
   }
 }
 
@@ -393,6 +398,7 @@ export function jobsToRows(jobs, contracts) {
     address: j.address || null,
     description: [j.notes, j.description].filter(Boolean).join('\n') || null,
     checklist_template: checklistTemplateForJob({ title: j.title }) || null,
+    value: Number(j.value || j.price || 0) || null,
     ...(j.completed_at ? { completed_at: j.completed_at } : { completed_at: null }),
   }))
 }
