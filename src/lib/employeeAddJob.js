@@ -429,7 +429,7 @@ export async function preparePastServiceJob(supabase, {
       return { ok: true, action: 'retro_existing', job: mine }
     }
     if (mine.status === 'in_progress') {
-      return { ok: false, error: 'in_progress', job: mine }
+      return { ok: true, action: 'finish_existing', job: mine }
     }
   }
 
