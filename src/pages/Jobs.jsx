@@ -505,7 +505,7 @@ export default function Jobs() {
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
     if (!applyGeocodeResult(result, coords => setForm(f => ({ ...f, gps_lat: coords.lat, gps_lng: coords.lng })), jt.mapsValid)) {
-      toast.error('Endereço não encontrado — use link do Google Maps ou endereço completo')
+      toast.error(t.jobs.addressNotFound)
     }
   }
 
@@ -740,7 +740,7 @@ export default function Jobs() {
           </div>
 
           <div className="form-group">
-            <label>Tipo de limpeza</label>
+            <label>{t.jobs.cleaningType}</label>
             <div style={{ display: 'flex', gap: 8 }}>
               {Object.entries(CLEANING_TYPES).map(([key, cfg]) => (
                 <button key={key} type="button" onClick={() => upd('cleaning_type', key)}
@@ -788,7 +788,7 @@ export default function Jobs() {
               <button className="btn" onClick={handleGeocode} disabled={geocoding} style={{whiteSpace:'nowrap'}}>{geocoding?'...':'📍 Get GPS'}</button>
             </div>
             {form.gps_lat && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ GPS: {Number(form.gps_lat).toFixed(4)}, {Number(form.gps_lng).toFixed(4)}</div>}
-            {!form.gps_lat && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ Link do Maps válido</div>}
+            {!form.gps_lat && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {t.jobs.mapsValid}</div>}
           </div>
 
           <div className="form-group"><label>Description / Instructions</label><textarea value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="Clean all rooms..." /></div>
@@ -843,7 +843,7 @@ function LocationsTab() {
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
     if (!applyGeocodeResult(result, setGps, jt.mapsValid)) {
-      toast.error('Endereço não encontrado — use link do Google Maps ou endereço completo')
+      toast.error(t.jobs.addressNotFound)
     }
   }
 
@@ -889,13 +889,13 @@ function LocationsTab() {
           </div>
         </div>
         <div className="form-group">
-          <label>Endereço / Link Google Maps</label>
+          <label>{t.jobs.addressLabel}</label>
           <div style={{display:'flex',gap:8}}>
-            <input value={form.address} onChange={e=>upd('address',e.target.value)} placeholder="https://maps.app.goo.gl/... ou endereço" style={{flex:1}} />
+            <input value={form.address} onChange={e=>upd('address',e.target.value)} placeholder={t.jobs.addressPlaceholder} style={{flex:1}} />
             <button className="btn" onClick={handleGeocode} disabled={geocoding}>{geocoding?'...':'📍 GPS'}</button>
           </div>
           {gps && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}</div>}
-          {!gps && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ Link do Maps válido</div>}
+          {!gps && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {jt.mapsValid}</div>}
         </div>
         <div className="form-group"><label>Key box / Notas</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 0315" /></div>
         <button className="btn btn-primary" onClick={editingLoc ? handleUpdateLoc : handleSave}>{editingLoc ? 'Update Location' : 'Save Location'}</button>

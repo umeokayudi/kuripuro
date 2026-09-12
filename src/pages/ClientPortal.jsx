@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
+import LanguageToggle from '../components/LanguageToggle'
 import {
   buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
 } from '../lib/cleaningType'
@@ -165,7 +166,7 @@ export default function ClientPortal() {
   }, [user?.client_id, user?.location_name])
 
   useEffect(() => {
-    if (!localStorage.getItem('kp_lang') && lang !== 'ja') switchLang('ja')
+    if (!localStorage.getItem('kp_lang') && !localStorage.getItem('emp_lang')) switchLang('en')
   }, [])
 
   useEffect(() => {
@@ -545,6 +546,7 @@ export default function ClientPortal() {
               ))}
             </nav>
             <div className="cp-side-footer">
+              <div style={{ marginBottom: 10 }}><LanguageToggle variant="dark" /></div>
               <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%' }}>
                 📱 {lang === 'ja' ? 'モバイル表示' : 'Mobile view'}
               </button>
@@ -572,9 +574,10 @@ export default function ClientPortal() {
                 </div>
               )}
               <div className="cp-header-actions">
+                <LanguageToggle variant="dark" />
                 {!desktopMode && (
                   <button type="button" className="cp-view-toggle" onClick={toggleView}>
-                    🖥 {lang === 'ja' ? 'PC' : 'PC'}
+                    🖥 PC
                   </button>
                 )}
                 {!desktopMode && (

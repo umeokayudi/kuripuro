@@ -4,14 +4,14 @@ import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
 import {
   DEFAULT_LOCATIONS, buildMonthSchedule, scheduleStats, jobsToRows,
-  contractsForActiveEmployees, locationsFromContracts, DOW_PT, DOW_JA,
+  contractsForActiveEmployees, locationsFromContracts, DOW_EN, DOW_JA,
 } from '../lib/scheduleGenerator'
 
 export default function ScheduleGenerator() {
   const { lang, t } = useLang()
   const s = t.schedule
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
-  const dowLabels = lang === 'ja' ? DOW_JA : DOW_PT
+  const dowLabels = lang === 'ja' ? DOW_JA : DOW_EN
 
   const [month, setMonth] = useState(() => {
     const d = new Date()

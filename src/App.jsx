@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { LangProvider, useLang } from './hooks/useLang'
@@ -58,10 +58,42 @@ function Clock() {
 
 
 
+const PAGE_KEYS = {
+  '/': 'dashboard',
+  '/jobs': 'jobs',
+  '/employees': 'employees',
+  '/salary': 'salary',
+  '/clients': 'clients',
+  '/client-feedback': 'clientFeedback',
+  '/cashflow': 'cashflow',
+  '/reports': 'reports',
+  '/ryoshu': 'ryoshu',
+  '/evaluations': 'evaluations',
+  '/schedule': 'schedule',
+  '/contracts': 'contracts',
+  '/faturas': 'faturas',
+  '/payments': 'payments',
+  '/adminchat': 'chat',
+  '/live': 'liveTrack',
+  '/transport-claims': 'transport',
+  '/deductions': 'deductions',
+  '/salary-periods': 'payrollClose',
+  '/salary-complaints': 'salaryIssues',
+  '/equipment-requests': 'equipmentRequests',
+  '/ai': 'ai',
+}
+
+function pageTitle(pathname, sidebar) {
+  if (pathname.startsWith('/employees/')) return sidebar.employees
+  return sidebar[PAGE_KEYS[pathname]] || sidebar.dashboard
+}
+
 function AppContent() {
   const { user, loading, logout } = useAuth()
   const { t } = useLang()
+  const location = useLocation()
   const a = t.app
+  const title = pageTitle(location.pathname, t.sidebar)
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -95,7 +127,7 @@ function AppContent() {
       <AIFloatingWidget mode="admin" />
       <div className="main">
         <header className="topbar">
-          <span className="topbar-title">{a.admin}</span>
+          <span className="topbar-title">{title}</span>
           <div className="topbar-right">
             <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
             <span style={{ color:'var(--text3)' }}>·</span>
