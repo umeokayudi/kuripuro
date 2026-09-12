@@ -1113,7 +1113,7 @@ export default function EmployeePortal() {
               <div style={{fontSize:20,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
               <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>{e.score}</div>
             </div>
-            <LanguageToggle variant="dark" />
+            <LanguageToggle variant="dark" compact />
             <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
               🔔
               {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
@@ -1289,7 +1289,7 @@ export default function EmployeePortal() {
                 </div>
               ))}
             </div>
-            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&(
+            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&!(empData.salary_type==='fixed'&&Number(empData.fixed_salary||0)===0)&&(
               <div style={{background:'rgba(251,191,36,0.08)',border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,padding:'10px 12px',marginBottom:12,fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>
                 ⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}
               </div>

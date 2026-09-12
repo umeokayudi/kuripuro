@@ -1,6 +1,6 @@
 import { useLang } from '../hooks/useLang'
 
-export default function LanguageToggle({ variant = 'dark' }) {
+export default function LanguageToggle({ variant = 'dark', compact = false }) {
   const { lang, switchLang } = useLang()
   const dark = variant === 'dark'
   return (
@@ -17,7 +17,7 @@ export default function LanguageToggle({ variant = 'dark' }) {
         className={`kp-lang-btn${lang === 'ja' ? ' on' : ''}`}
         onClick={() => switchLang('ja')}
       >
-        日本語
+        {compact ? 'JA' : '日本語'}
       </button>
     </div>
   )

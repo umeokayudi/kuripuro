@@ -159,8 +159,7 @@ export default function Dashboard() {
       <DetailModal />
       <div className="dash-hero">
         <div>
-          <h2>{t.sidebar.dashboard}</h2>
-          <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 6 }}>
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>
             {clock.toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Tokyo' })}
             <span style={{ marginLeft: 8 }}>{d.tokyo}</span>
             {lastUpdate && <span style={{ marginLeft: 10 }}>· {d.updated} {lastUpdate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}</span>}
