@@ -23,8 +23,8 @@ export default function Login() {
 
   return (
     <div className="login-shell">
-      <div className="login-lang"><LanguageToggle variant="dark" /></div>
       <div className="login-card">
+        <div className="login-lang-row"><LanguageToggle variant="dark" /></div>
         <div className="login-mark">KuriPuro</div>
         <div className="login-sub">by JBM</div>
         <div className="login-title">{a.signIn}</div>

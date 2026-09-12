@@ -288,6 +288,9 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   padding: 28px 20px; position: relative;
 }
 .login-lang { position: absolute; top: 20px; right: 20px; }
+.login-lang-row { display: flex; justify-content: center; margin-bottom: 18px; }
+.kp-lang { min-height: 34px; }
+.kp-lang-btn { min-width: 44px; }
 .login-card {
   width: 100%; max-width: 400px;
   background: rgba(255,255,255,0.045);
