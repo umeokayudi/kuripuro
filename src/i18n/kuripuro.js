@@ -476,6 +476,13 @@ export const kuripuroEn = {
     company: 'Company',
     store: 'Store',
     email: 'Email',
+    deepCleanProgress: 'Deep cleaning progress',
+    deepCleanProgressHint: '{month} · {expected} deep cleans scheduled',
+    deepCleanDone: 'Completed',
+    deepCleanNotDone: 'Not completed',
+    deepCleanPending: 'Scheduled / in progress',
+    deepCleanMissing: 'Not scheduled',
+    deepCleanAllStores: 'All stores',
   },
 }
 
@@ -955,6 +962,13 @@ export const kuripuroJa = {
     company: '会社',
     store: '店舗',
     email: 'メール',
+    deepCleanProgress: '深層清掃の進捗',
+    deepCleanProgressHint: '{month} · 予定{expected}件',
+    deepCleanDone: '完了',
+    deepCleanNotDone: '未完了',
+    deepCleanPending: '予定・作業中',
+    deepCleanMissing: '未スケジュール',
+    deepCleanAllStores: '全店舗',
   },
 }
 
