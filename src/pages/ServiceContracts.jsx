@@ -59,7 +59,7 @@ export default function ServiceContracts() {
 
     // Update client monthly_revenue
     const { data: allContracts } = await supabase.from('service_contracts').select('monthly_revenue').eq('client_id',selectedClient).eq('is_active',true)
-    const totalRevenue = (allContracts||[]).reduce((s,c)=>s+Number(c.monthly_revenue||0),0) + (editing ? 0 : revenue)
+    const totalRevenue = (allContracts||[]).reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
     await supabase.from('clients').update({ monthly_revenue: totalRevenue }).eq('id', selectedClient)
 
     setShowForm(false); setEditing(null)

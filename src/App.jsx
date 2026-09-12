@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { LangProvider, useLang } from './hooks/useLang'
@@ -44,13 +44,15 @@ function PortalLoading() {
 }
 
 function Clock() {
+  const { lang } = useLang()
   const [now, setNow] = React.useState(new Date())
   React.useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
+  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   return (
-    <span style={{ fontSize:13, fontFamily:'monospace', color:'var(--text2)' }}>
+    <span style={{ fontSize:13, fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', color:'var(--text2)' }}>
       {now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
       <span style={{ marginLeft:8, fontSize:12, color:'var(--text3)' }}>
-        {now.toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short' })}
+        {now.toLocaleDateString(dateLocale, { weekday:'short', day:'2-digit', month:'short' })}
       </span>
     </span>
   )
@@ -58,10 +60,42 @@ function Clock() {
 
 
 
+const PAGE_KEYS = {
+  '/': 'dashboard',
+  '/jobs': 'jobs',
+  '/employees': 'employees',
+  '/salary': 'salary',
+  '/clients': 'clients',
+  '/client-feedback': 'clientFeedback',
+  '/cashflow': 'cashflow',
+  '/reports': 'reports',
+  '/ryoshu': 'ryoshu',
+  '/evaluations': 'evaluations',
+  '/schedule': 'schedule',
+  '/contracts': 'contracts',
+  '/faturas': 'faturas',
+  '/payments': 'payments',
+  '/adminchat': 'chat',
+  '/live': 'liveTrack',
+  '/transport-claims': 'transport',
+  '/deductions': 'deductions',
+  '/salary-periods': 'payrollClose',
+  '/salary-complaints': 'salaryIssues',
+  '/equipment-requests': 'equipmentRequests',
+  '/ai': 'ai',
+}
+
+function pageTitle(pathname, sidebar) {
+  if (pathname.startsWith('/employees/')) return sidebar.employees
+  return sidebar[PAGE_KEYS[pathname]] || sidebar.dashboard
+}
+
 function AppContent() {
   const { user, loading, logout } = useAuth()
   const { t } = useLang()
+  const location = useLocation()
   const a = t.app
+  const title = pageTitle(location.pathname, t.sidebar)
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -95,12 +129,12 @@ function AppContent() {
       <AIFloatingWidget mode="admin" />
       <div className="main">
         <header className="topbar">
-          <span className="topbar-title">{a.admin}</span>
+          <span className="topbar-title">{title}</span>
           <div className="topbar-right">
             <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
             <span style={{ color:'var(--text3)' }}>·</span>
             <Clock />
-            <button onClick={logout} style={{ marginLeft:8, padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)', background:'#f4f6f9', color:'#1a2636', fontSize:13, fontWeight:600, cursor:'pointer' }}>
+            <button type="button" onClick={logout} className="btn btn-sm" style={{ marginLeft:8 }}>
               {t.sidebar.logout}
             </button>
           </div>

@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { useLang } from '../hooks/useLang'
+import { useLang, fill } from '../hooks/useLang'
+import LanguageToggle from '../components/LanguageToggle'
+import {
+  buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
+} from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
@@ -76,6 +80,7 @@ export default function ClientPortal() {
   const [clock, setClock] = useState(new Date())
   const [visitPreset, setVisitPreset] = useState('month')
   const [visitRange, setVisitRange] = useState(() => visitRangeForPreset('month', tokyoToday()))
+  const [deepProgressMonth, setDeepProgressMonth] = useState(currentYearMonth)
   const loadedOnceRef = useRef(false)
 
   const [complaintForm, setComplaintForm] = useState({ job_id: '', category: 'quality', description: '' })
@@ -161,7 +166,7 @@ export default function ClientPortal() {
   }, [user?.client_id, user?.location_name])
 
   useEffect(() => {
-    if (!localStorage.getItem('kp_lang') && lang !== 'ja') switchLang('ja')
+    if (!localStorage.getItem('kp_lang') && !localStorage.getItem('emp_lang')) switchLang('en')
   }, [])
 
   useEffect(() => {
@@ -249,6 +254,15 @@ export default function ClientPortal() {
     const avg = withDuration ? Math.round(minutes / withDuration) : null
     return { count: filteredVisits.length, minutes, avg }
   }, [filteredVisits])
+
+  const isOtpClient = user?.client_id === ONTHEPLANET_CLIENT_ID
+  const deepProgress = useMemo(() => {
+    if (!isOtpClient) return null
+    return buildDeepCleanProgressForUser(jobs, deepProgressMonth, user)
+  }, [jobs, deepProgressMonth, user, isOtpClient])
+  const deepProgressMonthLabel = useMemo(() => (
+    new Date(`${deepProgressMonth}-01T12:00:00`).toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
+  ), [deepProgressMonth, dateLocale])
 
   if (!c) {
     return (
@@ -532,8 +546,9 @@ export default function ClientPortal() {
               ))}
             </nav>
             <div className="cp-side-footer">
+              <div style={{ marginBottom: 10 }}><LanguageToggle variant="dark" /></div>
               <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%' }}>
-                📱 {lang === 'ja' ? 'モバイル表示' : 'Mobile view'}
+                📱 {c.mobileView}
               </button>
               <button type="button" className="cp-logout" onClick={logout} style={{ width: '100%' }}>{c.logout}</button>
             </div>
@@ -559,9 +574,10 @@ export default function ClientPortal() {
                 </div>
               )}
               <div className="cp-header-actions">
+                <LanguageToggle variant="dark" />
                 {!desktopMode && (
                   <button type="button" className="cp-view-toggle" onClick={toggleView}>
-                    🖥 {lang === 'ja' ? 'PC' : 'PC'}
+                    🖥 {c.desktopView}
                   </button>
                 )}
                 {!desktopMode && (
@@ -592,6 +608,15 @@ export default function ClientPortal() {
               <div className="cp-loading">{c.loading}</div>
             ) : tab === 'home' && (
               <>
+                {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
+                  <DeepCleanProgressCard
+                    progress={deepProgress}
+                    labels={c}
+                    monthLabel={deepProgressMonthLabel}
+                    progressMonth={deepProgressMonth}
+                    onMonthChange={setDeepProgressMonth}
+                  />
+                )}
                 <div className="cp-section-title"><span>📅</span> {c.today} — {today}</div>
                 <div className="cp-visit-grid">
                   {todayJobs.length === 0
@@ -996,6 +1021,79 @@ function FeedbackPhotoField({
         {file && (
           <button type="button" className="cp-btn" onClick={onClear}>{removeLabel}</button>
         )}
+      </div>
+    </div>
+  )
+}
+
+function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, onMonthChange }) {
+  const { totals, scope, location } = progress
+  const donePct = totals.donePct ?? totals.pct ?? 0
+  const notDonePct = totals.notDonePct ?? Math.max(0, 100 - donePct)
+  const missing = Math.max(0, totals.expected - totals.scheduled)
+  const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
+
+  return (
+    <div className="cp-deep-progress">
+      <div className="cp-deep-progress-head">
+        <div>
+          <div className="cp-deep-progress-title">✨ {labels.deepCleanProgress}</div>
+          <div className="cp-deep-progress-sub">
+            {scopeLabel} · {fill(labels.deepCleanProgressHint, { month: monthLabel, expected: totals.expected })}
+          </div>
+        </div>
+        <input
+          type="month"
+          className="cp-deep-month"
+          value={progressMonth}
+          onChange={e => onMonthChange(e.target.value)}
+          aria-label={labels.deepCleanProgress}
+        />
+      </div>
+
+      <div className="cp-deep-progress-body">
+        <div
+          className="cp-deep-donut"
+          style={{ background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(248, 113, 113, 0.9) ${donePct}% 100%)` }}
+          role="img"
+          aria-label={`${donePct}% ${labels.deepCleanDone}, ${notDonePct}% ${labels.deepCleanNotDone}`}
+        >
+          <div className="cp-deep-donut-hole">
+            <div className="cp-deep-donut-pct">{donePct}%</div>
+            <div className="cp-deep-donut-lbl">{labels.deepCleanDone}</div>
+          </div>
+        </div>
+
+        <div className="cp-deep-legend">
+          <div className="cp-deep-legend-row">
+            <span className="cp-deep-dot done" />
+            <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
+            <span className="cp-deep-legend-val">{totals.completed} ({donePct}%)</span>
+          </div>
+          <div className="cp-deep-legend-row">
+            <span className="cp-deep-dot not-done" />
+            <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
+            <span className="cp-deep-legend-val">{totals.notDone} ({notDonePct}%)</span>
+          </div>
+          {totals.pending > 0 && (
+            <div className="cp-deep-legend-row muted">
+              <span className="cp-deep-dot pending" />
+              <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
+              <span className="cp-deep-legend-val">{totals.pending}</span>
+            </div>
+          )}
+          {missing > 0 && (
+            <div className="cp-deep-legend-row muted">
+              <span className="cp-deep-dot missing" />
+              <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
+              <span className="cp-deep-legend-val">{missing}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="cp-deep-bar">
+        <div className="cp-deep-bar-fill" style={{ width: `${donePct}%` }} />
       </div>
     </div>
   )

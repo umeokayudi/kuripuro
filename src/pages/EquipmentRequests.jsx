@@ -13,7 +13,7 @@ const CATEGORY_LABELS = {
 }
 
 export default function EquipmentRequests() {
-  const { lang } = useLang()
+  const { lang, t } = useLang()
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
@@ -61,8 +61,8 @@ export default function EquipmentRequests() {
 
   return (
     <div>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-        🧰 {lang === 'ja' ? '備品・改善リクエスト' : 'Equipment requests'}
+      <h2 className="page-head" style={{ marginBottom: 8, fontSize: 22 }}>
+        🧰 {t.sidebar.equipmentRequests}
       </h2>
       <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 14, lineHeight: 1.5 }}>
         {lang === 'ja'

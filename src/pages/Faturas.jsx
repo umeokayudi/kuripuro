@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
+import { useLang, fill } from '../hooks/useLang'
 
 export default function Faturas() {
+  const { t } = useLang()
+  const inv = t.invoices
   const [faturas, setFaturas] = useState([])
   const [clients, setClients] = useState([])
   const [jobs, setJobs] = useState([])
@@ -60,8 +63,8 @@ export default function Faturas() {
 
   const handleCreate = async () => {
     const client = clients.find(c=>c.id===form.client_id)
-    if (!client) return toast.error('Select a client')
-    if (items.length===0) return toast.error('Add at least one item')
+    if (!client) return toast.error(inv.selectClient)
+    if (items.length===0) return toast.error(inv.addItem)
     const { data: fatura, error } = await supabase.from('faturas').insert({
       client_id: form.client_id,
       client_name: client.company_name,
@@ -78,14 +81,14 @@ export default function Faturas() {
     for (const item of items) {
       await supabase.from('fatura_items').insert({ fatura_id:fatura.id, ...item, quantity:parseInt(item.quantity)||1, unit_price:parseFloat(item.unit_price)||0, total:parseFloat(item.total)||0 })
     }
-    toast.success('Fatura created!')
+    toast.success(inv.created)
     setTab('list'); load()
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this fatura?')) return
+    if (!confirm(inv.deleteConfirm)) return
     await supabase.from('faturas').delete().eq('id', id)
-    toast('Deleted.'); load()
+    toast(inv.deleted); load()
   }
 
   const handleStatusChange = async (id, status) => {
@@ -93,7 +96,8 @@ export default function Faturas() {
     toast.success(`Status: ${status}`); load()
   }
 
-  const handlePrint = (f) => {
+  const handlePrint = async (f) => {
+    const { data: printItems } = await supabase.from('fatura_items').select('*').eq('fatura_id', f.id)
     const w = window.open('', '_blank')
     const clientName = escapeHtml(f.client_name)
     const issueDate = escapeHtml(f.issue_date)
@@ -101,6 +105,13 @@ export default function Faturas() {
     const periodEnd = escapeHtml(f.period_end || '—')
     const dueDate = escapeHtml(f.due_date || '—')
     const notes = escapeHtml(f.notes)
+    const rows = (printItems || []).map(it => `
+      <tr>
+        <td>${escapeHtml(it.description || '')}</td>
+        <td>${escapeHtml(String(it.quantity ?? ''))}</td>
+        <td>¥${Number(it.unit_price || 0).toLocaleString()}</td>
+        <td>¥${Number(it.total || 0).toLocaleString()}</td>
+      </tr>`).join('')
     w.document.write(`
       <html><head><title>請求書 - ${clientName}</title>
       <style>
@@ -123,7 +134,7 @@ export default function Faturas() {
         </table>
         <table>
           <thead><tr><th>内容</th><th>数量</th><th>単価</th><th>金額</th></tr></thead>
-          <tbody id="items"></tbody>
+          <tbody>${rows || '<tr><td colspan="4">—</td></tr>'}</tbody>
         </table>
         <table style="border:none;width:300px;margin-left:auto">
           <tr><td style="border:none">小計</td><td style="border:none;text-align:right">¥${Number(f.subtotal||0).toLocaleString()}</td></tr>
@@ -143,8 +154,8 @@ export default function Faturas() {
   return (
     <div>
       <div className="tab-pills">
-        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>Faturas ({faturas.length})</button>
-        <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>+ Nova Fatura</button>
+        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{fill(inv.list, { n: faturas.length })}</button>
+        <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>{inv.new}</button>
       </div>
 
       {tab==='list'&&(
@@ -179,7 +190,7 @@ export default function Faturas() {
       {tab==='new'&&(
         <div>
           <div className="card" style={{marginBottom:14}}>
-            <div className="card-title">Nova Fatura</div>
+            <div className="card-title">{inv.newTitle}</div>
             <div className="grid-2">
               <div className="form-group" style={{gridColumn:'1/-1'}}>
                 <label>Client *</label>

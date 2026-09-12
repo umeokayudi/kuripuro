@@ -11,8 +11,9 @@ import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
+import LanguageToggle from '../components/LanguageToggle'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
-import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate, resolveChecklistForJob } from '../lib/jobChecklist'
+import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate, resolveChecklistForJob, checklistDisplayLabel } from '../lib/jobChecklist'
 import {
   manualAddLocations,
   buildAddServiceOptions,
@@ -56,7 +57,7 @@ const BADGE_DEFS = [
 
 export default function EmployeePortal() {
   const { user, logout } = useAuth()
-  const { lang, switchLang, t: tr } = useLang()
+  const { lang, t: tr } = useLang()
   const e = tr.employee
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -281,7 +282,7 @@ export default function EmployeePortal() {
       employee_confirmed_at: new Date().toISOString(), status: 'confirmed',
     }).eq('id', statement.id)
     if (error) return toast.error(error.message)
-    toast.success('Salário confirmado! Pagamento no dia 15.')
+    toast.success(e.salaryConfirmedToast)
     loadStatement()
   }
 
@@ -303,7 +304,7 @@ export default function EmployeePortal() {
           employee_disputed_at: new Date().toISOString(), status: 'disputed',
         }).eq('id', statement.id)
       }
-      toast.success('Reclamação enviada! Admin vai revisar.')
+      toast.success(e.complaintSentToast)
       setComplaintText('')
       setShowComplaintForm(false)
       loadStatement()
@@ -679,7 +680,7 @@ export default function EmployeePortal() {
     try {
       const { data: otherActive } = await supabase.from('jobs').select('id,title').eq('employee_id', user.id).eq('status', 'in_progress').maybeSingle()
       if (otherActive && otherActive.id !== job.id) {
-        toast.error('Você já tem um serviço em andamento. Finalize antes de iniciar outro.')
+        toast.error(e.alreadyInProgress)
         return
       }
       const gpsResult = await checkGPS(job)
@@ -692,8 +693,8 @@ export default function EmployeePortal() {
       if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
       setChecklist(initChecklistState(job))
       setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!')
-    } catch (e) {
-      toast.error(e?.message || 'Erro ao iniciar serviço')
+    } catch (err) {
+      toast.error(err?.message || e.startError)
     } finally {
       setSubmitting(false)
     }
@@ -725,7 +726,7 @@ export default function EmployeePortal() {
           required: requiredChecklist.length <= 3 ? requiredChecklist.length : Math.ceil(requiredChecklist.length * 0.7),
           total: requiredChecklist.length,
         })
-        : 'Marque todos os itens do checklist antes de finalizar')
+        : e.markAllChecklist)
       return
     }
     setSubmitting(true)
@@ -736,7 +737,7 @@ export default function EmployeePortal() {
         startPhotoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
       }
       if (!startPhotoUrl) {
-        toast.error('Faltou a foto "Before" — tire ao iniciar o serviço')
+        toast.error(e.missingBeforePhoto)
         setSubmitting(false)
         return
       }
@@ -805,8 +806,8 @@ export default function EmployeePortal() {
       localStorage.removeItem(`kp_ck_${job.id}`)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
       const scoreMsg = aiScore!=null ? ` · IA: ${aiScore}/10${aiApproved?' ✅':' ⚠️'}` : ''
-      if (missed>0) toast(`Concluído — ${done}/${total} itens feitos, multa aplicada${scoreMsg}`, {icon:'⚠️', duration:5000})
-      else toast.success(`🎉 Concluído — tudo feito!${scoreMsg}`)
+      if (missed>0) toast(`${fill(e.completePartial, { done, total })}${scoreMsg}`, {icon:'⚠️', duration:5000})
+      else toast.success(`🎉 ${e.completeSuccess}${scoreMsg}`)
       loadAll()
     } catch(e) { toast.error('Error: '+e.message) }
     setSubmitting(false)
@@ -991,7 +992,7 @@ export default function EmployeePortal() {
             <div style={{fontSize:18,fontWeight:800,color:'#c19c56'}}>¥{Number(job.spot_value||job.value||0).toLocaleString()}</div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:14}}>
-            {[['📅 Date',dDate],['🕐 Start',job.scheduled_time||'—'],['▶ In',job.started_at?new Date(job.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 Out',job.completed_at?new Date(job.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ Duration',duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],['Status',job.status]].map(([l,v])=>(
+            {[['📅 '+e.jobDate,dDate],['🕐 '+e.jobStart,job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,tr.status[job.status]||job.status]].map(([l,v])=>(
               <div key={l} style={{background:'rgba(255,255,255,0.06)',borderRadius:12,padding:'10px 12px'}}>
                 <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{l}</div>
                 <div style={{fontSize:12,fontWeight:500,color:'#fff'}}>{v}</div>
@@ -999,34 +1000,35 @@ export default function EmployeePortal() {
             ))}
           </div>
           {instructions&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:5}}>📋 Instructions / Key Box</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:5}}>📋 {e.instructionsKeybox}</div>
             <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{instructions}</div>
           </div>}
           {cl.length>0&&<div style={{marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : cl.length+' itens'}</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : fill(e.checklistCount,{n:cl.length})}</div>
             {cl.map((label,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:10,color:'rgba(255,255,255,0.4)'}}>{i+1}</div><span style={{fontSize:13,color:'rgba(255,255,255,0.75)'}}>{label}</span></div>)}
           </div>}
           {job.notes_employee&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>Your Notes</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{e.yourNotes}</div>
             <div style={{fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>{job.notes_employee}</div>
           </div>}
           {(job.photo_start_url||job.photo_end_url)&&<div style={{marginBottom:14}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Photos</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>{e.photos}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              <JobPhoto url={job.photo_start_url} label="START" />
-              <JobPhoto url={job.photo_end_url} label="END" />
+              <JobPhoto url={job.photo_start_url} label={e.photoStart} />
+              <JobPhoto url={job.photo_end_url} label={e.photoEnd} />
             </div>
           </div>}
-          {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 Open in Google Maps</a>}
-          {job.status==='assigned'&&!activeJob&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 Relatório retroativo</button>}
-          <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>Close</button>
+          {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
+          {job.status==='assigned'&&!activeJob&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
+          <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>{e.close}</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif',paddingBottom:70}}>
+    <div className="emp-backdrop">
+    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
@@ -1034,10 +1036,11 @@ export default function EmployeePortal() {
       {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
       {showSignature&&<SignatureModal
         jobTitle={signatureJob?.title||activeJob?.title||''}
+        labels={e}
         onConfirm={(sig)=>{ const job = signatureJob || activeJob; setShowSignature(false); setSignatureJob(null); handleComplete(sig, job) }}
         onCancel={()=>{ setShowSignature(false); setSignatureJob(null) }}
       />}
-      {trainingModal&&<TrainingModal job={trainingModal.job} contract={trainingModal.contract} onClose={()=>setTrainingModal(null)} lang={lang} />}
+      {trainingModal&&<TrainingModal job={trainingModal.job} contract={trainingModal.contract} onClose={()=>setTrainingModal(null)} lang={lang} labels={e} />}
       {showAddService&&(
         <AddServiceModal
           employeeId={user.id}
@@ -1068,7 +1071,7 @@ export default function EmployeePortal() {
 
             {!retroEval ? (<>
               <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:8}}>{e.retroChecklistHint}</div>
-              <ChecklistPicker checklist={retroChecklist} setChecklist={setRetroChecklist} />
+              <ChecklistPicker checklist={retroChecklist} setChecklist={setRetroChecklist} labels={e} lang={lang} />
 
               <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600,marginTop:12,display:'block'}}>{e.retroTextLabel}</label>
               <textarea value={retroText} onChange={e=>setRetroText(e.target.value)} rows={5} placeholder={e.retroTextPlaceholder} style={{width:'100%',marginTop:6,marginBottom:12,borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'#fff',padding:12,fontSize:14,fontFamily:'inherit',resize:'none'}} />
@@ -1086,11 +1089,11 @@ export default function EmployeePortal() {
               </button>
             </>) : (
               <div style={{textAlign:'center'}}>
-                <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',marginBottom:8}}>✓ Checklist marcado · {retroEval.itens_feitos}/{retroEval.itens_total} itens reconhecidos no relatório</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>Valor/pagamento não faz parte desta análise.</div>
+                <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',marginBottom:8}}>✓ {fill(e.retroEvalChecklist, { done: retroEval.itens_feitos, total: retroEval.itens_total })}</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{e.retroEvalPayNote}</div>
                 <div style={{fontSize:12,color:'rgba(255,255,255,0.6)',background:'rgba(255,255,255,0.04)',borderRadius:12,padding:12,marginTop:8,textAlign:'left',lineHeight:1.6}}>{retroEval.resumo}</div>
-                {(retroEval.nao_feitos||[]).length>0&&<div style={{fontSize:11,color:'#f87171',marginTop:8,textAlign:'left'}}>Não reconhecido: {retroEval.nao_feitos.join(', ')}</div>}
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:12}}>Finalizando...</div>
+                {(retroEval.nao_feitos||[]).length>0&&<div style={{fontSize:11,color:'#f87171',marginTop:8,textAlign:'left'}}>{fill(e.retroEvalUnrecognized, { items: retroEval.nao_feitos.join(', ') })}</div>}
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:12}}>{e.finalizing}</div>
               </div>
             )}
           </div>
@@ -1101,18 +1104,16 @@ export default function EmployeePortal() {
       <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',letterSpacing:2.5,textTransform:'uppercase'}}>KuriPuro by JBM · v29</div>
-            <div style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
+            <div className="emp-brand">KuriPuro by JBM · v33</div>
+            <div className="emp-name" style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
+            <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <div style={{background:`rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.1)`,border:`1px solid rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.2)`,borderRadius:14,padding:'7px 12px',textAlign:'center'}}>
               <div style={{fontSize:20,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
-              <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>Score</div>
+              <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>{e.score}</div>
             </div>
-            <button onClick={()=>switchLang(lang==='en'?'ja':'en')} style={{height:40,padding:'0 10px',borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',color:'rgba(255,255,255,0.6)',fontSize:12,fontWeight:600}}>
-              {lang==='en'?'日本語':'EN'}
-            </button>
+            <LanguageToggle variant="dark" compact />
             <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
               🔔
               {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
@@ -1128,7 +1129,7 @@ export default function EmployeePortal() {
           <span style={{fontSize:20,color:'rgba(255,255,255,0.2)',fontFamily:'monospace'}}>{String(clock.getSeconds()).padStart(2,'0')}</span>
         </div>
         {!isOnline&&<div style={{background:'rgba(248,113,113,0.15)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:8,padding:'6px 12px',fontSize:11,color:'#f87171',fontWeight:600,marginTop:8,textAlign:'center'}}>
-          ⚠️ Offline — data will sync when reconnected
+          ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div style={{background:gpsStatus.includes('✅')?'rgba(74,222,128,0.1)':gpsStatus.includes('🚫')?'rgba(248,113,113,0.1)':'rgba(255,255,255,0.06)',borderRadius:20,padding:'4px 10px',fontSize:10,color:gpsStatus.includes('✅')?'#4ade80':gpsStatus.includes('🚫')?'#f87171':'rgba(255,255,255,0.4)',fontWeight:500,border:'1px solid rgba(255,255,255,0.08)'}}>{gpsStatus}</div>}
@@ -1154,7 +1155,7 @@ export default function EmployeePortal() {
             ))}
             <div style={{height:1,background:'rgba(255,255,255,0.05)'}} />
             <button onClick={logout} style={{width:'100%',padding:'14px 18px',border:'none',background:'none',color:'#f87171',fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',gap:12,textAlign:'left'}}>
-              <span style={{fontSize:18}}>🚪</span> Logout
+              <span style={{fontSize:18}}>🚪</span> {e.logout}
             </button>
           </div>
         </div>
@@ -1199,7 +1200,7 @@ export default function EmployeePortal() {
             {todayPendingJobs.length>0&&!activeJob&&(
               <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 TURNO DE HOJE</div>
+                  <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 {e.todayShift.toUpperCase()}</div>
                   {(()=>{
                     const nj=todayPendingJobs.find(j=>j.status==='assigned')
                     if(!nj) return null
@@ -1208,12 +1209,12 @@ export default function EmployeePortal() {
                     if(diffMs<0) return null
                     const diffH=Math.floor(diffMs/3600000)
                     const diffM=Math.floor((diffMs%3600000)/60000)
-                    return <div style={{fontSize:11,color:'#60a5fa',fontWeight:600}}>⏰ {diffH>0?diffH+'h ':''}{diffM}m to start</div>
+                    return <div style={{fontSize:11,color:'#60a5fa',fontWeight:600}}>⏰ {diffH>0?diffH+'h ':''}{diffM}m {e.toStart}</div>
                   })()}
                 </div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} locations</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{todayJobs.filter(j=>j.status==='completed').length} done · {todayPendingJobs.length} remaining</div>
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginBottom:12}}>⏱ Est. {Math.round(todayJobs.length*0.75)}h total · avg 45min/location</div>
+                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} {e.locations}</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}</div>
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginBottom:12}}>⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
                 <div style={{height:5,background:'rgba(255,255,255,0.1)',borderRadius:3,overflow:'hidden',marginBottom:10}}>
                   <div style={{height:'100%',width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%',background:'linear-gradient(90deg,#c19c56,#e8c47a)',borderRadius:3,transition:'width 0.4s'}} />
                 </div>
@@ -1222,7 +1223,7 @@ export default function EmployeePortal() {
                     {todayJobs.slice(0,8).map((j,i)=><div key={i} style={{width:8,height:8,borderRadius:'50%',background:j.status==='completed'?'#4ade80':j.status==='in_progress'?'#fbbf24':'rgba(255,255,255,0.2)'}} />)}
                     {todayJobs.length>8&&<span style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginLeft:2}}>+{todayJobs.length-8}</span>}
                   </div>
-                  <div style={{fontSize:13,fontWeight:600,color:'#c19c56'}}>Start →</div>
+                  <div style={{fontSize:13,fontWeight:600,color:'#c19c56'}}>{e.startArrow}</div>
                 </div>
               </div>
             )}
@@ -1230,11 +1231,11 @@ export default function EmployeePortal() {
             {/* Turno de hoje concluído */}
             {todayAllDone&&!activeJob&&(
               <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:'1px solid rgba(74,222,128,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
-                <div style={{fontSize:10,color:'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:8}}>✅ TURNO DE HOJE CONCLUÍDO</div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} locations</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>Tudo feito! Toque para revisar os serviços</div>
+                <div style={{fontSize:10,color:'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:8}}>✅ {e.todayShiftDone}</div>
+                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} {e.locations}</div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{e.tapToReview}</div>
                 {nextShiftJob&&nextShiftJob.scheduled_date>today&&(
-                  <div style={{fontSize:11,color:'#60a5fa',marginTop:4}}>Próximo turno: {nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</div>
+                  <div style={{fontSize:11,color:'#60a5fa',marginTop:4}}>{fill(e.nextShift,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
                 )}
               </div>
             )}
@@ -1248,8 +1249,8 @@ export default function EmployeePortal() {
               if (diffMs < 0) return null
               return (
                 <div style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12}}>
-                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>⏰ NEXT SHIFT</div>
-                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>{diffH>0?`${diffH}h ${diffM}m`:`${diffM}m`} away</div>
+                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>⏰ {e.nextShiftLabel.toUpperCase()}</div>
+                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>{fill(e.timeAway,{time:diffH>0?`${diffH}h ${diffM}m`:`${diffM}m`})}</div>
                   <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>{nextShiftJob.title.split(' —')[0]} · {nextShiftJob.scheduled_date} {nextShiftJob.scheduled_time}</div>
                 </div>
               )
@@ -1259,8 +1260,8 @@ export default function EmployeePortal() {
             {todayJobs.length===0&&!activeJob&&(
               <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:18,padding:'24px 20px',textAlign:'center',marginBottom:14}}>
                 <div style={{fontSize:36,marginBottom:8}}>☀️</div>
-                <div style={{fontSize:15,fontWeight:600,color:'rgba(255,255,255,0.6)'}}>No shift today</div>
-                {nextShiftJob&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>Next: {nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</div>}
+                <div style={{fontSize:15,fontWeight:600,color:'rgba(255,255,255,0.6)'}}>{e.noShiftToday}</div>
+                {nextShiftJob&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>{fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>}
               </div>
             )}
 
@@ -1270,7 +1271,7 @@ export default function EmployeePortal() {
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
               <div onClick={()=>setTab('salary')} style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
-                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>💴 NEXT PAYMENT</div>
+                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>💴 {e.nextPayment.toUpperCase()}</div>
                   <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>¥{Number(payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0].amount).toLocaleString()}</div>
                   <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0].payment_date}</div>
                 </div>
@@ -1288,7 +1289,7 @@ export default function EmployeePortal() {
                 </div>
               ))}
             </div>
-            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&(
+            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&!(empData.salary_type==='fixed'&&Number(empData.fixed_salary||0)===0)&&(
               <div style={{background:'rgba(251,191,36,0.08)',border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,padding:'10px 12px',marginBottom:12,fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>
                 ⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}
               </div>
@@ -1298,34 +1299,34 @@ export default function EmployeePortal() {
             {salaryData&&salaryData.fixedMax>0&&(
               <div style={S.card}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>Monthly Salary</span>
+                  <span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{e.monthlySalary}</span>
                   <span style={{fontSize:14,fontWeight:800,color:'#c19c56'}}>¥{salaryData.base.toLocaleString()} <span style={{fontSize:10,color:'rgba(255,255,255,0.2)'}}>/ ¥{salaryData.fixedMax.toLocaleString()}</span></span>
                 </div>
                 <div style={{height:6,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
                   <div style={{height:'100%',width:Math.min((salaryData.base/salaryData.fixedMax)*100,100)+'%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',transition:'width 0.6s'}} />
                 </div>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{salaryData.workedDays} days · ¥{salaryData.dailyRate.toLocaleString()}/day · projected ¥{salaryData.projected?.toLocaleString()}</div>
+                <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{fill(e.daysProjected,{days:salaryData.workedDays,rate:salaryData.dailyRate.toLocaleString(),projected:(salaryData.projected||0).toLocaleString()})}</div>
               </div>
             )}
 
             {/* Score */}
             <div style={S.card}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>Performance</span><span style={{fontSize:15,fontWeight:800,color:scoreColor(empScore)}}>{empScore}/100</span></div>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{e.performance}</span><span style={{fontSize:15,fontWeight:800,color:scoreColor(empScore)}}>{empScore}/100</span></div>
               <div style={{height:5,background:'rgba(255,255,255,0.06)',borderRadius:3,overflow:'hidden'}}><div style={{height:'100%',width:empScore+'%',borderRadius:3,background:scoreColor(empScore)}} /></div>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',marginTop:4}}>{empScore>=90?'🌟 Excellent':empScore>=70?'👍 Good':'⚠️ Needs improvement'}</div>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',marginTop:4}}>{empScore>=90?`🌟 ${e.scoreExcellent}`:empScore>=70?`👍 ${e.scoreGood}`:`⚠️ ${e.scoreNeedsWork}`}</div>
             </div>
 
             {/* Badges */}
             {badges.length>0&&<div style={S.card}>
-              <span style={S.label}>Badges</span>
+              <span style={S.label}>{e.badges}</span>
               <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                {badges.map(b=>{ const def=BADGE_DEFS.find(d=>d.key===b.badge_key); return <span key={b.id} style={{fontSize:24}} title={def?.name}>{def?.icon||'🏅'}</span> })}
+                {badges.map(b=>{ const def=BADGE_DEFS.find(d=>d.key===b.badge_key); return <span key={b.id} style={{fontSize:24}} title={e[`badge_${def?.key}`]||def?.name}>{def?.icon||'🏅'}</span> })}
               </div>
             </div>}
 
             {/* Spot jobs */}
             {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.07)',border:'1px solid rgba(193,156,86,0.15)',borderRadius:18,padding:'14px 16px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div><div style={{fontSize:13,fontWeight:700,color:'#c19c56'}}>⚡ {spotJobs.length} Spot Job{spotJobs.length>1?'s':''}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>Tap to respond</div></div>
+              <div><div style={{fontSize:13,fontWeight:700,color:'#c19c56'}}>⚡ {fill(spotJobs.length>1?e.spotCountPlural:e.spotCount,{n:spotJobs.length})}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{e.tapToRespond}</div></div>
               <div style={{fontSize:22,color:'#c19c56'}}>›</div>
             </div>}
           </div>
@@ -1339,17 +1340,17 @@ export default function EmployeePortal() {
         {/* SPOTS */}
         {tab==='spots'&&(
           <div>
-            {spotJobs.length===0?<div style={{textAlign:'center',paddingTop:60}}><div style={{fontSize:48}}>⚡</div><div style={{fontSize:15,color:'rgba(255,255,255,0.3)',marginTop:12}}>No spot jobs pending</div></div>
+            {spotJobs.length===0?<div style={{textAlign:'center',paddingTop:60}}><div style={{fontSize:48}}>⚡</div><div style={{fontSize:15,color:'rgba(255,255,255,0.3)',marginTop:12}}>{e.noSpotJobs}</div></div>
             :spotJobs.map(j=>(
               <div key={j.id} style={{background:'rgba(193,156,86,0.06)',border:'1px solid rgba(193,156,86,0.15)',borderRadius:22,padding:18,marginBottom:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
                   <div style={{flex:1,marginRight:12}}><div style={{fontSize:17,fontWeight:700,color:'#fff',marginBottom:4}}>{j.title}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:1}}>📅 {displayDate(j)} · {j.scheduled_time}</div>{hasMapsLink(j.address, j.title)&&<a href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 Maps</a>}</div>
-                  <div style={{background:'rgba(193,156,86,0.15)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0}}><div style={{fontSize:9,color:'#c19c56',fontWeight:700,letterSpacing:1}}>EXTRA</div><div style={{fontSize:22,fontWeight:800,color:'#c19c56'}}>+¥{Number(j.spot_value||0).toLocaleString()}</div></div>
+                  <div style={{background:'rgba(193,156,86,0.15)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0}}><div style={{fontSize:9,color:'#c19c56',fontWeight:700,letterSpacing:1}}>{e.extra.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:'#c19c56'}}>+¥{Number(j.spot_value||0).toLocaleString()}</div></div>
                 </div>
                 {j.description&&<div style={{fontSize:13,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.03)',borderRadius:10,padding:'10px 12px',marginBottom:14,lineHeight:1.6}}>{j.description}</div>}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <button onClick={()=>handleAcceptSpot(j)} style={{padding:'15px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer'}}>✅ Accept</button>
-                  <button onClick={()=>handleDeclineSpot(j)} style={{padding:'15px',borderRadius:14,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.45)',fontSize:15,fontWeight:700,cursor:'pointer'}}>✕ Decline</button>
+                  <button onClick={()=>handleAcceptSpot(j)} style={{padding:'15px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer'}}>✅ {e.accept}</button>
+                  <button onClick={()=>handleDeclineSpot(j)} style={{padding:'15px',borderRadius:14,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.45)',fontSize:15,fontWeight:700,cursor:'pointer'}}>✕ {e.decline}</button>
                 </div>
               </div>
             ))}
@@ -1358,7 +1359,7 @@ export default function EmployeePortal() {
 
         {/* HISTORY */}
         {tab==='history'&&(
-          <DayGroupView allJobs={allJobs} displayDate={displayDate} today={today} setSelectedJob={setSelectedJob} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} PhotoGrid={PhotoGrid} submitting={submitting} fmt={fmt} S={S} />
+          <DayGroupView allJobs={allJobs} displayDate={displayDate} today={today} setSelectedJob={setSelectedJob} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} PhotoGrid={PhotoGrid} submitting={submitting} fmt={fmt} S={S} labels={{ ...e, statusCompleted: tr.status.completed, statusAssigned: tr.status.assigned, statusProgress: tr.status.in_progress, statusCancelled: tr.status.cancelled }} />
         )}
 
         {/* SALARY */}
@@ -1366,78 +1367,78 @@ export default function EmployeePortal() {
           <div>
             {statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period) && (
               <div style={{background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.25)',borderRadius:20,padding:18,marginBottom:14}}>
-                <div style={{fontSize:10,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 CONFIRMAR SALÁRIO — {fmtPeriod(statement.period)}</div>
+                <div style={{fontSize:10,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 {fill(e.confirmSalary, { period: fmtPeriod(statement.period) })}</div>
                 <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>¥{Number(statement.net_total||0).toLocaleString()}</div>
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:12}}>
-                  Base ¥{Number(statement.base_salary||0).toLocaleString()} · Descontos -¥{Number(statement.deductions||0).toLocaleString()}
-                  <br />Confirme até {getPeriodDates(statement.period).confirmDeadline} · Pagamento {getPeriodDates(statement.period).payDate}
+                  {e.basePay} ¥{Number(statement.base_salary||0).toLocaleString()} · {e.deductionsLabel} -¥{Number(statement.deductions||0).toLocaleString()}
+                  <br />{fill(e.confirmBy, { deadline: getPeriodDates(statement.period).confirmDeadline, payDate: getPeriodDates(statement.period).payDate })}
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <button onClick={confirmStatement} style={{padding:'14px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontWeight:700,cursor:'pointer'}}>✅ Confirmar</button>
-                  <button onClick={()=>setShowComplaintForm(true)} style={{padding:'14px',borderRadius:14,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#f87171',fontWeight:700,cursor:'pointer'}}>⚠️ Contestar</button>
+                  <button onClick={confirmStatement} style={{padding:'14px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontWeight:700,cursor:'pointer'}}>✅ {e.confirm}</button>
+                  <button onClick={()=>setShowComplaintForm(true)} style={{padding:'14px',borderRadius:14,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#f87171',fontWeight:700,cursor:'pointer'}}>⚠️ {e.dispute}</button>
                 </div>
               </div>
             )}
             {statement?.employee_confirmed_at && (
               <div style={{background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#4ade80'}}>
-                ✓ Salário de {fmtPeriod(statement.period)} confirmado — pagamento em {getPeriodDates(statement.period).payDate}
+                ✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period), payDate: getPeriodDates(statement.period).payDate })}
               </div>
             )}
             {statement?.employee_disputed_at && (
               <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#f87171'}}>
-                ⚠ Salário de {fmtPeriod(statement.period)} contestado — aguardando admin
+                ⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period) })}
               </div>
             )}
             {showComplaintForm && (
               <div style={{...S.card,marginBottom:14}}>
-                <span style={S.label}>Reclamação de salário</span>
-                <select value={complaintCategory} onChange={e=>setComplaintCategory(e.target.value)} style={{...S.input,marginBottom:10}}>
-                  <option value="hours">Horas incorretas</option>
-                  <option value="deductions">Desconto indevido</option>
-                  <option value="rate">Valor/ taxa errada</option>
-                  <option value="missing">Pagamento faltando</option>
-                  <option value="other">Outro</option>
+                <span style={S.label}>{e.salaryComplaint}</span>
+                <select value={complaintCategory} onChange={ev=>setComplaintCategory(ev.target.value)} style={{...S.input,marginBottom:10}}>
+                  <option value="hours">{e.catHours}</option>
+                  <option value="deductions">{e.catDeductions}</option>
+                  <option value="rate">{e.catRate}</option>
+                  <option value="missing">{e.catMissing}</option>
+                  <option value="other">{e.catOther}</option>
                 </select>
-                <textarea value={complaintText} onChange={e=>setComplaintText(e.target.value)} placeholder="Descreva o problema com o salário..." rows={3} style={{...S.input,marginBottom:10,resize:'none'}} />
+                <textarea value={complaintText} onChange={ev=>setComplaintText(ev.target.value)} placeholder={e.salaryComplaintPlaceholder} rows={3} style={{...S.input,marginBottom:10,resize:'none'}} />
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <button onClick={submitSalaryComplaint} disabled={submittingComplaint} style={{padding:'12px',borderRadius:12,border:'none',background:'#f87171',color:'#fff',fontWeight:700,cursor:'pointer'}}>{submittingComplaint?'Enviando...':'Enviar reclamação'}</button>
-                  <button onClick={()=>setShowComplaintForm(false)} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'rgba(255,255,255,0.5)',cursor:'pointer'}}>Cancelar</button>
+                  <button onClick={submitSalaryComplaint} disabled={submittingComplaint} style={{padding:'12px',borderRadius:12,border:'none',background:'#f87171',color:'#fff',fontWeight:700,cursor:'pointer'}}>{submittingComplaint?e.sending:e.sendComplaint}</button>
+                  <button onClick={()=>setShowComplaintForm(false)} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'rgba(255,255,255,0.5)',cursor:'pointer'}}>{e.cancel}</button>
                 </div>
               </div>
             )}
             <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>Earned This Month</div>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>{e.earnedThisMonth}</div>
                 <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>líquido · bruto ¥{(salaryData?.total||0).toLocaleString()} · descontos ¥{(salaryData?.deductions||0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>of ¥{(salaryData?.fixedMax||0).toLocaleString()} max</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>{fill(e.netGross, { gross: (salaryData?.total||0).toLocaleString(), deductions: (salaryData?.deductions||0).toLocaleString() })}</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>{fill(e.ofMax,{max:(salaryData?.fixedMax||0).toLocaleString()})}</div>
               <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 14px 5px',overflow:'hidden'}}>
                 <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
               </div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)'}}>{salaryData?.workedDays||0} days · ¥{(salaryData?.dailyRate||0).toLocaleString()}/day</div>
-              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} spot ⚡</div>}
-              {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>Projected full month: ¥{salaryData.projected.toLocaleString()}</div>}
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)'}}>{fill(e.daysRate,{days:salaryData?.workedDays||0,rate:(salaryData?.dailyRate||0).toLocaleString()})}</div>
+              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} {e.spotLabel} ⚡</div>}
+              {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>{fill(e.projectedMonth,{amount:salaryData.projected.toLocaleString()})}</div>}
             </div>
             {(() => { const w = weekSummary(); return (
               <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:18,padding:16,marginBottom:14}}>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>📅 This Week ({w.start} → {w.end})</div>
+                <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>📅 {fill(e.weekRange,{start:w.start,end:w.end})}</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
                   <div>
                     <div style={{fontSize:16,fontWeight:800,color:'#4ade80'}}>¥{w.gross.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Generated</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.generated}</div>
                   </div>
                   <div>
                     <div style={{fontSize:16,fontWeight:800,color:w.deductions>0?'#f87171':'rgba(255,255,255,0.3)'}}>-¥{w.deductions.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Deductions</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.deductionsLabel}</div>
                   </div>
                   <div>
                     <div style={{fontSize:16,fontWeight:800,color:'#c19c56'}}>¥{w.net.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Net</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.netLabel}</div>
                   </div>
                 </div>
                 <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
                   <div style={{height:'100%',borderRadius:3,background:w.rate>=90?'linear-gradient(90deg,#4ade80,#22c55e)':w.rate>=70?'linear-gradient(90deg,#fbbf24,#f59e0b)':'linear-gradient(90deg,#f87171,#ef4444)',width:w.rate+'%',transition:'width 0.6s'}} />
                 </div>
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginBottom:w.weekJobs.length?10:0}}>{w.doneChecklist}/{w.totalChecklist} checklist items done ({w.rate}%) · {w.weekJobs.length} jobs</div>
+                <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginBottom:w.weekJobs.length?10:0}}>{fill(e.checklistItemsDone,{done:w.doneChecklist,total:w.totalChecklist,jobs:w.weekJobs.length})} ({w.rate}%)</div>
                 {w.weekJobs.map(j=>(
                   <div key={j.id} onClick={()=>setSelectedJob(j)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:'1px solid rgba(255,255,255,0.06)',fontSize:11,cursor:'pointer'}}>
                     <div style={{color:'rgba(255,255,255,0.6)'}}>{j.scheduled_date} · {j.title}</div>
@@ -1510,16 +1511,16 @@ export default function EmployeePortal() {
               const pending = advances.filter(a => !isReceived(a))
               return (<>
                 {received.length>0&&<div style={{marginBottom:14}}>
-                  <span style={S.label}>Advances Received</span>
-                  {received.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ received</span></div>)}
+                  <span style={S.label}>{e.advancesReceived}</span>
+                  {received.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ {e.received}</span></div>)}
                   <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>Total received</span>
+                    <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>{e.totalReceived}</span>
                     <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
                   </div>
                 </div>}
                 {pending.length>0&&<div style={{marginBottom:14}}>
-                  <span style={S.label}>Advances Pending</span>
-                  {pending.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>pending</span></div>)}
+                  <span style={S.label}>{e.advancesPending}</span>
+                  {pending.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>{e.pendingAdv}</span></div>)}
                 </div>}
               </>)
             })()}
@@ -1639,7 +1640,7 @@ export default function EmployeePortal() {
                   </div>
                 </div>
               )}
-              {messages.length===0&&<div style={{textAlign:'center',paddingTop:40,color:'rgba(255,255,255,0.25)',fontSize:13}}>No messages yet</div>}
+              {messages.length===0&&<div style={{textAlign:'center',paddingTop:40,color:'rgba(255,255,255,0.25)',fontSize:13}}>{e.noMessages}</div>}
               {messages.map(m=>(
                 <div key={m.id} style={{display:'flex',justifyContent:m.sender==='employee'?'flex-end':'flex-start',marginBottom:10}}>
                   <div style={{maxWidth:'78%',background:m.sender==='employee'?'rgba(193,156,86,0.18)':'rgba(255,255,255,0.08)',border:`1px solid rgba(${m.sender==='employee'?'193,156,86':'255,255,255'},0.12)`,borderRadius:m.sender==='employee'?'18px 18px 4px 18px':'18px 18px 18px 4px',padding:'11px 15px'}}>
@@ -1655,7 +1656,7 @@ export default function EmployeePortal() {
               <div ref={msgEndRef} />
             </div>
             <div style={{display:'flex',gap:8}}>
-              <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&sendMessage()} placeholder="Message admin..." style={{...S.input,flex:1,borderRadius:22,padding:'12px 18px'}} />
+              <input value={newMsg} onChange={ev=>setNewMsg(ev.target.value)} onKeyDown={ev=>ev.key==='Enter'&&!ev.shiftKey&&sendMessage()} placeholder={e.messageAdmin} style={{...S.input,flex:1,borderRadius:22,padding:'12px 18px'}} />
               <button onClick={sendMessage} disabled={!newMsg.trim()} style={{width:46,height:46,borderRadius:'50%',border:'none',background:newMsg.trim()?'#c19c56':'rgba(255,255,255,0.07)',color:newMsg.trim()?'#0a1929':'rgba(255,255,255,0.3)',fontSize:22,cursor:newMsg.trim()?'pointer':'default',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>›</button>
             </div>
           </div>
@@ -1663,21 +1664,21 @@ export default function EmployeePortal() {
 
         {/* CALENDAR */}
         {tab==='calendar'&&(
-          <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} />
+          <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} labels={e} statusLabels={tr.status} lang={lang} />
         )}
 
         {/* ACHIEVEMENTS */}
         {tab==='achievements'&&(
           <div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:14}}>Badges — {badges.length}/{BADGE_DEFS.length} earned</div>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:14}}>{fill(e.badgesEarned,{earned:badges.length,total:BADGE_DEFS.length})}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:20}}>
               {BADGE_DEFS.map(def=>{
                 const earned = badges.find(b=>b.badge_key===def.key)
                 return (
                   <div key={def.key} style={{background:earned?'rgba(193,156,86,0.08)':'rgba(255,255,255,0.03)',border:`1px solid rgba(${earned?'193,156,86':'255,255,255'},${earned?'0.18':'0.05'})`,borderRadius:16,padding:'16px 14px',opacity:earned?1:0.45}}>
                     <div style={{fontSize:30,marginBottom:8}}>{def.icon}</div>
-                    <div style={{fontSize:13,fontWeight:600,color:earned?'#c19c56':'rgba(255,255,255,0.5)'}}>{def.name}</div>
-                    <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:3,lineHeight:1.4}}>{def.desc}</div>
+                    <div style={{fontSize:13,fontWeight:600,color:earned?'#c19c56':'rgba(255,255,255,0.5)'}}>{e[`badge_${def.key}`]||def.name}</div>
+                    <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:3,lineHeight:1.4}}>{e[`badge_${def.key}_desc`]||def.desc}</div>
                     {earned&&<div style={{fontSize:9,color:'rgba(193,156,86,0.5)',marginTop:6}}>✓ {new Date(earned.earned_at).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>}
                   </div>
                 )
@@ -1700,25 +1701,26 @@ export default function EmployeePortal() {
         {/* More button */}
         <button onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
           <div style={{display:'flex',gap:2.5,marginBottom:1}}>{[0,1,2].map(i=><div key={i} style={{width:3.5,height:3.5,borderRadius:'50%',background:'rgba(255,255,255,0.3)'}} />)}</div>
-          <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>More</div>
+          <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{e.more}</div>
         </button>
       </div>
+    </div>
     </div>
   )
 }
 
-function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
+function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   const statusColor = { completed:'#4ade80', assigned:'#60a5fa', in_progress:'#fbbf24', cancelled:'rgba(255,255,255,0.3)' }
-  const statusLabel = { completed:'Concluído', assigned:'Pendente', in_progress:'Em andamento', cancelled:'Cancelado' }
+  const statusLabel = { completed: labels?.statusCompleted || 'Completed', assigned: labels?.statusAssigned || 'Pending', in_progress: labels?.statusProgress || 'In progress', cancelled: labels?.statusCancelled || 'Cancelled' }
   const groups = {}
   ;(allJobs||[]).forEach(j => { (groups[j.scheduled_date] = groups[j.scheduled_date] || []).push(j) })
   const dates = Object.keys(groups).sort().reverse()
-  if (!dates.length) return <div style={{color:'rgba(255,255,255,0.4)',fontSize:13,padding:20,textAlign:'center'}}>Nenhum serviço encontrado.</div>
+  if (!dates.length) return <div style={{color:'rgba(255,255,255,0.4)',fontSize:13,padding:20,textAlign:'center'}}>{labels?.historyEmpty || 'No services found.'}</div>
   return (
     <div>
       {dates.map(date=>(
         <div key={date} style={{marginBottom:16}}>
-          <div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:8}}>{date}{date===today?' (hoje)':''} · {groups[date].length} serviço{groups[date].length>1?'s':''}</div>
+          <div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:8}}>{date}{date===today?(labels?.todaySuffix || ' (today)'):''} · {groups[date].length > 1 ? (labels?.serviceCountPlural || '{n} services').replace('{n}', groups[date].length) : (labels?.serviceCount || '{n} service').replace('{n}', groups[date].length)}</div>
           {groups[date].sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map(j=>(
             <div key={j.id} onClick={()=>setSelectedJob&&setSelectedJob(j)} style={{...(S?.card||{}),marginBottom:8,padding:12,cursor:'pointer',background:'rgba(255,255,255,0.03)',borderRadius:12,border:'1px solid rgba(255,255,255,0.06)'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -1729,7 +1731,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S }) {
               </div>
               <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:2}}>
                 {j.scheduled_time||'—'}
-                {j.completed_at&&` · Concluído ${new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`}
+                {j.completed_at&&` · ${labels?.completedAt || 'Completed'} ${new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`}
                 {(j.photo_start_url||j.photo_end_url)&&' · 📷'}
               </div>
             </div>
@@ -1813,7 +1815,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               {labels.staleChecklistScroll || 'Scroll to see all checklist items'} · {labels.staleChecklistMin || `min ${activeChecklistRequired}/${activeChecklist.length}`}
             </div>
           )}
-          <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} />
+          <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} labels={labels} lang={lang} />
           <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):'Marque todos os itens do checklist');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
             {submitting?'Saving...':activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
           </button>
@@ -1842,15 +1844,15 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
       )}
       <div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'14px 16px',marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{done}/{total} locations</div>
-          <div style={{fontSize:12,color:done===total&&total>0?'#4ade80':'rgba(255,255,255,0.4)'}}>{done===total&&total>0?'✅ All done!':total-done+' remaining'}</div>
+          <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{(labels?.locationsProgress || '{done}/{total} locations').replace('{done}', done).replace('{total}', total)}</div>
+          <div style={{fontSize:12,color:done===total&&total>0?'#4ade80':'rgba(255,255,255,0.4)'}}>{done===total&&total>0?`✅ ${labels?.allDone || 'All done!'}`:(labels?.remaining || '{n} remaining').replace('{n}', total-done)}</div>
         </div>
         <div style={{height:4,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden'}}>
           <div style={{height:'100%',width:total>0?(done/total*100)+'%':'0%',background:'linear-gradient(90deg,#60a5fa,#4ade80)',borderRadius:2,transition:'width 0.4s'}} />
         </div>
       </div>
 
-      {!activeJob && total===0&&<div style={{textAlign:'center',padding:40,color:'rgba(255,255,255,0.3)',fontSize:14}}>No jobs today</div>}
+      {!activeJob && total===0&&<div style={{textAlign:'center',padding:40,color:'rgba(255,255,255,0.3)',fontSize:14}}>{labels?.noJobsToday || 'No jobs today'}</div>}
 
       {todayQueue.map((job,idx)=>{
         const isActive = false
@@ -1982,7 +1984,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                   </div>
                 </div>
 
-                <ChecklistPicker checklist={jobChecklist} setChecklist={setChecklist} />
+                <ChecklistPicker checklist={jobChecklist} setChecklist={setChecklist} labels={labels} lang={lang} />
 
                 <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; if(checklistBlocked){toast.error('Checklist incompleto');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||checklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||checklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||checklistBlocked?'not-allowed':'pointer'}}>
                   {submitting?'Saving...':checklistBlocked?`✓ Checklist ${jobChecklist.filter(c=>c.done).length}/${jobChecklist.length}`:'✅ Done → Next'}
@@ -2023,7 +2025,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 }
 
 
-function CalendarView({ jobs, today, displayDate, onSelect }) {
+function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels, lang }) {
   const [cm, setCm] = useState(() => { const d=new Date(); return {year:d.getFullYear(),month:d.getMonth()} })
   const { year, month } = cm
   const firstDay = new Date(year,month,1).getDay()
@@ -2038,7 +2040,7 @@ function CalendarView({ jobs, today, displayDate, onSelect }) {
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month-1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>‹</button>
-        <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{new Date(year,month).toLocaleString('en',{month:'long',year:'numeric'})}</div>
+        <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{new Date(year,month).toLocaleString(lang==='ja'?'ja-JP':'en',{month:'long',year:'numeric'})}</div>
         <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month+1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>›</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:4}}>
@@ -2063,13 +2065,13 @@ function CalendarView({ jobs, today, displayDate, onSelect }) {
         })}
       </div>
       <div style={{display:'flex',gap:12,marginBottom:16,justifyContent:'center'}}>
-        {[['#4ade80','Done'],['#60a5fa','Scheduled'],['#fbbf24','Active']].map(([c,l])=>(
+        {[['#4ade80', statusLabels?.completed || 'Done'],['#60a5fa', statusLabels?.assigned || 'Scheduled'],['#fbbf24', statusLabels?.in_progress || 'Active']].map(([c,l])=>(
           <div key={l} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:8,height:8,borderRadius:'50%',background:c}} /><span style={{fontSize:10,color:'rgba(255,255,255,0.4)'}}>{l}</span></div>
         ))}
       </div>
       {sel&&(
         <div>
-          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
           {selJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map(j=>{
             const sc={completed:'#4ade80',assigned:'#60a5fa',in_progress:'#fbbf24',cancelled:'rgba(255,255,255,0.2)'}[j.status]
             const duration=j.started_at&&j.completed_at?Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000):null
@@ -2077,13 +2079,13 @@ function CalendarView({ jobs, today, displayDate, onSelect }) {
               <div key={j.id} onClick={()=>onSelect(j)} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:14,padding:'12px 14px',marginBottom:8,cursor:'pointer'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}}>
                   <div style={{flex:1,marginRight:8}}><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{j.title.replace(/ — .*/,'')}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:1}}>{j.scheduled_time}</div></div>
-                  <span style={{fontSize:9,color:sc,fontWeight:700,textTransform:'uppercase'}}>{j.status}</span>
+                  <span style={{fontSize:9,color:sc,fontWeight:700,textTransform:'uppercase'}}>{statusLabels?.[j.status]||j.status}</span>
                 </div>
                 <div style={{display:'flex',gap:10,fontSize:9,color:'rgba(255,255,255,0.25)'}}>
                   {j.started_at&&<span>▶ {new Date(j.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
                   {j.completed_at&&<span>🏁 {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
                   {duration&&<span>⏱ {duration}m</span>}
-                  <span style={{marginLeft:'auto'}}>details ›</span>
+                  <span style={{marginLeft:'auto'}}>{labels?.details || 'details ›'}</span>
                 </div>
               </div>
             )
@@ -2094,7 +2096,7 @@ function CalendarView({ jobs, today, displayDate, onSelect }) {
   )
 }
 
-function SignatureModal({ onConfirm, onCancel, jobTitle }) {
+function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
   const canvasRef = useRef()
   const [drawing, setDrawing] = useState(false)
   const [hasSignature, setHasSignature] = useState(false)
@@ -2158,7 +2160,7 @@ function SignatureModal({ onConfirm, onCancel, jobTitle }) {
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:300,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
       <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px'}}>
         <div style={{width:40,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 18px'}} />
-        <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4,textAlign:'center'}}>Sign to Complete</div>
+        <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4,textAlign:'center'}}>{labels?.signToComplete || 'Sign to complete'}</div>
         <div style={{fontSize:12,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>{jobTitle}</div>
 
         {/* Canvas */}
@@ -2168,14 +2170,14 @@ function SignatureModal({ onConfirm, onCancel, jobTitle }) {
             onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
             onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
           />
-          {!hasSignature&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.2)',fontSize:14,pointerEvents:'none'}}>Sign here with your finger</div>}
+          {!hasSignature&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.2)',fontSize:14,pointerEvents:'none'}}>{labels?.signHere || 'Sign here with your finger'}</div>}
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-          <button onClick={clear} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',fontSize:13,cursor:'pointer'}}>Clear</button>
-          <button onClick={onCancel} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',fontSize:13,cursor:'pointer'}}>Cancel</button>
+          <button onClick={clear} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',fontSize:13,cursor:'pointer'}}>{labels?.clear || 'Clear'}</button>
+          <button onClick={onCancel} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',fontSize:13,cursor:'pointer'}}>{labels?.cancel || 'Cancel'}</button>
           <button onClick={confirm} disabled={!hasSignature} style={{padding:'13px',borderRadius:12,border:'none',background:hasSignature?'linear-gradient(135deg,#c19c56,#e8c47a)':'rgba(255,255,255,0.07)',color:hasSignature?'#0a1929':'rgba(255,255,255,0.25)',fontSize:13,fontWeight:700,cursor:hasSignature?'pointer':'not-allowed'}}>
-            ✓ Confirm
+            ✓ {labels?.confirm || 'Confirm'}
           </button>
         </div>
       </div>
@@ -2183,7 +2185,7 @@ function SignatureModal({ onConfirm, onCancel, jobTitle }) {
   )
 }
 
-function TrainingModal({ job, contract, onClose, lang }) {
+function TrainingModal({ job, contract, onClose, lang, labels }) {
   const embed = youtubeEmbedUrl(contract?.training_video_url)
   const items = parseTrainingChecklist(contract?.training_checklist)
   const loc = (job?.title || '').replace(/ — .*/, '')
@@ -2192,7 +2194,7 @@ function TrainingModal({ job, contract, onClose, lang }) {
       <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
-            <div style={{ fontSize: 11, color: '#c19c56', fontWeight: 700 }}>🎬 {lang === 'ja' ? '清掃マニュアル' : 'Cleaning manual'}</div>
+            <div style={{ fontSize: 11, color: '#c19c56', fontWeight: 700 }}>🎬 {labels?.cleaningManual || (lang === 'ja' ? '清掃マニュアル' : 'Cleaning manual')}</div>
             <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 4 }}>{loc}</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer' }}>✕</button>
@@ -2202,11 +2204,11 @@ function TrainingModal({ job, contract, onClose, lang }) {
             <iframe title="Training" src={embed} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
           </div>
         ) : (
-          <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13, marginBottom: 14 }}>Video URL invalid</div>
+          <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13, marginBottom: 14 }}>{labels?.videoInvalid || 'Video URL invalid'}</div>
         )}
         {items.length > 0 && (
           <div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8, letterSpacing: 1 }}>{lang === 'ja' ? '作業前チェックリスト' : 'Pre-work checklist'}</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8, letterSpacing: 1 }}>{labels?.preWorkChecklist || (lang === 'ja' ? '作業前チェックリスト' : 'Pre-work checklist')}</div>
             {items.map((label, i) => (
               <div key={i} style={{ display: 'flex', gap: 10, padding: '10px 12px', marginBottom: 6, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <span style={{ color: '#c19c56', fontWeight: 700 }}>{i + 1}.</span>
@@ -2216,14 +2218,14 @@ function TrainingModal({ job, contract, onClose, lang }) {
           </div>
         )}
         <button onClick={onClose} style={{ width: '100%', marginTop: 16, padding: 14, borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-          {lang === 'ja' ? '閉じて作業を開始' : 'Close and start work'}
+          {labels?.closeAndStart || (lang === 'ja' ? '閉じて作業を開始' : 'Close and start work')}
         </button>
       </div>
     </div>
   )
 }
 
-function ChecklistPicker({ checklist, setChecklist, relaxed = false }) {
+function ChecklistPicker({ checklist, setChecklist, relaxed = false, labels, lang = 'en' }) {
   if (!checklist?.length) return null
   const done = checklist.filter(c => c.done).length
   const required = relaxed
@@ -2234,7 +2236,7 @@ function ChecklistPicker({ checklist, setChecklist, relaxed = false }) {
   return (
     <div style={{ marginBottom: 12, maxHeight: relaxed ? 280 : undefined, overflowY: relaxed ? 'auto' : undefined, WebkitOverflowScrolling: 'touch' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>✓ CHECKLIST {relaxed ? `(${done}/${required} min)` : `OBRIGATÓRIO (${done}/${checklist.length})`}</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>✓ {relaxed ? (labels?.checklistMin || 'CHECKLIST ({done}/{required} min)').replace('{done}', done).replace('{required}', required) : (labels?.checklistRequired || 'REQUIRED CHECKLIST ({done}/{total})').replace('{done}', done).replace('{total}', checklist.length)}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: allDone ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171' }}>{pct}%</span>
       </div>
       <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden', marginBottom: 8 }}>
@@ -2243,10 +2245,10 @@ function ChecklistPicker({ checklist, setChecklist, relaxed = false }) {
       {checklist.map((c, i) => (
         <div key={i} onClick={() => setChecklist(cl => cl.map((x, j) => j === i ? { ...x, done: !x.done } : x))} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', marginBottom: 5, borderRadius: 10, cursor: 'pointer', background: c.done ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${c.done ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.06)'}` }}>
           <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, background: c.done ? '#4ade80' : 'transparent', border: c.done ? 'none' : '1.5px solid rgba(255,255,255,0.2)', color: '#0a1929', fontWeight: 800 }}>{c.done ? '✓' : ''}</div>
-          <span style={{ fontSize: 13, color: c.done ? '#fff' : 'rgba(255,255,255,0.6)' }}>{c.label}</span>
+          <span style={{ fontSize: 13, color: c.done ? '#fff' : 'rgba(255,255,255,0.6)' }}>{checklistDisplayLabel(c.label, lang)}</span>
         </div>
       ))}
-      {!allDone && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{relaxed ? `⚠️ Mark at least ${required} of ${checklist.length} items.` : '⚠️ Marque todos os itens para poder finalizar o serviço.'}</div>}
+      {!allDone && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{relaxed ? `⚠️ ${(labels?.staleChecklistHint || 'Mark at least {required} of {total}').replace('{required}', required).replace('{total}', checklist.length)}` : `⚠️ ${labels?.markAllToFinish || 'Mark every item to finish the service.'}`}</div>}
     </div>
   )
 }

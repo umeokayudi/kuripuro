@@ -157,16 +157,16 @@ export default function Dashboard() {
   return (
     <div>
       <DetailModal />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+      <div className="dash-hero">
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{t.app.admin}</h2>
-          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>
             {clock.toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Tokyo' })}
+            <span style={{ marginLeft: 8 }}>{d.tokyo}</span>
             {lastUpdate && <span style={{ marginLeft: 10 }}>· {d.updated} {lastUpdate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}</span>}
-            <button onClick={load} style={{ marginLeft: 10, fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text3)', cursor: 'pointer' }}>🔄</button>
+            <button type="button" onClick={load} aria-label={d.updating} style={{ marginLeft: 10, fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text3)', cursor: 'pointer' }}>↻</button>
           </div>
         </div>
-        <div style={{ fontSize: 36, fontWeight: 700, fontFamily: 'monospace', color: 'var(--text)', letterSpacing: -2 }}>
+        <div className="dash-clock">
           {clock.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}
         </div>
       </div>
@@ -178,16 +178,16 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 20 }}>
+      <div className="dash-metrics">
         {[
           [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
           [d.netProfit, fmt(profit), 'var(--green)'],
           [d.activeEmployees, employees.length, 'var(--text)'],
           [d.todayJobs, todayJobs.length, 'var(--text)'],
         ].map(([l, v, c]) => (
-          <div key={l} className="card" style={{ padding: '18px 20px' }}>
-            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 6 }}>{l}</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: c }}>{v}</div>
+          <div key={l} className="metric-card">
+            <div className="metric-label">{l}</div>
+            <div className="metric-value" style={{ color: c }}>{v}</div>
           </div>
         ))}
       </div>
@@ -201,7 +201,7 @@ export default function Dashboard() {
           <Link to="/client-feedback" style={{ fontSize: 12, color: '#c19c56', fontWeight: 600, textDecoration: 'none' }}>{d.viewFeedback}</Link>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+        <div className="dash-sat">
           {[
             [d.avgRating, overallAvg != null ? overallAvg.toFixed(1) + ' ★' : '—'],
             [d.weeklyAvg, weeklyAvg != null ? weeklyAvg.toFixed(1) : '—'],
@@ -323,24 +323,26 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {todayJobs.length > 0 && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.todayJobsTitle} ({tokyoToday()})</div>
-          {Object.entries(byEmp).map(([name, jobs]) => (
-            <div key={name} style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 6 }}>{name}</div>
-              {jobs.map(j => (
-                <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                  <span>{j.title?.replace(/ — .*/, '')} · {j.scheduled_time || '—'}</span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: statusColor(j.status) }}>{t.status[j.status] || j.status}</span>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.todayJobsTitle} ({tokyoToday()})</div>
+        {todayJobs.length === 0 ? (
+          <div className="empty-state">
+            <strong>{d.noTodayJobs}</strong>
+          </div>
+        ) : Object.entries(byEmp).map(([name, jobs]) => (
+          <div key={name} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 6 }}>{name}</div>
+            {jobs.map(j => (
+              <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                <span>{j.title?.replace(/ — .*/, '')} · {j.scheduled_time || '—'}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: statusColor(j.status) }}>{t.status[j.status] || j.status}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="dash-split">
         <div className="card">
           <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.recentEvals}</div>
           {evals.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{d.noEvals}</div>}

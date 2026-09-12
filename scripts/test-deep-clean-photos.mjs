@@ -10,7 +10,10 @@ import {
   getCleaningType,
   jobMatchesLocationAndType,
   ALL_DEEP_COMPONENT_IDS,
+  buildDeepCleanProgress,
+  buildDeepCleanProgressForUser,
 } from '../src/lib/cleaningType.js'
+import { SCHEDULE_CLIENTS } from '../src/lib/serviceCatalog.js'
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
 import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../src/lib/jobReport.js'
 import { viewablePhotoUrl, isStoragePhotoUrl } from '../src/lib/photoUrl.js'
@@ -152,6 +155,47 @@ function testOtpDeepOnlyContracts() {
   assert(!isDeepCleanAllowedOnDate('Kodama Shinbashi', '2026-09-07'), 'Kodama deep not Mon')
 }
 
+function testDeepCleanProgressForUser() {
+  const ym = '2026-09'
+  const otpId = SCHEDULE_CLIENTS.ontheplanet.id
+  const jobs = [
+    {
+      title: 'Kodama Oimachi — Deep Clean',
+      scheduled_date: '2026-09-08',
+      status: 'completed',
+      client_id: otpId,
+    },
+    {
+      title: 'Ibushio — Deep Clean',
+      scheduled_date: '2026-09-07',
+      status: 'assigned',
+      client_id: otpId,
+    },
+  ]
+  const full = buildDeepCleanProgress(jobs, ym)
+  assert(full.totals.expected > 0, 'expected slots for September')
+  assert(full.totals.completed === 1, `completed ${full.totals.completed}`)
+  assert(full.totals.pending === 1, `pending ${full.totals.pending}`)
+
+  const storeUser = { client_id: otpId, location_name: 'Kodama Oimachi' }
+  const scoped = buildDeepCleanProgressForUser(jobs, ym, storeUser)
+  assert(scoped.scope === 'location', scoped.scope)
+  assert(scoped.location === 'Kodama Oimachi', scoped.location)
+  assert(scoped.totals.completed === 1, `store completed ${scoped.totals.completed}`)
+  assert(scoped.totals.pending === 0, `store pending ${scoped.totals.pending}`)
+  assert(scoped.totals.notDone === scoped.totals.expected - scoped.totals.completed, 'notDone math')
+  assert(scoped.totals.donePct + scoped.totals.notDonePct === 100 || scoped.totals.expected === 0, 'pct split')
+
+  const hqUser = { client_id: otpId }
+  const all = buildDeepCleanProgressForUser(jobs, ym, hqUser)
+  assert(all.scope === 'all', all.scope)
+  assert(all.totals.completed === 1, 'hq completed')
+
+  const unknown = buildDeepCleanProgressForUser(jobs, ym, { location_name: 'Unknown Store' })
+  assert(unknown.scope === 'none', unknown.scope)
+  assert(unknown.totals.expected === 0, 'unknown store expected 0')
+}
+
 async function main() {
   console.log('=== Deep clean + photo report unit tests ===\n')
   testCleaningType()
@@ -164,6 +208,8 @@ async function main() {
   console.log('✅ viewablePhotoUrl proxy')
   testReportPhotos()
   console.log('✅ jobReport photo merge')
+  testDeepCleanProgressForUser()
+  console.log('✅ buildDeepCleanProgressForUser')
   console.log('\n✅ All unit tests passed')
 }
 

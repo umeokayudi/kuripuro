@@ -5,8 +5,11 @@ import { apiFetch } from '../lib/apiFetch'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
+import { useLang, fill } from '../hooks/useLang'
 
 export default function LiveTracking() {
+  const { t } = useLang()
+  const L = t.live
   const [employees, setEmployees] = useState([])
   const [jobs, setJobs] = useState([])
   const [selected, setSelected] = useState(null)
@@ -25,14 +28,14 @@ export default function LiveTracking() {
   }
 
   const cleanPhotos = async () => {
-    if (!window.confirm('Apagar as fotos de jobs concluídos há mais de 60 dias? Isso não pode ser desfeito.')) return
+    if (!window.confirm(L.cleanConfirm)) return
     setCleaning(true)
     try {
       const r = await apiFetch('/api/cleanup-photos', { method: 'POST' })
       if (!r.ok) throw new Error('HTTP ' + r.status)
       const res = await r.json()
       if (res.error) throw new Error(res.error)
-      toast.success(`${res.filesDeleted||0} foto(s) apagada(s).`)
+      toast.success(fill(L.cleaned, { n: res.filesDeleted || 0 }))
       setPhotoInfo(res)
     } catch(e) { toast.error('Erro: '+e.message) }
     setCleaning(false)
@@ -51,7 +54,7 @@ export default function LiveTracking() {
   const approveRetro = async (id) => {
     const { error } = await supabase.from('jobs').update({ admin_reviewed: true }).eq('id', id)
     if (error) return toast.error(error.message)
-    toast.success('Retro revisado')
+    toast.success(L.reviewedToast)
     loadRetros()
   }
 
@@ -98,53 +101,53 @@ export default function LiveTracking() {
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <h2 style={{fontSize:18,fontWeight:700}}>Live Tracking</h2>
-        <div style={{fontSize:12,color:'var(--text3)'}}>Auto-refresh 30s</div>
+        <h2 style={{fontSize:22,fontWeight:700}}>{L.title}</h2>
+        <div style={{fontSize:12,color:'var(--text3)'}}>{L.autoRefresh}</div>
       </div>
 
       <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:14,marginBottom:16}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
           <div>
-            <div style={{fontSize:13,fontWeight:600}}>📸 Armazenamento de fotos</div>
+            <div style={{fontSize:13,fontWeight:600}}>📸 {L.photoStorage}</div>
             {photoInfo ? (
-              photoInfo.error ? <div style={{fontSize:12,color:'var(--red)'}}>Erro: {photoInfo.error}</div> :
+              photoInfo.error ? <div style={{fontSize:12,color:'var(--red)'}}>{photoInfo.error}</div> :
               <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>
-                {photoInfo.filesFound} foto(s) de jobs com +60 dias (antes de {photoInfo.cutoffDate}){photoInfo.mode==='deleted'?` — ${photoInfo.filesDeleted} apagadas`:''}
+                {fill(L.photoCount, { n: photoInfo.filesFound, date: photoInfo.cutoffDate })}{photoInfo.mode==='deleted'?fill(L.photoDeleted, { n: photoInfo.filesDeleted }):''}
               </div>
-            ) : <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>Clique em "Verificar" para ver quantas fotos antigas podem ser apagadas.</div>}
+            ) : <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{L.photoCheckHint}</div>}
           </div>
           <div style={{display:'flex',gap:8}}>
-            <button onClick={checkPhotos} className="btn btn-sm">Verificar</button>
-            <button onClick={cleanPhotos} disabled={cleaning} className="btn btn-sm" style={{background:'#DC2626',color:'#fff',border:'none'}}>{cleaning?'Limpando...':'🗑️ Limpar +60 dias'}</button>
+            <button onClick={checkPhotos} className="btn btn-sm">{L.check}</button>
+            <button onClick={cleanPhotos} disabled={cleaning} className="btn btn-sm" style={{background:'#DC2626',color:'#fff',border:'none'}}>{cleaning?L.cleaning:`🗑️ ${L.cleanOld}`}</button>
           </div>
         </div>
       </div>
 
       {retros.length>0&&(
         <div style={{background:'rgba(193,156,86,0.06)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:14,marginBottom:16}}>
-          <div style={{fontSize:13,fontWeight:700,color:'#c19c56',marginBottom:10}}>📝 Relatórios retroativos p/ revisar ({retros.length})</div>
+          <div style={{fontSize:13,fontWeight:700,color:'#c19c56',marginBottom:10}}>📝 {fill(L.retroReview, { n: retros.length })}</div>
           {retros.map(r=>(
             <div key={r.id} style={{background:'var(--surface)',borderRadius:10,padding:12,marginBottom:8,border:'1px solid var(--border)'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:600}}>{(r.title||'').replace(/ — .*/,'')} <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>· {r.employee_name} · {r.scheduled_date}</span></div>
                   <div style={{fontSize:12,color:'var(--text2)',marginTop:4,fontStyle:'italic'}}>"{r.retro_report}"</div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>🤖 {r.retro_ai_summary} — {r.checklist_done}/{r.checklist_total} itens</div>
-                  <div style={{fontSize:12,marginTop:4}}><b>Pago: ¥{Number(r.retro_value||0).toLocaleString()}</b> {Number(r.value||0)>Number(r.retro_value||0)&&<span style={{color:'var(--red)'}}>(de ¥{Number(r.value).toLocaleString()})</span>}</div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>🤖 {r.retro_ai_summary} — {r.checklist_done}/{r.checklist_total} {L.items}</div>
+                  <div style={{fontSize:12,marginTop:4}}><b>{L.paid}: ¥{Number(r.retro_value||0).toLocaleString()}</b> {Number(r.value||0)>Number(r.retro_value||0)&&<span style={{color:'var(--red)'}}>({L.of} ¥{Number(r.value).toLocaleString()})</span>}</div>
                   {(r.photo_start_url || r.photo_end_url) && (
                     <div style={{ marginTop: 8 }}>
                       <JobPhotos
                         photoStartUrl={r.photo_start_url}
                         photoEndUrl={r.photo_end_url}
-                        beforeLabel="Antes"
-                        afterLabel="Depois"
+                        beforeLabel={L.before}
+                        afterLabel={L.after}
                         size={52}
                         onPhotoClick={setLightbox}
                       />
                     </div>
                   )}
                 </div>
-                <button onClick={()=>approveRetro(r.id)} className="btn btn-sm" style={{background:'#16a34a',color:'#fff',border:'none',flexShrink:0}}>✓ Revisado</button>
+                <button onClick={()=>approveRetro(r.id)} className="btn btn-sm" style={{background:'#16a34a',color:'#fff',border:'none',flexShrink:0}}>✓ {L.reviewed}</button>
               </div>
             </div>
           ))}
@@ -167,11 +170,11 @@ export default function LiveTracking() {
                 <div>
                   <div style={{fontWeight:600,fontSize:14,display:'flex',alignItems:'center',gap:6}}>
                     {emp.full_name.split(' ')[0]}
-                    {lateMin>=5&&<span style={{background:'rgba(248,113,113,0.15)',color:'#f87171',borderRadius:6,padding:'1px 6px',fontSize:10,fontWeight:700}}>⏰ atrasado {lateMin}min</span>}
+                    {lateMin>=5&&<span style={{background:'rgba(248,113,113,0.15)',color:'#f87171',borderRadius:6,padding:'1px 6px',fontSize:10,fontWeight:700}}>⏰ {fill(L.late, { n: lateMin })}</span>}
                   </div>
                   <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
-                    {activeJob?<span style={{color:'#4ade80',fontWeight:600}}>● Working</span>:todayJobs.length>0?<span style={{color:'var(--text3)'}}>● Idle</span>:<span style={{color:'rgba(255,255,255,0.2)'}}>○ No shift</span>}
-                    {locFresh && emp.location_sharing !== false && <a href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 ver local</a>}
+                    {activeJob?<span style={{color:'#4ade80',fontWeight:600}}>● {L.working}</span>:todayJobs.length>0?<span style={{color:'var(--text3)'}}>● {L.idle}</span>:<span style={{color:'rgba(255,255,255,0.2)'}}>○ {L.noShift}</span>}
+                    {locFresh && emp.location_sharing !== false && <a href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 {L.seeLocation}</a>}
                   </div>
                 </div>
                 <div style={{textAlign:'right'}}>

@@ -3,6 +3,7 @@ import { apiPost } from '../lib/apiFetch'
 import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
 import { loadChatHistory, saveChatHistory } from '../lib/aiChatHistory'
+import { useLang } from '../hooks/useLang'
 
 function formatText(text) {
   if (!text) return null
@@ -22,15 +23,12 @@ function formatText(text) {
   })
 }
 
-const WELCOME = {
-  admin: 'Oi! Sou o assistente do admin KuriPuro. Posso consultar e alterar jobs, funcionários, clientes, pagamentos e mais.\n\nExperimenta: "quantos jobs o André completou essa semana" ou use o botão 📞 Ligar para falar comigo.',
-  employee: 'Oi! Sou seu assistente pessoal. Posso consultar seus jobs, salário, descontos, transporte e mensagens.\n\nPergunte algo como "quais são meus jobs de amanhã?" ou toque em 📞 Ligar para falar comigo.',
-}
-
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false }) {
+  const { t, lang } = useLang()
+  const ai = t.ai || {}
   const welcome = useMemo(() => (
-    [{ role: 'assistant', content: WELCOME[mode] || WELCOME.admin }]
-  ), [mode])
+    [{ role: 'assistant', content: (mode === 'employee' ? ai.employeeWelcome : ai.adminWelcome) || '' }]
+  ), [mode, ai.employeeWelcome, ai.adminWelcome])
 
   const [messages, setMessages] = useState(() =>
     loadChatHistory(mode, employeeId, welcome)
@@ -75,8 +73,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       : { messages: allMessages }
     const resp = await apiPost(endpoint, body)
     let data
-    try { data = await resp.json() } catch { throw new Error(`Resposta inválida (${resp.status})`) }
-    if (!resp.ok || data.error) throw new Error(data.error || `Erro ${resp.status}`)
+    try { data = await resp.json() } catch { throw new Error(`Invalid response (${resp.status})`) }
+    if (!resp.ok || data.error) throw new Error(data.error || `Error ${resp.status}`)
     return data
   }
 
@@ -93,9 +91,9 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
 
   const startVoiceInput = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { alert('Reconhecimento de voz não suportado. Use Chrome.'); return }
+    if (!SR) { alert(ai.voiceChrome); return }
     const recognition = new SR()
-    recognition.lang = 'pt-BR'
+    recognition.lang = lang === 'ja' ? 'ja-JP' : 'en-US'
     recognition.interimResults = false
     recognition.onstart = () => setRecording(true)
     recognition.onresult = (e) => setInput(prev => (prev ? prev + ' ' : '') + e.results[0][0].transcript)
@@ -117,7 +115,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       setMessages(m => [...m, replyMsg])
       if (voiceReplies) speakReply(data.reply)
     } catch (e) {
-      setMessages(m => [...m, { role: 'assistant', content: `⚠️ Erro: ${e.message}` }])
+      setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${e.message}` }])
     }
     setLoading(false)
   }
@@ -131,13 +129,13 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     <div style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : 'calc(100vh - 140px)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: compact ? 8 : 12, padding: compact ? '8px 12px 0' : 0 }}>
         <div style={{ fontSize: compact ? 12 : 14, fontWeight: 700, color: dark ? 'rgba(255,255,255,0.7)' : 'var(--text2)' }}>
-          {mode === 'employee' ? '🤖 Meu Assistente' : '✨ Assistente Admin'}
+          {mode === 'employee' ? `🤖 ${ai.employeeTitle}` : `✨ ${ai.adminTitle}`}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {voices.filter(v => v.lang?.startsWith('pt')).length > 0 && (
-            <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title="Voz da IA"
+          {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).length > 0 && (
+            <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title="AI voice"
               style={{ fontSize: 11, padding: '5px 8px', borderRadius: 8, border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit', maxWidth: 130 }}>
-              {voices.filter(v => v.lang?.startsWith('pt')).map(v => (
+              {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).map(v => (
                 <option key={v.name} value={v.name}>{v.name.split(' ')[0]}</option>
               ))}
             </select>
@@ -146,9 +144,9 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
             style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: voiceReplies ? '#c19c56' : dark ? 'rgba(255,255,255,0.06)' : '#fff', color: voiceReplies ? '#0a1929' : dark ? '#fff' : 'var(--text)', borderRadius: 10, padding: '5px 9px', cursor: 'pointer', fontSize: 12 }}>
             {voiceReplies ? '🔊' : '🔇'}
           </button>
-          <button onClick={() => setCallOpen(true)} title="Ligar pro assistente"
+          <button onClick={() => setCallOpen(true)} title={ai.call}
             style={{ border: 'none', background: 'linear-gradient(135deg,#4ade80,#22c55e)', color: '#0a1929', borderRadius: 10, padding: '5px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-            📞 Ligar
+            📞 {ai.call}
           </button>
         </div>
       </div>
@@ -179,7 +177,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
             </div>
           </div>
         ))}
-        {loading && <div style={{ alignSelf: 'flex-start', fontSize: 12, opacity: 0.5, padding: '8px 12px' }}>Pensando...</div>}
+        {loading && <div style={{ alignSelf: 'flex-start', fontSize: 12, opacity: 0.5, padding: '8px 12px' }}>{ai.thinking}</div>}
         <div ref={bottomRef} />
       </div>
 
@@ -190,13 +188,13 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
         </button>
         <textarea value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={mode === 'employee' ? 'Pergunte sobre seus jobs, salário...' : 'Pergunte ou peça uma mudança...'}
+          placeholder={mode === 'employee' ? ai.placeholderEmployee : ai.placeholderAdmin}
           rows={compact ? 1 : 2}
           style={{ flex: 1, resize: 'none', borderRadius: 12, border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'var(--border)'}`, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit' }}
         />
         <button onClick={send} disabled={loading}
           style={{ alignSelf: 'flex-end', padding: '10px 16px', borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
-          Enviar
+          {ai.send}
         </button>
       </div>
     </div>

@@ -282,6 +282,72 @@ export function currentYearMonth() {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 7)
 }
 
+function recalcDeepProgressTotals(byLocation, tuesdaySummary) {
+  let totalExpected = 0
+  let totalCompleted = 0
+  let totalPending = 0
+  let totalScheduled = 0
+
+  Object.values(byLocation).forEach(data => {
+    totalExpected += data.expected
+    totalCompleted += data.completed
+    totalPending += data.pending
+    totalScheduled += data.jobs.length
+  })
+
+  const notDone = Math.max(0, totalExpected - totalCompleted)
+
+  return {
+    expected: totalExpected,
+    completed: totalCompleted,
+    pending: totalPending,
+    scheduled: totalScheduled,
+    notDone,
+    donePct: totalExpected ? Math.round((totalCompleted / totalExpected) * 100) : 0,
+    notDonePct: totalExpected ? Math.round((notDone / totalExpected) * 100) : 0,
+    pct: totalExpected ? Math.round((totalCompleted / totalExpected) * 100) : 0,
+  }
+}
+
+/** Deep clean progress scoped to a client portal user (OTP only) */
+export function buildDeepCleanProgressForUser(jobs, yearMonth, user) {
+  const full = buildDeepCleanProgress(jobs, yearMonth)
+  const locName = (user?.location_name || '').trim()
+
+  if (!locName) {
+    return { ...full, scope: 'all', totals: recalcDeepProgressTotals(full.byLocation, full.tuesdaySummary) }
+  }
+
+  const locKey = DEEP_CLEAN_LOCATIONS.find(loc =>
+    loc.toLowerCase() === locName.toLowerCase()
+  )
+  if (!locKey) {
+    return {
+      yearMonth,
+      scope: 'none',
+      location: locName,
+      byLocation: {},
+      tuesdaySummary: [],
+      totals: recalcDeepProgressTotals({}, []),
+    }
+  }
+
+  const data = full.byLocation[locKey]
+  const byLocation = { [locKey]: data }
+  const expectedDates = new Set(data.expectedDates || [])
+  const tuesdaySummary = full.tuesdaySummary.filter(row => expectedDates.has(row.date))
+
+  return {
+    yearMonth,
+    scope: 'location',
+    location: locKey,
+    tuesdays: full.tuesdays,
+    byLocation,
+    tuesdaySummary,
+    totals: recalcDeepProgressTotals(byLocation, tuesdaySummary),
+  }
+}
+
 export function jobStatusLabel(status, labels) {
   if (labels?.[status]) return labels[status]
   return { assigned: 'Pending', in_progress: 'In progress', completed: 'Completed', cancelled: 'Cancelled' }[status] || status

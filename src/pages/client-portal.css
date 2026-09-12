@@ -15,7 +15,7 @@
   min-height: 100dvh;
   background: var(--cp-bg);
   color: var(--cp-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
   position: relative;
   overflow-x: hidden;
 }
@@ -67,18 +67,21 @@
 }
 
 .cp-brand-tag {
-  font-size: 10px;
+  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   color: var(--cp-gold);
   text-transform: uppercase;
 }
 
 .cp-brand-name {
-  font-size: 17px;
-  font-weight: 800;
+  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
   margin-top: 6px;
   line-height: 1.25;
+  letter-spacing: -0.02em;
 }
 
 .cp-brand-sub {
@@ -179,9 +182,10 @@
 }
 
 .cp-header-title {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1.2;
 }
 
@@ -248,13 +252,17 @@
   border-radius: 14px;
   padding: 12px 10px;
   text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
+.cp-stat:hover { border-color: rgba(212, 168, 83, 0.28); background: rgba(255, 255, 255, 0.055); }
 
 .cp-stat-val {
-  font-size: 20px;
-  font-weight: 800;
+  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
   color: var(--cp-gold);
   line-height: 1;
+  letter-spacing: -0.03em;
 }
 
 .cp-stat-lbl {
@@ -858,6 +866,150 @@
 .cp-star-btn:active { transform: scale(1.2); }
 .cp-star-btn.on { color: #fbbf24; }
 .cp-star-btn.off { color: rgba(255, 255, 255, 0.15); }
+
+/* Deep clean progress chart */
+.cp-deep-progress {
+  background: linear-gradient(145deg, rgba(251, 191, 36, 0.08), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  border-radius: var(--cp-radius);
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.cp-deep-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.cp-deep-progress-title {
+  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.cp-deep-progress-sub {
+  font-size: 11px;
+  color: var(--cp-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.cp-deep-month {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--cp-border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--cp-text);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.cp-deep-progress-body {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.cp-deep-donut {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cp-deep-donut-hole {
+  position: absolute;
+  inset: 24%;
+  border-radius: 50%;
+  background: var(--cp-bg2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-shadow: inset 0 0 0 1px var(--cp-border);
+}
+
+.cp-deep-donut-pct {
+  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: #4ade80;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.cp-deep-donut-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--cp-muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cp-deep-legend {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cp-deep-legend-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.cp-deep-legend-row.muted {
+  opacity: 0.85;
+}
+
+.cp-deep-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.cp-deep-dot.done { background: #4ade80; }
+.cp-deep-dot.not-done { background: rgba(248, 113, 113, 0.9); }
+.cp-deep-dot.pending { background: #60a5fa; }
+.cp-deep-dot.missing { background: rgba(255, 255, 255, 0.25); }
+
+.cp-deep-legend-label {
+  color: var(--cp-muted);
+  font-weight: 600;
+}
+
+.cp-deep-legend-val {
+  font-weight: 800;
+  color: var(--cp-text);
+}
+
+.cp-deep-bar {
+  height: 8px;
+  background: rgba(248, 113, 113, 0.25);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 16px;
+}
+
+.cp-deep-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24, #4ade80);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
 
 @media (min-width: 900px) {
   .cp-shell.cp-mobile {
