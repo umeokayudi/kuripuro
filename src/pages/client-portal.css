@@ -182,9 +182,10 @@
 }
 
 .cp-header-title {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1.2;
 }
 
@@ -251,13 +252,17 @@
   border-radius: 14px;
   padding: 12px 10px;
   text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
+.cp-stat:hover { border-color: rgba(212, 168, 83, 0.28); background: rgba(255, 255, 255, 0.055); }
 
 .cp-stat-val {
-  font-size: 20px;
-  font-weight: 800;
+  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
   color: var(--cp-gold);
   line-height: 1;
+  letter-spacing: -0.03em;
 }
 
 .cp-stat-lbl {

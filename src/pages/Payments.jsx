@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
 
 export default function Payments() {
+  const { t } = useLang()
   const [employees, setEmployees] = useState([])
   const [payments, setPayments] = useState([])
   const [selected, setSelected] = useState(null)
@@ -76,7 +78,7 @@ export default function Payments() {
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <h2 style={{fontSize:18,fontWeight:700,margin:0}}>Payments</h2>
+        <h2 className="page-head" style={{margin:0,fontSize:22}}>{t.sidebar.payments}</h2>
         <div style={{display:'flex',gap:8}}>
           <button className="btn" onClick={()=>{setEditingId(null);setForm({employee_id:'',employee_name:'',amount:'',payment_date:'',description:'',payment_type:'salary',is_deduction:false,status:'scheduled'});setShowForm(!showForm)}}>+ Add Payment</button>
         </div>

@@ -78,15 +78,7 @@ export default function Sidebar() {
       </nav>
       <div className="sidebar-footer">
         <LanguageToggle variant="dark" />
-        <button
-          type="button"
-          onClick={logout}
-          style={{
-            marginTop: 12, background: 'rgba(255,255,255,0.06)', border: 'none',
-            color: 'rgba(255,255,255,0.55)', padding: '8px 14px', borderRadius: 8,
-            cursor: 'pointer', fontSize: 12, width: '100%', fontFamily: 'inherit', fontWeight: 600,
-          }}
-        >
+        <button type="button" onClick={logout} className="sidebar-logout">
           {s.logout}
         </button>
       </div>
