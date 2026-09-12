@@ -141,8 +141,16 @@ export function checklistComplete(checklist) {
   return checklist.length > 0 && checklist.every(c => c.done)
 }
 
-/** Use in-memory checklist or build from job template */
+/** Merge saved checklist ticks with the full template for this job (fixes partial localStorage). */
 export function resolveChecklistForJob(job, checklistState) {
-  if (checklistState?.length) return checklistState
-  return initChecklistState(job)
+  const template = initChecklistState(job)
+  if (!checklistState?.length) return template
+  if (checklistState.length === template.length
+    && checklistState.every((c, i) => c.label === template[i]?.label)) {
+    return checklistState
+  }
+  const doneByLabel = Object.fromEntries(
+    checklistState.filter(c => c.done).map(c => [c.label, true]),
+  )
+  return template.map(item => ({ ...item, done: !!doneByLabel[item.label] }))
 }

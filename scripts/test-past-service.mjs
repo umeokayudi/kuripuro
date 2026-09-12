@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { checklistCompleteForRetro, isJobFullyRegistered } from '../src/lib/employeeAddJob.js'
+import { resolveChecklistForJob, initChecklistState } from '../src/lib/jobChecklist.js'
 import { recentTokyoDates, tokyoToday } from '../src/lib/dates.js'
 
 function assert(cond, msg) {
@@ -26,5 +27,13 @@ assert(isJobFullyRegistered({ status: 'assigned' }) === false, 'assigned not reg
 const dates = recentTokyoDates(3)
 assert(dates[0] === tokyoToday(), 'first date is today')
 assert(dates.length === 3, 'returns requested count')
+
+const job = { title: 'Kodama Oimachi — Basic Cleaning' }
+const full = initChecklistState(job)
+assert(full.length === 10, `kodama basic checklist: ${full.length}`)
+const partial = full.slice(-3).map(c => ({ ...c, done: true }))
+const merged = resolveChecklistForJob(job, partial)
+assert(merged.length === 10, `merged checklist length: ${merged.length}`)
+assert(merged.filter(c => c.done).length === 3, 'preserved 3 done ticks')
 
 console.log('✅ All past-service unit tests passed')

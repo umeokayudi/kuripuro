@@ -253,8 +253,9 @@ export default function EmployeePortal() {
       let ck = []
       const saved = localStorage.getItem(`kp_ck_${inProgress.id}`)
       if (saved) { try { ck = JSON.parse(saved) } catch {} }
-      if (!ck.length) ck = initChecklistState(inProgress)
+      ck = resolveChecklistForJob(inProgress, ck.length ? ck : null)
       setChecklist(ck)
+      localStorage.setItem(`kp_ck_${inProgress.id}`, JSON.stringify(ck))
     } else {
       setActiveJob(null)
       clearInterval(timerRef.current)
@@ -430,6 +431,15 @@ export default function EmployeePortal() {
   }
 
   const openPastService = (prefill = null) => {
+    if (activeJob?.status === 'in_progress') {
+      toast(e.finishExistingShift || 'You have an open shift — finish it below first')
+      setTab('shift')
+      setTimeout(() => {
+        const el = document.getElementById('active-job-card')
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 150)
+      return
+    }
     setPastServicePrefill(prefill)
     setShowPastService(true)
   }
@@ -500,8 +510,10 @@ export default function EmployeePortal() {
       })
       if (!result.ok) {
         if (result.error === 'already_registered') toast.error(e.pastServiceAlreadyDone)
-        else if (result.error === 'in_progress') toast.error(e.pastServiceInProgress)
-        else if (result.error === 'blocked') toast.error(e.pastServiceBlocked)
+        else if (result.error === 'in_progress') {
+          toast(e.finishExistingShift || e.pastServiceInProgress)
+          setTab('shift')
+        } else if (result.error === 'blocked') toast.error(e.pastServiceBlocked)
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
         else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
@@ -511,6 +523,15 @@ export default function EmployeePortal() {
       setShowPastService(false)
       setPastServicePrefill(null)
       await loadAll()
+      if (result.action === 'finish_existing') {
+        toast(e.finishExistingShift || 'Open shift found — complete it below')
+        setTab('shift')
+        setTimeout(() => {
+          const el = document.getElementById('active-job-card')
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 150)
+        return
+      }
       if (result.action === 'transferred') {
         toast.success(fill(e.addServiceTransferred, { location: location.name, name: result.fromEmployee || '—' }))
       } else {
@@ -691,9 +712,18 @@ export default function EmployeePortal() {
       return
     }
     const requiredChecklist = resolveChecklistForJob(job, checklist)
-    if (requiredChecklist.length > 0 && !checklistComplete(requiredChecklist)) {
+    const staleJob = isStaleActiveJob(job, tokyoToday(), elapsed)
+    const checklistOk = staleJob
+      ? checklistCompleteForRetro(requiredChecklist)
+      : checklistComplete(requiredChecklist)
+    if (requiredChecklist.length > 0 && !checklistOk) {
       if (checklist.length !== requiredChecklist.length) setChecklist(requiredChecklist)
-      toast.error('Marque todos os itens do checklist antes de finalizar')
+      toast.error(staleJob
+        ? fill(e.staleChecklistHint || 'Mark at least {required} of {total} checklist items', {
+          required: requiredChecklist.length <= 3 ? requiredChecklist.length : Math.ceil(requiredChecklist.length * 0.7),
+          total: requiredChecklist.length,
+        })
+        : 'Marque todos os itens do checklist antes de finalizar')
       return
     }
     setSubmitting(true)
@@ -1700,7 +1730,11 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
   const afterPhotos = jobPhotos.filter(p=>p.slot==='end')
   const staleActive = activeJob && !todayJobs.some(j => j.id === activeJob.id)
   const staleChecklist = staleActive ? resolveChecklistForJob(activeJob, checklist) : []
-  const staleChecklistBlocked = staleChecklist.length > 0 && !checklistComplete(staleChecklist)
+  const staleChecklistRequired = staleChecklist.length <= 3
+    ? staleChecklist.length
+    : Math.ceil(staleChecklist.length * 0.7)
+  const staleChecklistDone = staleChecklist.filter(c => c.done).length
+  const staleChecklistBlocked = staleChecklist.length > 0 && !checklistCompleteForRetro(staleChecklist)
   const staleInstructions = staleActive ? keyboxForJob(activeJob) : null
 
   return (
@@ -1750,9 +1784,12 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </label>
             </div>
           </div>
-          <ChecklistPicker checklist={staleChecklist} setChecklist={setChecklist} />
-          <button onClick={()=>{ if(staleChecklistBlocked){toast.error('Checklist incompleto');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||staleChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||staleChecklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||staleChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
-            {submitting?'Saving...':staleChecklistBlocked?`✓ Checklist ${staleChecklist.filter(c=>c.done).length}/${staleChecklist.length}`:`✅ ${labels.complete}`}
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginBottom:8,lineHeight:1.4}}>
+            {labels.staleChecklistScroll || 'Scroll to see all checklist items'} · {labels.staleChecklistMin || `min ${staleChecklistRequired}/${staleChecklist.length}`}
+          </div>
+          <ChecklistPicker checklist={staleChecklist} setChecklist={setChecklist} relaxed />
+          <button onClick={()=>{ if(staleChecklistBlocked){toast.error(fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: staleChecklistRequired, total: staleChecklist.length }));return}; handleCompleteWithSig(activeJob) }} disabled={submitting||staleChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||staleChecklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||staleChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
+            {submitting?'Saving...':staleChecklistBlocked?`✓ ${staleChecklistDone}/${staleChecklistRequired}`:`✅ ${labels.complete}`}
           </button>
           <button type="button" onClick={()=>handleAbandonStale?.(activeJob)} disabled={submitting} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(251,191,36,0.35)',background:'rgba(251,191,36,0.08)',color:'#fbbf24',fontSize:13,fontWeight:600,cursor:submitting?'not-allowed':'pointer'}}>
             {labels.staleShiftReset}
@@ -2160,15 +2197,18 @@ function TrainingModal({ job, contract, onClose, lang }) {
   )
 }
 
-function ChecklistPicker({ checklist, setChecklist }) {
+function ChecklistPicker({ checklist, setChecklist, relaxed = false }) {
   if (!checklist?.length) return null
   const done = checklist.filter(c => c.done).length
+  const required = relaxed
+    ? (checklist.length <= 3 ? checklist.length : Math.ceil(checklist.length * 0.7))
+    : checklist.length
   const pct = Math.round(done / checklist.length * 100)
-  const allDone = done === checklist.length
+  const allDone = relaxed ? done >= required : done === checklist.length
   return (
-    <div style={{ marginBottom: 12 }}>
+    <div style={{ marginBottom: 12, maxHeight: relaxed ? 280 : undefined, overflowY: relaxed ? 'auto' : undefined, WebkitOverflowScrolling: 'touch' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>✓ CHECKLIST OBRIGATÓRIO ({done}/{checklist.length})</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 }}>✓ CHECKLIST {relaxed ? `(${done}/${required} min)` : `OBRIGATÓRIO (${done}/${checklist.length})`}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: allDone ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171' }}>{pct}%</span>
       </div>
       <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden', marginBottom: 8 }}>
@@ -2180,7 +2220,7 @@ function ChecklistPicker({ checklist, setChecklist }) {
           <span style={{ fontSize: 13, color: c.done ? '#fff' : 'rgba(255,255,255,0.6)' }}>{c.label}</span>
         </div>
       ))}
-      {!allDone && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>⚠️ Marque todos os itens para poder finalizar o serviço.</div>}
+      {!allDone && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{relaxed ? `⚠️ Mark at least ${required} of ${checklist.length} items.` : '⚠️ Marque todos os itens para poder finalizar o serviço.'}</div>}
     </div>
   )
 }
@@ -2493,6 +2533,7 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
           })}
         </div>
 
+        {!picked && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 10 }}>{labels.pastServicePickLocation || 'Tap a location above to continue'}</div>}
         <button
           type="button"
           disabled={!canConfirm || busy}
