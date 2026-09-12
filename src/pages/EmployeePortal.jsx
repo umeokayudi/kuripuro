@@ -1664,7 +1664,7 @@ export default function EmployeePortal() {
 
         {/* CALENDAR */}
         {tab==='calendar'&&(
-          <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} />
+          <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} labels={e} statusLabels={tr.status} lang={lang} />
         )}
 
         {/* ACHIEVEMENTS */}
@@ -2025,7 +2025,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 }
 
 
-function CalendarView({ jobs, today, displayDate, onSelect }) {
+function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels, lang }) {
   const [cm, setCm] = useState(() => { const d=new Date(); return {year:d.getFullYear(),month:d.getMonth()} })
   const { year, month } = cm
   const firstDay = new Date(year,month,1).getDay()
@@ -2040,7 +2040,7 @@ function CalendarView({ jobs, today, displayDate, onSelect }) {
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month-1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>‹</button>
-        <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{new Date(year,month).toLocaleString('en',{month:'long',year:'numeric'})}</div>
+        <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{new Date(year,month).toLocaleString(lang==='ja'?'ja-JP':'en',{month:'long',year:'numeric'})}</div>
         <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month+1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>›</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:4}}>
@@ -2065,13 +2065,13 @@ function CalendarView({ jobs, today, displayDate, onSelect }) {
         })}
       </div>
       <div style={{display:'flex',gap:12,marginBottom:16,justifyContent:'center'}}>
-        {[['#4ade80','Done'],['#60a5fa','Scheduled'],['#fbbf24','Active']].map(([c,l])=>(
+        {[['#4ade80', statusLabels?.completed || 'Done'],['#60a5fa', statusLabels?.assigned || 'Scheduled'],['#fbbf24', statusLabels?.in_progress || 'Active']].map(([c,l])=>(
           <div key={l} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:8,height:8,borderRadius:'50%',background:c}} /><span style={{fontSize:10,color:'rgba(255,255,255,0.4)'}}>{l}</span></div>
         ))}
       </div>
       {sel&&(
         <div>
-          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
           {selJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map(j=>{
             const sc={completed:'#4ade80',assigned:'#60a5fa',in_progress:'#fbbf24',cancelled:'rgba(255,255,255,0.2)'}[j.status]
             const duration=j.started_at&&j.completed_at?Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000):null
@@ -2079,7 +2079,7 @@ function CalendarView({ jobs, today, displayDate, onSelect }) {
               <div key={j.id} onClick={()=>onSelect(j)} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:14,padding:'12px 14px',marginBottom:8,cursor:'pointer'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}}>
                   <div style={{flex:1,marginRight:8}}><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{j.title.replace(/ — .*/,'')}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:1}}>{j.scheduled_time}</div></div>
-                  <span style={{fontSize:9,color:sc,fontWeight:700,textTransform:'uppercase'}}>{j.status}</span>
+                  <span style={{fontSize:9,color:sc,fontWeight:700,textTransform:'uppercase'}}>{statusLabels?.[j.status]||j.status}</span>
                 </div>
                 <div style={{display:'flex',gap:10,fontSize:9,color:'rgba(255,255,255,0.25)'}}>
                   {j.started_at&&<span>▶ {new Date(j.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
