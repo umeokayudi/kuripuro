@@ -500,7 +500,7 @@ export default function Jobs() {
   }
 
   const handleGeocode = async () => {
-    if (!form.address) return toast.error('Enter address first')
+    if (!form.address) return toast.error(jt.enterAddressFirst)
     setGeocoding(true)
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
@@ -838,7 +838,7 @@ function LocationsTab() {
   const upd = (k,v) => setForm(f=>({...f,[k]:v}))
 
   const handleGeocode = async () => {
-    if (!form.address) return toast.error('Enter address first')
+    if (!form.address) return toast.error(jt.enterAddressFirst)
     setGeocoding(true)
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
@@ -897,13 +897,13 @@ function LocationsTab() {
           {gps && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}</div>}
           {!gps && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {jt.mapsValid}</div>}
         </div>
-        <div className="form-group"><label>Key box / Notas</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 0315" /></div>
-        <button className="btn btn-primary" onClick={editingLoc ? handleUpdateLoc : handleSave}>{editingLoc ? 'Update Location' : 'Save Location'}</button>
-        {editingLoc && <button className="btn" style={{ marginLeft: 8 }} onClick={() => { setEditingLoc(null); setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null) }}>Cancel Edit</button>}
+        <div className="form-group"><label>{jt.keyboxNotes}</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 0315" /></div>
+        <button className="btn btn-primary" onClick={editingLoc ? handleUpdateLoc : handleSave}>{editingLoc ? jt.updateLocation : jt.saveLocation}</button>
+        {editingLoc && <button className="btn" style={{ marginLeft: 8 }} onClick={() => { setEditingLoc(null); setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null) }}>{jt.cancelEdit}</button>}
       </div>
 
       <div className="card">
-        <div className="card-title">Saved Locations</div>
+        <div className="card-title">{jt.savedLocations}</div>
         <table>
           <thead><tr><th>Name</th><th>Type</th><th>Address</th><th>Key box</th><th>GPS</th><th></th></tr></thead>
           <tbody>

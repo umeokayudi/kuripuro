@@ -548,7 +548,7 @@ export default function ClientPortal() {
             <div className="cp-side-footer">
               <div style={{ marginBottom: 10 }}><LanguageToggle variant="dark" /></div>
               <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%' }}>
-                📱 {lang === 'ja' ? 'モバイル表示' : 'Mobile view'}
+                📱 {c.mobileView}
               </button>
               <button type="button" className="cp-logout" onClick={logout} style={{ width: '100%' }}>{c.logout}</button>
             </div>
@@ -577,7 +577,7 @@ export default function ClientPortal() {
                 <LanguageToggle variant="dark" />
                 {!desktopMode && (
                   <button type="button" className="cp-view-toggle" onClick={toggleView}>
-                    🖥 PC
+                    🖥 {c.desktopView}
                   </button>
                 )}
                 {!desktopMode && (

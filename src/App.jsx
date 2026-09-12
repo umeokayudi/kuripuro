@@ -44,13 +44,15 @@ function PortalLoading() {
 }
 
 function Clock() {
+  const { lang } = useLang()
   const [now, setNow] = React.useState(new Date())
   React.useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
+  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   return (
-    <span style={{ fontSize:13, fontFamily:'monospace', color:'var(--text2)' }}>
+    <span style={{ fontSize:13, fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', color:'var(--text2)' }}>
       {now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
       <span style={{ marginLeft:8, fontSize:12, color:'var(--text3)' }}>
-        {now.toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short' })}
+        {now.toLocaleDateString(dateLocale, { weekday:'short', day:'2-digit', month:'short' })}
       </span>
     </span>
   )
@@ -132,7 +134,7 @@ function AppContent() {
             <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
             <span style={{ color:'var(--text3)' }}>·</span>
             <Clock />
-            <button onClick={logout} style={{ marginLeft:8, padding:'6px 14px', borderRadius:6, border:'1px solid var(--border)', background:'#f4f6f9', color:'#1a2636', fontSize:13, fontWeight:600, cursor:'pointer' }}>
+            <button type="button" onClick={logout} className="btn btn-sm" style={{ marginLeft:8 }}>
               {t.sidebar.logout}
             </button>
           </div>

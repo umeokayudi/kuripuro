@@ -10,14 +10,27 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg)
 }
 
+function assertKeyParity(enObj, jaObj, label) {
+  const enKeys = Object.keys(enObj || {}).sort()
+  const jaKeys = Object.keys(jaObj || {}).sort()
+  const missingJa = enKeys.filter(k => !jaKeys.includes(k))
+  const extraJa = jaKeys.filter(k => !enKeys.includes(k))
+  assert(missingJa.length === 0, `${label} JA missing: ${missingJa.join(', ')}`)
+  assert(extraJa.length === 0, `${label} JA extra: ${extraJa.join(', ')}`)
+}
+
 function testI18nClientKeys() {
   const enKeys = Object.keys(kuripuroEn.client || {}).sort()
-  const jaKeys = Object.keys(kuripuroJa.client || {}).sort()
   assert(enKeys.length > 20, `en client keys: ${enKeys.length}`)
-  assert(jaKeys.length === enKeys.length, `JA missing keys: ${enKeys.filter(k => !jaKeys.includes(k)).join(', ')}`)
+  assertKeyParity(kuripuroEn.client, kuripuroJa.client, 'client')
+  assertKeyParity(kuripuroEn.employee, kuripuroJa.employee, 'employee')
+  assertKeyParity(kuripuroEn.dashboard, kuripuroJa.dashboard, 'dashboard')
+  assertKeyParity(kuripuroEn.jobs, kuripuroJa.jobs, 'jobs')
   assert(kuripuroJa.client.portal, 'ja client.portal')
   assert(kuripuroEn.client.portal, 'en client.portal')
   assert(kuripuroJa.employee?.wrongDeepDay, 'ja employee.wrongDeepDay')
+  assert(kuripuroEn.employee.noShiftToday, 'en employee.noShiftToday')
+  assert(kuripuroJa.dashboard.noTodayJobs, 'ja dashboard.noTodayJobs')
 }
 
 function testEscapeHtml() {
