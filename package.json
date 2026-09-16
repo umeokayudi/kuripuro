@@ -23,6 +23,7 @@
     "test:past-service": "npx vite-node scripts/test-past-service.mjs",
     "test:job-overdue": "npx vite-node scripts/test-job-overdue.mjs",
     "test:employee-pay": "npx vite-node scripts/test-employee-pay.mjs",
+    "test:admin-mobile": "npx vite-node scripts/test-admin-mobile.mjs",
     "lint": "eslint src api scripts --ext .js,.jsx,.mjs --max-warnings 80",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh",

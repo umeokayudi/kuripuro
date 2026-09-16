@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
+import { readAdminDesktopMode, writeAdminViewMode } from './lib/adminView'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -96,6 +97,33 @@ function AppContent() {
   const location = useLocation()
   const a = t.app
   const title = pageTitle(location.pathname, t.sidebar)
+  const [desktopMode, setDesktopMode] = React.useState(readAdminDesktopMode)
+  const [navOpen, setNavOpen] = React.useState(false)
+
+  const toggleView = () => {
+    const next = !desktopMode
+    setDesktopMode(next)
+    writeAdminViewMode(next)
+    setNavOpen(false)
+  }
+
+  React.useEffect(() => { setNavOpen(false) }, [location.pathname])
+
+  React.useEffect(() => {
+    if (desktopMode) setNavOpen(false)
+  }, [desktopMode])
+
+  React.useEffect(() => {
+    if (!navOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') setNavOpen(false) }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [navOpen])
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -124,17 +152,50 @@ function AppContent() {
   )
 
   return (
-    <div className="app-shell">
-      <Sidebar />
+    <div className={`app-shell ${desktopMode ? 'admin-desktop' : 'admin-mobile'}`}>
+      {!desktopMode && navOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label={a.closeMenu}
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+      <Sidebar
+        mobile={!desktopMode}
+        open={navOpen}
+        onNavigate={() => setNavOpen(false)}
+        desktopMode={desktopMode}
+        onToggleView={toggleView}
+      />
       <AIFloatingWidget mode="admin" />
       <div className="main">
         <header className="topbar">
-          <span className="topbar-title">{title}</span>
+          <div className="topbar-left">
+            {!desktopMode && (
+              <button
+                type="button"
+                className="topbar-menu-btn"
+                aria-label={a.menu}
+                aria-expanded={navOpen}
+                aria-controls="admin-sidebar"
+                onClick={() => setNavOpen(o => !o)}
+              >
+                {navOpen ? '✕' : '☰'}
+              </button>
+            )}
+            <span className="topbar-title">{title}</span>
+          </div>
           <div className="topbar-right">
-            <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
-            <span style={{ color:'var(--text3)' }}>·</span>
-            <Clock />
-            <button type="button" onClick={logout} className="btn btn-sm" style={{ marginLeft:8 }}>
+            <button type="button" className="btn btn-sm topbar-view-toggle" onClick={toggleView}>
+              {desktopMode ? `📱 ${a.mobileView}` : `🖥 ${a.desktopView}`}
+            </button>
+            <span className="topbar-meta">
+              <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
+              <span style={{ color:'var(--text3)' }}>·</span>
+              <Clock />
+            </span>
+            <button type="button" onClick={logout} className="btn btn-sm topbar-logout">
               {t.sidebar.logout}
             </button>
           </div>

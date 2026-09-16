@@ -42,6 +42,10 @@ export const kuripuroEn = {
     password: 'Password',
     invalidLogin: 'Invalid login or password',
     loginHint: 'Admin, employee email, or store name — English and Japanese.',
+    mobileView: 'Mobile',
+    desktopView: 'Desktop',
+    menu: 'Menu',
+    closeMenu: 'Close menu',
   },
   payroll: {
     title: 'Payroll close',
@@ -948,6 +952,10 @@ export const kuripuroJa = {
     password: 'パスワード',
     invalidLogin: 'ログイン情報が正しくありません',
     loginHint: '管理者・従業員メール・店舗名でログイン。英語と日本語に対応。',
+    mobileView: 'モバイル',
+    desktopView: 'デスクトップ',
+    menu: 'メニュー',
+    closeMenu: 'メニューを閉じる',
   },
   payroll: {
     title: '給与締め',

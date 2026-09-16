@@ -1,55 +1,54 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import AIChatPanel from './AIChatPanel'
-
-const BTN = 56
-const PANEL_W = 380
-const PANEL_H = 520
-const STORAGE_KEY = 'kp_ai_widget_pos'
-
-function loadPos() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) return JSON.parse(saved)
-  } catch {}
-  return null
-}
+import {
+  AI_BTN,
+  loadAiPos,
+  saveAiPos,
+  viewportSize,
+  clampAiPos,
+  defaultAiPos,
+  aiButtonPos,
+  aiPanelBox,
+} from '../lib/aiWidgetPos'
 
 export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false }) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState(loadPos)
+  const [pos, setPos] = useState(loadAiPos)
+  const [vp, setVp] = useState(() => viewportSize())
   const drag = useRef({ active: false, moved: false, sx: 0, sy: 0, sl: 0, st: 0 })
   const btnRef = useRef(null)
 
-  const clamp = (x, y) => ({
-    x: Math.max(8, Math.min(window.innerWidth - BTN - 8, x)),
-    y: Math.max(8, Math.min(window.innerHeight - BTN - 8, y)),
-  })
+  const clamp = useCallback((x, y, size = vp) => clampAiPos(x, y, size), [vp])
 
-  const getBtnPos = useCallback(() => {
-    if (pos) return pos
-    return {
-      x: window.innerWidth - BTN - 24,
-      y: window.innerHeight - BTN - 24,
+  useEffect(() => {
+    const apply = () => setVp(viewportSize())
+    apply()
+    window.addEventListener('resize', apply)
+    window.visualViewport?.addEventListener('resize', apply)
+    window.visualViewport?.addEventListener('scroll', apply)
+    return () => {
+      window.removeEventListener('resize', apply)
+      window.visualViewport?.removeEventListener('resize', apply)
+      window.visualViewport?.removeEventListener('scroll', apply)
     }
-  }, [pos])
+  }, [])
+
+  const getBtnPos = useCallback(() => aiButtonPos(pos, vp), [pos, vp])
 
   const panelStyle = () => {
-    const { x, y } = getBtnPos()
-    const openAbove = y > window.innerHeight / 2
-    let left = x + BTN / 2 - PANEL_W / 2
-    left = Math.max(12, Math.min(window.innerWidth - PANEL_W - 12, left))
-    const top = openAbove ? y - PANEL_H - 12 : y + BTN + 12
+    const btnPos = getBtnPos()
+    const box = aiPanelBox(btnPos, vp)
     return {
       position: 'fixed',
-      left,
-      top: Math.max(12, Math.min(window.innerHeight - PANEL_H - 12, top)),
+      left: box.left,
+      top: box.top,
       zIndex: 998,
-      width: PANEL_W,
+      width: box.width,
+      height: box.height,
       maxWidth: 'calc(100vw - 24px)',
-      height: PANEL_H,
-      maxHeight: 'calc(100vh - 24px)',
+      maxHeight: 'calc(100dvh - 24px)',
       background: dark ? '#0d1f35' : 'var(--bg, #f4f6f9)',
-      borderRadius: 20,
+      borderRadius: vp.vw < 720 ? 16 : 20,
       boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
       border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)',
       overflow: 'hidden',
@@ -64,7 +63,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
     const dy = e.clientY - drag.current.sy
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) drag.current.moved = true
     setPos(clamp(drag.current.sl + dx, drag.current.st + dy))
-  }, [])
+  }, [clamp])
 
   const onPointerUp = useCallback((e) => {
     if (!drag.current.active) return
@@ -78,16 +77,17 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
         drag.current.st + (e.clientY - drag.current.sy),
       )
       setPos(final)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(final))
+      saveAiPos(final)
     }
     drag.current.active = false
-  }, [onPointerMove])
+  }, [onPointerMove, clamp])
 
   const onPointerDown = (e) => {
     e.preventDefault()
     const rect = btnRef.current?.getBoundingClientRect()
-    const sl = pos?.x ?? rect?.left ?? window.innerWidth - BTN - 24
-    const st = pos?.y ?? rect?.top ?? window.innerHeight - BTN - 24
+    const fallback = defaultAiPos(vp)
+    const sl = pos?.x ?? rect?.left ?? fallback.x
+    const st = pos?.y ?? rect?.top ?? fallback.y
     drag.current = { active: true, moved: false, sx: e.clientX, sy: e.clientY, sl, st }
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
@@ -104,14 +104,17 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
     <>
       <button
         ref={btnRef}
+        type="button"
+        className="ai-fab"
         onPointerDown={onPointerDown}
+        aria-label={mode === 'employee' ? 'AI assistant' : 'Admin AI assistant'}
         style={{
           position: 'fixed',
           left: btnPos.x,
           top: btnPos.y,
           zIndex: 999,
-          width: BTN,
-          height: BTN,
+          width: AI_BTN,
+          height: AI_BTN,
           borderRadius: '50%',
           background: open ? 'rgba(10,25,41,0.9)' : 'linear-gradient(135deg,#c19c56,#e8c47a)',
           border: open ? '2px solid rgba(255,255,255,0.2)' : 'none',

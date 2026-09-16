@@ -53,18 +53,24 @@ const groups = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ mobile = false, open = false, onNavigate, desktopMode = true, onToggleView }) {
   const { t } = useLang()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const s = t.sidebar
+  const a = t.app
 
   return (
-    <aside className="sidebar">
+    <aside
+      className={`sidebar${mobile && open ? ' is-open' : ''}`}
+      aria-hidden={mobile && !open}
+      id="admin-sidebar"
+    >
       <div className="sidebar-logo">
         <div className="brand">KuriPuro</div>
         <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
+        {user?.name && <div className="sidebar-user">{user.name}</div>}
       </div>
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" onClick={mobile ? onNavigate : undefined}>
         {groups.map(group => (
           <div key={group.key} className="nav-group">
             <div className="nav-group-label">{s[group.key]}</div>
@@ -78,6 +84,11 @@ export default function Sidebar() {
       </nav>
       <div className="sidebar-footer">
         <LanguageToggle variant="dark" />
+        {onToggleView && (
+          <button type="button" className="sidebar-view-toggle" onClick={onToggleView}>
+            {desktopMode ? `📱 ${a.mobileView}` : `🖥 ${a.desktopView}`}
+          </button>
+        )}
         <button type="button" onClick={logout} className="sidebar-logout">
           {s.logout}
         </button>
