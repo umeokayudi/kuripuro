@@ -156,7 +156,7 @@ export default function SalaryPeriods() {
               <div>
                 <div style={{ fontWeight: 600 }}>{emp.full_name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                  {p.base} {yen(calc.base)} · {p.deductions} -{yen(calc.deductions)} · {p.advances} -{yen(calc.advancesReceived)} · {p.jobs} {calc.jobs}
+                  {p.base} {yen(calc.base)} · {p.deductions} {yen(calc.deductions)} · {p.advances} {yen(calc.advancesReceived)} · {p.jobs} {calc.jobs}
                 </div>
               </div>
               <div style={{ fontWeight: 800, color: 'var(--green)', whiteSpace: 'nowrap' }}>{p.toPay} {yen(calc.toPay)}</div>

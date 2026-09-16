@@ -10,7 +10,7 @@ import {
   plannedWeeklyAdvances,
   isDeductionRow,
 } from '../lib/salaryCalc'
-import { salaryTypeLabel } from '../lib/employeePay'
+import { salaryTypeLabel, employeeEarningsForJob } from '../lib/employeePay'
 
 const yen = n => `¥${Number(n || 0).toLocaleString()}`
 
@@ -241,7 +241,9 @@ export default function Salary() {
                     <div style={{ fontWeight: 500 }}>{j.title}</div>
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>{j.scheduled_date}</div>
                   </div>
-                  <span style={{ color: 'var(--green)', fontWeight: 500 }}>{yen(j.retro_value ?? j.value)}</span>
+                  <span style={{ color: selected.salary_type === 'fixed' ? 'var(--text3)' : 'var(--green)', fontWeight: 500 }}>
+                    {selected.salary_type === 'fixed' ? '—' : yen(employeeEarningsForJob(j, selected) || j.retro_value || j.value)}
+                  </span>
                 </div>
               ))}
             </div>
