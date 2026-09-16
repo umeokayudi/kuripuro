@@ -36,8 +36,8 @@ import {
   getCleaningType,
   cleaningTypesForLang,
 } from '../lib/cleaningType'
-import { tokyoToday, recentTokyoDates } from '../lib/dates'
-import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
+import { tokyoToday, tokyoYearMonth, recentTokyoDates } from '../lib/dates'
+import { calcEmployeeMonthlySalary, isAdvanceReceived } from '../lib/salaryCalc'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -1369,7 +1369,7 @@ export default function EmployeePortal() {
           <div>
             {statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period) && (
               <div style={{background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.25)',borderRadius:20,padding:18,marginBottom:14}}>
-                <div style={{fontSize:10,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 {fill(e.confirmSalary, { period: fmtPeriod(statement.period) })}</div>
+                <div style={{fontSize:10,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 {fill(e.confirmSalary, { period: fmtPeriod(statement.period, lang) })}</div>
                 <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>¥{Number(statement.net_total||0).toLocaleString()}</div>
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:12}}>
                   {e.basePay} ¥{Number(statement.base_salary||0).toLocaleString()} · {e.deductionsLabel} -¥{Number(statement.deductions||0).toLocaleString()}
@@ -1383,12 +1383,12 @@ export default function EmployeePortal() {
             )}
             {statement?.employee_confirmed_at && (
               <div style={{background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#4ade80'}}>
-                ✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period), payDate: getPeriodDates(statement.period).payDate })}
+                ✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period, lang), payDate: getPeriodDates(statement.period).payDate })}
               </div>
             )}
             {statement?.employee_disputed_at && (
               <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#f87171'}}>
-                ⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period) })}
+                ⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period, lang) })}
               </div>
             )}
             {showComplaintForm && (
@@ -1454,7 +1454,7 @@ export default function EmployeePortal() {
             {/* PDF buttons */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
-                const month = new Date().toISOString().slice(0,7)
+                const month = tokyoYearMonth()
                 const { generatePayslipJP, generatePayslip } = await import('../lib/generatePDF')
                 if (lang==='ja') {
                   const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
@@ -1484,7 +1484,7 @@ export default function EmployeePortal() {
             </div>
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
-              {[['📋','Jobs',salaryData?.jobs||0],['⏱','Hours',(salaryData?.hours||0)+'h'],['💴','Base','¥'+(salaryData?.base||0).toLocaleString()],['⚡','Spot','¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
+              {[['📋',e.statJobs,salaryData?.jobs||0],['⏱',e.hoursStat, (salaryData?.hours||0)+'h'],['💴',e.basePay,'¥'+(salaryData?.base||0).toLocaleString()],['⚡',e.spotStat,'¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
                 <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 10px'}}>
                   <div style={{fontSize:20,marginBottom:6}}>{icon}</div>
                   <div style={{fontSize:18,fontWeight:700,color:'#fff'}}>{v}</div>
@@ -1494,7 +1494,7 @@ export default function EmployeePortal() {
             </div>
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
               <div style={{background:'rgba(96,165,250,0.08)',border:'1px solid rgba(96,165,250,0.18)',borderRadius:18,padding:16,marginBottom:14}}>
-                <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>💴 Upcoming Payments</div>
+                <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>💴 {e.upcomingPayments}</div>
                 {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').map((p,i)=>(
                   <div key={p.id} style={{paddingBottom:i<1?10:0,marginBottom:i<1?10:0,borderBottom:i<1?'1px solid rgba(255,255,255,0.06)':'none'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -1506,11 +1506,8 @@ export default function EmployeePortal() {
               </div>
             )}
             {(() => {
-              const todayStr = tokyoToday()
-              const parseAdvDate = (a) => (a.payment_date || a.received_at || a.created_at || '').slice(0, 10) || null
-              const isReceived = (a) => a.status === 'paid' || (parseAdvDate(a) && parseAdvDate(a) < todayStr)
-              const received = advances.filter(isReceived)
-              const pending = advances.filter(a => !isReceived(a))
+              const received = advances.filter(a => isAdvanceReceived(a))
+              const pending = advances.filter(a => !isAdvanceReceived(a))
               return (<>
                 {received.length>0&&<div style={{marginBottom:14}}>
                   <span style={S.label}>{e.advancesReceived}</span>

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { tokyoToday } from '../lib/dates'
 import toast from 'react-hot-toast'
 
 export default function Deductions() {
   const [employees, setEmployees] = useState([])
   const [history, setHistory] = useState([])
-  const [form, setForm] = useState({ employee_id:'', amount:'', description:'', payment_date: new Date().toISOString().split('T')[0], deduction_type:'damage' })
+  const [form, setForm] = useState({ employee_id:'', amount:'', description:'', payment_date: tokyoToday(), deduction_type:'damage', affectScore: true })
 
   const TYPES = [
     { key:'damage', label:'Property Damage' },
@@ -42,13 +43,16 @@ export default function Deductions() {
       is_deduction: true,
     })
     if (error) return toast.error(error.message)
-    const { data: empScore } = await supabase.from('employees').select('score').eq('id', form.employee_id).maybeSingle()
-    if (empScore) {
-      const newScore = Math.max(0, (empScore.score || 100) - 5)
-      await supabase.from('employees').update({ score: newScore }).eq('id', form.employee_id)
+    const affectScore = form.deduction_type !== 'advance' && form.affectScore
+    if (affectScore) {
+      const { data: empScore } = await supabase.from('employees').select('score').eq('id', form.employee_id).maybeSingle()
+      if (empScore) {
+        const newScore = Math.max(0, (empScore.score || 100) - 5)
+        await supabase.from('employees').update({ score: newScore }).eq('id', form.employee_id)
+      }
     }
     toast.success('Deduction added!')
-    setForm({ employee_id:'', amount:'', description:'', payment_date:new Date().toISOString().split('T')[0], deduction_type:'damage' })
+    setForm({ employee_id:'', amount:'', description:'', payment_date: tokyoToday(), deduction_type:'damage', affectScore: true })
     load()
   }
 
@@ -72,7 +76,7 @@ export default function Deductions() {
           </div>
           <div className="form-group">
             <label>Type *</label>
-            <select value={form.deduction_type} onChange={e=>setForm(f=>({...f,deduction_type:e.target.value}))}>
+            <select value={form.deduction_type} onChange={e=>setForm(f=>({...f,deduction_type:e.target.value, affectScore: e.target.value !== 'advance'}))}>
               {TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
           </div>
@@ -89,6 +93,12 @@ export default function Deductions() {
             <input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Reason for deduction..." />
           </div>
         </div>
+        {form.deduction_type !== 'advance' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!form.affectScore} onChange={e => setForm(f => ({ ...f, affectScore: e.target.checked }))} />
+            Also reduce employee score (−5)
+          </label>
+        )}
         <button className="btn btn-danger" onClick={handleAdd}>➖ Apply Deduction</button>
       </div>
 

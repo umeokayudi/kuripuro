@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { tokyoToday, tokyoYearMonth } from '../lib/dates'
 import toast from 'react-hot-toast'
 
 export default function TransportClaims() {
@@ -23,10 +24,10 @@ export default function TransportClaims() {
     if (status === 'approved') {
       await supabase.from('salary_payments').insert({
         employee_id: empId, employee_name: empName,
-        period: new Date().toISOString().slice(0,7),
-        amount, payment_date: new Date().toISOString().split('T')[0],
-        description: `Transport reimbursement`, status: 'scheduled',
-        payment_type: 'bonus', is_deduction: false
+        period: tokyoYearMonth(),
+        amount, payment_date: tokyoToday(),
+        description: 'Transport reimbursement', status: 'scheduled',
+        payment_type: 'transport', is_deduction: false
       })
       toast.success(`Approved! ¥${Number(amount).toLocaleString()} added to salary`)
     } else {

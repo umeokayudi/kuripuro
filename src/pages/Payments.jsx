@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { useLang } from '../hooks/useLang'
+import { useLang, fill } from '../hooks/useLang'
 import toast from 'react-hot-toast'
+import { tokyoToday, tokyoYearMonth } from '../lib/dates'
+import { plannedWeeklyAdvances, isDeductionRow } from '../lib/salaryCalc'
 
 export default function Payments() {
   const { t } = useLang()
+  const desk = t.salaryDesk
   const [employees, setEmployees] = useState([])
   const [payments, setPayments] = useState([])
   const [selected, setSelected] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ employee_id:'', employee_name:'', amount:'', payment_date:'', description:'', payment_type:'salary', is_deduction:false, status:'scheduled' })
+  const emptyForm = { employee_id:'', employee_name:'', amount:'', payment_date: tokyoToday(), description:'', payment_type:'salary', is_deduction:false, status:'scheduled' }
+  const [form, setForm] = useState(emptyForm)
 
   const TYPES = ['salary','advance','bonus','transport','deduction','other']
 
@@ -18,30 +22,40 @@ export default function Payments() {
 
   const load = async () => {
     const [e, p] = await Promise.all([
-      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days').eq('is_active',true).order('full_name'),
+      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days,advance_per_week').eq('is_active',true).order('full_name'),
       supabase.from('salary_payments').select('*').order('payment_date',{ascending:true}),
     ])
     setEmployees(e.data||[])
     setPayments(p.data||[])
   }
 
-  const upd = (k,v) => setForm(f=>({...f,[k]:v}))
+  const upd = (k,v) => setForm(f => {
+    const next = { ...f, [k]: v }
+    if (k === 'payment_type') next.is_deduction = v === 'deduction'
+    return next
+  })
 
   const handleSave = async () => {
-    if (!form.employee_id||!form.amount||!form.payment_date) return toast.error('Fill required fields')
+    if (!form.employee_id||!form.amount||!form.payment_date) return toast.error(desk.enterAmount)
     const emp = employees.find(e=>e.id===form.employee_id)
-    const payload = { ...form, employee_name:emp?.full_name||form.employee_name, amount:parseFloat(form.amount), period:form.payment_date.slice(0,7) }
+    const payload = {
+      ...form,
+      employee_name:emp?.full_name||form.employee_name,
+      amount:parseFloat(form.amount),
+      period:form.payment_date.slice(0,7),
+      is_deduction: form.payment_type === 'deduction' || !!form.is_deduction,
+    }
     if (editingId) {
       const { error } = await supabase.from('salary_payments').update(payload).eq('id',editingId)
       if (error) return toast.error(error.message)
-      toast.success('Updated!')
+      toast.success('Updated')
     } else {
       const { error } = await supabase.from('salary_payments').insert(payload)
       if (error) return toast.error(error.message)
-      toast.success('Payment added!')
+      toast.success('Payment added')
     }
     setShowForm(false); setEditingId(null)
-    setForm({ employee_id:'', employee_name:'', amount:'', payment_date:'', description:'', payment_type:'salary', is_deduction:false, status:'scheduled' })
+    setForm(emptyForm)
     load()
   }
 
@@ -62,17 +76,21 @@ export default function Payments() {
   }
 
   const handleAutoGenerate = async (emp) => {
-    const month = new Date().toISOString().slice(0,7)
-    const dailyRate = Math.round((emp.fixed_salary||0)/(emp.monthly_work_days||22))
-    const existing = payments.filter(p=>p.employee_id===emp.id&&p.payment_date?.startsWith(month))
-    if (existing.length>0) { if (!confirm(`${existing.length} payments already exist for ${month}. Continue?`)) return }
-    toast('Generating payments...', {duration:2000})
+    const month = tokyoYearMonth()
+    const drafts = plannedWeeklyAdvances(emp, month, payments.filter(p => p.employee_id === emp.id && p.payment_type === 'advance' && p.period === month))
+    if (!drafts.length) return toast(desk.weeklyNone)
+    if (!confirm(fill(desk.weeklyAdvances, { n: drafts.length }))) return
+    const rows = drafts.map(d => ({ ...d, employee_id: emp.id, employee_name: emp.full_name, period: month }))
+    const { error } = await supabase.from('salary_payments').insert(rows)
+    if (error) return toast.error(error.message)
+    toast.success(fill(desk.weeklyDone, { n: rows.length }))
+    load()
   }
 
   const fmt = n => '¥'+Number(n||0).toLocaleString()
-  const today = new Date().toISOString().split('T')[0]
+  const month = tokyoYearMonth()
   const filteredPayments = selected ? payments.filter(p=>p.employee_id===selected) : payments
-  const pending = filteredPayments.filter(p=>p.status!=='paid'&&!p.is_deduction)
+  const pending = filteredPayments.filter(p=>p.status!=='paid'&&!isDeductionRow(p))
   const totalPending = pending.reduce((s,p)=>s+Number(p.amount||0),0)
 
   return (
@@ -80,7 +98,7 @@ export default function Payments() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <h2 className="page-head" style={{margin:0,fontSize:22}}>{t.sidebar.payments}</h2>
         <div style={{display:'flex',gap:8}}>
-          <button className="btn" onClick={()=>{setEditingId(null);setForm({employee_id:'',employee_name:'',amount:'',payment_date:'',description:'',payment_type:'salary',is_deduction:false,status:'scheduled'});setShowForm(!showForm)}}>+ Add Payment</button>
+          <button className="btn" onClick={()=>{setEditingId(null);setForm({...emptyForm});setShowForm(!showForm)}}>+ Add Payment</button>
         </div>
       </div>
 
@@ -94,7 +112,7 @@ export default function Payments() {
 
       {/* Summary */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:16}}>
-        {[['Pending',fmt(totalPending),'var(--amber)'],['Paid this month',fmt(filteredPayments.filter(p=>p.status==='paid'&&p.payment_date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,p)=>s+Number(p.amount||0),0)),'var(--green)'],['Total entries',filteredPayments.length,'var(--blue)']].map(([l,v,c])=>(
+        {[['Pending',fmt(totalPending),'var(--amber)'],['Paid this month',fmt(filteredPayments.filter(p=>p.status==='paid'&&p.payment_date?.startsWith(month)).reduce((s,p)=>s+Number(p.amount||0),0)),'var(--green)'],['Total entries',filteredPayments.length,'var(--blue)']].map(([l,v,c])=>(
           <div key={l} className="card" style={{textAlign:'center',padding:14}}>
             <div style={{fontSize:20,fontWeight:700,color:c,marginBottom:3}}>{v}</div>
             <div style={{fontSize:11,color:'var(--text3)'}}>{l}</div>
@@ -125,7 +143,7 @@ export default function Payments() {
                 {['scheduled','paid','cancelled'].map(s=><option key={s}>{s}</option>)}
               </select>
             </div>
-            <div className="form-group"><label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginTop:20}}><input type="checkbox" checked={form.is_deduction} onChange={e=>upd('is_deduction',e.target.checked)} style={{width:16,height:16}} />Is Deduction</label></div>
+            <div className="form-group"><label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginTop:20}}><input type="checkbox" checked={form.is_deduction} onChange={e=>upd('is_deduction',e.target.checked)} style={{width:16,height:16}} />Deduction (money out)</label></div>
           </div>
           <div style={{display:'flex',gap:8}}>
             <button className="btn btn-primary" onClick={handleSave}>{editingId?'✅ Update':'✅ Add'}</button>
@@ -138,27 +156,32 @@ export default function Payments() {
       {(selected ? employees.filter(e=>e.id===selected) : employees).map(emp=>{
         const empPayments = filteredPayments.filter(p=>p.employee_id===emp.id).sort((a,b)=>a.payment_date?.localeCompare(b.payment_date||'')||0)
         if (empPayments.length===0&&selected!==emp.id) return null
-        const empPending = empPayments.filter(p=>p.status!=='paid'&&!p.is_deduction).reduce((s,p)=>s+Number(p.amount||0),0)
+        const empPending = empPayments.filter(p=>p.status!=='paid'&&!isDeductionRow(p)).reduce((s,p)=>s+Number(p.amount||0),0)
         return (
           <div key={emp.id} className="card" style={{marginBottom:14}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,gap:8,flexWrap:'wrap'}}>
               <div>
                 <div style={{fontWeight:600,fontSize:15}}>{emp.full_name}</div>
                 <div style={{fontSize:12,color:'var(--text3)'}}>{fmt(emp.fixed_salary||0)}/mo · {emp.monthly_work_days||22} days</div>
               </div>
-              <div style={{textAlign:'right'}}>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                {Number(emp.advance_per_week) > 0 && (
+                  <button className="btn btn-sm" onClick={()=>handleAutoGenerate(emp)}>
+                    {fill(desk.weeklyAdvances, { n: plannedWeeklyAdvances(emp, month, empPayments.filter(p=>p.payment_type==='advance')).length })}
+                  </button>
+                )}
                 <div style={{fontSize:14,fontWeight:700,color:'var(--amber)'}}>{fmt(empPending)} pending</div>
               </div>
             </div>
             {empPayments.map(p=>(
               <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid var(--border)'}}>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:500,color:p.is_deduction?'var(--red)':'var(--text)'}}>{p.is_deduction?'-':'+'}¥{Number(p.amount||0).toLocaleString()}</div>
+                  <div style={{fontSize:13,fontWeight:500,color:isDeductionRow(p)?'var(--red)':'var(--text)'}}>{isDeductionRow(p)?'-':'+'}¥{Number(p.amount||0).toLocaleString()}</div>
                   <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{p.payment_date} · {p.description||p.payment_type}</div>
                 </div>
                 <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                  <span style={{fontSize:9,padding:'2px 8px',borderRadius:20,fontWeight:600,background:p.status==='paid'?'rgba(74,222,128,0.1)':p.is_deduction?'rgba(248,113,113,0.1)':'rgba(251,191,36,0.1)',color:p.status==='paid'?'var(--green)':p.is_deduction?'var(--red)':'var(--amber)',border:'1px solid rgba(255,255,255,0.06)'}}>{p.payment_type||p.status}</span>
-                  {p.status!=='paid'&&!p.is_deduction&&<button className="btn btn-sm" style={{fontSize:10,background:'rgba(74,222,128,0.1)',color:'var(--green)',borderColor:'rgba(74,222,128,0.2)'}} onClick={()=>handleMarkPaid(p.id)}>✓ Pay</button>}
+                  <span style={{fontSize:9,padding:'2px 8px',borderRadius:20,fontWeight:600,background:p.status==='paid'?'rgba(74,222,128,0.1)':isDeductionRow(p)?'rgba(248,113,113,0.1)':'rgba(251,191,36,0.1)',color:p.status==='paid'?'var(--green)':isDeductionRow(p)?'var(--red)':'var(--amber)',border:'1px solid rgba(255,255,255,0.06)'}}>{p.payment_type||p.status}</span>
+                  {p.status!=='paid'&&!isDeductionRow(p)&&<button className="btn btn-sm" style={{fontSize:10,background:'rgba(74,222,128,0.1)',color:'var(--green)',borderColor:'rgba(74,222,128,0.2)'}} onClick={()=>handleMarkPaid(p.id)}>✓ Pay</button>}
                   <button className="btn btn-sm" style={{fontSize:10}} onClick={()=>handleEdit(p)}>✏️</button>
                   <button className="btn btn-sm btn-danger" style={{fontSize:10}} onClick={()=>handleDelete(p.id)}>✕</button>
                 </div>

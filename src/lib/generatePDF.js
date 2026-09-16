@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { viewablePhotoUrl } from './photoUrl'
 import { jobToServiceReport, fmtDuration } from './jobReport'
+import { isAdvanceReceived, isDeductionRow } from './salaryCalc'
 
 export function resolvePdfPhotoUrl(url) {
   if (!url) return null
@@ -716,15 +717,9 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
   y += 14
 
   // Deductions
-  const deductions = payments.filter(p=>p.is_deduction)
-
-  const todayPdf = new Date().toISOString().split('T')[0]
-  const receivedAdvances = advances.filter(a => {
-    const jun = a.description?.match(/Jun (\d+)/); if (jun) return '2026-06-'+jun[1].padStart(2,'0') < todayPdf
-    const jul = a.description?.match(/Jul (\d+)/); if (jul) return '2026-07-'+jul[1].padStart(2,'0') < todayPdf
-    return false
-  })
-  const advancesTotal = receivedAdvances.reduce((s,a)=>s+Number(a.amount),0)
+  const deductions = (payments || []).filter(isDeductionRow)
+  const receivedAdvances = (advances || []).filter(a => isAdvanceReceived(a))
+  const advancesTotal = receivedAdvances.reduce((s,a)=>s+Number(a.amount||0),0)
   if (deductions.length > 0 || advancesTotal > 0) {
     doc.setFont('helvetica','bold')
     doc.setFontSize(11)
@@ -775,16 +770,15 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
     y += 14
   }
 
-  // Net pay
-  // Net pay = only actual salary payments (not advances)
-  const netPay = payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance'&&p.payment_type!=='deduction').reduce((s,p)=>s+Number(p.amount),0)
+  // Amount left to transfer on payday (earned − deductions − advances already given)
+  const netPay = salaryData?.toPay ?? Math.max(0, Number(salaryData?.total || 0) - Number(salaryData?.deductions || 0) - advancesTotal)
   doc.setFillColor(6,13,24)
   doc.rect(margin, y, W-margin*2, 14, 'F')
   doc.setTextColor(193,156,86)
   doc.setFont('helvetica','bold')
   doc.setFontSize(14)
-  doc.text('NET PAYMENT', margin+4, y+9)
-  doc.text(`¥${netPay.toLocaleString()}`, W-margin-4, y+9, {align:'right'})
+  doc.text('TO PAY', margin+4, y+9)
+  doc.text(`¥${Number(netPay||0).toLocaleString()}`, W-margin-4, y+9, {align:'right'})
   y += 20
 
   // Payment schedule
@@ -910,14 +904,9 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   y += 14
 
   // Deductions
-  const todayPdf = new Date().toISOString().split('T')[0]
-  const receivedAdv = advances.filter(a => {
-    const jun = a.description?.match(/Jun (\d+)/); if (jun) return '2026-06-'+jun[1].padStart(2,'0') < todayPdf
-    const jul = a.description?.match(/Jul (\d+)/); if (jul) return '2026-07-'+jul[1].padStart(2,'0') < todayPdf
-    return false
-  })
-  const advTotal = receivedAdv.reduce((s,a)=>s+Number(a.amount),0)
-  const deds = payments.filter(p=>p.is_deduction)
+  const receivedAdv = (advances || []).filter(a => isAdvanceReceived(a))
+  const advTotal = receivedAdv.reduce((s,a)=>s+Number(a.amount||0),0)
+  const deds = (payments || []).filter(isDeductionRow)
 
   if (deds.length>0 || advTotal>0) {
     doc.setFont('helvetica','bold')
@@ -940,14 +929,14 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   }
 
   // Net
-  const netPay = payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance'&&p.payment_type!=='deduction').reduce((s,p)=>s+Number(p.amount),0)
+  const netPay = salaryData?.toPay ?? Math.max(0, Number(salaryData?.total || 0) - Number(salaryData?.deductions || 0) - advTotal)
   doc.setFillColor(6,13,24)
   doc.rect(margin, y, W-margin*2, 14, 'F')
   doc.setTextColor(193,156,86)
   doc.setFont('helvetica','bold')
   doc.setFontSize(13)
   doc.text('差引支給額', margin+4, y+9)
-  doc.text(`¥${netPay.toLocaleString()}`, W-margin-4, y+9, {align:'right'})
+  doc.text(`¥${Number(netPay||0).toLocaleString()}`, W-margin-4, y+9, {align:'right'})
   y += 20
 
   // Payment schedule
@@ -963,8 +952,8 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
     doc.setTextColor(50,50,50)
     doc.setFontSize(8)
     doc.setFont('helvetica','bold')
-    doc.text('Date / Highi', margin+4, y+5)
-    doc.text('Description / Naiyou', margin+35, y+5)
+    doc.text('Date', margin+4, y+5)
+    doc.text('Description', margin+35, y+5)
     doc.text('Amount', W-margin-30, y+5)
     doc.text('Status', W-margin-4, y+5, {align:'right'})
     y += 9

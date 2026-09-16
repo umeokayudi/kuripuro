@@ -1,18 +1,36 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { useLang, fill } from '../hooks/useLang'
+import { tokyoToday, monthBounds } from '../lib/dates'
+import { recentYearMonths, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
+import {
+  calcPeriodSalary,
+  plannedWeeklyAdvances,
+  isDeductionRow,
+} from '../lib/salaryCalc'
+import { salaryTypeLabel } from '../lib/employeePay'
+
+const yen = n => `¥${Number(n || 0).toLocaleString()}`
 
 export default function Salary() {
+  const { lang, t } = useLang()
+  const s = t.salaryDesk
   const [employees, setEmployees] = useState([])
-  const [selected, setSelected] = useState(null)
-  const [period, setPeriod] = useState(new Date().toISOString().slice(0,7))
+  const [selectedId, setSelectedId] = useState(null)
+  const [period, setPeriod] = useState(tokyoToday().slice(0, 7))
   const [jobs, setJobs] = useState([])
-  const [advances, setAdvances] = useState([])
-  const [newAdv, setNewAdv] = useState({ amount:'', desc:'' })
+  const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
+  const [advForm, setAdvForm] = useState({ amount: '', desc: '', date: tokyoToday() })
+  const [dedForm, setDedForm] = useState({ amount: '', desc: '', date: tokyoToday() })
+
+  const selected = employees.find(e => e.id === selectedId) || null
+  const months = useMemo(() => recentYearMonths(8), [])
 
   useEffect(() => { loadEmployees() }, [])
-  useEffect(() => { if (selected) { loadJobs(); loadAdvances() } }, [selected, period])
+  useEffect(() => { if (selectedId) loadPeriod() }, [selectedId, period])
 
   const loadEmployees = async () => {
     const { data } = await supabase.from('employees').select('*').eq('is_active', true).order('full_name')
@@ -20,191 +38,246 @@ export default function Salary() {
     setLoading(false)
   }
 
-  const loadJobs = async () => {
-    const { data } = await supabase.from('jobs').select('*')
-      .eq('employee_id', selected.id)
-      .eq('status', 'completed')
-      .gte('scheduled_date', period + '-01')
-      .lte('scheduled_date', period + '-31')
-    setJobs(data || [])
+  const loadPeriod = async () => {
+    const { from, to } = monthBounds(period)
+    const [{ data: jobRows }, { data: payRows }] = await Promise.all([
+      supabase.from('jobs').select('*')
+        .eq('employee_id', selectedId)
+        .eq('status', 'completed')
+        .gte('scheduled_date', from)
+        .lte('scheduled_date', to),
+      supabase.from('salary_payments').select('*')
+        .eq('employee_id', selectedId)
+        .eq('period', period)
+        .order('payment_date'),
+    ])
+    setJobs(jobRows || [])
+    setPayments(payRows || [])
   }
 
-  const loadAdvances = async () => {
-    const { data } = await supabase.from('salary_payments').select('*')
-      .eq('employee_id', selected.id)
-      .eq('period', period)
-      .eq('payment_type', 'advance')
-      .order('created_at')
-    setAdvances(data || [])
+  const calc = useMemo(
+    () => selected ? calcPeriodSalary(selected, jobs, payments, { period }) : null,
+    [selected, jobs, payments, period],
+  )
+  const weeklyDrafts = selected ? plannedWeeklyAdvances(selected, period, calc?.advanceRows) : []
+  const payDates = getPeriodDates(period)
+
+  const addRow = async (payload, okMsg) => {
+    const { error } = await supabase.from('salary_payments').insert(payload)
+    if (error) return toast.error(error.message)
+    toast.success(okMsg)
+    loadPeriod()
   }
 
   const addAdvance = async () => {
-    if (!newAdv.amount) return toast.error('Enter amount')
-    const { error } = await supabase.from('salary_payments').insert({
+    if (!advForm.amount) return toast.error(s.enterAmount)
+    if (!advForm.date) return toast.error(s.enterDate)
+    await addRow({
       employee_id: selected.id,
       employee_name: selected.full_name,
       period,
-      amount: parseFloat(newAdv.amount),
-      description: newAdv.desc || 'Advance payment',
+      amount: parseFloat(advForm.amount),
+      payment_date: advForm.date,
+      description: advForm.desc || s.addAdvance,
       payment_type: 'advance',
       status: 'scheduled',
-      })
+      is_deduction: false,
+    }, s.advanceAdded)
+    setAdvForm({ amount: '', desc: '', date: tokyoToday() })
+  }
+
+  const addDeduction = async () => {
+    if (!dedForm.amount || !dedForm.desc) return toast.error(s.enterAmount)
+    await addRow({
+      employee_id: selected.id,
+      employee_name: selected.full_name,
+      period,
+      amount: parseFloat(dedForm.amount),
+      payment_date: dedForm.date || tokyoToday(),
+      description: dedForm.desc,
+      payment_type: 'deduction',
+      status: 'scheduled',
+      is_deduction: true,
+    }, s.deductionAdded)
+    setDedForm({ amount: '', desc: '', date: tokyoToday() })
+  }
+
+  const createWeekly = async () => {
+    if (!weeklyDrafts.length) return
+    const rows = weeklyDrafts.map(d => ({
+      ...d,
+      employee_id: selected.id,
+      employee_name: selected.full_name,
+      period,
+    }))
+    const { error } = await supabase.from('salary_payments').insert(rows)
     if (error) return toast.error(error.message)
-    toast.success('Advance registered')
-    setNewAdv({ amount:'', desc:'' })
-    loadAdvances()
+    toast.success(fill(s.weeklyDone, { n: rows.length }))
+    loadPeriod()
   }
 
-  const calcSalary = () => {
-    if (!selected) return {}
-    const [year, month] = period.split('-').map(Number)
-    const daysInMonth = new Date(year, month, 0).getDate()
-
-    let base = 0
-    if (selected.salary_type === 'fixed') {
-      // Pro-rata if contract started this month
-      if (selected.contract_start) {
-        const start = new Date(selected.contract_start)
-        const startMonth = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}`
-        if (startMonth === period) {
-          const workedDays = daysInMonth - start.getDate() + 1
-          base = Math.round((selected.fixed_salary / daysInMonth) * workedDays)
-        } else base = selected.fixed_salary || 0
-      } else base = selected.fixed_salary || 0
-    } else if (selected.salary_type === 'hourly') {
-      const totalMins = jobs.reduce((s,j) => {
-        if (!j.started_at || !j.completed_at) return s
-        return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
-      }, 0)
-      base = Math.round((totalMins / 60) * (selected.hourly_rate || 0))
-    } else if (selected.salary_type === 'per_job') {
-      base = jobs.reduce((s,j) => s + Math.round(Number(j.retro_value ?? j.value ?? 0) * ((selected.job_bonus_rate||100)/100)), 0)
-    } else {
-      // mixed
-      const totalMins = jobs.reduce((s,j) => {
-        if (!j.started_at || !j.completed_at) return s
-        return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
-      }, 0)
-      const jobValue = jobs.reduce((s,j) => s + Number(j.value||0), 0)
-      base = (selected.fixed_salary || 0) + Math.round((totalMins/60)*(selected.hourly_rate||0)) + Math.round(jobValue * ((selected.job_bonus_rate||0)/100))
-    }
-
-    const transport = jobs.reduce((s,j) => s + 0, 0) // transport from checkins if needed
-    const totalAdvances = advances.reduce((s,a) => s + Number(a.amount), 0)
-    const net = base - totalAdvances
-
-    return { base, transport, totalAdvances, net, daysInMonth }
+  const downloadPayslip = async () => {
+    const { generatePayslip, generatePayslipJP } = await import('../lib/generatePDF')
+    const doc = lang === 'ja'
+      ? await generatePayslipJP(selected, period, calc, payments, calc.advanceRows)
+      : await generatePayslip(selected, period, calc, payments, calc.advanceRows)
+    doc.save(`payslip_${(selected.full_name || 'staff').replace(/\s+/g, '_')}_${period}.pdf`)
+    toast.success(s.payslipReady)
   }
 
-  const salary = calcSalary()
+  const markSalaryPaid = async () => {
+    const row = (calc?.salaryRows || []).find(p => p.status !== 'paid')
+    if (!row) return toast.error(s.noSalaryRow)
+    const { error } = await supabase.from('salary_payments').update({ status: 'paid' }).eq('id', row.id)
+    if (error) return toast.error(error.message)
+    toast.success(s.salaryPaid)
+    loadPeriod()
+  }
 
-  const months = []
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(); d.setMonth(d.getMonth() - i)
-    months.push(d.toISOString().slice(0,7))
+  const rateLabel = emp => {
+    if (emp.salary_type === 'hourly') return `${yen(emp.hourly_rate)}/h`
+    if (emp.salary_type === 'per_job') return salaryTypeLabel('per_job', lang)
+    return `${yen(emp.fixed_salary)}/mo`
   }
 
   return (
     <div>
-      <div className="grid-2" style={{ gap:14 }}>
-        {/* Employee list */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
-          <div className="card" style={{ marginBottom:14 }}>
-            <div className="card-title">Select Employee</div>
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{s.title}</h2>
+          <p style={{ fontSize: 13, color: 'var(--text3)', margin: '6px 0 0' }}>{s.hint}</p>
+        </div>
+        <Link to="/salary-periods" className="btn">{s.openClose}</Link>
+      </div>
+
+      <div className="grid-2" style={{ gap: 14 }}>
+        <div>
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-title">{s.selectEmployee}</div>
             <div className="form-group">
-              <label>Period</label>
-              <select value={period} onChange={e=>setPeriod(e.target.value)}>
-                {months.map(m=><option key={m}>{m}</option>)}
+              <label>{s.period}</label>
+              <select value={period} onChange={e => setPeriod(e.target.value)}>
+                {months.map(m => <option key={m} value={m}>{fmtPeriod(m, lang)} ({m})</option>)}
               </select>
             </div>
-            {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
+            {loading && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{t.app.loading}</div>}
             {employees.map(e => (
-              <div key={e.id} onClick={()=>setSelected(e)} style={{ padding:'10px 12px', borderRadius:8, cursor:'pointer', background: selected?.id===e.id ? 'var(--navy)' : 'var(--surface2)', marginBottom:6, border: selected?.id===e.id ? '1px solid var(--navy)' : '1px solid transparent' }}>
-                <div style={{ fontWeight:500, fontSize:13, color: selected?.id===e.id ? '#fff' : 'var(--text)' }}>{e.full_name}</div>
-                <div style={{ fontSize:11, color: selected?.id===e.id ? 'rgba(255,255,255,0.6)' : 'var(--text3)' }}>
-                  {e.salary_type === 'fixed' ? `Fixed ¥${Number(e.fixed_salary||0).toLocaleString()}/mo` : e.salary_type === 'hourly' ? `¥${e.hourly_rate}/h` : 'Mixed'}
-                </div>
-              </div>
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => setSelectedId(e.id)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '10px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 6,
+                  background: selectedId === e.id ? 'var(--navy)' : 'var(--surface2)',
+                  border: selectedId === e.id ? '1px solid var(--navy)' : '1px solid transparent',
+                  color: selectedId === e.id ? '#fff' : 'var(--text)',
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{e.full_name}</div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>{salaryTypeLabel(e.salary_type, lang)} · {rateLabel(e)}</div>
+              </button>
             ))}
           </div>
         </div>
 
-        {/* Salary detail */}
         <div>
-          {!selected && <div className="card"><div style={{color:'var(--text3)',fontSize:13}}>Select an employee to view salary</div></div>}
+          {!selected && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>{s.noEmployee}</div></div>}
 
-          {selected && <>
-            <div className="card" style={{ marginBottom:14 }}>
-              <div className="card-title">📋 Contract — {selected.full_name}</div>
-              <div className="grid-2" style={{ gap:8 }}>
+          {selected && calc && <>
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div className="card-title">{s.contract} — {selected.full_name}</div>
+              <div className="grid-2" style={{ gap: 8 }}>
                 {[
-                  ['Contract Type', selected.contract_type],
-                  ['Salary Type', selected.salary_type],
-                  ['Base Salary', selected.salary_type==='fixed' ? `¥${Number(selected.fixed_salary||0).toLocaleString()}/mo` : `¥${selected.hourly_rate}/h`],
-                  ['Start Date', selected.contract_start || '—'],
-                  ['End Date', selected.contract_end || '—'],
-                  ['Attendance Bonus', selected.attendance_bonus ? `¥${Number(selected.attendance_bonus).toLocaleString()}` : '—'],
-                  ['Weekly Advance', selected.advance_per_week ? `¥${Number(selected.advance_per_week).toLocaleString()}` : '—'],
-                  ['Transport', selected.transport_reimbursed ? 'Reimbursed' : 'Not reimbursed'],
-                ].map(([l,v]) => (
-                  <div key={l} style={{ background:'var(--surface2)', borderRadius:8, padding:'8px 10px' }}>
-                    <div style={{ fontSize:10, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.5px' }}>{l}</div>
-                    <div style={{ fontSize:13, fontWeight:500, marginTop:2 }}>{v || '—'}</div>
+                  [salaryTypeLabel(selected.salary_type, lang), rateLabel(selected)],
+                  [s.start, selected.contract_start || '—'],
+                  [s.end, selected.contract_end || '—'],
+                  [s.weekly, selected.advance_per_week ? yen(selected.advance_per_week) : '—'],
+                  [s.transport, selected.transport_reimbursed ? s.reimbursed : s.notReimbursed],
+                  ['15th', payDates.payDate],
+                ].map(([l, v]) => (
+                  <div key={String(l)} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>{l}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, marginTop: 2 }}>{v}</div>
                   </div>
                 ))}
               </div>
-              {selected.notes && <div style={{ marginTop:10, background:'var(--surface2)', borderRadius:8, padding:'10px 12px', fontSize:12, color:'var(--text2)' }}>{selected.notes}</div>}
             </div>
 
-            <div className="card" style={{ marginBottom:14 }}>
-              <div className="card-title">💴 Salary Calculation — {period}</div>
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div className="card-title">{fmtPeriod(period, lang)}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
                 {[
-                  ['Base salary', `¥${salary.base?.toLocaleString()}`],
-                  ['Jobs completed', jobs.length],
-                  ['Advances deducted', `-¥${salary.totalAdvances?.toLocaleString()}`],
-                ].map(([l,v]) => (
-                  <div key={l} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
-                    <span style={{ color:'var(--text2)' }}>{l}</span>
-                    <span style={{ fontWeight:500 }}>{v}</span>
+                  [s.earned, yen(calc.gross), 'var(--text)'],
+                  [s.deductions, `-${yen(calc.deductions)}`, 'var(--red)'],
+                  [s.advances, `-${yen(calc.advancesReceived)}`, 'var(--amber)'],
+                  [s.toPay, yen(calc.toPay), 'var(--green)'],
+                ].map(([l, v, c]) => (
+                  <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: c, marginTop: 2 }}>{v}</div>
                   </div>
                 ))}
-                <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', fontSize:16, fontWeight:700 }}>
-                  <span>NET TOTAL</span>
-                  <span style={{ color:'var(--green)' }}>¥{salary.net?.toLocaleString()}</span>
-                </div>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+                {fill(s.jobsCount, { n: calc.jobs })} · {fill(s.hours, { h: calc.hours })} · {fill(s.days, { n: calc.workedDays })}
+                {calc.spotEarned > 0 ? ` · ${yen(calc.spotEarned)}` : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-primary" onClick={downloadPayslip}>{s.downloadPayslip}</button>
+                <button className="btn" onClick={markSalaryPaid}>{s.markPaid}</button>
+                {weeklyDrafts.length > 0
+                  ? <button className="btn" onClick={createWeekly}>{fill(s.weeklyAdvances, { n: weeklyDrafts.length })}</button>
+                  : selected.advance_per_week > 0 && <span style={{ fontSize: 12, color: 'var(--text3)', alignSelf: 'center' }}>{s.weeklyNone}</span>}
               </div>
             </div>
 
-            <div className="card" style={{ marginBottom:14 }}>
-              <div className="card-title">⬇️ Jobs this period</div>
-              {jobs.length === 0 && <div style={{color:'var(--text3)',fontSize:13}}>No completed jobs</div>}
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div className="card-title">{s.jobsThisPeriod}</div>
+              {jobs.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{s.noJobs}</div>}
               {jobs.map(j => (
-                <div key={j.id} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
+                <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                   <div>
-                    <div style={{ fontWeight:500 }}>{j.title}</div>
-                    <div style={{ fontSize:11, color:'var(--text3)' }}>{j.scheduled_date}</div>
+                    <div style={{ fontWeight: 500 }}>{j.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{j.scheduled_date}</div>
                   </div>
-                  <span style={{ color:'var(--green)', fontWeight:500 }}>¥{Number(j.value||0).toLocaleString()}</span>
+                  <span style={{ color: 'var(--green)', fontWeight: 500 }}>{yen(j.retro_value ?? j.value)}</span>
                 </div>
               ))}
             </div>
 
-            <div className="card">
-              <div className="card-title">💸 Advances — {period}</div>
-              {advances.map(a => (
-                <div key={a.id} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div className="card-title">{s.ledger}</div>
+              {payments.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13, marginBottom: 10 }}>—</div>}
+              {payments.map(p => (
+                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                   <div>
-                    <div style={{ fontWeight:500 }}>{a.description}</div>
-                    <div style={{ fontSize:11, color:'var(--text3)' }}>{a.created_at?.slice(0,10)}</div>
+                    <div style={{ fontWeight: 500 }}>{p.description || p.payment_type}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{p.payment_date || '—'} · {p.payment_type} · {p.status}</div>
                   </div>
-                  <span style={{ color:'var(--red)', fontWeight:500 }}>-¥{Number(a.amount).toLocaleString()}</span>
+                  <span style={{ fontWeight: 600, color: isDeductionRow(p) || p.payment_type === 'advance' ? 'var(--red)' : 'var(--green)' }}>
+                    {isDeductionRow(p) || p.payment_type === 'advance' ? '-' : '+'}{yen(p.amount)}
+                  </span>
                 </div>
               ))}
-              <div style={{ display:'flex', gap:8, marginTop:12 }}>
-                <input type="number" value={newAdv.amount} onChange={e=>setNewAdv(a=>({...a,amount:e.target.value}))} placeholder="Amount ¥" style={{ width:120 }} className="form-group" />
-                <input value={newAdv.desc} onChange={e=>setNewAdv(a=>({...a,desc:e.target.value}))} placeholder="Description" style={{ flex:1 }} />
-                <button className="btn btn-primary" onClick={addAdvance}>+ Add</button>
+
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{s.addAdvance}</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input type="number" value={advForm.amount} onChange={e => setAdvForm(f => ({ ...f, amount: e.target.value }))} placeholder={s.amount} style={{ width: 110 }} />
+                  <input type="date" value={advForm.date} onChange={e => setAdvForm(f => ({ ...f, date: e.target.value }))} />
+                  <input value={advForm.desc} onChange={e => setAdvForm(f => ({ ...f, desc: e.target.value }))} placeholder={s.description} style={{ flex: 1, minWidth: 140 }} />
+                  <button className="btn btn-primary" onClick={addAdvance}>+ {s.addAdvance}</button>
+                </div>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{s.addDeduction}</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input type="number" value={dedForm.amount} onChange={e => setDedForm(f => ({ ...f, amount: e.target.value }))} placeholder={s.amount} style={{ width: 110 }} />
+                  <input type="date" value={dedForm.date} onChange={e => setDedForm(f => ({ ...f, date: e.target.value }))} />
+                  <input value={dedForm.desc} onChange={e => setDedForm(f => ({ ...f, desc: e.target.value }))} placeholder={s.description} style={{ flex: 1, minWidth: 140 }} />
+                  <button className="btn btn-danger" onClick={addDeduction}>− {s.addDeduction}</button>
+                </div>
               </div>
             </div>
           </>}
