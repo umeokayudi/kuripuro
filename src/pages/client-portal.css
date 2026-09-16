@@ -920,8 +920,7 @@
   color: var(--cp-muted);
 }
 
-.cp-deep-store,
-.cp-deep-month {
+.cp-deep-store {
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--cp-border);
@@ -931,6 +930,41 @@
   font-weight: 600;
   max-width: 220px;
   color-scheme: dark;
+}
+
+.cp-deep-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--cp-border);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.cp-deep-month-label {
+  min-width: 108px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cp-text);
+  white-space: nowrap;
+}
+
+.cp-deep-month-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cp-text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cp-deep-month-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .cp-deep-headline {

@@ -40,6 +40,13 @@ function monthBounds(ym) {
   return { from, to }
 }
 
+function shiftYearMonth(ym, delta) {
+  const [y, m] = String(ym || '').split('-').map(Number)
+  if (!y || !m) return ym
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 function visitRangeForPreset(preset, today) {
   if (preset === 'all') return { from: '2000-01-01', to: today }
   if (preset === '90d') {
@@ -1107,13 +1114,25 @@ function DeepCleanProgressCard({
               </select>
             </label>
           )}
-          <input
-            type="month"
-            className="cp-deep-month"
-            value={progressMonth}
-            onChange={e => onMonthChange(e.target.value)}
-            aria-label={labels.deepCleanProgress}
-          />
+          <div className="cp-deep-month-nav" role="group" aria-label={labels.deepCleanProgress}>
+            <button
+              type="button"
+              className="cp-deep-month-btn"
+              onClick={() => onMonthChange(shiftYearMonth(progressMonth, -1))}
+              aria-label={labels.deepCleanPrevMonth}
+            >
+              ‹
+            </button>
+            <span className="cp-deep-month-label">{monthLabel}</span>
+            <button
+              type="button"
+              className="cp-deep-month-btn"
+              onClick={() => onMonthChange(shiftYearMonth(progressMonth, 1))}
+              aria-label={labels.deepCleanNextMonth}
+            >
+              ›
+            </button>
+          </div>
         </div>
       </div>
 
