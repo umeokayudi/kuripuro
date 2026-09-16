@@ -557,6 +557,17 @@ export default function Jobs() {
     loadAll()
   }
 
+  const handleDownloadPdf = async (job) => {
+    const toastId = toast.loading(jt.generatingPdf)
+    try {
+      const { saveServiceReportPdf } = await import('../lib/generatePDF')
+      await saveServiceReportPdf(job, { lang, labels: { ...jt, ...t.reports } })
+      toast.success(jt.pdfReady, { id: toastId })
+    } catch (err) {
+      toast.error(err?.message || jt.pdfFailed, { id: toastId })
+    }
+  }
+
   const handleCancel = async (id) => {
     await supabase.from('jobs').update({ status: 'cancelled' }).eq('id', id)
     loadAll()
@@ -695,6 +706,7 @@ export default function Jobs() {
                 {hasMapsLink(j.address, locName) && (
                   <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 {jt.maps}</a>
                 )}
+                {j.status === 'completed' && <button className="btn btn-sm" onClick={() => handleDownloadPdf(j)}>📄 {jt.downloadPdf}</button>}
                 {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>{jt.cancel}</button>}
               </div>
             </div>

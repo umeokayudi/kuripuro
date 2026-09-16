@@ -240,6 +240,7 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
   let totalExpected = 0
   let totalCompleted = 0
   let totalPending = 0
+  let totalScheduled = 0
 
   DEEP_CLEAN_LOCATIONS.forEach(loc => {
     const expectedDates = expectedDeepCleanDatesForLocation(loc, yearMonth)
@@ -247,15 +248,16 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
     const byDate = {}
     expectedDates.forEach(d => { byDate[d] = locJobs.find(j => j.scheduled_date === d) || null })
 
-    const completed = locJobs.filter(j => j.status === 'completed').length
-    const pending = locJobs.filter(j => j.status === 'assigned' || j.status === 'in_progress').length
+    const slotJobs = expectedDates.map(d => byDate[d]).filter(Boolean)
+    const completed = slotJobs.filter(j => j.status === 'completed').length
+    const pending = slotJobs.filter(j => j.status === 'assigned' || j.status === 'in_progress').length
     const expectedPerLocation = expectedDates.length
 
     byLocation[loc] = {
       expected: expectedPerLocation,
       completed,
       pending,
-      missing: Math.max(0, expectedPerLocation - locJobs.length),
+      missing: Math.max(0, expectedPerLocation - slotJobs.length),
       byDate,
       jobs: locJobs,
       schedule: deepCleanScheduleLabel(loc),
@@ -264,6 +266,7 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
     totalExpected += expectedPerLocation
     totalCompleted += completed
     totalPending += pending
+    totalScheduled += slotJobs.length
   })
 
   const tuesdaySummary = slotDates.map(date => {
@@ -284,7 +287,7 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
       expected: totalExpected,
       completed: totalCompleted,
       pending: totalPending,
-      scheduled: monthJobs.length,
+      scheduled: totalScheduled,
       pct: totalExpected ? Math.round((totalCompleted / totalExpected) * 100) : 0,
     },
   }
@@ -304,7 +307,7 @@ function recalcDeepProgressTotals(byLocation) {
     totalExpected += data.expected
     totalCompleted += data.completed
     totalPending += data.pending
-    totalScheduled += data.jobs.length
+    totalScheduled += Math.max(0, (data.expected || 0) - (data.missing ?? 0))
   })
 
   const notDone = Math.max(0, totalExpected - totalCompleted)
@@ -484,11 +487,22 @@ export function jobStatusLabel(status, labels) {
   return { assigned: 'Pending', in_progress: 'In progress', completed: 'Completed', cancelled: 'Cancelled' }[status] || status
 }
 
-export function tuesdaySlotInfo(job, labels) {
-  if (!job) return { state: 'missing', label: labels?.slotMissing || 'Not scheduled', icon: '❌', color: '#f87171' }
+export function tuesdaySlotInfo(job, labels, date) {
+  const today = tokyoToday()
+  const dateStr = date || job?.scheduled_date
+  const past = !!dateStr && dateStr < today
+  if (!job) {
+    if (past) return { state: 'late', label: labels?.slotLate || labels?.slotMissing || 'Late', icon: '⚠️', color: '#f87171' }
+    return { state: 'missing', label: labels?.slotMissing || 'Not scheduled', icon: '❌', color: '#f87171' }
+  }
   if (job.status === 'completed') return { state: 'done', label: labels?.slotDone || 'Completed', icon: '✅', color: '#4ade80' }
   if (job.status === 'in_progress') return { state: 'progress', label: labels?.slotProgress || 'In progress', icon: '🔄', color: '#fbbf24' }
-  if (job.status === 'assigned') return { state: 'pending', label: labels?.slotPending || 'Scheduled', icon: '⏳', color: '#60a5fa' }
+  if (job.status === 'assigned') {
+    if (isOverdueAssignedJob(job) || past) {
+      return { state: 'late', label: labels?.slotLate || 'Late', icon: '⚠️', color: '#f87171' }
+    }
+    return { state: 'pending', label: labels?.slotPending || 'Scheduled', icon: '⏳', color: '#60a5fa' }
+  }
   return { state: 'other', label: jobStatusLabel(job.status, labels?.status), icon: '·', color: 'var(--text3)' }
 }
 

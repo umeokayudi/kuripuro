@@ -1475,9 +1475,9 @@ export default function EmployeePortal() {
                 const { generateDailyReport } = await import('../lib/generatePDF')
                 const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
                 doc.save(`report_${today2}.pdf`)
-                toast.success('Report downloaded!')
+                toast.success(e.pdfReady || 'Report downloaded!')
               }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(96,165,250,0.3)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                📋 Download Today's Service Report
+                📋 {e.downloadTodayReport}
               </button>
             </div>
 

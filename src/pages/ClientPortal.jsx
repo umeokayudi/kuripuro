@@ -462,6 +462,17 @@ export default function ClientPortal() {
     loadAll({ silent: true })
   }
 
+  const downloadVisitPdf = async (job) => {
+    const toastId = toast.loading(c.generatingPdf)
+    try {
+      const { saveServiceReportPdf } = await import('../lib/generatePDF')
+      await saveServiceReportPdf(job, { lang, labels: c })
+      toast.success(c.pdfReady, { id: toastId })
+    } catch (err) {
+      toast.error(err?.message || c.pdfFailed, { id: toastId })
+    }
+  }
+
   const applyVisitPreset = (preset) => {
     setVisitPreset(preset)
     setVisitRange(visitRangeForPreset(preset, tokyoToday()))
@@ -570,6 +581,9 @@ export default function ClientPortal() {
                 </div>
               </div>
             )}
+            <button type="button" className="cp-btn cp-btn-gold" style={{ width: '100%', marginBottom: 14 }} onClick={() => downloadVisitPdf(selectedVisit)}>
+              📄 {c.downloadPdf}
+            </button>
             {selectedVisit.status === 'completed' && (
             <div className="cp-rating-box">
               <span className="cp-label">{c.rateService}</span>

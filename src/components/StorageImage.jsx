@@ -30,8 +30,8 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
         gap: 8,
         minHeight: 120,
       }}>
-        <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center' }}>Não foi possível exibir a foto</div>
-        <a href={displayUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Abrir / baixar foto</a>
+        <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center' }}>Photo could not be displayed</div>
+        <a href={displayUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Open / download photo</a>
       </div>
     )
   }
@@ -43,7 +43,7 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'var(--surface2)', borderRadius: 8, fontSize: 12, color: 'var(--text3)',
         }}>
-          Carregando...
+          Loading...
         </div>
       )}
       <img
@@ -63,7 +63,7 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
       />
       {heic && !loading && !failed && (
         <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
-          Foto HEIC — se não aparecer, use o botão abaixo
+          HEIC photo — open fullscreen if it does not display
         </div>
       )}
     </div>

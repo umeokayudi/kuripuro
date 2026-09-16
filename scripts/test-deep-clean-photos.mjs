@@ -17,6 +17,7 @@ import {
   buildDaySummaries,
   monthCalendarCells,
   daySummaryState,
+  tuesdaySlotInfo,
 } from '../src/lib/cleaningType.js'
 import { SCHEDULE_CLIENTS } from '../src/lib/serviceCatalog.js'
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
@@ -24,6 +25,8 @@ import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '..
 import { viewablePhotoUrl, isStoragePhotoUrl } from '../src/lib/photoUrl.js'
 import { isOtpDeepOnlyLocation, otpBasicScheduleLocations, otpDeepOnlyLocations } from '../src/lib/serviceCatalog.js'
 import { expectedDeepCleanDatesForLocation, weekdaysInMonth, isDeepCleanAllowedOnDate } from '../src/lib/cleaningType.js'
+import { monthBounds } from '../src/lib/dates.js'
+import { generateServiceReportPdf, reportPdfFilename, resolvePdfPhotoUrl } from '../src/lib/generatePDF.js'
 import { buildMonthSchedule, buildMissingDeepCleanJobs } from '../src/lib/scheduleGenerator.js'
 
 function assert(cond, msg) {
@@ -195,6 +198,18 @@ function testDeepCleanProgressForUser() {
   assert(scoped.totals.notDone === scoped.totals.expected - scoped.totals.completed, 'notDone math')
   assert(scoped.totals.donePct + scoped.totals.notDonePct === 100 || scoped.totals.expected === 0, 'pct split')
 
+  const extra = {
+    title: 'Kodama Oimachi — Deep Clean',
+    scheduled_date: '2026-09-10',
+    status: 'completed',
+    client_id: otpId,
+  }
+  const withExtra = buildDeepCleanProgress([...jobs, extra], ym)
+  assert(withExtra.totals.completed === 1, `extra Thursday must not count as a service-day completion: ${withExtra.totals.completed}`)
+  const extraStore = withExtra.byLocation['Kodama Oimachi']
+  assert(extraStore.completed === 1, 'store completed stays on expected days')
+  assert(extraStore.missing === extraStore.expected - 1, 'missing ignores extra-day jobs')
+
   const hqUser = { client_id: otpId }
   const all = buildDeepCleanProgressForUser(jobs, ym, hqUser)
   assert(all.scope === 'all', all.scope)
@@ -294,6 +309,51 @@ function testMissingDeepCleanJobs() {
   assert(fromGeneratorShape.length === expected - 1, 'accepts generator date field')
 }
 
+function testTuesdaySlotInfo() {
+  const assigned = { title: 'Ibushio — Deep Clean', status: 'assigned', scheduled_date: '2026-09-07' }
+  const late = tuesdaySlotInfo(assigned, { slotLate: 'Late' }, '2026-09-07')
+  assert(late.state === 'late', `past assigned is late: ${late.state}`)
+  const missingPast = tuesdaySlotInfo(null, {}, '2026-09-01')
+  assert(missingPast.state === 'late', `past empty is late: ${missingPast.state}`)
+  const missingFuture = tuesdaySlotInfo(null, {}, '2026-12-29')
+  assert(missingFuture.state === 'missing', `future empty is missing: ${missingFuture.state}`)
+  const done = tuesdaySlotInfo({ status: 'completed', scheduled_date: '2026-09-08' }, {}, '2026-09-08')
+  assert(done.state === 'done', done.state)
+}
+
+function testMonthBounds() {
+  const sep = monthBounds('2026-09')
+  assert(sep.from === '2026-09-01', sep.from)
+  assert(sep.to === '2026-09-30', sep.to)
+  const feb = monthBounds('2026-02')
+  assert(feb.to === '2026-02-28', feb.to)
+}
+
+async function testServiceReportPdf() {
+  const job = {
+    id: 'job-pdf',
+    status: 'completed',
+    title: 'Ibushio — Deep Clean',
+    employee_name: 'André',
+    scheduled_date: '2026-09-07',
+    photo_start_url: 'jobs/job-pdf/start.jpg',
+    photo_end_url: 'jobs/job-pdf/end.jpg',
+    notes_employee: 'Kitchen floor done',
+    started_at: '2026-09-07T01:00:00Z',
+    completed_at: '2026-09-07T01:40:00Z',
+  }
+  const report = jobToServiceReport(job)
+  const name = reportPdfFilename(report)
+  assert(name.includes('Ibushio'), name)
+  assert(name.includes('2026-09-07'), name)
+  const proxied = resolvePdfPhotoUrl('jobs/x.jpg')
+  assert(proxied.includes('/api/photo'), proxied)
+  const doc = await generateServiceReportPdf(report, { lang: 'en' })
+  assert(doc.getNumberOfPages() >= 1, 'pdf has a page')
+  const data = doc.output('arraybuffer')
+  assert(data.byteLength > 1000, `pdf size ${data.byteLength}`)
+}
+
 async function main() {
   console.log('=== Deep clean + photo report unit tests ===\n')
   testCleaningType()
@@ -312,6 +372,12 @@ async function main() {
   console.log('✅ Tuesday deep in month schedule')
   testMissingDeepCleanJobs()
   console.log('✅ fill missing deep-clean drafts')
+  testTuesdaySlotInfo()
+  console.log('✅ tuesdaySlotInfo late vs missing')
+  testMonthBounds()
+  console.log('✅ monthBounds')
+  await testServiceReportPdf()
+  console.log('✅ service report PDF')
   console.log('\n✅ All unit tests passed')
 }
 

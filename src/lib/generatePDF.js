@@ -1,20 +1,283 @@
 import { jsPDF } from 'jspdf'
 import { viewablePhotoUrl } from './photoUrl'
+import { jobToServiceReport, fmtDuration } from './jobReport'
 
-// Carrega uma imagem de URL como dataURL pra embutir no PDF
-async function loadImageDataUrl(url) {
+export function resolvePdfPhotoUrl(url) {
   if (!url) return null
-  try {
-    const resp = await fetch(viewablePhotoUrl(url))
-    if (!resp.ok) return null
-    const blob = await resp.blob()
-    return await new Promise((res, rej) => {
-      const r = new FileReader()
-      r.onload = () => res(r.result)
-      r.onerror = rej
-      r.readAsDataURL(blob)
-    })
-  } catch { return null }
+  const view = viewablePhotoUrl(url)
+  if (!view) return null
+  if (view.startsWith('data:') || view.startsWith('blob:')) return view
+  if (view.startsWith('/') && typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}${view}`
+  }
+  return view
+}
+
+export function reportPdfFilename(report) {
+  const loc = String(report?.client_name || report?.location_name || report?.job_title || 'report')
+    .replace(/ — .*/, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40)
+  const date = report?.report_date || report?.scheduled_date || 'visit'
+  return `report_${loc || 'visit'}_${date}.pdf`
+}
+
+function loadHtmlImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('image decode failed'))
+    img.src = src
+  })
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(r.result)
+    r.onerror = reject
+    r.readAsDataURL(blob)
+  })
+}
+
+async function blobToJpegDataUrl(blob) {
+  let working = blob
+  const type = (blob?.type || '').toLowerCase()
+  const heic = type.includes('heic') || type.includes('heif')
+  if (heic) {
+    try {
+      const { default: heic2any } = await import('heic2any')
+      const converted = await heic2any({ blob: working, toType: 'image/jpeg', quality: 0.86 })
+      working = Array.isArray(converted) ? converted[0] : converted
+    } catch { /* canvas / FileReader fallback */ }
+  }
+
+  if (typeof document !== 'undefined') {
+    const objectUrl = URL.createObjectURL(working)
+    try {
+      const img = await loadHtmlImage(objectUrl)
+      const max = 1400
+      let { width, height } = img
+      if (width > max || height > max) {
+        const scale = Math.min(max / width, max / height)
+        width = Math.round(width * scale)
+        height = Math.round(height * scale)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, width)
+      canvas.height = Math.max(1, height)
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      return canvas.toDataURL('image/jpeg', 0.86)
+    } catch {
+      /* fall through */
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+
+  const dataUrl = await blobToDataUrl(working)
+  if (typeof dataUrl === 'string' && (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/png'))) {
+    return dataUrl
+  }
+  return null
+}
+
+/** Fetch a storage photo and convert it to a JPEG data URL that jsPDF can embed. */
+export async function loadImageDataUrl(url) {
+  if (!url) return null
+  const candidates = []
+  const resolved = resolvePdfPhotoUrl(url)
+  if (resolved) candidates.push(resolved)
+  if (url.startsWith('http') && url !== resolved) candidates.push(url)
+
+  for (const src of candidates) {
+    try {
+      if (src.startsWith('data:image/')) return src
+      const resp = await fetch(src)
+      if (!resp.ok) continue
+      const blob = await resp.blob()
+      const jpeg = await blobToJpegDataUrl(blob)
+      if (jpeg) return jpeg
+    } catch { /* try next candidate */ }
+  }
+  return null
+}
+
+function drawPhotoSlot(doc, x, y, w, h, label, dataUrl, missingLabel) {
+  doc.setDrawColor(210)
+  doc.setFillColor(248, 250, 252)
+  doc.roundedRect(x, y, w, h, 2, 2, 'FD')
+  let drawn = false
+  if (dataUrl) {
+    try {
+      doc.addImage(dataUrl, 'JPEG', x, y, w, h)
+      drawn = true
+    } catch { drawn = false }
+  }
+  if (!drawn) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(140, 140, 140)
+    doc.text(missingLabel || 'Photo unavailable', x + w / 2, y + h / 2, { align: 'center' })
+  }
+  doc.setFontSize(7)
+  doc.setTextColor(120, 120, 120)
+  doc.text(label, x, y + h + 4)
+}
+
+function reportLabels(lang, extra = {}) {
+  const ja = lang === 'ja'
+  return {
+    title: ja ? 'サービスレポート' : 'Service Report',
+    employee: ja ? '担当者' : 'Employee',
+    date: ja ? '日付' : 'Date',
+    location: ja ? '店舗' : 'Location',
+    start: ja ? '開始' : 'Start',
+    end: ja ? '終了' : 'End',
+    duration: ja ? '作業時間' : 'Duration',
+    type: ja ? '種別' : 'Type',
+    typeLive: ja ? 'リアルタイム' : 'Live',
+    typeRetro: ja ? '遡及' : 'Retroactive',
+    checklist: ja ? 'チェックリスト' : 'Checklist',
+    notes: ja ? '作業メモ' : 'Service notes',
+    photos: ja ? '作業写真' : 'Service photos',
+    before: ja ? '作業前' : 'Before',
+    after: ja ? '作業後' : 'After',
+    photoUnavailable: ja ? '写真を読み込めませんでした' : 'Photo unavailable',
+    noNotes: ja ? 'コメントなし' : 'No comments',
+    generated: ja ? '作成' : 'Generated',
+    confidential: ja ? 'KuriPuro by JBM — 社外秘' : 'KuriPuro by JBM — Confidential',
+    ...extra,
+  }
+}
+
+export async function generateServiceReportPdf(reportOrJob, { lang = 'en', labels } = {}) {
+  const report = reportOrJob?.job_title || reportOrJob?.photo_before_url !== undefined || reportOrJob?.report_date
+    ? reportOrJob
+    : jobToServiceReport(reportOrJob, lang)
+  const L = reportLabels(lang, labels)
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const W = 210
+  const margin = 14
+  let y = margin
+
+  doc.setFillColor(6, 13, 24)
+  doc.rect(0, 0, W, 30, 'F')
+  doc.setTextColor(193, 156, 86)
+  doc.setFontSize(18)
+  doc.setFont('helvetica', 'bold')
+  doc.text('KuriPuro by JBM', margin, 12)
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.text(L.title, margin, 20)
+  const dateLabel = report.report_date || ''
+  doc.text(dateLabel, W - margin, 20, { align: 'right' })
+  y = 40
+
+  const location = (report.client_name || report.location_name || report.job_title || '—').replace(/ — .*/, '')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.setTextColor(6, 13, 24)
+  doc.text(location, margin, y)
+  y += 7
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(80, 80, 80)
+  doc.text(report.job_title || location, margin, y)
+  y += 10
+
+  const typeText = report.report_type === 'retroativo' ? L.typeRetro : L.typeLive
+  const meta = [
+    [L.employee, report.employee_name || '—'],
+    [L.date, report.report_date || '—'],
+    [L.start, report.time_in || '—'],
+    [L.end, report.time_out || '—'],
+    [L.duration, fmtDuration(report.duration_min, lang)],
+    [L.type, typeText],
+    [L.checklist, report.checklist_total ? `${report.checklist_done || 0}/${report.checklist_total}` : '—'],
+  ]
+
+  const colW = (W - margin * 2) / 2
+  meta.forEach((pair, i) => {
+    const col = i % 2
+    const row = Math.floor(i / 2)
+    const x = margin + col * colW
+    const yy = y + row * 12
+    doc.setFillColor(245, 247, 252)
+    doc.roundedRect(x, yy, colW - 4, 10, 1.5, 1.5, 'F')
+    doc.setFontSize(7)
+    doc.setTextColor(120, 120, 120)
+    doc.text(pair[0], x + 3, yy + 3.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(40, 40, 40)
+    doc.text(String(pair[1] || '—'), x + 3, yy + 8)
+    doc.setFont('helvetica', 'normal')
+  })
+  y += Math.ceil(meta.length / 2) * 12 + 6
+
+  const notes = report.notes_out || report.retro_ai_summary || ''
+  if (y > 250) { doc.addPage(); y = margin }
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(6, 13, 24)
+  doc.text(L.notes, margin, y)
+  y += 6
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(50, 50, 50)
+  const noteLines = doc.splitTextToSize(notes || L.noNotes, W - margin * 2)
+  noteLines.forEach(line => {
+    if (y > 270) { doc.addPage(); y = margin }
+    doc.text(line, margin, y)
+    y += 4.5
+  })
+  y += 6
+
+  const beforeUrl = report.photo_before_url || report.photo_start_url
+  const afterUrl = report.photo_after_url || report.photo_end_url
+  if (beforeUrl || afterUrl) {
+    if (y > 175) { doc.addPage(); y = margin }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(6, 13, 24)
+    doc.text(L.photos, margin, y)
+    y += 6
+    const imgW = 86
+    const imgH = 64
+    const gap = 8
+    const beforeData = await loadImageDataUrl(beforeUrl)
+    const afterData = await loadImageDataUrl(afterUrl)
+    if (beforeUrl) {
+      drawPhotoSlot(doc, margin, y, imgW, imgH, L.before, beforeData, L.photoUnavailable)
+    }
+    if (afterUrl) {
+      const x = beforeUrl ? margin + imgW + gap : margin
+      drawPhotoSlot(doc, x, y, imgW, imgH, L.after, afterData, L.photoUnavailable)
+    }
+    y += imgH + 12
+  }
+
+  doc.setFillColor(6, 13, 24)
+  doc.rect(0, 285, W, 12, 'F')
+  doc.setTextColor(193, 156, 86)
+  doc.setFontSize(7)
+  doc.text(L.confidential, margin, 292)
+  doc.text(`${L.generated}: ${new Date().toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-GB')}`, W - margin, 292, { align: 'right' })
+
+  return doc
+}
+
+export async function saveServiceReportPdf(reportOrJob, options = {}) {
+  const lang = options.lang || 'en'
+  const looksLikeReport = !!(reportOrJob?.job_title || reportOrJob?.report_date || reportOrJob?.photo_before_url !== undefined)
+  const report = looksLikeReport ? reportOrJob : jobToServiceReport(reportOrJob, lang)
+  const doc = await generateServiceReportPdf(report, { lang, labels: options.labels })
+  const name = reportPdfFilename(report)
+  doc.save(name)
+  return name
 }
 
 
@@ -159,14 +422,7 @@ export async function generateDailyReport(date, jobs, employeeName) {
       for (const [label, url] of [['Before', j.photo_start_url], ['After', j.photo_end_url]]) {
         if (!url) continue
         const data = await loadImageDataUrl(url)
-        if (data) {
-          try {
-            const fmt = data.includes('image/png') ? 'PNG' : 'JPEG'
-            doc.addImage(data, fmt, x, y, imgW, imgH)
-            doc.setFontSize(7); doc.setTextColor(120,120,120)
-            doc.text(label, x, y + imgH + 4)
-          } catch {}
-        }
+        drawPhotoSlot(doc, x, y, imgW, imgH, label, data, 'Photo unavailable')
         x += imgW + gap
       }
       y += imgH + 10

@@ -12,6 +12,16 @@ export function tokyoYearMonth(date = new Date()) {
   return date.toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 7)
 }
 
+/** First and last calendar days of `YYYY-MM` (Tokyo-naive, local date strings). */
+export function monthBounds(ym) {
+  const [y, m] = String(ym || '').split('-').map(Number)
+  if (!y || !m) return { from: '', to: '' }
+  const from = `${y}-${String(m).padStart(2, '0')}-01`
+  const lastDay = new Date(y, m, 0).getDate()
+  const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  return { from, to }
+}
+
 /** Last N calendar days in Tokyo, including today (newest first). */
 export function recentTokyoDates(count = 7) {
   const dates = []

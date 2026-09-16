@@ -118,6 +118,17 @@ export default function Reports() {
     return { total: filtered.length, avg, byEmp }
   }, [filtered])
 
+  const handleDownloadPdf = async (report) => {
+    const toastId = toast.loading(tr.generatingPdf)
+    try {
+      const { saveServiceReportPdf } = await import('../lib/generatePDF')
+      await saveServiceReportPdf(report, { lang, labels: tr })
+      toast.success(tr.pdfReady, { id: toastId })
+    } catch (e) {
+      toast.error(e.message || tr.pdfFailed, { id: toastId })
+    }
+  }
+
   const handleDelete = async (report) => {
     const label = `${report.employee_name} · ${report.client_name || report.job_title} · ${report.report_date}`
     if (!confirm(fill(tr.deleteConfirm, { label }))) return
@@ -245,6 +256,7 @@ export default function Reports() {
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => setSelected(r)}>{tr.read}</button>
+                        <button className="btn btn-sm" onClick={() => handleDownloadPdf(r)}>{tr.downloadPdf}</button>
                         <button className="btn btn-sm btn-danger" onClick={() => handleDelete(r)}>{tr.delete}</button>
                       </div>
                     </td>
@@ -328,6 +340,7 @@ export default function Reports() {
             )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+              <button className="btn btn-primary" onClick={() => handleDownloadPdf(selected)}>📄 {tr.downloadPdf}</button>
               <button className="btn btn-danger" onClick={() => handleDelete(selected)}>🗑 {tr.deleteReport}</button>
             </div>
           </div>

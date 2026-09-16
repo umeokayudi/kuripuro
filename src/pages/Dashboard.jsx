@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { buildDeepCleanProgress, buildDaySummaries, currentYearMonth, deepCleanScheduleLabel, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
+import { buildDeepCleanProgress, buildDaySummaries, currentYearMonth, deepCleanScheduleLabel, formatScheduleDate, storeProgressRows, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
-
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+import { tokyoToday, monthBounds } from '../lib/dates'
 
 function shiftYearMonth(ym, delta) {
   const [y, m] = String(ym || '').split('-').map(Number)
@@ -37,8 +36,7 @@ export default function Dashboard() {
 
   const load = async () => {
     const today = tokyoToday()
-    const monthStart = progressMonth + '-01'
-    const monthEnd = progressMonth + '-31'
+    const { from: monthStart, to: monthEnd } = monthBounds(progressMonth)
     const [c, e, j, ev, stale, mj, cr] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
@@ -95,6 +93,7 @@ export default function Dashboard() {
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const daySummaries = useMemo(() => buildDaySummaries(deepProgress.byLocation), [deepProgress])
+  const storeRows = useMemo(() => storeProgressRows(deepProgress.byLocation, tokyoToday(), lang), [deepProgress, lang])
   const completedDays = daySummaries.filter(d => d.state === 'done').length
   const lateDays = daySummaries.filter(d => d.state === 'late').length
   const dayPct = daySummaries.length ? Math.round((completedDays / daySummaries.length) * 100) : 0
@@ -134,7 +133,7 @@ export default function Dashboard() {
 
           <div style={{ display: 'grid', gap: 8 }}>
             {rows.map(({ date, job, loc }) => {
-              const slot = tuesdaySlotInfo(job, slotLabels)
+              const slot = tuesdaySlotInfo(job, slotLabels, date)
               const dateLabel = detailLoc ? formatScheduleDate(date, lang) : loc
               const sub = detailLoc
                 ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : d.noJob)
@@ -324,22 +323,22 @@ export default function Dashboard() {
 
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byRestaurant}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-          {Object.entries(deepProgress.byLocation).map(([loc, data]) => {
-            const pct = data.expected ? Math.round((data.completed / data.expected) * 100) : 0
-            const ok = data.completed >= data.expected
+          {storeRows.map((row) => {
+            const ok = row.completed >= row.expected
             return (
-              <button key={loc} type="button" onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }}
+              <button key={row.name} type="button" onClick={() => { setDetailLoc(row.name); setDetailTuesday(null) }}
                 style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc}</div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{deepCleanScheduleLabel(loc, lang)}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{row.schedule || deepCleanScheduleLabel(row.name, lang)}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
-                  <span>{fill(d.doneCount, { done: data.completed, expected: data.expected })}</span>
-                  <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{pct}%</span>
+                  <span>{fill(d.doneCount, { done: row.completed, expected: row.expected })}</span>
+                  <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{row.pct}%</span>
                 </div>
                 <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
+                  <div style={{ height: '100%', width: `${row.pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
                 </div>
-                {data.missing > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: data.missing })}</div>}
+                {row.late > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {d.lateSlots}: {row.late}</div>}
+                {row.missing > 0 && <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: row.missing })}</div>}
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{d.clickRestaurant}</div>
               </button>
             )
