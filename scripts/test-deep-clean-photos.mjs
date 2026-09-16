@@ -12,6 +12,8 @@ import {
   ALL_DEEP_COMPONENT_IDS,
   buildDeepCleanProgress,
   buildDeepCleanProgressForUser,
+  filterDeepCleanProgressByLocation,
+  storeProgressRows,
 } from '../src/lib/cleaningType.js'
 import { SCHEDULE_CLIENTS } from '../src/lib/serviceCatalog.js'
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
@@ -190,6 +192,26 @@ function testDeepCleanProgressForUser() {
   const all = buildDeepCleanProgressForUser(jobs, ym, hqUser)
   assert(all.scope === 'all', all.scope)
   assert(all.totals.completed === 1, 'hq completed')
+  assert(all.totals.missing === all.totals.expected - all.totals.scheduled, 'missing = expected - scheduled')
+  assert(typeof all.totals.pendingPct === 'number', 'pendingPct')
+  assert(typeof all.totals.missingPct === 'number', 'missingPct')
+
+  const filtered = filterDeepCleanProgressByLocation(all, 'Kodama Oimachi')
+  assert(filtered.scope === 'location', filtered.scope)
+  assert(filtered.location === 'Kodama Oimachi', filtered.location)
+  assert(filtered.totals.completed === 1, 'filtered completed')
+  assert(Object.keys(filtered.byLocation).join() === 'Kodama Oimachi', 'filtered stores')
+
+  const backToAll = filterDeepCleanProgressByLocation(all, '')
+  assert(backToAll.scope === 'all', backToAll.scope)
+  assert(backToAll.totals.expected === all.totals.expected, 'all stores expected')
+
+  const rows = storeProgressRows(all.byLocation)
+  assert(rows.length === Object.keys(all.byLocation).length, 'one row per store')
+  const oimachi = rows.find(r => r.name === 'Kodama Oimachi')
+  assert(oimachi?.completed === 1, 'oimachi row completed')
+  assert(oimachi.pct === Math.round((1 / oimachi.expected) * 100), `oimachi pct ${oimachi.pct}`)
+  assert(rows.every((row, i) => i === 0 || rows[i - 1].pct <= row.pct), 'sorted by pct')
 
   const unknown = buildDeepCleanProgressForUser(jobs, ym, { location_name: 'Unknown Store' })
   assert(unknown.scope === 'none', unknown.scope)

@@ -282,13 +282,13 @@ export function currentYearMonth() {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 7)
 }
 
-function recalcDeepProgressTotals(byLocation, tuesdaySummary) {
+function recalcDeepProgressTotals(byLocation) {
   let totalExpected = 0
   let totalCompleted = 0
   let totalPending = 0
   let totalScheduled = 0
 
-  Object.values(byLocation).forEach(data => {
+  Object.values(byLocation || {}).forEach(data => {
     totalExpected += data.expected
     totalCompleted += data.completed
     totalPending += data.pending
@@ -296,56 +296,98 @@ function recalcDeepProgressTotals(byLocation, tuesdaySummary) {
   })
 
   const notDone = Math.max(0, totalExpected - totalCompleted)
+  const missing = Math.max(0, totalExpected - totalScheduled)
+  const donePct = totalExpected ? Math.round((totalCompleted / totalExpected) * 100) : 0
 
   return {
     expected: totalExpected,
     completed: totalCompleted,
     pending: totalPending,
     scheduled: totalScheduled,
+    missing,
     notDone,
-    donePct: totalExpected ? Math.round((totalCompleted / totalExpected) * 100) : 0,
+    donePct,
+    pendingPct: totalExpected ? Math.round((totalPending / totalExpected) * 100) : 0,
+    missingPct: totalExpected ? Math.round((missing / totalExpected) * 100) : 0,
     notDonePct: totalExpected ? Math.round((notDone / totalExpected) * 100) : 0,
-    pct: totalExpected ? Math.round((totalCompleted / totalExpected) * 100) : 0,
+    pct: donePct,
+    doneShare: totalExpected ? (totalCompleted / totalExpected) * 100 : 0,
+    pendingShare: totalExpected ? (totalPending / totalExpected) * 100 : 0,
+  }
+}
+
+/** Per-store rows for the HQ dashboard (lowest completion first) */
+export function storeProgressRows(byLocation) {
+  return Object.entries(byLocation || {}).map(([name, data]) => {
+    const expected = data.expected || 0
+    const completed = data.completed || 0
+    const pending = data.pending || 0
+    const missing = data.missing ?? Math.max(0, expected - (data.jobs?.length || 0))
+    return {
+      name,
+      expected,
+      completed,
+      pending,
+      missing,
+      pct: expected ? Math.round((completed / expected) * 100) : 0,
+      schedule: data.schedule || '',
+    }
+  }).sort((a, b) => a.pct - b.pct || a.name.localeCompare(b.name))
+}
+
+/** Narrow an OTP progress snapshot to one store (or back to all stores) */
+export function filterDeepCleanProgressByLocation(progress, locationName) {
+  if (!progress) return progress
+  const locName = (locationName || '').trim()
+  if (!locName) {
+    return {
+      ...progress,
+      scope: 'all',
+      location: undefined,
+      totals: recalcDeepProgressTotals(progress.byLocation),
+    }
+  }
+
+  const locKey = Object.keys(progress.byLocation || {}).find(loc => loc.toLowerCase() === locName.toLowerCase())
+    || DEEP_CLEAN_LOCATIONS.find(loc => loc.toLowerCase() === locName.toLowerCase())
+
+  if (!locKey || !progress.byLocation?.[locKey]) {
+    return {
+      yearMonth: progress.yearMonth,
+      scope: 'none',
+      location: locName,
+      tuesdays: progress.tuesdays || [],
+      byLocation: {},
+      tuesdaySummary: [],
+      totals: recalcDeepProgressTotals({}),
+    }
+  }
+
+  const data = progress.byLocation[locKey]
+  const byLocation = { [locKey]: data }
+  const expectedDates = new Set(data.expectedDates || [])
+  const tuesdaySummary = (progress.tuesdaySummary || []).filter(row => expectedDates.has(row.date))
+
+  return {
+    ...progress,
+    scope: 'location',
+    location: locKey,
+    byLocation,
+    tuesdaySummary,
+    totals: recalcDeepProgressTotals(byLocation),
   }
 }
 
 /** Deep clean progress scoped to a client portal user (OTP only) */
 export function buildDeepCleanProgressForUser(jobs, yearMonth, user) {
-  const full = buildDeepCleanProgress(jobs, yearMonth)
+  const full = {
+    ...buildDeepCleanProgress(jobs, yearMonth),
+    scope: 'all',
+  }
+  full.totals = recalcDeepProgressTotals(full.byLocation)
   const locName = (user?.location_name || '').trim()
-
-  if (!locName) {
-    return { ...full, scope: 'all', totals: recalcDeepProgressTotals(full.byLocation, full.tuesdaySummary) }
-  }
-
-  const locKey = DEEP_CLEAN_LOCATIONS.find(loc =>
-    loc.toLowerCase() === locName.toLowerCase()
-  )
-  if (!locKey) {
-    return {
-      yearMonth,
-      scope: 'none',
-      location: locName,
-      byLocation: {},
-      tuesdaySummary: [],
-      totals: recalcDeepProgressTotals({}, []),
-    }
-  }
-
-  const data = full.byLocation[locKey]
-  const byLocation = { [locKey]: data }
-  const expectedDates = new Set(data.expectedDates || [])
-  const tuesdaySummary = full.tuesdaySummary.filter(row => expectedDates.has(row.date))
-
-  return {
-    yearMonth,
-    scope: 'location',
-    location: locKey,
-    tuesdays: full.tuesdays,
-    byLocation,
-    tuesdaySummary,
-    totals: recalcDeepProgressTotals(byLocation, tuesdaySummary),
-  }
+  if (!locName) return full
+  return filterDeepCleanProgressByLocation(full, locName)
 }
 
 export function jobStatusLabel(status, labels) {

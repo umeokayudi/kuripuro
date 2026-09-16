@@ -4,7 +4,11 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 import {
-  buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
+  buildDeepCleanProgressForUser,
+  currentYearMonth,
+  filterDeepCleanProgressByLocation,
+  ONTHEPLANET_CLIENT_ID,
+  storeProgressRows,
 } from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -81,6 +85,7 @@ export default function ClientPortal() {
   const [visitPreset, setVisitPreset] = useState('month')
   const [visitRange, setVisitRange] = useState(() => visitRangeForPreset('month', tokyoToday()))
   const [deepProgressMonth, setDeepProgressMonth] = useState(currentYearMonth)
+  const [deepProgressStore, setDeepProgressStore] = useState('')
   const loadedOnceRef = useRef(false)
 
   const [complaintForm, setComplaintForm] = useState({ job_id: '', category: 'quality', description: '' })
@@ -256,10 +261,19 @@ export default function ClientPortal() {
   }, [filteredVisits])
 
   const isOtpClient = user?.client_id === ONTHEPLANET_CLIENT_ID
-  const deepProgress = useMemo(() => {
+  const canSelectDeepStore = isOtpClient && !user?.location_name
+  const deepProgressAll = useMemo(() => {
     if (!isOtpClient) return null
-    return buildDeepCleanProgressForUser(jobs, deepProgressMonth, user)
+    return buildDeepCleanProgressForUser(jobs, deepProgressMonth, {
+      ...user,
+      location_name: user?.location_name || '',
+    })
   }, [jobs, deepProgressMonth, user, isOtpClient])
+  const deepProgress = useMemo(() => {
+    if (!deepProgressAll) return null
+    if (!canSelectDeepStore || !deepProgressStore) return deepProgressAll
+    return filterDeepCleanProgressByLocation(deepProgressAll, deepProgressStore)
+  }, [deepProgressAll, canSelectDeepStore, deepProgressStore])
   const deepProgressMonthLabel = useMemo(() => (
     new Date(`${deepProgressMonth}-01T12:00:00`).toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
   ), [deepProgressMonth, dateLocale])
@@ -611,10 +625,14 @@ export default function ClientPortal() {
                 {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
                   <DeepCleanProgressCard
                     progress={deepProgress}
+                    allByLocation={canSelectDeepStore ? deepProgressAll?.byLocation : null}
                     labels={c}
                     monthLabel={deepProgressMonthLabel}
                     progressMonth={deepProgressMonth}
                     onMonthChange={setDeepProgressMonth}
+                    canSelectStore={canSelectDeepStore}
+                    selectedStore={deepProgressStore}
+                    onStoreChange={setDeepProgressStore}
                   />
                 )}
                 <div className="cp-section-title"><span>📅</span> {c.today} — {today}</div>
@@ -1026,12 +1044,37 @@ function FeedbackPhotoField({
   )
 }
 
-function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, onMonthChange }) {
+function DeepCleanProgressCard({
+  progress,
+  allByLocation,
+  labels,
+  monthLabel,
+  progressMonth,
+  onMonthChange,
+  canSelectStore,
+  selectedStore,
+  onStoreChange,
+}) {
   const { totals, scope, location } = progress
+  const expected = totals.expected || 0
+  const completed = totals.completed || 0
+  const pending = totals.pending || 0
+  const missing = totals.missing ?? Math.max(0, expected - (totals.scheduled || 0))
   const donePct = totals.donePct ?? totals.pct ?? 0
-  const notDonePct = totals.notDonePct ?? Math.max(0, 100 - donePct)
-  const missing = Math.max(0, totals.expected - totals.scheduled)
+  const pendingPct = totals.pendingPct ?? (expected ? Math.round((pending / expected) * 100) : 0)
+  const missingPct = totals.missingPct ?? (expected ? Math.round((missing / expected) * 100) : 0)
+  const doneShare = totals.doneShare ?? (expected ? (completed / expected) * 100 : 0)
+  const pendingShare = totals.pendingShare ?? (expected ? (pending / expected) * 100 : 0)
+  const missingShare = Math.max(0, 100 - doneShare - pendingShare)
   const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
+  const storeRows = storeProgressRows(allByLocation || {})
+  const storeNames = Object.keys(allByLocation || {}).sort((a, b) => a.localeCompare(b))
+  const donutBg = `conic-gradient(#4ade80 0% ${doneShare}%, #60a5fa ${doneShare}% ${doneShare + pendingShare}%, rgba(248, 113, 113, 0.78) ${doneShare + pendingShare}% 100%)`
+
+  const pickStore = (name) => {
+    if (!onStoreChange) return
+    onStoreChange(selectedStore === name ? '' : name)
+  }
 
   return (
     <div className="cp-deep-progress">
@@ -1039,28 +1082,61 @@ function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, on
         <div>
           <div className="cp-deep-progress-title">✨ {labels.deepCleanProgress}</div>
           <div className="cp-deep-progress-sub">
-            {scopeLabel} · {fill(labels.deepCleanProgressHint, { month: monthLabel, expected: totals.expected })}
+            {scopeLabel} · {fill(labels.deepCleanProgressHint, {
+              month: monthLabel,
+              done: completed,
+              expected,
+              pct: donePct,
+            })}
           </div>
         </div>
-        <input
-          type="month"
-          className="cp-deep-month"
-          value={progressMonth}
-          onChange={e => onMonthChange(e.target.value)}
-          aria-label={labels.deepCleanProgress}
-        />
+        <div className="cp-deep-controls">
+          {canSelectStore && storeNames.length > 0 && (
+            <label className="cp-deep-store-wrap">
+              <span className="cp-deep-store-lbl">{labels.store}</span>
+              <select
+                className="cp-deep-store"
+                value={selectedStore || ''}
+                onChange={e => onStoreChange(e.target.value)}
+                aria-label={labels.deepCleanSelectStore || labels.store}
+              >
+                <option value="">{labels.deepCleanAllStores}</option>
+                {storeNames.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <input
+            type="month"
+            className="cp-deep-month"
+            value={progressMonth}
+            onChange={e => onMonthChange(e.target.value)}
+            aria-label={labels.deepCleanProgress}
+          />
+        </div>
+      </div>
+
+      <div className="cp-deep-headline">
+        <div className="cp-deep-headline-main">
+          {fill(labels.deepCleanOfExpected, { done: completed, expected })}
+        </div>
+        <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
       </div>
 
       <div className="cp-deep-progress-body">
         <div
           className="cp-deep-donut"
-          style={{ background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(248, 113, 113, 0.9) ${donePct}% 100%)` }}
+          style={{ background: donutBg }}
           role="img"
-          aria-label={`${donePct}% ${labels.deepCleanDone}, ${notDonePct}% ${labels.deepCleanNotDone}`}
+          aria-label={fill(labels.deepCleanOfExpected, { done: completed, expected })}
         >
           <div className="cp-deep-donut-hole">
-            <div className="cp-deep-donut-pct">{donePct}%</div>
-            <div className="cp-deep-donut-lbl">{labels.deepCleanDone}</div>
+            <div className="cp-deep-donut-frac">
+              <b>{completed}</b>
+              <span>/{expected}</span>
+            </div>
+            <div className="cp-deep-donut-lbl">{donePct}%</div>
           </div>
         </div>
 
@@ -1068,33 +1144,56 @@ function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, on
           <div className="cp-deep-legend-row">
             <span className="cp-deep-dot done" />
             <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
-            <span className="cp-deep-legend-val">{totals.completed} ({donePct}%)</span>
+            <span className="cp-deep-legend-val">{completed} · {donePct}%</span>
           </div>
           <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot not-done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
-            <span className="cp-deep-legend-val">{totals.notDone} ({notDonePct}%)</span>
+            <span className="cp-deep-dot pending" />
+            <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
+            <span className="cp-deep-legend-val">{pending} · {pendingPct}%</span>
           </div>
-          {totals.pending > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot pending" />
-              <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
-              <span className="cp-deep-legend-val">{totals.pending}</span>
-            </div>
-          )}
-          {missing > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot missing" />
-              <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
-              <span className="cp-deep-legend-val">{missing}</span>
-            </div>
-          )}
+          <div className="cp-deep-legend-row">
+            <span className="cp-deep-dot missing" />
+            <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
+            <span className="cp-deep-legend-val">{missing} · {missingPct}%</span>
+          </div>
         </div>
       </div>
 
-      <div className="cp-deep-bar">
-        <div className="cp-deep-bar-fill" style={{ width: `${donePct}%` }} />
+      <div className="cp-deep-bar stacked" aria-hidden="true">
+        <div className="cp-deep-bar-seg done" style={{ width: `${doneShare}%` }} />
+        <div className="cp-deep-bar-seg pending" style={{ width: `${pendingShare}%` }} />
+        <div className="cp-deep-bar-seg missing" style={{ width: `${missingShare}%` }} />
       </div>
+
+      {canSelectStore && storeRows.length > 0 && (
+        <div className="cp-deep-stores">
+          <div className="cp-deep-stores-title">{labels.deepCleanByStore}</div>
+          <div className="cp-deep-store-grid">
+            {storeRows.map(row => {
+              const active = selectedStore === row.name
+              return (
+                <button
+                  key={row.name}
+                  type="button"
+                  className={`cp-deep-store-card${active ? ' active' : ''}${row.pct >= 100 ? ' ok' : ''}`}
+                  onClick={() => pickStore(row.name)}
+                >
+                  <div className="cp-deep-store-card-top">
+                    <span className="cp-deep-store-card-name">{row.name}</span>
+                    <span className="cp-deep-store-card-pct">{row.pct}%</span>
+                  </div>
+                  <div className="cp-deep-store-card-meta">
+                    {fill(labels.deepCleanOfExpected, { done: row.completed, expected: row.expected })}
+                  </div>
+                  <div className="cp-deep-store-mini">
+                    <div className="cp-deep-store-mini-fill" style={{ width: `${row.pct}%` }} />
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
