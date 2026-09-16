@@ -1157,11 +1157,13 @@ function DeepCleanProgressCard({
 
   const [selectedDay, setSelectedDay] = useState(null)
   useEffect(() => {
-    const dates = new Set(buildDaySummaries(progress.byLocation).map(d => d.date))
+    const dates = buildDaySummaries(progress.byLocation).map(d => d.date).sort()
+    const dateSet = new Set(dates)
     setSelectedDay(prev => {
-      if (prev && dates.has(prev)) return prev
-      if (today && dates.has(today)) return today
-      return null
+      if (prev && dateSet.has(prev)) return prev
+      if (today && dateSet.has(today)) return today
+      const past = dates.filter(d => d <= (today || ''))
+      return past[past.length - 1] || dates[0] || null
     })
   }, [progress, today, progressMonth, selectedStore])
 
@@ -1180,9 +1182,10 @@ function DeepCleanProgressCard({
   const selected = selectedDay ? dayByDate[selectedDay] : null
   const selectedLabel = selected
     ? formatScheduleDate(selected.date, lang)
-    : labels.deepCleanPickDay
+    : monthLabel
   const todaySummary = today && today.startsWith(progressMonth) ? dayByDate[today] : null
   const printSummary = () => window.print()
+  const visitDone = progress?.totals?.completed || 0
 
   return (
     <div className="cp-deep-progress">
@@ -1250,6 +1253,11 @@ function DeepCleanProgressCard({
           {fill(labels.deepCleanOfDays, { done: completedDays, expected: expectedDays })}
         </div>
         <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
+        {visitDone > 0 && (
+          <div className="cp-deep-headline-visits">
+            {fill(labels.deepCleanVisitsDone, { done: visitDone })}
+          </div>
+        )}
         {remainingDays > 0 && (
           <div className="cp-deep-headline-left">
             {fill(labels.deepCleanRemaining, { n: remainingDays })}
@@ -1261,11 +1269,13 @@ function DeepCleanProgressCard({
         <button type="button" className={`cp-deep-alert ${todaySummary.state}`} onClick={() => setSelectedDay(today)}>
           <strong>{labels.today}</strong>
           <span>
-            {fill(labels.deepCleanTodayLine, {
-              done: todaySummary.done,
-              expected: todaySummary.expected,
-              late: todaySummary.overdueCount,
-            })}
+            {todaySummary.state === 'missing'
+              ? fill(labels.deepCleanTodayMissing, { expected: todaySummary.expected })
+              : fill(labels.deepCleanTodayLine, {
+                  done: todaySummary.done,
+                  expected: todaySummary.expected,
+                  late: todaySummary.overdueCount,
+                })}
           </span>
         </button>
       )}
