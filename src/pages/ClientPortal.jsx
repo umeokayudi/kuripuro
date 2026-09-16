@@ -463,12 +463,14 @@ export default function ClientPortal() {
   }
 
   const downloadVisitPdf = async (job) => {
+    const preview = typeof window !== 'undefined' ? window.open('', '_blank') : null
     const toastId = toast.loading(c.generatingPdf)
     try {
       const { saveServiceReportPdf } = await import('../lib/generatePDF')
-      await saveServiceReportPdf(job, { lang, labels: c })
+      await saveServiceReportPdf(job, { lang, labels: c, previewWindow: preview })
       toast.success(c.pdfReady, { id: toastId })
     } catch (err) {
+      try { preview?.close() } catch {}
       toast.error(err?.message || c.pdfFailed, { id: toastId })
     }
   }

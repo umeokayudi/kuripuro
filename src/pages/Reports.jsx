@@ -119,12 +119,14 @@ export default function Reports() {
   }, [filtered])
 
   const handleDownloadPdf = async (report) => {
+    const preview = typeof window !== 'undefined' ? window.open('', '_blank') : null
     const toastId = toast.loading(tr.generatingPdf)
     try {
       const { saveServiceReportPdf } = await import('../lib/generatePDF')
-      await saveServiceReportPdf(report, { lang, labels: tr })
+      await saveServiceReportPdf(report, { lang, labels: tr, previewWindow: preview })
       toast.success(tr.pdfReady, { id: toastId })
     } catch (e) {
+      try { preview?.close() } catch {}
       toast.error(e.message || tr.pdfFailed, { id: toastId })
     }
   }

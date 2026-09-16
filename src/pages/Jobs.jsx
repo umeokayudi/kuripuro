@@ -558,12 +558,14 @@ export default function Jobs() {
   }
 
   const handleDownloadPdf = async (job) => {
+    const preview = typeof window !== 'undefined' ? window.open('', '_blank') : null
     const toastId = toast.loading(jt.generatingPdf)
     try {
       const { saveServiceReportPdf } = await import('../lib/generatePDF')
-      await saveServiceReportPdf(job, { lang, labels: { ...jt, ...t.reports } })
+      await saveServiceReportPdf(job, { lang, labels: { ...jt, ...t.reports }, previewWindow: preview })
       toast.success(jt.pdfReady, { id: toastId })
     } catch (err) {
+      try { preview?.close() } catch {}
       toast.error(err?.message || jt.pdfFailed, { id: toastId })
     }
   }

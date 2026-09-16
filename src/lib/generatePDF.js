@@ -120,26 +120,45 @@ export async function loadImageDataUrl(url) {
 }
 
 function drawPhotoSlot(doc, x, y, w, h, label, dataUrl, missingLabel) {
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(40, 40, 40)
+  doc.text(label, x, y)
+  const imgY = y + 4
   doc.setDrawColor(210)
   doc.setFillColor(248, 250, 252)
-  doc.roundedRect(x, y, w, h, 2, 2, 'FD')
+  doc.roundedRect(x, imgY, w, h, 2, 2, 'FD')
   let drawn = false
   if (dataUrl) {
     try {
       const fmt = dataUrl.includes('image/png') ? 'PNG' : 'JPEG'
-      doc.addImage(dataUrl, fmt, x, y, w, h)
+      doc.addImage(dataUrl, fmt, x, imgY, w, h)
       drawn = true
     } catch { drawn = false }
   }
   if (!drawn) {
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
+    doc.setFontSize(9)
     doc.setTextColor(140, 140, 140)
-    doc.text(missingLabel || 'Photo unavailable', x + w / 2, y + h / 2, { align: 'center' })
+    doc.text(missingLabel || 'Photo unavailable', x + w / 2, imgY + h / 2, { align: 'center' })
   }
-  doc.setFontSize(7)
-  doc.setTextColor(120, 120, 120)
-  doc.text(label, x, y + h + 4)
+  return imgY + h + 8
+}
+
+function addPdfFooter(doc, L, lang) {
+  const pageCount = doc.getNumberOfPages()
+  const W = 210
+  const margin = 14
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFillColor(6, 13, 24)
+    doc.rect(0, 285, W, 12, 'F')
+    doc.setTextColor(193, 156, 86)
+    doc.setFontSize(7)
+    doc.setFont('helvetica', 'normal')
+    doc.text(L.confidential, margin, 292)
+    doc.text(`${L.generated}: ${new Date().toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-GB')}  ·  ${i}/${pageCount}`, W - margin, 292, { align: 'right' })
+  }
 }
 
 function reportLabels(lang, extra = {}) {
@@ -160,6 +179,7 @@ function reportLabels(lang, extra = {}) {
     photos: ja ? '作業写真' : 'Service photos',
     before: ja ? '作業前' : 'Before',
     after: ja ? '作業後' : 'After',
+    signature: ja ? '署名' : 'Signature',
     photoUnavailable: ja ? '写真を読み込めませんでした' : 'Photo unavailable',
     noNotes: ja ? 'コメントなし' : 'No comments',
     generated: ja ? '作成' : 'Generated',
@@ -254,36 +274,52 @@ export async function generateServiceReportPdf(reportOrJob, { lang = 'en', label
 
   const beforeUrl = report.photo_before_url || report.photo_start_url
   const afterUrl = report.photo_after_url || report.photo_end_url
-  if (beforeUrl || afterUrl) {
-    if (y > 175) { doc.addPage(); y = margin }
+  const duringUrl = report.photo_during_url || null
+  const signatureUrl = report.signature_url || null
+  if (beforeUrl || afterUrl || duringUrl || signatureUrl) {
+    doc.addPage()
+    y = margin
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
+    doc.setFontSize(13)
     doc.setTextColor(6, 13, 24)
     doc.text(L.photos, margin, y)
-    y += 6
-    const imgW = 86
-    const imgH = 64
-    const gap = 8
-    const beforeData = await loadImageDataUrl(beforeUrl)
-    const afterData = await loadImageDataUrl(afterUrl)
-    if (beforeUrl) {
-      drawPhotoSlot(doc, margin, y, imgW, imgH, L.before, beforeData, L.photoUnavailable)
+    y += 8
+    const pageW = W - margin * 2
+    const slots = [
+      beforeUrl && [L.before, beforeUrl],
+      duringUrl && [L.during || 'During', duringUrl],
+      afterUrl && [L.after, afterUrl],
+      signatureUrl && [L.signature, signatureUrl],
+    ].filter(Boolean)
+    const imgH = slots.length > 2 ? 70 : 100
+    for (const [label, url] of slots) {
+      if (y + imgH > 275) {
+        doc.addPage()
+        y = margin
+      }
+      const data = await loadImageDataUrl(url)
+      y = drawPhotoSlot(doc, margin, y, pageW, imgH, label, data, L.photoUnavailable)
     }
-    if (afterUrl) {
-      const x = beforeUrl ? margin + imgW + gap : margin
-      drawPhotoSlot(doc, x, y, imgW, imgH, L.after, afterData, L.photoUnavailable)
-    }
-    y += imgH + 12
   }
 
-  doc.setFillColor(6, 13, 24)
-  doc.rect(0, 285, W, 12, 'F')
-  doc.setTextColor(193, 156, 86)
-  doc.setFontSize(7)
-  doc.text(L.confidential, margin, 292)
-  doc.text(`${L.generated}: ${new Date().toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-GB')}`, W - margin, 292, { align: 'right' })
+  addPdfFooter(doc, L, lang)
 
   return doc
+}
+
+export function openPdfPreviewTab() {
+  if (typeof window === 'undefined') return null
+  try {
+    const preview = window.open('', '_blank')
+    if (preview?.document) {
+      preview.document.write(
+        '<p style="font-family:sans-serif;padding:24px;color:#555">Building PDF with photos…</p>',
+      )
+    }
+    return preview
+  } catch {
+    return null
+  }
 }
 
 export async function saveServiceReportPdf(reportOrJob, options = {}) {
@@ -292,6 +328,12 @@ export async function saveServiceReportPdf(reportOrJob, options = {}) {
   const report = looksLikeReport ? reportOrJob : jobToServiceReport(reportOrJob, lang)
   const doc = await generateServiceReportPdf(report, { lang, labels: options.labels })
   const name = reportPdfFilename(report)
+  const blob = doc.output('blob')
+  const preview = options.previewWindow
+  if (preview && !preview.closed && typeof URL !== 'undefined') {
+    const url = URL.createObjectURL(blob)
+    try { preview.location.href = url } catch { /* download still runs */ }
+  }
   doc.save(name)
   return name
 }
@@ -441,7 +483,7 @@ export async function generateDailyReport(date, jobs, employeeName) {
         drawPhotoSlot(doc, x, y, imgW, imgH, label, data, 'Photo unavailable')
         x += imgW + gap
       }
-      y += imgH + 10
+      y += imgH + 16
     }
   }
 

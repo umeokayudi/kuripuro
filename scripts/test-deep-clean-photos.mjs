@@ -349,7 +349,7 @@ async function testServiceReportPdf() {
   const proxied = resolvePdfPhotoUrl('jobs/x.jpg')
   assert(proxied.includes('/api/photo'), proxied)
   const doc = await generateServiceReportPdf(report, { lang: 'en' })
-  assert(doc.getNumberOfPages() >= 1, 'pdf has a page')
+  assert(doc.getNumberOfPages() >= 2, 'photos get their own page')
   const data = doc.output('arraybuffer')
   assert(data.byteLength > 1000, `pdf size ${data.byteLength}`)
 }
