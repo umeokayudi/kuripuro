@@ -22,7 +22,7 @@ export default function Payments() {
 
   const load = async () => {
     const [e, p] = await Promise.all([
-      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days,advance_per_week').eq('is_active',true).order('full_name'),
+      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days,advance_per_week,is_active').order('full_name'),
       supabase.from('salary_payments').select('*').order('payment_date',{ascending:true}),
     ])
     setEmployees(e.data||[])

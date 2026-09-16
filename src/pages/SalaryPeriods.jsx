@@ -11,11 +11,11 @@ const yen = n => `¥${Number(n || 0).toLocaleString()}`
 async function loadMonthSnapshot(period) {
   const { from, to } = monthBounds(period)
   const [{ data: employees }, { data: jobs }, { data: payments }] = await Promise.all([
-    supabase.from('employees').select('*').eq('is_active', true).order('full_name'),
+    supabase.from('employees').select('*').order('full_name'),
     supabase.from('jobs').select('*').eq('status', 'completed').gte('scheduled_date', from).lte('scheduled_date', to),
     supabase.from('salary_payments').select('*').eq('period', period),
   ])
-  return (employees || []).map(emp => {
+  return (employees || []).filter(emp => emp.is_active || (jobs || []).some(j => j.employee_id === emp.id)).map(emp => {
     const calc = calcPeriodSalary(
       emp,
       (jobs || []).filter(j => j.employee_id === emp.id),

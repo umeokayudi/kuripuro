@@ -33,8 +33,8 @@ export default function Salary() {
   useEffect(() => { if (selectedId) loadPeriod() }, [selectedId, period])
 
   const loadEmployees = async () => {
-    const { data } = await supabase.from('employees').select('*').eq('is_active', true).order('full_name')
-    setEmployees(data || [])
+    const { data } = await supabase.from('employees').select('*').order('full_name')
+    setEmployees((data || []).sort((a, b) => Number(b.is_active) - Number(a.is_active)))
     setLoading(false)
   }
 
@@ -174,7 +174,7 @@ export default function Salary() {
                   color: selectedId === e.id ? '#fff' : 'var(--text)',
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{e.full_name}</div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{e.full_name}{e.is_active ? '' : ' · off'}</div>
                 <div style={{ fontSize: 11, opacity: 0.7 }}>{salaryTypeLabel(e.salary_type, lang)} · {rateLabel(e)}</div>
               </button>
             ))}
