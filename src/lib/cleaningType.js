@@ -202,9 +202,9 @@ export function expectedDeepCleanDatesForLocation(locName, yearMonth) {
   return tuesdaysInMonth(yearMonth)
 }
 
-export function deepCleanScheduleLabel(locName) {
-  if (isOtpDeepOnlyLocation(locName)) return 'Mon + Wed'
-  return 'Tue'
+export function deepCleanScheduleLabel(locName, lang = 'en') {
+  if (isOtpDeepOnlyLocation(locName)) return lang === 'ja' ? '月・水' : 'Mon + Wed'
+  return lang === 'ja' ? '火' : 'Tue'
 }
 
 function matchLocation(title) {
@@ -389,7 +389,7 @@ export function daySummaryState(day) {
 }
 
 /** Per-store rows for the HQ dashboard (lowest completion first) */
-export function storeProgressRows(byLocation, today = tokyoToday()) {
+export function storeProgressRows(byLocation, today = tokyoToday(), lang = 'en') {
   return Object.entries(byLocation || {}).map(([name, data]) => {
     const expected = data.expected || 0
     const completed = data.completed || 0
@@ -409,7 +409,7 @@ export function storeProgressRows(byLocation, today = tokyoToday()) {
       missing,
       late,
       pct: expected ? Math.round((completed / expected) * 100) : 0,
-      schedule: data.schedule || '',
+      schedule: deepCleanScheduleLabel(name, lang),
     }
   }).sort((a, b) => a.pct - b.pct || a.name.localeCompare(b.name))
 }

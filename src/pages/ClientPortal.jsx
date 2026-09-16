@@ -105,9 +105,7 @@ export default function ClientPortal() {
   const [visitPreset, setVisitPreset] = useState('month')
   const [visitRange, setVisitRange] = useState(() => visitRangeForPreset('month', tokyoToday()))
   const [deepProgressMonth, setDeepProgressMonth] = useState(currentYearMonth)
-  const [deepProgressStore, setDeepProgressStore] = useState(() => {
-    try { return localStorage.getItem('cp_deep_store') || '' } catch { return '' }
-  })
+  const [deepProgressStore, setDeepProgressStore] = useState('')
   const loadedOnceRef = useRef(false)
 
   const [complaintForm, setComplaintForm] = useState({ job_id: '', category: 'quality', description: '' })
@@ -212,10 +210,6 @@ export default function ClientPortal() {
     const tick = setInterval(() => setClock(new Date()), 60000)
     return () => clearInterval(tick)
   }, [])
-
-  useEffect(() => {
-    try { localStorage.setItem('cp_deep_store', deepProgressStore || '') } catch { /* ignore */ }
-  }, [deepProgressStore])
 
   useEffect(() => {
     if (!selectedVisit && !lightbox) return
@@ -525,7 +519,7 @@ export default function ClientPortal() {
                 </div>
               ))}
             </div>
-            {parseDeepComponents(selectedVisit).length > 0 && (
+            {['completed', 'in_progress'].includes(selectedVisit.status) && parseDeepComponents(selectedVisit).length > 0 && (
               <div className="cp-field">
                 <span className="cp-label">{c.deepCleanParts}</span>
                 <div className="cp-comp-row">
@@ -1142,7 +1136,7 @@ function DeepCleanProgressCard({
   const lateShare = expectedDays ? (lateDays / expectedDays) * 100 : 0
   const missingShare = expectedDays ? (missingDays / expectedDays) * 100 : 0
   const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
-  const storeRows = storeProgressRows(allByLocation || {}, today)
+  const storeRows = storeProgressRows(allByLocation || {}, today, lang)
   const storeNames = Object.keys(allByLocation || {}).sort((a, b) => a.localeCompare(b))
   const weekdays = lang === 'ja'
     ? ['日', '月', '火', '水', '木', '金', '土']
@@ -1252,7 +1246,11 @@ function DeepCleanProgressCard({
         <div className="cp-deep-headline-main">
           {fill(labels.deepCleanOfDays, { done: completedDays, expected: expectedDays })}
         </div>
-        <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
+        <div className={`cp-deep-headline-pct${lateDays > 0 && donePct < 100 ? ' late' : ''}`}>
+          {lateDays > 0 && donePct < 100
+            ? `${labels.deepCleanLate} ${lateDays}`
+            : fill(labels.deepCleanPctDone, { pct: donePct })}
+        </div>
         {visitDone > 0 && (
           <div className="cp-deep-headline-visits">
             {fill(labels.deepCleanVisitsDone, { done: visitDone })}
@@ -1356,6 +1354,7 @@ function DeepCleanProgressCard({
           {selectedLabel}
           {selected && (
             <span className="cp-cal-day-frac">
+              {selected.state === 'late' ? `${labels.deepCleanLate} · ` : ''}
               {selected.done}/{selected.expected} · {selected.pct}%
             </span>
           )}
@@ -1366,18 +1365,28 @@ function DeepCleanProgressCard({
         {selected && (
           <div className="cp-cal-store-list">
             {selected.stores.map(row => {
-              const slot = tuesdaySlotInfo(row.job, slotLabels)
-              const comps = row.job ? parseDeepComponents(row.job) : []
+              const slot = row.job
+                ? tuesdaySlotInfo(row.job, slotLabels)
+                : {
+                    label: row.past ? labels.deepCleanLate : labels.deepCleanMissing,
+                    icon: row.past ? '❌' : '·',
+                    color: row.past ? '#f87171' : '#fbbf24',
+                  }
+              const comps = row.job && ['completed', 'in_progress'].includes(row.job.status)
+                ? parseDeepComponents(row.job)
+                : []
               const statusText = row.overdue && row.job?.status !== 'completed'
                 ? labels.deepCleanLate
                 : slot.label
+              const canOpen = Boolean(row.job && onVisitClick)
               return (
-                <div key={row.name} className={`cp-cal-store${row.job ? ' has-job' : ''}${row.overdue ? ' late' : ''}`}>
+                <div key={row.name} className={`cp-cal-store${row.job ? ' has-job' : ''}${row.overdue ? ' late' : ''}${canOpen ? '' : ' locked'}`}>
                   <button
                     type="button"
                     className="cp-cal-store-main"
+                    disabled={!canOpen}
                     onClick={() => {
-                      if (row.job && onVisitClick) onVisitClick(row.job)
+                      if (canOpen) onVisitClick(row.job)
                     }}
                   >
                     <span className="cp-cal-store-icon" style={{ color: slot.color }}>{slot.icon}</span>

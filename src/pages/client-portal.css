@@ -986,7 +986,11 @@
 .cp-deep-headline-pct {
   font-size: 13px;
   font-weight: 700;
-  color: #fbbf24;
+  color: #4ade80;
+}
+
+.cp-deep-headline-pct.late {
+  color: #f87171;
 }
 
 .cp-deep-headline-visits {
@@ -1084,7 +1088,7 @@
 .cp-deep-dot.not-done { background: rgba(248, 113, 113, 0.9); }
 .cp-deep-dot.pending { background: #60a5fa; }
 .cp-deep-dot.late { background: #f87171; }
-.cp-deep-dot.missing { background: rgba(248, 113, 113, 0.45); }
+.cp-deep-dot.missing { background: #fbbf24; }
 
 .cp-deep-legend-label {
   color: var(--cp-muted);
@@ -1120,7 +1124,7 @@
 .cp-deep-bar-seg.done { background: #4ade80; }
 .cp-deep-bar-seg.pending { background: #60a5fa; }
 .cp-deep-bar-seg.late { background: #f87171; }
-.cp-deep-bar-seg.missing { background: rgba(248, 113, 113, 0.45); }
+.cp-deep-bar-seg.missing { background: rgba(251, 191, 36, 0.7); }
 
 .cp-deep-stores {
   margin-top: 18px;
@@ -1296,9 +1300,13 @@
 
 .cp-cal-cell.selected {
   border-color: var(--cp-gold);
-  box-shadow: 0 0 0 1px rgba(212, 168, 83, 0.55);
-  background: rgba(212, 168, 83, 0.16);
-  color: #f1f5f9;
+  box-shadow: 0 0 0 2px rgba(212, 168, 83, 0.65);
+}
+
+.cp-cal-cell.today.selected {
+  box-shadow:
+    inset 0 0 0 1px rgba(96, 165, 250, 0.75),
+    0 0 0 2px rgba(212, 168, 83, 0.65);
 }
 
 .cp-cal-cell:disabled {
@@ -1401,9 +1409,17 @@
   cursor: pointer;
 }
 
-.cp-cal-store.has-job:hover,
-.cp-cal-store:hover {
+.cp-cal-store.has-job:hover {
   border-color: rgba(212, 168, 83, 0.45);
+}
+
+.cp-cal-store.locked {
+  opacity: 0.92;
+}
+
+.cp-cal-store-main:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .cp-cal-store.late {
@@ -1523,9 +1539,39 @@
   cursor: pointer;
 }
 
+.cp-deep-print {
+  opacity: 0.72;
+  font-weight: 600;
+}
+
 .cp-deep-today:hover,
 .cp-deep-print:hover {
   border-color: rgba(212, 168, 83, 0.55);
+  opacity: 1;
+}
+
+.cp-shell.cp-desktop .cp-cal-cell {
+  aspect-ratio: auto;
+  height: 58px;
+}
+
+@media (max-width: 720px) {
+  .cp-deep-progress-head {
+    flex-direction: column;
+  }
+
+  .cp-deep-controls {
+    width: 100%;
+  }
+
+  .cp-deep-store {
+    max-width: none;
+    width: 100%;
+  }
+
+  .cp-cal-num {
+    font-size: 12px;
+  }
 }
 
 .cp-cal:focus-visible {
