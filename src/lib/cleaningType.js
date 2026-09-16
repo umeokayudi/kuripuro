@@ -270,7 +270,7 @@ export function currentYearMonth() {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 7)
 }
 
-function recalcDeepProgressTotals(byLocation, tuesdaySummary) {
+function recalcDeepProgressTotals(byLocation, _tuesdaySummary) {
   let totalExpected = 0
   let totalCompleted = 0
   let totalPending = 0
