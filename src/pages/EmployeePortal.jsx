@@ -965,11 +965,13 @@ export default function EmployeePortal() {
     if (!url) return null
     return (
       <div>
-        <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
+        <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3,letterSpacing:0.04,textTransform:'uppercase'}}>{label}</div>
         {failed ? (
-          <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
+          <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'3/4',borderRadius:10,background:'#0b1220',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
         ) : (
-          <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
+          <div style={{aspectRatio:'3/4',borderRadius:10,overflow:'hidden',background:'#0b1220'}}>
+            <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',height:'100%',objectFit:'contain',objectPosition:'center'}} />
+          </div>
         )}
       </div>
     )

@@ -4,14 +4,14 @@ const thumbStyle = (size) => ({
   width: size,
   height: size,
   borderRadius: 6,
-  objectFit: 'cover',
   cursor: 'pointer',
   border: '1px solid var(--border)',
   flexShrink: 0,
+  overflow: 'hidden',
 })
 
 /**
- * Before/after job photos — compact thumbnails or full grid with labels.
+ * Before/after job photos — compact thumbnails or a contained 3:4 comparison grid.
  */
 export default function JobPhotos({
   photoStartUrl,
@@ -25,20 +25,27 @@ export default function JobPhotos({
 }) {
   if (!photoStartUrl && !photoEndUrl) return null
 
+  const open = (url, urls) => {
+    if (!onPhotoClick) return
+    onPhotoClick({ url, urls })
+  }
+
   if (variant === 'compact') {
     const items = [
       photoStartUrl && { url: photoStartUrl, label: beforeLabel },
       photoEndUrl && { url: photoEndUrl, label: afterLabel },
     ].filter(Boolean)
+    const urls = items.map(item => item.url)
 
     return (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', ...style }}>
+      <div className="jp-thumbs" style={style}>
         {items.map(({ url, label }) => (
           <StorageImage
             key={url}
             url={url}
             alt={label}
-            onClick={onPhotoClick ? (e) => { e?.stopPropagation?.(); onPhotoClick(url) } : undefined}
+            fit="cover"
+            onClick={onPhotoClick ? (e) => { e?.stopPropagation?.(); open(url, urls) } : undefined}
             style={thumbStyle(size)}
           />
         ))}
@@ -46,22 +53,39 @@ export default function JobPhotos({
     )
   }
 
+  const urls = [photoStartUrl, photoEndUrl].filter(Boolean)
+  const cols = photoStartUrl && photoEndUrl ? 'jp-compare' : 'jp-compare jp-compare-one'
+
   return (
-    <div style={style}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {photoStartUrl && (
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{beforeLabel}</div>
-            <StorageImage url={photoStartUrl} alt={beforeLabel} onClick={onPhotoClick ? () => onPhotoClick(photoStartUrl) : undefined} />
+    <div className={cols} style={style}>
+      {photoStartUrl && (
+        <figure className="jp-figure">
+          <div className="jp-figure-label">{beforeLabel}</div>
+          <div className="jp-frame">
+            <StorageImage
+              url={photoStartUrl}
+              alt={beforeLabel}
+              fit="contain"
+              onClick={onPhotoClick ? () => open(photoStartUrl, urls) : undefined}
+              style={{ width: '100%', height: '100%' }}
+            />
           </div>
-        )}
-        {photoEndUrl && (
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{afterLabel}</div>
-            <StorageImage url={photoEndUrl} alt={afterLabel} onClick={onPhotoClick ? () => onPhotoClick(photoEndUrl) : undefined} />
+        </figure>
+      )}
+      {photoEndUrl && (
+        <figure className="jp-figure">
+          <div className="jp-figure-label">{afterLabel}</div>
+          <div className="jp-frame">
+            <StorageImage
+              url={photoEndUrl}
+              alt={afterLabel}
+              fit="contain"
+              onClick={onPhotoClick ? () => open(photoEndUrl, urls) : undefined}
+              style={{ width: '100%', height: '100%' }}
+            />
           </div>
-        )}
-      </div>
+        </figure>
+      )}
     </div>
   )
 }

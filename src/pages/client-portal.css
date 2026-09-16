@@ -794,10 +794,10 @@
 }
 
 .cp-shell.cp-desktop .cp-sheet {
-  max-width: 520px;
+  max-width: 720px;
   border-radius: 24px;
   border: 1px solid var(--cp-border);
-  max-height: 85vh;
+  max-height: 88vh;
 }
 
 .cp-sheet-handle {
@@ -822,8 +822,10 @@
 }
 
 .cp-lightbox img {
-  max-width: 100%;
-  max-height: 90vh;
+  max-width: min(100%, 92vw);
+  max-height: 88vh;
+  width: auto;
+  height: auto;
   border-radius: 12px;
   object-fit: contain;
 }
@@ -1467,8 +1469,16 @@
   flex-shrink: 0;
 }
 
-.cp-cal-store-photos {
-  padding-left: 32px;
+.cp-shell .jp-figure-label {
+  color: var(--cp-muted);
+}
+.cp-shell .jp-frame {
+  border-color: var(--cp-border);
+  background: #070b14;
+}
+.cp-shell .jp-thumbs img,
+.cp-shell .jp-frame img {
+  background: #070b14;
 }
 
 .cp-comp-row {

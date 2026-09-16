@@ -26,7 +26,7 @@ import { viewablePhotoUrl, isStoragePhotoUrl } from '../src/lib/photoUrl.js'
 import { isOtpDeepOnlyLocation, otpBasicScheduleLocations, otpDeepOnlyLocations } from '../src/lib/serviceCatalog.js'
 import { expectedDeepCleanDatesForLocation, weekdaysInMonth, isDeepCleanAllowedOnDate } from '../src/lib/cleaningType.js'
 import { monthBounds } from '../src/lib/dates.js'
-import { generateServiceReportPdf, reportPdfFilename, resolvePdfPhotoUrl } from '../src/lib/generatePDF.js'
+import { generateServiceReportPdf, reportPdfFilename, resolvePdfPhotoUrl, fitRect, photoDims } from '../src/lib/generatePDF.js'
 import { buildMonthSchedule, buildMissingDeepCleanJobs } from '../src/lib/scheduleGenerator.js'
 
 function assert(cond, msg) {
@@ -329,6 +329,21 @@ function testMonthBounds() {
   assert(feb.to === '2026-02-28', feb.to)
 }
 
+function testPhotoFit() {
+  const portrait = fitRect(1200, 1600, 87, 168)
+  assert(portrait.w <= 87.01 && portrait.h <= 168.01, `fits ${portrait.w}x${portrait.h}`)
+  assert(Math.abs(portrait.w / portrait.h - 1200 / 1600) < 0.02, `ratio ${portrait.w / portrait.h}`)
+  const landscape = fitRect(1600, 900, 87, 168)
+  assert(Math.abs(landscape.w / landscape.h - 1600 / 900) < 0.02, 'landscape ratio')
+  const wideBox = fitRect(1200, 1600, 182, 80)
+  assert(Math.abs(wideBox.w / wideBox.h - 0.75) < 0.02, `portrait in wide box stays 3:4 ${wideBox.w}x${wideBox.h}`)
+  assert(wideBox.h <= 80.01, 'does not overflow height')
+  const fallback = photoDims(0, 0)
+  assert(fallback.width / fallback.height === 3 / 4, 'missing size assumes 3:4')
+  const known = photoDims(1200, 1600)
+  assert(known.width === 1200 && known.height === 1600, 'keeps real size')
+}
+
 async function testServiceReportPdf() {
   const job = {
     id: 'job-pdf',
@@ -376,6 +391,8 @@ async function main() {
   console.log('✅ tuesdaySlotInfo late vs missing')
   testMonthBounds()
   console.log('✅ monthBounds')
+  testPhotoFit()
+  console.log('✅ photo fitRect keeps ratio')
   await testServiceReportPdf()
   console.log('✅ service report PDF')
   console.log('\n✅ All unit tests passed')

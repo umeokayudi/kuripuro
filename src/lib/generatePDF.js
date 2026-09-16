@@ -23,6 +23,75 @@ export function reportPdfFilename(report) {
   return `report_${loc || 'visit'}_${date}.pdf`
 }
 
+export function fitRect(srcW, srcH, maxW, maxH) {
+  const w = Number(srcW) || 0
+  const h = Number(srcH) || 0
+  if (w <= 0 || h <= 0 || maxW <= 0 || maxH <= 0) return { w: maxW, h: maxH }
+  const scale = Math.min(maxW / w, maxH / h)
+  return { w: Math.max(1, w * scale), h: Math.max(1, h * scale) }
+}
+
+/** Phone visit photos are almost always portrait. Use 3:4 when EXIF/SOF size is missing so jsPDF never stretches. */
+export function photoDims(width, height) {
+  const w = Number(width) || 0
+  const h = Number(height) || 0
+  if (w > 0 && h > 0) return { width: w, height: h }
+  return { width: 3, height: 4 }
+}
+
+export function jpegSizeFromBytes(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+  if (data.length < 10 || data[0] !== 0xff || data[1] !== 0xd8) return null
+  let i = 2
+  while (i < data.length - 8) {
+    if (data[i] !== 0xff) { i += 1; continue }
+    const marker = data[i + 1]
+    if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+      const height = (data[i + 5] << 8) | data[i + 6]
+      const width = (data[i + 7] << 8) | data[i + 8]
+      if (width > 0 && height > 0) return { width, height }
+      return null
+    }
+    if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      i += 2
+      continue
+    }
+    const len = (data[i + 2] << 8) | data[i + 3]
+    if (len < 2) break
+    i += 2 + len
+  }
+  return null
+}
+
+function dataUrlToBytes(dataUrl) {
+  const comma = String(dataUrl || '').indexOf(',')
+  if (comma < 0) return null
+  const b64 = dataUrl.slice(comma + 1)
+  try {
+    const bin = atob(b64)
+    const out = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+    return out
+  } catch {
+    return null
+  }
+}
+
+function normalizePhoto(photo) {
+  if (!photo) return null
+  if (typeof photo === 'string') {
+    const bytes = dataUrlToBytes(photo)
+    const size = bytes ? jpegSizeFromBytes(bytes) : null
+    return { dataUrl: photo, width: size?.width || 0, height: size?.height || 0 }
+  }
+  if (!photo.dataUrl) return null
+  return {
+    dataUrl: photo.dataUrl,
+    width: photo.width || 0,
+    height: photo.height || 0,
+  }
+}
+
 function loadHtmlImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -68,7 +137,11 @@ async function blobToJpegDataUrl(blob) {
       canvas.width = Math.max(1, width)
       canvas.height = Math.max(1, height)
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      return canvas.toDataURL('image/jpeg', 0.86)
+      return {
+        dataUrl: canvas.toDataURL('image/jpeg', 0.86),
+        width: canvas.width,
+        height: canvas.height,
+      }
     } catch {
       /* fall through */
     } finally {
@@ -87,12 +160,20 @@ async function blobToJpegDataUrl(blob) {
       }
       const b64 = btoa(binary)
       const kind = mime.includes('png') ? 'png' : 'jpeg'
-      return `data:image/${kind};base64,${b64}`
+      const dataUrl = `data:image/${kind};base64,${b64}`
+      const size = jpegSizeFromBytes(buf)
+      return { dataUrl, width: size?.width || 0, height: size?.height || 0 }
     } catch { /* FileReader fallback */ }
   }
 
   try {
-    return await blobToDataUrl(working)
+    const dataUrl = await blobToDataUrl(working)
+    if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+      const bytes = dataUrlToBytes(dataUrl)
+      const size = bytes ? jpegSizeFromBytes(bytes) : null
+      return { dataUrl, width: size?.width || 0, height: size?.height || 0 }
+    }
+    return null
   } catch {
     return null
   }
@@ -108,41 +189,50 @@ export async function loadImageDataUrl(url) {
 
   for (const src of candidates) {
     try {
-      if (src.startsWith('data:image/')) return src
+      if (src.startsWith('data:image/')) {
+        const bytes = dataUrlToBytes(src)
+        const size = bytes ? jpegSizeFromBytes(bytes) : null
+        return { dataUrl: src, width: size?.width || 0, height: size?.height || 0 }
+      }
       const resp = await fetch(src)
       if (!resp.ok) continue
       const blob = await resp.blob()
       const jpeg = await blobToJpegDataUrl(blob)
-      if (jpeg) return jpeg
+      if (jpeg?.dataUrl) return jpeg
     } catch { /* try next candidate */ }
   }
   return null
 }
 
-function drawPhotoSlot(doc, x, y, w, h, label, dataUrl, missingLabel) {
+function drawContainedPhoto(doc, x, y, boxW, boxH, label, photo, missingLabel) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(40, 40, 40)
   doc.text(label, x, y)
   const imgY = y + 4
   doc.setDrawColor(210)
-  doc.setFillColor(248, 250, 252)
-  doc.roundedRect(x, imgY, w, h, 2, 2, 'FD')
+  doc.setFillColor(22, 28, 38)
+  doc.roundedRect(x, imgY, boxW, boxH, 2, 2, 'FD')
+  const packed = normalizePhoto(photo)
   let drawn = false
-  if (dataUrl) {
+  if (packed?.dataUrl) {
     try {
-      const fmt = dataUrl.includes('image/png') ? 'PNG' : 'JPEG'
-      doc.addImage(dataUrl, fmt, x, imgY, w, h)
+      const dims = photoDims(packed.width, packed.height)
+      const fitted = fitRect(dims.width, dims.height, boxW - 4, boxH - 4)
+      const ox = x + (boxW - fitted.w) / 2
+      const oy = imgY + (boxH - fitted.h) / 2
+      const fmt = packed.dataUrl.includes('image/png') ? 'PNG' : 'JPEG'
+      doc.addImage(packed.dataUrl, fmt, ox, oy, fitted.w, fitted.h)
       drawn = true
     } catch { drawn = false }
   }
   if (!drawn) {
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.setTextColor(140, 140, 140)
-    doc.text(missingLabel || 'Photo unavailable', x + w / 2, imgY + h / 2, { align: 'center' })
+    doc.setFontSize(8)
+    doc.setTextColor(180, 186, 196)
+    doc.text(missingLabel || 'Photo unavailable', x + boxW / 2, imgY + boxH / 2, { align: 'center' })
   }
-  return imgY + h + 8
+  return imgY + boxH + 8
 }
 
 function addPdfFooter(doc, L, lang) {
@@ -179,6 +269,7 @@ function reportLabels(lang, extra = {}) {
     photos: ja ? '作業写真' : 'Service photos',
     before: ja ? '作業前' : 'Before',
     after: ja ? '作業後' : 'After',
+    during: ja ? '作業中' : 'During',
     signature: ja ? '署名' : 'Signature',
     photoUnavailable: ja ? '写真を読み込めませんでした' : 'Photo unavailable',
     noNotes: ja ? 'コメントなし' : 'No comments',
@@ -254,23 +345,25 @@ export async function generateServiceReportPdf(reportOrJob, { lang = 'en', label
   })
   y += Math.ceil(meta.length / 2) * 12 + 6
 
-  const notes = report.notes_out || report.retro_ai_summary || ''
-  if (y > 250) { doc.addPage(); y = margin }
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(6, 13, 24)
-  doc.text(L.notes, margin, y)
-  y += 6
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(50, 50, 50)
-  const noteLines = doc.splitTextToSize(notes || L.noNotes, W - margin * 2)
-  noteLines.forEach(line => {
-    if (y > 270) { doc.addPage(); y = margin }
-    doc.text(line, margin, y)
-    y += 4.5
-  })
-  y += 6
+  const notes = (report.notes_out || report.retro_ai_summary || '').trim()
+  if (notes) {
+    if (y > 250) { doc.addPage(); y = margin }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(6, 13, 24)
+    doc.text(L.notes, margin, y)
+    y += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(50, 50, 50)
+    const noteLines = doc.splitTextToSize(notes, W - margin * 2)
+    noteLines.forEach(line => {
+      if (y > 270) { doc.addPage(); y = margin }
+      doc.text(line, margin, y)
+      y += 4.5
+    })
+    y += 6
+  }
 
   const beforeUrl = report.photo_before_url || report.photo_start_url
   const afterUrl = report.photo_after_url || report.photo_end_url
@@ -283,22 +376,54 @@ export async function generateServiceReportPdf(reportOrJob, { lang = 'en', label
     doc.setFontSize(13)
     doc.setTextColor(6, 13, 24)
     doc.text(L.photos, margin, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(90, 90, 90)
+    doc.text(`${location}  ·  ${dateLabel || '—'}`, margin, y)
     y += 8
+
     const pageW = W - margin * 2
-    const slots = [
-      beforeUrl && [L.before, beforeUrl],
-      duringUrl && [L.during || 'During', duringUrl],
-      afterUrl && [L.after, afterUrl],
-      signatureUrl && [L.signature, signatureUrl],
-    ].filter(Boolean)
-    const imgH = slots.length > 2 ? 70 : 100
-    for (const [label, url] of slots) {
-      if (y + imgH > 275) {
-        doc.addPage()
-        y = margin
-      }
-      const data = await loadImageDataUrl(url)
-      y = drawPhotoSlot(doc, margin, y, pageW, imgH, label, data, L.photoUnavailable)
+    const pair = []
+    if (beforeUrl) pair.push([L.before, await loadImageDataUrl(beforeUrl)])
+    if (afterUrl) pair.push([L.after, await loadImageDataUrl(afterUrl)])
+
+    if (pair.length === 2) {
+      const gap = 8
+      const colW = (pageW - gap) / 2
+      const maxH = 176
+      const fittedHeights = pair.map(([, photo]) => {
+        const packed = normalizePhoto(photo)
+        const dims = photoDims(packed?.width, packed?.height)
+        return fitRect(dims.width, dims.height, colW - 4, maxH).h
+      })
+      const boxH = Math.min(maxH, Math.max(110, ...fittedHeights) + 4)
+      drawContainedPhoto(doc, margin, y, colW, boxH, pair[0][0], pair[0][1], L.photoUnavailable)
+      drawContainedPhoto(doc, margin + colW + gap, y, colW, boxH, pair[1][0], pair[1][1], L.photoUnavailable)
+      y += boxH + 16
+    } else if (pair.length === 1) {
+      const packed = normalizePhoto(pair[0][1])
+      const dims = photoDims(packed?.width, packed?.height)
+      const boxH = Math.min(210, fitRect(dims.width, dims.height, pageW, 210).h + 8)
+      y = drawContainedPhoto(doc, margin, y, pageW, boxH, pair[0][0], pair[0][1], L.photoUnavailable)
+    }
+
+    if (duringUrl) {
+      const photo = await loadImageDataUrl(duringUrl)
+      const packed = normalizePhoto(photo)
+      const dims = photoDims(packed?.width, packed?.height)
+      const boxH = Math.min(120, fitRect(dims.width, dims.height, pageW, 120).h + 8)
+      if (y + boxH > 268) { doc.addPage(); y = margin }
+      y = drawContainedPhoto(doc, margin, y, pageW, boxH, L.during, photo, L.photoUnavailable)
+    }
+
+    if (signatureUrl) {
+      const photo = await loadImageDataUrl(signatureUrl)
+      const packed = normalizePhoto(photo)
+      const dims = photoDims(packed?.width || 400, packed?.height || 120)
+      const boxH = Math.min(42, Math.max(28, fitRect(dims.width, dims.height, pageW, 42).h + 6))
+      if (y + boxH > 268) { doc.addPage(); y = margin }
+      y = drawContainedPhoto(doc, margin, y, pageW, boxH, L.signature, photo, L.photoUnavailable)
     }
   }
 
@@ -480,7 +605,7 @@ export async function generateDailyReport(date, jobs, employeeName) {
       for (const [label, url] of [['Before', j.photo_start_url], ['After', j.photo_end_url]]) {
         if (!url) continue
         const data = await loadImageDataUrl(url)
-        drawPhotoSlot(doc, x, y, imgW, imgH, label, data, 'Photo unavailable')
+        drawContainedPhoto(doc, x, y, imgW, imgH, label, data, 'Photo unavailable')
         x += imgW + gap
       }
       y += imgH + 16
