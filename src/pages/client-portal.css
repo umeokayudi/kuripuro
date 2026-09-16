@@ -929,7 +929,8 @@
   color: var(--cp-text);
   font-size: 12px;
   font-weight: 600;
-  max-width: 180px;
+  max-width: 220px;
+  color-scheme: dark;
 }
 
 .cp-deep-headline {
