@@ -260,22 +260,35 @@ export default function Dashboard() {
             style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, fontWeight: 600 }} />
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-          {[
-            [d.completed, deepProgress.totals.completed, '#4ade80'],
-            [d.pending, deepProgress.totals.pending, '#60a5fa'],
-            [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#f87171'],
-            [d.progress, `${deepProgress.totals.pct}%`, '#fbbf24'],
-          ].map(([l, v, c]) => (
-            <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 16px', minWidth: 100 }}>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: c }}>{v}</div>
+        <div className="dash-deep-layout">
+          <div
+            className="dash-deep-donut"
+            style={{ background: `conic-gradient(#16a34a 0% ${deepProgress.totals.pct}%, #fecaca ${deepProgress.totals.pct}% 100%)` }}
+            role="img"
+            aria-label={`${deepProgress.totals.pct}% ${d.completed}`}
+          >
+            <div className="dash-deep-donut-hole">
+              <div className="dash-deep-donut-pct">{deepProgress.totals.pct}%</div>
+              <div className="dash-deep-donut-lbl">{d.contractChart || d.progress}</div>
             </div>
-          ))}
+          </div>
+          <div className="dash-deep-stats">
+            {[
+              [d.completed, deepProgress.totals.completed, '#16a34a'],
+              [d.pending, deepProgress.totals.pending, '#2563eb'],
+              [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#dc2626'],
+              [d.progress, `${deepProgress.totals.pct}%`, '#d97706'],
+            ].map(([l, v, c]) => (
+              <div key={l} className="dash-deep-stat">
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: c }}>{v}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div style={{ height: 10, background: 'var(--surface2)', borderRadius: 5, overflow: 'hidden', marginBottom: 16 }}>
-          <div style={{ height: '100%', width: `${deepProgress.totals.pct}%`, background: 'linear-gradient(90deg,#fbbf24,#4ade80)', borderRadius: 5, transition: 'width 0.4s' }} />
+        <div style={{ height: 10, background: 'var(--border)', borderRadius: 5, overflow: 'hidden', marginBottom: 16 }}>
+          <div style={{ height: '100%', width: `${deepProgress.totals.pct}%`, background: 'linear-gradient(90deg,#d97706,#16a34a)', borderRadius: 5, transition: 'width 0.4s' }} />
         </div>
 
         {deepProgress.tuesdaySummary.length > 0 && (
@@ -299,23 +312,22 @@ export default function Dashboard() {
         )}
 
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byRestaurant}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+        <div className="dash-deep-grid">
           {Object.entries(deepProgress.byLocation).map(([loc, data]) => {
             const pct = data.expected ? Math.round((data.completed / data.expected) * 100) : 0
             const ok = data.completed >= data.expected
             return (
-              <button key={loc} type="button" onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }}
-                style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc}</div>
+              <button key={loc} type="button" className={`dash-deep-store${ok ? ' ok' : ''}`} onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }}>
+                <div className="dash-deep-store-name">{loc}</div>
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{data.schedule || 'Tue'}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
                   <span>{fill(d.doneCount, { done: data.completed, expected: data.expected })}</span>
-                  <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{pct}%</span>
+                  <span style={{ color: ok ? 'var(--green)' : '#d97706', fontWeight: 700 }}>{pct}%</span>
                 </div>
-                <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
+                <div className="dash-deep-bar">
+                  <div style={{ height: '100%', width: `${pct}%`, background: ok ? 'var(--green)' : '#d97706', borderRadius: 3 }} />
                 </div>
-                {data.missing > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: data.missing })}</div>}
+                {data.missing > 0 && <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: data.missing })}</div>}
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{d.clickRestaurant}</div>
               </button>
             )
@@ -362,9 +374,9 @@ export default function Dashboard() {
             const pct = Math.round(p / maxProfit * 100)
             const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? '#EF9F27' : 'var(--red)'
             return (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                <div style={{ width: 120, fontSize: 12, fontWeight: 500, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.company_name}</div>
-                <div style={{ flex: 1, height: 14, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, minWidth: 0 }}>
+                <div style={{ width: 120, maxWidth: '38%', fontSize: 12, fontWeight: 500, flexShrink: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{c.company_name}</div>
+                <div style={{ flex: 1, height: 14, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', minWidth: 0 }}>
                   <div style={{ height: '100%', width: pct + '%', background: color, borderRadius: 3 }} />
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 600, color, width: 70, textAlign: 'right' }}>¥{(p / 1000).toFixed(0)}k</div>

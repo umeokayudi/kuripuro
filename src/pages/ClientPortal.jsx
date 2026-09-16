@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 import {
-  buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
+  buildDeepCleanTrackingCharts, currentYearMonth, ONTHEPLANET_CLIENT_ID,
 } from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -65,6 +65,7 @@ export default function ClientPortal() {
 
   const [tab, setTab] = useState('home')
   const [jobs, setJobs] = useState([])
+  const [otpChartJobs, setOtpChartJobs] = useState([])
   const [contracts, setContracts] = useState([])
   const [messages, setMessages] = useState([])
   const [complaints, setComplaints] = useState([])
@@ -140,7 +141,9 @@ export default function ClientPortal() {
         toast.error(firstErr)
       }
 
-      setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
+      const rawJobs = jobsRes.data || []
+      setJobs(rawJobs.filter(j => jobMatchesClientUser(j, user)))
+      setOtpChartJobs(user.client_id === ONTHEPLANET_CLIENT_ID ? rawJobs : [])
       setContracts(contractsRes.data || [])
       setMessages(filterByLocation(msgsRes.data, user.location_name))
       setComplaints(filterByLocation(compRes.data, user.location_name))
@@ -256,10 +259,10 @@ export default function ClientPortal() {
   }, [filteredVisits])
 
   const isOtpClient = user?.client_id === ONTHEPLANET_CLIENT_ID
-  const deepProgress = useMemo(() => {
+  const deepTracking = useMemo(() => {
     if (!isOtpClient) return null
-    return buildDeepCleanProgressForUser(jobs, deepProgressMonth, user)
-  }, [jobs, deepProgressMonth, user, isOtpClient])
+    return buildDeepCleanTrackingCharts(otpChartJobs, deepProgressMonth, user)
+  }, [otpChartJobs, deepProgressMonth, user, isOtpClient])
   const deepProgressMonthLabel = useMemo(() => (
     new Date(`${deepProgressMonth}-01T12:00:00`).toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
   ), [deepProgressMonth, dateLocale])
@@ -608,10 +611,11 @@ export default function ClientPortal() {
               <div className="cp-loading">{c.loading}</div>
             ) : tab === 'home' && (
               <>
-                {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
+                {isOtpClient && deepTracking?.contract?.totals?.expected > 0 && (
                   <DeepCleanProgressCard
-                    progress={deepProgress}
+                    tracking={deepTracking}
                     labels={c}
+                    lang={lang}
                     monthLabel={deepProgressMonthLabel}
                     progressMonth={deepProgressMonth}
                     onMonthChange={setDeepProgressMonth}
@@ -1026,75 +1030,231 @@ function FeedbackPhotoField({
   )
 }
 
-function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, onMonthChange }) {
-  const { totals, scope, location } = progress
+function totalsFromStoreRow(row) {
+  if (!row) return null
+  const expected = row.expected || 0
+  const completed = row.completed || 0
+  const pending = row.pending || 0
+  const scheduled = row.jobs?.length ?? (completed + pending)
+  const notDone = Math.max(0, expected - completed)
+  const pct = expected ? Math.round((completed / expected) * 100) : 0
+  return {
+    expected,
+    completed,
+    pending,
+    scheduled,
+    notDone,
+    donePct: pct,
+    pct,
+  }
+}
+
+function MonthPicker({ value, onChange, lang, ariaLabel }) {
+  const [year, month] = String(value || '').split('-').map(Number)
+  const y = year || new Date().getFullYear()
+  const m = month || 1
+  const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const years = [y - 1, y, y + 1]
+  return (
+    <div className="cp-deep-month-pick">
+      <select
+        aria-label={ariaLabel}
+        value={y}
+        onChange={e => onChange(`${e.target.value}-${String(m).padStart(2, '0')}`)}
+      >
+        {years.map(yy => (
+          <option key={yy} value={yy}>{yy}</option>
+        ))}
+      </select>
+      <select
+        aria-label={ariaLabel}
+        value={m}
+        onChange={e => onChange(`${y}-${String(Number(e.target.value)).padStart(2, '0')}`)}
+      >
+        {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+          <option key={n} value={n}>
+            {new Date(2026, n - 1, 1).toLocaleDateString(locale, { month: 'long' })}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+function DeepDonut({ totals, labels, size = 148 }) {
   const donePct = totals.donePct ?? totals.pct ?? 0
-  const notDonePct = totals.notDonePct ?? Math.max(0, 100 - donePct)
+  const frac = fill(labels.deepCleanOfExpected, {
+    done: totals.completed,
+    expected: totals.expected,
+  })
+  return (
+    <div
+      className="cp-deep-donut"
+      style={{
+        width: size,
+        height: size,
+        background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(255, 255, 255, 0.08) ${donePct}% 100%)`,
+      }}
+      role="img"
+      aria-label={`${frac} · ${fill(labels.deepCleanPctComplete, { pct: donePct })}`}
+    >
+      <div className="cp-deep-donut-hole">
+        <div className="cp-deep-donut-frac">{frac}</div>
+        <div className="cp-deep-donut-pct">{donePct}%</div>
+      </div>
+    </div>
+  )
+}
+
+function DeepLegend({ totals, labels }) {
   const missing = Math.max(0, totals.expected - totals.scheduled)
-  const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
+  return (
+    <div className="cp-deep-legend">
+      <div className="cp-deep-legend-row">
+        <span className="cp-deep-dot done" />
+        <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
+        <span className="cp-deep-legend-val">
+          {fill(labels.deepCleanOfExpected, { done: totals.completed, expected: totals.expected })}
+        </span>
+      </div>
+      <div className="cp-deep-legend-row">
+        <span className="cp-deep-dot not-done" />
+        <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
+        <span className="cp-deep-legend-val">{totals.notDone ?? Math.max(0, totals.expected - totals.completed)}</span>
+      </div>
+      {totals.pending > 0 && (
+        <div className="cp-deep-legend-row muted">
+          <span className="cp-deep-dot pending" />
+          <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
+          <span className="cp-deep-legend-val">{totals.pending}</span>
+        </div>
+      )}
+      {missing > 0 && (
+        <div className="cp-deep-legend-row muted">
+          <span className="cp-deep-dot missing" />
+          <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
+          <span className="cp-deep-legend-val">{missing}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DeepCleanProgressCard({ tracking, labels, lang, monthLabel, progressMonth, onMonthChange }) {
+  const stores = tracking.stores || []
+  const defaultKey = tracking.highlightLocation || 'all'
+  const [selected, setSelected] = useState(defaultKey)
+
+  useEffect(() => {
+    if (selected === 'all') return
+    if (!stores.some(s => s.loc === selected)) {
+      setSelected(tracking.highlightLocation || 'all')
+    }
+  }, [selected, stores, tracking.highlightLocation])
+
+  const selectedRow = selected === 'all' ? null : stores.find(s => s.loc === selected) || null
+  const totals = selectedRow ? totalsFromStoreRow(selectedRow) : tracking.contract.totals
+  const pct = totals.donePct ?? totals.pct ?? 0
+  const scopeLabel = selectedRow ? selectedRow.loc : labels.deepCleanAllStores
 
   return (
     <div className="cp-deep-progress">
       <div className="cp-deep-progress-head">
-        <div>
+        <div className="cp-deep-progress-copy">
           <div className="cp-deep-progress-title">✨ {labels.deepCleanProgress}</div>
           <div className="cp-deep-progress-sub">
-            {scopeLabel} · {fill(labels.deepCleanProgressHint, { month: monthLabel, expected: totals.expected })}
+            {scopeLabel} · {fill(labels.deepCleanProgressHint, {
+              month: monthLabel,
+              expected: totals.expected,
+            })}
           </div>
         </div>
-        <input
-          type="month"
-          className="cp-deep-month"
+        <MonthPicker
           value={progressMonth}
-          onChange={e => onMonthChange(e.target.value)}
-          aria-label={labels.deepCleanProgress}
+          onChange={onMonthChange}
+          lang={lang}
+          ariaLabel={labels.deepCleanMonth}
         />
       </div>
 
-      <div className="cp-deep-progress-body">
-        <div
-          className="cp-deep-donut"
-          style={{ background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(248, 113, 113, 0.9) ${donePct}% 100%)` }}
-          role="img"
-          aria-label={`${donePct}% ${labels.deepCleanDone}, ${notDonePct}% ${labels.deepCleanNotDone}`}
+      <div className="cp-deep-scope">
+        <label className="cp-deep-scope-label" htmlFor="cp-deep-store-select">
+          {labels.deepCleanSelectStore}
+        </label>
+        <select
+          id="cp-deep-store-select"
+          className="cp-deep-scope-select"
+          value={selected}
+          onChange={e => setSelected(e.target.value)}
         >
-          <div className="cp-deep-donut-hole">
-            <div className="cp-deep-donut-pct">{donePct}%</div>
-            <div className="cp-deep-donut-lbl">{labels.deepCleanDone}</div>
-          </div>
-        </div>
-
-        <div className="cp-deep-legend">
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
-            <span className="cp-deep-legend-val">{totals.completed} ({donePct}%)</span>
-          </div>
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot not-done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
-            <span className="cp-deep-legend-val">{totals.notDone} ({notDonePct}%)</span>
-          </div>
-          {totals.pending > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot pending" />
-              <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
-              <span className="cp-deep-legend-val">{totals.pending}</span>
-            </div>
-          )}
-          {missing > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot missing" />
-              <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
-              <span className="cp-deep-legend-val">{missing}</span>
-            </div>
-          )}
-        </div>
+          <option value="all">{labels.deepCleanAllStores} · {labels.deepCleanContract}</option>
+          {stores.map(row => (
+            <option key={row.loc} value={row.loc}>
+              {row.loc} · {row.completed}/{row.expected} · {row.pct}%
+            </option>
+          ))}
+        </select>
       </div>
 
-      <div className="cp-deep-bar">
-        <div className="cp-deep-bar-fill" style={{ width: `${donePct}%` }} />
-      </div>
+      <section className={`cp-deep-chart-block${selectedRow ? ' mine' : ''}`}>
+        <div className="cp-deep-chart-kicker">
+          {selectedRow ? selectedRow.loc : labels.deepCleanContract}
+        </div>
+        <div className="cp-deep-progress-body">
+          <DeepDonut totals={totals} labels={labels} />
+          <div className="cp-deep-hero-copy">
+            <div className="cp-deep-hero-pct">{fill(labels.deepCleanPctComplete, { pct })}</div>
+            <DeepLegend totals={totals} labels={labels} />
+          </div>
+        </div>
+        <div className="cp-deep-bar">
+          <div className="cp-deep-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      </section>
+
+      {stores.length > 0 && (
+        <div className="cp-deep-stores">
+          <div className="cp-deep-stores-title">{labels.deepCleanByStore}</div>
+          <div className="cp-deep-store-grid">
+            <button
+              type="button"
+              className={`cp-deep-store${selected === 'all' ? ' selected' : ''}`}
+              onClick={() => setSelected('all')}
+            >
+              <div className="cp-deep-store-name">{labels.deepCleanAllStores}</div>
+              <div className="cp-deep-store-meta">{labels.deepCleanContract}</div>
+              <div className="cp-deep-store-row">
+                <span>{fill(labels.deepCleanOfExpected, { done: tracking.contract.totals.completed, expected: tracking.contract.totals.expected })}</span>
+                <span className="cp-deep-store-pct">{tracking.contract.totals.donePct ?? tracking.contract.totals.pct ?? 0}%</span>
+              </div>
+              <div className="cp-deep-store-bar">
+                <div className="cp-deep-store-bar-fill" style={{ width: `${tracking.contract.totals.donePct ?? tracking.contract.totals.pct ?? 0}%` }} />
+              </div>
+            </button>
+            {stores.map(row => (
+              <button
+                key={row.loc}
+                type="button"
+                className={`cp-deep-store${row.loc === selected ? ' selected' : ''}${row.highlight ? ' mine' : ''}${row.ok ? ' ok' : ''}`}
+                onClick={() => setSelected(row.loc)}
+              >
+                <div className="cp-deep-store-name">{row.loc}</div>
+                <div className="cp-deep-store-meta">{row.schedule || 'Tue'}</div>
+                <div className="cp-deep-store-row">
+                  <span>{fill(labels.deepCleanOfExpected, { done: row.completed, expected: row.expected })}</span>
+                  <span className="cp-deep-store-pct">{row.pct}%</span>
+                </div>
+                <div className="cp-deep-store-bar">
+                  <div className="cp-deep-store-bar-fill" style={{ width: `${row.pct}%` }} />
+                </div>
+                {row.highlight && (
+                  <div className="cp-deep-store-you">{labels.deepCleanThisStore}</div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -12,13 +12,16 @@ import {
   ALL_DEEP_COMPONENT_IDS,
   buildDeepCleanProgress,
   buildDeepCleanProgressForUser,
+  buildDeepCleanTrackingCharts,
+  DEEP_CLEAN_LOCATIONS,
 } from '../src/lib/cleaningType.js'
 import { SCHEDULE_CLIENTS } from '../src/lib/serviceCatalog.js'
-import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
+import { buildAddServiceOptions, manualAddLocations } from '../src/lib/employeeAddJob.js'
 import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../src/lib/jobReport.js'
 import { viewablePhotoUrl, isStoragePhotoUrl } from '../src/lib/photoUrl.js'
 import { isOtpDeepOnlyLocation, otpBasicScheduleLocations, otpDeepOnlyLocations } from '../src/lib/serviceCatalog.js'
 import { expectedDeepCleanDatesForLocation, weekdaysInMonth, isDeepCleanAllowedOnDate } from '../src/lib/cleaningType.js'
+import { jobMatchesClientUser } from '../src/lib/clientPortal.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -84,6 +87,11 @@ function testAddServiceOptions() {
   ]
   const deepOpts2 = buildAddServiceOptions(locations, deepMine, employeeId, 'deep')
   assert(deepOpts2[0].state === 'mine', `deep mine: ${deepOpts2[0].state}`)
+
+  const addable = manualAddLocations()
+  assert(addable.some(l => l.name === 'Ibushio'), 'OTP stays on add-service list')
+  assert(addable.some(l => l.name === 'Atomic Bar'), 'Atomic stays on add-service list')
+  assert(!addable.some(l => /matsunaga/i.test(l.name)), 'Matsunaga is not on add-service list')
 }
 
 function testViewablePhotoUrl() {
@@ -194,6 +202,34 @@ function testDeepCleanProgressForUser() {
   const unknown = buildDeepCleanProgressForUser(jobs, ym, { location_name: 'Unknown Store' })
   assert(unknown.scope === 'none', unknown.scope)
   assert(unknown.totals.expected === 0, 'unknown store expected 0')
+
+  const storeCharts = buildDeepCleanTrackingCharts(jobs, ym, storeUser)
+  assert(storeCharts.scope === 'location', storeCharts.scope)
+  assert(storeCharts.highlightLocation === 'Kodama Oimachi', storeCharts.highlightLocation)
+  assert(storeCharts.contract.totals.completed === 1, 'contract completed from all OTP jobs')
+  assert(storeCharts.contract.totals.pending === 1, 'contract pending from other store')
+  assert(storeCharts.store?.location === 'Kodama Oimachi', 'store chart location')
+  assert(storeCharts.store.totals.completed === 1, 'store chart completed')
+  assert(storeCharts.store.totals.pending === 0, 'store chart ignores other stores')
+  assert(storeCharts.stores.length === DEEP_CLEAN_LOCATIONS.length, 'one row per OTP store')
+  const kodama = storeCharts.stores.find(r => r.loc === 'Kodama Oimachi')
+  const ibushio = storeCharts.stores.find(r => r.loc === 'Ibushio')
+  assert(kodama?.highlight === true, 'store user highlights own store')
+  assert(ibushio?.highlight === false, 'other stores not highlighted')
+  assert(kodama?.completed === 1, 'kodama completed in grid')
+  assert(ibushio?.pending === 1, 'ibushio pending in grid')
+
+  const hqCharts = buildDeepCleanTrackingCharts(jobs, ym, hqUser)
+  assert(hqCharts.scope === 'all', hqCharts.scope)
+  assert(!hqCharts.store, 'hq has no this-store chart')
+  assert(hqCharts.stores.every(r => !r.highlight), 'hq does not highlight a store')
+  assert(hqCharts.contract.totals.completed === 1, 'hq contract completed')
+
+  const kodamaJob = jobs[0]
+  const ibushioJob = jobs[1]
+  assert(jobMatchesClientUser(kodamaJob, storeUser), 'store visits include own store')
+  assert(!jobMatchesClientUser(ibushioJob, storeUser), 'store visits hide other stores')
+  assert(jobMatchesClientUser(ibushioJob, hqUser), 'hq visits include all OTP stores')
 }
 
 async function main() {
@@ -209,7 +245,7 @@ async function main() {
   testReportPhotos()
   console.log('✅ jobReport photo merge')
   testDeepCleanProgressForUser()
-  console.log('✅ buildDeepCleanProgressForUser')
+  console.log('✅ buildDeepCleanProgressForUser + tracking charts')
   console.log('\n✅ All unit tests passed')
 }
 
