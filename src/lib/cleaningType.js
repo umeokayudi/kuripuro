@@ -5,6 +5,8 @@ import {
   otpDeepOnlyLocations,
   otpDeepOnlyLocation,
 } from './serviceCatalog'
+import { isOverdueAssignedJob } from './jobOverdue'
+import { tokyoToday } from './dates'
 
 export const CLEANING_TYPES = {
   basic: { label: 'Basic cleaning', suffix: 'Basic Cleaning', short: 'Basic', color: '#60a5fa' },
@@ -330,56 +332,82 @@ export function monthCalendarCells(yearMonth) {
   return cells
 }
 
-export function daySummaryState(day) {
-  if (!day?.expected) return 'empty'
-  if (day.done >= day.expected) return 'done'
-  if (day.done > 0 || day.pending > 0) return 'partial'
-  return 'missing'
-}
-
 /** Unique service days from a progress snapshot (one row per date with deep clean). */
-export function buildDaySummaries(byLocation) {
+export function buildDaySummaries(byLocation, today = tokyoToday()) {
   const byDate = {}
   Object.entries(byLocation || {}).forEach(([name, data]) => {
     (data.expectedDates || []).forEach(date => {
       if (!byDate[date]) {
-        byDate[date] = { date, expected: 0, done: 0, pending: 0, missing: 0, stores: [] }
+        byDate[date] = {
+          date,
+          expected: 0,
+          done: 0,
+          pending: 0,
+          missing: 0,
+          overdueCount: 0,
+          past: date < today,
+          stores: [],
+        }
       }
       const job = data.byDate?.[date]
         || (data.jobs || []).find(j => j.scheduled_date === date)
         || null
       const status = job?.status
+      const overdue = job ? isOverdueAssignedJob(job) : date < today
       byDate[date].expected += 1
       if (status === 'completed') byDate[date].done += 1
       else if (status === 'assigned' || status === 'in_progress') byDate[date].pending += 1
       else byDate[date].missing += 1
-      byDate[date].stores.push({ name, job, schedule: data.schedule || '' })
+      if (overdue) byDate[date].overdueCount += 1
+      byDate[date].stores.push({
+        name,
+        job,
+        schedule: data.schedule || '',
+        overdue,
+        past: date < today,
+      })
     })
   })
 
   return Object.values(byDate)
     .map(day => ({
       ...day,
-      stores: day.stores.sort((a, b) => a.name.localeCompare(b.name)),
+      stores: day.stores.sort((a, b) => Number(b.overdue) - Number(a.overdue) || a.name.localeCompare(b.name)),
       pct: day.expected ? Math.round((day.done / day.expected) * 100) : 0,
       state: daySummaryState(day),
     }))
     .sort((a, b) => a.date.localeCompare(b.date))
 }
 
+export function daySummaryState(day) {
+  if (!day?.expected) return 'empty'
+  if (day.done >= day.expected) return 'done'
+  if (day.done > 0) return 'partial'
+  if (day.past) return 'late'
+  if (day.pending > 0) return 'partial'
+  return 'missing'
+}
+
 /** Per-store rows for the HQ dashboard (lowest completion first) */
-export function storeProgressRows(byLocation) {
+export function storeProgressRows(byLocation, today = tokyoToday()) {
   return Object.entries(byLocation || {}).map(([name, data]) => {
     const expected = data.expected || 0
     const completed = data.completed || 0
     const pending = data.pending || 0
     const missing = data.missing ?? Math.max(0, expected - (data.jobs?.length || 0))
+    let late = 0
+    ;(data.expectedDates || []).forEach(date => {
+      const job = data.byDate?.[date] || (data.jobs || []).find(j => j.scheduled_date === date)
+      if (job?.status === 'completed') return
+      if (job ? isOverdueAssignedJob(job) : date < today) late += 1
+    })
     return {
       name,
       expected,
       completed,
       pending,
       missing,
+      late,
       pct: expected ? Math.round((completed / expected) * 100) : 0,
       schedule: data.schedule || '',
     }

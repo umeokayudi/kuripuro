@@ -7,10 +7,12 @@ import {
   buildDaySummaries,
   buildDeepCleanProgressForUser,
   currentYearMonth,
+  deepComponentLabel,
   filterDeepCleanProgressByLocation,
   formatScheduleDate,
   monthCalendarCells,
   ONTHEPLANET_CLIENT_ID,
+  parseDeepComponents,
   storeProgressRows,
   tuesdaySlotInfo,
 } from '../lib/cleaningType'
@@ -49,6 +51,13 @@ function shiftYearMonth(ym, delta) {
   if (!y || !m) return ym
   const d = new Date(y, m - 1 + delta, 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function mergeJobLists(prev, incoming) {
+  const map = new Map()
+  ;(prev || []).forEach(j => { if (j?.id) map.set(j.id, j) })
+  ;(incoming || []).forEach(j => { if (j?.id) map.set(j.id, j) })
+  return [...map.values()].sort((a, b) => String(b.scheduled_date || '').localeCompare(String(a.scheduled_date || '')))
 }
 
 function visitRangeForPreset(preset, today) {
@@ -96,7 +105,9 @@ export default function ClientPortal() {
   const [visitPreset, setVisitPreset] = useState('month')
   const [visitRange, setVisitRange] = useState(() => visitRangeForPreset('month', tokyoToday()))
   const [deepProgressMonth, setDeepProgressMonth] = useState(currentYearMonth)
-  const [deepProgressStore, setDeepProgressStore] = useState('')
+  const [deepProgressStore, setDeepProgressStore] = useState(() => {
+    try { return localStorage.getItem('cp_deep_store') || '' } catch { return '' }
+  })
   const loadedOnceRef = useRef(false)
 
   const [complaintForm, setComplaintForm] = useState({ job_id: '', category: 'quality', description: '' })
@@ -137,8 +148,10 @@ export default function ClientPortal() {
       const locOrFilter = locToken
         ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${locToken}%)`
         : `client_id.eq.${user.client_id}`
-      const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
-        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
+      const monthRange = monthBounds(deepProgressMonth)
+      const [jobsMonthRes, jobsRecentRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
+        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', monthRange.from).lte('scheduled_date', monthRange.to).limit(800),
+        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(250),
         supabase.from('service_contracts').select('location_name').eq('client_id', user.client_id).eq('is_active', true),
         supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at').limit(100),
         supabase.from('client_complaints').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
@@ -147,7 +160,7 @@ export default function ClientPortal() {
         supabase.from('client_requests').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
       ])
 
-      const firstErr = [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes]
+      const firstErr = [jobsMonthRes, jobsRecentRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes]
         .map(r => r.error?.message)
         .find(Boolean)
       if (firstErr?.includes('client_') || firstErr?.includes('PGRST205')) {
@@ -156,7 +169,10 @@ export default function ClientPortal() {
         toast.error(firstErr)
       }
 
-      setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
+      setJobs(mergeJobLists(
+        (jobsRecentRes.data || []).filter(j => jobMatchesClientUser(j, user)),
+        (jobsMonthRes.data || []).filter(j => jobMatchesClientUser(j, user)),
+      ))
       setContracts(contractsRes.data || [])
       setMessages(filterByLocation(msgsRes.data, user.location_name))
       setComplaints(filterByLocation(compRes.data, user.location_name))
@@ -171,7 +187,7 @@ export default function ClientPortal() {
       setLoading(false)
       loadedOnceRef.current = true
     }
-  }, [user, c?.sessionExpired])
+  }, [user, c?.sessionExpired, deepProgressMonth])
 
   const markMessagesRead = useCallback(async () => {
     if (!user?.client_id) return
@@ -187,7 +203,7 @@ export default function ClientPortal() {
 
   useEffect(() => {
     if (!c) return
-    loadAll({ silent: false })
+    loadAll({ silent: loadedOnceRef.current })
     const refresh = setInterval(() => loadAll({ silent: true }), 20000)
     return () => clearInterval(refresh)
   }, [user?.id, c, loadAll])
@@ -196,6 +212,21 @@ export default function ClientPortal() {
     const tick = setInterval(() => setClock(new Date()), 60000)
     return () => clearInterval(tick)
   }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('cp_deep_store', deepProgressStore || '') } catch { /* ignore */ }
+  }, [deepProgressStore])
+
+  useEffect(() => {
+    if (!selectedVisit && !lightbox) return
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      setLightbox(null)
+      setSelectedVisit(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedVisit, lightbox])
 
   useEffect(() => {
     if (!c || tab !== 'chat') return
@@ -494,6 +525,27 @@ export default function ClientPortal() {
                 </div>
               ))}
             </div>
+            {parseDeepComponents(selectedVisit).length > 0 && (
+              <div className="cp-field">
+                <span className="cp-label">{c.deepCleanParts}</span>
+                <div className="cp-comp-row">
+                  {parseDeepComponents(selectedVisit).map(id => (
+                    <span key={id} className="cp-comp-chip">{deepComponentLabel(id, lang)}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedVisit.checklist_total > 0 && (
+              <div className="cp-field">
+                <span className="cp-label">{c.checklist || 'Checklist'}</span>
+                <div className="cp-card" style={{ marginBottom: 0, fontSize: 13 }}>
+                  {fill(c.deepCleanChecklistLine, {
+                    done: selectedVisit.checklist_done || 0,
+                    total: selectedVisit.checklist_total,
+                  })}
+                </div>
+              </div>
+            )}
             <div className="cp-field">
               <span className="cp-label">{c.comments}</span>
               <div className="cp-card" style={{ marginBottom: 0, fontSize: 14, lineHeight: 1.55 }}>
@@ -647,6 +699,7 @@ export default function ClientPortal() {
                     selectedStore={deepProgressStore}
                     onStoreChange={setDeepProgressStore}
                     onVisitClick={j => setSelectedVisit(j)}
+                    onPhotoClick={setLightbox}
                   />
                 )}
                 <div className="cp-section-title"><span>📅</span> {c.today} — {today}</div>
@@ -1071,6 +1124,7 @@ function DeepCleanProgressCard({
   selectedStore,
   onStoreChange,
   onVisitClick,
+  onPhotoClick,
 }) {
   const { scope, location } = progress
   const daySummaries = buildDaySummaries(progress.byLocation)
@@ -1079,13 +1133,16 @@ function DeepCleanProgressCard({
   const expectedDays = daySummaries.length
   const completedDays = daySummaries.filter(d => d.state === 'done').length
   const partialDays = daySummaries.filter(d => d.state === 'partial').length
+  const lateDays = daySummaries.filter(d => d.state === 'late').length
   const missingDays = daySummaries.filter(d => d.state === 'missing').length
+  const remainingDays = daySummaries.filter(d => !d.past && d.state !== 'done').length
   const donePct = expectedDays ? Math.round((completedDays / expectedDays) * 100) : 0
   const doneShare = expectedDays ? (completedDays / expectedDays) * 100 : 0
   const partialShare = expectedDays ? (partialDays / expectedDays) * 100 : 0
-  const missingShare = Math.max(0, 100 - doneShare - partialShare)
+  const lateShare = expectedDays ? (lateDays / expectedDays) * 100 : 0
+  const missingShare = expectedDays ? (missingDays / expectedDays) * 100 : 0
   const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
-  const storeRows = storeProgressRows(allByLocation || {})
+  const storeRows = storeProgressRows(allByLocation || {}, today)
   const storeNames = Object.keys(allByLocation || {}).sort((a, b) => a.localeCompare(b))
   const weekdays = lang === 'ja'
     ? ['日', '月', '火', '水', '木', '金', '土']
@@ -1096,6 +1153,7 @@ function DeepCleanProgressCard({
     slotProgress: labels.deepCleanPending,
     slotPending: labels.deepCleanPending,
   }
+  const serviceDates = daySummaries.map(d => d.date)
 
   const [selectedDay, setSelectedDay] = useState(null)
   useEffect(() => {
@@ -1107,15 +1165,24 @@ function DeepCleanProgressCard({
     })
   }, [progress, today, progressMonth, selectedStore])
 
+  const moveSelectedDay = (delta) => {
+    if (!serviceDates.length) return
+    const idx = selectedDay ? serviceDates.indexOf(selectedDay) : (delta > 0 ? -1 : serviceDates.length)
+    const next = serviceDates[Math.min(serviceDates.length - 1, Math.max(0, idx + delta))]
+    if (next) setSelectedDay(next)
+  }
+
   const pickStore = (name) => {
     if (!onStoreChange) return
     onStoreChange(selectedStore === name ? '' : name)
   }
 
   const selected = selectedDay ? dayByDate[selectedDay] : null
-  const selectedLabel = selectedDay
-    ? formatScheduleDate(selectedDay, lang)
+  const selectedLabel = selected
+    ? formatScheduleDate(selected.date, lang)
     : labels.deepCleanPickDay
+  const todaySummary = today && today.startsWith(progressMonth) ? dayByDate[today] : null
+  const printSummary = () => window.print()
 
   return (
     <div className="cp-deep-progress">
@@ -1167,6 +1234,14 @@ function DeepCleanProgressCard({
               ›
             </button>
           </div>
+          {today?.startsWith(progressMonth) && todaySummary && selectedDay !== today && (
+            <button type="button" className="cp-deep-today" onClick={() => setSelectedDay(today)}>
+              {labels.today}
+            </button>
+          )}
+          <button type="button" className="cp-deep-print" onClick={printSummary}>
+            {labels.deepCleanPrint}
+          </button>
         </div>
       </div>
 
@@ -1175,14 +1250,52 @@ function DeepCleanProgressCard({
           {fill(labels.deepCleanOfDays, { done: completedDays, expected: expectedDays })}
         </div>
         <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
+        {remainingDays > 0 && (
+          <div className="cp-deep-headline-left">
+            {fill(labels.deepCleanRemaining, { n: remainingDays })}
+          </div>
+        )}
       </div>
+
+      {todaySummary && (
+        <button type="button" className={`cp-deep-alert ${todaySummary.state}`} onClick={() => setSelectedDay(today)}>
+          <strong>{labels.today}</strong>
+          <span>
+            {fill(labels.deepCleanTodayLine, {
+              done: todaySummary.done,
+              expected: todaySummary.expected,
+              late: todaySummary.overdueCount,
+            })}
+          </span>
+        </button>
+      )}
 
       <div className="cp-cal-weekdays">
         {weekdays.map(w => (
           <div key={w} className="cp-cal-wd">{w}</div>
         ))}
       </div>
-      <div className="cp-cal" role="grid" aria-label={labels.deepCleanProgress}>
+      <div
+        className="cp-cal"
+        role="grid"
+        tabIndex={0}
+        aria-label={labels.deepCleanProgress}
+        onKeyDown={e => {
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault()
+            moveSelectedDay(1)
+          } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault()
+            moveSelectedDay(-1)
+          } else if (e.key === 'Home' && serviceDates[0]) {
+            e.preventDefault()
+            setSelectedDay(serviceDates[0])
+          } else if (e.key === 'End' && serviceDates.length) {
+            e.preventDefault()
+            setSelectedDay(serviceDates[serviceDates.length - 1])
+          }
+        }}
+      >
         {cells.map((date, i) => {
           if (!date) return <div key={`pad-${i}`} className="cp-cal-cell pad" />
           const day = dayByDate[date]
@@ -1196,8 +1309,9 @@ function DeepCleanProgressCard({
               type="button"
               className={`cp-cal-cell ${state}${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
               disabled={!day}
-              onClick={() => day && setSelectedDay(isSel ? null : date)}
+              onClick={() => day && setSelectedDay(date)}
               aria-pressed={isSel}
+              aria-current={isToday ? 'date' : undefined}
               aria-label={day
                 ? `${date} · ${day.done}/${day.expected}`
                 : date}
@@ -1216,17 +1330,26 @@ function DeepCleanProgressCard({
       <div className="cp-cal-legend">
         <span><span className="cp-deep-dot done" /> {labels.deepCleanDone} {completedDays}</span>
         <span><span className="cp-deep-dot pending" /> {labels.deepCleanPending} {partialDays}</span>
+        <span><span className="cp-deep-dot late" /> {labels.deepCleanLate} {lateDays}</span>
         <span><span className="cp-deep-dot missing" /> {labels.deepCleanMissing} {missingDays}</span>
       </div>
 
       <div className="cp-deep-bar stacked" aria-hidden="true">
         <div className="cp-deep-bar-seg done" style={{ width: `${doneShare}%` }} />
         <div className="cp-deep-bar-seg pending" style={{ width: `${partialShare}%` }} />
+        <div className="cp-deep-bar-seg late" style={{ width: `${lateShare}%` }} />
         <div className="cp-deep-bar-seg missing" style={{ width: `${missingShare}%` }} />
       </div>
 
-      <div className="cp-cal-day">
-        <div className="cp-cal-day-title">{selectedLabel}</div>
+      <div className={`cp-cal-day${selected ? ` ${selected.state}` : ''}`}>
+        <div className="cp-cal-day-title">
+          {selectedLabel}
+          {selected && (
+            <span className="cp-cal-day-frac">
+              {selected.done}/{selected.expected} · {selected.pct}%
+            </span>
+          )}
+        </div>
         {!selected && (
           <div className="cp-cal-day-empty">{labels.deepCleanPickDay}</div>
         )}
@@ -1234,26 +1357,56 @@ function DeepCleanProgressCard({
           <div className="cp-cal-store-list">
             {selected.stores.map(row => {
               const slot = tuesdaySlotInfo(row.job, slotLabels)
+              const comps = row.job ? parseDeepComponents(row.job) : []
+              const statusText = row.overdue && row.job?.status !== 'completed'
+                ? labels.deepCleanLate
+                : slot.label
               return (
-                <button
-                  key={row.name}
-                  type="button"
-                  className={`cp-cal-store${row.job ? ' has-job' : ''}`}
-                  onClick={() => {
-                    if (row.job && onVisitClick) onVisitClick(row.job)
-                  }}
-                >
-                  <span className="cp-cal-store-icon" style={{ color: slot.color }}>{slot.icon}</span>
-                  <span className="cp-cal-store-body">
-                    <span className="cp-cal-store-name">{row.name}</span>
-                    <span className="cp-cal-store-meta">
-                      {row.job
-                        ? `${row.job.employee_name || '—'} · ${row.job.scheduled_time || '—'}`
-                        : labels.deepCleanMissing}
+                <div key={row.name} className={`cp-cal-store${row.job ? ' has-job' : ''}${row.overdue ? ' late' : ''}`}>
+                  <button
+                    type="button"
+                    className="cp-cal-store-main"
+                    onClick={() => {
+                      if (row.job && onVisitClick) onVisitClick(row.job)
+                    }}
+                  >
+                    <span className="cp-cal-store-icon" style={{ color: slot.color }}>{slot.icon}</span>
+                    <span className="cp-cal-store-body">
+                      <span className="cp-cal-store-name">{row.name}</span>
+                      <span className="cp-cal-store-meta">
+                        {row.job
+                          ? `${row.job.employee_name || '—'} · ${row.job.scheduled_time || '—'}`
+                          : row.past ? labels.deepCleanLate : labels.deepCleanMissing}
+                      </span>
+                      {comps.length > 0 && (
+                        <span className="cp-cal-store-comps">
+                          {comps.map(id => deepComponentLabel(id, lang)).join(' · ')}
+                        </span>
+                      )}
+                      {row.job?.checklist_total > 0 && (
+                        <span className="cp-cal-store-meta">
+                          {fill(labels.deepCleanChecklistLine, {
+                            done: row.job.checklist_done || 0,
+                            total: row.job.checklist_total,
+                          })}
+                        </span>
+                      )}
                     </span>
-                  </span>
-                  <span className="cp-cal-store-status" style={{ color: slot.color }}>{slot.label}</span>
-                </button>
+                    <span className="cp-cal-store-status" style={{ color: row.overdue ? '#f87171' : slot.color }}>{statusText}</span>
+                  </button>
+                  {row.job?.status === 'completed' && (row.job.photo_start_url || row.job.photo_end_url) && (
+                    <div className="cp-cal-store-photos" onClick={e => e.stopPropagation()}>
+                      <JobPhotos
+                        photoStartUrl={row.job.photo_start_url}
+                        photoEndUrl={row.job.photo_end_url}
+                        beforeLabel={labels.before}
+                        afterLabel={labels.after}
+                        size={44}
+                        onPhotoClick={onPhotoClick}
+                      />
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>
@@ -1270,7 +1423,7 @@ function DeepCleanProgressCard({
                 <button
                   key={row.name}
                   type="button"
-                  className={`cp-deep-store-card${active ? ' active' : ''}${row.pct >= 100 ? ' ok' : ''}`}
+                  className={`cp-deep-store-card${active ? ' active' : ''}${row.pct >= 100 ? ' ok' : ''}${row.late > 0 ? ' late' : ''}`}
                   onClick={() => pickStore(row.name)}
                 >
                   <div className="cp-deep-store-card-top">
@@ -1278,7 +1431,9 @@ function DeepCleanProgressCard({
                     <span className="cp-deep-store-card-pct">{row.pct}%</span>
                   </div>
                   <div className="cp-deep-store-card-meta">
+                    {row.schedule ? `${row.schedule} · ` : ''}
                     {fill(labels.deepCleanOfDays, { done: row.completed, expected: row.expected })}
+                    {row.late > 0 ? ` · ${labels.deepCleanLate} ${row.late}` : ''}
                   </div>
                   <div className="cp-deep-store-mini">
                     <div className="cp-deep-store-mini-fill" style={{ width: `${row.pct}%` }} />

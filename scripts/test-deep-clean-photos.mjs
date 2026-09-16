@@ -16,6 +16,7 @@ import {
   storeProgressRows,
   buildDaySummaries,
   monthCalendarCells,
+  daySummaryState,
 } from '../src/lib/cleaningType.js'
 import { SCHEDULE_CLIENTS } from '../src/lib/serviceCatalog.js'
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
@@ -23,6 +24,7 @@ import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '..
 import { viewablePhotoUrl, isStoragePhotoUrl } from '../src/lib/photoUrl.js'
 import { isOtpDeepOnlyLocation, otpBasicScheduleLocations, otpDeepOnlyLocations } from '../src/lib/serviceCatalog.js'
 import { expectedDeepCleanDatesForLocation, weekdaysInMonth, isDeepCleanAllowedOnDate } from '../src/lib/cleaningType.js'
+import { buildMonthSchedule, buildMissingDeepCleanJobs } from '../src/lib/scheduleGenerator.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -236,6 +238,57 @@ function testDeepCleanProgressForUser() {
   const cells = monthCalendarCells('2026-09')
   assert(cells.filter(Boolean).length === 30, 'september has 30 days')
   assert(cells[0] === null || cells[0].endsWith('-01'), 'leading pad or month start')
+
+  const hqDaysFixed = buildDaySummaries(all.byLocation, '2026-09-16')
+  assert(hqDaysFixed.find(d => d.date === '2026-09-01')?.state === 'late', 'past empty tuesday is late')
+  assert(hqDaysFixed.find(d => d.date === '2026-09-22')?.state === 'missing', 'future empty tuesday is missing')
+  assert(hqDaysFixed.find(d => d.date === '2026-09-07')?.state === 'late', 'past assigned-not-done is late')
+  assert(hqDaysFixed.find(d => d.date === '2026-09-08')?.state === 'partial', 'past with some done is partial')
+  assert(daySummaryState({ expected: 8, done: 0, pending: 0, past: true, overdueCount: 8 }) === 'late', 'late helper')
+  assert(daySummaryState({ expected: 8, done: 8, pending: 0, past: true }) === 'done', 'done helper')
+}
+
+function testTuesdayDeepSchedule() {
+  const contracts = [
+    { employeeId: 'e1', employeeName: 'Ana Silva', shortName: 'Ana', template: 'otp_basic', mondayAtomic: true },
+    { employeeId: 'e1', employeeName: 'Ana Silva', shortName: 'Ana', template: 'otp_deep_only' },
+  ]
+  const jobs = buildMonthSchedule('2026-09', { contracts, includeDuskin: false })
+  const tueDeep = jobs.filter(j => j.date === '2026-09-08' && /Deep Clean/i.test(j.title))
+  assert(tueDeep.length === otpBasicScheduleLocations().length, `tuesday deep ${tueDeep.length}`)
+  assert(tueDeep.every(j => j.type === 'deep'), 'tuesday jobs marked deep')
+  const monDeep = jobs.filter(j => j.date === '2026-09-07' && /Deep Clean/i.test(j.title))
+  assert(monDeep.length === otpDeepOnlyLocations().length, `monday deep-only ${monDeep.length}`)
+  const wedDeep = jobs.filter(j => j.date === '2026-09-09' && /Deep Clean/i.test(j.title))
+  assert(wedDeep.length === otpDeepOnlyLocations().length, `wednesday deep-only ${wedDeep.length}`)
+}
+
+function testMissingDeepCleanJobs() {
+  const contracts = [
+    { employeeId: 'e1', employeeName: 'Ana Silva', shortName: 'Ana', template: 'otp_basic' },
+    { employeeId: 'e1', employeeName: 'Ana Silva', shortName: 'Ana', template: 'otp_deep_only' },
+  ]
+  const empty = buildMissingDeepCleanJobs('2026-09', [], { contracts })
+  const expected = buildDeepCleanProgress([], '2026-09').totals.expected
+  assert(empty.length === expected, `missing all slots ${empty.length} vs ${expected}`)
+  assert(empty.every(j => /Deep Clean/i.test(j.title)), 'missing drafts are deep')
+
+  const existing = [{
+    title: 'Kodama Oimachi — Deep Clean',
+    scheduled_date: '2026-09-08',
+    status: 'assigned',
+    client_id: SCHEDULE_CLIENTS.ontheplanet.id,
+  }]
+  const rest = buildMissingDeepCleanJobs('2026-09', existing, { contracts })
+  assert(rest.length === expected - 1, `skip existing slot ${rest.length}`)
+  assert(!rest.some(j => j.date === '2026-09-08' && j.title.startsWith('Kodama Oimachi')), 'oimachi tue kept')
+
+  const fromGeneratorShape = buildMissingDeepCleanJobs('2026-09', [{
+    title: 'Kodama Oimachi — Deep Clean',
+    date: '2026-09-08',
+    client: 'On The Planet',
+  }], { contracts })
+  assert(fromGeneratorShape.length === expected - 1, 'accepts generator date field')
 }
 
 async function main() {
@@ -252,6 +305,10 @@ async function main() {
   console.log('✅ jobReport photo merge')
   testDeepCleanProgressForUser()
   console.log('✅ buildDeepCleanProgressForUser')
+  testTuesdayDeepSchedule()
+  console.log('✅ Tuesday deep in month schedule')
+  testMissingDeepCleanJobs()
+  console.log('✅ fill missing deep-clean drafts')
   console.log('\n✅ All unit tests passed')
 }
 
