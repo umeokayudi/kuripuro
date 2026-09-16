@@ -40,6 +40,18 @@ export function isAdvanceRow(row) {
   return row?.payment_type === 'advance'
 }
 
+/** Live DB check only allows salary|advance|bonus|deduction|extra. Transport is stored as extra. */
+export function isTransportRow(row) {
+  if (!row || isDeductionRow(row)) return false
+  if (row.payment_type === 'transport') return true
+  if (row.payment_type === 'extra') return /transport|交通/i.test(String(row.description || ''))
+  return false
+}
+
+export function transportLedgerType() {
+  return 'extra'
+}
+
 export function advanceDate(row) {
   return String(row?.payment_date || row?.received_at || row?.created_at || '').slice(0, 10) || null
 }
@@ -141,7 +153,7 @@ export function calcPeriodSalary(empInfo, allJobs, payments = [], { period, toda
   const deductionRows = (payments || []).filter(isDeductionRow)
   const advanceRows = (payments || []).filter(isAdvanceRow)
   const bonusRows = (payments || []).filter(p => p.payment_type === 'bonus' && !isDeductionRow(p))
-  const transportRows = (payments || []).filter(p => p.payment_type === 'transport' && !isDeductionRow(p))
+  const transportRows = (payments || []).filter(isTransportRow)
   const salaryRows = (payments || []).filter(p => p.payment_type === 'salary' && !isDeductionRow(p))
 
   const deductions = sumAmounts(deductionRows)

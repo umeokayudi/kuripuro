@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { tokyoToday, tokyoYearMonth } from '../lib/dates'
 import { useLang, fill } from '../hooks/useLang'
+import { isTransportRow, transportLedgerType } from '../lib/salaryCalc'
 import toast from 'react-hot-toast'
 
 function claimMatchesPay(claim, pays) {
   const period = (claim.claim_date || '').slice(0, 7) || tokyoYearMonth()
   return (pays || []).some(p =>
-    p.employee_id === claim.employee_id
+    isTransportRow(p)
+    && p.employee_id === claim.employee_id
     && Number(p.amount) === Number(claim.amount)
     && (p.period === period || p.payment_date?.slice(0, 7) === period),
   )
@@ -28,7 +30,7 @@ export default function TransportClaims() {
     setLoading(true)
     const [{ data }, { data: payRows }] = await Promise.all([
       supabase.from('transport_claims').select('*').order('created_at', { ascending: false }),
-      supabase.from('salary_payments').select('*').eq('payment_type', 'transport'),
+      supabase.from('salary_payments').select('*').or('payment_type.eq.extra,payment_type.eq.transport'),
     ])
     setClaims(data || [])
     setPays(payRows || [])
@@ -42,7 +44,7 @@ export default function TransportClaims() {
       amount, payment_date: tokyoToday(),
       description: lang === 'ja' ? '交通費精算' : 'Transport reimbursement',
       status: 'scheduled',
-      payment_type: 'transport', is_deduction: false,
+      payment_type: transportLedgerType(), is_deduction: false,
     })
     return error
   }

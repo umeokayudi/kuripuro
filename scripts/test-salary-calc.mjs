@@ -5,6 +5,7 @@ import {
   jobMinutes,
   countWorkedDays,
   isAdvanceReceived,
+  isTransportRow,
   plannedWeeklyAdvances,
   fridaysInMonth,
 } from '../src/lib/salaryCalc.js'
@@ -73,7 +74,7 @@ function testTransportAndBonuses() {
   }))
   const payments = [
     { payment_type: 'bonus', amount: 3000, payment_date: '2026-08-20' },
-    { payment_type: 'transport', amount: 280, payment_date: '2026-08-12' },
+    { payment_type: 'extra', amount: 280, payment_date: '2026-08-12', description: 'Transport reimbursement' },
     { payment_type: 'advance', amount: 10000, payment_date: '2026-08-07', status: 'paid' },
   ]
   const calc = calcPeriodSalary(emp, jobs, payments, { period: '2026-08', today: '2026-08-31' })
@@ -82,6 +83,8 @@ function testTransportAndBonuses() {
   assert(calc.transport === 280, `transport ${calc.transport}`)
   assert(calc.gross === calc.base + 3000 + 10000, `gross ${calc.gross}`)
   assert(calc.toPay === calc.net - 10000 + 280, `toPay ${calc.toPay}`)
+  assert(isTransportRow({ payment_type: 'extra', description: 'Transport reimbursement' }), 'extra transport')
+  assert(!isTransportRow({ payment_type: 'extra', description: 'Spot extra' }), 'extra without transport')
 }
 
 function testAttendanceBonusNeedsFullMonth() {

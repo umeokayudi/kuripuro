@@ -17,7 +17,7 @@ export default function Payments() {
   const emptyForm = { employee_id:'', employee_name:'', amount:'', payment_date: tokyoToday(), description:'', payment_type:'salary', is_deduction:false, status:'scheduled' }
   const [form, setForm] = useState(emptyForm)
 
-  const TYPES = ['salary','advance','bonus','transport','deduction','other']
+  const TYPES = ['salary','advance','bonus','extra','deduction']
 
   useEffect(() => { load() }, [])
 

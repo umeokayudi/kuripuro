@@ -145,3 +145,7 @@ create table if not exists salary_payments (
 create unique index if not exists salary_payments_one_salary_per_period
   on salary_payments (employee_id, period)
   where payment_type = 'salary' and coalesce(is_deduction, false) = false;
+
+alter table salary_payments drop constraint if exists salary_payments_payment_type_check;
+alter table salary_payments add constraint salary_payments_payment_type_check
+  check (payment_type in ('salary','advance','bonus','deduction','extra','transport','other'));
