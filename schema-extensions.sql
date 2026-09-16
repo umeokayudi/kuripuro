@@ -121,3 +121,27 @@ create table if not exists service_reports (
 );
 alter table service_reports enable row level security;
 create policy if not exists "allow_all_service_reports" on service_reports for all using (true);
+
+-- Ledger used by the salary desk (table may already exist in production)
+create table if not exists salary_payments (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid references employees(id) on delete cascade,
+  employee_name text,
+  amount numeric(12,2) not null,
+  payment_date date,
+  description text,
+  status text default 'scheduled',
+  payment_type text default 'salary',
+  is_deduction boolean default false,
+  period text,
+  job_id uuid,
+  notes text,
+  received_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- One 15th salary transfer per employee per month (weekly advances stay unrestricted)
+create unique index if not exists salary_payments_one_salary_per_period
+  on salary_payments (employee_id, period)
+  where payment_type = 'salary' and coalesce(is_deduction, false) = false;

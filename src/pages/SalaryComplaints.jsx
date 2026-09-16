@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { fmtPeriod } from '../lib/salaryPeriod'
 import { useLang } from '../hooks/useLang'
+import { isMissingTableError } from '../lib/schemaError'
+import SchemaMissingBanner from '../components/SchemaMissingBanner'
 
 export default function SalaryComplaints() {
   const { t } = useLang()
@@ -11,12 +13,15 @@ export default function SalaryComplaints() {
   const [filter, setFilter] = useState('pending')
   const [notes, setNotes] = useState({})
   const [loading, setLoading] = useState(true)
+  const [schemaOk, setSchemaOk] = useState(true)
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('salary_complaints').select('*').order('created_at', { ascending: false })
+    const { data, error } = await supabase.from('salary_complaints').select('*').order('created_at', { ascending: false })
+    if (isMissingTableError(error)) setSchemaOk(false)
+    else setSchemaOk(true)
     setComplaints(data || [])
     setLoading(false)
   }
@@ -36,6 +41,15 @@ export default function SalaryComplaints() {
   return (
     <div>
       <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{s.title}</h2>
+      {!schemaOk && (
+        <SchemaMissingBanner
+          title={t.payroll.setupNeeded}
+          hint={t.payroll.setupHint}
+          copyLabel={t.payroll.copySql}
+          openLabel={t.payroll.openSql}
+          copiedLabel={t.payroll.copiedSql}
+        />
+      )}
       <div className="tab-pills" style={{ marginBottom: 14 }}>
         {[['pending', `${s.pending}${pending ? ` (${pending})` : ''}`], ['resolved', s.resolved], ['rejected', s.rejected], ['all', s.all]].map(([k, l]) => (
           <button key={k} className={`tab-pill${filter === k ? ' active' : ''}`} onClick={() => setFilter(k)}>{l}</button>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
+import { tokyoToday } from '../lib/dates'
 import toast from 'react-hot-toast'
 import ContractTab from '../components/ContractTab'
 
@@ -100,7 +101,7 @@ export default function EmployeeProfile() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [workDays, setWorkDays] = useState([])
-  const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
+  const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:tokyoToday() })
   const [addingEval, setAddingEval] = useState(false)
   const [analyzingId, setAnalyzingId] = useState(null)
 
@@ -181,7 +182,7 @@ export default function EmployeeProfile() {
     await supabase.from('employees').update({ score:newScore }).eq('id', id)
     toast.success(`Evaluation added! Score: ${newScore}`)
     setAddingEval(false)
-    setEvalForm({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
+    setEvalForm({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:tokyoToday() })
     loadAll()
   }
 
@@ -195,7 +196,7 @@ export default function EmployeeProfile() {
 
   const scoreColor = s => s>=90?'var(--green)':s>=70?'#EF9F27':'var(--red)'
   const statusColor = s => ({assigned:'badge-blue',in_progress:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
-  const today = new Date().toISOString().split('T')[0]
+  const today = tokyoToday()
 
   if (loading) return <div style={{color:'var(--text3)',padding:20}}>Loading...</div>
   if (!emp) return <div style={{color:'var(--text3)',padding:20}}>Employee not found</div>

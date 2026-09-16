@@ -691,9 +691,13 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
   const earnings = [
     ['Base Salary', `¥${(salaryData?.base||0).toLocaleString()}`],
     ['Spot Jobs Bonus', `¥${(salaryData?.spotEarned||0).toLocaleString()}`],
+  ]
+  if (Number(salaryData?.bonuses) > 0) earnings.push(['Bonus', `¥${Number(salaryData.bonuses).toLocaleString()}`])
+  if (Number(salaryData?.attendanceBonus) > 0) earnings.push(['Completion bonus', `¥${Number(salaryData.attendanceBonus).toLocaleString()}`])
+  earnings.push(
     ['Days Worked', `${salaryData?.workedDays||0} days`],
     ['Hours', `${salaryData?.hours||0}h`],
-  ]
+  )
 
   earnings.forEach(([l,v], i) => {
     if (i%2===0) { doc.setFillColor(248,250,255); doc.rect(margin,y-1,W-margin*2,8,'F') }
@@ -768,6 +772,17 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
     doc.text('TOTAL DEDUCTIONS', margin+4, y+5.5)
     doc.text(`-¥${totalDeductions.toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
     y += 14
+  }
+
+  if (Number(salaryData?.transport) > 0) {
+    doc.setFillColor(240, 248, 240)
+    doc.rect(margin, y, W-margin*2, 8, 'F')
+    doc.setTextColor(15, 110, 86)
+    doc.setFont('helvetica','bold')
+    doc.setFontSize(9)
+    doc.text('Transport reimbursement', margin+4, y+5.5)
+    doc.text(`+¥${Number(salaryData.transport).toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
+    y += 12
   }
 
   // Amount left to transfer on payday (earned − deductions − advances already given)
@@ -893,6 +908,8 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   sectionHeader('項目', 6, 13, 24)
   tableRow('基本給', `¥${(salaryData?.base||0).toLocaleString()}`, 0)
   tableRow('スポット手当', `¥${(salaryData?.spotEarned||0).toLocaleString()}`, 1)
+  if (Number(salaryData?.bonuses) > 0) tableRow('手当', `¥${Number(salaryData.bonuses).toLocaleString()}`, 0)
+  if (Number(salaryData?.attendanceBonus) > 0) tableRow('皆勤手当', `¥${Number(salaryData.attendanceBonus).toLocaleString()}`, 1)
 
   doc.setFillColor(193,156,86)
   doc.rect(margin, y, W-margin*2, 8, 'F')
@@ -926,6 +943,17 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
     doc.text('控除合計', margin+4, y+5.5)
     doc.text(`-¥${totalDeds.toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
     y += 14
+  }
+
+  if (Number(salaryData?.transport) > 0) {
+    doc.setFillColor(240, 248, 240)
+    doc.rect(margin, y, W-margin*2, 8, 'F')
+    doc.setTextColor(15, 110, 86)
+    doc.setFont('helvetica','bold')
+    doc.setFontSize(9)
+    doc.text('交通費', margin+4, y+5.5)
+    doc.text(`+¥${Number(salaryData.transport).toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
+    y += 12
   }
 
   // Net

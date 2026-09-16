@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
+import { isMissingTableError } from '../lib/schemaError'
+import SchemaMissingBanner from '../components/SchemaMissingBanner'
 
 const CATEGORY_LABELS = {
   tools: { en: 'Tools', ja: '工具' },
@@ -18,12 +20,15 @@ export default function EquipmentRequests() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [note, setNote] = useState({})
+  const [schemaOk, setSchemaOk] = useState(true)
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase.from('equipment_requests').select('*').order('created_at', { ascending: false })
+    const { data, error } = await supabase.from('equipment_requests').select('*').order('created_at', { ascending: false })
+    if (isMissingTableError(error)) setSchemaOk(false)
+    else setSchemaOk(true)
     setRequests(data || [])
     setLoading(false)
   }
@@ -69,6 +74,16 @@ export default function EquipmentRequests() {
           ? '従業員が仕事の改善に必要な備品を申請します。内容を確認して承認・拒否してください。'
           : 'Employees request equipment to improve their work. Review each request and approve or reject.'}
       </p>
+
+      {!schemaOk && (
+        <SchemaMissingBanner
+          title={t.payroll.setupNeeded}
+          hint={t.payroll.setupHint}
+          copyLabel={t.payroll.copySql}
+          openLabel={t.payroll.openSql}
+          copiedLabel={t.payroll.copiedSql}
+        />
+      )}
 
       <div className="tab-pills" style={{ marginBottom: 14 }}>
         {tabs.map(([k, l]) => (

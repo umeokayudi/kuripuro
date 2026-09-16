@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 
 function unpackLightbox(url, urls) {
@@ -14,14 +14,14 @@ function unpackLightbox(url, urls) {
 
 export default function PhotoLightbox({ url, urls, onClose, closeLabel = 'Close' }) {
   const packed = unpackLightbox(url, urls)
-  const listKey = packed.list.join('|')
-  const list = useMemo(() => packed.list, [listKey])
+  const list = packed.list
+  const listKey = list.join('|')
   const start = Math.max(0, list.indexOf(packed.current))
-  const [index, setIndex] = useState(start)
+  const [index, setIndex] = useState(() => (start >= 0 ? start : 0))
 
   useEffect(() => {
     setIndex(start >= 0 ? start : 0)
-  }, [packed.current, listKey, start])
+  }, [listKey, start])
 
   useEffect(() => {
     if (!list.length) return undefined

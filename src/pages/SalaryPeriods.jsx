@@ -5,8 +5,30 @@ import { getPeriodDates, fmtPeriod, getCurrentPeriod, shiftYearMonth } from '../
 import { monthBounds } from '../lib/dates'
 import { calcPeriodSalary } from '../lib/salaryCalc'
 import { useLang, fill } from '../hooks/useLang'
+import { isMissingTableError } from '../lib/schemaError'
+import SchemaMissingBanner from '../components/SchemaMissingBanner'
 
 const yen = n => `¥${Number(n || 0).toLocaleString()}`
+
+function throwIf(res, fallback = 'Save failed') {
+  if (res?.error) throw new Error(res.error.message || fallback)
+  return res
+}
+
+async function upsertFifteenthPayment(payload) {
+  const found = await supabase.from('salary_payments')
+    .select('id')
+    .eq('employee_id', payload.employee_id)
+    .eq('period', payload.period)
+    .eq('payment_type', 'salary')
+    .maybeSingle()
+  if (found.error && !isMissingTableError(found.error)) throw new Error(found.error.message)
+  if (found.data?.id) {
+    throwIf(await supabase.from('salary_payments').update(payload).eq('id', found.data.id))
+    return
+  }
+  throwIf(await supabase.from('salary_payments').insert(payload))
+}
 
 async function loadMonthSnapshot(period) {
   const { from, to } = monthBounds(period)
@@ -42,14 +64,18 @@ export default function SalaryPeriods() {
 
   const loadPeriods = async () => {
     const { data, error } = await supabase.from('salary_periods').select('*').order('period', { ascending: false })
-    if (error?.code === 'PGRST205') { setSchemaOk(false); setLoading(false); return }
+    if (isMissingTableError(error)) { setSchemaOk(false); setLoading(false); return }
+    if (error) { toast.error(error.message); setLoading(false); return }
+    setSchemaOk(true)
     setPeriods(data || [])
     if (data?.length && !selectedPeriod) setSelectedPeriod(data[0].period)
     setLoading(false)
   }
 
   const loadStatements = async (period) => {
-    const { data } = await supabase.from('salary_statements').select('*').eq('period', period).order('employee_name')
+    const { data, error } = await supabase.from('salary_statements').select('*').eq('period', period).order('employee_name')
+    if (isMissingTableError(error)) { setSchemaOk(false); return }
+    if (error) return toast.error(error.message)
     setStatements(data || [])
   }
 
@@ -70,36 +96,33 @@ export default function SalaryPeriods() {
     const { period, confirmDeadline, payDate, rows } = preview
     setClosing(true)
     try {
-      await supabase.from('salary_periods').upsert({
+      throwIf(await supabase.from('salary_periods').upsert({
         period, closed_at: new Date().toISOString(), confirm_deadline: confirmDeadline,
         pay_date: payDate, status: 'closed',
-      }, { onConflict: 'period' })
+      }, { onConflict: 'period' }))
 
       const desc = fill(p.salaryDesc, { period: fmtPeriod(period, lang) })
       for (const { emp, calc } of rows) {
-        await supabase.from('salary_statements').upsert({
+        throwIf(await supabase.from('salary_statements').upsert({
           period, employee_id: emp.id, employee_name: emp.full_name,
-          base_salary: calc.base, deductions: calc.deductions, bonuses: calc.spotEarned,
+          base_salary: calc.base, deductions: calc.deductions, bonuses: calc.spotEarned + calc.bonuses + calc.attendanceBonus,
           net_total: calc.toPay,
           breakdown: {
             jobs: calc.jobs, hours: calc.hours, workedDays: calc.workedDays,
             base: calc.base, spot: calc.spotEarned, advances: calc.advancesReceived,
+            transport: calc.transport, bonuses: calc.bonuses, attendanceBonus: calc.attendanceBonus,
             earnedNet: calc.net, toPay: calc.toPay, salary_type: calc.salaryType,
           },
           status: 'awaiting_confirmation',
-        }, { onConflict: 'period,employee_id' })
+        }, { onConflict: 'period,employee_id' }))
 
         if (calc.toPay <= 0) continue
-        const payload = {
+        await upsertFifteenthPayment({
           employee_id: emp.id, employee_name: emp.full_name,
           period, amount: calc.toPay, payment_date: payDate,
           description: desc,
           status: 'scheduled', payment_type: 'salary', is_deduction: false,
-        }
-        const up = await supabase.from('salary_payments').upsert(payload, {
-          onConflict: 'employee_id,period,payment_type', ignoreDuplicates: false,
         })
-        if (up.error) await supabase.from('salary_payments').insert(payload)
       }
 
       toast.success(fill(p.closed, { period: fmtPeriod(period, lang) }))
@@ -108,7 +131,7 @@ export default function SalaryPeriods() {
       loadStatements(period)
       setSelectedPeriod(period)
     } catch (e) {
-      toast.error(e.message)
+      toast.error(fill(p.writeFailed, { error: e.message || '' }))
     }
     setClosing(false)
   }
@@ -128,10 +151,13 @@ export default function SalaryPeriods() {
       <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 16 }}>{p.hint}</p>
 
       {!schemaOk && (
-        <div style={{ background: 'rgba(239,159,39,0.1)', border: '1px solid rgba(239,159,39,0.3)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>⚠️ {p.setupNeeded}</div>
-          <div style={{ fontSize: 13, color: 'var(--text2)' }}>{p.setupHint}</div>
-        </div>
+        <SchemaMissingBanner
+          title={p.setupNeeded}
+          hint={p.setupHint}
+          copyLabel={p.copySql}
+          openLabel={p.openSql}
+          copiedLabel={p.copiedSql}
+        />
       )}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -156,7 +182,10 @@ export default function SalaryPeriods() {
               <div>
                 <div style={{ fontWeight: 600 }}>{emp.full_name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                  {p.base} {yen(calc.base)} · {p.deductions} {yen(calc.deductions)} · {p.advances} {yen(calc.advancesReceived)} · {p.jobs} {calc.jobs}
+                  {p.base} {yen(calc.base)} · {p.deductions} {yen(calc.deductions)} · {p.advances} {yen(calc.advancesReceived)}
+                  {calc.transport > 0 ? ` · ${p.transport} ${yen(calc.transport)}` : ''}
+                  {calc.attendanceBonus > 0 ? ` · ${p.completionBonus} ${yen(calc.attendanceBonus)}` : ''}
+                  {' · '}{p.jobs} {calc.jobs}
                 </div>
               </div>
               <div style={{ fontWeight: 800, color: 'var(--green)', whiteSpace: 'nowrap' }}>{p.toPay} {yen(calc.toPay)}</div>

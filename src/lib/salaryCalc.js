@@ -126,7 +126,7 @@ function remainingWeekdays() {
 /**
  * One salary breakdown for admin + portal + month close.
  * net = earned after deductions (what they earned)
- * toPay = net minus advances already given (15th transfer)
+ * toPay = net minus advances already given, plus transport (15th transfer)
  */
 export function calcPeriodSalary(empInfo, allJobs, payments = [], { period, today } = {}) {
   const todayStr = today || tokyoToday()
@@ -150,9 +150,14 @@ export function calcPeriodSalary(empInfo, allJobs, payments = [], { period, toda
   const bonuses = sumAmounts(bonusRows)
   const transport = sumAmounts(transportRows)
 
-  const gross = base + spotEarned
+  const monthlyDays = empInfo?.monthly_work_days || 22
+  const attendanceBonusRaw = Number(empInfo?.attendance_bonus || 0)
+  const attendanceBonus = attendanceBonusRaw > 0 && workedDays >= monthlyDays ? attendanceBonusRaw : 0
+
+  const earned = base + spotEarned + bonuses + attendanceBonus
+  const gross = earned
   const net = Math.max(0, gross - deductions)
-  const toPay = Math.max(0, net - advancesReceived)
+  const toPay = Math.max(0, net - advancesReceived) + transport
   const remain = ym === tokyoYearMonth() ? remainingWeekdays() : 0
 
   return {
@@ -164,6 +169,7 @@ export function calcPeriodSalary(empInfo, allJobs, payments = [], { period, toda
     base,
     spotEarned,
     bonuses,
+    attendanceBonus,
     transport,
     deductions,
     deductionRows,

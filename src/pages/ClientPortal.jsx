@@ -25,7 +25,7 @@ import {
 } from '../lib/clientPortal'
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
-import { tokyoToday } from '../lib/dates'
+import { tokyoToday, addCalendarDays } from '../lib/dates'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import './client-portal.css'
 
@@ -63,7 +63,7 @@ function mergeJobLists(prev, incoming) {
 function visitRangeForPreset(preset, today) {
   if (preset === 'all') return { from: '2000-01-01', to: today }
   if (preset === '90d') {
-    const from = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
+    const from = addCalendarDays(today, -90)
     return { from, to: today }
   }
   if (preset === 'lastMonth') {
@@ -138,7 +138,7 @@ export default function ClientPortal() {
       toast.error(c?.sessionExpired || 'Session expired. Please log in again.')
       return
     }
-    const since = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]
+    const since = addCalendarDays(tokyoToday(), -365)
     if (!silent && !loadedOnceRef.current) setLoading(true)
 
     try {

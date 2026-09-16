@@ -222,6 +222,23 @@ export default function Salary() {
               <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
                 {fill(s.jobsCount, { n: calc.jobs })} · {fill(s.hours, { h: calc.hours })} · {fill(s.days, { n: calc.workedDays })}
                 {calc.spotEarned > 0 ? ` · ${yen(calc.spotEarned)}` : ''}
+                {calc.attendanceBonus > 0 ? ` · ${s.completionBonus} ${yen(calc.attendanceBonus)}` : ''}
+                {calc.bonuses > 0 ? ` · ${s.bonuses} ${yen(calc.bonuses)}` : ''}
+                {calc.transport > 0 ? ` · ${s.transportPay} ${yen(calc.transport)}` : ''}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12 }}>{s.formulaHint}</div>
+              {selected.salary_type === 'fixed' && !Number(selected.fixed_salary) && (
+                <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 12 }}>{s.contractGapFixed}</div>
+              )}
+              {selected.salary_type === 'hourly' && !Number(selected.hourly_rate) && (
+                <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 12 }}>{s.contractGapHourly}</div>
+              )}
+              <div style={{ fontSize: 12, marginBottom: 12, color: (calc.salaryRows || []).some(r => r.status === 'paid') ? 'var(--green)' : 'var(--text3)' }}>
+                {(calc.salaryRows || []).some(r => r.status === 'paid')
+                  ? s.fifteenthPaid
+                  : (calc.salaryRows || []).length
+                    ? `${s.fifteenthScheduled} · ${yen(calc.salaryRows[0].amount)}`
+                    : s.fifteenthNone}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-primary" onClick={downloadPayslip}>{s.downloadPayslip}</button>

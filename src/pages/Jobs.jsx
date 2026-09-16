@@ -10,6 +10,7 @@ import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
+import { tokyoToday, formatLocalYmd } from '../lib/dates'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
@@ -26,7 +27,8 @@ function applyGeocodeResult(result, setCoords, mapsMsg) {
 }
 
 function toDateStr(d) {
-  return d.toISOString().split('T')[0]
+  if (typeof d === 'string') return d.slice(0, 10)
+  return formatLocalYmd(d)
 }
 
 function shiftDate(dateStr, days) {
@@ -86,8 +88,8 @@ function DayScheduleView({ onClose }) {
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
-  const [date, setDate] = useState(toDateStr(new Date()))
-  const [calMonth, setCalMonth] = useState(() => toDateStr(new Date()).slice(0, 7))
+  const [date, setDate] = useState(tokyoToday())
+  const [calMonth, setCalMonth] = useState(() => tokyoToday().slice(0, 7))
   const [showCalendar, setShowCalendar] = useState(false)
   const [jobs, setJobs] = useState([])
   const [monthJobStats, setMonthJobStats] = useState({})
@@ -141,7 +143,7 @@ function DayScheduleView({ onClose }) {
     ? ['月', '火', '水', '木', '金', '土', '日']
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
   const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
-  const todayStr = toDateStr(new Date())
+  const todayStr = tokyoToday()
 
   const handleReassign = async (jobId, empId) => {
     if (!empId) {

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
+import { tokyoToday } from '../lib/dates'
 
 export default function Faturas() {
   const { t } = useLang()
@@ -70,7 +71,7 @@ export default function Faturas() {
       client_name: client.company_name,
       period_start: form.period_start||null,
       period_end: form.period_end||null,
-      issue_date: new Date().toISOString().split('T')[0],
+      issue_date: tokyoToday(),
       due_date: form.due_date||null,
       subtotal, tax_amount:tax, total,
       tax_rate: parseInt(form.tax_rate)||10,

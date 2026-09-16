@@ -22,7 +22,6 @@ import {
   checklistCompleteForRetro,
   isJobFullyRegistered,
   isDuskinJob,
-  pastServicePrefillFromJob,
   ALL_DEEP_COMPONENT_IDS,
 } from '../lib/employeeAddJob'
 import {
@@ -36,8 +35,9 @@ import {
   getCleaningType,
   cleaningTypesForLang,
 } from '../lib/cleaningType'
-import { tokyoToday, tokyoYearMonth, recentTokyoDates } from '../lib/dates'
-import { calcEmployeeMonthlySalary, isAdvanceReceived } from '../lib/salaryCalc'
+import { tokyoToday, tokyoYearMonth, recentTokyoDates, monthBounds } from '../lib/dates'
+import { isMissingTableError } from '../lib/schemaError'
+import { calcPeriodSalary, countWorkedDays, isAdvanceReceived } from '../lib/salaryCalc'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -80,7 +80,8 @@ export default function EmployeePortal() {
   const [salaryData, setSalaryData] = useState(null)
   const [payments, setPayments] = useState([])
   const [weekDeductions, setWeekDeductions] = useState([])
-  const [monthDeductions, setMonthDeductions] = useState([])
+  const [monthLedger, setMonthLedger] = useState([])
+  const [schemaEquipment, setSchemaEquipment] = useState(true)
   const [advances, setAdvances] = useState([])
   const [claims, setClaims] = useState([])
   const [messages, setMessages] = useState([])
@@ -222,28 +223,31 @@ export default function EmployeePortal() {
 
   const loadAll = async () => {
     const today = tokyoToday()
+    const ym = today.slice(0, 7)
+    const { from: monthFrom, to: monthTo } = monthBounds(ym)
     const { start:weekStart, end:weekEnd } = getWeekRange()
-    const monthStart = today.slice(0, 7) + '-01'
     const [active, all, emp, pay, adv, clm, eqp, bdg, weekPay, monthPay, contractsRes] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
-      supabase.from('employees').select('id,full_name,email,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days,score,is_active').eq('id',user.id).maybeSingle(),
+      supabase.from('employees').select('id,full_name,email,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days,attendance_bonus,advance_per_week,score,is_active').eq('id',user.id).maybeSingle(),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).gte('payment_date',today).order('payment_date').limit(10),
       supabase.from('salary_payments').select('*').eq('employee_id', user.id).eq('payment_type', 'advance').order('payment_date', { ascending: false }).limit(10),
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
       supabase.from('equipment_requests').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(30),
       supabase.from('badges').select('*').eq('employee_id',user.id),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
-      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
+      supabase.from('salary_payments').select('*').eq('employee_id',user.id).or(`period.eq.${ym},and(payment_date.gte.${monthFrom},payment_date.lte.${monthTo})`),
       supabase.from('service_contracts').select('location_name,price_per_visit,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
     ])
     const visible = (list) => (list || []).filter(j => !isDuskinJob(j))
     const regular = visible(active.data).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = visible(active.data).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
     const allVisible = visible(all.data)
-    setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[]); setEquipmentRequests(eqp.data||[])
+    setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[])
+    if (isMissingTableError(eqp.error)) setSchemaEquipment(false)
+    else { setSchemaEquipment(true); setEquipmentRequests(eqp.data||[]) }
     setWeekDeductions(weekPay.data||[])
-    setMonthDeductions(monthPay.data||[])
+    setMonthLedger(monthPay.data||[])
     setBadges(bdg.data||[])
     setServiceContracts(contractsRes.data || [])
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
@@ -272,7 +276,8 @@ export default function EmployeePortal() {
 
   const loadStatement = async () => {
     const period = getConfirmablePeriod()
-    const { data } = await supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle()
+    const { data, error } = await supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle()
+    if (isMissingTableError(error)) return
     setStatement(data)
   }
 
@@ -364,16 +369,21 @@ export default function EmployeePortal() {
       allJobs.filter(j => j.status === 'completed' && j.scheduled_date >= start && j.scheduled_date <= end),
       serviceContracts,
     )
-    const gross = weekJobs.reduce((s, j) => s + employeeEarningsForJob(j, empData), 0)
+    const isFixed = (empData?.salary_type || 'fixed') === 'fixed'
+    const weekDays = countWorkedDays(weekJobs)
+    const daily = Number(empData?.fixed_salary || 0) / (empData?.monthly_work_days || 22)
+    const gross = isFixed
+      ? Math.round(daily * weekDays)
+      : weekJobs.reduce((s, j) => s + employeeEarningsForJob(j, empData), 0)
     const deductions = weekDeductions.reduce((s,d)=>s+Number(d.amount||0),0)
     const totalChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_total||0),0)
     const doneChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_done??0),0)
     const rate = totalChecklist>0 ? Math.round((doneChecklist/totalChecklist)*100) : 100
-    return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate }
+    return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate, isFixed, weekDays }
   }
 
-  const calcSalary = (allData, empInfo, deductionsList = []) => {
-    setSalaryData(calcEmployeeMonthlySalary(empInfo, allData, deductionsList))
+  const calcSalary = (allData, empInfo, paymentsList = []) => {
+    setSalaryData(calcPeriodSalary(empInfo, allData, paymentsList, { period: tokyoYearMonth() }))
   }
 
   const awardBadges = async (allData, existing) => {
@@ -1410,8 +1420,9 @@ export default function EmployeePortal() {
             )}
             <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
               <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>{e.earnedThisMonth}</div>
-                <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>{fill(e.netGross, { gross: (salaryData?.total||0).toLocaleString(), deductions: (salaryData?.deductions||0).toLocaleString() })}</div>
+                <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.toPay ?? salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>{fill(e.netGross, { gross: (salaryData?.total||0).toLocaleString(), deductions: (salaryData?.deductions||0).toLocaleString(), advances: (salaryData?.advancesReceived||0).toLocaleString() })}</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>{e.toPayHint}</div>
               <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>{fill(e.ofMax,{max:(salaryData?.fixedMax||0).toLocaleString()})}</div>
               <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 14px 5px',overflow:'hidden'}}>
                 <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
@@ -1425,16 +1436,16 @@ export default function EmployeePortal() {
                 <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>📅 {fill(e.weekRange,{start:w.start,end:w.end})}</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
                   <div>
-                    <div style={{fontSize:16,fontWeight:800,color:'#4ade80'}}>¥{w.gross.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.generated}</div>
+                    <div style={{fontSize:16,fontWeight:800,color:'#4ade80'}}>{w.isFixed ? w.weekDays : `¥${w.gross.toLocaleString()}`}</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{w.isFixed ? e.weekDaysLabel : e.generated}</div>
                   </div>
                   <div>
                     <div style={{fontSize:16,fontWeight:800,color:w.deductions>0?'#f87171':'rgba(255,255,255,0.3)'}}>-¥{w.deductions.toLocaleString()}</div>
                     <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.deductionsLabel}</div>
                   </div>
                   <div>
-                    <div style={{fontSize:16,fontWeight:800,color:'#c19c56'}}>¥{w.net.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.netLabel}</div>
+                    <div style={{fontSize:16,fontWeight:800,color:'#c19c56'}}>{w.isFixed ? `${w.weekJobs.length}` : `¥${w.net.toLocaleString()}`}</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{w.isFixed ? e.statJobs : e.netLabel}</div>
                   </div>
                 </div>
                 <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
@@ -1456,12 +1467,14 @@ export default function EmployeePortal() {
               <button onClick={async()=>{
                 const month = tokyoYearMonth()
                 const { generatePayslipJP, generatePayslip } = await import('../lib/generatePDF')
+                const ledger = monthLedger.length ? monthLedger : [...(payments||[]), ...(advances||[])]
+                const advRows = salaryData?.advanceRows || advances
                 if (lang==='ja') {
-                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
+                  const doc = await generatePayslipJP(empData||{}, month, salaryData, ledger, advRows)
                   doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('給与明細ダウンロード完了!')
                 } else {
-                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, advances)
+                  const doc = await generatePayslip(empData||{}, month, salaryData, ledger, advRows)
                   doc.save('payslip_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('Payslip downloaded!')
                 }
@@ -1529,6 +1542,11 @@ export default function EmployeePortal() {
         {/* EQUIPMENT */}
         {tab==='equipment'&&(
           <div>
+            {!schemaEquipment && (
+              <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 12, padding: 12, marginBottom: 14, fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+                {tr.payroll.setupNeeded} — {tr.payroll.setupHint}
+              </div>
+            )}
             <span style={S.label}>{e.equipmentSubmitTitle}</span>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 12, lineHeight: 1.5 }}>{e.equipmentSubmitHint}</div>
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 20, padding: 18, marginBottom: 16 }}>

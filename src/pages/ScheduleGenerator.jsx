@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { tokyoYearMonth } from '../lib/dates'
+import { shiftYearMonth } from '../lib/salaryPeriod'
 import { useLang, fill } from '../hooks/useLang'
 import {
   DEFAULT_LOCATIONS, buildMonthSchedule, scheduleStats, jobsToRows,
@@ -14,11 +16,7 @@ export default function ScheduleGenerator() {
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   const dowLabels = lang === 'ja' ? DOW_JA : DOW_EN
 
-  const [month, setMonth] = useState(() => {
-    const d = new Date()
-    d.setMonth(d.getMonth() + 1)
-    return d.toISOString().slice(0, 7)
-  })
+  const [month, setMonth] = useState(() => shiftYearMonth(tokyoYearMonth(), 1))
   const [preview, setPreview] = useState([])
   const [loading, setLoading] = useState(false)
   const [existingCount, setExistingCount] = useState(0)

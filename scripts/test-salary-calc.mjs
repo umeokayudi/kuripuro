@@ -64,6 +64,33 @@ function testToPayAfterAdvances() {
   assert(calc.toPay === calc.base - 5000 - 20000, '15th = earned - deductions - advances')
 }
 
+function testTransportAndBonuses() {
+  const emp = { salary_type: 'fixed', fixed_salary: 220000, monthly_work_days: 22, attendance_bonus: 10000 }
+  const jobs = Array.from({ length: 22 }, (_, i) => ({
+    status: 'completed',
+    scheduled_date: `2026-08-${String(i + 1).padStart(2, '0')}`,
+    scheduled_time: '10:00',
+  }))
+  const payments = [
+    { payment_type: 'bonus', amount: 3000, payment_date: '2026-08-20' },
+    { payment_type: 'transport', amount: 280, payment_date: '2026-08-12' },
+    { payment_type: 'advance', amount: 10000, payment_date: '2026-08-07', status: 'paid' },
+  ]
+  const calc = calcPeriodSalary(emp, jobs, payments, { period: '2026-08', today: '2026-08-31' })
+  assert(calc.attendanceBonus === 10000, `attendance ${calc.attendanceBonus}`)
+  assert(calc.bonuses === 3000, `bonuses ${calc.bonuses}`)
+  assert(calc.transport === 280, `transport ${calc.transport}`)
+  assert(calc.gross === calc.base + 3000 + 10000, `gross ${calc.gross}`)
+  assert(calc.toPay === calc.net - 10000 + 280, `toPay ${calc.toPay}`)
+}
+
+function testAttendanceBonusNeedsFullMonth() {
+  const emp = { salary_type: 'fixed', fixed_salary: 220000, monthly_work_days: 22, attendance_bonus: 10000 }
+  const jobs = [{ status: 'completed', scheduled_date: '2026-08-04', scheduled_time: '10:00' }]
+  const calc = calcPeriodSalary(emp, jobs, [], { period: '2026-08', today: '2026-08-20' })
+  assert(calc.attendanceBonus === 0, 'bonus only after full work days')
+}
+
 function testAdvanceReceived() {
   assert(isAdvanceReceived({ status: 'paid', payment_date: '2026-09-20' }, '2026-09-16') === true, 'paid is received')
   assert(isAdvanceReceived({ status: 'scheduled', payment_date: '2026-09-10' }, '2026-09-16') === true, 'past date received')
@@ -101,6 +128,10 @@ async function main() {
   console.log('✅ calcEmployeeMonthlySalary (fixed)')
   testToPayAfterAdvances()
   console.log('✅ toPay after advances + deductions')
+  testTransportAndBonuses()
+  console.log('✅ transport, bonuses and completion bonus on 15th')
+  testAttendanceBonusNeedsFullMonth()
+  console.log('✅ completion bonus waits for full month')
   testAdvanceReceived()
   console.log('✅ isAdvanceReceived uses payment_date')
   testWeeklyPlan()
