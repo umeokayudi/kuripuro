@@ -4,11 +4,15 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 import {
+  buildDaySummaries,
   buildDeepCleanProgressForUser,
   currentYearMonth,
   filterDeepCleanProgressByLocation,
+  formatScheduleDate,
+  monthCalendarCells,
   ONTHEPLANET_CLIENT_ID,
   storeProgressRows,
+  tuesdaySlotInfo,
 } from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -634,12 +638,15 @@ export default function ClientPortal() {
                     progress={deepProgress}
                     allByLocation={canSelectDeepStore ? deepProgressAll?.byLocation : null}
                     labels={c}
+                    lang={lang}
+                    today={today}
                     monthLabel={deepProgressMonthLabel}
                     progressMonth={deepProgressMonth}
                     onMonthChange={setDeepProgressMonth}
                     canSelectStore={canSelectDeepStore}
                     selectedStore={deepProgressStore}
                     onStoreChange={setDeepProgressStore}
+                    onVisitClick={j => setSelectedVisit(j)}
                   />
                 )}
                 <div className="cp-section-title"><span>📅</span> {c.today} — {today}</div>
@@ -1055,33 +1062,60 @@ function DeepCleanProgressCard({
   progress,
   allByLocation,
   labels,
+  lang,
+  today,
   monthLabel,
   progressMonth,
   onMonthChange,
   canSelectStore,
   selectedStore,
   onStoreChange,
+  onVisitClick,
 }) {
-  const { totals, scope, location } = progress
-  const expected = totals.expected || 0
-  const completed = totals.completed || 0
-  const pending = totals.pending || 0
-  const missing = totals.missing ?? Math.max(0, expected - (totals.scheduled || 0))
-  const donePct = totals.donePct ?? totals.pct ?? 0
-  const pendingPct = totals.pendingPct ?? (expected ? Math.round((pending / expected) * 100) : 0)
-  const missingPct = totals.missingPct ?? (expected ? Math.round((missing / expected) * 100) : 0)
-  const doneShare = totals.doneShare ?? (expected ? (completed / expected) * 100 : 0)
-  const pendingShare = totals.pendingShare ?? (expected ? (pending / expected) * 100 : 0)
-  const missingShare = Math.max(0, 100 - doneShare - pendingShare)
+  const { scope, location } = progress
+  const daySummaries = buildDaySummaries(progress.byLocation)
+  const dayByDate = Object.fromEntries(daySummaries.map(d => [d.date, d]))
+  const cells = monthCalendarCells(progressMonth)
+  const expectedDays = daySummaries.length
+  const completedDays = daySummaries.filter(d => d.state === 'done').length
+  const partialDays = daySummaries.filter(d => d.state === 'partial').length
+  const missingDays = daySummaries.filter(d => d.state === 'missing').length
+  const donePct = expectedDays ? Math.round((completedDays / expectedDays) * 100) : 0
+  const doneShare = expectedDays ? (completedDays / expectedDays) * 100 : 0
+  const partialShare = expectedDays ? (partialDays / expectedDays) * 100 : 0
+  const missingShare = Math.max(0, 100 - doneShare - partialShare)
   const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
   const storeRows = storeProgressRows(allByLocation || {})
   const storeNames = Object.keys(allByLocation || {}).sort((a, b) => a.localeCompare(b))
-  const donutBg = `conic-gradient(#4ade80 0% ${doneShare}%, #60a5fa ${doneShare}% ${doneShare + pendingShare}%, rgba(248, 113, 113, 0.78) ${doneShare + pendingShare}% 100%)`
+  const weekdays = lang === 'ja'
+    ? ['日', '月', '火', '水', '木', '金', '土']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const slotLabels = {
+    slotMissing: labels.deepCleanMissing,
+    slotDone: labels.deepCleanDone,
+    slotProgress: labels.deepCleanPending,
+    slotPending: labels.deepCleanPending,
+  }
+
+  const [selectedDay, setSelectedDay] = useState(null)
+  useEffect(() => {
+    const dates = new Set(buildDaySummaries(progress.byLocation).map(d => d.date))
+    setSelectedDay(prev => {
+      if (prev && dates.has(prev)) return prev
+      if (today && dates.has(today)) return today
+      return null
+    })
+  }, [progress, today, progressMonth, selectedStore])
 
   const pickStore = (name) => {
     if (!onStoreChange) return
     onStoreChange(selectedStore === name ? '' : name)
   }
+
+  const selected = selectedDay ? dayByDate[selectedDay] : null
+  const selectedLabel = selectedDay
+    ? formatScheduleDate(selectedDay, lang)
+    : labels.deepCleanPickDay
 
   return (
     <div className="cp-deep-progress">
@@ -1089,10 +1123,10 @@ function DeepCleanProgressCard({
         <div>
           <div className="cp-deep-progress-title">✨ {labels.deepCleanProgress}</div>
           <div className="cp-deep-progress-sub">
-            {scopeLabel} · {fill(labels.deepCleanProgressHint, {
+            {scopeLabel} · {fill(labels.deepCleanDaysHint, {
               month: monthLabel,
-              done: completed,
-              expected,
+              days: expectedDays,
+              done: completedDays,
               pct: donePct,
             })}
           </div>
@@ -1138,50 +1172,92 @@ function DeepCleanProgressCard({
 
       <div className="cp-deep-headline">
         <div className="cp-deep-headline-main">
-          {fill(labels.deepCleanOfExpected, { done: completed, expected })}
+          {fill(labels.deepCleanOfDays, { done: completedDays, expected: expectedDays })}
         </div>
         <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
       </div>
 
-      <div className="cp-deep-progress-body">
-        <div
-          className="cp-deep-donut"
-          style={{ background: donutBg }}
-          role="img"
-          aria-label={fill(labels.deepCleanOfExpected, { done: completed, expected })}
-        >
-          <div className="cp-deep-donut-hole">
-            <div className="cp-deep-donut-frac">
-              <b>{completed}</b>
-              <span>/{expected}</span>
-            </div>
-            <div className="cp-deep-donut-lbl">{donePct}%</div>
-          </div>
-        </div>
+      <div className="cp-cal-weekdays">
+        {weekdays.map(w => (
+          <div key={w} className="cp-cal-wd">{w}</div>
+        ))}
+      </div>
+      <div className="cp-cal" role="grid" aria-label={labels.deepCleanProgress}>
+        {cells.map((date, i) => {
+          if (!date) return <div key={`pad-${i}`} className="cp-cal-cell pad" />
+          const day = dayByDate[date]
+          const state = day?.state || 'empty'
+          const isToday = date === today
+          const isSel = date === selectedDay
+          const dayNum = Number(date.slice(-2))
+          return (
+            <button
+              key={date}
+              type="button"
+              className={`cp-cal-cell ${state}${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
+              disabled={!day}
+              onClick={() => day && setSelectedDay(isSel ? null : date)}
+              aria-pressed={isSel}
+              aria-label={day
+                ? `${date} · ${day.done}/${day.expected}`
+                : date}
+            >
+              <span className="cp-cal-num">{dayNum}</span>
+              {day && (
+                <span className="cp-cal-count">
+                  {day.done}/{day.expected}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
 
-        <div className="cp-deep-legend">
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
-            <span className="cp-deep-legend-val">{completed} · {donePct}%</span>
-          </div>
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot pending" />
-            <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
-            <span className="cp-deep-legend-val">{pending} · {pendingPct}%</span>
-          </div>
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot missing" />
-            <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
-            <span className="cp-deep-legend-val">{missing} · {missingPct}%</span>
-          </div>
-        </div>
+      <div className="cp-cal-legend">
+        <span><span className="cp-deep-dot done" /> {labels.deepCleanDone} {completedDays}</span>
+        <span><span className="cp-deep-dot pending" /> {labels.deepCleanPending} {partialDays}</span>
+        <span><span className="cp-deep-dot missing" /> {labels.deepCleanMissing} {missingDays}</span>
       </div>
 
       <div className="cp-deep-bar stacked" aria-hidden="true">
         <div className="cp-deep-bar-seg done" style={{ width: `${doneShare}%` }} />
-        <div className="cp-deep-bar-seg pending" style={{ width: `${pendingShare}%` }} />
+        <div className="cp-deep-bar-seg pending" style={{ width: `${partialShare}%` }} />
         <div className="cp-deep-bar-seg missing" style={{ width: `${missingShare}%` }} />
+      </div>
+
+      <div className="cp-cal-day">
+        <div className="cp-cal-day-title">{selectedLabel}</div>
+        {!selected && (
+          <div className="cp-cal-day-empty">{labels.deepCleanPickDay}</div>
+        )}
+        {selected && (
+          <div className="cp-cal-store-list">
+            {selected.stores.map(row => {
+              const slot = tuesdaySlotInfo(row.job, slotLabels)
+              return (
+                <button
+                  key={row.name}
+                  type="button"
+                  className={`cp-cal-store${row.job ? ' has-job' : ''}`}
+                  onClick={() => {
+                    if (row.job && onVisitClick) onVisitClick(row.job)
+                  }}
+                >
+                  <span className="cp-cal-store-icon" style={{ color: slot.color }}>{slot.icon}</span>
+                  <span className="cp-cal-store-body">
+                    <span className="cp-cal-store-name">{row.name}</span>
+                    <span className="cp-cal-store-meta">
+                      {row.job
+                        ? `${row.job.employee_name || '—'} · ${row.job.scheduled_time || '—'}`
+                        : labels.deepCleanMissing}
+                    </span>
+                  </span>
+                  <span className="cp-cal-store-status" style={{ color: slot.color }}>{slot.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {canSelectStore && storeRows.length > 0 && (
@@ -1202,7 +1278,7 @@ function DeepCleanProgressCard({
                     <span className="cp-deep-store-card-pct">{row.pct}%</span>
                   </div>
                   <div className="cp-deep-store-card-meta">
-                    {fill(labels.deepCleanOfExpected, { done: row.completed, expected: row.expected })}
+                    {fill(labels.deepCleanOfDays, { done: row.completed, expected: row.expected })}
                   </div>
                   <div className="cp-deep-store-mini">
                     <div className="cp-deep-store-mini-fill" style={{ width: `${row.pct}%` }} />

@@ -14,6 +14,8 @@ import {
   buildDeepCleanProgressForUser,
   filterDeepCleanProgressByLocation,
   storeProgressRows,
+  buildDaySummaries,
+  monthCalendarCells,
 } from '../src/lib/cleaningType.js'
 import { SCHEDULE_CLIENTS } from '../src/lib/serviceCatalog.js'
 import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
@@ -216,6 +218,24 @@ function testDeepCleanProgressForUser() {
   const unknown = buildDeepCleanProgressForUser(jobs, ym, { location_name: 'Unknown Store' })
   assert(unknown.scope === 'none', unknown.scope)
   assert(unknown.totals.expected === 0, 'unknown store expected 0')
+
+  const hqDays = buildDaySummaries(all.byLocation)
+  assert(hqDays.length === 14, `hq service days ${hqDays.length}`)
+  const tue = hqDays.find(d => d.date === '2026-09-08')
+  assert(tue?.expected === 8, `tuesday stores ${tue?.expected}`)
+  assert(tue?.done === 1, `tuesday done ${tue?.done}`)
+  assert(tue?.state === 'partial', tue?.state)
+  const mon = hqDays.find(d => d.date === '2026-09-07')
+  assert(mon?.stores.some(s => s.name === 'Ibushio' && s.job?.status === 'assigned'), 'monday ibushio pending')
+
+  const storeDays = buildDaySummaries(scoped.byLocation)
+  assert(storeDays.length === 5, `store service days ${storeDays.length}`)
+  assert(storeDays.every(d => d.expected === 1), 'one store per day')
+  assert(storeDays.find(d => d.date === '2026-09-08')?.state === 'done', 'oimachi tuesday done')
+
+  const cells = monthCalendarCells('2026-09')
+  assert(cells.filter(Boolean).length === 30, 'september has 30 days')
+  assert(cells[0] === null || cells[0].endsWith('-01'), 'leading pad or month start')
 }
 
 async function main() {
