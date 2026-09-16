@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 import {
-  buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
+  buildDeepCleanTrackingCharts, currentYearMonth, ONTHEPLANET_CLIENT_ID,
 } from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -65,6 +65,7 @@ export default function ClientPortal() {
 
   const [tab, setTab] = useState('home')
   const [jobs, setJobs] = useState([])
+  const [otpChartJobs, setOtpChartJobs] = useState([])
   const [contracts, setContracts] = useState([])
   const [messages, setMessages] = useState([])
   const [complaints, setComplaints] = useState([])
@@ -140,7 +141,9 @@ export default function ClientPortal() {
         toast.error(firstErr)
       }
 
-      setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
+      const rawJobs = jobsRes.data || []
+      setJobs(rawJobs.filter(j => jobMatchesClientUser(j, user)))
+      setOtpChartJobs(user.client_id === ONTHEPLANET_CLIENT_ID ? rawJobs : [])
       setContracts(contractsRes.data || [])
       setMessages(filterByLocation(msgsRes.data, user.location_name))
       setComplaints(filterByLocation(compRes.data, user.location_name))
@@ -256,10 +259,10 @@ export default function ClientPortal() {
   }, [filteredVisits])
 
   const isOtpClient = user?.client_id === ONTHEPLANET_CLIENT_ID
-  const deepProgress = useMemo(() => {
+  const deepTracking = useMemo(() => {
     if (!isOtpClient) return null
-    return buildDeepCleanProgressForUser(jobs, deepProgressMonth, user)
-  }, [jobs, deepProgressMonth, user, isOtpClient])
+    return buildDeepCleanTrackingCharts(otpChartJobs, deepProgressMonth, user)
+  }, [otpChartJobs, deepProgressMonth, user, isOtpClient])
   const deepProgressMonthLabel = useMemo(() => (
     new Date(`${deepProgressMonth}-01T12:00:00`).toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
   ), [deepProgressMonth, dateLocale])
@@ -608,9 +611,9 @@ export default function ClientPortal() {
               <div className="cp-loading">{c.loading}</div>
             ) : tab === 'home' && (
               <>
-                {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
+                {isOtpClient && deepTracking?.contract?.totals?.expected > 0 && (
                   <DeepCleanProgressCard
-                    progress={deepProgress}
+                    tracking={deepTracking}
                     labels={c}
                     monthLabel={deepProgressMonthLabel}
                     progressMonth={deepProgressMonth}
@@ -1026,20 +1029,79 @@ function FeedbackPhotoField({
   )
 }
 
-function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, onMonthChange }) {
-  const { totals, scope, location } = progress
+function DeepDonut({ totals, labels, size = 132 }) {
+  const donePct = totals.donePct ?? totals.pct ?? 0
+  const notDonePct = totals.notDonePct ?? Math.max(0, 100 - donePct)
+  return (
+    <div
+      className="cp-deep-donut"
+      style={{
+        width: size,
+        height: size,
+        background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(248, 113, 113, 0.9) ${donePct}% 100%)`,
+      }}
+      role="img"
+      aria-label={`${donePct}% ${labels.deepCleanDone}, ${notDonePct}% ${labels.deepCleanNotDone}`}
+    >
+      <div className="cp-deep-donut-hole">
+        <div className="cp-deep-donut-pct">{donePct}%</div>
+        <div className="cp-deep-donut-lbl">{labels.deepCleanDone}</div>
+      </div>
+    </div>
+  )
+}
+
+function DeepLegend({ totals, labels }) {
   const donePct = totals.donePct ?? totals.pct ?? 0
   const notDonePct = totals.notDonePct ?? Math.max(0, 100 - donePct)
   const missing = Math.max(0, totals.expected - totals.scheduled)
-  const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
+  return (
+    <div className="cp-deep-legend">
+      <div className="cp-deep-legend-row">
+        <span className="cp-deep-dot done" />
+        <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
+        <span className="cp-deep-legend-val">{totals.completed} ({donePct}%)</span>
+      </div>
+      <div className="cp-deep-legend-row">
+        <span className="cp-deep-dot not-done" />
+        <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
+        <span className="cp-deep-legend-val">{(totals.notDone ?? Math.max(0, totals.expected - totals.completed))} ({notDonePct}%)</span>
+      </div>
+      {totals.pending > 0 && (
+        <div className="cp-deep-legend-row muted">
+          <span className="cp-deep-dot pending" />
+          <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
+          <span className="cp-deep-legend-val">{totals.pending}</span>
+        </div>
+      )}
+      {missing > 0 && (
+        <div className="cp-deep-legend-row muted">
+          <span className="cp-deep-dot missing" />
+          <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
+          <span className="cp-deep-legend-val">{missing}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DeepCleanProgressCard({ tracking, labels, monthLabel, progressMonth, onMonthChange }) {
+  const contract = tracking.contract
+  const store = tracking.store
+  const stores = tracking.stores || []
+  const contractTotals = contract.totals
+  const contractPct = contractTotals.donePct ?? contractTotals.pct ?? 0
 
   return (
     <div className="cp-deep-progress">
       <div className="cp-deep-progress-head">
-        <div>
+        <div className="cp-deep-progress-copy">
           <div className="cp-deep-progress-title">✨ {labels.deepCleanProgress}</div>
           <div className="cp-deep-progress-sub">
-            {scopeLabel} · {fill(labels.deepCleanProgressHint, { month: monthLabel, expected: totals.expected })}
+            {labels.deepCleanContract} · {fill(labels.deepCleanProgressHint, {
+              month: monthLabel,
+              expected: contractTotals.expected,
+            })}
           </div>
         </div>
         <input
@@ -1051,50 +1113,58 @@ function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, on
         />
       </div>
 
-      <div className="cp-deep-progress-body">
-        <div
-          className="cp-deep-donut"
-          style={{ background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(248, 113, 113, 0.9) ${donePct}% 100%)` }}
-          role="img"
-          aria-label={`${donePct}% ${labels.deepCleanDone}, ${notDonePct}% ${labels.deepCleanNotDone}`}
-        >
-          <div className="cp-deep-donut-hole">
-            <div className="cp-deep-donut-pct">{donePct}%</div>
-            <div className="cp-deep-donut-lbl">{labels.deepCleanDone}</div>
+      <div className="cp-deep-charts">
+        <section className="cp-deep-chart-block">
+          <div className="cp-deep-chart-kicker">{labels.deepCleanContract}</div>
+          <div className="cp-deep-progress-body">
+            <DeepDonut totals={contractTotals} labels={labels} />
+            <DeepLegend totals={contractTotals} labels={labels} />
           </div>
-        </div>
+          <div className="cp-deep-bar">
+            <div className="cp-deep-bar-fill" style={{ width: `${contractPct}%` }} />
+          </div>
+        </section>
 
-        <div className="cp-deep-legend">
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
-            <span className="cp-deep-legend-val">{totals.completed} ({donePct}%)</span>
-          </div>
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot not-done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
-            <span className="cp-deep-legend-val">{totals.notDone} ({notDonePct}%)</span>
-          </div>
-          {totals.pending > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot pending" />
-              <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
-              <span className="cp-deep-legend-val">{totals.pending}</span>
+        {store && (
+          <section className="cp-deep-chart-block mine">
+            <div className="cp-deep-chart-kicker">{labels.deepCleanThisStore} · {store.location}</div>
+            <div className="cp-deep-progress-body">
+              <DeepDonut totals={store.totals} labels={labels} size={108} />
+              <DeepLegend totals={store.totals} labels={labels} />
             </div>
-          )}
-          {missing > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot missing" />
-              <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
-              <span className="cp-deep-legend-val">{missing}</span>
+            <div className="cp-deep-bar">
+              <div className="cp-deep-bar-fill" style={{ width: `${store.totals.donePct ?? store.totals.pct ?? 0}%` }} />
             </div>
-          )}
-        </div>
+          </section>
+        )}
       </div>
 
-      <div className="cp-deep-bar">
-        <div className="cp-deep-bar-fill" style={{ width: `${donePct}%` }} />
-      </div>
+      {stores.length > 0 && (
+        <div className="cp-deep-stores">
+          <div className="cp-deep-stores-title">{labels.deepCleanByStore}</div>
+          <div className="cp-deep-store-grid">
+            {stores.map(row => (
+              <div
+                key={row.loc}
+                className={`cp-deep-store${row.highlight ? ' mine' : ''}${row.ok ? ' ok' : ''}`}
+              >
+                <div className="cp-deep-store-name">{row.loc}</div>
+                <div className="cp-deep-store-meta">{row.schedule || 'Tue'}</div>
+                <div className="cp-deep-store-row">
+                  <span>{row.completed}/{row.expected}</span>
+                  <span className="cp-deep-store-pct">{row.pct}%</span>
+                </div>
+                <div className="cp-deep-store-bar">
+                  <div className="cp-deep-store-bar-fill" style={{ width: `${row.pct}%` }} />
+                </div>
+                {row.highlight && (
+                  <div className="cp-deep-store-you">{labels.deepCleanThisStore}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

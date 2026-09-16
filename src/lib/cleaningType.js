@@ -225,9 +225,6 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
   )
 
   const byLocation = {}
-  let totalExpected = 0
-  let totalCompleted = 0
-  let totalPending = 0
 
   DEEP_CLEAN_LOCATIONS.forEach(loc => {
     const expectedDates = expectedDeepCleanDatesForLocation(loc, yearMonth)
@@ -249,9 +246,6 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
       schedule: deepCleanScheduleLabel(loc),
       expectedDates,
     }
-    totalExpected += expectedPerLocation
-    totalCompleted += completed
-    totalPending += pending
   })
 
   const tuesdaySummary = slotDates.map(date => {
@@ -268,13 +262,7 @@ export function buildDeepCleanProgress(jobs, yearMonth) {
     tuesdays: slotDates,
     byLocation,
     tuesdaySummary,
-    totals: {
-      expected: totalExpected,
-      completed: totalCompleted,
-      pending: totalPending,
-      scheduled: monthJobs.length,
-      pct: totalExpected ? Math.round((totalCompleted / totalExpected) * 100) : 0,
-    },
+    totals: recalcDeepProgressTotals(byLocation, tuesdaySummary),
   }
 }
 
@@ -345,6 +333,52 @@ export function buildDeepCleanProgressForUser(jobs, yearMonth, user) {
     byLocation,
     tuesdaySummary,
     totals: recalcDeepProgressTotals(byLocation, tuesdaySummary),
+  }
+}
+
+/** Per-store rows for contract + store tracking charts */
+export function deepCleanLocationRows(byLocation, highlightLocation) {
+  const highlight = String(highlightLocation || '').toLowerCase()
+  return Object.entries(byLocation || {}).map(([loc, data]) => {
+    const pct = data.expected ? Math.round((data.completed / data.expected) * 100) : 0
+    const notDone = Math.max(0, (data.expected || 0) - (data.completed || 0))
+    return {
+      loc,
+      ...data,
+      pct,
+      notDone,
+      ok: (data.completed || 0) >= (data.expected || 0) && (data.missing || 0) === 0,
+      highlight: Boolean(highlight) && loc.toLowerCase() === highlight,
+    }
+  })
+}
+
+/**
+ * Contract-wide OTP tracking plus optional highlighted store.
+ * Visit lists stay filtered separately; charts use unfiltered OTP jobs.
+ */
+export function buildDeepCleanTrackingCharts(jobs, yearMonth, user) {
+  const contract = buildDeepCleanProgress(jobs, yearMonth)
+  const locName = (user?.location_name || '').trim()
+  const locKey = locName
+    ? DEEP_CLEAN_LOCATIONS.find(loc => loc.toLowerCase() === locName.toLowerCase()) || null
+    : null
+  const storeData = locKey ? contract.byLocation[locKey] : null
+  const store = storeData
+    ? {
+        location: locKey,
+        data: storeData,
+        totals: recalcDeepProgressTotals({ [locKey]: storeData }, []),
+      }
+    : null
+
+  return {
+    yearMonth,
+    scope: locKey ? 'location' : locName ? 'none' : 'all',
+    highlightLocation: locKey,
+    contract,
+    store,
+    stores: deepCleanLocationRows(contract.byLocation, locKey),
   }
 }
 
