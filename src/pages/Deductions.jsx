@@ -21,7 +21,7 @@ export default function Deductions() {
 
   const load = async () => {
     const [e, h] = await Promise.all([
-      supabase.from('employees').select('id,full_name').eq('is_active',true).order('full_name'),
+      supabase.from('employees').select('id,full_name,is_active').order('full_name'),
       supabase.from('salary_payments').select('*').eq('is_deduction',true).order('created_at',{ascending:false}).limit(30),
     ])
     setEmployees(e.data||[])
@@ -71,7 +71,7 @@ export default function Deductions() {
             <label>Employee *</label>
             <select value={form.employee_id} onChange={e=>setForm(f=>({...f,employee_id:e.target.value}))}>
               <option value="">Select employee...</option>
-              {employees.map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
+              {employees.map(e=><option key={e.id} value={e.id}>{e.full_name}{e.is_active ? '' : ' (off)'}</option>)}
             </select>
           </div>
           <div className="form-group">
