@@ -76,11 +76,26 @@ async function blobToJpegDataUrl(blob) {
     }
   }
 
-  const dataUrl = await blobToDataUrl(working)
-  if (typeof dataUrl === 'string' && (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/png'))) {
-    return dataUrl
+  const mime = (working.type || '').toLowerCase()
+  if (mime.includes('jpeg') || mime.includes('jpg') || mime.includes('png')) {
+    try {
+      const buf = new Uint8Array(await working.arrayBuffer())
+      let binary = ''
+      const chunk = 0x8000
+      for (let i = 0; i < buf.length; i += chunk) {
+        binary += String.fromCharCode(...buf.subarray(i, i + chunk))
+      }
+      const b64 = btoa(binary)
+      const kind = mime.includes('png') ? 'png' : 'jpeg'
+      return `data:image/${kind};base64,${b64}`
+    } catch { /* FileReader fallback */ }
   }
-  return null
+
+  try {
+    return await blobToDataUrl(working)
+  } catch {
+    return null
+  }
 }
 
 /** Fetch a storage photo and convert it to a JPEG data URL that jsPDF can embed. */
@@ -111,7 +126,8 @@ function drawPhotoSlot(doc, x, y, w, h, label, dataUrl, missingLabel) {
   let drawn = false
   if (dataUrl) {
     try {
-      doc.addImage(dataUrl, 'JPEG', x, y, w, h)
+      const fmt = dataUrl.includes('image/png') ? 'PNG' : 'JPEG'
+      doc.addImage(dataUrl, fmt, x, y, w, h)
       drawn = true
     } catch { drawn = false }
   }
