@@ -1,12 +1,19 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
+import { buildDeepCleanProgress, buildDaySummaries, currentYearMonth, deepCleanScheduleLabel, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+
+function shiftYearMonth(ym, delta) {
+  const [y, m] = String(ym || '').split('-').map(Number)
+  if (!y || !m) return ym
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 export default function Dashboard() {
   const { lang, t } = useLang()
@@ -87,6 +94,10 @@ export default function Dashboard() {
   const statusColor = s => ({ assigned: '#60a5fa', in_progress: '#fbbf24', completed: '#4ade80', cancelled: 'rgba(255,255,255,0.2)' }[s] || '#60a5fa')
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
+  const daySummaries = useMemo(() => buildDaySummaries(deepProgress.byLocation), [deepProgress])
+  const completedDays = daySummaries.filter(d => d.state === 'done').length
+  const lateDays = daySummaries.filter(d => d.state === 'late').length
+  const dayPct = daySummaries.length ? Math.round((completedDays / daySummaries.length) * 100) : 0
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
 
   const ratings30 = ratingsInPeriod(clientRatings, 30)
@@ -253,19 +264,27 @@ export default function Dashboard() {
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{d.deepCleanTitle}</div>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-              {fill(d.deepContract, { month: monthLabel, expected: deepProgress.totals.expected })}
+              {fill(d.deepContract, {
+                month: monthLabel,
+                expected: deepProgress.totals.expected,
+                days: daySummaries.length,
+              })}
             </div>
           </div>
-          <input type="month" value={progressMonth} onChange={e => setProgressMonth(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, fontWeight: 600 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" className="btn btn-sm" onClick={() => setProgressMonth(shiftYearMonth(progressMonth, -1))} aria-label={d.prevDay || '‹'}>‹</button>
+            <span style={{ fontSize: 13, fontWeight: 700, minWidth: 120, textAlign: 'center' }}>{monthLabel}</span>
+            <button type="button" className="btn btn-sm" onClick={() => setProgressMonth(shiftYearMonth(progressMonth, 1))} aria-label={d.nextDay || '›'}>›</button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
           {[
+            [d.serviceDays, `${completedDays}/${daySummaries.length}`, '#4ade80'],
+            [d.lateDays, lateDays, '#f87171'],
             [d.completed, deepProgress.totals.completed, '#4ade80'],
-            [d.pending, deepProgress.totals.pending, '#60a5fa'],
-            [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#f87171'],
-            [d.progress, `${deepProgress.totals.pct}%`, '#fbbf24'],
+            [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#fbbf24'],
+            [d.progress, `${dayPct}%`, '#fbbf24'],
           ].map(([l, v, c]) => (
             <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 16px', minWidth: 100 }}>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
@@ -275,21 +294,26 @@ export default function Dashboard() {
         </div>
 
         <div style={{ height: 10, background: 'var(--surface2)', borderRadius: 5, overflow: 'hidden', marginBottom: 16 }}>
-          <div style={{ height: '100%', width: `${deepProgress.totals.pct}%`, background: 'linear-gradient(90deg,#fbbf24,#4ade80)', borderRadius: 5, transition: 'width 0.4s' }} />
+          <div style={{ height: '100%', width: `${dayPct}%`, background: 'linear-gradient(90deg,#fbbf24,#4ade80)', borderRadius: 5, transition: 'width 0.4s' }} />
         </div>
 
-        {deepProgress.tuesdaySummary.length > 0 && (
+        {daySummaries.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byTuesday}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {deepProgress.tuesdaySummary.map(({ date, expected, done }) => {
-                const ok = done >= expected
-                const shortDate = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })
+              {daySummaries.map((day) => {
+                const tone = day.state === 'done'
+                  ? { bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.3)', color: '#4ade80' }
+                  : day.state === 'late'
+                    ? { bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.35)', color: '#f87171' }
+                    : day.state === 'partial'
+                      ? { bg: 'rgba(96,165,250,0.12)', border: 'rgba(96,165,250,0.3)', color: '#60a5fa' }
+                      : { bg: 'rgba(251,191,36,0.1)', border: 'rgba(251,191,36,0.25)', color: '#fbbf24' }
                 return (
-                  <button key={date} type="button" onClick={() => { setDetailTuesday(date); setDetailLoc(null) }}
-                    style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.1)', border: `1px solid ${ok ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.25)'}`, fontSize: 12, textAlign: 'left' }}>
-                    <div style={{ fontWeight: 700 }}>{fill(d.tuesdayShort, { date: shortDate })}</div>
-                    <div style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 600 }}>{fill(d.doneOf, { done, expected })}</div>
+                  <button key={day.date} type="button" onClick={() => { setDetailTuesday(day.date); setDetailLoc(null) }}
+                    style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: tone.bg, border: `1px solid ${tone.border}`, fontSize: 12, textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700 }}>{fill(d.tuesdayShort, { date: formatScheduleDate(day.date, lang) })}</div>
+                    <div style={{ color: tone.color, fontWeight: 600 }}>{fill(d.doneOf, { done: day.done, expected: day.expected })}</div>
                     <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{d.clickTuesday}</div>
                   </button>
                 )
@@ -307,7 +331,7 @@ export default function Dashboard() {
               <button key={loc} type="button" onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }}
                 style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc}</div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{data.schedule || 'Tue'}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{deepCleanScheduleLabel(loc, lang)}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
                   <span>{fill(d.doneCount, { done: data.completed, expected: data.expected })}</span>
                   <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{pct}%</span>

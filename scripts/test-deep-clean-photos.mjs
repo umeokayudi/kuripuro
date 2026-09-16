@@ -63,6 +63,9 @@ function testCleaningType() {
   const deepJob = { title: 'Ibushio — Deep Clean' }
   assert(getCleaningType(basicJob) === 'basic', 'basic detect')
   assert(getCleaningType(deepJob) === 'deep', 'deep detect')
+  assert(getCleaningType({ title: 'Ibushio — Grease Trap', job_category: 'maintenance' }) === 'basic', 'maintenance not deep')
+  assert(getCleaningType({ title: 'Ibushio — Stove + Range Hood + Grating + AC Cleaning' }) === 'basic', 'rest-day block not deep')
+  assert(getCleaningType({ title: 'Ibushio — Deep Clean (Grease Trap)' }) === 'deep', 'partial deep still deep')
   assert(jobMatchesLocationAndType(basicJob, 'Ibushio', 'basic'), 'basic match')
   assert(!jobMatchesLocationAndType(basicJob, 'Ibushio', 'deep'), 'basic not deep')
   assert(jobMatchesLocationAndType(deepJob, 'Ibushio', 'deep'), 'deep match')

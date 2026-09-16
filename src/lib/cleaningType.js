@@ -84,7 +84,16 @@ export function locationNameFromTitle(title) {
   return (title || '').replace(/ — .*/, '').trim()
 }
 
+/** Rest-day OTP maintenance (grease trap / stove block) is not a Deep Clean visit. */
+export function isMaintenanceJob(job) {
+  const title = job?.title || ''
+  if (/deep\s*clean/i.test(title)) return false
+  if (job?.job_category === 'maintenance' || job?.category === 'maintenance') return true
+  return / — (Grease Trap|Stove \+|Range Hood|Grating|AC Cleaning)/i.test(title)
+}
+
 export function getCleaningType(job) {
+  if (isMaintenanceJob(job)) return 'basic'
   const t = `${job?.title || ''} ${job?.description || ''}`.toLowerCase()
   if (/deep\s*clean|profunda|limpeza profunda/.test(t)) return 'deep'
   if (/range hood|grease trap|grating|ac cleaning|stove|fog[aã]o|レンジフード|グリストラップ|コンロ/.test(t)) return 'deep'
@@ -156,6 +165,7 @@ export function titleMatchesLocation(title, locationName) {
 }
 
 export function isDeepCleanJob(job) {
+  if (isMaintenanceJob(job)) return false
   return getCleaningType(job) === 'deep'
 }
 

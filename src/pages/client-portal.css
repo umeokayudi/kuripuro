@@ -413,6 +413,7 @@
 .cp-card.status-completed { border-left: 3px solid #4ade80; }
 .cp-card.status-progress { border-left: 3px solid #fbbf24; }
 .cp-card.status-assigned { border-left: 3px solid #60a5fa; }
+.cp-card.status-cancelled { border-left: 3px solid #64748b; }
 
 .cp-card-top {
   display: flex;
@@ -446,6 +447,7 @@
 .cp-badge.done { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
 .cp-badge.progress { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
 .cp-badge.pending { background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
+.cp-badge.cancelled { background: rgba(148, 163, 184, 0.18); color: #94a3b8; }
 
 .cp-card-cleaner {
   font-size: 12px;

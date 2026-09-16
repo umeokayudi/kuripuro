@@ -35,7 +35,7 @@ function sanitizePostgrestToken(value) {
 
 const filterByLocation = (rows, locationName) => {
   if (!locationName) return rows || []
-  return (rows || []).filter(r => !r.location_name || r.location_name === locationName)
+  return (rows || []).filter(r => r.location_name === locationName)
 }
 
 function monthBounds(ym) {
@@ -145,7 +145,7 @@ export default function ClientPortal() {
       const locToken = sanitizePostgrestToken(user.location_name)
       const locOrFilter = locToken
         ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${locToken}%)`
-        : `client_id.eq.${user.client_id}`
+        : `client_id.eq.${user.client_id},and(client_id.is.null,client_name.eq.On The Planet)`
       const monthRange = monthBounds(deepProgressMonth)
       const [jobsMonthRes, jobsRecentRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
         supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', monthRange.from).lte('scheduled_date', monthRange.to).limit(800),
@@ -215,7 +215,10 @@ export default function ClientPortal() {
     if (!selectedVisit && !lightbox) return
     const onKey = (e) => {
       if (e.key !== 'Escape') return
-      setLightbox(null)
+      if (lightbox) {
+        setLightbox(null)
+        return
+      }
       setSelectedVisit(null)
     }
     window.addEventListener('keydown', onKey)
@@ -465,7 +468,7 @@ export default function ClientPortal() {
   }
 
   const today = tokyoToday()
-  const todayJobs = jobs.filter(j => j.scheduled_date === today)
+  const todayJobs = jobs.filter(j => j.scheduled_date === today && j.status !== 'cancelled')
   const upcoming = jobs.filter(j => j.scheduled_date > today && j.status !== 'cancelled').slice(0, 10)
   const completed = jobs.filter(j => j.status === 'completed')
   const locations = [...new Set([
@@ -475,8 +478,8 @@ export default function ClientPortal() {
   ])]
 
   const statusLabel = (s) => ({ assigned: tr.status.assigned, in_progress: tr.status.in_progress, completed: tr.status.completed, cancelled: tr.status.cancelled }[s] || s)
-  const statusClass = (s) => ({ completed: 'done', in_progress: 'progress', assigned: 'pending' }[s] || 'pending')
-  const cardStatusClass = (s) => ({ completed: 'status-completed', in_progress: 'status-progress', assigned: 'status-assigned' }[s] || 'status-assigned')
+  const statusClass = (s) => ({ completed: 'done', in_progress: 'progress', assigned: 'pending', cancelled: 'cancelled' }[s] || 'pending')
+  const cardStatusClass = (s) => ({ completed: 'status-completed', in_progress: 'status-progress', assigned: 'status-assigned', cancelled: 'status-cancelled' }[s] || 'status-assigned')
   const complaintCat = (k) => ({ quality: c.catQuality, missed: c.catMissed, damage: c.catDamage, late: c.catLate, other: c.catOther }[k] || k)
   const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
@@ -511,7 +514,7 @@ export default function ClientPortal() {
                 [c.cleaner, selectedVisit.employee_name || '—'],
                 [c.entryTime, fmtVisitTime(selectedVisit, lang)],
                 [c.exitTime, fmtVisitEnd(selectedVisit, lang)],
-                [c.duration, fmtDuration(selectedVisit.started_at && selectedVisit.completed_at ? Math.round((new Date(selectedVisit.completed_at) - new Date(selectedVisit.started_at)) / 60000) : selectedVisit.retro_time_min, lang)],
+                [c.duration, fmtDuration(jobDurationMin(selectedVisit), lang)],
               ].map(([l, v]) => (
                 <div key={l} className="cp-time-box">
                   <div className="cp-time-lbl">{l}</div>
@@ -531,7 +534,7 @@ export default function ClientPortal() {
             )}
             {selectedVisit.checklist_total > 0 && (
               <div className="cp-field">
-                <span className="cp-label">{c.checklist || 'Checklist'}</span>
+                <span className="cp-label">{c.checklist}</span>
                 <div className="cp-card" style={{ marginBottom: 0, fontSize: 13 }}>
                   {fill(c.deepCleanChecklistLine, {
                     done: selectedVisit.checklist_done || 0,
@@ -559,14 +562,15 @@ export default function ClientPortal() {
                 />
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   {selectedVisit.photo_start_url && (
-                    <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.before})</a>
+                    <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto} ({c.before})</a>
                   )}
                   {selectedVisit.photo_end_url && (
-                    <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.after})</a>
+                    <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto} ({c.after})</a>
                   )}
                 </div>
               </div>
             )}
+            {selectedVisit.status === 'completed' && (
             <div className="cp-rating-box">
               <span className="cp-label">{c.rateService}</span>
               <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
@@ -591,6 +595,7 @@ export default function ClientPortal() {
                 {ratingForJob(selectedVisit.id) ? c.updateRating : c.submitRating}
               </button>
             </div>
+            )}
           </div>
         </div>
       )}
@@ -964,7 +969,7 @@ export default function ClientPortal() {
                 <button type="button" className="cp-btn cp-btn-blue" style={{ marginBottom: 16 }} onClick={() => setShowRequestForm(!showRequestForm)}>📝 {c.newRequest}</button>
                 {showRequestForm && (
                   <div className="cp-card" style={{ marginBottom: 16 }}>
-                    {locations.length > 1 && (
+                    {locations.length > 1 && !user.location_name && (
                       <div className="cp-field">
                         <span className="cp-label">{c.requestLocation}</span>
                         <select className="cp-select" value={requestForm.location_name} onChange={e => setRequestForm(f => ({ ...f, location_name: e.target.value }))}>
@@ -1246,11 +1251,10 @@ function DeepCleanProgressCard({
         <div className="cp-deep-headline-main">
           {fill(labels.deepCleanOfDays, { done: completedDays, expected: expectedDays })}
         </div>
-        <div className={`cp-deep-headline-pct${lateDays > 0 && donePct < 100 ? ' late' : ''}`}>
-          {lateDays > 0 && donePct < 100
-            ? `${labels.deepCleanLate} ${lateDays}`
-            : fill(labels.deepCleanPctDone, { pct: donePct })}
-        </div>
+        <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
+        {lateDays > 0 && (
+          <div className="cp-deep-headline-pct late">{labels.deepCleanLate} {lateDays}</div>
+        )}
         {visitDone > 0 && (
           <div className="cp-deep-headline-visits">
             {fill(labels.deepCleanVisitsDone, { done: visitDone })}
