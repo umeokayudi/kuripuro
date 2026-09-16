@@ -1,7 +1,6 @@
 import {
   OTP_BASIC_LOCATIONS,
   ATOMIC_LOCATION,
-  MATSUNAGA_SPOT,
   SCHEDULE_CLIENTS,
   isOtpDeepOnlyLocation,
 } from './serviceCatalog'
@@ -51,18 +50,7 @@ export function manualAddLocations() {
     scheduledTime: ATOMIC_LOCATION.scheduledTime || '21:00',
     group: 'Atomic',
   }]
-  const matsunaga = [{
-    name: MATSUNAGA_SPOT.name,
-    address: '',
-    notes: MATSUNAGA_SPOT.notes || '',
-    clientId: SCHEDULE_CLIENTS.matsunaga.id,
-    clientName: SCHEDULE_CLIENTS.matsunaga.name,
-    pricePerVisit: 0,
-    deepCleanPrice: 0,
-    scheduledTime: '10:00',
-    group: 'Spot',
-  }]
-  return [...otp, ...atomic, ...matsunaga]
+  return [...otp, ...atomic]
 }
 
 export function isDuskinJob(job) {

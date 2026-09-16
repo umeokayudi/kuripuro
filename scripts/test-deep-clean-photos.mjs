@@ -16,7 +16,7 @@ import {
   DEEP_CLEAN_LOCATIONS,
 } from '../src/lib/cleaningType.js'
 import { SCHEDULE_CLIENTS } from '../src/lib/serviceCatalog.js'
-import { buildAddServiceOptions } from '../src/lib/employeeAddJob.js'
+import { buildAddServiceOptions, manualAddLocations } from '../src/lib/employeeAddJob.js'
 import { jobToServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../src/lib/jobReport.js'
 import { viewablePhotoUrl, isStoragePhotoUrl } from '../src/lib/photoUrl.js'
 import { isOtpDeepOnlyLocation, otpBasicScheduleLocations, otpDeepOnlyLocations } from '../src/lib/serviceCatalog.js'
@@ -87,6 +87,11 @@ function testAddServiceOptions() {
   ]
   const deepOpts2 = buildAddServiceOptions(locations, deepMine, employeeId, 'deep')
   assert(deepOpts2[0].state === 'mine', `deep mine: ${deepOpts2[0].state}`)
+
+  const addable = manualAddLocations()
+  assert(addable.some(l => l.name === 'Ibushio'), 'OTP stays on add-service list')
+  assert(addable.some(l => l.name === 'Atomic Bar'), 'Atomic stays on add-service list')
+  assert(!addable.some(l => /matsunaga/i.test(l.name)), 'Matsunaga is not on add-service list')
 }
 
 function testViewablePhotoUrl() {
