@@ -194,7 +194,12 @@ h1, h2, .brand, .topbar-title { font-family: var(--font-display); letter-spacing
 }
 .admin-tab svg { width: 20px; height: 20px; }
 .admin-tab span { font-size: 10px; font-weight: 650; letter-spacing: 0.01em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.admin-tab.on { color: var(--gold2); }
+.admin-tab.on { color: var(--gold2); position: relative; }
+.admin-tab.on::after {
+  content: '';
+  width: 16px; height: 2px; border-radius: 1px;
+  background: var(--gold); position: absolute; bottom: 3px;
+}
 .admin-tab-more-dots { display: flex; gap: 3px; height: 20px; align-items: center; }
 .admin-tab-more-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; display: block; }
 

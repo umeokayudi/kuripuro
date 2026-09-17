@@ -3,6 +3,7 @@
 export const kuripuroEn = {
   sidebar: {
     ai: 'AI Assistant',
+    aiTab: 'AI',
     dashboard: 'Dashboard',
     jobs: 'Jobs',
     employees: 'Employees',
@@ -1000,6 +1001,7 @@ export const kuripuroEn = {
 export const kuripuroJa = {
   sidebar: {
     ai: 'AIアシスタント',
+    aiTab: 'AI',
     dashboard: 'ダッシュボード',
     jobs: '作業管理',
     employees: '従業員',

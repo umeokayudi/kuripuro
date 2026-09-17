@@ -26,7 +26,7 @@ export default function AdminMobileNav({ onMore, moreOpen }) {
           className={({ isActive }) => `admin-tab${isActive ? ' on' : ''}`}
         >
           <Icon />
-          <span>{s[key]}</span>
+          <span>{key === 'ai' ? (s.aiTab || s.ai) : s[key]}</span>
         </NavLink>
       ))}
       <button
