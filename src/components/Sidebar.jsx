@@ -14,6 +14,7 @@ const groups = [
       { to: '/schedule', key: 'schedule', icon: Icons.list },
       { to: '/live', key: 'liveTrack', icon: Icons.users },
       { to: '/reports', key: 'reports', icon: Icons.file },
+      { to: '/ai', key: 'ai', icon: Icons.sparkle },
     ],
   },
   {

@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import AIChatPanel from './AIChatPanel'
+import { useLang } from '../hooks/useLang'
 import {
   AI_BTN,
   EMP_TAB_RESERVE,
   loadAiPos,
   saveAiPos,
   viewportSize,
-  visibleAiFrame,
+  shellAiFrame,
   clampAiPos,
   defaultAiPos,
   aiButtonPos,
@@ -14,12 +16,20 @@ import {
 } from '../lib/aiWidgetPos'
 
 export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false, layoutKey = 'default' }) {
+  const location = useLocation()
+  const { t } = useLang()
+  const hideOnPage = mode === 'admin' && location.pathname === '/ai'
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState(() => loadAiPos(mode))
+  const [pos, setPos] = useState(() => loadAiPos(mode, layoutKey))
   const [vp, setVp] = useState(() => viewportSize())
   const [frame, setFrame] = useState(null)
   const drag = useRef({ active: false, moved: false, sx: 0, sy: 0, sl: 0, st: 0 })
   const btnRef = useRef(null)
+
+  useEffect(() => {
+    setPos(loadAiPos(mode, layoutKey))
+    setOpen(false)
+  }, [mode, layoutKey])
 
   const size = useMemo(
     () => frame || { left: 0, top: 0, vw: vp.vw, vh: vp.vh, bottomReserve: 0 },
@@ -31,28 +41,21 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
     const apply = () => {
       const nextVp = viewportSize()
       setVp(nextVp)
-      const shellSel = mode === 'employee' ? '.emp-shell' : '.app-shell.admin-mobile'
+      const shellSel = mode === 'employee' ? '.emp-shell' : '.app-shell'
       const el = document.querySelector(shellSel)
-      if (!el) {
-        setFrame({
-          left: 0,
-          top: 0,
-          vw: nextVp.vw,
-          vh: nextVp.vh,
-          bottomReserve: mode === 'employee' ? EMP_TAB_RESERVE : 0,
-        })
+      const bottomReserve = mode === 'employee' ? EMP_TAB_RESERVE : 0
+      if (!el || (mode !== 'employee' && layoutKey !== 'mobile' && !el.classList.contains('admin-mobile'))) {
+        setFrame({ left: 0, top: 0, vw: nextVp.vw, vh: nextVp.vh, bottomReserve })
         return
       }
-      setFrame(visibleAiFrame(el.getBoundingClientRect(), nextVp, {
-        bottomReserve: mode === 'employee' ? EMP_TAB_RESERVE : 0,
-      }))
+      setFrame(shellAiFrame(el, nextVp, { bottomReserve }))
     }
     apply()
     window.addEventListener('resize', apply)
     window.addEventListener('scroll', apply, { passive: true })
     window.visualViewport?.addEventListener('resize', apply)
     window.visualViewport?.addEventListener('scroll', apply)
-    const el = document.querySelector(mode === 'employee' ? '.emp-shell' : '.app-shell.admin-mobile')
+    const el = document.querySelector(mode === 'employee' ? '.emp-shell' : '.app-shell')
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null
     if (el && ro) ro.observe(el)
     return () => {
@@ -76,8 +79,8 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
       zIndex: 998,
       width: box.width,
       height: box.height,
-      maxWidth: 'calc(100vw - 24px)',
-      maxHeight: 'calc(100dvh - 24px)',
+      maxWidth: 'calc(100% - 24px)',
+      maxHeight: 'calc(100% - 24px)',
       background: dark ? '#0d1f35' : 'var(--bg, #f4f6f9)',
       borderRadius: size.vw < 720 ? 16 : 20,
       boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
@@ -108,10 +111,10 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
         drag.current.st + (e.clientY - drag.current.sy),
       )
       setPos(final)
-      saveAiPos(final, mode)
+      saveAiPos(final, mode, layoutKey)
     }
     drag.current.active = false
-  }, [onPointerMove, clamp, mode])
+  }, [onPointerMove, clamp, mode, layoutKey])
 
   const onPointerDown = (e) => {
     e.preventDefault()
@@ -130,7 +133,10 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
   }, [onPointerMove, onPointerUp])
 
   const btnPos = getBtnPos()
+  if (hideOnPage) return null
   if (mode === 'employee' && !frame) return null
+
+  const title = mode === 'employee' ? (t.employee?.aiDragHint || 'AI') : (t.app?.aiDragHint || t.sidebar.ai)
 
   return (
     <>
@@ -139,7 +145,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
         type="button"
         className="ai-fab"
         onPointerDown={onPointerDown}
-        aria-label={mode === 'employee' ? 'AI assistant' : 'Admin AI assistant'}
+        aria-label={t.sidebar.ai}
         style={{
           position: 'fixed',
           left: btnPos.x,
@@ -163,7 +169,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
           letterSpacing: open ? 0 : 0.5,
           fontFamily: 'inherit',
         }}
-        title={mode === 'employee' ? 'Assistente IA — arraste para mover' : 'Assistente Admin IA — arraste para mover'}
+        title={title}
       >
         {open ? '✕' : 'AI'}
       </button>

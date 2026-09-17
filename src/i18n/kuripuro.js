@@ -47,6 +47,8 @@ export const kuripuroEn = {
     desktopView: 'Desktop',
     menu: 'Menu',
     closeMenu: 'Close menu',
+    aiDragHint: 'AI assistant — drag to move',
+    aiPageHint: 'Ask about schedules, stores, staff, and salary. The gold AI button on every page opens the same chat.',
   },
   payroll: {
     title: 'Payroll close',
@@ -675,6 +677,7 @@ export const kuripuroEn = {
     offline: 'Offline — data will sync when reconnected',
     logout: 'Logout',
     account: 'Account',
+    aiDragHint: 'AI assistant — drag to move',
     accountTitle: 'Login & password',
     accountHint: 'Show your current password, then change email or password. You need the current password to save.',
     currentPassword: 'Current password',
@@ -1033,6 +1036,8 @@ export const kuripuroJa = {
     desktopView: 'デスクトップ',
     menu: 'メニュー',
     closeMenu: 'メニューを閉じる',
+    aiDragHint: 'AIアシスタント — ドラッグして移動',
+    aiPageHint: 'シフト・店舗・従業員・給与について質問できます。各ページの金色のAIボタンでも同じチャットが開きます。',
   },
   payroll: {
     title: '給与締め',
@@ -1661,6 +1666,7 @@ export const kuripuroJa = {
     offline: 'オフライン — 再接続後に同期します',
     logout: 'ログアウト',
     account: 'アカウント',
+    aiDragHint: 'AIアシスタント — ドラッグして移動',
     accountTitle: 'ログインとパスワード',
     accountHint: '保存済みパスワードを表示し、メールまたはパスワードを変更できます。保存には現在のパスワードが必要です。',
     currentPassword: '現在のパスワード',

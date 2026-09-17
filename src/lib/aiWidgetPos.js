@@ -4,8 +4,10 @@ export const AI_PANEL_H = 520
 export const AI_POS_KEY = 'kp_ai_widget_pos'
 export const EMP_TAB_RESERVE = 76
 
-export function aiPosStorageKey(mode = 'admin') {
-  return mode === 'employee' ? 'kp_ai_widget_pos_employee' : AI_POS_KEY
+export function aiPosStorageKey(mode = 'admin', layoutKey = 'default') {
+  if (mode === 'employee') return 'kp_ai_widget_pos_employee'
+  if (layoutKey === 'mobile') return 'kp_ai_widget_pos_admin_mobile'
+  return AI_POS_KEY
 }
 
 export function viewportSize(win = typeof window !== 'undefined' ? window : null) {
@@ -32,11 +34,11 @@ export function visibleAiFrame(rect, vp, { bottomReserve = 0 } = {}) {
   }
 }
 
-export function clampAiPos(x, y, { left = 0, top = 0, vw, vh, btn = AI_BTN, pad = 8 } = {}) {
+export function clampAiPos(x, y, { left = 0, top = 0, vw, vh, btn = AI_BTN, pad = 8, bottomReserve = 0 } = {}) {
   const minX = left + pad
   const minY = top + pad
   const maxX = left + Math.max(pad, vw - btn - pad)
-  const maxY = top + Math.max(pad, vh - btn - pad)
+  const maxY = top + Math.max(pad, vh - btn - pad - (Number(bottomReserve) || 0))
   return {
     x: Math.max(minX, Math.min(maxX, Number(x) || minX)),
     y: Math.max(minY, Math.min(maxY, Number(y) || minY)),
@@ -47,13 +49,13 @@ export function defaultAiPos({ left = 0, top = 0, vw, vh, btn = AI_BTN, pad = 16
   return clampAiPos(
     left + vw - btn - pad,
     top + vh - btn - pad - bottomReserve,
-    { left, top, vw, vh, btn, pad },
+    { left, top, vw, vh, btn, pad, bottomReserve },
   )
 }
 
-export function loadAiPos(mode = 'admin') {
+export function loadAiPos(mode = 'admin', layoutKey = 'default') {
   try {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(aiPosStorageKey(mode)) : null
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(aiPosStorageKey(mode, layoutKey)) : null
     if (!saved) return null
     const parsed = JSON.parse(saved)
     if (!parsed || !Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) return null
@@ -63,9 +65,9 @@ export function loadAiPos(mode = 'admin') {
   }
 }
 
-export function saveAiPos(pos, mode = 'admin') {
+export function saveAiPos(pos, mode = 'admin', layoutKey = 'default') {
   try {
-    localStorage.setItem(aiPosStorageKey(mode), JSON.stringify(pos))
+    localStorage.setItem(aiPosStorageKey(mode, layoutKey), JSON.stringify(pos))
   } catch {}
 }
 
@@ -78,6 +80,25 @@ export function aiButtonPos(saved, size) {
     saved.y < top - 4 || saved.y > top + vh
   )
   return outside ? defaultAiPos(size) : clamped
+}
+
+/** Frame for a shell: if CSS transform contains `position:fixed`, use local 0,0 coords. */
+export function shellAiFrame(el, vp, { bottomReserve = 0 } = {}) {
+  if (!el) {
+    return { left: 0, top: 0, vw: vp.vw, vh: vp.vh, bottomReserve }
+  }
+  const transform = typeof getComputedStyle === 'function' ? getComputedStyle(el).transform : 'none'
+  const contained = transform && transform !== 'none'
+  if (contained) {
+    return {
+      left: 0,
+      top: 0,
+      vw: Math.max(AI_BTN + 16, el.clientWidth || vp.vw),
+      vh: Math.max(AI_BTN + 16, el.clientHeight || vp.vh),
+      bottomReserve,
+    }
+  }
+  return visibleAiFrame(el.getBoundingClientRect(), vp, { bottomReserve })
 }
 
 export function aiPanelBox(btnPos, { left = 0, top = 0, vw, vh, btn = AI_BTN } = {}) {

@@ -13,6 +13,7 @@ import {
   aiButtonPos,
   aiPanelBox,
   visibleAiFrame,
+  shellAiFrame,
   aiPosStorageKey,
   AI_BTN,
   EMP_TAB_RESERVE,
@@ -98,6 +99,7 @@ function testEmployeeDesktopFrame() {
   assert(panel.top + panel.height <= stray.y - 8, `panel above fab ${panel.top + panel.height} vs ${stray.y}`)
   assert(aiPosStorageKey('employee') === 'kp_ai_widget_pos_employee', 'separate employee pos key')
   assert(aiPosStorageKey('admin') === 'kp_ai_widget_pos', 'admin pos key unchanged')
+  assert(aiPosStorageKey('admin', 'mobile') === 'kp_ai_widget_pos_admin_mobile', 'admin mobile pos key')
 }
 
 function testAdminPhoneFrame() {
@@ -107,6 +109,22 @@ function testAdminPhoneFrame() {
   assert(frame.vw === 430, `admin phone width ${frame.vw}`)
   const def = defaultAiPos(frame)
   assert(def.x >= frame.left && def.x + AI_BTN <= frame.left + frame.vw, `admin fab x ${def.x}`)
+
+  const reserved = clampAiPos(400, 900, { left: 0, top: 0, vw: 430, vh: 800, bottomReserve: 76 })
+  assert(reserved.y <= 800 - AI_BTN - 8 - 76, `bottom reserve ${reserved.y}`)
+
+  const el = {
+    clientWidth: 430,
+    clientHeight: 800,
+    getBoundingClientRect: () => ({ left: 505, top: 0, right: 935, bottom: 800 }),
+  }
+  const vis = shellAiFrame(el, vp)
+  assert(Math.abs(vis.left - 505) < 1, `no-transform uses viewport frame ${vis.left}`)
+
+  globalThis.getComputedStyle = () => ({ transform: 'matrix(1, 0, 0, 1, 0, 0)' })
+  const local = shellAiFrame(el, vp)
+  assert(local.left === 0 && local.top === 0 && local.vw === 430, `contained shell local ${local.vw}`)
+  delete globalThis.getComputedStyle
 }
 
 testViewMode()

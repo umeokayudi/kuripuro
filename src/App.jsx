@@ -119,11 +119,15 @@ function AppContent() {
     if (!navOpen) return
     const onKey = (e) => { if (e.key === 'Escape') setNavOpen(false) }
     document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const phonePage = document.querySelector('.admin-stage.is-phone .page-content')
+    const prevBody = document.body.style.overflow
+    const prevPage = phonePage ? phonePage.style.overflow : ''
+    if (phonePage) phonePage.style.overflow = 'hidden'
+    else document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      document.body.style.overflow = prevBody
+      if (phonePage) phonePage.style.overflow = prevPage
     }
   }, [navOpen])
 
@@ -197,6 +201,13 @@ function AppContent() {
               desktopLabel={a.desktopView}
               variant="light"
             />
+            <Link
+              to="/ai"
+              className={`topbar-ai${location.pathname === '/ai' ? ' on' : ''}`}
+              aria-label={t.sidebar.ai}
+            >
+              AI
+            </Link>
             <Link to="/account" className="btn btn-sm topbar-account">
               {t.sidebar.account}
             </Link>
