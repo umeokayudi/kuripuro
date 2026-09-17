@@ -6,6 +6,7 @@ import {
   ADMIN_VIEW_BREAKPOINT,
   ADMIN_PHONE_WIDTH,
   isAdminPhoneStage,
+  isAdminMobileTabPath,
 } from '../src/lib/adminView.js'
 import {
   clampAiPos,
@@ -131,4 +132,6 @@ testViewMode()
 testAiClamp()
 testEmployeeDesktopFrame()
 testAdminPhoneFrame()
+assert(isAdminMobileTabPath('/') && isAdminMobileTabPath('/jobs') && isAdminMobileTabPath('/ai') && isAdminMobileTabPath('/reports'), 'main mobile tabs')
+assert(!isAdminMobileTabPath('/salary') && !isAdminMobileTabPath('/account') && !isAdminMobileTabPath('/clients'), 'other routes use More')
 console.log('admin-mobile: ok')

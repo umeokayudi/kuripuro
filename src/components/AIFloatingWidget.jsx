@@ -133,7 +133,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
   }, [onPointerMove, onPointerUp])
 
   const btnPos = getBtnPos()
-  if (hideOnPage) return null
+  if (hideOnPage || layoutKey === 'mobile') return null
   if (mode === 'employee' && !frame) return null
 
   const title = mode === 'employee' ? (t.employee?.aiDragHint || 'AI') : (t.app?.aiDragHint || t.sidebar.ai)

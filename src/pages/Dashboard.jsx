@@ -182,11 +182,30 @@ export default function Dashboard() {
       </div>
 
       {staleCount > 0 && (
-        <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div className="dash-stale">
           <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ {fill(d.staleJobs, { count: staleCount })}</span>
           <button onClick={cancelStaleJobs} className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', flexShrink: 0 }}>{d.cancelStale}</button>
         </div>
       )}
+
+      <div className="dash-quick">
+        <Link to="/jobs" className="dash-quick-btn">
+          <strong>{todayJobs.length}</strong>
+          <span>{d.quickToday}</span>
+        </Link>
+        <Link to="/reports" className="dash-quick-btn">
+          <strong>{d.quickReports}</strong>
+          <span>{d.quickReportsHint}</span>
+        </Link>
+        <Link to="/salary" className="dash-quick-btn">
+          <strong>{d.quickPay}</strong>
+          <span>{d.quickPayHint}</span>
+        </Link>
+        <Link to="/schedule" className="dash-quick-btn">
+          <strong>{d.quickPlan}</strong>
+          <span>{d.quickPlanHint}</span>
+        </Link>
+      </div>
 
       <div className="dash-metrics">
         {[
@@ -347,7 +366,10 @@ export default function Dashboard() {
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.todayJobsTitle} ({tokyoToday()})</div>
+        <div style={{ fontWeight: 600, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span>{d.todayJobsTitle} ({tokyoToday()})</span>
+          <Link to="/jobs" style={{ fontSize: 12, color: '#c19c56', fontWeight: 600, textDecoration: 'none' }}>{t.sidebar.jobs} →</Link>
+        </div>
         {todayJobs.length === 0 ? (
           <div className="empty-state">
             <strong>{d.noTodayJobs}</strong>

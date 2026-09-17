@@ -8,6 +8,7 @@ import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
 import { readAdminDesktopMode, writeAdminViewMode } from './lib/adminView'
+import AdminMobileNav from './components/AdminMobileNav'
 import ViewModeToggle from './components/ViewModeToggle'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
@@ -194,33 +195,37 @@ function AppContent() {
             <span className="topbar-title">{title}</span>
           </div>
           <div className="topbar-right">
-            <ViewModeToggle
-              desktopMode={desktopMode}
-              onChange={setView}
-              mobileLabel={a.mobileView}
-              desktopLabel={a.desktopView}
-              variant="light"
-            />
-            <Link
-              to="/ai"
-              className={`topbar-ai${location.pathname === '/ai' ? ' on' : ''}`}
-              aria-label={t.sidebar.ai}
-            >
-              AI
-            </Link>
-            <Link to="/account" className="btn btn-sm topbar-account">
-              {t.sidebar.account}
-            </Link>
-            <span className="topbar-meta">
-              <Link to="/account" style={{ fontSize: 13, color: 'var(--text2)', textDecoration: 'none', fontWeight: 600 }}>
-                {user.name}
-              </Link>
-              <span style={{ color: 'var(--text3)' }}>·</span>
-              <Clock />
-            </span>
-            <button type="button" onClick={logout} className="btn btn-sm topbar-logout">
-              {t.sidebar.logout}
-            </button>
+            {desktopMode && (
+              <>
+                <ViewModeToggle
+                  desktopMode={desktopMode}
+                  onChange={setView}
+                  mobileLabel={a.mobileView}
+                  desktopLabel={a.desktopView}
+                  variant="light"
+                />
+                <Link
+                  to="/ai"
+                  className={`topbar-ai${location.pathname === '/ai' ? ' on' : ''}`}
+                  aria-label={t.sidebar.ai}
+                >
+                  AI
+                </Link>
+                <Link to="/account" className="btn btn-sm topbar-account">
+                  {t.sidebar.account}
+                </Link>
+                <span className="topbar-meta">
+                  <Link to="/account" style={{ fontSize: 13, color: 'var(--text2)', textDecoration: 'none', fontWeight: 600 }}>
+                    {user.name}
+                  </Link>
+                  <span style={{ color: 'var(--text3)' }}>·</span>
+                  <Clock />
+                </span>
+                <button type="button" onClick={logout} className="btn btn-sm topbar-logout">
+                  {t.sidebar.logout}
+                </button>
+              </>
+            )}
           </div>
         </header>
         <main className="page-content">
@@ -254,6 +259,9 @@ function AppContent() {
             </Routes>
           </Suspense>
         </main>
+        {!desktopMode && (
+          <AdminMobileNav moreOpen={navOpen} onMore={() => setNavOpen(o => !o)} />
+        )}
       </div>
     </div>
     </div>

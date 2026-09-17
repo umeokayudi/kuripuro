@@ -29,3 +29,12 @@ export function isAdminPhoneStage(desktopMode, width) {
     : (typeof window !== 'undefined' ? window.innerWidth : ADMIN_PHONE_STAGE_MIN)
   return w >= ADMIN_PHONE_STAGE_MIN
 }
+
+export function isAdminMobileTabPath(pathname) {
+  const path = String(pathname || '')
+  if (path === '/') return true
+  if (path === '/jobs' || path.startsWith('/jobs/')) return true
+  if (path === '/reports') return true
+  if (path === '/ai') return true
+  return false
+}

@@ -161,7 +161,42 @@ h1, h2, .brand, .topbar-title { font-family: var(--font-display); letter-spacing
   color: var(--navy); font-size: 20px; line-height: 1; cursor: pointer; font-family: inherit;
 }
 .topbar-menu-btn:hover { background: var(--surface2); }
-.page-content { padding: 28px 32px 40px; flex: 1; min-width: 0; }
+.dash-stale {
+  background: rgba(239,159,39,0.08);
+  border: 1px solid rgba(239,159,39,0.25);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.dash-quick { display: none; }
+
+.admin-tabbar { display: none; }
+.admin-tab {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: rgba(255,255,255,0.38);
+  text-decoration: none;
+  font-family: inherit;
+  padding: 6px 2px 4px;
+}
+.admin-tab svg { width: 20px; height: 20px; }
+.admin-tab span { font-size: 10px; font-weight: 650; letter-spacing: 0.01em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-tab.on { color: var(--gold2); }
+.admin-tab-more-dots { display: flex; gap: 3px; height: 20px; align-items: center; }
+.admin-tab-more-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; display: block; }
 
 .page-head { margin-bottom: 22px; }
 .page-head h2 { font-size: 26px; font-weight: 650; margin: 0 0 4px; color: var(--navy); }
@@ -592,13 +627,49 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
 .app-shell.admin-mobile .topbar-ai { min-width: 34px; height: 30px; padding: 0 8px; font-size: 11px; }
 .app-shell.admin-mobile .topbar-logout { font-size: 11px; padding: 6px 8px; }
 .app-shell.admin-mobile .page-content {
-  padding: 14px 12px calc(88px + env(safe-area-inset-bottom, 0px));
+  padding: 12px 12px 18px;
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   flex: 1;
   min-height: 0;
 }
+.app-shell.admin-mobile .admin-tabbar {
+  display: flex;
+  flex-shrink: 0;
+  background: #0b1a2c;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding: 4px 2px calc(6px + env(safe-area-inset-bottom, 0px));
+  z-index: 70;
+}
+.app-shell.admin-mobile .dash-quick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.dash-quick-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+  min-height: 64px;
+  box-shadow: var(--shadow);
+}
+.dash-quick-btn strong { font-size: 15px; font-weight: 800; color: var(--navy); line-height: 1.2; }
+.dash-quick-btn span { font-size: 11px; color: var(--text3); }
+.app-shell.admin-mobile .dash-stale { flex-wrap: wrap; }
+.app-shell.admin-mobile .dash-clock { font-size: 22px; }
+.app-shell.admin-mobile .btn { min-height: 40px; }
+.app-shell.admin-mobile .nav-item { padding: 11px 12px; min-height: 44px; }
+.app-shell.admin-mobile .ai-page { display: flex; flex-direction: column; min-height: 100%; }
+.app-shell.admin-mobile .ai-page-panel { flex: 1; min-height: 0; max-width: none; }
+.app-shell.admin-mobile .ai-page-panel > * { min-height: 52vh; }
 .app-shell.admin-mobile .metrics-grid,
 .app-shell.admin-mobile .dash-metrics,
 .app-shell.admin-mobile .dash-sat {
