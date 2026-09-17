@@ -8,6 +8,7 @@ import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
 import { readAdminDesktopMode, writeAdminViewMode } from './lib/adminView'
+import ViewModeToggle from './components/ViewModeToggle'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -102,10 +103,9 @@ function AppContent() {
   const [desktopMode, setDesktopMode] = React.useState(readAdminDesktopMode)
   const [navOpen, setNavOpen] = React.useState(false)
 
-  const toggleView = () => {
-    const next = !desktopMode
-    setDesktopMode(next)
-    writeAdminViewMode(next)
+  const setView = (nextDesktop) => {
+    setDesktopMode(nextDesktop)
+    writeAdminViewMode(nextDesktop)
     setNavOpen(false)
   }
 
@@ -154,6 +154,7 @@ function AppContent() {
   )
 
   return (
+    <div className={`admin-stage ${desktopMode ? 'is-desktop' : 'is-phone'}`}>
     <div className={`app-shell ${desktopMode ? 'admin-desktop' : 'admin-mobile'}`}>
       {!desktopMode && navOpen && (
         <button
@@ -168,9 +169,9 @@ function AppContent() {
         open={navOpen}
         onNavigate={() => setNavOpen(false)}
         desktopMode={desktopMode}
-        onToggleView={toggleView}
+        onChangeView={setView}
       />
-      <AIFloatingWidget mode="admin" />
+      <AIFloatingWidget mode="admin" layoutKey={desktopMode ? 'desktop' : 'mobile'} />
       <div className="main">
         <header className="topbar">
           <div className="topbar-left">
@@ -189,9 +190,13 @@ function AppContent() {
             <span className="topbar-title">{title}</span>
           </div>
           <div className="topbar-right">
-            <button type="button" className="btn btn-sm topbar-view-toggle" onClick={toggleView}>
-              {desktopMode ? `📱 ${a.mobileView}` : `🖥 ${a.desktopView}`}
-            </button>
+            <ViewModeToggle
+              desktopMode={desktopMode}
+              onChange={setView}
+              mobileLabel={a.mobileView}
+              desktopLabel={a.desktopView}
+              variant="light"
+            />
             <span className="topbar-meta">
               <Link to="/account" style={{ fontSize: 13, color: 'var(--text2)', textDecoration: 'none', fontWeight: 600 }}>
                 {user.name}
@@ -236,6 +241,7 @@ function AppContent() {
           </Suspense>
         </main>
       </div>
+    </div>
     </div>
   )
 }

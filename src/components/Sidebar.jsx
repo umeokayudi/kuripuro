@@ -3,6 +3,7 @@ import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
 import LanguageToggle from './LanguageToggle'
+import ViewModeToggle from './ViewModeToggle'
 
 const groups = [
   {
@@ -54,7 +55,7 @@ const groups = [
   },
 ]
 
-export default function Sidebar({ mobile = false, open = false, onNavigate, desktopMode = true, onToggleView }) {
+export default function Sidebar({ mobile = false, open = false, onNavigate, desktopMode = true, onChangeView }) {
   const { t } = useLang()
   const { logout, user } = useAuth()
   const s = t.sidebar
@@ -85,10 +86,14 @@ export default function Sidebar({ mobile = false, open = false, onNavigate, desk
       </nav>
       <div className="sidebar-footer">
         <LanguageToggle variant="dark" />
-        {onToggleView && (
-          <button type="button" className="sidebar-view-toggle" onClick={onToggleView}>
-            {desktopMode ? `📱 ${a.mobileView}` : `🖥 ${a.desktopView}`}
-          </button>
+        {onChangeView && (
+          <ViewModeToggle
+            desktopMode={desktopMode}
+            onChange={onChangeView}
+            mobileLabel={a.mobileView}
+            desktopLabel={a.desktopView}
+            variant="dark"
+          />
         )}
         <button type="button" onClick={logout} className="sidebar-logout">
           {s.logout}

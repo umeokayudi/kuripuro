@@ -13,7 +13,7 @@ import {
   aiPanelBox,
 } from '../lib/aiWidgetPos'
 
-export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false }) {
+export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false, layoutKey = 'default' }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(() => loadAiPos(mode))
   const [vp, setVp] = useState(() => viewportSize())
@@ -31,23 +31,28 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
     const apply = () => {
       const nextVp = viewportSize()
       setVp(nextVp)
-      if (mode !== 'employee') {
-        setFrame({ left: 0, top: 0, vw: nextVp.vw, vh: nextVp.vh, bottomReserve: 0 })
-        return
-      }
-      const el = document.querySelector('.emp-shell')
+      const shellSel = mode === 'employee' ? '.emp-shell' : '.app-shell.admin-mobile'
+      const el = document.querySelector(shellSel)
       if (!el) {
-        setFrame({ left: 0, top: 0, vw: nextVp.vw, vh: nextVp.vh, bottomReserve: EMP_TAB_RESERVE })
+        setFrame({
+          left: 0,
+          top: 0,
+          vw: nextVp.vw,
+          vh: nextVp.vh,
+          bottomReserve: mode === 'employee' ? EMP_TAB_RESERVE : 0,
+        })
         return
       }
-      setFrame(visibleAiFrame(el.getBoundingClientRect(), nextVp, { bottomReserve: EMP_TAB_RESERVE }))
+      setFrame(visibleAiFrame(el.getBoundingClientRect(), nextVp, {
+        bottomReserve: mode === 'employee' ? EMP_TAB_RESERVE : 0,
+      }))
     }
     apply()
     window.addEventListener('resize', apply)
     window.addEventListener('scroll', apply, { passive: true })
     window.visualViewport?.addEventListener('resize', apply)
     window.visualViewport?.addEventListener('scroll', apply)
-    const el = document.querySelector('.emp-shell')
+    const el = document.querySelector(mode === 'employee' ? '.emp-shell' : '.app-shell.admin-mobile')
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null
     if (el && ro) ro.observe(el)
     return () => {
@@ -57,7 +62,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
       window.visualViewport?.removeEventListener('scroll', apply)
       ro?.disconnect()
     }
-  }, [mode])
+  }, [mode, layoutKey])
 
   const getBtnPos = useCallback(() => aiButtonPos(pos, size), [pos, size])
 

@@ -667,6 +667,11 @@ export default function ClientPortal() {
               )}
               <div className="cp-header-actions">
                 <LanguageToggle variant="dark" />
+                {desktopMode && (
+                  <button type="button" className="cp-view-toggle" onClick={toggleView}>
+                    📱 {c.mobileView}
+                  </button>
+                )}
                 {!desktopMode && (
                   <button type="button" className="cp-view-toggle" onClick={toggleView}>
                     🖥 {c.desktopView}

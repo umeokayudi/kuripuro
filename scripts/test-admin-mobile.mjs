@@ -4,6 +4,8 @@ import {
   writeAdminViewMode,
   ADMIN_VIEW_KEY,
   ADMIN_VIEW_BREAKPOINT,
+  ADMIN_PHONE_WIDTH,
+  isAdminPhoneStage,
 } from '../src/lib/adminView.js'
 import {
   clampAiPos,
@@ -40,6 +42,11 @@ function testViewMode() {
 
   writeAdminViewMode(true)
   assert(readAdminDesktopMode(360) === true, 'saved desktop wins over phone width')
+
+  assert(isAdminPhoneStage(true, 1400) === false, 'desktop is not phone-staged')
+  assert(isAdminPhoneStage(false, 1400) === true, 'mobile on wide monitor is phone-staged')
+  assert(isAdminPhoneStage(false, 390) === false, 'real phone stays full-bleed')
+  assert(ADMIN_PHONE_WIDTH === 430, 'phone chrome 430')
 }
 
 function testAiClamp() {
@@ -93,7 +100,17 @@ function testEmployeeDesktopFrame() {
   assert(aiPosStorageKey('admin') === 'kp_ai_widget_pos', 'admin pos key unchanged')
 }
 
+function testAdminPhoneFrame() {
+  const vp = { vw: 1440, vh: 900 }
+  const shell = { left: (1440 - 430) / 2, top: 0, right: (1440 - 430) / 2 + 430, bottom: 900 }
+  const frame = visibleAiFrame(shell, vp)
+  assert(frame.vw === 430, `admin phone width ${frame.vw}`)
+  const def = defaultAiPos(frame)
+  assert(def.x >= frame.left && def.x + AI_BTN <= frame.left + frame.vw, `admin fab x ${def.x}`)
+}
+
 testViewMode()
 testAiClamp()
 testEmployeeDesktopFrame()
+testAdminPhoneFrame()
 console.log('admin-mobile: ok')
