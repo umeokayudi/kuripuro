@@ -2,6 +2,11 @@ export const AI_BTN = 56
 export const AI_PANEL_W = 380
 export const AI_PANEL_H = 520
 export const AI_POS_KEY = 'kp_ai_widget_pos'
+export const EMP_TAB_RESERVE = 76
+
+export function aiPosStorageKey(mode = 'admin') {
+  return mode === 'employee' ? 'kp_ai_widget_pos_employee' : AI_POS_KEY
+}
 
 export function viewportSize(win = typeof window !== 'undefined' ? window : null) {
   if (!win) return { vw: 1200, vh: 800 }
@@ -12,22 +17,43 @@ export function viewportSize(win = typeof window !== 'undefined' ? window : null
   }
 }
 
-export function clampAiPos(x, y, { vw, vh, btn = AI_BTN, pad = 8 } = {}) {
-  const maxX = Math.max(pad, vw - btn - pad)
-  const maxY = Math.max(pad, vh - btn - pad)
+/** Visible intersection of a layout rect (e.g. .emp-shell) with the viewport. */
+export function visibleAiFrame(rect, vp, { bottomReserve = 0 } = {}) {
+  const left = Math.max(0, Number(rect?.left) || 0)
+  const top = Math.max(0, Number(rect?.top) || 0)
+  const right = Math.min(vp.vw, Number(rect?.right) || vp.vw)
+  const bottom = Math.min(vp.vh, Number(rect?.bottom) || vp.vh)
   return {
-    x: Math.max(pad, Math.min(maxX, Number(x) || pad)),
-    y: Math.max(pad, Math.min(maxY, Number(y) || pad)),
+    left,
+    top,
+    vw: Math.max(AI_BTN + 16, right - left),
+    vh: Math.max(AI_BTN + 16, bottom - top),
+    bottomReserve,
   }
 }
 
-export function defaultAiPos({ vw, vh, btn = AI_BTN, pad = 16 } = {}) {
-  return clampAiPos(vw - btn - pad, vh - btn - pad, { vw, vh, btn, pad })
+export function clampAiPos(x, y, { left = 0, top = 0, vw, vh, btn = AI_BTN, pad = 8 } = {}) {
+  const minX = left + pad
+  const minY = top + pad
+  const maxX = left + Math.max(pad, vw - btn - pad)
+  const maxY = top + Math.max(pad, vh - btn - pad)
+  return {
+    x: Math.max(minX, Math.min(maxX, Number(x) || minX)),
+    y: Math.max(minY, Math.min(maxY, Number(y) || minY)),
+  }
 }
 
-export function loadAiPos() {
+export function defaultAiPos({ left = 0, top = 0, vw, vh, btn = AI_BTN, pad = 16, bottomReserve = 0 } = {}) {
+  return clampAiPos(
+    left + vw - btn - pad,
+    top + vh - btn - pad - bottomReserve,
+    { left, top, vw, vh, btn, pad },
+  )
+}
+
+export function loadAiPos(mode = 'admin') {
   try {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(AI_POS_KEY) : null
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(aiPosStorageKey(mode)) : null
     if (!saved) return null
     const parsed = JSON.parse(saved)
     if (!parsed || !Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) return null
@@ -37,19 +63,24 @@ export function loadAiPos() {
   }
 }
 
-export function saveAiPos(pos) {
+export function saveAiPos(pos, mode = 'admin') {
   try {
-    localStorage.setItem(AI_POS_KEY, JSON.stringify(pos))
+    localStorage.setItem(aiPosStorageKey(mode), JSON.stringify(pos))
   } catch {}
 }
 
 export function aiButtonPos(saved, size) {
-  const { vw, vh } = size
-  const raw = saved || defaultAiPos({ vw, vh })
-  return clampAiPos(raw.x, raw.y, { vw, vh })
+  const { vw, vh, left = 0, top = 0 } = size
+  const raw = saved || defaultAiPos(size)
+  const clamped = clampAiPos(raw.x, raw.y, size)
+  const outside = saved && (
+    saved.x < left - 4 || saved.x > left + vw ||
+    saved.y < top - 4 || saved.y > top + vh
+  )
+  return outside ? defaultAiPos(size) : clamped
 }
 
-export function aiPanelBox(btnPos, { vw, vh, btn = AI_BTN } = {}) {
+export function aiPanelBox(btnPos, { left = 0, top = 0, vw, vh, btn = AI_BTN } = {}) {
   const pad = 12
   const narrow = vw < 720
   const width = Math.min(narrow ? vw - pad * 2 : AI_PANEL_W, vw - pad * 2)
@@ -57,10 +88,10 @@ export function aiPanelBox(btnPos, { vw, vh, btn = AI_BTN } = {}) {
     narrow ? vh - btn - pad * 3 : AI_PANEL_H,
     vh - pad * 2,
   )
-  let left = btnPos.x + btn / 2 - width / 2
-  left = Math.max(pad, Math.min(vw - width - pad, left))
-  const openAbove = btnPos.y > vh / 2
-  let top = openAbove ? btnPos.y - height - 12 : btnPos.y + btn + 12
-  top = Math.max(pad, Math.min(vh - height - pad, top))
-  return { left, top, width, height }
+  let panelLeft = btnPos.x + btn / 2 - width / 2
+  panelLeft = Math.max(left + pad, Math.min(left + vw - width - pad, panelLeft))
+  const openAbove = (btnPos.y - top) > vh / 2
+  let panelTop = openAbove ? btnPos.y - height - 12 : btnPos.y + btn + 12
+  panelTop = Math.max(top + pad, Math.min(top + vh - height - pad, panelTop))
+  return { left: panelLeft, top: panelTop, width, height }
 }

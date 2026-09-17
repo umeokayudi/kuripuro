@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import AIChatPanel from './AIChatPanel'
 import {
   AI_BTN,
+  EMP_TAB_RESERVE,
   loadAiPos,
   saveAiPos,
   viewportSize,
+  visibleAiFrame,
   clampAiPos,
   defaultAiPos,
   aiButtonPos,
@@ -13,31 +15,55 @@ import {
 
 export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false }) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState(loadAiPos)
+  const [pos, setPos] = useState(() => loadAiPos(mode))
   const [vp, setVp] = useState(() => viewportSize())
+  const [frame, setFrame] = useState(null)
   const drag = useRef({ active: false, moved: false, sx: 0, sy: 0, sl: 0, st: 0 })
   const btnRef = useRef(null)
 
-  const clamp = useCallback((x, y, size = vp) => clampAiPos(x, y, size), [vp])
+  const size = useMemo(
+    () => frame || { left: 0, top: 0, vw: vp.vw, vh: vp.vh, bottomReserve: 0 },
+    [frame, vp.vw, vp.vh],
+  )
+  const clamp = useCallback((x, y) => clampAiPos(x, y, size), [size])
 
   useEffect(() => {
-    const apply = () => setVp(viewportSize())
+    const apply = () => {
+      const nextVp = viewportSize()
+      setVp(nextVp)
+      if (mode !== 'employee') {
+        setFrame({ left: 0, top: 0, vw: nextVp.vw, vh: nextVp.vh, bottomReserve: 0 })
+        return
+      }
+      const el = document.querySelector('.emp-shell')
+      if (!el) {
+        setFrame({ left: 0, top: 0, vw: nextVp.vw, vh: nextVp.vh, bottomReserve: EMP_TAB_RESERVE })
+        return
+      }
+      setFrame(visibleAiFrame(el.getBoundingClientRect(), nextVp, { bottomReserve: EMP_TAB_RESERVE }))
+    }
     apply()
     window.addEventListener('resize', apply)
+    window.addEventListener('scroll', apply, { passive: true })
     window.visualViewport?.addEventListener('resize', apply)
     window.visualViewport?.addEventListener('scroll', apply)
+    const el = document.querySelector('.emp-shell')
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null
+    if (el && ro) ro.observe(el)
     return () => {
       window.removeEventListener('resize', apply)
+      window.removeEventListener('scroll', apply)
       window.visualViewport?.removeEventListener('resize', apply)
       window.visualViewport?.removeEventListener('scroll', apply)
+      ro?.disconnect()
     }
-  }, [])
+  }, [mode])
 
-  const getBtnPos = useCallback(() => aiButtonPos(pos, vp), [pos, vp])
+  const getBtnPos = useCallback(() => aiButtonPos(pos, size), [pos, size])
 
   const panelStyle = () => {
     const btnPos = getBtnPos()
-    const box = aiPanelBox(btnPos, vp)
+    const box = aiPanelBox(btnPos, size)
     return {
       position: 'fixed',
       left: box.left,
@@ -48,7 +74,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
       maxWidth: 'calc(100vw - 24px)',
       maxHeight: 'calc(100dvh - 24px)',
       background: dark ? '#0d1f35' : 'var(--bg, #f4f6f9)',
-      borderRadius: vp.vw < 720 ? 16 : 20,
+      borderRadius: size.vw < 720 ? 16 : 20,
       boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
       border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)',
       overflow: 'hidden',
@@ -77,15 +103,15 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
         drag.current.st + (e.clientY - drag.current.sy),
       )
       setPos(final)
-      saveAiPos(final)
+      saveAiPos(final, mode)
     }
     drag.current.active = false
-  }, [onPointerMove, clamp])
+  }, [onPointerMove, clamp, mode])
 
   const onPointerDown = (e) => {
     e.preventDefault()
     const rect = btnRef.current?.getBoundingClientRect()
-    const fallback = defaultAiPos(vp)
+    const fallback = defaultAiPos(size)
     const sl = pos?.x ?? rect?.left ?? fallback.x
     const st = pos?.y ?? rect?.top ?? fallback.y
     drag.current = { active: true, moved: false, sx: e.clientX, sy: e.clientY, sl, st }
@@ -99,6 +125,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
   }, [onPointerMove, onPointerUp])
 
   const btnPos = getBtnPos()
+  if (mode === 'employee' && !frame) return null
 
   return (
     <>
