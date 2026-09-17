@@ -25,6 +25,7 @@
     "test:employee-pay": "npx vite-node scripts/test-employee-pay.mjs",
     "test:admin-mobile": "npx vite-node scripts/test-admin-mobile.mjs",
     "test:account": "npx vite-node scripts/test-account-credentials.mjs",
+    "test:job-gps": "npx vite-node scripts/test-job-gps.mjs",
     "lint": "eslint src api scripts --ext .js,.jsx,.mjs --max-warnings 80",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh",

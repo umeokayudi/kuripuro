@@ -6,6 +6,7 @@ import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
 import { tokyoToday, monthBounds } from '../lib/dates'
+import { summarizeStaffStatus } from '../lib/jobGps'
 
 function shiftYearMonth(ym, delta) {
   const [y, m] = String(ym || '').split('-').map(Number)
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const [clients, setClients] = useState([])
   const [employees, setEmployees] = useState([])
   const [todayJobs, setTodayJobs] = useState([])
+  const [inProgressJobs, setInProgressJobs] = useState([])
   const [staleCount, setStaleCount] = useState(0)
   const [evals, setEvals] = useState([])
   const [monthJobs, setMonthJobs] = useState([])
@@ -37,7 +39,7 @@ export default function Dashboard() {
   const load = async () => {
     const today = tokyoToday()
     const { from: monthStart, to: monthEnd } = monthBounds(progressMonth)
-    const [c, e, j, ev, stale, mj, cr] = await Promise.all([
+    const [c, e, j, ev, stale, mj, cr, activeNow] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
@@ -45,10 +47,12 @@ export default function Dashboard() {
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('jobs').select('*').eq('status', 'in_progress'),
     ])
     setClients(c.data || [])
     setEmployees(e.data || [])
     setTodayJobs(j.data || [])
+    setInProgressJobs(activeNow.data || [])
     setEvals(ev.data || [])
     setStaleCount(stale.count || 0)
     setMonthJobs(mj.data || [])
@@ -84,6 +88,7 @@ export default function Dashboard() {
     if (!byEmp[k]) byEmp[k] = []
     byEmp[k].push(j)
   })
+  const liveSummary = summarizeStaffStatus(employees, [...todayJobs, ...inProgressJobs], tokyoToday())
 
   const sortedClients = [...clients].sort((a, b) =>
     (Number(b.monthly_revenue || 0) - Number(b.monthly_cost || 0)) - (Number(a.monthly_revenue || 0) - Number(a.monthly_cost || 0))
@@ -219,6 +224,37 @@ export default function Dashboard() {
             <div className="metric-value" style={{ color: c }}>{v}</div>
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #4ade80' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{d.liveNow}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{d.liveNowHint}</div>
+          </div>
+          <Link to="/live" style={{ fontSize: 12, color: '#c19c56', fontWeight: 600, textDecoration: 'none' }}>{d.openLive}</Link>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: liveSummary.working ? 12 : 0 }}>
+          {[
+            [d.liveNow, liveSummary.working, '#4ade80'],
+            [d.liveIdle, liveSummary.idle, '#60a5fa'],
+            [d.liveFolga, liveSummary.folga, 'var(--text3)'],
+          ].map(([label, n, color]) => (
+            <div key={label} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color }}>{n}</div>
+            </div>
+          ))}
+        </div>
+        {liveSummary.rows.filter(r => r.key === 'working').length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {liveSummary.rows.filter(r => r.key === 'working').map(r => (
+              <Link key={r.employee.id} to="/live" style={{ padding: '6px 12px', borderRadius: 20, background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.25)', fontSize: 12, color: '#4ade80', fontWeight: 600, textDecoration: 'none' }}>
+                ● {r.employee.full_name.split(' ')[0]}{r.job ? ` · ${(r.job.title || '').replace(/ — .*/, '').slice(0, 18)}` : ''}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>

@@ -11,6 +11,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { tokyoToday, formatLocalYmd } from '../lib/dates'
+import { fenceOk, mapsPointUrl } from '../lib/jobGps'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
@@ -707,6 +708,16 @@ export default function Jobs() {
                 </label>
                 {j.photo_required && <span className="badge badge-amber">📷 {jt.photoRequired}</span>}
                 {j.gps_lat && <span className="badge badge-navy">📍 GPS</span>}
+                {j.gps_start_distance_m != null && (
+                  <a href={mapsPointUrl(j.gps_start_lat, j.gps_start_lng) || undefined} target="_blank" rel="noreferrer" className="badge" style={{background:fenceOk(j.gps_start_distance_m)?'rgba(74,222,128,0.15)':'rgba(248,113,113,0.15)',color:fenceOk(j.gps_start_distance_m)?'#4ade80':'#f87171',textDecoration:'none'}}>
+                    {fill(jt.gpsStart, { n: Math.round(j.gps_start_distance_m) })}
+                  </a>
+                )}
+                {j.gps_end_distance_m != null && (
+                  <a href={mapsPointUrl(j.gps_end_lat, j.gps_end_lng) || undefined} target="_blank" rel="noreferrer" className="badge" style={{background:fenceOk(j.gps_end_distance_m)?'rgba(74,222,128,0.15)':'rgba(248,113,113,0.15)',color:fenceOk(j.gps_end_distance_m)?'#4ade80':'#f87171',textDecoration:'none'}}>
+                    {fill(jt.gpsEnd, { n: Math.round(j.gps_end_distance_m) })}
+                  </a>
+                )}
                 {hasMapsLink(j.address, locName) && (
                   <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 {jt.maps}</a>
                 )}

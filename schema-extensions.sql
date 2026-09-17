@@ -149,3 +149,13 @@ create unique index if not exists salary_payments_one_salary_per_period
 alter table salary_payments drop constraint if exists salary_payments_payment_type_check;
 alter table salary_payments add constraint salary_payments_payment_type_check
   check (payment_type in ('salary','advance','bonus','deduction','extra','transport','other'));
+
+-- Job start / finish GPS (employee geofence)
+alter table jobs add column if not exists gps_start_lat numeric;
+alter table jobs add column if not exists gps_start_lng numeric;
+alter table jobs add column if not exists gps_start_acc numeric;
+alter table jobs add column if not exists gps_start_distance_m numeric;
+alter table jobs add column if not exists gps_end_lat numeric;
+alter table jobs add column if not exists gps_end_lng numeric;
+alter table jobs add column if not exists gps_end_acc numeric;
+alter table jobs add column if not exists gps_end_distance_m numeric;

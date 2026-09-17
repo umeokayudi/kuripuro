@@ -6,8 +6,16 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
-import { distanceMeters, getCurrentPosition } from '../lib/geocode'
+import { geocodeAddress, getCurrentPosition } from '../lib/geocode'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import {
+  GEOFENCE_M,
+  checkJobGeofence,
+  employeePresencePatch,
+  jobGpsWriteFields,
+  mapsPointUrl,
+  mergeLocationHints,
+} from '../lib/jobGps'
 import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates, shiftYearMonth } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
@@ -43,7 +51,7 @@ import {
   monthCalendarCells,
 } from '../lib/cleaningType'
 import { tokyoToday, tokyoYearMonth, monthBounds } from '../lib/dates'
-import { isMissingTableError } from '../lib/schemaError'
+import { isMissingColumnError, isMissingTableError } from '../lib/schemaError'
 import { calcPeriodSalary, countWorkedDays, isAdvanceReceived } from '../lib/salaryCalc'
 import {
   enrichJobValues,
@@ -78,6 +86,7 @@ export default function EmployeePortal() {
   const [jobPhotos, setJobPhotos] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('')
+  const [storePins, setStorePins] = useState(() => mergeLocationHints())
   const [retroJob, setRetroJob] = useState(null)
   const [retroChecklist, setRetroChecklist] = useState([])
   const [retroText, setRetroText] = useState('')
@@ -157,19 +166,16 @@ export default function EmployeePortal() {
     const msgPoll = setInterval(loadMessages, 10000)
     // Ping presence every 60s
     const pingPresence = async () => {
-      const update = { last_seen: new Date().toISOString(), is_online: true }
-      // Compartilha GPS automaticamente durante o expediente (job em andamento)
       const working = document.body.getAttribute('data-working') === 'yes'
+      let position = null
       if (navigator.geolocation && working) {
         try {
-          const pos = await new Promise((res, rej) =>
-            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 30000 }))
-          update.last_lat = pos.coords.latitude
-          update.last_lng = pos.coords.longitude
-          update.last_location_at = new Date().toISOString()
-          update.location_sharing = true
+          position = await getCurrentPosition()
         } catch {}
       }
+      const update = working && position
+        ? employeePresencePatch(position)
+        : { last_seen: new Date().toISOString(), is_online: true }
       await supabase.from('employees').update(update).eq('id', user.id)
     }
     pingPresence()
@@ -233,7 +239,7 @@ export default function EmployeePortal() {
     const ym = today.slice(0, 7)
     const { from: monthFrom, to: monthTo } = monthBounds(ym)
     const { start:weekStart, end:weekEnd } = getWeekRange()
-    const [active, all, emp, pay, adv, clm, eqp, bdg, weekPay, monthPay, contractsRes] = await Promise.all([
+    const [active, all, emp, pay, adv, clm, eqp, bdg, weekPay, monthPay, contractsRes, locRes] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
       supabase.from('employees').select('id,full_name,email,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days,attendance_bonus,advance_per_week,score,is_active').eq('id',user.id).maybeSingle(),
@@ -245,6 +251,7 @@ export default function EmployeePortal() {
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).or(`period.eq.${ym},and(payment_date.gte.${monthFrom},payment_date.lte.${monthTo})`),
       supabase.from('service_contracts').select('location_name,price_per_visit,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
+      supabase.from('locations').select('id,name,address,gps_lat,gps_lng'),
     ])
     const visible = (list) => (list || []).filter(j => !isDuskinJob(j))
     const regular = visible(active.data).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
@@ -257,6 +264,7 @@ export default function EmployeePortal() {
     setMonthLedger(monthPay.data||[])
     setBadges(bdg.data||[])
     setServiceContracts(contractsRes.data || [])
+    setStorePins(mergeLocationHints(isMissingTableError(locRes.error) ? [] : (locRes.data || [])))
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
     let inProgress = regular.find(j=>j.status==='in_progress')
     if (!inProgress) inProgress = allVisible.find(j => j.status === 'in_progress')
@@ -412,22 +420,44 @@ export default function EmployeePortal() {
     }
   }
 
-  const checkGPS = async (job) => {
-    if (!job.gps_lat||!job.gps_lng) return true
-    setGpsStatus('📍 Checking...')
-    try {
-      const pos = await getCurrentPosition()
-      const dist = distanceMeters(pos.lat,pos.lng,Number(job.gps_lat),Number(job.gps_lng))
-      if (dist>100) {
-        setGpsStatus(`⚠️ ${Math.round(dist)}m away`)
-        return { ok: true, dist: Math.round(dist), override: true }
-      }
-      setGpsStatus(`✅ ${Math.round(dist)}m`)
-      return { ok: true, dist: Math.round(dist), override: false }
-    } catch {
-      setGpsStatus('⚠️ GPS unavailable')
-      return { ok: true, dist: null, override: true }
+  const geofenceFailMessage = (check) => {
+    if (check?.reason === 'too_far') {
+      return fill(e.gpsTooFar, { n: Math.round(check.distanceM || 0), max: GEOFENCE_M })
     }
+    return e.gpsRequired
+  }
+
+  const runGeofence = async (job) => {
+    setGpsStatus(e.gpsChecking)
+    const check = await checkJobGeofence(job, {
+      getPosition: getCurrentPosition,
+      locations: storePins,
+      geocode: geocodeAddress,
+    })
+    if (!check.ok) {
+      const msg = geofenceFailMessage(check)
+      setGpsStatus(`🚫 ${msg}`)
+      toast.error(msg)
+      return check
+    }
+    if (check.distanceM != null) {
+      setGpsStatus(`✅ ${fill(e.gpsOk, { n: Math.round(check.distanceM) })}`)
+    } else {
+      setGpsStatus(`✅ ${e.gpsSaved}`)
+    }
+    return check
+  }
+
+  const persistJobGps = async (jobId, phase, check, job) => {
+    const patch = jobGpsWriteFields(phase, check, job)
+    const { error } = await supabase.from('jobs').update(patch).eq('id', jobId)
+    if (error && !isMissingColumnError(error)) console.warn('job gps', error.message)
+    return patch
+  }
+
+  const pingWorkGps = async (position) => {
+    if (!position) return
+    await supabase.from('employees').update(employeePresencePatch(position)).eq('id', user.id)
   }
 
   const handleAcceptSpot = async (job) => {
@@ -709,16 +739,15 @@ export default function EmployeePortal() {
         toast.error(e.alreadyInProgress)
         return
       }
-      const gpsResult = await checkGPS(job)
-      if (gpsResult.override) {
-        const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
-        if (!proceed) { setGpsStatus(''); return }
-      }
+      const gpsCheck = await runGeofence(job)
+      if (!gpsCheck.ok) return
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
       const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
       if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
+      const gpsPatch = await persistJobGps(job.id, 'start', gpsCheck, job)
+      await pingWorkGps(gpsCheck.position)
       setChecklist(initChecklistState(job))
-      setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!')
+      setActiveJob({ ...data, ...gpsPatch }); setJobPhotos([]); toast.success('✅ Started!')
     } catch (err) {
       toast.error(err?.message || e.startError)
     } finally {
@@ -726,9 +755,16 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleCompleteWithSig = (job) => {
-    setSignatureJob(job)
-    setShowSignature(true)
+  const handleCompleteWithSig = async (job) => {
+    setSubmitting(true)
+    try {
+      const gpsCheck = await runGeofence(job)
+      if (!gpsCheck.ok) return
+      setSignatureJob(job)
+      setShowSignature(true)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleComplete = async (sigDataUrl, jobOverride) => {
@@ -755,6 +791,8 @@ export default function EmployeePortal() {
         : e.markAllChecklist)
       return
     }
+    const gpsCheck = await runGeofence(job)
+    if (!gpsCheck.ok) return
     setSubmitting(true)
     try {
       let startPhotoUrl = job.photo_start_url
@@ -795,6 +833,7 @@ export default function EmployeePortal() {
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      await persistJobGps(job.id, 'end', gpsCheck, job)
       try {
         await supabase.from('jobs').update({
           checklist_total: total || null, checklist_done: total ? done : null,
@@ -1028,6 +1067,20 @@ export default function EmployeePortal() {
               </div>
             ))}
           </div>
+          {(job.gps_start_lat || job.gps_end_lat) && (
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+              {job.gps_start_distance_m != null && (
+                <a href={mapsPointUrl(job.gps_start_lat, job.gps_start_lng) || '#'} target="_blank" rel="noreferrer" style={{fontSize:11,color:Number(job.gps_start_distance_m)<=GEOFENCE_M?'#4ade80':'#f87171',textDecoration:'none'}}>
+                  📍 {fill(e.gpsStartMeters, { n: Math.round(job.gps_start_distance_m) })}
+                </a>
+              )}
+              {job.gps_end_distance_m != null && (
+                <a href={mapsPointUrl(job.gps_end_lat, job.gps_end_lng) || '#'} target="_blank" rel="noreferrer" style={{fontSize:11,color:Number(job.gps_end_distance_m)<=GEOFENCE_M?'#4ade80':'#f87171',textDecoration:'none'}}>
+                  🏁 {fill(e.gpsEndMeters, { n: Math.round(job.gps_end_distance_m) })}
+                </a>
+              )}
+            </div>
+          )}
           {instructions&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:5}}>📋 {e.instructionsKeybox}</div>
             <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{instructions}</div>
@@ -1857,6 +1910,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
           <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):'Marque todos os itens do checklist');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
             {submitting?'Saving...':activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
           </button>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',textAlign:'center',marginBottom:8}}>{labels.gpsFenceHint}</div>
           <button type="button" onClick={()=>handleAbandonStale?.(activeJob)} disabled={submitting} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(251,191,36,0.35)',background:'rgba(251,191,36,0.08)',color:'#fbbf24',fontSize:13,fontWeight:600,cursor:submitting?'not-allowed':'pointer'}}>
             {labels.staleShiftReset}
           </button>
@@ -2053,6 +2107,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 <button onClick={()=>handleStart(job)} disabled={submitting||beforePhotos.length===0} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||beforePhotos.length===0?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting||beforePhotos.length===0?'not-allowed':'pointer'}}>
                   {submitting?'Starting...':beforePhotos.length===0?'📷 Tire a foto Before primeiro':'▶ Start — '+job.title.replace(/ — .*/,'')}
                 </button>
+                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',textAlign:'center',marginTop:8}}>{labels.gpsFenceHint}</div>
               </div>
             )}
           </div>
