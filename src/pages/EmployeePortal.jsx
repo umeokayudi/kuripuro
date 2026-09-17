@@ -12,6 +12,7 @@ import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates, shiftYearMonth } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
 import LanguageToggle from '../components/LanguageToggle'
+import EmployeeAccountPanel from '../components/EmployeeAccountPanel'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
 import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate, resolveChecklistForJob, checklistDisplayLabel } from '../lib/jobChecklist'
 import {
@@ -62,7 +63,7 @@ const BADGE_DEFS = [
 ]
 
 export default function EmployeePortal() {
-  const { user, logout } = useAuth()
+  const { user, logout, updateSession } = useAuth()
   const { lang, t: tr } = useLang()
   const e = tr.employee
   const [tab, setTab] = useState('home')
@@ -959,6 +960,7 @@ export default function EmployeePortal() {
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
     {key:'achievements',icon:'🏆',label:e.achievements},
+    {key:'account',icon:'🔑',label:e.account},
   ]
 
   const bottomTabs = [
@@ -1717,6 +1719,10 @@ export default function EmployeePortal() {
               })}
             </div>
           </div>
+        )}
+
+        {tab==='account'&&(
+          <EmployeeAccountPanel user={user} labels={e} updateSession={updateSession} />
         )}
       </div>
 

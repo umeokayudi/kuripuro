@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Link, BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { LangProvider, useLang } from './hooks/useLang'
@@ -35,6 +35,7 @@ const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
+const Account = lazy(() => import('./pages/Account'))
 
 function PortalLoading() {
   return (
@@ -84,6 +85,7 @@ const PAGE_KEYS = {
   '/salary-complaints': 'salaryIssues',
   '/equipment-requests': 'equipmentRequests',
   '/ai': 'ai',
+  '/account': 'account',
 }
 
 function pageTitle(pathname, sidebar) {
@@ -191,8 +193,10 @@ function AppContent() {
               {desktopMode ? `📱 ${a.mobileView}` : `🖥 ${a.desktopView}`}
             </button>
             <span className="topbar-meta">
-              <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
-              <span style={{ color:'var(--text3)' }}>·</span>
+              <Link to="/account" style={{ fontSize: 13, color: 'var(--text2)', textDecoration: 'none', fontWeight: 600 }}>
+                {user.name}
+              </Link>
+              <span style={{ color: 'var(--text3)' }}>·</span>
               <Clock />
             </span>
             <button type="button" onClick={logout} className="btn btn-sm topbar-logout">
@@ -226,6 +230,7 @@ function AppContent() {
               <Route path="/salary-complaints" element={<SalaryComplaints />} />
               <Route path="/equipment-requests" element={<EquipmentRequests />} />
               <Route path="/ai" element={<AdminAI />} />
+              <Route path="/account" element={<Account />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Suspense>

@@ -22,6 +22,7 @@ const groups = [
       { to: '/evaluations', key: 'evaluations', icon: Icons.users },
       { to: '/equipment-requests', key: 'equipmentRequests', icon: Icons.list },
       { to: '/transport-claims', key: 'transport', icon: Icons.list },
+      { to: '/account', key: 'account', icon: Icons.settings },
     ],
   },
   {

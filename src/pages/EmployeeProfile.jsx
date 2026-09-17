@@ -5,6 +5,7 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import { tokyoToday } from '../lib/dates'
 import toast from 'react-hot-toast'
 import ContractTab from '../components/ContractTab'
+import PasswordReveal from '../components/PasswordReveal'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -135,7 +136,7 @@ export default function EmployeeProfile() {
   const loadAll = async () => {
     setLoading(true)
     const [e, j, ev, p, adv] = await Promise.all([
-      supabase.from('employees').select('id,full_name,email,phone,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active,work_days,notes,hire_date').eq('id', id).maybeSingle(),
+      supabase.from('employees').select('id,full_name,email,password,phone,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active,work_days,notes,hire_date').eq('id', id).maybeSingle(),
       supabase.from('jobs').select('*').eq('employee_id', id).order('scheduled_date', { ascending:false }).limit(30),
       supabase.from('evaluations').select('*').eq('employee_id', id).order('created_at', { ascending:false }),
       supabase.from('salary_payments').select('*').eq('employee_id', id).order('payment_date', { ascending:true }),
@@ -152,8 +153,8 @@ export default function EmployeeProfile() {
   const toggleDay = d => setWorkDays(w=>w.includes(d)?w.filter(x=>x!==d):[...w,d])
 
   const handleSave = async () => {
-    const { error } = await supabase.from('employees').update({
-      full_name:form.full_name, email:form.email, password:form.password,
+    const patch = {
+      full_name:form.full_name, email:(form.email||'').trim().toLowerCase(),
       phone:form.phone, address:form.address, contract_type:form.contract_type,
       salary_type:form.salary_type, hourly_rate:parseFloat(form.hourly_rate)||0,
       fixed_salary:parseFloat(form.fixed_salary)||0, job_bonus_rate:parseFloat(form.job_bonus_rate)||0,
@@ -168,7 +169,9 @@ export default function EmployeeProfile() {
       hours_per_shift:parseFloat(form.hours_per_shift)||0,
       shifts_per_week:parseInt(form.shifts_per_week)||0,
       monthly_work_days:parseInt(form.monthly_work_days)||22,
-    }).eq('id', id)
+    }
+    if (String(form.password || '').trim()) patch.password = String(form.password).trim()
+    const { error } = await supabase.from('employees').update(patch).eq('id', id)
     if (error) return toast.error(error.message)
     toast.success('Saved!')
     setEditing(false); loadAll()
@@ -471,7 +474,11 @@ export default function EmployeeProfile() {
           <div className="grid-2">
             <div className="form-group"><label>Full Name</label><input value={form.full_name||''} onChange={e=>upd('full_name',e.target.value)} /></div>
             <div className="form-group"><label>Email</label><input value={form.email||''} onChange={e=>upd('email',e.target.value)} /></div>
-            <div className="form-group"><label>Password</label><input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" /></div>
+            <div className="form-group">
+              <label>Password</label>
+              <PasswordReveal value={form.password} showLabel="Show" hideLabel="Hide" />
+              <input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" style={{ marginTop: 8 }} />
+            </div>
             <div className="form-group"><label>Phone</label><input value={form.phone||''} onChange={e=>upd('phone',e.target.value)} /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address||''} onChange={e=>upd('address',e.target.value)} /></div>
           </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import PasswordReveal from '../components/PasswordReveal'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -147,6 +148,9 @@ export default function Employees() {
                 <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:15}}>{e.full_name}</div>
                   <div style={{fontSize:12,color:'var(--text3)'}}>{e.email} · {e.contract_type}</div>
+                  <div style={{marginTop:6}}>
+                    <PasswordReveal value={e.password} showLabel="Show password" hideLabel="Hide" compact />
+                  </div>
                 </div>
                 <span className={`badge ${e.is_active?'badge-green':'badge-red'}`}>{e.is_active?'Active':'Inactive'}</span>
               </div>
