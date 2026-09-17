@@ -49,6 +49,23 @@ export function recentTokyoDates(count = 7) {
   return dates
 }
 
+/** Weekday 0=Sun … 6=Sat for a YYYY-MM-DD (noon, calendar-stable). */
+export function weekdayOfYmd(ymd) {
+  return new Date(`${ymd}T12:00:00`).getDay()
+}
+
+/** Inclusive YYYY-MM-DD range. */
+export function datesInRange(fromYmd, toYmd) {
+  if (!fromYmd || !toYmd || fromYmd > toYmd) return []
+  const out = []
+  let cursor = fromYmd
+  while (cursor <= toYmd) {
+    out.push(cursor)
+    cursor = addCalendarDays(cursor, 1)
+  }
+  return out
+}
+
 export function workedDayKey(job) {
   if (!job?.scheduled_date || job.counts_as_work_day === false) return null
   const hour = parseInt((job.scheduled_time || '12:00').split(':')[0], 10)

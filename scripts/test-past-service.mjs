@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { checklistCompleteForRetro, isJobFullyRegistered } from '../src/lib/employeeAddJob.js'
+import { checklistCompleteForRetro, isJobFullyRegistered, isManualServiceAllowedOnDate, possibleManualDates, snapToPossibleDate, manualAddLocations, formatManualServiceDays } from '../src/lib/employeeAddJob.js'
 import { resolveChecklistForJob, initChecklistState } from '../src/lib/jobChecklist.js'
-import { recentTokyoDates, tokyoToday } from '../src/lib/dates.js'
+import { weekdayOfYmd } from '../src/lib/dates.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -24,9 +24,40 @@ assert(isJobFullyRegistered({ status: 'completed', photo_end_url: 'x', completed
 assert(isJobFullyRegistered({ status: 'completed' }) === false, 'bare completed not registered')
 assert(isJobFullyRegistered({ status: 'assigned' }) === false, 'assigned not registered')
 
-const dates = recentTokyoDates(3)
-assert(dates[0] === tokyoToday(), 'first date is today')
-assert(dates.length === 3, 'returns requested count')
+const atomic = manualAddLocations().find(l => l.name === 'Atomic Bar')
+const oimachi = manualAddLocations().find(l => l.name === 'Kodama Oimachi')
+const ibushio = manualAddLocations().find(l => l.name === 'Ibushio')
+const kinshicho = manualAddLocations().find(l => l.name === 'Kodama Kinshicho')
+const matsunaga = manualAddLocations().find(l => l.name === 'Matsunaga')
+assert(atomic && oimachi && ibushio && kinshicho && matsunaga, 'catalog locations loaded')
+
+assert(isManualServiceAllowedOnDate(atomic, '2026-09-14', 'basic') === true, 'Atomic Monday')
+assert(isManualServiceAllowedOnDate(atomic, '2026-09-16', 'basic') === false, 'Atomic not Wednesday')
+assert(isManualServiceAllowedOnDate(oimachi, '2026-09-14', 'basic') === false, 'Oimachi rest Monday')
+assert(isManualServiceAllowedOnDate(oimachi, '2026-09-15', 'basic') === true, 'Oimachi Tuesday')
+assert(isManualServiceAllowedOnDate(ibushio, '2026-09-16', 'basic') === false, 'deep-only has no basic')
+assert(isManualServiceAllowedOnDate(ibushio, '2026-09-16', 'deep') === true, 'Ibushio deep Wednesday')
+assert(isManualServiceAllowedOnDate(ibushio, '2026-09-15', 'deep') === false, 'Ibushio not Tuesday')
+assert(isManualServiceAllowedOnDate(kinshicho, '2026-09-15', 'deep') === true, 'Kinshicho deep Tuesday')
+assert(isManualServiceAllowedOnDate(kinshicho, '2026-09-16', 'deep') === false, 'Kinshicho deep not Wednesday')
+assert(isManualServiceAllowedOnDate(matsunaga, '2026-09-17', 'basic') === true, 'Matsunaga any day')
+
+const mondays = possibleManualDates({ cleaningType: 'basic', fromYmd: '2026-09-14', toYmd: '2026-09-14', location: atomic })
+assert(mondays[0] === '2026-09-14', `atomic possible monday ${mondays}`)
+
+const deepWeek = possibleManualDates({ cleaningType: 'deep', fromYmd: '2026-09-14', toYmd: '2026-09-17' })
+assert(deepWeek.includes('2026-09-14') && deepWeek.includes('2026-09-15') && deepWeek.includes('2026-09-16'), `deep week ${deepWeek}`)
+assert(!deepWeek.includes('2026-09-17'), 'deep not Thursday')
+
+assert(snapToPossibleDate('2026-09-17', 'deep') === '2026-09-16', 'snap Thursday deep to Wednesday')
+assert(weekdayOfYmd('2026-09-17') === 4, 'Thu=4')
+
+assert(formatManualServiceDays(atomic, 'basic', 'en') === 'Mon', 'Atomic days label')
+assert(formatManualServiceDays(oimachi, 'basic', 'en') === 'Sun · Tue · Wed · Thu · Fri · Sat', 'Oimachi rest Monday')
+assert(formatManualServiceDays(ibushio, 'deep', 'en') === 'Mon · Wed', 'Ibushio deep days')
+assert(formatManualServiceDays(kinshicho, 'deep', 'en') === 'Tue', 'Kinshicho deep Tuesday')
+assert(formatManualServiceDays(kinshicho, 'basic', 'en') === 'Every day', 'Kinshicho every day')
+assert(formatManualServiceDays(matsunaga, 'basic', 'ja') === '毎日', 'Matsunaga any day JA')
 
 const job = { title: 'Kodama Oimachi — Basic Cleaning' }
 const full = initChecklistState(job)

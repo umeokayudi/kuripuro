@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
-import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
+import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates, shiftYearMonth } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
 import LanguageToggle from '../components/LanguageToggle'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
@@ -22,6 +22,11 @@ import {
   checklistCompleteForRetro,
   isJobFullyRegistered,
   isDuskinJob,
+  isManualServiceAllowedOnDate,
+  possibleManualDates,
+  snapToPossibleDate,
+  manualServiceDateWindow,
+  formatManualServiceDays,
   ALL_DEEP_COMPONENT_IDS,
 } from '../lib/employeeAddJob'
 import {
@@ -34,8 +39,9 @@ import {
   deepComponentLabel,
   getCleaningType,
   cleaningTypesForLang,
+  monthCalendarCells,
 } from '../lib/cleaningType'
-import { tokyoToday, tokyoYearMonth, recentTokyoDates, monthBounds } from '../lib/dates'
+import { tokyoToday, tokyoYearMonth, monthBounds } from '../lib/dates'
 import { isMissingTableError } from '../lib/schemaError'
 import { calcPeriodSalary, countWorkedDays, isAdvanceReceived } from '../lib/salaryCalc'
 import {
@@ -530,6 +536,8 @@ export default function EmployeePortal() {
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
         else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
+        else if (result.error === 'not_possible_day') toast.error(e.notPossibleDay)
+        else if (result.error === 'future_not_allowed') toast.error(e.futureNotAllowed)
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
@@ -557,7 +565,7 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleAddService = async (location, cleaningType, deepComponents, option) => {
+  const handleAddService = async (location, cleaningType, deepComponents, option, date) => {
     if (addServiceBusy) return
     if (option?.state === 'mine') {
       return toast.error(e.addServiceAlreadyYours)
@@ -568,16 +576,21 @@ export default function EmployeePortal() {
     if (option?.state === 'done_today') {
       if (isJobFullyRegistered(option.job)) return toast.error(e.pastServiceAlreadyDone)
       setShowAddService(false)
-      await handlePastService({ location, date: tokyoToday(), cleaningType, deepComponents })
+      await handlePastService({ location, date: date || tokyoToday(), cleaningType, deepComponents })
       return
     }
-    const date = tokyoToday()
+    const day = date || tokyoToday()
+    if (day < tokyoToday()) {
+      setShowAddService(false)
+      await handlePastService({ location, date: day, cleaningType, deepComponents })
+      return
+    }
     setAddServiceBusy(true)
     try {
       const result = await employeeAddService(supabase, {
         employee: { id: user.id, name: user.name },
         location,
-        date,
+        date: day,
         cleaningType,
         deepComponents: cleaningType === 'deep' ? deepComponents : [],
       })
@@ -589,6 +602,8 @@ export default function EmployeePortal() {
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
         else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
+        else if (result.error === 'not_possible_day') toast.error(e.notPossibleDay)
+        else if (result.error === 'future_not_allowed') toast.error(e.futureNotAllowed)
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
@@ -2270,22 +2285,121 @@ function ChecklistPicker({ checklist, setChecklist, relaxed = false, labels, lan
   )
 }
 
+function PossibleDayPicker({ date, onChange, cleaningType, location, labels, lang }) {
+  const win = manualServiceDateWindow()
+  const minYm = win.from.slice(0, 7)
+  const maxYm = tokyoToday().slice(0, 7)
+  const [ym, setYm] = useState(() => (date || tokyoToday()).slice(0, 7))
+
+  useEffect(() => {
+    if (date) setYm(date.slice(0, 7))
+  }, [date])
+
+  const monthEnd = ym === maxYm ? tokyoToday() : monthBounds(ym).to
+  const allowed = new Set(possibleManualDates({
+    cleaningType,
+    fromYmd: monthBounds(ym).from,
+    toYmd: monthEnd,
+    location: location || null,
+  }))
+  const cells = monthCalendarCells(ym)
+  const headers = lang === 'ja' ? ['日', '月', '火', '水', '木', '金', '土'] : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+  const monthLabel = new Date(`${ym}-01T12:00:00`).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { month: 'short', year: 'numeric' })
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <button
+          type="button"
+          disabled={ym <= minYm}
+          onClick={() => setYm(shiftYearMonth(ym, -1))}
+          style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', cursor: ym <= minYm ? 'not-allowed' : 'pointer', opacity: ym <= minYm ? 0.35 : 1 }}
+        >‹</button>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{monthLabel}</div>
+        <button
+          type="button"
+          disabled={ym >= maxYm}
+          onClick={() => setYm(shiftYearMonth(ym, 1))}
+          style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', cursor: ym >= maxYm ? 'not-allowed' : 'pointer', opacity: ym >= maxYm ? 0.35 : 1 }}
+        >›</button>
+      </div>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8, lineHeight: 1.4 }}>
+        {labels.pastServicePossibleDays}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+        {headers.map((h, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', padding: '4px 0' }}>{h}</div>
+        ))}
+        {cells.map((d, i) => {
+          if (!d) return <div key={`p${i}`} />
+          const possible = allowed.has(d)
+          const selected = d === date
+          const isToday = d === tokyoToday()
+          return (
+            <button
+              key={d}
+              type="button"
+              disabled={!possible}
+              onClick={() => possible && onChange(d)}
+              style={{
+                padding: '8px 0', borderRadius: 8, border: selected ? '1px solid rgba(193,156,86,0.7)' : '1px solid transparent',
+                background: selected ? 'rgba(193,156,86,0.28)' : possible ? 'rgba(255,255,255,0.06)' : 'transparent',
+                color: selected ? '#e8c47a' : possible ? '#fff' : 'rgba(255,255,255,0.18)',
+                fontSize: 12, fontWeight: selected || isToday ? 800 : 500,
+                cursor: possible ? 'pointer' : 'default',
+              }}
+            >
+              {Number(d.slice(8))}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, onAdd }) {
   const [search, setSearch] = useState('')
+  const [date, setDate] = useState(() => snapToPossibleDate(tokyoToday(), 'basic'))
   const [cleaningType, setCleaningType] = useState('basic')
   const [deepComponents, setDeepComponents] = useState([...ALL_DEEP_COMPONENT_IDS])
   const [picked, setPicked] = useState(null)
+  const [dayJobs, setDayJobs] = useState(todayJobs || [])
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
-  const visibleLocations = cleaningType === 'deep'
+  const visibleLocations = (cleaningType === 'deep'
     ? locations.filter(loc => loc.group === 'OTP')
     : locations.filter(loc => !loc.deepOnly)
-  const options = buildAddServiceOptions(visibleLocations, todayJobs, employeeId, cleaningType)
+  ).filter(loc => isManualServiceAllowedOnDate(loc, date, cleaningType))
+  const options = buildAddServiceOptions(visibleLocations, dayJobs, employeeId, cleaningType)
   const q = search.trim().toLowerCase()
   const filtered = q
     ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
     : options
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      if (date === tokyoToday()) {
+        setDayJobs(todayJobs || [])
+        return
+      }
+      const { data } = await supabase
+        .from('jobs')
+        .select('id, title, employee_id, employee_name, status, started_at, scheduled_date, retro_report, photo_end_url, completed_at')
+        .eq('scheduled_date', date)
+        .in('status', ['assigned', 'in_progress', 'completed'])
+      if (!cancelled) setDayJobs((data || []).filter(j => !isDuskinJob(j)))
+    }
+    load()
+    return () => { cancelled = true }
+  }, [date, todayJobs])
+
+  useEffect(() => {
+    setDate(d => snapToPossibleDate(d, cleaningType))
+    setPicked(null)
+  }, [cleaningType])
 
   const badge = (opt) => {
     if (opt.state === 'mine') return { text: labels.addServiceMine, color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
@@ -2319,13 +2433,15 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   const doneNeedsRetro = picked?.state === 'done_today' && !isJobFullyRegistered(picked.job)
   const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || doneNeedsRetro)
 
-  const confirmLabel = picked?.state === 'done_today' && doneNeedsRetro
-    ? labels.addServiceDoneTodayRetro
-    : picked?.state === 'transfer'
-      ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
-      : picked?.state === 'claim'
-        ? labels.addServiceClaimConfirm
-        : labels.addServiceConfirm
+  const confirmLabel = date < tokyoToday()
+    ? labels.pastServiceConfirm
+    : picked?.state === 'done_today' && doneNeedsRetro
+      ? labels.addServiceDoneTodayRetro
+      : picked?.state === 'transfer'
+        ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
+        : picked?.state === 'claim'
+          ? labels.addServiceClaimConfirm
+          : labels.addServiceConfirm
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
@@ -2337,6 +2453,18 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           </div>
           <button type="button" onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: busy ? 'not-allowed' : 'pointer' }}>✕</button>
         </div>
+
+        <PossibleDayPicker
+          date={date}
+          onChange={d => {
+            setDate(d)
+            if (picked && !isManualServiceAllowedOnDate(picked.location, d, cleaningType)) setPicked(null)
+          }}
+          cleaningType={cleaningType}
+          location={picked?.location}
+          labels={labels}
+          lang={lang}
+        />
 
         <input
           value={search}
@@ -2409,19 +2537,22 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{opt.location.name}</div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{opt.location.group}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{opt.location.group} · {formatManualServiceDays(opt.location, cleaningType, lang)}</div>
                   </div>
                   <span style={{ fontSize: 9, fontWeight: 700, padding: '4px 8px', borderRadius: 20, color: b.color, background: b.bg, whiteSpace: 'nowrap' }}>{b.text}</span>
                 </div>
               </button>
             )
           })}
+          {!filtered.length && (
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '16px 8px' }}>{labels.pastServiceNoLocations}</div>
+          )}
         </div>
 
         <button
           type="button"
           disabled={!canConfirm || busy}
-          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked)}
+          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked, date)}
           style={{
             width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
             background: canConfirm && !busy ? 'linear-gradient(135deg,#60a5fa,#3b82f6)' : 'rgba(255,255,255,0.08)',
@@ -2438,21 +2569,21 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
 
 function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
   const [search, setSearch] = useState('')
-  const [date, setDate] = useState(prefill?.date || tokyoToday())
   const [cleaningType, setCleaningType] = useState(prefill?.cleaningType || 'basic')
+  const [date, setDate] = useState(() => snapToPossibleDate(prefill?.date || tokyoToday(), prefill?.cleaningType || 'basic', prefill?.location || null))
   const [deepComponents, setDeepComponents] = useState(prefill?.deepComponents || [...ALL_DEEP_COMPONENT_IDS])
   const [picked, setPicked] = useState(prefill?.location ? { location: prefill.location } : null)
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
-  const visibleLocations = cleaningType === 'deep'
+  const visibleLocations = (cleaningType === 'deep'
     ? locations.filter(loc => loc.group === 'OTP')
     : locations.filter(loc => !loc.deepOnly)
+  ).filter(loc => isManualServiceAllowedOnDate(loc, date, cleaningType))
   const q = search.trim().toLowerCase()
   const filtered = q
     ? visibleLocations.filter(loc => loc.name.toLowerCase().includes(q) || (loc.group || '').toLowerCase().includes(q))
     : visibleLocations
-  const dateOptions = recentTokyoDates(14)
 
   const toggleDeepComponent = (id) => {
     setDeepComponents(prev => {
@@ -2467,6 +2598,7 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
   const switchCleaningType = (t) => {
     setCleaningType(t)
     setPicked(null)
+    setDate(d => snapToPossibleDate(d, t))
     if (t === 'deep') setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
   }
 
@@ -2485,27 +2617,17 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
         </div>
 
         <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.45)', marginBottom: 8, letterSpacing: 0.3 }}>{labels.pastServiceDate}</div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 14, paddingBottom: 4 }}>
-          {dateOptions.map(d => {
-            const isToday = d === tokyoToday()
-            const selected = d === date
-            const label = isToday ? `${d.slice(5)} (today)` : d.slice(5)
-            return (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDate(d)}
-                style={{
-                  flexShrink: 0, padding: '8px 12px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer',
-                  background: selected ? 'rgba(193,156,86,0.25)' : 'rgba(255,255,255,0.05)',
-                  color: selected ? '#e8c47a' : 'rgba(255,255,255,0.45)',
-                }}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
+        <PossibleDayPicker
+          date={date}
+          onChange={d => {
+            setDate(d)
+            if (picked && !isManualServiceAllowedOnDate(picked.location, d, cleaningType)) setPicked(null)
+          }}
+          cleaningType={cleaningType}
+          location={picked?.location}
+          labels={labels}
+          lang={lang}
+        />
 
         <input
           value={search}
@@ -2572,13 +2694,13 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
                 }}
               >
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{loc.name}</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{loc.group}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{loc.group} · {formatManualServiceDays(loc, cleaningType, lang)}</div>
               </button>
             )
           })}
         </div>
 
-        {!picked && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 10 }}>{labels.pastServicePickLocation || 'Tap a location above to continue'}</div>}
+        {!picked && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 10 }}>{filtered.length ? labels.pastServicePickLocation : labels.pastServiceNoLocations}</div>}
         <button
           type="button"
           disabled={!canConfirm || busy}
