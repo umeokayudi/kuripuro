@@ -175,7 +175,7 @@ assert(fenceOk(101) === false, '101m is blocked')
 assert(fenceOk(null) === null, 'unknown fence')
 assert(mapsPointUrl(store.lat, store.lng).includes(`${store.lat}`), 'maps url')
 
-assert(isMissingColumnError({ code: 'PGRST204', message: "Could not find the 'gps_start_lat' column of 'jobs' in the schema cache" }, 'gps_start_lat'), 'missing column')
+assert(isMissingColumnError({ code: '42703', message: 'column jobs.gps_start_lat does not exist' }, 'gps_start_lat'), 'postgres missing column')
 assert(!isMissingColumnError({ code: 'PGRST204', message: "Could not find the 'notes' column" }, 'gps_start_lat'), 'other column')
 assert(!isMissingColumnError(null), 'null error')
 

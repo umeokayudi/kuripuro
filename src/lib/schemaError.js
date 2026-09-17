@@ -7,7 +7,7 @@ export function isMissingColumnError(error, column) {
   if (!error) return false
   const msg = String(error.message || '')
   const mentionsColumn = !column || msg.includes(column)
-  if (error.code === 'PGRST204') return mentionsColumn
+  if (error.code === 'PGRST204' || error.code === '42703') return mentionsColumn
   if (/schema cache/i.test(msg) && /column/i.test(msg)) return mentionsColumn
   if (/column .* does not exist/i.test(msg)) return mentionsColumn
   return false
