@@ -935,7 +935,7 @@ export const kuripuroEn = {
   },
   account: {
     yourLogin: 'Your admin login',
-    yourLoginHint: 'This is the email and password for kuripuro.vercel.app admin. Show the saved password here — it is not printed in chat.',
+    yourLoginHint: 'Use Show to see the saved password. Type the current password to change email or password.',
     noAdminRow: 'Admin row not found',
     admins: 'Admin accounts',
     staffLogins: 'Staff logins',
@@ -1906,7 +1906,7 @@ export const kuripuroJa = {
   },
   account: {
     yourLogin: '管理者ログイン',
-    yourLoginHint: 'kuripuro.vercel.app 管理画面のメールとパスワードです。保存済みパスワードはここで表示します。チャットには書きません。',
+    yourLoginHint: '表示を押すと保存済みパスワードが見られます。メールやパスワードを変えるには現在のパスワードを入力してください。',
     noAdminRow: '管理者レコードが見つかりません',
     admins: '管理者アカウント',
     staffLogins: '従業員ログイン',
