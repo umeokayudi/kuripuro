@@ -82,12 +82,8 @@ export function aiButtonPos(saved, size) {
 
 export function aiPanelBox(btnPos, { left = 0, top = 0, vw, vh, btn = AI_BTN } = {}) {
   const pad = 12
-  const narrow = vw < 720
-  const width = Math.min(narrow ? vw - pad * 2 : AI_PANEL_W, vw - pad * 2)
-  const height = Math.min(
-    narrow ? vh - btn - pad * 3 : AI_PANEL_H,
-    vh - pad * 2,
-  )
+  const width = Math.min(AI_PANEL_W, vw - pad * 2)
+  const height = Math.min(AI_PANEL_H, vh - btn - pad * 3)
   let panelLeft = btnPos.x + btn / 2 - width / 2
   panelLeft = Math.max(left + pad, Math.min(left + vw - width - pad, panelLeft))
   const openAbove = (btnPos.y - top) > vh / 2

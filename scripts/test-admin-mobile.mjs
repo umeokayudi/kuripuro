@@ -88,6 +88,7 @@ function testEmployeeDesktopFrame() {
   const panel = aiPanelBox(stray, frame)
   assert(panel.left >= frame.left, `panel left ${panel.left}`)
   assert(panel.left + panel.width <= frame.left + frame.vw + 0.5, `panel right ${panel.left + panel.width}`)
+  assert(panel.top + panel.height <= stray.y - 8, `panel above fab ${panel.top + panel.height} vs ${stray.y}`)
   assert(aiPosStorageKey('employee') === 'kp_ai_widget_pos_employee', 'separate employee pos key')
   assert(aiPosStorageKey('admin') === 'kp_ai_widget_pos', 'admin pos key unchanged')
 }
