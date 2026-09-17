@@ -1856,6 +1856,9 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
 
   return (
     <div>
+      <div style={{background:'rgba(96,165,250,0.08)',border:'1px solid rgba(96,165,250,0.18)',borderRadius:12,padding:'10px 12px',marginBottom:14,fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.45}}>
+        📍 {labels.gpsFenceHint}
+      </div>
       {showActivePanel && (
         <div id="active-job-card" style={{...S.card,marginBottom:14,border:'1px solid rgba(251,191,36,0.45)',background:'linear-gradient(135deg,rgba(251,191,36,0.12),rgba(251,191,36,0.03))'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
