@@ -81,7 +81,14 @@ export default function EmployeeAccountPanel({ user, labels, updateSession }) {
       <div style={{ fontSize: 14, color: '#fff', marginBottom: 12 }}>{row?.email || user.email}</div>
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>{labels.currentPasswordShown}</div>
       <div style={{ marginBottom: 16 }}>
-        <PasswordReveal value={row?.password} showLabel={labels.showPassword} hideLabel={labels.hidePassword} dark />
+        <PasswordReveal
+          value={row?.password}
+          showLabel={labels.showPassword}
+          hideLabel={labels.hidePassword}
+          copyLabel={labels.copyPassword}
+          copiedLabel={labels.copied}
+          dark
+        />
       </div>
 
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>{labels.currentPassword}</div>

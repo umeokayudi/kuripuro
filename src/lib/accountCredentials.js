@@ -17,16 +17,38 @@ export function validateNewPassword(password, { required = false } = {}) {
   return { ok: true, value }
 }
 
-/**
- * Build an email/password patch.
- * `requireCurrent` is for the person changing their own login.
- */
+export function pickOwnAdmin(admins, user) {
+  const rows = Array.isArray(admins) ? admins : []
+  if (!user) return null
+  const byId = rows.find(r => r.id && r.id === user.id)
+  if (byId) return byId
+  const email = String(user.email || '').trim().toLowerCase()
+  if (!email) return null
+  return rows.find(r => String(r.email || '').trim().toLowerCase() === email) || null
+}
+
+export function filterCredentialRows(rows, query, { activeOnly = false } = {}) {
+  const list = Array.isArray(rows) ? rows : []
+  const q = String(query || '').trim().toLowerCase()
+  return list.filter(r => {
+    if (activeOnly && r.is_active === false) return false
+    if (!q) return true
+    const blob = [r.name, r.full_name, r.contact_name, r.email, r.location_name, r.client_name]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    return blob.includes(q)
+  })
+}
+
+/** Build an email/password patch. `requireCurrent` is for the person changing their own login. */
 export function buildCredentialPatch({
   currentEmail,
   storedPassword,
   submittedCurrent,
   newEmail,
   newPassword,
+  confirmPassword,
   requireCurrent = true,
 } = {}) {
   if (requireCurrent) {
@@ -45,7 +67,12 @@ export function buildCredentialPatch({
 
   const pw = validateNewPassword(newPassword)
   if (!pw.ok) return pw
-  if (pw.value) patch.password = pw.value
+  if (pw.value) {
+    if (confirmPassword !== undefined && String(confirmPassword) !== pw.value) {
+      return { ok: false, error: 'password_mismatch' }
+    }
+    patch.password = pw.value
+  }
 
   if (!Object.keys(patch).length) return { ok: false, error: 'nothing_to_update' }
   return { ok: true, patch }
@@ -59,6 +86,7 @@ export async function updateRowCredentials(supabase, {
   submittedCurrent,
   newEmail,
   newPassword,
+  confirmPassword,
   requireCurrent = true,
   extraPatch = {},
 }) {
@@ -68,6 +96,7 @@ export async function updateRowCredentials(supabase, {
     submittedCurrent,
     newEmail,
     newPassword,
+    confirmPassword,
     requireCurrent,
   })
   if (!built.ok) return built

@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
@@ -70,7 +70,12 @@ export default function Sidebar({ mobile = false, open = false, onNavigate, desk
       <div className="sidebar-logo">
         <div className="brand">KuriPuro</div>
         <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
-        {user?.name && <div className="sidebar-user">{user.name}</div>}
+        {user?.name && (
+          <Link to="/account" className="sidebar-user" onClick={mobile ? onNavigate : undefined}>
+            {user.name}
+            <span className="sidebar-user-hint">{s.account}</span>
+          </Link>
+        )}
       </div>
       <nav className="sidebar-nav" onClick={mobile ? onNavigate : undefined}>
         {groups.map(group => (

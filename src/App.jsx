@@ -197,6 +197,9 @@ function AppContent() {
               desktopLabel={a.desktopView}
               variant="light"
             />
+            <Link to="/account" className="btn btn-sm topbar-account">
+              {t.sidebar.account}
+            </Link>
             <span className="topbar-meta">
               <Link to="/account" style={{ fontSize: 13, color: 'var(--text2)', textDecoration: 'none', fontWeight: 600 }}>
                 {user.name}

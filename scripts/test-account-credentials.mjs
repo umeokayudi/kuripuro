@@ -4,6 +4,8 @@ import {
   validateEmail,
   validateNewPassword,
   buildCredentialPatch,
+  pickOwnAdmin,
+  filterCredentialRows,
 } from '../src/lib/accountCredentials.js'
 
 function assert(cond, msg) {
@@ -55,5 +57,37 @@ const adminEdit = buildCredentialPatch({
   requireCurrent: false,
 })
 assert(adminEdit.ok && adminEdit.patch.password === 'staff99' && !adminEdit.patch.email, 'admin can set staff password without current')
+
+const mismatch = buildCredentialPatch({
+  currentEmail: 'admin@kuripuro.com',
+  storedPassword: 'oldpass',
+  submittedCurrent: 'oldpass',
+  newPassword: 'newpass',
+  confirmPassword: 'other',
+})
+assert(mismatch.error === 'password_mismatch', 'confirm must match')
+
+const matched = buildCredentialPatch({
+  currentEmail: 'admin@kuripuro.com',
+  storedPassword: 'oldpass',
+  submittedCurrent: 'oldpass',
+  newPassword: 'newpass',
+  confirmPassword: 'newpass',
+})
+assert(matched.ok && matched.patch.password === 'newpass', 'matching confirm is ok')
+
+const picked = pickOwnAdmin(
+  [{ id: 'a', email: 'hq@kuripuro.com' }, { id: 'b', email: 'admin@kuripuro.com' }],
+  { id: 'b', email: 'admin@kuripuro.com' },
+)
+assert(picked?.id === 'b', 'pick own admin by id')
+assert(pickOwnAdmin([{ id: 'a', email: 'hq@kuripuro.com' }], { id: 'z', email: 'missing@x.com' }) === null, 'no fallback to first admin')
+
+const filtered = filterCredentialRows(
+  [{ full_name: 'Andre', email: 'a@x.com', is_active: false }, { full_name: 'Guilherme', email: 'g@x.com', is_active: true }],
+  'gui',
+  { activeOnly: true },
+)
+assert(filtered.length === 1 && filtered[0].full_name === 'Guilherme', 'search + active filter')
 
 console.log('✅ Account credential tests passed')

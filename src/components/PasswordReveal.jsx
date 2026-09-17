@@ -1,8 +1,27 @@
 import { useState } from 'react'
 
-export default function PasswordReveal({ value, showLabel = 'Show', hideLabel = 'Hide', compact = false, dark = false }) {
+export default function PasswordReveal({
+  value,
+  showLabel = 'Show',
+  hideLabel = 'Hide',
+  copyLabel = 'Copy',
+  copiedLabel = 'Copied',
+  compact = false,
+  dark = false,
+}) {
   const [show, setShow] = useState(false)
+  const [copied, setCopied] = useState(false)
   const empty = !value
+
+  const copy = async () => {
+    if (!value || typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1400)
+    } catch {}
+  }
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       <code style={{
@@ -17,17 +36,30 @@ export default function PasswordReveal({ value, showLabel = 'Show', hideLabel = 
         {empty ? '—' : show ? value : '••••••••'}
       </code>
       {!empty && (
-        <button
-          type="button"
-          className={dark ? undefined : 'btn btn-sm'}
-          onClick={() => setShow(s => !s)}
-          style={dark ? {
-            padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(255,255,255,0.06)', color: '#e8c47a', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          } : undefined}
-        >
-          {show ? hideLabel : showLabel}
-        </button>
+        <>
+          <button
+            type="button"
+            className={dark ? undefined : 'btn btn-sm'}
+            onClick={() => setShow(s => !s)}
+            style={dark ? {
+              padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(255,255,255,0.06)', color: '#e8c47a', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            } : undefined}
+          >
+            {show ? hideLabel : showLabel}
+          </button>
+          <button
+            type="button"
+            className={dark ? undefined : 'btn btn-sm'}
+            onClick={copy}
+            style={dark ? {
+              padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(255,255,255,0.06)', color: '#e8c47a', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            } : undefined}
+          >
+            {copied ? copiedLabel : copyLabel}
+          </button>
+        </>
       )}
     </div>
   )
