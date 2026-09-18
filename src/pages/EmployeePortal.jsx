@@ -1077,7 +1077,7 @@ export default function EmployeePortal() {
 
   return (
     <div className="emp-backdrop">
-    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
+    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:64}}>
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
@@ -1177,26 +1177,26 @@ export default function EmployeePortal() {
       )}
 
       {/* HEADER */}
-      <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-          <div>
+      <div className="emp-header">
+        <div className="emp-header-row">
+          <div className="emp-header-left">
             <div className="emp-brand">KuriPuro by JBM · v33</div>
-            <div className="emp-name" style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
+            <div className="emp-name" style={{fontSize:18,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1.1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <EmpLiveDate lang={lang} />
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div style={{background:`rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.1)`,border:`1px solid rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.2)`,borderRadius:14,padding:'7px 12px',textAlign:'center'}}>
-              <div style={{fontSize:20,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
+          <div className="emp-header-right">
+            <div className="emp-score-chip" style={{background:`rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.1)`,border:`1px solid rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.2)`}}>
+              <div style={{fontSize:16,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
               <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>{e.score}</div>
             </div>
             <LanguageToggle variant="dark" compact />
-            <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+            <button type="button" className="emp-icon-btn" onClick={()=>setTab('chat')} style={{position:'relative'}}>
               🔔
-              {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
+              {unreadMsgs>0&&<div style={{position:'absolute',top:2,right:2,minWidth:14,height:14,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
             </button>
-            <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,position:'relative'}}>
-              {[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
-              {spotJobs.length>0&&<div style={{position:'absolute',top:4,right:4,width:8,height:8,borderRadius:'50%',background:'#c19c56',border:'2px solid #060d18'}} />}
+            <button type="button" className="emp-icon-btn" onClick={()=>setMenuOpen(!menuOpen)} style={{flexDirection:'column',gap:3,position:'relative'}}>
+              {[0,1,2].map(i=><div key={i} style={{width:3.5,height:3.5,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
+              {spotJobs.length>0&&<div style={{position:'absolute',top:3,right:3,width:7,height:7,borderRadius:'50%',background:'#c19c56',border:'2px solid #060d18'}} />}
             </button>
           </div>
         </div>
@@ -1235,7 +1235,7 @@ export default function EmployeePortal() {
       )}
 
       {/* CONTENT */}
-      <div style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+      <div style={{flex:1,padding:'12px 12px 16px',overflowY:'auto',overflowX:'hidden',position:'relative',zIndex:1}}>
 
         {/* HOME */}
         {tab==='home'&&(
@@ -1780,19 +1780,18 @@ export default function EmployeePortal() {
       </div>
 
       {/* BOTTOM TAB BAR */}
-      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <div className="emp-tabbar">
         {bottomTabs.map(t=>(
-          <button key={t.key} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
-            <div style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>
-            <div style={{fontSize:9,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.25)',fontWeight:tab===t.key?600:400,transition:'color 0.15s'}}>{t.label}</div>
-            {tab===t.key&&<div style={{position:'absolute',bottom:0,left:'50%',transform:'translateX(-50%)',width:20,height:2,background:'#c19c56',borderRadius:1}} />}
-            {t.badge>0&&<div style={{position:'absolute',top:6,right:'calc(50% - 14px)',width:16,height:16,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff'}}>{t.badge}</div>}
+          <button key={t.key} type="button" className="emp-tab" onClick={()=>goToTab(t.key)}>
+            <div style={{fontSize:t.key==='salary'?15:16,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit'}}>{t.icon}</div>
+            <div className="emp-tab-label" style={{color:tab===t.key?'#c19c56':undefined,fontWeight:tab===t.key?600:400}}>{t.label}</div>
+            {tab===t.key&&<div style={{position:'absolute',bottom:0,left:'50%',transform:'translateX(-50%)',width:16,height:2,background:'#c19c56',borderRadius:1}} />}
+            {t.badge>0&&<div style={{position:'absolute',top:4,right:'calc(50% - 12px)',width:14,height:14,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'#fff'}}>{t.badge}</div>}
           </button>
         ))}
-        {/* More button */}
-        <button onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-          <div style={{display:'flex',gap:2.5,marginBottom:1}}>{[0,1,2].map(i=><div key={i} style={{width:3.5,height:3.5,borderRadius:'50%',background:'rgba(255,255,255,0.3)'}} />)}</div>
-          <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{e.more}</div>
+        <button type="button" className="emp-tab" onClick={()=>setMenuOpen(true)}>
+          <div style={{display:'flex',gap:2,marginBottom:1}}>{[0,1,2].map(i=><div key={i} style={{width:3,height:3,borderRadius:'50%',background:'rgba(255,255,255,0.3)'}} />)}</div>
+          <div className="emp-tab-label">{e.more}</div>
         </button>
       </div>
     </div>

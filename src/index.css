@@ -27,8 +27,20 @@
   --font-display: 'Fraunces', 'Noto Sans JP', Georgia, serif;
 }
 
-html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
 ::selection { background: rgba(193, 156, 86, 0.28); color: var(--navy); }
+
+body, #root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
 
 body {
   font-family: var(--font);
@@ -176,6 +188,8 @@ h1, h2, .brand, .topbar-title { font-family: var(--font-display); letter-spacing
 
 .admin-tabbar { display: none; }
 .admin-tab {
+  flex: 1;
+  min-width: 0;
   flex: 1;
   min-width: 0;
   min-height: 52px;
@@ -451,14 +465,101 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
 .login-go:hover:not(:disabled) { filter: brightness(1.06); }
 .login-go:disabled { opacity: 0.6; cursor: wait; }
 
-/* Employee portal — keep the 430px phone chrome; desktop gets a quiet stage */
+/* Employee portal — 390px phone chrome on desktop; full-bleed on a real phone */
 .emp-backdrop {
   min-height: 100vh; min-height: 100dvh;
+  max-width: 100%;
+  overflow-x: clip;
   background:
     radial-gradient(ellipse 70% 40% at 50% -10%, rgba(193,156,86,0.1), transparent 55%),
     #040810;
 }
-.emp-shell { position: relative; }
+.emp-shell {
+  position: relative;
+  width: 100%;
+  max-width: 390px;
+  overflow-x: clip;
+}
+.emp-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(6,13,24,0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 10px 12px 8px;
+}
+.emp-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.emp-header-left { min-width: 0; flex: 1; }
+.emp-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.emp-score-chip {
+  border-radius: 12px;
+  padding: 5px 8px;
+  text-align: center;
+}
+.emp-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #fff;
+  padding: 0;
+}
+.emp-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 390px;
+  background: rgba(6,13,24,0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  z-index: 50;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.emp-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 2px 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+  color: rgba(255,255,255,0.25);
+}
+.emp-tab-label {
+  font-size: 8px;
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .emp-brand {
   font-family: var(--font-display); font-size: 10px; color: rgba(255,255,255,0.38);
   letter-spacing: 0.18em; text-transform: uppercase;
@@ -611,7 +712,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   .topbar { padding: 12px 16px; }
 }
 
-/* Admin mobile — on a real phone: full bleed. On desktop: 430px phone chrome. */
+/* Admin mobile — on a real phone: full bleed. On desktop: 390px phone chrome. */
 .admin-stage { min-height: 100vh; min-height: 100dvh; }
 .app-shell.admin-mobile {
   overflow: hidden;
@@ -718,8 +819,8 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
 .app-shell.admin-mobile .card { padding: 14px; }
 .app-shell.admin-mobile .metric-card { padding: 12px; }
 .app-shell.admin-mobile .metric-value { font-size: 20px; }
-.app-shell.admin-mobile table { min-width: 480px; }
-.app-shell.admin-mobile .table-wrap { margin-left: 0; }
+.app-shell.admin-mobile table { min-width: 0; width: 100%; }
+.app-shell.admin-mobile .table-wrap { margin-left: 0; max-width: 100%; min-width: 0; overflow-x: auto; }
 .app-shell.admin-mobile .photo-grid { grid-template-columns: repeat(2, 1fr); }
 .app-shell.admin-mobile .profit-row { flex-wrap: wrap; }
 .app-shell.admin-mobile .profit-row .pname { min-width: 0; flex: 1 1 120px; }
@@ -781,7 +882,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   }
   .admin-stage.is-phone .app-shell.admin-mobile {
     width: 100%;
-    max-width: 430px;
+    max-width: 390px;
     height: 100dvh;
     max-height: 100dvh;
     min-height: 0;
@@ -813,4 +914,8 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
     grid-template-columns: 1fr 1fr;
   }
   .app-shell.admin-mobile .topbar-logout { display: none; }
+}
+
+@media (max-width: 720px) {
+  input, select, textarea { font-size: 16px !important; }
 }

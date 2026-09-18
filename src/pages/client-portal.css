@@ -10,7 +10,7 @@
   --cp-text: #f1f5f9;
   --cp-muted: rgba(255, 255, 255, 0.45);
   --cp-radius: 18px;
-  --cp-nav-h: 72px;
+  --cp-nav-h: 62px;
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--cp-bg);
@@ -149,7 +149,7 @@
 }
 
 .cp-shell.cp-mobile .cp-main {
-  max-width: 480px;
+  max-width: 100%;
   margin: 0 auto;
   width: 100%;
 }
@@ -160,8 +160,8 @@
 
 /* —— Header —— */
 .cp-header {
-  padding: 16px 20px 12px;
-  padding-top: max(16px, env(safe-area-inset-top));
+  padding: 10px 12px 8px;
+  padding-top: max(10px, env(safe-area-inset-top));
   position: sticky;
   top: 0;
   z-index: 50;
@@ -170,20 +170,45 @@
   border-bottom: 1px solid var(--cp-border);
 }
 
-.cp-shell.cp-desktop .cp-header-mobile-only {
-  display: none;
+.cp-shell.cp-desktop .cp-header {
+  padding: 16px 20px 12px;
+}
+
+.cp-shell.cp-desktop .cp-header-title {
+  font-size: 24px;
+}
+
+.cp-shell.cp-desktop .cp-header-actions {
+  max-width: none;
+  flex-wrap: nowrap;
+}
+
+.cp-shell.cp-desktop .cp-pills {
+  display: flex;
+}
+
+.cp-shell.cp-desktop .cp-pill {
+  flex: 1;
+  font-size: 13px;
+  padding: 12px;
 }
 
 .cp-header-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
+}
+
+.cp-header-mobile-only { min-width: 0; flex: 1; }
+
+.cp-shell.cp-desktop .cp-header-mobile-only {
+  display: none;
 }
 
 .cp-header-title {
   font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.2;
@@ -198,8 +223,10 @@
 .cp-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 46%;
 }
 
 .cp-view-toggle {
@@ -277,8 +304,8 @@
 /* —— Content —— */
 .cp-content {
   flex: 1;
-  padding: 16px 18px;
-  padding-bottom: calc(var(--cp-nav-h) + 24px + env(safe-area-inset-bottom));
+  padding: 12px 12px;
+  padding-bottom: calc(var(--cp-nav-h) + 16px + env(safe-area-inset-bottom));
 }
 
 .cp-shell.cp-desktop .cp-content {
@@ -527,8 +554,8 @@
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  max-width: 480px;
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  max-width: 390px;
+  padding: 4px 8px calc(6px + env(safe-area-inset-bottom));
   z-index: 100;
   background: linear-gradient(to top, var(--cp-bg) 60%, transparent);
 }
@@ -551,17 +578,18 @@
 
 .cp-nav-btn {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 8px 4px;
+  gap: 1px;
+  padding: 6px 2px;
   border: none;
   background: transparent;
   cursor: pointer;
   color: var(--cp-muted);
   font-family: inherit;
-  border-radius: 16px;
+  border-radius: 14px;
   transition: all 0.2s;
   position: relative;
 }
@@ -572,14 +600,18 @@
 }
 
 .cp-nav-icon {
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .cp-nav-label {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cp-nav-badge {
@@ -609,7 +641,7 @@
   border: 1px solid var(--cp-border);
   background: rgba(0, 0, 0, 0.25);
   color: var(--cp-text);
-  font-size: 15px;
+  font-size: 16px;
   font-family: inherit;
   box-sizing: border-box;
   -webkit-appearance: none;
@@ -665,17 +697,19 @@
 }
 
 .cp-pills {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .cp-pill {
-  flex: 1;
-  padding: 12px;
-  border-radius: 14px;
+  flex: none;
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 12px;
   border: none;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
@@ -688,15 +722,15 @@
 
 .cp-quick-row {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 18px;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .cp-quick {
   text-align: left;
-  padding: 12px 12px 10px;
-  border-radius: 14px;
+  padding: 10px 8px 8px;
+  border-radius: 12px;
   border: 1px solid var(--cp-border);
   background: rgba(255, 255, 255, 0.04);
   color: var(--cp-text);
@@ -1057,9 +1091,9 @@
 }
 
 .cp-deep-month-label {
-  min-width: 108px;
+  min-width: 0;
   text-align: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--cp-text);
   white-space: nowrap;
@@ -1174,7 +1208,7 @@
 
 .cp-deep-legend {
   flex: 1;
-  min-width: 160px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1731,7 +1765,7 @@
 
 @media (min-width: 900px) {
   .cp-shell.cp-mobile {
-    max-width: 480px;
+    max-width: 390px;
     margin: 0 auto;
     box-shadow: 0 0 0 1px var(--cp-border), 0 0 80px rgba(0, 0, 0, 0.5);
   }

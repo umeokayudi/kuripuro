@@ -74,7 +74,10 @@ export function monthCompletedCount(jobs, yearMonth) {
 }
 
 export function visibleInvoices(rows) {
-  return (rows || []).filter(f => f.status && f.status !== 'draft' && f.status !== 'cancelled')
+  return (rows || []).filter(f => {
+    const s = String(f.status || '').toLowerCase()
+    return s && s !== 'draft' && s !== 'cancelled' && s !== 'pending'
+  })
 }
 
 export function unpaidInvoices(rows) {

@@ -1,5 +1,5 @@
 export const AI_BTN = 56
-export const AI_PANEL_W = 380
+export const AI_PANEL_W = 340
 export const AI_PANEL_H = 520
 export const AI_POS_KEY = 'kp_ai_widget_pos'
 export const EMP_TAB_RESERVE = 76

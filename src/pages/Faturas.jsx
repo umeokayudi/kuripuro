@@ -150,7 +150,7 @@ export default function Faturas() {
     w.print()
   }
 
-  const statusBadge = s => ({draft:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
+  const statusBadge = s => ({draft:'badge-amber',pending:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
 
   return (
     <div>
@@ -178,7 +178,7 @@ export default function Faturas() {
               </div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                 <button className="btn btn-sm" onClick={()=>handlePrint(f)}>🖨️ Print</button>
-                {f.status==='draft'&&<button className="btn btn-sm btn-primary" onClick={()=>handleStatusChange(f.id,'sent')}>📤 Mark Sent</button>}
+                {(f.status==='draft'||f.status==='pending')&&<button className="btn btn-sm btn-primary" onClick={()=>handleStatusChange(f.id,'sent')}>📤 Mark Sent</button>}
                 {f.status==='sent'&&<button className="btn btn-sm" style={{background:'var(--green)',color:'#fff'}} onClick={()=>handleStatusChange(f.id,'paid')}>✅ Mark Paid</button>}
                 {f.status!=='cancelled'&&<button className="btn btn-sm btn-danger" onClick={()=>handleStatusChange(f.id,'cancelled')}>Cancel</button>}
                 <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(f.id)}>🗑 Delete</button>

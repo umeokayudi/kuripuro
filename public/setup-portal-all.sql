@@ -146,3 +146,46 @@ create policy "service_photos_update" on storage.objects
 drop policy if exists "service_photos_delete" on storage.objects;
 create policy "service_photos_delete" on storage.objects
   for delete to anon, authenticated using (bucket_id = 'service-photos');
+
+-- Job start / finish GPS (employee geofence)
+alter table jobs add column if not exists gps_start_lat numeric;
+alter table jobs add column if not exists gps_start_lng numeric;
+alter table jobs add column if not exists gps_start_acc numeric;
+alter table jobs add column if not exists gps_start_distance_m numeric;
+alter table jobs add column if not exists gps_end_lat numeric;
+alter table jobs add column if not exists gps_end_lng numeric;
+alter table jobs add column if not exists gps_end_acc numeric;
+alter table jobs add column if not exists gps_end_distance_m numeric;
+
+create table if not exists salary_statements (
+  id uuid primary key default gen_random_uuid(),
+  period text not null,
+  employee_id uuid references employees(id) on delete cascade,
+  employee_name text,
+  base_salary numeric(12,2) default 0,
+  deductions numeric(12,2) default 0,
+  bonuses numeric(12,2) default 0,
+  net_total numeric(12,2) default 0,
+  breakdown jsonb,
+  status text default 'pending',
+  created_at timestamptz default now(),
+  unique(period, employee_id)
+);
+create table if not exists equipment_requests (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid references employees(id) on delete cascade,
+  employee_name text,
+  category text default 'other',
+  item_name text not null,
+  quantity integer default 1,
+  reason text not null,
+  photo_url text,
+  status text default 'pending',
+  created_at timestamptz default now()
+);
+alter table salary_statements enable row level security;
+alter table equipment_requests enable row level security;
+drop policy if exists "allow_all_salary_statements" on salary_statements;
+create policy "allow_all_salary_statements" on salary_statements for all using (true);
+drop policy if exists "allow_all_equipment_requests" on equipment_requests;
+create policy "allow_all_equipment_requests" on equipment_requests for all using (true);

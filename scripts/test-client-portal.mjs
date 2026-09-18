@@ -82,8 +82,9 @@ const inv = visibleInvoices([
   { id: 'b', status: 'sent', total: 10 },
   { id: 'c', status: 'paid', total: 20 },
   { id: 'd', status: 'cancelled', total: 3 },
+  { id: 'e', status: 'pending', total: 9 },
 ])
-assert(inv.map(i => i.id).join() === 'b,c', 'hide draft/cancelled invoices')
+assert(inv.map(i => i.id).join() === 'b,c', 'hide draft/cancelled/pending invoices')
 assert(unpaidInvoices([{ status: 'sent' }, { status: 'paid' }]).length === 1, 'unpaid = sent')
 assert(filterInvoices([{ status: 'sent' }, { status: 'paid' }, { status: 'draft' }], 'paid').length === 1, 'paid filter hides draft')
 assert(lastDeepVisit(jobs)?.id === '2', 'last deep is Ibushio Sept 16')

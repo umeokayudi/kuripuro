@@ -754,19 +754,11 @@ export default function ClientPortal() {
                 </div>
               )}
               <div className="cp-header-actions">
-                <LanguageToggle variant="dark" />
+                <LanguageToggle variant="dark" compact={!desktopMode} />
                 {desktopMode && (
                   <button type="button" className="cp-view-toggle" onClick={toggleView}>
                     📱 {c.mobileView}
                   </button>
-                )}
-                {!desktopMode && (
-                  <button type="button" className="cp-view-toggle" onClick={toggleView}>
-                    🖥 {c.desktopView}
-                  </button>
-                )}
-                {!desktopMode && (
-                  <button type="button" className="cp-logout" onClick={logout}>{c.logout}</button>
                 )}
               </div>
             </div>
@@ -1372,6 +1364,14 @@ export default function ClientPortal() {
                     {savingCreds ? c.loading : c.saveCredentials}
                   </button>
                 </div>
+                {!desktopMode && (
+                  <div className="cp-card" style={{ marginTop: 12 }}>
+                    <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%', marginBottom: 8 }}>
+                      🖥 {c.desktopView}
+                    </button>
+                    <button type="button" className="cp-logout" onClick={logout} style={{ width: '100%' }}>{c.logout}</button>
+                  </div>
+                )}
               </>
             )}
           </main>

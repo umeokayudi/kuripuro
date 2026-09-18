@@ -127,6 +127,15 @@ drop policy if exists "service_photos_update" on storage.objects;
 create policy "service_photos_update" on storage.objects for update to anon, authenticated using (bucket_id = 'service-photos');
 drop policy if exists "service_photos_delete" on storage.objects;
 create policy "service_photos_delete" on storage.objects for delete to anon, authenticated using (bucket_id = 'service-photos');
+
+alter table jobs add column if not exists gps_start_lat numeric;
+alter table jobs add column if not exists gps_start_lng numeric;
+alter table jobs add column if not exists gps_start_acc numeric;
+alter table jobs add column if not exists gps_start_distance_m numeric;
+alter table jobs add column if not exists gps_end_lat numeric;
+alter table jobs add column if not exists gps_end_lng numeric;
+alter table jobs add column if not exists gps_end_acc numeric;
+alter table jobs add column if not exists gps_end_distance_m numeric;
 `
 
 export const SUPABASE_SQL_URL = 'https://supabase.com/dashboard/project/fxsakrshmldmkdmbevna/sql/new'
