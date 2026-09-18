@@ -80,3 +80,20 @@ export function visibleInvoices(rows) {
 export function unpaidInvoices(rows) {
   return visibleInvoices(rows).filter(f => f.status === 'sent')
 }
+
+export function filterInvoices(rows, status = 'all') {
+  const vis = visibleInvoices(rows)
+  if (status === 'sent' || status === 'unpaid') return vis.filter(f => f.status === 'sent')
+  if (status === 'paid') return vis.filter(f => f.status === 'paid')
+  return vis
+}
+
+export function lastDeepVisit(jobs) {
+  return (jobs || [])
+    .filter(j => j.status === 'completed' && getCleaningType(j) === 'deep')
+    .sort((a, b) => String(b.scheduled_date || '').localeCompare(String(a.scheduled_date || '')))[0] || null
+}
+
+export function itemsForInvoice(items, faturaId) {
+  return (items || []).filter(it => it.fatura_id === faturaId)
+}

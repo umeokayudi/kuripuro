@@ -9,6 +9,9 @@ import {
   monthCompletedCount,
   visibleInvoices,
   unpaidInvoices,
+  filterInvoices,
+  lastDeepVisit,
+  itemsForInvoice,
   locationFromJob,
 } from '../src/lib/clientPortal.js'
 import {
@@ -18,6 +21,7 @@ import {
   packPaymentNotice,
   parsePaymentNotice,
   extraLabel,
+  mergeExtraNotes,
 } from '../src/lib/clientExtras.js'
 import { DEFAULT_DEEP_CLEAN_PRICE } from '../src/lib/serviceCatalog.js'
 import { kuripuroEn, kuripuroJa } from '../src/i18n/kuripuro.js'
@@ -61,9 +65,12 @@ const ibu = extrasForLocation('Ibushio')
 assert(!ibu.some(e => e.id === 'extra_basic'), 'deep-only has no extra basic')
 assert(ibu.some(e => e.id === 'extra_deep' && e.price === 5000), 'Ibushio extra deep')
 assert(ibu.some(e => e.id === 'extra_grease' && e.price === 1000), 'component extras ¥1000')
-const packed = packExtraRequest({ extraId: 'extra_deep', price: 5000, locationName: 'Ibushio', notes: 'After 21:00' })
+assert(ibu.some(e => e.id === 'extra_grill' && e.price === 1000), 'grill extra matches hood/AC')
+assert(extraLabel('extra_grill', 'ja').includes('グリル'), 'ja grill label')
+const packed = packExtraRequest({ extraId: 'extra_deep', price: 5000, locationName: 'Ibushio', notes: mergeExtraNotes('After 21:00', 'after_close') })
 const parsed = parseExtraRequest(packed)
-assert(parsed.extraId === 'extra_deep' && parsed.price === 5000 && parsed.notes === 'After 21:00', 'pack/parse extra')
+assert(parsed.extraId === 'extra_deep' && parsed.price === 5000 && parsed.notes.includes('Preferred time: After close'), 'pack/parse extra with time')
+assert(parsed.notes.includes('After 21:00'), 'user notes kept')
 assert(extraLabel('extra_deep', 'ja').includes('深層'), 'ja extra label')
 const pay = parsePaymentNotice(packPaymentNotice({ faturaId: 'abc', total: 12000, period: '2026-09' }))
 assert(pay.faturaId === 'abc' && pay.total === 12000, 'pay notice')
@@ -77,7 +84,10 @@ const inv = visibleInvoices([
 ])
 assert(inv.map(i => i.id).join() === 'b,c', 'hide draft/cancelled invoices')
 assert(unpaidInvoices([{ status: 'sent' }, { status: 'paid' }]).length === 1, 'unpaid = sent')
-assert(kuripuroEn.client.bookExtra && kuripuroJa.client.invoicesDue, 'i18n keys')
+assert(filterInvoices([{ status: 'sent' }, { status: 'paid' }, { status: 'draft' }], 'paid').length === 1, 'paid filter hides draft')
+assert(lastDeepVisit(jobs)?.id === '2', 'last deep is Ibushio Sept 16')
+assert(itemsForInvoice([{ fatura_id: 'b', total: 10 }, { fatura_id: 'c', total: 20 }], 'b').length === 1, 'invoice lines scoped')
+assert(kuripuroEn.client.bookExtra && kuripuroJa.client.invoicesDue && kuripuroEn.client.extraTime && kuripuroJa.client.repeatExtra, 'i18n keys')
 console.log('  invoices visibility OK')
 
 console.log('\n✅ Client portal tests passed')

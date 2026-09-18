@@ -761,6 +761,41 @@
   margin: 0 0 12px;
 }
 
+.cp-upsell {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 168, 83, 0.35);
+  background: linear-gradient(135deg, rgba(212, 168, 83, 0.16), rgba(255, 255, 255, 0.03));
+  color: var(--cp-text);
+  cursor: pointer;
+  font-family: inherit;
+}
+.cp-upsell span { font-size: 20px; line-height: 1; }
+.cp-upsell b { display: block; font-size: 14px; font-weight: 800; }
+.cp-upsell small { display: block; font-size: 11px; color: var(--cp-muted); margin-top: 4px; line-height: 1.35; }
+
+.cp-invoice-lines {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  font-size: 12px;
+}
+.cp-invoice-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--cp-border);
+  color: var(--cp-muted);
+}
+.cp-invoice-lines b { color: var(--cp-text); font-weight: 700; }
+
 /* —— Chat —— */
 .cp-chat {
   display: flex;

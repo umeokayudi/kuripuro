@@ -42,6 +42,7 @@ export function extrasForLocation(locationName) {
   list.push(
     { id: 'extra_grease', price: COMPONENT_PRICE, icon: '🛢' },
     { id: 'extra_hood', price: COMPONENT_PRICE, icon: '🔥' },
+    { id: 'extra_grill', price: COMPONENT_PRICE, icon: '🍖' },
     { id: 'extra_ac', price: COMPONENT_PRICE, icon: '❄️' },
   )
   if (loc?.spot) {
@@ -90,6 +91,7 @@ export function extraLabel(id, lang = 'en') {
     extra_deep: ja ? '追加・深層清掃' : 'Extra deep clean',
     extra_grease: ja ? 'グリストラップ追加' : 'Extra grease trap',
     extra_hood: ja ? 'レンジフード追加' : 'Extra range hood',
+    extra_grill: ja ? 'グリル清掃' : 'Grill cleaning',
     extra_ac: ja ? 'エアコン清掃' : 'AC cleaning',
     extra_spot: ja ? 'スポット清掃' : 'Spot cleaning',
   }[id] || id
@@ -102,7 +104,27 @@ export function extraHint(id, lang = 'en') {
     extra_deep: ja ? 'フード・トラップ・床など深層清掃の追加。' : 'Hood, trap, floor — a full extra deep clean.',
     extra_grease: ja ? '契約回数を超えるグリストラップ清掃。' : 'Grease trap beyond the contracted visits.',
     extra_hood: ja ? '深層清掃以外のフード追加清掃。' : 'Range hood on a day that is not the deep-clean slot.',
+    extra_grill: ja ? 'グリルの追加清掃。' : 'Grill clean on a day that is not the deep-clean slot.',
     extra_ac: ja ? 'エアコンの追加清掃。' : 'Extra air-conditioner clean.',
     extra_spot: ja ? '単発のスポット作業。' : 'One-off spot job.',
   }[id] || ''
+}
+
+export const EXTRA_TIMES = ['after_close', 'morning', 'anytime']
+
+export function extraTimeLabel(id, lang = 'en') {
+  const ja = lang === 'ja'
+  return {
+    after_close: ja ? '閉店後' : 'After close',
+    morning: ja ? '朝' : 'Morning',
+    anytime: ja ? 'いつでも' : 'Anytime',
+  }[id] || ''
+}
+
+export function mergeExtraNotes(notes, timeId, lang = 'en') {
+  const time = extraTimeLabel(timeId, lang)
+  const body = String(notes || '').trim()
+  if (!time) return body
+  const line = lang === 'ja' ? `希望時間: ${time}` : `Preferred time: ${time}`
+  return body ? `${line}\n${body}` : line
 }

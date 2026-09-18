@@ -24,8 +24,12 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
   filterClientVisits, monthCompletedCount, visibleInvoices, unpaidInvoices,
+  filterInvoices, lastDeepVisit, itemsForInvoice,
 } from '../lib/clientPortal'
-import { extrasForLocation, extraLabel, extraHint, formatYen, packExtraRequest, packPaymentNotice, parseExtraRequest } from '../lib/clientExtras'
+import {
+  extrasForLocation, extraLabel, extraHint, extraTimeLabel, EXTRA_TIMES, mergeExtraNotes,
+  formatYen, packExtraRequest, packPaymentNotice, parseExtraRequest,
+} from '../lib/clientExtras'
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday, addCalendarDays } from '../lib/dates'
@@ -113,9 +117,12 @@ export default function ClientPortal() {
   const [requestTab, setRequestTab] = useState('extras')
   const [extraNotes, setExtraNotes] = useState('')
   const [extraDate, setExtraDate] = useState('')
+  const [extraTime, setExtraTime] = useState('after_close')
   const [extraLocation, setExtraLocation] = useState('')
   const [bookingExtra, setBookingExtra] = useState(null)
   const [invoices, setInvoices] = useState([])
+  const [invoiceItems, setInvoiceItems] = useState([])
+  const [invoiceFilter, setInvoiceFilter] = useState('all')
   const [deepProgressMonth, setDeepProgressMonth] = useState(currentYearMonth)
   const [deepProgressStore, setDeepProgressStore] = useState('')
   const loadedOnceRef = useRef(false)
@@ -189,7 +196,15 @@ export default function ClientPortal() {
       setCompliments(filterByLocation(cmplRes.data, user.location_name))
       setRatings((ratRes.data || []).filter(r => ratingMatchesClientUser(r, user)))
       setRequests(filterByLocation(reqRes.data, user.location_name))
-      setInvoices(visibleInvoices(invRes.error ? [] : (invRes.data || [])))
+      const visInv = visibleInvoices(invRes.error ? [] : (invRes.data || []))
+      setInvoices(visInv)
+      if (visInv.length) {
+        const ids = visInv.map(f => f.id).filter(Boolean)
+        const itemsRes = await supabase.from('fatura_items').select('*').in('fatura_id', ids)
+        setInvoiceItems(itemsRes.error ? [] : (itemsRes.data || []))
+      } else {
+        setInvoiceItems([])
+      }
       setUnreadMsgs(filterByLocation(msgsRes.data, user.location_name).filter(m => m.sender === 'admin' && !m.read).length)
       await supabase.from('client_users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
     } catch (err) {
@@ -481,6 +496,11 @@ export default function ClientPortal() {
     loadAll({ silent: true })
   }
 
+  const pickExtra = (extra) => {
+    setBookingExtra(extra)
+    if (!extraDate) setExtraDate(addCalendarDays(tokyoToday(), 1))
+  }
+
   const bookExtra = async (extra) => {
     const loc = extraLocation || user.location_name || ''
     if (!loc) return toast.error(c.requestLocation)
@@ -488,7 +508,7 @@ export default function ClientPortal() {
       extraId: extra.id,
       price: extra.price,
       locationName: loc,
-      notes: extraNotes,
+      notes: mergeExtraNotes(extraNotes, extraTime, lang),
     })
     const { error } = await supabase.from('client_requests').insert({
       client_id: user.client_id, client_user_id: user.id,
@@ -500,6 +520,7 @@ export default function ClientPortal() {
     if (error) return toast.error(error.message)
     toast.success(c.extraBooked)
     setExtraNotes('')
+    setExtraTime('after_close')
     setBookingExtra(null)
     setRequestTab('history')
     loadAll({ silent: true })
@@ -556,6 +577,10 @@ export default function ClientPortal() {
   ])]
   const extraLoc = extraLocation || user.location_name || locations[0] || ''
   const extraCatalog = extrasForLocation(extraLoc)
+  const lastDeep = lastDeepVisit(completed)
+  const extraDeep = extraCatalog.find(e => e.id === 'extra_deep')
+  const pendingExtraDeep = requests.some(rq => rq.status !== 'completed' && parseExtraRequest(rq.description)?.extraId === 'extra_deep')
+  const shownInvoices = filterInvoices(invoices, invoiceFilter)
 
   const statusLabel = (s) => ({ assigned: tr.status.assigned, in_progress: tr.status.in_progress, completed: tr.status.completed, cancelled: tr.status.cancelled }[s] || s)
   const statusClass = (s) => ({ completed: 'done', in_progress: 'progress', assigned: 'pending', cancelled: 'cancelled' }[s] || 'pending')
@@ -789,6 +814,23 @@ export default function ClientPortal() {
                     <small>{c.invoicesDue}</small>
                   </button>
                 </div>
+                {extraDeep && !pendingExtraDeep && (
+                  <button
+                    type="button"
+                    className="cp-upsell"
+                    onClick={() => { setTab('requests'); setRequestTab('extras'); pickExtra(extraDeep) }}
+                  >
+                    <span>✨</span>
+                    <div>
+                      <b>{c.upsellDeepTitle} · {formatYen(extraDeep.price)}</b>
+                      <small>
+                        {lastDeep
+                          ? fill(c.upsellDeepLast, { date: lastDeep.scheduled_date })
+                          : c.upsellDeepNone}
+                      </small>
+                    </div>
+                  </button>
+                )}
                 {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
                   <DeepCleanProgressCard
                     progress={deepProgress}
@@ -1129,7 +1171,7 @@ export default function ClientPortal() {
                           key={ex.id}
                           type="button"
                           className={`cp-extra-card${bookingExtra?.id === ex.id ? ' on' : ''}`}
-                          onClick={() => setBookingExtra(ex)}
+                          onClick={() => pickExtra(ex)}
                         >
                           <div className="cp-extra-icon">{ex.icon}</div>
                           <div className="cp-extra-name">{extraLabel(ex.id, lang)}</div>
@@ -1144,6 +1186,21 @@ export default function ClientPortal() {
                         <div className="cp-field" style={{ marginTop: 10 }}>
                           <span className="cp-label">{c.requestDate}</span>
                           <input type="date" className="cp-input" min={today} value={extraDate} onChange={e => setExtraDate(e.target.value)} />
+                        </div>
+                        <div className="cp-field">
+                          <span className="cp-label">{c.extraTime}</span>
+                          <div className="cp-period-pills">
+                            {EXTRA_TIMES.map(id => (
+                              <button
+                                key={id}
+                                type="button"
+                                className={`cp-period-pill${extraTime === id ? ' active' : ''}`}
+                                onClick={() => setExtraTime(id)}
+                              >
+                                {extraTimeLabel(id, lang)}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                         <div className="cp-field">
                           <span className="cp-label">{c.extraNotes}</span>
@@ -1181,7 +1238,20 @@ export default function ClientPortal() {
                 {requestTab === 'bills' && (
                   <>
                     <p className="cp-muted-copy">{c.invoicesHint}</p>
-                    {invoices.length === 0 ? <PortalEmpty icon="💴" text={c.noInvoices} /> : invoices.map(inv => (
+                    <div className="cp-period-pills" style={{ marginBottom: 12 }}>
+                      {[
+                        ['all', c.invoiceAll],
+                        ['sent', c.invoiceSent],
+                        ['paid', c.invoicePaid],
+                      ].map(([key, label]) => (
+                        <button key={key} type="button" className={`cp-period-pill${invoiceFilter === key ? ' active' : ''}`} onClick={() => setInvoiceFilter(key)}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {shownInvoices.length === 0 ? <PortalEmpty icon="💴" text={c.noInvoices} /> : shownInvoices.map(inv => {
+                      const lines = itemsForInvoice(invoiceItems, inv.id)
+                      return (
                       <div key={inv.id} className="cp-card">
                         <div className="cp-card-top">
                           <div>
@@ -1193,11 +1263,28 @@ export default function ClientPortal() {
                           </span>
                         </div>
                         <div className="cp-extra-price" style={{ margin: '8px 0' }}>{formatYen(inv.total)}</div>
+                        {lines.length > 0 && (
+                          <ul className="cp-invoice-lines">
+                            {lines.map(it => (
+                              <li key={it.id || `${it.description}-${it.total}`}>
+                                <span>{it.description}</span>
+                                <b>{formatYen(it.total)}</b>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {inv.notes && (
+                          <div className="cp-admin-reply">
+                            <div className="cp-label">{c.invoiceNotes}</div>
+                            <div>{inv.notes}</div>
+                          </div>
+                        )}
                         {inv.status === 'sent' && (
                           <button type="button" className="cp-btn cp-btn-gold" onClick={() => markInvoicePaid(inv)}>{c.markInvoicePaid}</button>
                         )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </>
                 )}
 
@@ -1228,6 +1315,21 @@ export default function ClientPortal() {
                               <div className="cp-label">{c.adminNotes}</div>
                               <div>{rq.admin_notes}</div>
                             </div>
+                          )}
+                          {extra && (
+                            <button
+                              type="button"
+                              className="cp-btn"
+                              style={{ marginTop: 10 }}
+                              onClick={() => {
+                                const match = extraCatalog.find(e => e.id === extra.extraId)
+                                setRequestTab('extras')
+                                if (extra.locationName) setExtraLocation(extra.locationName)
+                                pickExtra(match || { id: extra.extraId, price: extra.price, icon: '✨' })
+                              }}
+                            >
+                              {c.repeatExtra} · {formatYen(extra.price)}
+                            </button>
                           )}
                         </div>
                       )

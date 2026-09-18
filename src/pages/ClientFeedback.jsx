@@ -11,7 +11,7 @@ import { parseExtraRequest, parsePaymentNotice, extraLabel, formatYen } from '..
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
 export default function ClientFeedback() {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const f = t.feedback
   const [tab, setTab] = useState('ratings')
   const [ratings, setRatings] = useState([])
@@ -268,7 +268,7 @@ export default function ClientFeedback() {
                     return (
                       <>
                         <div style={{ fontWeight: 700, color: 'var(--gold, #c19c56)', marginBottom: 6 }}>
-                          ✨ {extraLabel(extra.extraId)} · {formatYen(extra.price)}
+                          ✨ {extraLabel(extra.extraId, lang)} · {formatYen(extra.price)}
                         </div>
                         {extra.notes || extra.locationName}
                       </>
