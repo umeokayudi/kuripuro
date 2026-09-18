@@ -1,6 +1,6 @@
 export const ADMIN_VIEW_KEY = 'kp_admin_view_mode'
 export const ADMIN_VIEW_BREAKPOINT = 900
-export const ADMIN_PHONE_WIDTH = 390
+export const ADMIN_PHONE_WIDTH = 360
 export const ADMIN_PHONE_STAGE_MIN = 720
 
 export function readAdminDesktopMode(width) {
@@ -21,7 +21,7 @@ export function writeAdminViewMode(desktop) {
   } catch {}
 }
 
-/** On a wide monitor, Mobile is a 390px phone chrome; on a real phone it stays full-bleed. */
+/** On a wide monitor, Mobile is a 360px phone chrome; on a real phone it stays full-bleed. */
 export function isAdminPhoneStage(desktopMode, width) {
   if (desktopMode) return false
   const w = Number.isFinite(width)

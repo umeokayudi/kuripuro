@@ -48,7 +48,7 @@ function testViewMode() {
   assert(isAdminPhoneStage(true, 1400) === false, 'desktop is not phone-staged')
   assert(isAdminPhoneStage(false, 1400) === true, 'mobile on wide monitor is phone-staged')
   assert(isAdminPhoneStage(false, 390) === false, 'real phone stays full-bleed')
-  assert(ADMIN_PHONE_WIDTH === 390, 'phone chrome 390')
+  assert(ADMIN_PHONE_WIDTH === 360, 'phone chrome 360')
 }
 
 function testAiClamp() {
@@ -80,10 +80,11 @@ function testAiClamp() {
 
 function testEmployeeDesktopFrame() {
   const vp = { vw: 1440, vh: 900 }
-  const shell = { left: (1440 - 390) / 2, top: 0, right: (1440 - 390) / 2 + 390, bottom: 900 }
+  const w = ADMIN_PHONE_WIDTH
+  const shell = { left: (1440 - w) / 2, top: 0, right: (1440 - w) / 2 + w, bottom: 900 }
   const frame = visibleAiFrame(shell, vp, { bottomReserve: EMP_TAB_RESERVE })
-  assert(Math.abs(frame.left - 525) < 1, `shell left ${frame.left}`)
-  assert(frame.vw === 390, `shell width ${frame.vw}`)
+  assert(Math.abs(frame.left - 540) < 1, `shell left ${frame.left}`)
+  assert(frame.vw === 360, `shell width ${frame.vw}`)
 
   const def = defaultAiPos(frame)
   assert(def.x + AI_BTN <= frame.left + frame.vw - 8, `fab inside phone x ${def.x}`)
@@ -105,26 +106,27 @@ function testEmployeeDesktopFrame() {
 
 function testAdminPhoneFrame() {
   const vp = { vw: 1440, vh: 900 }
-  const shell = { left: (1440 - 390) / 2, top: 0, right: (1440 - 390) / 2 + 390, bottom: 900 }
+  const w = ADMIN_PHONE_WIDTH
+  const shell = { left: (1440 - w) / 2, top: 0, right: (1440 - w) / 2 + w, bottom: 900 }
   const frame = visibleAiFrame(shell, vp)
-  assert(frame.vw === 390, `admin phone width ${frame.vw}`)
+  assert(frame.vw === 360, `admin phone width ${frame.vw}`)
   const def = defaultAiPos(frame)
   assert(def.x >= frame.left && def.x + AI_BTN <= frame.left + frame.vw, `admin fab x ${def.x}`)
 
-  const reserved = clampAiPos(400, 900, { left: 0, top: 0, vw: 390, vh: 800, bottomReserve: 76 })
+  const reserved = clampAiPos(400, 900, { left: 0, top: 0, vw: 360, vh: 800, bottomReserve: 76 })
   assert(reserved.y <= 800 - AI_BTN - 8 - 76, `bottom reserve ${reserved.y}`)
 
   const el = {
-    clientWidth: 390,
+    clientWidth: 360,
     clientHeight: 800,
-    getBoundingClientRect: () => ({ left: 525, top: 0, right: 915, bottom: 800 }),
+    getBoundingClientRect: () => ({ left: 540, top: 0, right: 900, bottom: 800 }),
   }
   const vis = shellAiFrame(el, vp)
-  assert(Math.abs(vis.left - 525) < 1, `no-transform uses viewport frame ${vis.left}`)
+  assert(Math.abs(vis.left - 540) < 1, `no-transform uses viewport frame ${vis.left}`)
 
   globalThis.getComputedStyle = () => ({ transform: 'matrix(1, 0, 0, 1, 0, 0)' })
   const local = shellAiFrame(el, vp)
-  assert(local.left === 0 && local.top === 0 && local.vw === 390, `contained shell local ${local.vw}`)
+  assert(local.left === 0 && local.top === 0 && local.vw === 360, `contained shell local ${local.vw}`)
   delete globalThis.getComputedStyle
 }
 

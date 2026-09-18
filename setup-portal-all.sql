@@ -196,3 +196,32 @@ drop policy if exists "allow_all_salary_statements" on salary_statements;
 create policy "allow_all_salary_statements" on salary_statements for all using (true);
 drop policy if exists "allow_all_equipment_requests" on equipment_requests;
 create policy "allow_all_equipment_requests" on equipment_requests for all using (true);
+
+create table if not exists salary_periods (
+  id uuid primary key default gen_random_uuid(),
+  period text not null unique,
+  closed_at timestamptz,
+  confirm_deadline date,
+  pay_date date,
+  status text default 'open'
+);
+create table if not exists salary_complaints (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid references employees(id) on delete cascade,
+  employee_name text,
+  period text not null,
+  statement_id uuid,
+  category text,
+  description text not null,
+  attachment_url text,
+  status text default 'pending',
+  admin_response text,
+  resolved_at timestamptz,
+  created_at timestamptz default now()
+);
+alter table salary_periods enable row level security;
+alter table salary_complaints enable row level security;
+drop policy if exists "allow_all_salary_periods" on salary_periods;
+create policy "allow_all_salary_periods" on salary_periods for all using (true);
+drop policy if exists "allow_all_salary_complaints" on salary_complaints;
+create policy "allow_all_salary_complaints" on salary_complaints for all using (true);

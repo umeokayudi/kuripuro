@@ -141,8 +141,8 @@ export default function AdminChat() {
   const selectedKey = mode === 'employees' ? selected?.id : selected?.client_id
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 80px)', gap: 14 }}>
-      <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
+    <div className="admin-chat" style={{ display: 'flex', height: 'calc(100vh - 80px)', gap: 14 }}>
+      <div className="admin-chat-list" style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
           💬 {t.sidebar.chat} {totalUnread > 0 && <span className="badge badge-red" style={{ marginLeft: 6 }}>{totalUnread}</span>}
         </div>

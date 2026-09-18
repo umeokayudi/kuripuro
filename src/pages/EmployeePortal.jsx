@@ -1124,7 +1124,7 @@ export default function EmployeePortal() {
 
       {retroJob&&(
         <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:480,maxHeight:'88vh',overflowY:'auto'}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:'100%',maxHeight:'88vh',overflowY:'auto'}}>
             <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4}}>📝 {e.retroTitle}</div>
             <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:14}}>{retroJob.title.replace(/ — .*/,'')} · {retroJob.scheduled_date}</div>
 
@@ -2139,10 +2139,10 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
         <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{new Date(year,month).toLocaleString(lang==='ja'?'ja-JP':'en',{month:'long',year:'numeric'})}</div>
         <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month+1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>›</button>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:4}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',gap:3,marginBottom:4}}>
         {['S','M','T','W','T','F','S'].map((d,i)=><div key={i} style={{textAlign:'center',fontSize:9,color:'rgba(255,255,255,0.3)',fontWeight:600,padding:'4px 0'}}>{d}</div>)}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:16}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',gap:3,marginBottom:16}}>
         {Array(firstDay).fill(null).map((_,i)=><div key={'e'+i} />)}
         {Array(daysInMonth).fill(null).map((_,i)=>{
           const day=i+1
@@ -2390,7 +2390,7 @@ function PossibleDayPicker({ date, onChange, cleaningType, location, labels, lan
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8, lineHeight: 1.4 }}>
         {labels.pastServicePossibleDays}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
         {headers.map((h, i) => (
           <div key={i} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', padding: '4px 0' }}>{h}</div>
         ))}

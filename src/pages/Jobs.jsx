@@ -324,12 +324,12 @@ function DayScheduleView({ onClose }) {
               <div style={{ fontWeight: 800, fontSize: 14, textTransform: 'capitalize' }}>{monthLabel}</div>
               <button type="button" className="btn btn-sm" onClick={() => shiftCalMonth(1)}>▶</button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4, marginBottom: 4 }}>
               {weekDays.map(w => (
                 <div key={w} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text3)', padding: '2px 0' }}>{w}</div>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
               {calendarDays.map((ds, i) => {
                 if (!ds) return <div key={`pad-${i}`} />
                 const dayNum = Number(ds.split('-')[2])
