@@ -195,11 +195,31 @@ export function summarizeStaffStatus(employees, jobs, today) {
   }
 }
 
+export function jobPinFieldsForLocation(location) {
+  if (!location) return {}
+  const target = resolveJobTargetSync({
+    title: location.name,
+    address: location.address,
+    gps_lat: location.gps_lat,
+    gps_lng: location.gps_lng,
+  }, [location])
+  if (!target) return {}
+  return { gps_lat: target.lat, gps_lng: target.lng }
+}
+
 export function liveDistanceToJob(employee, job, locations = []) {
   if (!employee || !validCoords(employee.last_lat, employee.last_lng)) return null
   const target = resolveJobTargetSync(job, locations)
   if (!target) return null
   return Math.round(distanceMeters(employee.last_lat, employee.last_lng, target.lat, target.lng))
+}
+
+/** Prefer in-progress job, else the next assigned job today — for live “where is this person”. */
+export function liveFocusJob(todayJobs = []) {
+  const list = todayJobs || []
+  return list.find(j => j.status === 'in_progress')
+    || list.filter(j => j.status === 'assigned').sort((a, b) => (a.sequence_order || 99) - (b.sequence_order || 99))[0]
+    || null
 }
 
 export function fenceOk(distanceM, radiusM = GEOFENCE_M) {

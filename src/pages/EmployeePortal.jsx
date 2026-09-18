@@ -12,8 +12,10 @@ import {
   GEOFENCE_M,
   checkJobGeofence,
   employeePresencePatch,
+  evaluateGeofence,
   jobGpsWriteFields,
   mergeLocationHints,
+  resolveJobTargetSync,
 } from '../lib/jobGps'
 import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates, shiftYearMonth } from '../lib/salaryPeriod'
@@ -38,6 +40,7 @@ import {
   manualServiceDateWindow,
   formatManualServiceDays,
   ALL_DEEP_COMPONENT_IDS,
+  isAddServiceActionable,
 } from '../lib/employeeAddJob'
 import {
   isOverdueAssignedJob,
@@ -161,16 +164,13 @@ export default function EmployeePortal() {
     const msgPoll = setInterval(loadMessages, 10000)
     // Ping presence every 60s
     const pingPresence = async () => {
-      const working = document.body.getAttribute('data-working') === 'yes'
       let position = null
-      if (navigator.geolocation && working) {
+      if (navigator.geolocation) {
         try {
           position = await getCurrentPosition()
         } catch {}
       }
-      const update = working && position
-        ? employeePresencePatch(position)
-        : { last_seen: new Date().toISOString(), is_online: true }
+      const update = employeePresencePatch(position)
       await supabase.from('employees').update(update).eq('id', user.id)
     }
     pingPresence()
@@ -549,6 +549,7 @@ export default function EmployeePortal() {
       setShowPastService(false)
       setPastServicePrefill(null)
       await loadAll()
+      await pingGpsNearLocation(location, { distanceToast: date === tokyoToday(), job: result.job })
       if (result.action === 'finish_existing') {
         toast(e.finishExistingShift || 'Open shift found — complete it below')
         setTab('shift')
@@ -567,6 +568,43 @@ export default function EmployeePortal() {
       setTab('shift')
     } finally {
       setPastServiceBusy(false)
+    }
+  }
+
+  const pingGpsNearLocation = async (location, { distanceToast = true, job = null } = {}) => {
+    try {
+      const position = await getCurrentPosition()
+      await supabase.from('employees').update(employeePresencePatch(position)).eq('id', user.id)
+      let target = resolveJobTargetSync(
+        {
+          title: job?.title || location?.name,
+          address: job?.address || location?.address,
+          gps_lat: job?.gps_lat ?? location?.gps_lat,
+          gps_lng: job?.gps_lng ?? location?.gps_lng,
+        },
+        storePins,
+      ) || resolveJobTargetSync(
+        { title: location?.name, address: location?.address, gps_lat: location?.gps_lat, gps_lng: location?.gps_lng },
+        location ? [location] : [],
+      )
+      if (!target && (location?.address || job?.address)) {
+        const geo = await geocodeAddress(location?.address || job?.address)
+        if (geo?.lat != null && geo?.lng != null) target = { lat: geo.lat, lng: geo.lng, source: 'geocode' }
+      }
+      if (job?.id && target) {
+        await supabase.from('jobs').update({ gps_lat: target.lat, gps_lng: target.lng }).eq('id', job.id)
+      }
+      if (!distanceToast) return
+      const check = evaluateGeofence(position, target)
+      if (check.distanceM != null) {
+        const msg = fill(e.addServiceGpsDistance, { n: Math.round(check.distanceM) })
+        if (check.ok) toast.success('📍 ' + msg)
+        else toast('📍 ' + msg, { icon: '⚠️', duration: 6000 })
+      } else if (position) {
+        toast.success(e.addServiceGpsSaved)
+      }
+    } catch {
+      /* GPS is optional when adding to the route */
     }
   }
 
@@ -622,6 +660,10 @@ export default function EmployeePortal() {
       setShowAddService(false)
       await loadAll()
       setTab('shift')
+      if (day === tokyoToday()) {
+        await pingGpsNearLocation(location, { job: result.job })
+        if (result.job) setSelectedJob(result.job)
+      }
     } finally {
       setAddServiceBusy(false)
     }
@@ -2308,15 +2350,12 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
-  const visibleLocations = (cleaningType === 'deep'
-    ? locations.filter(loc => loc.group === 'OTP')
-    : locations.filter(loc => !loc.deepOnly)
-  ).filter(loc => isManualServiceAllowedOnDate(loc, date, cleaningType))
-  const options = buildAddServiceOptions(visibleLocations, dayJobs, employeeId, cleaningType)
+  const options = buildAddServiceOptions(locations, dayJobs, employeeId, cleaningType, date)
   const q = search.trim().toLowerCase()
   const filtered = q
     ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
     : options
+  const possibleCount = options.filter(o => isAddServiceActionable(o.state) || o.state === 'available').length
 
   useEffect(() => {
     let cancelled = false
@@ -2336,10 +2375,12 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
     return () => { cancelled = true }
   }, [date, todayJobs])
 
-  useEffect(() => {
-    setDate(d => snapToPossibleDate(d, cleaningType))
-    setPicked(null)
-  }, [cleaningType])
+  const switchToDeepForLocation = (location) => {
+    setCleaningType('deep')
+    setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
+    setDate(d => snapToPossibleDate(d, 'deep', location))
+    setPicked({ location, state: 'available' })
+  }
 
   const badge = (opt) => {
     if (opt.state === 'mine') return { text: labels.addServiceMine, color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
@@ -2350,6 +2391,9 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
     if (opt.state === 'claim') return { text: labels.addServiceClaim, color: '#34d399', bg: 'rgba(52,211,153,0.12)' }
     if (opt.state === 'transfer') return { text: fill(labels.addServiceTransfer, { name: opt.fromEmployee }), color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
     if (opt.state === 'blocked') return { text: labels.addServiceBlocked, color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
+    if (opt.state === 'wrong_day') return { text: labels.addServiceWrongDay, color: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.06)' }
+    if (opt.state === 'wrong_type' && opt.reason === 'deep_only') return { text: labels.addServiceDeepOnly, color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
+    if (opt.state === 'wrong_type') return { text: labels.addServiceNoDeep, color: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.06)' }
     return { text: labels.addServiceAvailable, color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' }
   }
 
@@ -2366,12 +2410,13 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   const switchCleaningType = (t) => {
     setCleaningType(t)
     setPicked(null)
+    setDate(d => snapToPossibleDate(d, t))
     if (t === 'deep') setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
   }
 
   const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
   const doneNeedsRetro = picked?.state === 'done_today' && !isJobFullyRegistered(picked.job)
-  const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || doneNeedsRetro)
+  const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && picked.state !== 'wrong_day' && picked.state !== 'wrong_type' && (picked.state !== 'done_today' || doneNeedsRetro)
 
   const confirmLabel = date < tokyoToday()
     ? labels.pastServiceConfirm
@@ -2390,6 +2435,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>+ {labels.addServiceTitle}</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 6, lineHeight: 1.5 }}>{labels.addServiceHint}</div>
+            <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 6 }}>{fill(labels.addServicePossibleCount, { n: possibleCount, total: options.length })}</div>
           </div>
           <button type="button" onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: busy ? 'not-allowed' : 'pointer' }}>✕</button>
         </div>
@@ -2460,13 +2506,23 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           {filtered.map(opt => {
             const b = badge(opt)
             const selected = picked?.location?.name === opt.location.name
-            const disabled = opt.state === 'mine' || opt.state === 'blocked' || (opt.state === 'done_today' && isJobFullyRegistered(opt.job))
+            const deepOnlyTap = opt.state === 'wrong_type' && opt.reason === 'deep_only'
+            const disabled = opt.state === 'mine' || opt.state === 'blocked' || opt.state === 'wrong_day' || (opt.state === 'wrong_type' && !deepOnlyTap) || (opt.state === 'done_today' && isJobFullyRegistered(opt.job))
             return (
               <button
                 key={opt.location.name}
                 type="button"
+                data-add-state={opt.state}
+                data-add-reason={opt.reason || ''}
+                data-location={opt.location.name}
                 disabled={disabled}
-                onClick={() => setPicked(opt)}
+                onClick={() => {
+                  if (deepOnlyTap) {
+                    switchToDeepForLocation(opt.location)
+                    return
+                  }
+                  if (!disabled) setPicked(opt)
+                }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, borderRadius: 12,
                   border: selected ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.08)',
@@ -2516,14 +2572,12 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
-  const visibleLocations = (cleaningType === 'deep'
-    ? locations.filter(loc => loc.group === 'OTP')
-    : locations.filter(loc => !loc.deepOnly)
-  ).filter(loc => isManualServiceAllowedOnDate(loc, date, cleaningType))
+  const options = buildAddServiceOptions(locations, [], null, cleaningType, date)
   const q = search.trim().toLowerCase()
   const filtered = q
-    ? visibleLocations.filter(loc => loc.name.toLowerCase().includes(q) || (loc.group || '').toLowerCase().includes(q))
-    : visibleLocations
+    ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
+    : options
+  const possibleCount = options.filter(o => o.state === 'available').length
 
   const toggleDeepComponent = (id) => {
     setDeepComponents(prev => {
@@ -2542,8 +2596,15 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
     if (t === 'deep') setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
   }
 
+  const switchToDeepForLocation = (location) => {
+    setCleaningType('deep')
+    setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
+    setDate(d => snapToPossibleDate(d, 'deep', location))
+    setPicked({ location, state: 'available' })
+  }
+
   const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
-  const canConfirm = picked && deepReady
+  const canConfirm = picked && deepReady && (picked.state === 'available' || !picked.state)
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 270, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
@@ -2552,6 +2613,7 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#e8c47a' }}>✓ {labels.pastServiceTitle}</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 6, lineHeight: 1.5 }}>{labels.pastServiceHint}</div>
+            <div style={{ fontSize: 11, color: '#e8c47a', marginTop: 6 }}>{fill(labels.addServicePossibleCount, { n: possibleCount, total: options.length })}</div>
           </div>
           <button type="button" onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: busy ? 'not-allowed' : 'pointer' }}>✕</button>
         </div>
@@ -2619,22 +2681,48 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
         )}
 
         <div style={{ maxHeight: '38vh', overflowY: 'auto', marginBottom: 14 }}>
-          {filtered.map(loc => {
+          {filtered.map(opt => {
+            const loc = opt.location
             const selected = picked?.location?.name === loc.name
+            const deepOnlyTap = opt.state === 'wrong_type' && opt.reason === 'deep_only'
+            const blocked = opt.state === 'wrong_day' || (opt.state === 'wrong_type' && !deepOnlyTap)
+            const badgeText = opt.state === 'wrong_day'
+              ? labels.addServiceWrongDay
+              : deepOnlyTap
+                ? labels.addServiceDeepOnly
+                : opt.state === 'wrong_type'
+                  ? labels.addServiceNoDeep
+                  : null
             return (
               <button
                 key={loc.name}
                 type="button"
-                onClick={() => setPicked({ location: loc })}
+                data-add-state={opt.state}
+                data-add-reason={opt.reason || ''}
+                data-location={loc.name}
+                disabled={blocked}
+                onClick={() => {
+                  if (deepOnlyTap) {
+                    switchToDeepForLocation(loc)
+                    return
+                  }
+                  if (!blocked) setPicked(opt)
+                }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, borderRadius: 12,
                   border: selected ? '1px solid rgba(193,156,86,0.5)' : '1px solid rgba(255,255,255,0.08)',
                   background: selected ? 'rgba(193,156,86,0.12)' : 'rgba(255,255,255,0.03)',
-                  cursor: 'pointer',
+                  cursor: blocked ? 'not-allowed' : 'pointer',
+                  opacity: blocked ? 0.6 : 1,
                 }}
               >
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{loc.name}</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{loc.group} · {formatManualServiceDays(loc, cleaningType, lang)}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{loc.name}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{loc.group} · {formatManualServiceDays(loc, cleaningType, lang)}</div>
+                  </div>
+                  {badgeText && <span style={{ fontSize: 9, fontWeight: 700, padding: '4px 8px', borderRadius: 20, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}>{badgeText}</span>}
+                </div>
               </button>
             )
           })}

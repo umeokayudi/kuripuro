@@ -9,12 +9,14 @@ import {
   isLocationFresh,
   jobGpsWriteFields,
   liveDistanceToJob,
+  liveFocusJob,
   mapsPointUrl,
   mergeLocationHints,
   resolveJobTarget,
   resolveJobTargetSync,
   staffWorkStatus,
   summarizeStaffStatus,
+  jobPinFieldsForLocation,
 } from '../src/lib/jobGps.js'
 import { distanceMeters, parseCoordsFromUrl, validCoords } from '../src/lib/geocode.js'
 import { isMissingColumnError } from '../src/lib/schemaError.js'
@@ -174,6 +176,19 @@ assert(fenceOk(100) === true, '100m is allowed')
 assert(fenceOk(101) === false, '101m is blocked')
 assert(fenceOk(null) === null, 'unknown fence')
 assert(mapsPointUrl(store.lat, store.lng).includes(`${store.lat}`), 'maps url')
+
+const pinFields = jobPinFieldsForLocation({
+  name: 'Ibushio',
+  address: 'https://www.google.com/maps/@35.666400,139.758300,17z',
+})
+assert(pinFields.gps_lat === 35.666400 && pinFields.gps_lng === 139.758300, 'jobPinFieldsForLocation from maps URL')
+
+const focusWorking = liveFocusJob([
+  { id: 'next', status: 'assigned', sequence_order: 1 },
+  { id: 'now', status: 'in_progress', sequence_order: 4 },
+])
+assert(focusWorking?.id === 'now', 'liveFocusJob prefers in_progress')
+assert(liveFocusJob([{ id: 'b', status: 'assigned', sequence_order: 3 }, { id: 'a', status: 'assigned', sequence_order: 1 }])?.id === 'a', 'idle uses next assigned')
 
 assert(isMissingColumnError({ code: '42703', message: 'column jobs.gps_start_lat does not exist' }, 'gps_start_lat'), 'postgres missing column')
 assert(!isMissingColumnError({ code: 'PGRST204', message: "Could not find the 'notes' column" }, 'gps_start_lat'), 'other column')

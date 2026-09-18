@@ -21,6 +21,7 @@ import {
   ALL_DEEP_COMPONENT_IDS,
 } from './cleaningType'
 import { checklistTemplateForJob } from './jobChecklist'
+import { jobPinFieldsForLocation } from './jobGps'
 
 export { titleMatchesLocation }
 
@@ -148,14 +149,44 @@ export function pastServicePrefillFromJob(job) {
   }
 }
 
-/** Build UI rows — respects basic vs deep as separate services */
-export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, cleaningType = 'basic') {
+export const ADD_OPTION_SORT = {
+  available: 0,
+  claim: 1,
+  transfer: 2,
+  mine: 3,
+  done_today: 4,
+  blocked: 5,
+  wrong_day: 6,
+  wrong_type: 7,
+}
+
+/** Day/type gate for one catalog location — used by add-service UI every time. */
+export function classifyAddServiceLocation(location, date, cleaningType = 'basic') {
+  if (!location || !date) return { state: 'wrong_day' }
+  if (cleaningType === 'basic' && (location.deepOnly || isOtpDeepOnlyLocation(location.name))) {
+    return { state: 'wrong_type', reason: 'deep_only' }
+  }
+  if (cleaningType === 'deep' && (location.group === 'Atomic' || location.group === 'Spot')) {
+    return { state: 'wrong_type', reason: 'deep_not_available' }
+  }
+  if (!isManualServiceAllowedOnDate(location, date, cleaningType)) {
+    return { state: 'wrong_day' }
+  }
+  return { state: 'eligible' }
+}
+
+export function isAddServiceActionable(state) {
+  return ['available', 'claim', 'transfer', 'done_today'].includes(state)
+}
+
+/** Build UI rows — lists every location, including wrong-day / wrong-type, so nothing is hidden. */
+export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, cleaningType = 'basic', date = null) {
   const jobs = todayJobs || []
   const active = jobs.filter(j => j.status === 'assigned' || j.status === 'in_progress')
   const completed = jobs.filter(j => j.status === 'completed')
   const matchLoc = (j, locName) => jobMatchesLocationAndType(j, locName, cleaningType)
 
-  return locations.map(loc => {
+  const rows = (locations || []).map(loc => {
     const mine = active.find(j =>
       j.employee_id === currentEmployeeId && matchLoc(j, loc.name)
     )
@@ -207,8 +238,16 @@ export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, 
       }
     }
 
+    if (date) {
+      const dayClass = classifyAddServiceLocation(loc, date, cleaningType)
+      if (dayClass.state !== 'eligible') return { location: loc, ...dayClass }
+    }
+
     return { location: loc, state: 'available' }
   })
+
+  return rows.sort((a, b) => (ADD_OPTION_SORT[a.state] ?? 99) - (ADD_OPTION_SORT[b.state] ?? 99)
+    || String(a.location?.name || '').localeCompare(String(b.location?.name || '')))
 }
 
 async function nextSequenceOrder(supabase, employeeId, date) {
@@ -432,6 +471,7 @@ export async function employeeAddService(supabase, {
     job_category: 'regular',
     sequence_order: nextSeq,
     photo_required: false,
+    ...jobPinFieldsForLocation(location),
   }).select().single()
 
   if (insErr) return { ok: false, error: 'create_failed', detail: insErr.message }
@@ -574,6 +614,7 @@ export async function preparePastServiceJob(supabase, {
     job_category: 'regular',
     sequence_order: nextSeq,
     photo_required: false,
+    ...jobPinFieldsForLocation(location),
   }).select().single()
 
   if (insErr) return { ok: false, error: 'create_failed', detail: insErr.message }

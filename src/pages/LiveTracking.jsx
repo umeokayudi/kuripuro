@@ -7,7 +7,7 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
-import { JOB_GPS_SETUP_SQL, fenceOk, isLocationFresh, liveDistanceToJob, mapsPointUrl, mergeLocationHints, summarizeStaffStatus } from '../lib/jobGps'
+import { JOB_GPS_SETUP_SQL, fenceOk, isLocationFresh, liveDistanceToJob, liveFocusJob, mapsPointUrl, mergeLocationHints, summarizeStaffStatus } from '../lib/jobGps'
 import { isMissingColumnError } from '../lib/schemaError'
 import { SUPABASE_SQL_URL } from '../lib/salarySetupSql'
 
@@ -211,7 +211,8 @@ export default function LiveTracking() {
           const done = todayJobs.filter(j=>j.status==='completed').length
           const lateMin = getLateness(emp.id)
           const locFresh = isLocationFresh(emp.last_location_at) && emp.location_sharing !== false
-          const liveM = activeJob ? liveDistanceToJob(emp, activeJob, locations) : null
+          const focusJob = activeJob || liveFocusJob(todayJobs)
+          const liveM = focusJob ? liveDistanceToJob(emp, focusJob, locations) : null
           const liveOk = fenceOk(liveM)
           const statusLabel = workKey === 'working' ? L.workingNow : workKey === 'idle' ? L.onShift : L.folga
           const statusColorLive = workKey === 'working' ? '#4ade80' : workKey === 'idle' ? '#60a5fa' : 'rgba(255,255,255,0.35)'
@@ -227,6 +228,7 @@ export default function LiveTracking() {
                   <div style={{fontSize:11,color:'var(--text3)',marginTop:1,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                     <span style={{color:statusColorLive,fontWeight:700}}>{workKey==='working'?'●':workKey==='idle'?'●':'○'} {statusLabel}</span>
                     {locFresh && gpsLink(emp.last_lat, emp.last_lng, liveM != null ? fill(L.fromStore, { n: liveM }) : L.seeLive, liveOk)}
+                    {!locFresh && emp.last_lat && gpsLink(emp.last_lat, emp.last_lng, L.lastFix, null)}
                   </div>
                 </div>
                 <div style={{textAlign:'right'}}>
@@ -257,6 +259,18 @@ export default function LiveTracking() {
                 </div>
               )}
 
+              {!activeJob && focusJob && workKey !== 'folga' && (
+                <div style={{background:liveOk===false?'rgba(248,113,113,0.08)':'rgba(96,165,250,0.08)',border:`1px solid ${liveOk===false?'rgba(248,113,113,0.25)':'rgba(96,165,250,0.2)'}`,borderRadius:8,padding:'8px 10px',marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:600,color:liveOk===false?'#f87171':'#60a5fa',marginBottom:2}}>○ {focusJob.title.replace(/ — .*/,'').substring(0,28)}</div>
+                  {liveM != null && (
+                    <div style={{fontSize:10,marginTop:2,color:liveOk?'#4ade80':'#f87171'}}>
+                      {L.seeLive}: {fill(L.fromStore, { n: liveM })} {liveOk?L.onSite:L.tooFar}
+                    </div>
+                  )}
+                  {gpsLink(emp.last_lat, emp.last_lng, locFresh ? L.seeLive : L.lastFix, liveOk)}
+                </div>
+              )}
+
               {todayJobs.length>0&&(
                 <div>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
@@ -282,7 +296,10 @@ export default function LiveTracking() {
         if (!emp) return null
         return (
           <div className="card">
-            <div className="card-title">{emp.full_name}</div>
+            <div className="card-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <span>{emp.full_name}</span>
+              {gpsLink(emp.last_lat, emp.last_lng, isLocationFresh(emp.last_location_at) ? L.seeLive : L.lastFix, null)}
+            </div>
             {todayJobs.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>{L.noJobsToday}</div>}
             {todayJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map((j,idx)=>(
               <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid var(--border)'}}>

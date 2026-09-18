@@ -18,6 +18,7 @@
     "test:safety-net": "npx vite-node scripts/test-safety-net.mjs",
     "test:portal-auth": "npx vite-node scripts/test-portal-auth.mjs",
     "test:add-service": "node scripts/test-employee-add-service.mjs",
+    "test:add-service-options": "npx vite-node scripts/test-add-service-options.mjs",
     "test:deep-clean": "npx vite-node scripts/test-deep-clean-photos.mjs",
     "test:salary-calc": "npx vite-node scripts/test-salary-calc.mjs",
     "test:past-service": "npx vite-node scripts/test-past-service.mjs",
