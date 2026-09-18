@@ -1330,6 +1330,14 @@ export default function ClientPortal() {
             {!loading && tab === 'settings' && (
               <>
                 <div className="cp-section-title">{c.settingsTitle}</div>
+                {!desktopMode && (
+                  <div className="cp-card" style={{ marginBottom: 12 }}>
+                    <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%', marginBottom: 8 }}>
+                      🖥 {c.desktopView}
+                    </button>
+                    <button type="button" className="cp-logout" onClick={logout} style={{ width: '100%' }}>{c.logout}</button>
+                  </div>
+                )}
                 <div className="cp-card" style={{ marginBottom: 16 }}>
                   <div className="cp-field">
                     <span className="cp-label">{c.company}</span>
@@ -1364,14 +1372,6 @@ export default function ClientPortal() {
                     {savingCreds ? c.loading : c.saveCredentials}
                   </button>
                 </div>
-                {!desktopMode && (
-                  <div className="cp-card" style={{ marginTop: 12 }}>
-                    <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%', marginBottom: 8 }}>
-                      🖥 {c.desktopView}
-                    </button>
-                    <button type="button" className="cp-logout" onClick={logout} style={{ width: '100%' }}>{c.logout}</button>
-                  </div>
-                )}
               </>
             )}
           </main>
