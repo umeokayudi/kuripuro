@@ -1196,6 +1196,15 @@ export default function EmployeePortal() {
               </button>
             )}
 
+            <button
+              type="button"
+              onClick={()=>openAddService()}
+              style={{width:'100%',padding:'14px 16px',marginBottom:12,borderRadius:16,border:'1px dashed rgba(96,165,250,0.35)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:14,fontWeight:800,cursor:'pointer',textAlign:'left'}}
+            >
+              + {e.addService}
+              <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',fontWeight:500,marginTop:4}}>{e.addServiceHint}</div>
+            </button>
+
             {/* Today shift — pendente */}
             {todayPendingJobs.length>0&&!activeJob&&(
               <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
@@ -1846,7 +1855,7 @@ function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNote
           ✓ {labels?.pastServiceButton || 'Already did this'}
         </button>
       )}
-      {!activeJob && onOpenAddService&&(
+      {onOpenAddService&&(
         <button
           type="button"
           onClick={onOpenAddService}
