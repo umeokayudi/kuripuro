@@ -97,3 +97,11 @@ export function lastDeepVisit(jobs) {
 export function itemsForInvoice(items, faturaId) {
   return (items || []).filter(it => it.fatura_id === faturaId)
 }
+
+export function clientLocations(user, contracts = [], jobs = []) {
+  if (user?.location_name) return [user.location_name]
+  return [...new Set([
+    ...contracts.map(ct => ct.location_name).filter(Boolean),
+    ...jobs.map(j => locationFromJob(j)).filter(Boolean),
+  ])]
+}

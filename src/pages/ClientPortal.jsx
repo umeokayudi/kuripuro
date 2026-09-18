@@ -24,7 +24,7 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
   filterClientVisits, monthCompletedCount, visibleInvoices, unpaidInvoices,
-  filterInvoices, lastDeepVisit, itemsForInvoice,
+  filterInvoices, lastDeepVisit, itemsForInvoice, clientLocations,
 } from '../lib/clientPortal'
 import {
   extrasForLocation, extraLabel, extraHint, extraTimeLabel, EXTRA_TIMES, mergeExtraNotes,
@@ -190,7 +190,7 @@ export default function ClientPortal() {
         (jobsRecentRes.data || []).filter(j => jobMatchesClientUser(j, user)),
         (jobsMonthRes.data || []).filter(j => jobMatchesClientUser(j, user)),
       ))
-      setContracts(contractsRes.data || [])
+      setContracts((contractsRes.data || []).filter(ct => !user.location_name || ct.location_name === user.location_name))
       setMessages(filterByLocation(msgsRes.data, user.location_name))
       setComplaints(filterByLocation(compRes.data, user.location_name))
       setCompliments(filterByLocation(cmplRes.data, user.location_name))
@@ -502,7 +502,7 @@ export default function ClientPortal() {
   }
 
   const bookExtra = async (extra) => {
-    const loc = extraLocation || user.location_name || ''
+    const loc = user.location_name || extraLocation || ''
     if (!loc) return toast.error(c.requestLocation)
     const description = packExtraRequest({
       extraId: extra.id,
@@ -570,12 +570,8 @@ export default function ClientPortal() {
   const ratedIds = new Set(ratings.map(r => r.job_id).filter(Boolean))
   const unratedCount = completed.filter(j => !ratedIds.has(j.id)).length
   const billsDue = unpaidInvoices(invoices)
-  const locations = [...new Set([
-    ...(user.location_name ? [user.location_name] : []),
-    ...contracts.map(ct => ct.location_name).filter(Boolean),
-    ...jobs.map(j => locationFromJob(j)).filter(Boolean),
-  ])]
-  const extraLoc = extraLocation || user.location_name || locations[0] || ''
+  const locations = clientLocations(user, contracts, jobs)
+  const extraLoc = user.location_name || extraLocation || locations[0] || ''
   const extraCatalog = extrasForLocation(extraLoc)
   const lastDeep = lastDeepVisit(completed)
   const extraDeep = extraCatalog.find(e => e.id === 'extra_deep')
@@ -1165,23 +1161,8 @@ export default function ClientPortal() {
                         </select>
                       </div>
                     )}
-                    <div className="cp-extra-grid">
-                      {extraCatalog.map(ex => (
-                        <button
-                          key={ex.id}
-                          type="button"
-                          className={`cp-extra-card${bookingExtra?.id === ex.id ? ' on' : ''}`}
-                          onClick={() => pickExtra(ex)}
-                        >
-                          <div className="cp-extra-icon">{ex.icon}</div>
-                          <div className="cp-extra-name">{extraLabel(ex.id, lang)}</div>
-                          <div className="cp-extra-price">{formatYen(ex.price)}</div>
-                          <div className="cp-extra-hint">{extraHint(ex.id, lang)}</div>
-                        </button>
-                      ))}
-                    </div>
                     {bookingExtra && (
-                      <div className="cp-card" style={{ marginTop: 12 }}>
+                      <div className="cp-card" style={{ marginBottom: 12 }}>
                         <div className="cp-label">{extraLabel(bookingExtra.id, lang)} · {formatYen(bookingExtra.price)}</div>
                         <div className="cp-field" style={{ marginTop: 10 }}>
                           <span className="cp-label">{c.requestDate}</span>
@@ -1209,6 +1190,21 @@ export default function ClientPortal() {
                         <button type="button" className="cp-btn cp-btn-gold" onClick={() => bookExtra(bookingExtra)}>{c.confirmExtra} · {formatYen(bookingExtra.price)}</button>
                       </div>
                     )}
+                    <div className="cp-extra-grid">
+                      {extraCatalog.map(ex => (
+                        <button
+                          key={ex.id}
+                          type="button"
+                          className={`cp-extra-card${bookingExtra?.id === ex.id ? ' on' : ''}`}
+                          onClick={() => pickExtra(ex)}
+                        >
+                          <div className="cp-extra-icon">{ex.icon}</div>
+                          <div className="cp-extra-name">{extraLabel(ex.id, lang)}</div>
+                          <div className="cp-extra-price">{formatYen(ex.price)}</div>
+                          <div className="cp-extra-hint">{extraHint(ex.id, lang)}</div>
+                        </button>
+                      ))}
+                    </div>
                   </>
                 )}
 

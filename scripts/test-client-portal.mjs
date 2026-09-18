@@ -12,6 +12,7 @@ import {
   filterInvoices,
   lastDeepVisit,
   itemsForInvoice,
+  clientLocations,
   locationFromJob,
 } from '../src/lib/clientPortal.js'
 import {
@@ -87,6 +88,8 @@ assert(unpaidInvoices([{ status: 'sent' }, { status: 'paid' }]).length === 1, 'u
 assert(filterInvoices([{ status: 'sent' }, { status: 'paid' }, { status: 'draft' }], 'paid').length === 1, 'paid filter hides draft')
 assert(lastDeepVisit(jobs)?.id === '2', 'last deep is Ibushio Sept 16')
 assert(itemsForInvoice([{ fatura_id: 'b', total: 10 }, { fatura_id: 'c', total: 20 }], 'b').length === 1, 'invoice lines scoped')
+assert(clientLocations(otp, [{ location_name: 'Ibushio' }, { location_name: 'Kodama Shinbashi' }], jobs).join() === 'Kodama Shinbashi', 'store user locked to own shop')
+assert(clientLocations(otpHq, [{ location_name: 'Ibushio' }, { location_name: 'Kodama Shinbashi' }], []).join() === 'Ibushio,Kodama Shinbashi', 'HQ sees all OTP shops')
 assert(kuripuroEn.client.bookExtra && kuripuroJa.client.invoicesDue && kuripuroEn.client.extraTime && kuripuroJa.client.repeatExtra, 'i18n keys')
 console.log('  invoices visibility OK')
 
