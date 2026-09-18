@@ -15,6 +15,7 @@ import {
   parseDeepComponents,
   storeProgressRows,
   tuesdaySlotInfo,
+  getCleaningType,
 } from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -22,7 +23,9 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
+  filterClientVisits, monthCompletedCount, visibleInvoices, unpaidInvoices,
 } from '../lib/clientPortal'
+import { extrasForLocation, extraLabel, extraHint, formatYen, packExtraRequest, packPaymentNotice, parseExtraRequest } from '../lib/clientExtras'
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday, addCalendarDays } from '../lib/dates'
@@ -104,6 +107,15 @@ export default function ClientPortal() {
   const [clock, setClock] = useState(new Date())
   const [visitPreset, setVisitPreset] = useState('month')
   const [visitRange, setVisitRange] = useState(() => visitRangeForPreset('month', tokyoToday()))
+  const [visitType, setVisitType] = useState('all')
+  const [visitStore, setVisitStore] = useState('')
+  const [visitUnratedOnly, setVisitUnratedOnly] = useState(false)
+  const [requestTab, setRequestTab] = useState('extras')
+  const [extraNotes, setExtraNotes] = useState('')
+  const [extraDate, setExtraDate] = useState('')
+  const [extraLocation, setExtraLocation] = useState('')
+  const [bookingExtra, setBookingExtra] = useState(null)
+  const [invoices, setInvoices] = useState([])
   const [deepProgressMonth, setDeepProgressMonth] = useState(currentYearMonth)
   const [deepProgressStore, setDeepProgressStore] = useState('')
   const loadedOnceRef = useRef(false)
@@ -112,7 +124,6 @@ export default function ClientPortal() {
   const [requestForm, setRequestForm] = useState({ location_name: '', description: '', preferred_date: '' })
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showComplimentForm, setShowComplimentForm] = useState(false)
-  const [showRequestForm, setShowRequestForm] = useState(false)
   const [ratingForm, setRatingForm] = useState({ stars: 5, comment: '' })
   const [complimentForm, setComplimentForm] = useState({ job_id: '', message: '' })
   const [submittingRating, setSubmittingRating] = useState(false)
@@ -147,7 +158,7 @@ export default function ClientPortal() {
         ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${locToken}%)`
         : `client_id.eq.${user.client_id},and(client_id.is.null,client_name.eq.On The Planet)`
       const monthRange = monthBounds(deepProgressMonth)
-      const [jobsMonthRes, jobsRecentRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
+      const [jobsMonthRes, jobsRecentRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes, invRes] = await Promise.all([
         supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', monthRange.from).lte('scheduled_date', monthRange.to).limit(800),
         supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(250),
         supabase.from('service_contracts').select('location_name').eq('client_id', user.client_id).eq('is_active', true),
@@ -156,6 +167,7 @@ export default function ClientPortal() {
         supabase.from('client_compliments').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
         supabase.from('client_ratings').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(100),
         supabase.from('client_requests').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
+        supabase.from('faturas').select('*').eq('client_id', user.client_id).order('issue_date', { ascending: false }).limit(24),
       ])
 
       const firstErr = [jobsMonthRes, jobsRecentRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes]
@@ -177,6 +189,7 @@ export default function ClientPortal() {
       setCompliments(filterByLocation(cmplRes.data, user.location_name))
       setRatings((ratRes.data || []).filter(r => ratingMatchesClientUser(r, user)))
       setRequests(filterByLocation(reqRes.data, user.location_name))
+      setInvoices(visibleInvoices(invRes.error ? [] : (invRes.data || [])))
       setUnreadMsgs(filterByLocation(msgsRes.data, user.location_name).filter(m => m.sender === 'admin' && !m.read).length)
       await supabase.from('client_users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
     } catch (err) {
@@ -281,9 +294,16 @@ export default function ClientPortal() {
   }
 
   const filteredVisits = useMemo(() => {
-    const done = jobs.filter(j => j.status === 'completed')
-    return done.filter(j => j.scheduled_date >= visitRange.from && j.scheduled_date <= visitRange.to)
-  }, [jobs, visitRange.from, visitRange.to])
+    const ratedJobIds = new Set(ratings.map(r => r.job_id).filter(Boolean))
+    return filterClientVisits(jobs, {
+      from: visitRange.from,
+      to: visitRange.to,
+      type: visitType,
+      store: visitStore,
+      unratedOnly: visitUnratedOnly,
+      ratedJobIds,
+    })
+  }, [jobs, visitRange.from, visitRange.to, visitType, visitStore, visitUnratedOnly, ratings])
 
   const visitStats = useMemo(() => {
     let minutes = 0
@@ -458,7 +478,48 @@ export default function ClientPortal() {
     if (error) return toast.error(error.message)
     toast.success(c.requestSent)
     setRequestForm({ location_name: user.location_name || '', description: '', preferred_date: '' })
-    setShowRequestForm(false)
+    loadAll({ silent: true })
+  }
+
+  const bookExtra = async (extra) => {
+    const loc = extraLocation || user.location_name || ''
+    if (!loc) return toast.error(c.requestLocation)
+    const description = packExtraRequest({
+      extraId: extra.id,
+      price: extra.price,
+      locationName: loc,
+      notes: extraNotes,
+    })
+    const { error } = await supabase.from('client_requests').insert({
+      client_id: user.client_id, client_user_id: user.id,
+      location_name: loc,
+      description,
+      preferred_date: extraDate || null,
+      status: 'pending', ticket_number: `KP-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+    })
+    if (error) return toast.error(error.message)
+    toast.success(c.extraBooked)
+    setExtraNotes('')
+    setBookingExtra(null)
+    setRequestTab('history')
+    loadAll({ silent: true })
+  }
+
+  const markInvoicePaid = async (invoice) => {
+    const { error } = await supabase.from('client_requests').insert({
+      client_id: user.client_id, client_user_id: user.id,
+      location_name: user.location_name || null,
+      description: packPaymentNotice({
+        faturaId: invoice.id,
+        total: invoice.total,
+        period: `${invoice.period_start || ''} – ${invoice.period_end || invoice.issue_date || ''}`,
+      }),
+      status: 'pending', ticket_number: `KP-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+    })
+    if (error) return toast.error(error.message)
+    toast.success(c.invoicePaidSent)
+    setRequestTab('history')
+    setTab('requests')
     loadAll({ silent: true })
   }
 
@@ -484,11 +545,17 @@ export default function ClientPortal() {
   const todayJobs = jobs.filter(j => j.scheduled_date === today && j.status !== 'cancelled')
   const upcoming = jobs.filter(j => j.scheduled_date > today && j.status !== 'cancelled').slice(0, 10)
   const completed = jobs.filter(j => j.status === 'completed')
+  const monthDone = monthCompletedCount(jobs, today.slice(0, 7))
+  const ratedIds = new Set(ratings.map(r => r.job_id).filter(Boolean))
+  const unratedCount = completed.filter(j => !ratedIds.has(j.id)).length
+  const billsDue = unpaidInvoices(invoices)
   const locations = [...new Set([
     ...(user.location_name ? [user.location_name] : []),
     ...contracts.map(ct => ct.location_name).filter(Boolean),
     ...jobs.map(j => locationFromJob(j)).filter(Boolean),
   ])]
+  const extraLoc = extraLocation || user.location_name || locations[0] || ''
+  const extraCatalog = extrasForLocation(extraLoc)
 
   const statusLabel = (s) => ({ assigned: tr.status.assigned, in_progress: tr.status.in_progress, completed: tr.status.completed, cancelled: tr.status.cancelled }[s] || s)
   const statusClass = (s) => ({ completed: 'done', in_progress: 'progress', assigned: 'pending', cancelled: 'cancelled' }[s] || 'pending')
@@ -518,7 +585,7 @@ export default function ClientPortal() {
             <div className="cp-header-row" style={{ marginBottom: 16 }}>
               <div>
                 <div className="cp-header-title">{locationFromJob(selectedVisit)}</div>
-                <div className="cp-header-meta">{selectedVisit.scheduled_date}</div>
+                <div className="cp-header-meta">{selectedVisit.scheduled_date} · {getCleaningType(selectedVisit) === 'deep' ? c.filterDeep : c.filterBasic}</div>
               </div>
               <button type="button" className="cp-logout" onClick={() => setSelectedVisit(null)}>✕</button>
             </div>
@@ -685,8 +752,8 @@ export default function ClientPortal() {
             {tab === 'home' && !loading && (
               <div className="cp-stats">
                 <div className="cp-stat">
-                  <div className="cp-stat-val">{completed.length}</div>
-                  <div className="cp-stat-lbl">{c.visits}</div>
+                  <div className="cp-stat-val">{monthDone}</div>
+                  <div className="cp-stat-lbl">{c.visitThisMonth}</div>
                 </div>
                 <div className="cp-stat">
                   <div className="cp-stat-val">{avgRating}</div>
@@ -705,6 +772,23 @@ export default function ClientPortal() {
               <div className="cp-loading">{c.loading}</div>
             ) : tab === 'home' && (
               <>
+                <div className="cp-quick-row">
+                  <button type="button" className="cp-quick" onClick={() => { setTab('requests'); setRequestTab('extras') }}>
+                    <span>✨</span>
+                    <b>{c.bookExtra}</b>
+                    <small>{c.bookExtraHint}</small>
+                  </button>
+                  <button type="button" className="cp-quick" onClick={() => { setTab('visits'); setVisitUnratedOnly(true); applyVisitPreset('month') }}>
+                    <span>★</span>
+                    <b>{unratedCount}</b>
+                    <small>{c.unratedVisits}</small>
+                  </button>
+                  <button type="button" className="cp-quick" onClick={() => { setTab('requests'); setRequestTab('bills') }}>
+                    <span>💴</span>
+                    <b>{billsDue.length}</b>
+                    <small>{c.invoicesDue}</small>
+                  </button>
+                </div>
                 {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
                   <DeepCleanProgressCard
                     progress={deepProgress}
@@ -829,6 +913,28 @@ export default function ClientPortal() {
                       }}
                     />
                   </div>
+                  <div className="cp-period-pills" style={{ marginTop: 12 }}>
+                    {[
+                      ['all', c.visitAll],
+                      ['basic', c.filterBasic],
+                      ['deep', c.filterDeep],
+                    ].map(([key, label]) => (
+                      <button key={key} type="button" className={`cp-period-pill${visitType === key ? ' active' : ''}`} onClick={() => setVisitType(key)}>
+                        {label}
+                      </button>
+                    ))}
+                    <button type="button" className={`cp-period-pill${visitUnratedOnly ? ' active' : ''}`} onClick={() => setVisitUnratedOnly(v => !v)}>
+                      ★ {c.unratedVisits}
+                    </button>
+                  </div>
+                  {locations.length > 1 && (
+                    <div style={{ marginTop: 10 }}>
+                      <select className="cp-select" value={visitStore} onChange={e => setVisitStore(e.target.value)}>
+                        <option value="">{c.allLocations}</option>
+                        {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 <div className="cp-period-stats">
@@ -950,6 +1056,12 @@ export default function ClientPortal() {
                             <img src={viewablePhotoUrl(cp.photo_url)} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: 'cover' }} />
                           </button>
                         )}
+                        {cp.admin_response && (
+                          <div className="cp-admin-reply">
+                            <div className="cp-label">{c.adminResponse}</div>
+                            <div>{cp.admin_response}</div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </>
@@ -978,6 +1090,12 @@ export default function ClientPortal() {
                       <div key={cm.id} className="cp-card status-completed">
                         <div className="cp-card-date" style={{ marginBottom: 8 }}>{cm.location_name} · {new Date(cm.created_at).toLocaleDateString('ja-JP')}</div>
                         <div style={{ fontSize: 14, lineHeight: 1.5 }}>👏 {cm.message}</div>
+                        {cm.admin_response && (
+                          <div className="cp-admin-reply">
+                            <div className="cp-label">{c.adminResponse}</div>
+                            <div>{cm.admin_response}</div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </>
@@ -987,8 +1105,57 @@ export default function ClientPortal() {
 
             {!loading && tab === 'requests' && (
               <>
-                <button type="button" className="cp-btn cp-btn-blue" style={{ marginBottom: 16 }} onClick={() => setShowRequestForm(!showRequestForm)}>📝 {c.newRequest}</button>
-                {showRequestForm && (
+                <div className="cp-pills">
+                  <button type="button" className={`cp-pill${requestTab === 'extras' ? ' active-green' : ''}`} onClick={() => setRequestTab('extras')}>✨ {c.bookExtra}</button>
+                  <button type="button" className={`cp-pill${requestTab === 'custom' ? ' active-green' : ''}`} onClick={() => setRequestTab('custom')}>📝 {c.newRequest}</button>
+                  <button type="button" className={`cp-pill${requestTab === 'bills' ? ' active-green' : ''}`} onClick={() => setRequestTab('bills')}>💴 {c.invoices}{billsDue.length ? ` (${billsDue.length})` : ''}</button>
+                  <button type="button" className={`cp-pill${requestTab === 'history' ? ' active-green' : ''}`} onClick={() => setRequestTab('history')}>{c.requestHistory}</button>
+                </div>
+
+                {requestTab === 'extras' && (
+                  <>
+                    <p className="cp-muted-copy">{c.bookExtraIntro}</p>
+                    {locations.length > 1 && (
+                      <div className="cp-field">
+                        <span className="cp-label">{c.requestLocation}</span>
+                        <select className="cp-select" value={extraLoc} onChange={e => setExtraLocation(e.target.value)}>
+                          {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div className="cp-extra-grid">
+                      {extraCatalog.map(ex => (
+                        <button
+                          key={ex.id}
+                          type="button"
+                          className={`cp-extra-card${bookingExtra?.id === ex.id ? ' on' : ''}`}
+                          onClick={() => setBookingExtra(ex)}
+                        >
+                          <div className="cp-extra-icon">{ex.icon}</div>
+                          <div className="cp-extra-name">{extraLabel(ex.id, lang)}</div>
+                          <div className="cp-extra-price">{formatYen(ex.price)}</div>
+                          <div className="cp-extra-hint">{extraHint(ex.id, lang)}</div>
+                        </button>
+                      ))}
+                    </div>
+                    {bookingExtra && (
+                      <div className="cp-card" style={{ marginTop: 12 }}>
+                        <div className="cp-label">{extraLabel(bookingExtra.id, lang)} · {formatYen(bookingExtra.price)}</div>
+                        <div className="cp-field" style={{ marginTop: 10 }}>
+                          <span className="cp-label">{c.requestDate}</span>
+                          <input type="date" className="cp-input" min={today} value={extraDate} onChange={e => setExtraDate(e.target.value)} />
+                        </div>
+                        <div className="cp-field">
+                          <span className="cp-label">{c.extraNotes}</span>
+                          <textarea className="cp-textarea" rows={3} value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder={c.extraNotesPh} />
+                        </div>
+                        <button type="button" className="cp-btn cp-btn-gold" onClick={() => bookExtra(bookingExtra)}>{c.confirmExtra} · {formatYen(bookingExtra.price)}</button>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {requestTab === 'custom' && (
                   <div className="cp-card" style={{ marginBottom: 16 }}>
                     {locations.length > 1 && !user.location_name && (
                       <div className="cp-field">
@@ -1010,17 +1177,63 @@ export default function ClientPortal() {
                     <button type="button" className="cp-btn cp-btn-gold" onClick={submitRequest}>{c.submitRequest}</button>
                   </div>
                 )}
-                <div className="cp-section-title">{c.requestHistory}</div>
-                {requests.length === 0 ? <PortalEmpty icon="📝" text={c.noRequests} /> : requests.map(rq => (
-                  <div key={rq.id} className="cp-card">
-                    <div className="cp-card-top">
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{rq.ticket_number || `#${rq.id.slice(0, 8)}`}</span>
-                      <span className={`cp-badge ${rq.status === 'completed' ? 'done' : 'progress'}`}>{rq.status === 'completed' ? c.statusDone : c.statusPending}</span>
-                    </div>
-                    <div className="cp-card-date" style={{ margin: '8px 0' }}>{rq.location_name || c.allLocations}</div>
-                    <div style={{ fontSize: 14, lineHeight: 1.5 }}>{rq.description}</div>
-                  </div>
-                ))}
+
+                {requestTab === 'bills' && (
+                  <>
+                    <p className="cp-muted-copy">{c.invoicesHint}</p>
+                    {invoices.length === 0 ? <PortalEmpty icon="💴" text={c.noInvoices} /> : invoices.map(inv => (
+                      <div key={inv.id} className="cp-card">
+                        <div className="cp-card-top">
+                          <div>
+                            <div className="cp-card-loc">{inv.period_start && inv.period_end ? `${inv.period_start} – ${inv.period_end}` : inv.issue_date}</div>
+                            <div className="cp-card-date">{c.invoiceIssued}: {inv.issue_date || '—'}{inv.due_date ? ` · ${c.invoiceDue}: ${inv.due_date}` : ''}</div>
+                          </div>
+                          <span className={`cp-badge ${inv.status === 'paid' ? 'done' : 'progress'}`}>
+                            {inv.status === 'paid' ? c.invoicePaid : c.invoiceSent}
+                          </span>
+                        </div>
+                        <div className="cp-extra-price" style={{ margin: '8px 0' }}>{formatYen(inv.total)}</div>
+                        {inv.status === 'sent' && (
+                          <button type="button" className="cp-btn cp-btn-gold" onClick={() => markInvoicePaid(inv)}>{c.markInvoicePaid}</button>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {requestTab === 'history' && (
+                  <>
+                    {requests.length === 0 ? <PortalEmpty icon="📝" text={c.noRequests} /> : requests.map(rq => {
+                      const extra = parseExtraRequest(rq.description)
+                      return (
+                        <div key={rq.id} className="cp-card">
+                          <div className="cp-card-top">
+                            <span style={{ fontWeight: 700, fontSize: 13 }}>{rq.ticket_number || `#${rq.id.slice(0, 8)}`}</span>
+                            <span className={`cp-badge ${rq.status === 'completed' ? 'done' : 'progress'}`}>{rq.status === 'completed' ? c.statusDone : c.statusPending}</span>
+                          </div>
+                          <div className="cp-card-date" style={{ margin: '8px 0' }}>
+                            {rq.location_name || extra?.locationName || c.allLocations}
+                            {rq.preferred_date ? ` · ${rq.preferred_date}` : ''}
+                          </div>
+                          {extra ? (
+                            <div>
+                              <div style={{ fontWeight: 700 }}>{extraLabel(extra.extraId, lang)} · {formatYen(extra.price)}</div>
+                              {extra.notes && <div style={{ fontSize: 14, lineHeight: 1.5, marginTop: 6 }}>{extra.notes}</div>}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 14, lineHeight: 1.5 }}>{rq.description}</div>
+                          )}
+                          {rq.admin_notes && (
+                            <div className="cp-admin-reply">
+                              <div className="cp-label">{c.adminNotes}</div>
+                              <div>{rq.admin_notes}</div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
               </>
             )}
 
@@ -1523,7 +1736,12 @@ function VisitCard({
           <div className="cp-card-loc">{locationFromJob(job)}</div>
           <div className="cp-card-date">{job.scheduled_date} · {job.scheduled_time || '—'}</div>
         </div>
-        <span className={`cp-badge ${statusClass(job.status)}`}>{statusLabel(job.status)}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <span className={`cp-badge ${statusClass(job.status)}`}>{statusLabel(job.status)}</span>
+          <span className={`cp-type-chip ${getCleaningType(job) === 'deep' ? 'deep' : 'basic'}`}>
+            {getCleaningType(job) === 'deep' ? (labels.filterDeep || 'Deep') : (labels.filterBasic || 'Basic')}
+          </span>
+        </div>
       </div>
       {job.employee_name && (
         <div className="cp-card-cleaner">👤 {labels.cleaner}: <b>{job.employee_name}</b></div>

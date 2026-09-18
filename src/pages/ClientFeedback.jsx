@@ -6,6 +6,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
+import { parseExtraRequest, parsePaymentNotice, extraLabel, formatYen } from '../lib/clientExtras'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
@@ -251,7 +252,7 @@ export default function ClientFeedback() {
             <div key={row.id} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ fontWeight: 600 }}>
-                  {row.ticket_number || `#${row.id.slice(0, 8)}`} · {clientName(row.client_id)}
+                {row.ticket_number || `#${row.id.slice(0, 8)}`} · {clientName(row.client_id)}
                 </div>
                 <span className={`badge ${row.status === 'completed' ? 'badge-green' : 'badge-amber'}`}>{row.status}</span>
               </div>
@@ -259,7 +260,33 @@ export default function ClientFeedback() {
                 {row.location_name || f.allLocations} · {new Date(row.created_at).toLocaleDateString()}
                 {row.preferred_date ? ` · ${fill(f.preferredDate, { date: row.preferred_date })}` : ''}
               </div>
-              <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>
+              <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>
+                {(() => {
+                  const extra = parseExtraRequest(row.description)
+                  const pay = parsePaymentNotice(row.description)
+                  if (extra) {
+                    return (
+                      <>
+                        <div style={{ fontWeight: 700, color: 'var(--gold, #c19c56)', marginBottom: 6 }}>
+                          ✨ {extraLabel(extra.extraId)} · {formatYen(extra.price)}
+                        </div>
+                        {extra.notes || extra.locationName}
+                      </>
+                    )
+                  }
+                  if (pay) {
+                    return (
+                      <>
+                        <div style={{ fontWeight: 700, color: 'var(--gold, #c19c56)', marginBottom: 6 }}>
+                          💴 {formatYen(pay.total)} · client marked paid
+                        </div>
+                        {pay.notes}
+                      </>
+                    )
+                  }
+                  return row.description
+                })()}
+              </div>
               <textarea value={draft(row.id) || row.admin_notes || ''} onChange={e => setResponseDraft(d => ({ ...d, [row.id]: e.target.value }))} placeholder={f.adminNotes} rows={2} style={{ width: '100%', marginBottom: 8 }} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-sm btn-primary" onClick={() => saveRequest(row, row.status)}>{f.saveNotes}</button>

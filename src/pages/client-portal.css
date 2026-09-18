@@ -686,6 +686,81 @@
 .cp-pill.active-red { background: rgba(248, 113, 113, 0.15); color: #f87171; }
 .cp-pill.active-green { background: rgba(74, 222, 128, 0.12); color: #4ade80; }
 
+.cp-quick-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.cp-quick {
+  text-align: left;
+  padding: 12px 12px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--cp-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cp-text);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cp-quick span { display: block; font-size: 16px; margin-bottom: 4px; }
+.cp-quick b { display: block; font-size: 15px; font-weight: 800; }
+.cp-quick small { display: block; font-size: 10px; color: var(--cp-muted); margin-top: 4px; line-height: 1.3; }
+
+.cp-extra-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cp-extra-card {
+  text-align: left;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--cp-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cp-text);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cp-extra-card.on {
+  border-color: rgba(212, 168, 83, 0.55);
+  background: var(--cp-gold-dim);
+}
+
+.cp-extra-icon { font-size: 18px; margin-bottom: 6px; }
+.cp-extra-name { font-size: 13px; font-weight: 800; }
+.cp-extra-price { font-size: 16px; font-weight: 800; color: var(--cp-gold); margin: 4px 0; }
+.cp-extra-hint { font-size: 11px; color: var(--cp-muted); line-height: 1.35; }
+
+.cp-admin-reply {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.1);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cp-type-chip {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.cp-type-chip.basic { background: rgba(96, 165, 250, 0.15); color: #93c5fd; }
+.cp-type-chip.deep { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+
+.cp-muted-copy {
+  font-size: 12px;
+  color: var(--cp-muted);
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+
 /* —— Chat —— */
 .cp-chat {
   display: flex;
