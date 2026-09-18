@@ -4,6 +4,7 @@ import { jobToServiceReport, fmtDuration, syncServiceReport, mergeReportWithJob,
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
+import { sanitizeStoredPhotoIssues } from '../lib/photoAi'
 import { useLang, fill } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
@@ -117,6 +118,19 @@ export default function Reports() {
     })
     return { total: filtered.length, avg, byEmp }
   }, [filtered])
+
+  const handleDownloadPdf = async (report) => {
+    const preview = typeof window !== 'undefined' ? window.open('', '_blank') : null
+    const toastId = toast.loading(tr.generatingPdf)
+    try {
+      const { saveServiceReportPdf } = await import('../lib/generatePDF')
+      await saveServiceReportPdf(report, { lang, labels: tr, previewWindow: preview })
+      toast.success(tr.pdfReady, { id: toastId })
+    } catch (e) {
+      try { preview?.close() } catch {}
+      toast.error(e.message || tr.pdfFailed, { id: toastId })
+    }
+  }
 
   const handleDelete = async (report) => {
     const label = `${report.employee_name} · ${report.client_name || report.job_title} · ${report.report_date}`
@@ -245,6 +259,7 @@ export default function Reports() {
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => setSelected(r)}>{tr.read}</button>
+                        <button className="btn btn-sm" onClick={() => handleDownloadPdf(r)}>{tr.downloadPdf}</button>
                         <button className="btn btn-sm btn-danger" onClick={() => handleDelete(r)}>{tr.delete}</button>
                       </div>
                     </td>
@@ -258,7 +273,7 @@ export default function Reports() {
 
       {selected && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelected(null)}>
-          <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 24, maxWidth: 560, width: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 24, maxWidth: 720, width: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 16 }}>{selected.job_title || selected.client_name}</div>
@@ -301,8 +316,8 @@ export default function Reports() {
               <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--red)' }}>{tr.missedItems}: {selected.checklist_missed_items}</div>
             )}
 
-            {selected.photo_ai_issues && (
-              <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text3)' }}>{tr.photoIssues}: {selected.photo_ai_issues}</div>
+            {sanitizeStoredPhotoIssues(selected.photo_ai_issues) && (
+              <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text3)' }}>{tr.photoIssues}: {sanitizeStoredPhotoIssues(selected.photo_ai_issues)}</div>
             )}
 
             {(selected.photo_before_url || selected.photo_after_url) && (
@@ -328,6 +343,7 @@ export default function Reports() {
             )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+              <button className="btn btn-primary" onClick={() => handleDownloadPdf(selected)}>📄 {tr.downloadPdf}</button>
               <button className="btn btn-danger" onClick={() => handleDelete(selected)}>🗑 {tr.deleteReport}</button>
             </div>
           </div>

@@ -6,18 +6,24 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
+import { tokyoToday } from '../lib/dates'
+import { JOB_GPS_SETUP_SQL, fenceOk, isLocationFresh, liveDistanceToJob, liveFocusJob, mapsPointUrl, mergeLocationHints, summarizeStaffStatus } from '../lib/jobGps'
+import { isMissingColumnError } from '../lib/schemaError'
+import { SUPABASE_SQL_URL } from '../lib/salarySetupSql'
 
 export default function LiveTracking() {
   const { t } = useLang()
   const L = t.live
   const [employees, setEmployees] = useState([])
   const [jobs, setJobs] = useState([])
+  const [locations, setLocations] = useState([])
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(true)
   const [photoInfo, setPhotoInfo] = useState(null)
   const [cleaning, setCleaning] = useState(false)
   const [retros, setRetros] = useState([])
   const [lightbox, setLightbox] = useState(null)
+  const [gpsSchemaMissing, setGpsSchemaMissing] = useState(false)
 
   const checkPhotos = async () => {
     try {
@@ -60,24 +66,40 @@ export default function LiveTracking() {
 
   const load = async () => {
     loadRetros()
-    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
-    const [e, activeRes, completedTodayRes] = await Promise.all([
+    const today = tokyoToday()
+    const [e, activeRes, completedTodayRes, locRes, gpsProbe] = await Promise.all([
       supabase.from('employees').select('id,full_name,score,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').in('status',['assigned','in_progress']).order('scheduled_date'),
       supabase.from('jobs').select('*').eq('status','completed').eq('scheduled_date', today),
+      supabase.from('locations').select('id,name,address,gps_lat,gps_lng'),
+      supabase.from('jobs').select('id,gps_start_lat').limit(1),
     ])
+    setGpsSchemaMissing(isMissingColumnError(gpsProbe.error, 'gps_start_lat'))
     setEmployees(e.data||[])
     const byId = new Map()
     for (const j of [...(activeRes.data||[]), ...(completedTodayRes.data||[])]) byId.set(j.id, j)
     setJobs([...byId.values()])
+    setLocations(mergeLocationHints(locRes.data || []))
     setLoading(false)
   }
 
   const getEmpJobs = (empId) => jobs.filter(j=>j.employee_id===empId)
-  const getActiveJob = (empId) => jobs.find(j=>j.employee_id===empId&&j.status==='in_progress')
   const getTodayJobs = (empId) => {
-    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+    const today = tokyoToday()
     return jobs.filter(j=>j.employee_id===empId&&j.scheduled_date===today)
+  }
+  const today = tokyoToday()
+  const summary = summarizeStaffStatus(employees, jobs, today)
+
+  const gpsLink = (lat, lng, label, ok) => {
+    const href = mapsPointUrl(lat, lng)
+    if (!href) return null
+    return (
+      <a href={href} target="_blank" rel="noreferrer" onClick={ev=>ev.stopPropagation()}
+        style={{fontSize:10,color:ok===false?'#f87171':ok?'#4ade80':'#60a5fa',textDecoration:'none'}}>
+        📍 {label}
+      </a>
+    )
   }
 
   // Calcula atraso: primeiro job de hoje ainda não iniciado cujo horário-alvo já passou
@@ -100,9 +122,37 @@ export default function LiveTracking() {
 
   return (
     <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <h2 style={{fontSize:22,fontWeight:700}}>{L.title}</h2>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,gap:12,flexWrap:'wrap'}}>
+        <h2 style={{fontSize:22,fontWeight:700,margin:0}}>{L.title}</h2>
         <div style={{fontSize:12,color:'var(--text3)'}}>{L.autoRefresh}</div>
+      </div>
+      <div style={{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.45}}>{L.liveHint}</div>
+
+      {gpsSchemaMissing && (
+        <div style={{background:'rgba(239,159,39,0.1)',border:'1px solid rgba(239,159,39,0.3)',borderRadius:12,padding:14,marginBottom:16}}>
+          <div style={{fontWeight:600,marginBottom:4}}>⚠️ {L.gpsSetupNeeded}</div>
+          <div style={{fontSize:12,color:'var(--text2)',marginBottom:10}}>{L.gpsSetupHint}</div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <button type="button" className="btn btn-sm btn-primary" onClick={async ()=>{
+              try { await navigator.clipboard.writeText(JOB_GPS_SETUP_SQL); toast.success(t.payroll.copiedSql) }
+              catch { toast.error(t.payroll.copySql) }
+            }}>{t.payroll.copySql}</button>
+            <a className="btn btn-sm" href={SUPABASE_SQL_URL} target="_blank" rel="noreferrer">{t.payroll.openSql}</a>
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:16}}>
+        {[
+          [L.workingNow, summary.working, '#4ade80'],
+          [L.onShift, summary.idle, '#60a5fa'],
+          [L.folga, summary.folga, 'var(--text3)'],
+        ].map(([label, n, color]) => (
+          <div key={label} style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
+            <div style={{fontSize:11,color:'var(--text3)'}}>{label}</div>
+            <div style={{fontSize:22,fontWeight:800,color,marginTop:2}}>{n}</div>
+          </div>
+        ))}
       </div>
 
       <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:14,marginBottom:16}}>
@@ -156,25 +206,29 @@ export default function LiveTracking() {
 
       {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
-        {employees.map(emp=>{
-          const activeJob = getActiveJob(emp.id)
-          const todayJobs = getTodayJobs(emp.id)
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(260px, 1fr))',gap:12,marginBottom:16}}>
+        {summary.rows.map(({ employee: emp, key: workKey, job: activeJob, todayJobs }) => {
           const done = todayJobs.filter(j=>j.status==='completed').length
           const lateMin = getLateness(emp.id)
-          const locFresh = emp.last_location_at && (Date.now() - new Date(emp.last_location_at)) < 5*60000
+          const locFresh = isLocationFresh(emp.last_location_at) && emp.location_sharing !== false
+          const focusJob = activeJob || liveFocusJob(todayJobs)
+          const liveM = focusJob ? liveDistanceToJob(emp, focusJob, locations) : null
+          const liveOk = fenceOk(liveM)
+          const statusLabel = workKey === 'working' ? L.workingNow : workKey === 'idle' ? L.onShift : L.folga
+          const statusColorLive = workKey === 'working' ? '#4ade80' : workKey === 'idle' ? '#60a5fa' : 'rgba(255,255,255,0.35)'
           return (
             <div key={emp.id} onClick={()=>setSelected(selected===emp.id?null:emp.id)}
-              style={{background:'var(--surface)',border:`1px solid ${lateMin>=15?'rgba(248,113,113,0.4)':activeJob?'rgba(74,222,128,0.3)':'var(--border)'}`,borderRadius:14,padding:14,cursor:'pointer',transition:'all 0.2s'}}>
+              style={{background:'var(--surface)',border:`1px solid ${lateMin>=15?'rgba(248,113,113,0.4)':workKey==='working'?'rgba(74,222,128,0.35)':workKey==='folga'?'rgba(255,255,255,0.06)':'var(--border)'}`,borderRadius:14,padding:14,cursor:'pointer',transition:'all 0.2s',opacity:workKey==='folga'?0.78:1}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
                 <div>
                   <div style={{fontWeight:600,fontSize:14,display:'flex',alignItems:'center',gap:6}}>
                     {emp.full_name.split(' ')[0]}
                     {lateMin>=5&&<span style={{background:'rgba(248,113,113,0.15)',color:'#f87171',borderRadius:6,padding:'1px 6px',fontSize:10,fontWeight:700}}>⏰ {fill(L.late, { n: lateMin })}</span>}
                   </div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
-                    {activeJob?<span style={{color:'#4ade80',fontWeight:600}}>● {L.working}</span>:todayJobs.length>0?<span style={{color:'var(--text3)'}}>● {L.idle}</span>:<span style={{color:'rgba(255,255,255,0.2)'}}>○ {L.noShift}</span>}
-                    {locFresh && emp.location_sharing !== false && <a href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 {L.seeLocation}</a>}
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:1,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+                    <span style={{color:statusColorLive,fontWeight:700}}>{workKey==='working'?'●':workKey==='idle'?'●':'○'} {statusLabel}</span>
+                    {locFresh && gpsLink(emp.last_lat, emp.last_lng, liveM != null ? fill(L.fromStore, { n: liveM }) : L.seeLive, liveOk)}
+                    {!locFresh && emp.last_lat && gpsLink(emp.last_lat, emp.last_lng, L.lastFix, null)}
                   </div>
                 </div>
                 <div style={{textAlign:'right'}}>
@@ -183,18 +237,44 @@ export default function LiveTracking() {
                 </div>
               </div>
 
+              {workKey==='folga' && (
+                <div style={{fontSize:11,color:'var(--text3)'}}>{L.noJobsToday}</div>
+              )}
+
               {activeJob&&(
-                <div style={{background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.15)',borderRadius:8,padding:'8px 10px',marginBottom:8}}>
-                  <div style={{fontSize:11,fontWeight:600,color:'#4ade80',marginBottom:2}}>▶ {activeJob.title.replace(/ — .*/,'').substring(0,25)}</div>
-                  <div style={{fontSize:10,color:'var(--text3)'}}>Started: {activeJob.started_at?new Date(activeJob.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'}</div>
-                  {hasMapsLink(activeJob.address, activeJob.title)&&<a href={mapsOpenUrl(activeJob.address, activeJob.title)} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 View location</a>}
+                <div style={{background:liveOk===false?'rgba(248,113,113,0.08)':'rgba(74,222,128,0.08)',border:`1px solid ${liveOk===false?'rgba(248,113,113,0.25)':'rgba(74,222,128,0.15)'}`,borderRadius:8,padding:'8px 10px',marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:600,color:liveOk===false?'#f87171':'#4ade80',marginBottom:2}}>▶ {activeJob.title.replace(/ — .*/,'').substring(0,28)}</div>
+                  <div style={{fontSize:10,color:'var(--text3)'}}>{L.started}: {activeJob.started_at?new Date(activeJob.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'}</div>
+                  {activeJob.gps_start_distance_m != null && (
+                    <div style={{fontSize:10,marginTop:2,color:fenceOk(activeJob.gps_start_distance_m)?'#4ade80':'#f87171'}}>
+                      {L.gpsStart}: {fill(L.fromStore, { n: Math.round(activeJob.gps_start_distance_m) })} {fenceOk(activeJob.gps_start_distance_m)?L.onSite:L.tooFar}
+                    </div>
+                  )}
+                  {liveM != null && (
+                    <div style={{fontSize:10,marginTop:2,color:liveOk?'#4ade80':'#f87171'}}>
+                      {L.seeLive}: {fill(L.fromStore, { n: liveM })} {liveOk?L.onSite:L.tooFar}
+                    </div>
+                  )}
+                  {hasMapsLink(activeJob.address, activeJob.title)&&<a href={mapsOpenUrl(activeJob.address, activeJob.title)} target="_blank" rel="noreferrer" onClick={ev=>ev.stopPropagation()} style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 {L.seeLocation}</a>}
+                </div>
+              )}
+
+              {!activeJob && focusJob && workKey !== 'folga' && (
+                <div style={{background:liveOk===false?'rgba(248,113,113,0.08)':'rgba(96,165,250,0.08)',border:`1px solid ${liveOk===false?'rgba(248,113,113,0.25)':'rgba(96,165,250,0.2)'}`,borderRadius:8,padding:'8px 10px',marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:600,color:liveOk===false?'#f87171':'#60a5fa',marginBottom:2}}>○ {focusJob.title.replace(/ — .*/,'').substring(0,28)}</div>
+                  {liveM != null && (
+                    <div style={{fontSize:10,marginTop:2,color:liveOk?'#4ade80':'#f87171'}}>
+                      {L.seeLive}: {fill(L.fromStore, { n: liveM })} {liveOk?L.onSite:L.tooFar}
+                    </div>
+                  )}
+                  {gpsLink(emp.last_lat, emp.last_lng, locFresh ? L.seeLive : L.lastFix, liveOk)}
                 </div>
               )}
 
               {todayJobs.length>0&&(
                 <div>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                    <span style={{fontSize:10,color:'var(--text3)'}}>Today's progress</span>
+                    <span style={{fontSize:10,color:'var(--text3)'}}>{L.todayProgress}</span>
                     <span style={{fontSize:10,color:'var(--text2)',fontWeight:600}}>{done}/{todayJobs.length}</span>
                   </div>
                   <div style={{height:4,background:'var(--surface2)',borderRadius:2,overflow:'hidden'}}>
@@ -211,14 +291,16 @@ export default function LiveTracking() {
       {selected&&(()=>{
         const emp = employees.find(e=>e.id===selected)
         const empJobs = getEmpJobs(selected)
-        const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
         const todayJobs = empJobs.filter(j=>j.scheduled_date===today)
         const upcoming = empJobs.filter(j=>j.scheduled_date>today).slice(0,5)
         if (!emp) return null
         return (
           <div className="card">
-            <div className="card-title">{emp.full_name} — Today's Schedule</div>
-            {todayJobs.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No jobs today.</div>}
+            <div className="card-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <span>{emp.full_name}</span>
+              {gpsLink(emp.last_lat, emp.last_lng, isLocationFresh(emp.last_location_at) ? L.seeLive : L.lastFix, null)}
+            </div>
+            {todayJobs.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>{L.noJobsToday}</div>}
             {todayJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map((j,idx)=>(
               <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
                 <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0,
@@ -228,10 +310,16 @@ export default function LiveTracking() {
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:500}}>{j.title.replace(/ — .*/,'')}</div>
-                  <div style={{fontSize:11,color:'var(--text3)',display:'flex',gap:10,marginTop:2}}>
+                  <div style={{fontSize:11,color:'var(--text3)',display:'flex',gap:10,marginTop:2,flexWrap:'wrap'}}>
                     {j.started_at&&<span>▶ {new Date(j.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
                     {j.completed_at&&<span>🏁 {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
                     {j.started_at&&j.completed_at&&<span>⏱ {Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000)}m</span>}
+                    {j.gps_start_distance_m != null && <span style={{color:fenceOk(j.gps_start_distance_m)?'#4ade80':'#f87171'}}>{L.gpsStart} {Math.round(j.gps_start_distance_m)}m</span>}
+                    {j.gps_end_distance_m != null && <span style={{color:fenceOk(j.gps_end_distance_m)?'#4ade80':'#f87171'}}>{L.gpsEnd} {Math.round(j.gps_end_distance_m)}m</span>}
+                  </div>
+                  <div style={{display:'flex',gap:8,marginTop:4,flexWrap:'wrap'}}>
+                    {gpsLink(j.gps_start_lat, j.gps_start_lng, L.seeStart, fenceOk(j.gps_start_distance_m))}
+                    {gpsLink(j.gps_end_lat, j.gps_end_lng, L.seeEnd, fenceOk(j.gps_end_distance_m))}
                   </div>
                 </div>
                 <div style={{display:'flex',gap:6,alignItems:'center'}}>
@@ -239,8 +327,8 @@ export default function LiveTracking() {
                     <JobPhotos
                       photoStartUrl={j.photo_start_url}
                       photoEndUrl={j.photo_end_url}
-                      beforeLabel="Antes"
-                      afterLabel="Depois"
+                      beforeLabel={L.before}
+                      afterLabel={L.after}
                       size={40}
                       onPhotoClick={setLightbox}
                     />
@@ -253,7 +341,7 @@ export default function LiveTracking() {
 
             {upcoming.length>0&&(
               <div style={{marginTop:14}}>
-                <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>Upcoming</div>
+                <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>{L.upcoming}</div>
                 {upcoming.map(j=>(
                   <div key={j.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:'1px solid var(--border)',fontSize:12}}>
                     <span style={{color:'var(--text2)'}}>{j.scheduled_date} · {j.title.replace(/ — .*/,'')}</span>

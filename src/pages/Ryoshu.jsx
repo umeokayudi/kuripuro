@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
+import { tokyoToday, tokyoYearMonth } from '../lib/dates'
 
 export default function Ryoshu() {
   const { t, lang } = useLang()
@@ -10,7 +11,7 @@ export default function Ryoshu() {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date:new Date().toISOString().split('T')[0], tax_rate:10 })
+  const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date:tokyoToday(), tax_rate:10 })
 
   useEffect(() => { load() }, [])
 
@@ -47,7 +48,7 @@ export default function Ryoshu() {
     })
     if (error) return toast.error(error.message)
     toast.success('領収書を作成しました!')
-    setForm({ client_id:'', client_name:'', amount:'', description:'', issue_date:new Date().toISOString().split('T')[0], tax_rate:10 })
+    setForm({ client_id:'', client_name:'', amount:'', description:'', issue_date:tokyoToday(), tax_rate:10 })
     setShowForm(false); load()
   }
 
@@ -86,7 +87,7 @@ export default function Ryoshu() {
     w.print()
   }
 
-  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,r)=>s+Number(r.total_amount||0),0)
+  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(tokyoYearMonth())).reduce((s,r)=>s+Number(r.total_amount||0),0)
 
   return (
     <div>

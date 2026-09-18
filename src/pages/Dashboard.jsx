@@ -1,12 +1,19 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
+import { buildDeepCleanProgress, buildDaySummaries, currentYearMonth, deepCleanScheduleLabel, formatScheduleDate, storeProgressRows, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
+import { tokyoToday, monthBounds } from '../lib/dates'
+import { summarizeStaffStatus } from '../lib/jobGps'
 
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+function shiftYearMonth(ym, delta) {
+  const [y, m] = String(ym || '').split('-').map(Number)
+  if (!y || !m) return ym
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 export default function Dashboard() {
   const { lang, t } = useLang()
@@ -17,6 +24,7 @@ export default function Dashboard() {
   const [clients, setClients] = useState([])
   const [employees, setEmployees] = useState([])
   const [todayJobs, setTodayJobs] = useState([])
+  const [inProgressJobs, setInProgressJobs] = useState([])
   const [staleCount, setStaleCount] = useState(0)
   const [evals, setEvals] = useState([])
   const [monthJobs, setMonthJobs] = useState([])
@@ -30,9 +38,8 @@ export default function Dashboard() {
 
   const load = async () => {
     const today = tokyoToday()
-    const monthStart = progressMonth + '-01'
-    const monthEnd = progressMonth + '-31'
-    const [c, e, j, ev, stale, mj, cr] = await Promise.all([
+    const { from: monthStart, to: monthEnd } = monthBounds(progressMonth)
+    const [c, e, j, ev, stale, mj, cr, activeNow] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
@@ -40,10 +47,12 @@ export default function Dashboard() {
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('jobs').select('*').eq('status', 'in_progress'),
     ])
     setClients(c.data || [])
     setEmployees(e.data || [])
     setTodayJobs(j.data || [])
+    setInProgressJobs(activeNow.data || [])
     setEvals(ev.data || [])
     setStaleCount(stale.count || 0)
     setMonthJobs(mj.data || [])
@@ -79,6 +88,7 @@ export default function Dashboard() {
     if (!byEmp[k]) byEmp[k] = []
     byEmp[k].push(j)
   })
+  const liveSummary = summarizeStaffStatus(employees, [...todayJobs, ...inProgressJobs], tokyoToday())
 
   const sortedClients = [...clients].sort((a, b) =>
     (Number(b.monthly_revenue || 0) - Number(b.monthly_cost || 0)) - (Number(a.monthly_revenue || 0) - Number(a.monthly_cost || 0))
@@ -87,6 +97,11 @@ export default function Dashboard() {
   const statusColor = s => ({ assigned: '#60a5fa', in_progress: '#fbbf24', completed: '#4ade80', cancelled: 'rgba(255,255,255,0.2)' }[s] || '#60a5fa')
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
+  const daySummaries = useMemo(() => buildDaySummaries(deepProgress.byLocation), [deepProgress])
+  const storeRows = useMemo(() => storeProgressRows(deepProgress.byLocation, tokyoToday(), lang), [deepProgress, lang])
+  const completedDays = daySummaries.filter(d => d.state === 'done').length
+  const lateDays = daySummaries.filter(d => d.state === 'late').length
+  const dayPct = daySummaries.length ? Math.round((completedDays / daySummaries.length) * 100) : 0
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
 
   const ratings30 = ratingsInPeriod(clientRatings, 30)
@@ -123,7 +138,7 @@ export default function Dashboard() {
 
           <div style={{ display: 'grid', gap: 8 }}>
             {rows.map(({ date, job, loc }) => {
-              const slot = tuesdaySlotInfo(job, slotLabels)
+              const slot = tuesdaySlotInfo(job, slotLabels, date)
               const dateLabel = detailLoc ? formatScheduleDate(date, lang) : loc
               const sub = detailLoc
                 ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : d.noJob)
@@ -172,11 +187,30 @@ export default function Dashboard() {
       </div>
 
       {staleCount > 0 && (
-        <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div className="dash-stale">
           <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ {fill(d.staleJobs, { count: staleCount })}</span>
           <button onClick={cancelStaleJobs} className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', flexShrink: 0 }}>{d.cancelStale}</button>
         </div>
       )}
+
+      <div className="dash-quick">
+        <Link to="/jobs" className="dash-quick-btn">
+          <strong>{todayJobs.length}</strong>
+          <span>{d.quickToday}</span>
+        </Link>
+        <Link to="/reports" className="dash-quick-btn">
+          <strong>{d.quickReports}</strong>
+          <span>{d.quickReportsHint}</span>
+        </Link>
+        <Link to="/salary" className="dash-quick-btn">
+          <strong>{d.quickPay}</strong>
+          <span>{d.quickPayHint}</span>
+        </Link>
+        <Link to="/schedule" className="dash-quick-btn">
+          <strong>{d.quickPlan}</strong>
+          <span>{d.quickPlanHint}</span>
+        </Link>
+      </div>
 
       <div className="dash-metrics">
         {[
@@ -190,6 +224,37 @@ export default function Dashboard() {
             <div className="metric-value" style={{ color: c }}>{v}</div>
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #4ade80' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{d.liveNow}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{d.liveNowHint}</div>
+          </div>
+          <Link to="/live" style={{ fontSize: 12, color: '#c19c56', fontWeight: 600, textDecoration: 'none' }}>{d.openLive}</Link>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: liveSummary.working ? 12 : 0 }}>
+          {[
+            [d.liveNow, liveSummary.working, '#4ade80'],
+            [d.liveIdle, liveSummary.idle, '#60a5fa'],
+            [d.liveFolga, liveSummary.folga, 'var(--text3)'],
+          ].map(([label, n, color]) => (
+            <div key={label} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color }}>{n}</div>
+            </div>
+          ))}
+        </div>
+        {liveSummary.rows.filter(r => r.key === 'working').length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {liveSummary.rows.filter(r => r.key === 'working').map(r => (
+              <Link key={r.employee.id} to="/live" style={{ padding: '6px 12px', borderRadius: 20, background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.25)', fontSize: 12, color: '#4ade80', fontWeight: 600, textDecoration: 'none' }}>
+                ● {r.employee.full_name.split(' ')[0]}{r.job ? ` · ${(r.job.title || '').replace(/ — .*/, '').slice(0, 18)}` : ''}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
@@ -253,19 +318,27 @@ export default function Dashboard() {
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{d.deepCleanTitle}</div>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-              {fill(d.deepContract, { month: monthLabel, expected: deepProgress.totals.expected })}
+              {fill(d.deepContract, {
+                month: monthLabel,
+                expected: deepProgress.totals.expected,
+                days: daySummaries.length,
+              })}
             </div>
           </div>
-          <input type="month" value={progressMonth} onChange={e => setProgressMonth(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, fontWeight: 600 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" className="btn btn-sm" onClick={() => setProgressMonth(shiftYearMonth(progressMonth, -1))} aria-label={d.prevDay || '‹'}>‹</button>
+            <span style={{ fontSize: 13, fontWeight: 700, minWidth: 120, textAlign: 'center' }}>{monthLabel}</span>
+            <button type="button" className="btn btn-sm" onClick={() => setProgressMonth(shiftYearMonth(progressMonth, 1))} aria-label={d.nextDay || '›'}>›</button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
           {[
+            [d.serviceDays, `${completedDays}/${daySummaries.length}`, '#4ade80'],
+            [d.lateDays, lateDays, '#f87171'],
             [d.completed, deepProgress.totals.completed, '#4ade80'],
-            [d.pending, deepProgress.totals.pending, '#60a5fa'],
-            [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#f87171'],
-            [d.progress, `${deepProgress.totals.pct}%`, '#fbbf24'],
+            [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#fbbf24'],
+            [d.progress, `${dayPct}%`, '#fbbf24'],
           ].map(([l, v, c]) => (
             <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 16px', minWidth: 100 }}>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
@@ -275,21 +348,26 @@ export default function Dashboard() {
         </div>
 
         <div style={{ height: 10, background: 'var(--surface2)', borderRadius: 5, overflow: 'hidden', marginBottom: 16 }}>
-          <div style={{ height: '100%', width: `${deepProgress.totals.pct}%`, background: 'linear-gradient(90deg,#fbbf24,#4ade80)', borderRadius: 5, transition: 'width 0.4s' }} />
+          <div style={{ height: '100%', width: `${dayPct}%`, background: 'linear-gradient(90deg,#fbbf24,#4ade80)', borderRadius: 5, transition: 'width 0.4s' }} />
         </div>
 
-        {deepProgress.tuesdaySummary.length > 0 && (
+        {daySummaries.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byTuesday}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {deepProgress.tuesdaySummary.map(({ date, expected, done }) => {
-                const ok = done >= expected
-                const shortDate = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })
+              {daySummaries.map((day) => {
+                const tone = day.state === 'done'
+                  ? { bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.3)', color: '#4ade80' }
+                  : day.state === 'late'
+                    ? { bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.35)', color: '#f87171' }
+                    : day.state === 'partial'
+                      ? { bg: 'rgba(96,165,250,0.12)', border: 'rgba(96,165,250,0.3)', color: '#60a5fa' }
+                      : { bg: 'rgba(251,191,36,0.1)', border: 'rgba(251,191,36,0.25)', color: '#fbbf24' }
                 return (
-                  <button key={date} type="button" onClick={() => { setDetailTuesday(date); setDetailLoc(null) }}
-                    style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.1)', border: `1px solid ${ok ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.25)'}`, fontSize: 12, textAlign: 'left' }}>
-                    <div style={{ fontWeight: 700 }}>{fill(d.tuesdayShort, { date: shortDate })}</div>
-                    <div style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 600 }}>{fill(d.doneOf, { done, expected })}</div>
+                  <button key={day.date} type="button" onClick={() => { setDetailTuesday(day.date); setDetailLoc(null) }}
+                    style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: tone.bg, border: `1px solid ${tone.border}`, fontSize: 12, textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700 }}>{fill(d.tuesdayShort, { date: formatScheduleDate(day.date, lang) })}</div>
+                    <div style={{ color: tone.color, fontWeight: 600 }}>{fill(d.doneOf, { done: day.done, expected: day.expected })}</div>
                     <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{d.clickTuesday}</div>
                   </button>
                 )
@@ -300,22 +378,22 @@ export default function Dashboard() {
 
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byRestaurant}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-          {Object.entries(deepProgress.byLocation).map(([loc, data]) => {
-            const pct = data.expected ? Math.round((data.completed / data.expected) * 100) : 0
-            const ok = data.completed >= data.expected
+          {storeRows.map((row) => {
+            const ok = row.completed >= row.expected
             return (
-              <button key={loc} type="button" onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }}
+              <button key={row.name} type="button" onClick={() => { setDetailLoc(row.name); setDetailTuesday(null) }}
                 style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc}</div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{data.schedule || 'Tue'}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{row.schedule || deepCleanScheduleLabel(row.name, lang)}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
-                  <span>{fill(d.doneCount, { done: data.completed, expected: data.expected })}</span>
-                  <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{pct}%</span>
+                  <span>{fill(d.doneCount, { done: row.completed, expected: row.expected })}</span>
+                  <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{row.pct}%</span>
                 </div>
                 <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
+                  <div style={{ height: '100%', width: `${row.pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
                 </div>
-                {data.missing > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: data.missing })}</div>}
+                {row.late > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {d.lateSlots}: {row.late}</div>}
+                {row.missing > 0 && <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: row.missing })}</div>}
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{d.clickRestaurant}</div>
               </button>
             )
@@ -324,7 +402,10 @@ export default function Dashboard() {
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.todayJobsTitle} ({tokyoToday()})</div>
+        <div style={{ fontWeight: 600, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span>{d.todayJobsTitle} ({tokyoToday()})</span>
+          <Link to="/jobs" style={{ fontSize: 12, color: '#c19c56', fontWeight: 600, textDecoration: 'none' }}>{t.sidebar.jobs} →</Link>
+        </div>
         {todayJobs.length === 0 ? (
           <div className="empty-state">
             <strong>{d.noTodayJobs}</strong>

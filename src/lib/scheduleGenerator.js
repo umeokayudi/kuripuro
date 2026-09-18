@@ -12,6 +12,7 @@ import {
   isOtpDeepOnlyLocation,
 } from './serviceCatalog.js'
 import { checklistTemplateForJob } from './jobChecklist.js'
+import { buildDeepCleanProgress } from './cleaningType.js'
 
 export { SCHEDULE_CLIENTS } from './serviceCatalog.js'
 export { OTP_BASIC_LOCATIONS, ATOMIC_LOCATION } from './serviceCatalog.js'
@@ -45,7 +46,8 @@ export const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /**
  * Contrato de escala por funcionário (employee_id do Supabase).
- * Deep clean e manutenção mensal: inserir manualmente no admin.
+ * Deep clean terça (OTP básico) e seg+qua (deep-only) entram na geração.
+ * Manutenção no dia de folga: grease trap 2x/mês + bloco mensal.
  */
 export const EMPLOYEE_SCHEDULE_CONTRACTS = [
   {
@@ -291,6 +293,22 @@ export function buildMonthSchedule(month, {
             serviceLabel: 'Basic Cleaning',
           }))
         })
+
+        if (dow === 2) {
+          basicLocs.forEach((loc, i) => {
+            jobs.push(makeJob({
+              id: jobId++,
+              date: dateStr,
+              time: '01:30',
+              employee: emp,
+              empId,
+              location: loc,
+              seq: 80 + i,
+              serviceLabel: 'Deep Clean',
+              category: 'deep',
+            }))
+          })
+        }
       }
 
       if (contract.template === 'otp_deep_only' && (dow === 1 || dow === 3)) {
@@ -401,4 +419,40 @@ export function jobsToRows(jobs, contracts) {
     value: Number(j.value || j.price || 0) || null,
     ...(j.completed_at ? { completed_at: j.completed_at } : { completed_at: null }),
   }))
+}
+
+/** Drafts for expected OTP deep-clean slots that have no job yet. */
+export function buildMissingDeepCleanJobs(yearMonth, existingJobs, { contracts = [] } = {}) {
+  const normalized = (existingJobs || []).map(j => ({
+    ...j,
+    scheduled_date: j.scheduled_date || j.date,
+    client_name: j.client_name || j.client,
+    status: j.status || 'assigned',
+  }))
+  const progress = buildDeepCleanProgress(normalized, yearMonth)
+  const assignee = contracts.find(c => c.template === 'otp_deep_only')
+    || contracts.find(c => c.template === 'otp_basic')
+    || contracts[0]
+  if (!assignee) return []
+
+  const locByName = Object.fromEntries(OTP_BASIC_LOCATIONS.map(l => [l.name, l]))
+  const jobs = []
+  Object.entries(progress.byLocation || {}).forEach(([name, data]) => {
+    const location = locByName[name] || { name, notes: '', address: '', deepCleanPrice: 5000 }
+    ;(data.expectedDates || []).forEach(date => {
+      if (data.byDate?.[date]) return
+      jobs.push(makeJob({
+        id: jobs.length + 1,
+        date,
+        time: isOtpDeepOnlyLocation(name) ? '00:30' : '01:30',
+        employee: assignee.shortName || assignee.employeeName,
+        empId: assignee.employeeId,
+        location,
+        seq: 90,
+        serviceLabel: 'Deep Clean',
+        category: 'deep',
+      }))
+    })
+  })
+  return jobs
 }

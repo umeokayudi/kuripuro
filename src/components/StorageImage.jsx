@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
 import { isHeicUrl, viewablePhotoUrl } from '../lib/photoUrl'
 
-export default function StorageImage({ url, alt = 'foto', style, onClick }) {
+export default function StorageImage({
+  url,
+  alt = 'photo',
+  style,
+  onClick,
+  fit = 'cover',
+  aspect,
+}) {
   const [src, setSrc] = useState(null)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(true)
   const displayUrl = viewablePhotoUrl(url)
   const heic = isHeicUrl(url)
+  const contain = fit === 'contain'
 
   useEffect(() => {
     setFailed(false)
@@ -30,40 +38,50 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
         gap: 8,
         minHeight: 120,
       }}>
-        <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center' }}>Não foi possível exibir a foto</div>
-        <a href={displayUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Abrir / baixar foto</a>
+        <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center' }}>Photo could not be displayed</div>
+        <a href={displayUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Open / download photo</a>
       </div>
     )
   }
 
   return (
-    <div style={{ position: 'relative', ...style }}>
+    <div style={{
+      position: 'relative',
+      background: contain ? '#111827' : undefined,
+      borderRadius: 8,
+      overflow: 'hidden',
+      aspectRatio: aspect,
+      ...style,
+    }}>
       {loading && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'var(--surface2)', borderRadius: 8, fontSize: 12, color: 'var(--text3)',
+          background: contain ? '#111827' : 'var(--surface2)', borderRadius: 8, fontSize: 12, color: 'var(--text3)',
         }}>
-          Carregando...
+          Loading...
         </div>
       )}
       <img
         src={src}
         alt={alt}
+        draggable={false}
         onLoad={() => setLoading(false)}
         onError={() => { setLoading(false); setFailed(true) }}
         onClick={onClick}
         style={{
           width: '100%',
+          height: contain || style?.height || aspect ? '100%' : 'auto',
           borderRadius: 8,
-          objectFit: 'cover',
-          aspectRatio: '1',
+          objectFit: contain ? 'contain' : 'cover',
+          objectPosition: 'center',
           cursor: onClick ? 'zoom-in' : 'default',
           display: loading ? 'none' : 'block',
+          background: contain ? '#111827' : undefined,
         }}
       />
       {heic && !loading && !failed && (
         <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
-          Foto HEIC — se não aparecer, use o botão abaixo
+          HEIC photo — open fullscreen if it does not display
         </div>
       )}
     </div>

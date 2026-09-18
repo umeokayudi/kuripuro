@@ -1,8 +1,9 @@
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
 import LanguageToggle from './LanguageToggle'
+import ViewModeToggle from './ViewModeToggle'
 
 const groups = [
   {
@@ -13,6 +14,7 @@ const groups = [
       { to: '/schedule', key: 'schedule', icon: Icons.list },
       { to: '/live', key: 'liveTrack', icon: Icons.users },
       { to: '/reports', key: 'reports', icon: Icons.file },
+      { to: '/ai', key: 'ai', icon: Icons.sparkle },
     ],
   },
   {
@@ -22,6 +24,7 @@ const groups = [
       { to: '/evaluations', key: 'evaluations', icon: Icons.users },
       { to: '/equipment-requests', key: 'equipmentRequests', icon: Icons.list },
       { to: '/transport-claims', key: 'transport', icon: Icons.list },
+      { to: '/account', key: 'account', icon: Icons.settings },
     ],
   },
   {
@@ -53,18 +56,29 @@ const groups = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ mobile = false, open = false, onNavigate, desktopMode = true, onChangeView }) {
   const { t } = useLang()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const s = t.sidebar
+  const a = t.app
 
   return (
-    <aside className="sidebar">
+    <aside
+      className={`sidebar${mobile && open ? ' is-open' : ''}`}
+      aria-hidden={mobile && !open}
+      id="admin-sidebar"
+    >
       <div className="sidebar-logo">
         <div className="brand">KuriPuro</div>
         <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
+        {user?.name && (
+          <Link to="/account" className="sidebar-user" onClick={mobile ? onNavigate : undefined}>
+            {user.name}
+            <span className="sidebar-user-hint">{s.account}</span>
+          </Link>
+        )}
       </div>
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" onClick={mobile ? onNavigate : undefined}>
         {groups.map(group => (
           <div key={group.key} className="nav-group">
             <div className="nav-group-label">{s[group.key]}</div>
@@ -78,6 +92,15 @@ export default function Sidebar() {
       </nav>
       <div className="sidebar-footer">
         <LanguageToggle variant="dark" />
+        {onChangeView && (
+          <ViewModeToggle
+            desktopMode={desktopMode}
+            onChange={onChangeView}
+            mobileLabel={a.mobileView}
+            desktopLabel={a.desktopView}
+            variant="dark"
+          />
+        )}
         <button type="button" onClick={logout} className="sidebar-logout">
           {s.logout}
         </button>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Link, BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { LangProvider, useLang } from './hooks/useLang'
@@ -7,6 +7,9 @@ import Sidebar from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
+import { readAdminDesktopMode, writeAdminViewMode } from './lib/adminView'
+import AdminMobileNav from './components/AdminMobileNav'
+import ViewModeToggle from './components/ViewModeToggle'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -34,6 +37,7 @@ const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
+const Account = lazy(() => import('./pages/Account'))
 
 function PortalLoading() {
   return (
@@ -83,6 +87,7 @@ const PAGE_KEYS = {
   '/salary-complaints': 'salaryIssues',
   '/equipment-requests': 'equipmentRequests',
   '/ai': 'ai',
+  '/account': 'account',
 }
 
 function pageTitle(pathname, sidebar) {
@@ -96,6 +101,36 @@ function AppContent() {
   const location = useLocation()
   const a = t.app
   const title = pageTitle(location.pathname, t.sidebar)
+  const [desktopMode, setDesktopMode] = React.useState(readAdminDesktopMode)
+  const [navOpen, setNavOpen] = React.useState(false)
+
+  const setView = (nextDesktop) => {
+    setDesktopMode(nextDesktop)
+    writeAdminViewMode(nextDesktop)
+    setNavOpen(false)
+  }
+
+  React.useEffect(() => { setNavOpen(false) }, [location.pathname])
+
+  React.useEffect(() => {
+    if (desktopMode) setNavOpen(false)
+  }, [desktopMode])
+
+  React.useEffect(() => {
+    if (!navOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') setNavOpen(false) }
+    document.addEventListener('keydown', onKey)
+    const phonePage = document.querySelector('.admin-stage.is-phone .page-content')
+    const prevBody = document.body.style.overflow
+    const prevPage = phonePage ? phonePage.style.overflow : ''
+    if (phonePage) phonePage.style.overflow = 'hidden'
+    else document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevBody
+      if (phonePage) phonePage.style.overflow = prevPage
+    }
+  }, [navOpen])
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -124,19 +159,73 @@ function AppContent() {
   )
 
   return (
-    <div className="app-shell">
-      <Sidebar />
-      <AIFloatingWidget mode="admin" />
+    <div className={`admin-stage ${desktopMode ? 'is-desktop' : 'is-phone'}`}>
+    <div className={`app-shell ${desktopMode ? 'admin-desktop' : 'admin-mobile'}`}>
+      {!desktopMode && navOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label={a.closeMenu}
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+      <Sidebar
+        mobile={!desktopMode}
+        open={navOpen}
+        onNavigate={() => setNavOpen(false)}
+        desktopMode={desktopMode}
+        onChangeView={setView}
+      />
+      <AIFloatingWidget mode="admin" layoutKey={desktopMode ? 'desktop' : 'mobile'} />
       <div className="main">
         <header className="topbar">
-          <span className="topbar-title">{title}</span>
+          <div className="topbar-left">
+            {!desktopMode && (
+              <button
+                type="button"
+                className="topbar-menu-btn"
+                aria-label={a.menu}
+                aria-expanded={navOpen}
+                aria-controls="admin-sidebar"
+                onClick={() => setNavOpen(o => !o)}
+              >
+                {navOpen ? '✕' : '☰'}
+              </button>
+            )}
+            <span className="topbar-title">{title}</span>
+          </div>
           <div className="topbar-right">
-            <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
-            <span style={{ color:'var(--text3)' }}>·</span>
-            <Clock />
-            <button type="button" onClick={logout} className="btn btn-sm" style={{ marginLeft:8 }}>
-              {t.sidebar.logout}
-            </button>
+            {desktopMode && (
+              <>
+                <ViewModeToggle
+                  desktopMode={desktopMode}
+                  onChange={setView}
+                  mobileLabel={a.mobileView}
+                  desktopLabel={a.desktopView}
+                  variant="light"
+                />
+                <Link
+                  to="/ai"
+                  className={`topbar-ai${location.pathname === '/ai' ? ' on' : ''}`}
+                  aria-label={t.sidebar.ai}
+                >
+                  AI
+                </Link>
+                <Link to="/account" className="btn btn-sm topbar-account">
+                  {t.sidebar.account}
+                </Link>
+                <span className="topbar-meta">
+                  <Link to="/account" style={{ fontSize: 13, color: 'var(--text2)', textDecoration: 'none', fontWeight: 600 }}>
+                    {user.name}
+                  </Link>
+                  <span style={{ color: 'var(--text3)' }}>·</span>
+                  <Clock />
+                </span>
+                <button type="button" onClick={logout} className="btn btn-sm topbar-logout">
+                  {t.sidebar.logout}
+                </button>
+              </>
+            )}
           </div>
         </header>
         <main className="page-content">
@@ -165,11 +254,16 @@ function AppContent() {
               <Route path="/salary-complaints" element={<SalaryComplaints />} />
               <Route path="/equipment-requests" element={<EquipmentRequests />} />
               <Route path="/ai" element={<AdminAI />} />
+              <Route path="/account" element={<Account />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Suspense>
         </main>
+        {!desktopMode && (
+          <AdminMobileNav moreOpen={navOpen} onMore={() => setNavOpen(o => !o)} />
+        )}
       </div>
+    </div>
     </div>
   )
 }

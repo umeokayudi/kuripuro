@@ -1,3 +1,4 @@
+import { tokyoToday, datesInRange, weekdayOfYmd, monthBounds } from './dates'
 import {
   OTP_BASIC_LOCATIONS,
   ATOMIC_LOCATION,
@@ -15,12 +16,68 @@ import {
   getCleaningType,
   parseDeepComponents,
   isDeepCleanAllowedOnDate,
+  allowedDeepCleanDaysForLocation,
   DEFAULT_DEEP_CLEAN_PRICE,
   ALL_DEEP_COMPONENT_IDS,
 } from './cleaningType'
 import { checklistTemplateForJob } from './jobChecklist'
+import { jobPinFieldsForLocation } from './jobGps'
 
 export { titleMatchesLocation }
+
+export function isManualServiceAllowedOnDate(location, date, cleaningType = 'basic') {
+  if (!location || !date) return false
+  if (cleaningType === 'deep') {
+    if (location.group === 'Atomic' || location.group === 'Spot') return false
+    return isDeepCleanAllowedOnDate(location.name, date)
+  }
+  if (location.deepOnly || isOtpDeepOnlyLocation(location.name)) return false
+  const days = location.days
+  if (!days || !days.length) return true
+  return days.includes(weekdayOfYmd(date))
+}
+
+export function manualServiceDateWindow(today = tokyoToday()) {
+  const ym = today.slice(0, 7)
+  const [y, m] = ym.split('-').map(Number)
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
+  const prev2 = m <= 2 ? `${y - 1}-${String(m + 10).padStart(2, '0')}` : `${y}-${String(m - 2).padStart(2, '0')}`
+  return { from: monthBounds(prev2).from, to: today, currentMonth: ym, prevMonth: prev }
+}
+
+export function possibleManualDates({ cleaningType = 'basic', fromYmd, toYmd, location = null } = {}) {
+  const window = manualServiceDateWindow()
+  const from = fromYmd || window.from
+  const to = toYmd || window.to
+  const locs = location ? [location] : manualAddLocations()
+  return datesInRange(from, to).filter(d =>
+    locs.some(loc => isManualServiceAllowedOnDate(loc, d, cleaningType))
+  )
+}
+
+export function snapToPossibleDate(date, cleaningType = 'basic', location = null) {
+  const dates = possibleManualDates({ cleaningType, location })
+  if (dates.includes(date)) return date
+  const earlier = dates.filter(d => d <= date)
+  return earlier[earlier.length - 1] || dates[0] || tokyoToday()
+}
+
+const DAY_NAMES_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DAY_NAMES_JA = ['日', '月', '火', '水', '木', '金', '土']
+
+/** Short operating-day label for the add-service list (e.g. "Mon · Sat" / "月・土"). */
+export function formatManualServiceDays(location, cleaningType = 'basic', lang = 'en') {
+  if (!location) return ''
+  const names = lang === 'ja' ? DAY_NAMES_JA : DAY_NAMES_EN
+  const sep = lang === 'ja' ? '・' : ' · '
+  if (cleaningType === 'deep') {
+    if (location.group === 'Atomic' || location.group === 'Spot') return ''
+    return allowedDeepCleanDaysForLocation(location.name).map(d => names[d]).join(sep)
+  }
+  const days = location.days
+  if (!days || !days.length || days.length === 7) return lang === 'ja' ? '毎日' : 'Every day'
+  return days.map(d => names[d]).join(sep)
+}
 
 function jobsAtLocationAndType(jobs, locationName, cleaningType) {
   return (jobs || []).filter(j => jobMatchesLocationAndType(j, locationName, cleaningType))
@@ -39,6 +96,7 @@ export function manualAddLocations() {
     scheduledTime: '00:30',
     group: 'OTP',
     deepOnly: !!loc.deepOnly,
+    days: loc.days || loc.operatingDays || null,
   }))
   const atomic = [{
     name: ATOMIC_LOCATION.name,
@@ -50,6 +108,7 @@ export function manualAddLocations() {
     deepCleanPrice: 0,
     scheduledTime: ATOMIC_LOCATION.scheduledTime || '21:00',
     group: 'Atomic',
+    days: ATOMIC_LOCATION.days || [1],
   }]
   const matsunaga = [{
     name: MATSUNAGA_SPOT.name,
@@ -61,6 +120,7 @@ export function manualAddLocations() {
     deepCleanPrice: 0,
     scheduledTime: '10:00',
     group: 'Spot',
+    days: null,
   }]
   return [...otp, ...atomic, ...matsunaga]
 }
@@ -89,14 +149,44 @@ export function pastServicePrefillFromJob(job) {
   }
 }
 
-/** Build UI rows — respects basic vs deep as separate services */
-export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, cleaningType = 'basic') {
+export const ADD_OPTION_SORT = {
+  available: 0,
+  claim: 1,
+  transfer: 2,
+  mine: 3,
+  done_today: 4,
+  blocked: 5,
+  wrong_day: 6,
+  wrong_type: 7,
+}
+
+/** Day/type gate for one catalog location — used by add-service UI every time. */
+export function classifyAddServiceLocation(location, date, cleaningType = 'basic') {
+  if (!location || !date) return { state: 'wrong_day' }
+  if (cleaningType === 'basic' && (location.deepOnly || isOtpDeepOnlyLocation(location.name))) {
+    return { state: 'wrong_type', reason: 'deep_only' }
+  }
+  if (cleaningType === 'deep' && (location.group === 'Atomic' || location.group === 'Spot')) {
+    return { state: 'wrong_type', reason: 'deep_not_available' }
+  }
+  if (!isManualServiceAllowedOnDate(location, date, cleaningType)) {
+    return { state: 'wrong_day' }
+  }
+  return { state: 'eligible' }
+}
+
+export function isAddServiceActionable(state) {
+  return ['available', 'claim', 'transfer', 'done_today'].includes(state)
+}
+
+/** Build UI rows — lists every location, including wrong-day / wrong-type, so nothing is hidden. */
+export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, cleaningType = 'basic', date = null) {
   const jobs = todayJobs || []
   const active = jobs.filter(j => j.status === 'assigned' || j.status === 'in_progress')
   const completed = jobs.filter(j => j.status === 'completed')
   const matchLoc = (j, locName) => jobMatchesLocationAndType(j, locName, cleaningType)
 
-  return locations.map(loc => {
+  const rows = (locations || []).map(loc => {
     const mine = active.find(j =>
       j.employee_id === currentEmployeeId && matchLoc(j, loc.name)
     )
@@ -148,8 +238,16 @@ export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, 
       }
     }
 
+    if (date) {
+      const dayClass = classifyAddServiceLocation(loc, date, cleaningType)
+      if (dayClass.state !== 'eligible') return { location: loc, ...dayClass }
+    }
+
     return { location: loc, state: 'available' }
   })
+
+  return rows.sort((a, b) => (ADD_OPTION_SORT[a.state] ?? 99) - (ADD_OPTION_SORT[b.state] ?? 99)
+    || String(a.location?.name || '').localeCompare(String(b.location?.name || '')))
 }
 
 async function nextSequenceOrder(supabase, employeeId, date) {
@@ -264,8 +362,12 @@ export async function employeeAddService(supabase, {
     return { ok: false, error: 'deep_components_required' }
   }
 
-  if (cleaningType === 'deep' && !isDeepCleanAllowedOnDate(location.name, date)) {
-    return { ok: false, error: 'wrong_deep_day' }
+  if (date > tokyoToday()) {
+    return { ok: false, error: 'future_not_allowed' }
+  }
+
+  if (!isManualServiceAllowedOnDate(location, date, cleaningType)) {
+    return { ok: false, error: cleaningType === 'deep' ? 'wrong_deep_day' : 'not_possible_day' }
   }
 
   const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })
@@ -369,6 +471,7 @@ export async function employeeAddService(supabase, {
     job_category: 'regular',
     sequence_order: nextSeq,
     photo_required: false,
+    ...jobPinFieldsForLocation(location),
   }).select().single()
 
   if (insErr) return { ok: false, error: 'create_failed', detail: insErr.message }
@@ -403,9 +506,12 @@ export async function preparePastServiceJob(supabase, {
     return { ok: false, error: 'deep_components_required' }
   }
 
-  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
-  if (cleaningType === 'deep' && date >= today && !isDeepCleanAllowedOnDate(location.name, date)) {
-    return { ok: false, error: 'wrong_deep_day' }
+  if (date > tokyoToday()) {
+    return { ok: false, error: 'future_not_allowed' }
+  }
+
+  if (!isManualServiceAllowedOnDate(location, date, cleaningType)) {
+    return { ok: false, error: cleaningType === 'deep' ? 'wrong_deep_day' : 'not_possible_day' }
   }
 
   const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })
@@ -508,6 +614,7 @@ export async function preparePastServiceJob(supabase, {
     job_category: 'regular',
     sequence_order: nextSeq,
     photo_required: false,
+    ...jobPinFieldsForLocation(location),
   }).select().single()
 
   if (insErr) return { ok: false, error: 'create_failed', detail: insErr.message }

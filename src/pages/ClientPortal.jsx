@@ -4,7 +4,18 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 import {
-  buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
+  buildDaySummaries,
+  buildDeepCleanProgressForUser,
+  currentYearMonth,
+  deepComponentLabel,
+  filterDeepCleanProgressByLocation,
+  formatScheduleDate,
+  monthCalendarCells,
+  ONTHEPLANET_CLIENT_ID,
+  parseDeepComponents,
+  storeProgressRows,
+  tuesdaySlotInfo,
+  getCleaningType,
 } from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -12,10 +23,16 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
+  filterClientVisits, monthCompletedCount, visibleInvoices, unpaidInvoices,
+  filterInvoices, lastDeepVisit, itemsForInvoice, clientLocations,
 } from '../lib/clientPortal'
+import {
+  extrasForLocation, extraLabel, extraHint, extraTimeLabel, EXTRA_TIMES, mergeExtraNotes,
+  formatYen, packExtraRequest, packPaymentNotice, parseExtraRequest,
+} from '../lib/clientExtras'
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
-import { tokyoToday } from '../lib/dates'
+import { tokyoToday, addCalendarDays } from '../lib/dates'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import './client-portal.css'
 
@@ -25,7 +42,7 @@ function sanitizePostgrestToken(value) {
 
 const filterByLocation = (rows, locationName) => {
   if (!locationName) return rows || []
-  return (rows || []).filter(r => !r.location_name || r.location_name === locationName)
+  return (rows || []).filter(r => r.location_name === locationName)
 }
 
 function monthBounds(ym) {
@@ -36,10 +53,24 @@ function monthBounds(ym) {
   return { from, to }
 }
 
+function shiftYearMonth(ym, delta) {
+  const [y, m] = String(ym || '').split('-').map(Number)
+  if (!y || !m) return ym
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function mergeJobLists(prev, incoming) {
+  const map = new Map()
+  ;(prev || []).forEach(j => { if (j?.id) map.set(j.id, j) })
+  ;(incoming || []).forEach(j => { if (j?.id) map.set(j.id, j) })
+  return [...map.values()].sort((a, b) => String(b.scheduled_date || '').localeCompare(String(a.scheduled_date || '')))
+}
+
 function visitRangeForPreset(preset, today) {
   if (preset === 'all') return { from: '2000-01-01', to: today }
   if (preset === '90d') {
-    const from = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
+    const from = addCalendarDays(today, -90)
     return { from, to: today }
   }
   if (preset === 'lastMonth') {
@@ -80,14 +111,26 @@ export default function ClientPortal() {
   const [clock, setClock] = useState(new Date())
   const [visitPreset, setVisitPreset] = useState('month')
   const [visitRange, setVisitRange] = useState(() => visitRangeForPreset('month', tokyoToday()))
+  const [visitType, setVisitType] = useState('all')
+  const [visitStore, setVisitStore] = useState('')
+  const [visitUnratedOnly, setVisitUnratedOnly] = useState(false)
+  const [requestTab, setRequestTab] = useState('extras')
+  const [extraNotes, setExtraNotes] = useState('')
+  const [extraDate, setExtraDate] = useState('')
+  const [extraTime, setExtraTime] = useState('after_close')
+  const [extraLocation, setExtraLocation] = useState('')
+  const [bookingExtra, setBookingExtra] = useState(null)
+  const [invoices, setInvoices] = useState([])
+  const [invoiceItems, setInvoiceItems] = useState([])
+  const [invoiceFilter, setInvoiceFilter] = useState('all')
   const [deepProgressMonth, setDeepProgressMonth] = useState(currentYearMonth)
+  const [deepProgressStore, setDeepProgressStore] = useState('')
   const loadedOnceRef = useRef(false)
 
   const [complaintForm, setComplaintForm] = useState({ job_id: '', category: 'quality', description: '' })
   const [requestForm, setRequestForm] = useState({ location_name: '', description: '', preferred_date: '' })
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showComplimentForm, setShowComplimentForm] = useState(false)
-  const [showRequestForm, setShowRequestForm] = useState(false)
   const [ratingForm, setRatingForm] = useState({ stars: 5, comment: '' })
   const [complimentForm, setComplimentForm] = useState({ job_id: '', message: '' })
   const [submittingRating, setSubmittingRating] = useState(false)
@@ -113,25 +156,28 @@ export default function ClientPortal() {
       toast.error(c?.sessionExpired || 'Session expired. Please log in again.')
       return
     }
-    const since = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]
+    const since = addCalendarDays(tokyoToday(), -365)
     if (!silent && !loadedOnceRef.current) setLoading(true)
 
     try {
       const locToken = sanitizePostgrestToken(user.location_name)
       const locOrFilter = locToken
         ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${locToken}%)`
-        : `client_id.eq.${user.client_id}`
-      const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
-        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
+        : `client_id.eq.${user.client_id},and(client_id.is.null,client_name.eq.On The Planet)`
+      const monthRange = monthBounds(deepProgressMonth)
+      const [jobsMonthRes, jobsRecentRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes, invRes] = await Promise.all([
+        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', monthRange.from).lte('scheduled_date', monthRange.to).limit(800),
+        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(250),
         supabase.from('service_contracts').select('location_name').eq('client_id', user.client_id).eq('is_active', true),
         supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at').limit(100),
         supabase.from('client_complaints').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
         supabase.from('client_compliments').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
         supabase.from('client_ratings').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(100),
         supabase.from('client_requests').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
+        supabase.from('faturas').select('*').eq('client_id', user.client_id).order('issue_date', { ascending: false }).limit(24),
       ])
 
-      const firstErr = [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes]
+      const firstErr = [jobsMonthRes, jobsRecentRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes]
         .map(r => r.error?.message)
         .find(Boolean)
       if (firstErr?.includes('client_') || firstErr?.includes('PGRST205')) {
@@ -140,13 +186,25 @@ export default function ClientPortal() {
         toast.error(firstErr)
       }
 
-      setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
-      setContracts(contractsRes.data || [])
+      setJobs(mergeJobLists(
+        (jobsRecentRes.data || []).filter(j => jobMatchesClientUser(j, user)),
+        (jobsMonthRes.data || []).filter(j => jobMatchesClientUser(j, user)),
+      ))
+      setContracts((contractsRes.data || []).filter(ct => !user.location_name || ct.location_name === user.location_name))
       setMessages(filterByLocation(msgsRes.data, user.location_name))
       setComplaints(filterByLocation(compRes.data, user.location_name))
       setCompliments(filterByLocation(cmplRes.data, user.location_name))
       setRatings((ratRes.data || []).filter(r => ratingMatchesClientUser(r, user)))
       setRequests(filterByLocation(reqRes.data, user.location_name))
+      const visInv = visibleInvoices(invRes.error ? [] : (invRes.data || []))
+      setInvoices(visInv)
+      if (visInv.length) {
+        const ids = visInv.map(f => f.id).filter(Boolean)
+        const itemsRes = await supabase.from('fatura_items').select('*').in('fatura_id', ids)
+        setInvoiceItems(itemsRes.error ? [] : (itemsRes.data || []))
+      } else {
+        setInvoiceItems([])
+      }
       setUnreadMsgs(filterByLocation(msgsRes.data, user.location_name).filter(m => m.sender === 'admin' && !m.read).length)
       await supabase.from('client_users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
     } catch (err) {
@@ -155,7 +213,7 @@ export default function ClientPortal() {
       setLoading(false)
       loadedOnceRef.current = true
     }
-  }, [user, c?.sessionExpired])
+  }, [user, c?.sessionExpired, deepProgressMonth])
 
   const markMessagesRead = useCallback(async () => {
     if (!user?.client_id) return
@@ -171,7 +229,7 @@ export default function ClientPortal() {
 
   useEffect(() => {
     if (!c) return
-    loadAll({ silent: false })
+    loadAll({ silent: loadedOnceRef.current })
     const refresh = setInterval(() => loadAll({ silent: true }), 20000)
     return () => clearInterval(refresh)
   }, [user?.id, c, loadAll])
@@ -180,6 +238,20 @@ export default function ClientPortal() {
     const tick = setInterval(() => setClock(new Date()), 60000)
     return () => clearInterval(tick)
   }, [])
+
+  useEffect(() => {
+    if (!selectedVisit && !lightbox) return
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      if (lightbox) {
+        setLightbox(null)
+        return
+      }
+      setSelectedVisit(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedVisit, lightbox])
 
   useEffect(() => {
     if (!c || tab !== 'chat') return
@@ -237,9 +309,16 @@ export default function ClientPortal() {
   }
 
   const filteredVisits = useMemo(() => {
-    const done = jobs.filter(j => j.status === 'completed')
-    return done.filter(j => j.scheduled_date >= visitRange.from && j.scheduled_date <= visitRange.to)
-  }, [jobs, visitRange.from, visitRange.to])
+    const ratedJobIds = new Set(ratings.map(r => r.job_id).filter(Boolean))
+    return filterClientVisits(jobs, {
+      from: visitRange.from,
+      to: visitRange.to,
+      type: visitType,
+      store: visitStore,
+      unratedOnly: visitUnratedOnly,
+      ratedJobIds,
+    })
+  }, [jobs, visitRange.from, visitRange.to, visitType, visitStore, visitUnratedOnly, ratings])
 
   const visitStats = useMemo(() => {
     let minutes = 0
@@ -256,10 +335,19 @@ export default function ClientPortal() {
   }, [filteredVisits])
 
   const isOtpClient = user?.client_id === ONTHEPLANET_CLIENT_ID
-  const deepProgress = useMemo(() => {
+  const canSelectDeepStore = isOtpClient && !user?.location_name
+  const deepProgressAll = useMemo(() => {
     if (!isOtpClient) return null
-    return buildDeepCleanProgressForUser(jobs, deepProgressMonth, user)
+    return buildDeepCleanProgressForUser(jobs, deepProgressMonth, {
+      ...user,
+      location_name: user?.location_name || '',
+    })
   }, [jobs, deepProgressMonth, user, isOtpClient])
+  const deepProgress = useMemo(() => {
+    if (!deepProgressAll) return null
+    if (!canSelectDeepStore || !deepProgressStore) return deepProgressAll
+    return filterDeepCleanProgressByLocation(deepProgressAll, deepProgressStore)
+  }, [deepProgressAll, canSelectDeepStore, deepProgressStore])
   const deepProgressMonthLabel = useMemo(() => (
     new Date(`${deepProgressMonth}-01T12:00:00`).toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
   ), [deepProgressMonth, dateLocale])
@@ -405,8 +493,68 @@ export default function ClientPortal() {
     if (error) return toast.error(error.message)
     toast.success(c.requestSent)
     setRequestForm({ location_name: user.location_name || '', description: '', preferred_date: '' })
-    setShowRequestForm(false)
     loadAll({ silent: true })
+  }
+
+  const pickExtra = (extra) => {
+    setBookingExtra(extra)
+    if (!extraDate) setExtraDate(addCalendarDays(tokyoToday(), 1))
+  }
+
+  const bookExtra = async (extra) => {
+    const loc = user.location_name || extraLocation || ''
+    if (!loc) return toast.error(c.requestLocation)
+    const description = packExtraRequest({
+      extraId: extra.id,
+      price: extra.price,
+      locationName: loc,
+      notes: mergeExtraNotes(extraNotes, extraTime, lang),
+    })
+    const { error } = await supabase.from('client_requests').insert({
+      client_id: user.client_id, client_user_id: user.id,
+      location_name: loc,
+      description,
+      preferred_date: extraDate || null,
+      status: 'pending', ticket_number: `KP-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+    })
+    if (error) return toast.error(error.message)
+    toast.success(c.extraBooked)
+    setExtraNotes('')
+    setExtraTime('after_close')
+    setBookingExtra(null)
+    setRequestTab('history')
+    loadAll({ silent: true })
+  }
+
+  const markInvoicePaid = async (invoice) => {
+    const { error } = await supabase.from('client_requests').insert({
+      client_id: user.client_id, client_user_id: user.id,
+      location_name: user.location_name || null,
+      description: packPaymentNotice({
+        faturaId: invoice.id,
+        total: invoice.total,
+        period: `${invoice.period_start || ''} – ${invoice.period_end || invoice.issue_date || ''}`,
+      }),
+      status: 'pending', ticket_number: `KP-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+    })
+    if (error) return toast.error(error.message)
+    toast.success(c.invoicePaidSent)
+    setRequestTab('history')
+    setTab('requests')
+    loadAll({ silent: true })
+  }
+
+  const downloadVisitPdf = async (job) => {
+    const preview = typeof window !== 'undefined' ? window.open('', '_blank') : null
+    const toastId = toast.loading(c.generatingPdf)
+    try {
+      const { saveServiceReportPdf } = await import('../lib/generatePDF')
+      await saveServiceReportPdf(job, { lang, labels: c, previewWindow: preview })
+      toast.success(c.pdfReady, { id: toastId })
+    } catch (err) {
+      try { preview?.close() } catch {}
+      toast.error(err?.message || c.pdfFailed, { id: toastId })
+    }
   }
 
   const applyVisitPreset = (preset) => {
@@ -415,18 +563,24 @@ export default function ClientPortal() {
   }
 
   const today = tokyoToday()
-  const todayJobs = jobs.filter(j => j.scheduled_date === today)
+  const todayJobs = jobs.filter(j => j.scheduled_date === today && j.status !== 'cancelled')
   const upcoming = jobs.filter(j => j.scheduled_date > today && j.status !== 'cancelled').slice(0, 10)
   const completed = jobs.filter(j => j.status === 'completed')
-  const locations = [...new Set([
-    ...(user.location_name ? [user.location_name] : []),
-    ...contracts.map(ct => ct.location_name).filter(Boolean),
-    ...jobs.map(j => locationFromJob(j)).filter(Boolean),
-  ])]
+  const monthDone = monthCompletedCount(jobs, today.slice(0, 7))
+  const ratedIds = new Set(ratings.map(r => r.job_id).filter(Boolean))
+  const unratedCount = completed.filter(j => !ratedIds.has(j.id)).length
+  const billsDue = unpaidInvoices(invoices)
+  const locations = clientLocations(user, contracts, jobs)
+  const extraLoc = user.location_name || extraLocation || locations[0] || ''
+  const extraCatalog = extrasForLocation(extraLoc)
+  const lastDeep = lastDeepVisit(completed)
+  const extraDeep = extraCatalog.find(e => e.id === 'extra_deep')
+  const pendingExtraDeep = requests.some(rq => rq.status !== 'completed' && parseExtraRequest(rq.description)?.extraId === 'extra_deep')
+  const shownInvoices = filterInvoices(invoices, invoiceFilter)
 
   const statusLabel = (s) => ({ assigned: tr.status.assigned, in_progress: tr.status.in_progress, completed: tr.status.completed, cancelled: tr.status.cancelled }[s] || s)
-  const statusClass = (s) => ({ completed: 'done', in_progress: 'progress', assigned: 'pending' }[s] || 'pending')
-  const cardStatusClass = (s) => ({ completed: 'status-completed', in_progress: 'status-progress', assigned: 'status-assigned' }[s] || 'status-assigned')
+  const statusClass = (s) => ({ completed: 'done', in_progress: 'progress', assigned: 'pending', cancelled: 'cancelled' }[s] || 'pending')
+  const cardStatusClass = (s) => ({ completed: 'status-completed', in_progress: 'status-progress', assigned: 'status-assigned', cancelled: 'status-cancelled' }[s] || 'status-assigned')
   const complaintCat = (k) => ({ quality: c.catQuality, missed: c.catMissed, damage: c.catDamage, late: c.catLate, other: c.catOther }[k] || k)
   const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
@@ -452,7 +606,7 @@ export default function ClientPortal() {
             <div className="cp-header-row" style={{ marginBottom: 16 }}>
               <div>
                 <div className="cp-header-title">{locationFromJob(selectedVisit)}</div>
-                <div className="cp-header-meta">{selectedVisit.scheduled_date}</div>
+                <div className="cp-header-meta">{selectedVisit.scheduled_date} · {getCleaningType(selectedVisit) === 'deep' ? c.filterDeep : c.filterBasic}</div>
               </div>
               <button type="button" className="cp-logout" onClick={() => setSelectedVisit(null)}>✕</button>
             </div>
@@ -461,7 +615,7 @@ export default function ClientPortal() {
                 [c.cleaner, selectedVisit.employee_name || '—'],
                 [c.entryTime, fmtVisitTime(selectedVisit, lang)],
                 [c.exitTime, fmtVisitEnd(selectedVisit, lang)],
-                [c.duration, fmtDuration(selectedVisit.started_at && selectedVisit.completed_at ? Math.round((new Date(selectedVisit.completed_at) - new Date(selectedVisit.started_at)) / 60000) : selectedVisit.retro_time_min, lang)],
+                [c.duration, fmtDuration(jobDurationMin(selectedVisit), lang)],
               ].map(([l, v]) => (
                 <div key={l} className="cp-time-box">
                   <div className="cp-time-lbl">{l}</div>
@@ -469,6 +623,27 @@ export default function ClientPortal() {
                 </div>
               ))}
             </div>
+            {['completed', 'in_progress'].includes(selectedVisit.status) && parseDeepComponents(selectedVisit).length > 0 && (
+              <div className="cp-field">
+                <span className="cp-label">{c.deepCleanParts}</span>
+                <div className="cp-comp-row">
+                  {parseDeepComponents(selectedVisit).map(id => (
+                    <span key={id} className="cp-comp-chip">{deepComponentLabel(id, lang)}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedVisit.checklist_total > 0 && (
+              <div className="cp-field">
+                <span className="cp-label">{c.checklist}</span>
+                <div className="cp-card" style={{ marginBottom: 0, fontSize: 13 }}>
+                  {fill(c.deepCleanChecklistLine, {
+                    done: selectedVisit.checklist_done || 0,
+                    total: selectedVisit.checklist_total,
+                  })}
+                </div>
+              </div>
+            )}
             <div className="cp-field">
               <span className="cp-label">{c.comments}</span>
               <div className="cp-card" style={{ marginBottom: 0, fontSize: 14, lineHeight: 1.55 }}>
@@ -488,14 +663,18 @@ export default function ClientPortal() {
                 />
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   {selectedVisit.photo_start_url && (
-                    <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.before})</a>
+                    <a href={viewablePhotoUrl(selectedVisit.photo_start_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto} ({c.before})</a>
                   )}
                   {selectedVisit.photo_end_url && (
-                    <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.after})</a>
+                    <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto} ({c.after})</a>
                   )}
                 </div>
               </div>
             )}
+            <button type="button" className="cp-btn cp-btn-gold" style={{ width: '100%', marginBottom: 14 }} onClick={() => downloadVisitPdf(selectedVisit)}>
+              📄 {c.downloadPdf}
+            </button>
+            {selectedVisit.status === 'completed' && (
             <div className="cp-rating-box">
               <span className="cp-label">{c.rateService}</span>
               <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
@@ -520,6 +699,7 @@ export default function ClientPortal() {
                 {ratingForJob(selectedVisit.id) ? c.updateRating : c.submitRating}
               </button>
             </div>
+            )}
           </div>
         </div>
       )}
@@ -574,22 +754,19 @@ export default function ClientPortal() {
                 </div>
               )}
               <div className="cp-header-actions">
-                <LanguageToggle variant="dark" />
-                {!desktopMode && (
+                <LanguageToggle variant="dark" compact={!desktopMode} />
+                {desktopMode && (
                   <button type="button" className="cp-view-toggle" onClick={toggleView}>
-                    🖥 {c.desktopView}
+                    📱 {c.mobileView}
                   </button>
-                )}
-                {!desktopMode && (
-                  <button type="button" className="cp-logout" onClick={logout}>{c.logout}</button>
                 )}
               </div>
             </div>
             {tab === 'home' && !loading && (
               <div className="cp-stats">
                 <div className="cp-stat">
-                  <div className="cp-stat-val">{completed.length}</div>
-                  <div className="cp-stat-lbl">{c.visits}</div>
+                  <div className="cp-stat-val">{monthDone}</div>
+                  <div className="cp-stat-lbl">{c.visitThisMonth}</div>
                 </div>
                 <div className="cp-stat">
                   <div className="cp-stat-val">{avgRating}</div>
@@ -608,13 +785,55 @@ export default function ClientPortal() {
               <div className="cp-loading">{c.loading}</div>
             ) : tab === 'home' && (
               <>
+                <div className="cp-quick-row">
+                  <button type="button" className="cp-quick" onClick={() => { setTab('requests'); setRequestTab('extras') }}>
+                    <span>✨</span>
+                    <b>{c.bookExtra}</b>
+                    <small>{c.bookExtraHint}</small>
+                  </button>
+                  <button type="button" className="cp-quick" onClick={() => { setTab('visits'); setVisitUnratedOnly(true); applyVisitPreset('month') }}>
+                    <span>★</span>
+                    <b>{unratedCount}</b>
+                    <small>{c.unratedVisits}</small>
+                  </button>
+                  <button type="button" className="cp-quick" onClick={() => { setTab('requests'); setRequestTab('bills') }}>
+                    <span>💴</span>
+                    <b>{billsDue.length}</b>
+                    <small>{c.invoicesDue}</small>
+                  </button>
+                </div>
+                {extraDeep && !pendingExtraDeep && (
+                  <button
+                    type="button"
+                    className="cp-upsell"
+                    onClick={() => { setTab('requests'); setRequestTab('extras'); pickExtra(extraDeep) }}
+                  >
+                    <span>✨</span>
+                    <div>
+                      <b>{c.upsellDeepTitle} · {formatYen(extraDeep.price)}</b>
+                      <small>
+                        {lastDeep
+                          ? fill(c.upsellDeepLast, { date: lastDeep.scheduled_date })
+                          : c.upsellDeepNone}
+                      </small>
+                    </div>
+                  </button>
+                )}
                 {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
                   <DeepCleanProgressCard
                     progress={deepProgress}
+                    allByLocation={canSelectDeepStore ? deepProgressAll?.byLocation : null}
                     labels={c}
+                    lang={lang}
+                    today={today}
                     monthLabel={deepProgressMonthLabel}
                     progressMonth={deepProgressMonth}
                     onMonthChange={setDeepProgressMonth}
+                    canSelectStore={canSelectDeepStore}
+                    selectedStore={deepProgressStore}
+                    onStoreChange={setDeepProgressStore}
+                    onVisitClick={j => setSelectedVisit(j)}
+                    onPhotoClick={setLightbox}
                   />
                 )}
                 <div className="cp-section-title"><span>📅</span> {c.today} — {today}</div>
@@ -724,6 +943,28 @@ export default function ClientPortal() {
                       }}
                     />
                   </div>
+                  <div className="cp-period-pills" style={{ marginTop: 12 }}>
+                    {[
+                      ['all', c.visitAll],
+                      ['basic', c.filterBasic],
+                      ['deep', c.filterDeep],
+                    ].map(([key, label]) => (
+                      <button key={key} type="button" className={`cp-period-pill${visitType === key ? ' active' : ''}`} onClick={() => setVisitType(key)}>
+                        {label}
+                      </button>
+                    ))}
+                    <button type="button" className={`cp-period-pill${visitUnratedOnly ? ' active' : ''}`} onClick={() => setVisitUnratedOnly(v => !v)}>
+                      ★ {c.unratedVisits}
+                    </button>
+                  </div>
+                  {locations.length > 1 && (
+                    <div style={{ marginTop: 10 }}>
+                      <select className="cp-select" value={visitStore} onChange={e => setVisitStore(e.target.value)}>
+                        <option value="">{c.allLocations}</option>
+                        {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 <div className="cp-period-stats">
@@ -845,6 +1086,12 @@ export default function ClientPortal() {
                             <img src={viewablePhotoUrl(cp.photo_url)} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: 'cover' }} />
                           </button>
                         )}
+                        {cp.admin_response && (
+                          <div className="cp-admin-reply">
+                            <div className="cp-label">{c.adminResponse}</div>
+                            <div>{cp.admin_response}</div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </>
@@ -873,6 +1120,12 @@ export default function ClientPortal() {
                       <div key={cm.id} className="cp-card status-completed">
                         <div className="cp-card-date" style={{ marginBottom: 8 }}>{cm.location_name} · {new Date(cm.created_at).toLocaleDateString('ja-JP')}</div>
                         <div style={{ fontSize: 14, lineHeight: 1.5 }}>👏 {cm.message}</div>
+                        {cm.admin_response && (
+                          <div className="cp-admin-reply">
+                            <div className="cp-label">{c.adminResponse}</div>
+                            <div>{cm.admin_response}</div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </>
@@ -882,10 +1135,74 @@ export default function ClientPortal() {
 
             {!loading && tab === 'requests' && (
               <>
-                <button type="button" className="cp-btn cp-btn-blue" style={{ marginBottom: 16 }} onClick={() => setShowRequestForm(!showRequestForm)}>📝 {c.newRequest}</button>
-                {showRequestForm && (
-                  <div className="cp-card" style={{ marginBottom: 16 }}>
+                <div className="cp-pills">
+                  <button type="button" className={`cp-pill${requestTab === 'extras' ? ' active-green' : ''}`} onClick={() => setRequestTab('extras')}>✨ {c.bookExtra}</button>
+                  <button type="button" className={`cp-pill${requestTab === 'custom' ? ' active-green' : ''}`} onClick={() => setRequestTab('custom')}>📝 {c.newRequest}</button>
+                  <button type="button" className={`cp-pill${requestTab === 'bills' ? ' active-green' : ''}`} onClick={() => setRequestTab('bills')}>💴 {c.invoices}{billsDue.length ? ` (${billsDue.length})` : ''}</button>
+                  <button type="button" className={`cp-pill${requestTab === 'history' ? ' active-green' : ''}`} onClick={() => setRequestTab('history')}>{c.requestHistory}</button>
+                </div>
+
+                {requestTab === 'extras' && (
+                  <>
+                    <p className="cp-muted-copy">{c.bookExtraIntro}</p>
                     {locations.length > 1 && (
+                      <div className="cp-field">
+                        <span className="cp-label">{c.requestLocation}</span>
+                        <select className="cp-select" value={extraLoc} onChange={e => setExtraLocation(e.target.value)}>
+                          {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    {bookingExtra && (
+                      <div className="cp-card" style={{ marginBottom: 12 }}>
+                        <div className="cp-label">{extraLabel(bookingExtra.id, lang)} · {formatYen(bookingExtra.price)}</div>
+                        <div className="cp-field" style={{ marginTop: 10 }}>
+                          <span className="cp-label">{c.requestDate}</span>
+                          <input type="date" className="cp-input" min={today} value={extraDate} onChange={e => setExtraDate(e.target.value)} />
+                        </div>
+                        <div className="cp-field">
+                          <span className="cp-label">{c.extraTime}</span>
+                          <div className="cp-period-pills">
+                            {EXTRA_TIMES.map(id => (
+                              <button
+                                key={id}
+                                type="button"
+                                className={`cp-period-pill${extraTime === id ? ' active' : ''}`}
+                                onClick={() => setExtraTime(id)}
+                              >
+                                {extraTimeLabel(id, lang)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="cp-field">
+                          <span className="cp-label">{c.extraNotes}</span>
+                          <textarea className="cp-textarea" rows={3} value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder={c.extraNotesPh} />
+                        </div>
+                        <button type="button" className="cp-btn cp-btn-gold" onClick={() => bookExtra(bookingExtra)}>{c.confirmExtra} · {formatYen(bookingExtra.price)}</button>
+                      </div>
+                    )}
+                    <div className="cp-extra-grid">
+                      {extraCatalog.map(ex => (
+                        <button
+                          key={ex.id}
+                          type="button"
+                          className={`cp-extra-card${bookingExtra?.id === ex.id ? ' on' : ''}`}
+                          onClick={() => pickExtra(ex)}
+                        >
+                          <div className="cp-extra-icon">{ex.icon}</div>
+                          <div className="cp-extra-name">{extraLabel(ex.id, lang)}</div>
+                          <div className="cp-extra-price">{formatYen(ex.price)}</div>
+                          <div className="cp-extra-hint">{extraHint(ex.id, lang)}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {requestTab === 'custom' && (
+                  <div className="cp-card" style={{ marginBottom: 16 }}>
+                    {locations.length > 1 && !user.location_name && (
                       <div className="cp-field">
                         <span className="cp-label">{c.requestLocation}</span>
                         <select className="cp-select" value={requestForm.location_name} onChange={e => setRequestForm(f => ({ ...f, location_name: e.target.value }))}>
@@ -905,23 +1222,122 @@ export default function ClientPortal() {
                     <button type="button" className="cp-btn cp-btn-gold" onClick={submitRequest}>{c.submitRequest}</button>
                   </div>
                 )}
-                <div className="cp-section-title">{c.requestHistory}</div>
-                {requests.length === 0 ? <PortalEmpty icon="📝" text={c.noRequests} /> : requests.map(rq => (
-                  <div key={rq.id} className="cp-card">
-                    <div className="cp-card-top">
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{rq.ticket_number || `#${rq.id.slice(0, 8)}`}</span>
-                      <span className={`cp-badge ${rq.status === 'completed' ? 'done' : 'progress'}`}>{rq.status === 'completed' ? c.statusDone : c.statusPending}</span>
+
+                {requestTab === 'bills' && (
+                  <>
+                    <p className="cp-muted-copy">{c.invoicesHint}</p>
+                    <div className="cp-period-pills" style={{ marginBottom: 12 }}>
+                      {[
+                        ['all', c.invoiceAll],
+                        ['sent', c.invoiceSent],
+                        ['paid', c.invoicePaid],
+                      ].map(([key, label]) => (
+                        <button key={key} type="button" className={`cp-period-pill${invoiceFilter === key ? ' active' : ''}`} onClick={() => setInvoiceFilter(key)}>
+                          {label}
+                        </button>
+                      ))}
                     </div>
-                    <div className="cp-card-date" style={{ margin: '8px 0' }}>{rq.location_name || c.allLocations}</div>
-                    <div style={{ fontSize: 14, lineHeight: 1.5 }}>{rq.description}</div>
-                  </div>
-                ))}
+                    {shownInvoices.length === 0 ? <PortalEmpty icon="💴" text={c.noInvoices} /> : shownInvoices.map(inv => {
+                      const lines = itemsForInvoice(invoiceItems, inv.id)
+                      return (
+                      <div key={inv.id} className="cp-card">
+                        <div className="cp-card-top">
+                          <div>
+                            <div className="cp-card-loc">{inv.period_start && inv.period_end ? `${inv.period_start} – ${inv.period_end}` : inv.issue_date}</div>
+                            <div className="cp-card-date">{c.invoiceIssued}: {inv.issue_date || '—'}{inv.due_date ? ` · ${c.invoiceDue}: ${inv.due_date}` : ''}</div>
+                          </div>
+                          <span className={`cp-badge ${inv.status === 'paid' ? 'done' : 'progress'}`}>
+                            {inv.status === 'paid' ? c.invoicePaid : c.invoiceSent}
+                          </span>
+                        </div>
+                        <div className="cp-extra-price" style={{ margin: '8px 0' }}>{formatYen(inv.total)}</div>
+                        {lines.length > 0 && (
+                          <ul className="cp-invoice-lines">
+                            {lines.map(it => (
+                              <li key={it.id || `${it.description}-${it.total}`}>
+                                <span>{it.description}</span>
+                                <b>{formatYen(it.total)}</b>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {inv.notes && (
+                          <div className="cp-admin-reply">
+                            <div className="cp-label">{c.invoiceNotes}</div>
+                            <div>{inv.notes}</div>
+                          </div>
+                        )}
+                        {inv.status === 'sent' && (
+                          <button type="button" className="cp-btn cp-btn-gold" onClick={() => markInvoicePaid(inv)}>{c.markInvoicePaid}</button>
+                        )}
+                      </div>
+                      )
+                    })}
+                  </>
+                )}
+
+                {requestTab === 'history' && (
+                  <>
+                    {requests.length === 0 ? <PortalEmpty icon="📝" text={c.noRequests} /> : requests.map(rq => {
+                      const extra = parseExtraRequest(rq.description)
+                      return (
+                        <div key={rq.id} className="cp-card">
+                          <div className="cp-card-top">
+                            <span style={{ fontWeight: 700, fontSize: 13 }}>{rq.ticket_number || `#${rq.id.slice(0, 8)}`}</span>
+                            <span className={`cp-badge ${rq.status === 'completed' ? 'done' : 'progress'}`}>{rq.status === 'completed' ? c.statusDone : c.statusPending}</span>
+                          </div>
+                          <div className="cp-card-date" style={{ margin: '8px 0' }}>
+                            {rq.location_name || extra?.locationName || c.allLocations}
+                            {rq.preferred_date ? ` · ${rq.preferred_date}` : ''}
+                          </div>
+                          {extra ? (
+                            <div>
+                              <div style={{ fontWeight: 700 }}>{extraLabel(extra.extraId, lang)} · {formatYen(extra.price)}</div>
+                              {extra.notes && <div style={{ fontSize: 14, lineHeight: 1.5, marginTop: 6 }}>{extra.notes}</div>}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 14, lineHeight: 1.5 }}>{rq.description}</div>
+                          )}
+                          {rq.admin_notes && (
+                            <div className="cp-admin-reply">
+                              <div className="cp-label">{c.adminNotes}</div>
+                              <div>{rq.admin_notes}</div>
+                            </div>
+                          )}
+                          {extra && (
+                            <button
+                              type="button"
+                              className="cp-btn"
+                              style={{ marginTop: 10 }}
+                              onClick={() => {
+                                const match = extraCatalog.find(e => e.id === extra.extraId)
+                                setRequestTab('extras')
+                                if (extra.locationName) setExtraLocation(extra.locationName)
+                                pickExtra(match || { id: extra.extraId, price: extra.price, icon: '✨' })
+                              }}
+                            >
+                              {c.repeatExtra} · {formatYen(extra.price)}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
               </>
             )}
 
             {!loading && tab === 'settings' && (
               <>
                 <div className="cp-section-title">{c.settingsTitle}</div>
+                {!desktopMode && (
+                  <div className="cp-card" style={{ marginBottom: 12 }}>
+                    <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%', marginBottom: 8 }}>
+                      🖥 {c.desktopView}
+                    </button>
+                    <button type="button" className="cp-logout" onClick={logout} style={{ width: '100%' }}>{c.logout}</button>
+                  </div>
+                )}
                 <div className="cp-card" style={{ marginBottom: 16 }}>
                   <div className="cp-field">
                     <span className="cp-label">{c.company}</span>
@@ -1026,12 +1442,81 @@ function FeedbackPhotoField({
   )
 }
 
-function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, onMonthChange }) {
-  const { totals, scope, location } = progress
-  const donePct = totals.donePct ?? totals.pct ?? 0
-  const notDonePct = totals.notDonePct ?? Math.max(0, 100 - donePct)
-  const missing = Math.max(0, totals.expected - totals.scheduled)
+function DeepCleanProgressCard({
+  progress,
+  allByLocation,
+  labels,
+  lang,
+  today,
+  monthLabel,
+  progressMonth,
+  onMonthChange,
+  canSelectStore,
+  selectedStore,
+  onStoreChange,
+  onVisitClick,
+  onPhotoClick,
+}) {
+  const { scope, location } = progress
+  const daySummaries = buildDaySummaries(progress.byLocation)
+  const dayByDate = Object.fromEntries(daySummaries.map(d => [d.date, d]))
+  const cells = monthCalendarCells(progressMonth)
+  const expectedDays = daySummaries.length
+  const completedDays = daySummaries.filter(d => d.state === 'done').length
+  const partialDays = daySummaries.filter(d => d.state === 'partial').length
+  const lateDays = daySummaries.filter(d => d.state === 'late').length
+  const missingDays = daySummaries.filter(d => d.state === 'missing').length
+  const remainingDays = daySummaries.filter(d => !d.past && d.state !== 'done').length
+  const donePct = expectedDays ? Math.round((completedDays / expectedDays) * 100) : 0
+  const doneShare = expectedDays ? (completedDays / expectedDays) * 100 : 0
+  const partialShare = expectedDays ? (partialDays / expectedDays) * 100 : 0
+  const lateShare = expectedDays ? (lateDays / expectedDays) * 100 : 0
+  const missingShare = expectedDays ? (missingDays / expectedDays) * 100 : 0
   const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
+  const storeRows = storeProgressRows(allByLocation || {}, today, lang)
+  const storeNames = Object.keys(allByLocation || {}).sort((a, b) => a.localeCompare(b))
+  const weekdays = lang === 'ja'
+    ? ['日', '月', '火', '水', '木', '金', '土']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const slotLabels = {
+    slotMissing: labels.deepCleanMissing,
+    slotDone: labels.deepCleanDone,
+    slotProgress: labels.deepCleanPending,
+    slotPending: labels.deepCleanPending,
+  }
+  const serviceDates = daySummaries.map(d => d.date)
+
+  const [selectedDay, setSelectedDay] = useState(null)
+  useEffect(() => {
+    const dates = buildDaySummaries(progress.byLocation).map(d => d.date).sort()
+    const dateSet = new Set(dates)
+    setSelectedDay(prev => {
+      if (prev && dateSet.has(prev)) return prev
+      if (today && dateSet.has(today)) return today
+      const past = dates.filter(d => d <= (today || ''))
+      return past[past.length - 1] || dates[0] || null
+    })
+  }, [progress, today, progressMonth, selectedStore])
+
+  const moveSelectedDay = (delta) => {
+    if (!serviceDates.length) return
+    const idx = selectedDay ? serviceDates.indexOf(selectedDay) : (delta > 0 ? -1 : serviceDates.length)
+    const next = serviceDates[Math.min(serviceDates.length - 1, Math.max(0, idx + delta))]
+    if (next) setSelectedDay(next)
+  }
+
+  const pickStore = (name) => {
+    if (!onStoreChange) return
+    onStoreChange(selectedStore === name ? '' : name)
+  }
+
+  const selected = selectedDay ? dayByDate[selectedDay] : null
+  const selectedLabel = selected
+    ? formatScheduleDate(selected.date, lang)
+    : monthLabel
+  const todaySummary = today && today.startsWith(progressMonth) ? dayByDate[today] : null
+  const printSummary = () => window.print()
+  const visitDone = progress?.totals?.completed || 0
 
   return (
     <div className="cp-deep-progress">
@@ -1039,62 +1524,281 @@ function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, on
         <div>
           <div className="cp-deep-progress-title">✨ {labels.deepCleanProgress}</div>
           <div className="cp-deep-progress-sub">
-            {scopeLabel} · {fill(labels.deepCleanProgressHint, { month: monthLabel, expected: totals.expected })}
+            {scopeLabel} · {fill(labels.deepCleanDaysHint, {
+              month: monthLabel,
+              days: expectedDays,
+              done: completedDays,
+              pct: donePct,
+            })}
           </div>
         </div>
-        <input
-          type="month"
-          className="cp-deep-month"
-          value={progressMonth}
-          onChange={e => onMonthChange(e.target.value)}
-          aria-label={labels.deepCleanProgress}
-        />
-      </div>
-
-      <div className="cp-deep-progress-body">
-        <div
-          className="cp-deep-donut"
-          style={{ background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(248, 113, 113, 0.9) ${donePct}% 100%)` }}
-          role="img"
-          aria-label={`${donePct}% ${labels.deepCleanDone}, ${notDonePct}% ${labels.deepCleanNotDone}`}
-        >
-          <div className="cp-deep-donut-hole">
-            <div className="cp-deep-donut-pct">{donePct}%</div>
-            <div className="cp-deep-donut-lbl">{labels.deepCleanDone}</div>
-          </div>
-        </div>
-
-        <div className="cp-deep-legend">
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
-            <span className="cp-deep-legend-val">{totals.completed} ({donePct}%)</span>
-          </div>
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot not-done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
-            <span className="cp-deep-legend-val">{totals.notDone} ({notDonePct}%)</span>
-          </div>
-          {totals.pending > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot pending" />
-              <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
-              <span className="cp-deep-legend-val">{totals.pending}</span>
-            </div>
+        <div className="cp-deep-controls">
+          {canSelectStore && storeNames.length > 0 && (
+            <label className="cp-deep-store-wrap">
+              <span className="cp-deep-store-lbl">{labels.store}</span>
+              <select
+                className="cp-deep-store"
+                value={selectedStore || ''}
+                onChange={e => onStoreChange(e.target.value)}
+                aria-label={labels.deepCleanSelectStore || labels.store}
+              >
+                <option value="">{labels.deepCleanAllStores}</option>
+                {storeNames.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </label>
           )}
-          {missing > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot missing" />
-              <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
-              <span className="cp-deep-legend-val">{missing}</span>
-            </div>
+          <div className="cp-deep-month-nav" role="group" aria-label={labels.deepCleanProgress}>
+            <button
+              type="button"
+              className="cp-deep-month-btn"
+              onClick={() => onMonthChange(shiftYearMonth(progressMonth, -1))}
+              aria-label={labels.deepCleanPrevMonth}
+            >
+              ‹
+            </button>
+            <span className="cp-deep-month-label">{monthLabel}</span>
+            <button
+              type="button"
+              className="cp-deep-month-btn"
+              onClick={() => onMonthChange(shiftYearMonth(progressMonth, 1))}
+              aria-label={labels.deepCleanNextMonth}
+            >
+              ›
+            </button>
+          </div>
+          {today?.startsWith(progressMonth) && todaySummary && selectedDay !== today && (
+            <button type="button" className="cp-deep-today" onClick={() => setSelectedDay(today)}>
+              {labels.today}
+            </button>
           )}
+          <button type="button" className="cp-deep-print" onClick={printSummary}>
+            {labels.deepCleanPrint}
+          </button>
         </div>
       </div>
 
-      <div className="cp-deep-bar">
-        <div className="cp-deep-bar-fill" style={{ width: `${donePct}%` }} />
+      <div className="cp-deep-headline">
+        <div className="cp-deep-headline-main">
+          {fill(labels.deepCleanOfDays, { done: completedDays, expected: expectedDays })}
+        </div>
+        <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
+        {lateDays > 0 && (
+          <div className="cp-deep-headline-pct late">{labels.deepCleanLate} {lateDays}</div>
+        )}
+        {visitDone > 0 && (
+          <div className="cp-deep-headline-visits">
+            {fill(labels.deepCleanVisitsDone, { done: visitDone })}
+          </div>
+        )}
+        {remainingDays > 0 && (
+          <div className="cp-deep-headline-left">
+            {fill(labels.deepCleanRemaining, { n: remainingDays })}
+          </div>
+        )}
       </div>
+
+      {todaySummary && (
+        <button type="button" className={`cp-deep-alert ${todaySummary.state}`} onClick={() => setSelectedDay(today)}>
+          <strong>{labels.today}</strong>
+          <span>
+            {todaySummary.state === 'missing'
+              ? fill(labels.deepCleanTodayMissing, { expected: todaySummary.expected })
+              : fill(labels.deepCleanTodayLine, {
+                  done: todaySummary.done,
+                  expected: todaySummary.expected,
+                  late: todaySummary.overdueCount,
+                })}
+          </span>
+        </button>
+      )}
+
+      <div className="cp-cal-weekdays">
+        {weekdays.map(w => (
+          <div key={w} className="cp-cal-wd">{w}</div>
+        ))}
+      </div>
+      <div
+        className="cp-cal"
+        role="grid"
+        tabIndex={0}
+        aria-label={labels.deepCleanProgress}
+        onKeyDown={e => {
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault()
+            moveSelectedDay(1)
+          } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault()
+            moveSelectedDay(-1)
+          } else if (e.key === 'Home' && serviceDates[0]) {
+            e.preventDefault()
+            setSelectedDay(serviceDates[0])
+          } else if (e.key === 'End' && serviceDates.length) {
+            e.preventDefault()
+            setSelectedDay(serviceDates[serviceDates.length - 1])
+          }
+        }}
+      >
+        {cells.map((date, i) => {
+          if (!date) return <div key={`pad-${i}`} className="cp-cal-cell pad" />
+          const day = dayByDate[date]
+          const state = day?.state || 'empty'
+          const isToday = date === today
+          const isSel = date === selectedDay
+          const dayNum = Number(date.slice(-2))
+          return (
+            <button
+              key={date}
+              type="button"
+              className={`cp-cal-cell ${state}${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
+              disabled={!day}
+              onClick={() => day && setSelectedDay(date)}
+              aria-pressed={isSel}
+              aria-current={isToday ? 'date' : undefined}
+              aria-label={day
+                ? `${date} · ${day.done}/${day.expected}`
+                : date}
+            >
+              <span className="cp-cal-num">{dayNum}</span>
+              {day && (
+                <span className="cp-cal-count">
+                  {day.done}/{day.expected}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="cp-cal-legend">
+        <span><span className="cp-deep-dot done" /> {labels.deepCleanDone} {completedDays}</span>
+        <span><span className="cp-deep-dot pending" /> {labels.deepCleanPending} {partialDays}</span>
+        <span><span className="cp-deep-dot late" /> {labels.deepCleanLate} {lateDays}</span>
+        <span><span className="cp-deep-dot missing" /> {labels.deepCleanMissing} {missingDays}</span>
+      </div>
+
+      <div className="cp-deep-bar stacked" aria-hidden="true">
+        <div className="cp-deep-bar-seg done" style={{ width: `${doneShare}%` }} />
+        <div className="cp-deep-bar-seg pending" style={{ width: `${partialShare}%` }} />
+        <div className="cp-deep-bar-seg late" style={{ width: `${lateShare}%` }} />
+        <div className="cp-deep-bar-seg missing" style={{ width: `${missingShare}%` }} />
+      </div>
+
+      <div className={`cp-cal-day${selected ? ` ${selected.state}` : ''}`}>
+        <div className="cp-cal-day-title">
+          {selectedLabel}
+          {selected && (
+            <span className="cp-cal-day-frac">
+              {selected.state === 'late' ? `${labels.deepCleanLate} · ` : ''}
+              {selected.done}/{selected.expected} · {selected.pct}%
+            </span>
+          )}
+        </div>
+        {!selected && (
+          <div className="cp-cal-day-empty">{labels.deepCleanPickDay}</div>
+        )}
+        {selected && (
+          <div className="cp-cal-store-list">
+            {selected.stores.map(row => {
+              const slot = row.job
+                ? tuesdaySlotInfo(row.job, slotLabels)
+                : {
+                    label: row.past ? labels.deepCleanLate : labels.deepCleanMissing,
+                    icon: row.past ? '❌' : '·',
+                    color: row.past ? '#f87171' : '#fbbf24',
+                  }
+              const comps = row.job && ['completed', 'in_progress'].includes(row.job.status)
+                ? parseDeepComponents(row.job)
+                : []
+              const statusText = row.overdue && row.job?.status !== 'completed'
+                ? labels.deepCleanLate
+                : slot.label
+              const canOpen = Boolean(row.job && onVisitClick)
+              return (
+                <div key={row.name} className={`cp-cal-store${row.job ? ' has-job' : ''}${row.overdue ? ' late' : ''}${canOpen ? '' : ' locked'}`}>
+                  <button
+                    type="button"
+                    className="cp-cal-store-main"
+                    disabled={!canOpen}
+                    onClick={() => {
+                      if (canOpen) onVisitClick(row.job)
+                    }}
+                  >
+                    <span className="cp-cal-store-icon" style={{ color: slot.color }}>{slot.icon}</span>
+                    <span className="cp-cal-store-body">
+                      <span className="cp-cal-store-name">{row.name}</span>
+                      <span className="cp-cal-store-meta">
+                        {row.job
+                          ? `${row.job.employee_name || '—'} · ${row.job.scheduled_time || '—'}`
+                          : row.past ? labels.deepCleanLate : labels.deepCleanMissing}
+                      </span>
+                      {comps.length > 0 && (
+                        <span className="cp-cal-store-comps">
+                          {comps.map(id => deepComponentLabel(id, lang)).join(' · ')}
+                        </span>
+                      )}
+                      {row.job?.checklist_total > 0 && (
+                        <span className="cp-cal-store-meta">
+                          {fill(labels.deepCleanChecklistLine, {
+                            done: row.job.checklist_done || 0,
+                            total: row.job.checklist_total,
+                          })}
+                        </span>
+                      )}
+                    </span>
+                    <span className="cp-cal-store-status" style={{ color: row.overdue ? '#f87171' : slot.color }}>{statusText}</span>
+                  </button>
+                  {row.job?.status === 'completed' && (row.job.photo_start_url || row.job.photo_end_url) && (
+                    <div className="cp-cal-store-photos" onClick={e => e.stopPropagation()}>
+                      <JobPhotos
+                        photoStartUrl={row.job.photo_start_url}
+                        photoEndUrl={row.job.photo_end_url}
+                        beforeLabel={labels.before}
+                        afterLabel={labels.after}
+                        size={44}
+                        onPhotoClick={onPhotoClick}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {canSelectStore && storeRows.length > 0 && (
+        <div className="cp-deep-stores">
+          <div className="cp-deep-stores-title">{labels.deepCleanByStore}</div>
+          <div className="cp-deep-store-grid">
+            {storeRows.map(row => {
+              const active = selectedStore === row.name
+              return (
+                <button
+                  key={row.name}
+                  type="button"
+                  className={`cp-deep-store-card${active ? ' active' : ''}${row.pct >= 100 ? ' ok' : ''}${row.late > 0 ? ' late' : ''}`}
+                  onClick={() => pickStore(row.name)}
+                >
+                  <div className="cp-deep-store-card-top">
+                    <span className="cp-deep-store-card-name">{row.name}</span>
+                    <span className="cp-deep-store-card-pct">{row.pct}%</span>
+                  </div>
+                  <div className="cp-deep-store-card-meta">
+                    {row.schedule ? `${row.schedule} · ` : ''}
+                    {fill(labels.deepCleanOfDays, { done: row.completed, expected: row.expected })}
+                    {row.late > 0 ? ` · ${labels.deepCleanLate} ${row.late}` : ''}
+                  </div>
+                  <div className="cp-deep-store-mini">
+                    <div className="cp-deep-store-mini-fill" style={{ width: `${row.pct}%` }} />
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1130,7 +1834,12 @@ function VisitCard({
           <div className="cp-card-loc">{locationFromJob(job)}</div>
           <div className="cp-card-date">{job.scheduled_date} · {job.scheduled_time || '—'}</div>
         </div>
-        <span className={`cp-badge ${statusClass(job.status)}`}>{statusLabel(job.status)}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <span className={`cp-badge ${statusClass(job.status)}`}>{statusLabel(job.status)}</span>
+          <span className={`cp-type-chip ${getCleaningType(job) === 'deep' ? 'deep' : 'basic'}`}>
+            {getCleaningType(job) === 'deep' ? (labels.filterDeep || 'Deep') : (labels.filterBasic || 'Basic')}
+          </span>
+        </div>
       </div>
       {job.employee_name && (
         <div className="cp-card-cleaner">👤 {labels.cleaner}: <b>{job.employee_name}</b></div>

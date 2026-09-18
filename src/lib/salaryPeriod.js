@@ -1,31 +1,39 @@
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+import { tokyoToday, tokyoYearMonth, monthBounds } from './dates'
 
 export function getPeriodDates(period) {
-  const [y, m] = period.split('-').map(Number)
-  const lastDay = new Date(y, m, 0).getDate()
-  const closeDate = `${period}-${String(lastDay).padStart(2, '0')}`
+  const { to } = monthBounds(period)
+  const [y, m] = String(period || '').split('-').map(Number)
   const nextM = m === 12 ? 1 : m + 1
   const nextY = m === 12 ? y + 1 : y
   const confirmDeadline = `${nextY}-${String(nextM).padStart(2, '0')}-05`
   const payDate = `${nextY}-${String(nextM).padStart(2, '0')}-15`
-  return { period, closeDate, confirmDeadline, payDate }
+  return { period, closeDate: to, confirmDeadline, payDate }
 }
 
 export function getCurrentPeriod() {
-  return tokyoToday().slice(0, 7)
+  return tokyoYearMonth()
+}
+
+export function shiftYearMonth(period, deltaMonths) {
+  const [y, m] = String(period || tokyoYearMonth()).split('-').map(Number)
+  const d = new Date(y, m - 1 + deltaMonths, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+export function recentYearMonths(count = 6) {
+  const out = []
+  const current = tokyoYearMonth()
+  for (let i = 0; i < count; i++) out.push(shiftYearMonth(current, -i))
+  return out
 }
 
 /** Period awaiting employee confirmation (previous month until day 5) */
 export function getConfirmablePeriod() {
   const today = tokyoToday()
   const day = parseInt(today.slice(8, 10), 10)
-  const [y, m] = today.slice(0, 7).split('-').map(Number)
-  if (day <= 5) {
-    const pm = m === 1 ? 12 : m - 1
-    const py = m === 1 ? y - 1 : y
-    return `${py}-${String(pm).padStart(2, '0')}`
-  }
-  return today.slice(0, 7)
+  const current = today.slice(0, 7)
+  if (day <= 5) return shiftYearMonth(current, -1)
+  return current
 }
 
 export function canConfirmPeriod(period) {
@@ -33,8 +41,11 @@ export function canConfirmPeriod(period) {
   return tokyoToday() <= confirmDeadline
 }
 
-export function fmtPeriod(period) {
-  const [y, m] = period.split('-')
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return `${months[parseInt(m, 10) - 1]} ${y}`
+export function fmtPeriod(period, lang = 'en') {
+  const [y, m] = String(period || '').split('-')
+  const monthNum = parseInt(m, 10)
+  if (!y || !monthNum) return period || ''
+  if (lang === 'ja') return `${y}年${monthNum}月`
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${months[monthNum - 1]} ${y}`
 }
