@@ -13,7 +13,6 @@ import {
   checkJobGeofence,
   employeePresencePatch,
   jobGpsWriteFields,
-  mapsPointUrl,
   mergeLocationHints,
 } from '../lib/jobGps'
 import toast from 'react-hot-toast'
@@ -21,6 +20,8 @@ import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates, shif
 import { youtubeEmbedUrl } from '../lib/youtube'
 import LanguageToggle from '../components/LanguageToggle'
 import EmployeeAccountPanel from '../components/EmployeeAccountPanel'
+import EmployeeJobModal from '../components/EmployeeJobModal'
+import { EmpElapsed, EmpHourWatch, EmpLiveDate, EmpLiveTime } from '../components/EmpLiveClock'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
 import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate, resolveChecklistForJob, checklistDisplayLabel } from '../lib/jobChecklist'
 import {
@@ -55,8 +56,8 @@ import { isMissingColumnError, isMissingTableError } from '../lib/schemaError'
 import { calcPeriodSalary, countWorkedDays, isAdvanceReceived } from '../lib/salaryCalc'
 import {
   enrichJobValues,
+  elapsedSecondsFromStart,
   employeeEarningsForJob,
-  formatShiftElapsed,
   isStaleActiveJob,
   salaryTypeLabel,
 } from '../lib/employeePay'
@@ -80,7 +81,6 @@ export default function EmployeePortal() {
   const [allJobs, setAllJobs] = useState([])
   const [spotJobs, setSpotJobs] = useState([])
   const [activeJob, setActiveJob] = useState(null)
-  const [elapsed, setElapsed] = useState(0)
   const [checklist, setChecklist] = useState([])
   const [notes, setNotes] = useState('')
   const [jobPhotos, setJobPhotos] = useState([])
@@ -103,7 +103,6 @@ export default function EmployeePortal() {
   const [messages, setMessages] = useState([])
   const [newMsg, setNewMsg] = useState('')
   const [badges, setBadges] = useState([])
-  const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
   const [empData, setEmpData] = useState(null)
   const [selectedJob, setSelectedJob] = useState(null)
@@ -138,9 +137,6 @@ export default function EmployeePortal() {
   const [todayAllJobs, setTodayAllJobs] = useState([])
   const [userScrolled, setUserScrolled] = useState(false)
 
-  const timerRef = useRef()
-  const clockRef = useRef()
-  const hourWarnedRef = useRef(false)
   const photoInputRef = useRef()
   const claimPhotoRef = useRef()
   const claimReceiptRef = useRef()
@@ -162,7 +158,6 @@ export default function EmployeePortal() {
 
   useEffect(() => {
     loadAll()
-    clockRef.current = setInterval(() => setClock(new Date()), 1000)
     const msgPoll = setInterval(loadMessages, 10000)
     // Ping presence every 60s
     const pingPresence = async () => {
@@ -182,8 +177,6 @@ export default function EmployeePortal() {
     const presencePoll = setInterval(pingPresence, 30000)
     // Set offline on unmount
     return () => {
-      clearInterval(clockRef.current)
-      clearInterval(timerRef.current)
       clearInterval(msgPoll)
       clearInterval(presencePoll)
       supabase.from('employees').update({ is_online: false }).eq('id', user.id)
@@ -201,22 +194,6 @@ export default function EmployeePortal() {
       setChecklist(prev => resolveChecklistForJob(activeJob, prev))
     }
   }, [activeJob?.id])
-
-  useEffect(() => {
-    hourWarnedRef.current = false
-    if (activeJob?.started_at) {
-      const start = new Date(activeJob.started_at)
-      timerRef.current = setInterval(() => {
-        const secs = Math.floor((Date.now()-start)/1000)
-        setElapsed(secs)
-        if (secs === 3600 && !hourWarnedRef.current) {
-          hourWarnedRef.current = true
-          toast('⏱️ 1 hour on this job — everything ok?', { duration: 8000 })
-        }
-      }, 1000)
-    }
-    return () => clearInterval(timerRef.current)
-  }, [activeJob])
 
   useEffect(() => {
     if (tab==='chat') {
@@ -280,8 +257,6 @@ export default function EmployeePortal() {
       localStorage.setItem(`kp_ck_${inProgress.id}`, JSON.stringify(ck))
     } else {
       setActiveJob(null)
-      clearInterval(timerRef.current)
-      setElapsed(0)
     }
     calcSalary(enrichJobValues(allVisible, contractsRes.data || []), emp.data, monthPay.data||[])
     loadMessages()
@@ -537,7 +512,6 @@ export default function EmployeePortal() {
       setActiveJob(null)
       setJobPhotos([])
       setChecklist([])
-      setElapsed(0)
       toast.success(e.staleShiftReset)
       await loadAll()
     } catch (err) {
@@ -777,7 +751,7 @@ export default function EmployeePortal() {
       return
     }
     const requiredChecklist = resolveChecklistForJob(job, checklist)
-    const staleJob = isStaleActiveJob(job, tokyoToday(), elapsed)
+    const staleJob = isStaleActiveJob(job, tokyoToday(), elapsedSecondsFromStart(job.started_at))
     const checklistOk = staleJob
       ? checklistCompleteForRetro(requiredChecklist)
       : checklistComplete(requiredChecklist)
@@ -867,9 +841,8 @@ export default function EmployeePortal() {
         }
       }
 
-      clearInterval(timerRef.current)
       localStorage.removeItem(`kp_ck_${job.id}`)
-      setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
+      setActiveJob(null); setChecklist([]); setNotes(''); setJobPhotos([])
       const scoreMsg = aiScore!=null ? ` · IA: ${aiScore}/10${aiApproved?' ✅':' ⚠️'}` : ''
       if (missed>0) toast(`${fill(e.completePartial, { done, total })}${scoreMsg}`, {icon:'⚠️', duration:5000})
       else toast.success(`🎉 ${e.completeSuccess}${scoreMsg}`)
@@ -944,7 +917,6 @@ export default function EmployeePortal() {
     setSubmittingEquipment(false)
   }
 
-  const fmt = s=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
   const scoreColor = s=>s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
   const today = tokyoToday()
 
@@ -963,28 +935,6 @@ export default function EmployeePortal() {
     card: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:16, marginBottom:12 },
     label: { fontSize:10, color:'rgba(255,255,255,0.4)', letterSpacing:1.2, textTransform:'uppercase', marginBottom:7, display:'block' },
     input: { width:'100%', padding:'12px 14px', fontSize:14, borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.06)', color:'#fff', fontFamily:'inherit', boxSizing:'border-box' },
-  }
-
-  const PhotoGrid = ({ slot, label }) => {
-    const photos = jobPhotos.filter(p=>p.slot===slot)
-    return (
-      <div style={{marginBottom:14}}>
-        <span style={S.label}>{label} ({photos.length}/10)</span>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:4}}>
-          {photos.map(p=>(
-            <div key={p.id} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden'}}>
-              <img src={p.preview} style={{width:'100%',height:'100%',objectFit:'cover'}} />
-              <button onClick={()=>setJobPhotos(ps=>ps.filter(ph=>ph.id!==p.id))} style={{position:'absolute',top:3,right:3,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,0.7)',border:'none',color:'#fff',fontSize:11,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
-            </div>
-          ))}
-          {photos.length<10&&(
-            <div onClick={()=>{photoInputRef.current.dataset.slot=slot;photoInputRef.current.click()}} style={{aspectRatio:'1',borderRadius:10,border:'2px dashed rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.03)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:4}}>
-              <span style={{fontSize:22}}>📷</span><span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>Add</span>
-            </div>
-          )}
-        </div>
-      </div>
-    )
   }
 
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
@@ -1025,88 +975,7 @@ export default function EmployeePortal() {
     if (tab === 'shift' && activeJob) scrollToActiveJob()
   }, [tab, activeJob?.id])
 
-  const JobPhoto = ({ url, label }) => {
-    const [failed, setFailed] = useState(false)
-    const displayUrl = viewablePhotoUrl(url)
-    if (!url) return null
-    return (
-      <div>
-        <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3,letterSpacing:0.04,textTransform:'uppercase'}}>{label}</div>
-        {failed ? (
-          <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'3/4',borderRadius:10,background:'#0b1220',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
-        ) : (
-          <div style={{aspectRatio:'3/4',borderRadius:10,overflow:'hidden',background:'#0b1220'}}>
-            <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',height:'100%',objectFit:'contain',objectPosition:'center'}} />
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const JobModal = ({ job, onClose }) => {
-    const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
-    const cl = (job.checklist_template||'').split('\n').filter(Boolean)
-    const dDate = displayDate(job)
-    const instructions = keyboxForJob(job)
-    return (
-      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',zIndex:200,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={onClose}>
-        <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
-          <div style={{width:40,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 18px'}} />
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
-            <div style={{flex:1,marginRight:12}}>
-              <div style={{fontSize:18,fontWeight:700,color:'#fff',lineHeight:1.3,marginBottom:4}}>{job.title}</div>
-              <div style={{fontSize:11,color:'rgba(255,255,255,0.4)'}}>{job.client_name}</div>
-            </div>
-            <div style={{fontSize:18,fontWeight:800,color:'#c19c56'}}>¥{Number(job.spot_value||job.value||0).toLocaleString()}</div>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:14}}>
-            {[['📅 '+e.jobDate,dDate],['🕐 '+e.jobStart,job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,tr.status[job.status]||job.status]].map(([l,v])=>(
-              <div key={l} style={{background:'rgba(255,255,255,0.06)',borderRadius:12,padding:'10px 12px'}}>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{l}</div>
-                <div style={{fontSize:12,fontWeight:500,color:'#fff'}}>{v}</div>
-              </div>
-            ))}
-          </div>
-          {(job.gps_start_lat || job.gps_end_lat) && (
-            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-              {job.gps_start_distance_m != null && (
-                <a href={mapsPointUrl(job.gps_start_lat, job.gps_start_lng) || '#'} target="_blank" rel="noreferrer" style={{fontSize:11,color:Number(job.gps_start_distance_m)<=GEOFENCE_M?'#4ade80':'#f87171',textDecoration:'none'}}>
-                  📍 {fill(e.gpsStartMeters, { n: Math.round(job.gps_start_distance_m) })}
-                </a>
-              )}
-              {job.gps_end_distance_m != null && (
-                <a href={mapsPointUrl(job.gps_end_lat, job.gps_end_lng) || '#'} target="_blank" rel="noreferrer" style={{fontSize:11,color:Number(job.gps_end_distance_m)<=GEOFENCE_M?'#4ade80':'#f87171',textDecoration:'none'}}>
-                  🏁 {fill(e.gpsEndMeters, { n: Math.round(job.gps_end_distance_m) })}
-                </a>
-              )}
-            </div>
-          )}
-          {instructions&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:5}}>📋 {e.instructionsKeybox}</div>
-            <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{instructions}</div>
-          </div>}
-          {cl.length>0&&<div style={{marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : fill(e.checklistCount,{n:cl.length})}</div>
-            {cl.map((label,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:10,color:'rgba(255,255,255,0.4)'}}>{i+1}</div><span style={{fontSize:13,color:'rgba(255,255,255,0.75)'}}>{label}</span></div>)}
-          </div>}
-          {job.notes_employee&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{e.yourNotes}</div>
-            <div style={{fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>{job.notes_employee}</div>
-          </div>}
-          {(job.photo_start_url||job.photo_end_url)&&<div style={{marginBottom:14}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>{e.photos}</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              <JobPhoto url={job.photo_start_url} label={e.photoStart} />
-              <JobPhoto url={job.photo_end_url} label={e.photoEnd} />
-            </div>
-          </div>}
-          {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
-          {job.status==='assigned'&&!activeJob&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
-          <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>{e.close}</button>
-        </div>
-      </div>
-    )
-  }
+  const activeStale = isStaleActiveJob(activeJob, today, elapsedSecondsFromStart(activeJob?.started_at))
 
   return (
     <div className="emp-backdrop">
@@ -1115,7 +984,17 @@ export default function EmployeePortal() {
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
 
-      {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
+      {activeJob?.started_at && <EmpHourWatch startedAt={activeJob.started_at} />}
+      {selectedJob && (
+        <EmployeeJobModal
+          job={selectedJob}
+          onClose={()=>setSelectedJob(null)}
+          labels={e}
+          statusLabels={tr.status}
+          canRetro={!activeJob}
+          onRetro={openRetro}
+        />
+      )}
       {showSignature&&<SignatureModal
         jobTitle={signatureJob?.title||activeJob?.title||''}
         labels={e}
@@ -1188,7 +1067,7 @@ export default function EmployeePortal() {
           <div>
             <div className="emp-brand">KuriPuro by JBM · v33</div>
             <div className="emp-name" style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
+            <EmpLiveDate lang={lang} />
           </div>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <div style={{background:`rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.1)`,border:`1px solid rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.2)`,borderRadius:14,padding:'7px 12px',textAlign:'center'}}>
@@ -1206,16 +1085,13 @@ export default function EmployeePortal() {
             </button>
           </div>
         </div>
-        <div style={{marginTop:10,display:'flex',alignItems:'baseline',gap:4}}>
-          <span style={{fontSize:44,fontWeight:700,color:'#fff',fontFamily:'monospace',letterSpacing:-3,lineHeight:1}}>{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
-          <span style={{fontSize:20,color:'rgba(255,255,255,0.2)',fontFamily:'monospace'}}>{String(clock.getSeconds()).padStart(2,'0')}</span>
-        </div>
+        <EmpLiveTime />
         {!isOnline&&<div style={{background:'rgba(248,113,113,0.15)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:8,padding:'6px 12px',fontSize:11,color:'#f87171',fontWeight:600,marginTop:8,textAlign:'center'}}>
           ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div style={{background:gpsStatus.includes('✅')?'rgba(74,222,128,0.1)':gpsStatus.includes('🚫')?'rgba(248,113,113,0.1)':'rgba(255,255,255,0.06)',borderRadius:20,padding:'4px 10px',fontSize:10,color:gpsStatus.includes('✅')?'#4ade80':gpsStatus.includes('🚫')?'#f87171':'rgba(255,255,255,0.4)',fontWeight:500,border:'1px solid rgba(255,255,255,0.08)'}}>{gpsStatus}</div>}
-          {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
+          {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ <EmpElapsed job={activeJob} today={today} lang={lang} /></div>}
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
           {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#f87171',cursor:'pointer',fontWeight:600}}>💬 {unreadMsgs}</div>}
         </div>
@@ -1250,19 +1126,19 @@ export default function EmployeePortal() {
         {tab==='home'&&(
           <div>
             {/* Active job banner */}
-            {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:isStaleActiveJob(activeJob,today,elapsed)?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${isStaleActiveJob(activeJob,today,elapsed)?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
+            {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:activeStale?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${activeStale?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
-                  <div style={{fontSize:10,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:3}}>
-                    ● {isStaleActiveJob(activeJob,today,elapsed)?e.staleShiftTitle:e.activeShiftTitle}
+                  <div style={{fontSize:10,color:activeStale?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:3}}>
+                    ● {activeStale?e.staleShiftTitle:e.activeShiftTitle}
                   </div>
                   <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.split(' —')[0]}</div>
                   <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>
                     {activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:''}{e.tapToFinish}
                   </div>
                 </div>
-                <div style={{fontSize:isStaleActiveJob(activeJob,today,elapsed)?14:28,fontWeight:700,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontFamily:'monospace',textAlign:'right',maxWidth:120}}>
-                  {isStaleActiveJob(activeJob,today,elapsed)?formatShiftElapsed(elapsed,lang):fmt(elapsed)}
+                <div style={{fontSize:activeStale?14:28,fontWeight:700,color:activeStale?'#fbbf24':'#4ade80',fontFamily:'monospace',textAlign:'right',maxWidth:120}}>
+                  <EmpElapsed job={activeJob} today={today} lang={lang} />
                 </div>
               </div>
             </div>}
@@ -1416,7 +1292,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
         )}
 
         {/* SPOTS */}
@@ -1441,7 +1317,7 @@ export default function EmployeePortal() {
 
         {/* HISTORY */}
         {tab==='history'&&(
-          <DayGroupView allJobs={allJobs} displayDate={displayDate} today={today} setSelectedJob={setSelectedJob} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} PhotoGrid={PhotoGrid} submitting={submitting} fmt={fmt} S={S} labels={{ ...e, statusCompleted: tr.status.completed, statusAssigned: tr.status.assigned, statusProgress: tr.status.in_progress, statusCancelled: tr.status.cancelled }} />
+          <DayGroupView allJobs={allJobs} today={today} setSelectedJob={setSelectedJob} S={S} labels={{ ...e, statusCompleted: tr.status.completed, statusAssigned: tr.status.assigned, statusProgress: tr.status.in_progress, statusCancelled: tr.status.cancelled }} />
         )}
 
         {/* SALARY */}
@@ -1800,7 +1676,7 @@ export default function EmployeePortal() {
   )
 }
 
-function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
+function DayGroupView({ allJobs, today, setSelectedJob, S, labels }) {
   const statusColor = { completed:'#4ade80', assigned:'#60a5fa', in_progress:'#fbbf24', cancelled:'rgba(255,255,255,0.3)' }
   const statusLabel = { completed: labels?.statusCompleted || 'Completed', assigned: labels?.statusAssigned || 'Pending', in_progress: labels?.statusProgress || 'In progress', cancelled: labels?.statusCancelled || 'Cancelled' }
   const groups = {}
@@ -1833,7 +1709,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
+function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNotes, jobPhotos, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -1841,7 +1717,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
   const beforePhotos = jobPhotos.filter(p=>p.slot==='start')
   const afterPhotos = jobPhotos.filter(p=>p.slot==='end')
   const showActivePanel = !!activeJob
-  const activeIsStale = showActivePanel && isStaleActiveJob(activeJob, today, elapsed)
+  const activeIsStale = showActivePanel && isStaleActiveJob(activeJob, today, elapsedSecondsFromStart(activeJob?.started_at))
   const activeChecklist = showActivePanel ? resolveChecklistForJob(activeJob, checklist) : []
   const activeChecklistRequired = activeIsStale
     ? (activeChecklist.length <= 3 ? activeChecklist.length : Math.ceil(activeChecklist.length * 0.7))
@@ -1868,7 +1744,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:3}}>{activeJob.scheduled_date} · {labels.tapToFinish}</div>
             </div>
             <div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
-              {isStaleActiveJob(activeJob, today, elapsed) ? formatShiftElapsed(elapsed, lang) : fmt(elapsed)}
+              <EmpElapsed job={activeJob} today={today} lang={lang} />
             </div>
           </div>
           {activeInstructions && (
@@ -1987,7 +1863,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
-                {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
+                {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ <EmpElapsed job={job} today={today} lang={lang} /></span>}
                 {isDone&&<span style={{fontSize:10,color:'#4ade80',fontWeight:600}}>Ver detalhes ›</span>}
                 {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
               </div>

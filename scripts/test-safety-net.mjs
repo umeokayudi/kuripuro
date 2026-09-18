@@ -46,6 +46,21 @@ function testEscapeHtml() {
   assert(escapeHtml(null) === '', 'null safe')
 }
 
+function testEmployeePortalPhotoStability() {
+  const portal = readFileSync('src/pages/EmployeePortal.jsx', 'utf8')
+  assert(!/const JobModal\s*=/.test(portal), 'JobModal must not be defined inside EmployeePortal')
+  assert(!/const JobPhoto\s*=/.test(portal), 'JobPhoto must not be defined inside EmployeePortal')
+  assert(!/setClock\(new Date\(\)\)/.test(portal), 'clock tick must not re-render EmployeePortal')
+  assert(portal.includes('EmployeeJobModal'), 'uses extracted EmployeeJobModal')
+  assert(portal.includes('EmpLiveDate'), 'isolated live date')
+  assert(portal.includes('EmpLiveTime'), 'isolated live time')
+  const modal = readFileSync('src/components/EmployeeJobModal.jsx', 'utf8')
+  assert(modal.includes('PhotoLightbox'), 'completed job photos open still lightbox')
+  assert(modal.includes('onPhotoClick'), 'photos are tappable')
+  const auth = readFileSync('src/hooks/useAuth.jsx', 'utf8')
+  assert(auth.includes('findEmployeeForLogin'), 'employee login uses case-insensitive matcher')
+}
+
 function testNoHooksViolationPatterns() {
   const files = [
     'src/pages/ClientPortal.jsx',
@@ -53,6 +68,8 @@ function testNoHooksViolationPatterns() {
     'src/pages/LiveTracking.jsx',
     'src/pages/AdminChat.jsx',
     'src/components/JobPhotos.jsx',
+    'src/components/EmployeeJobModal.jsx',
+    'src/components/PhotoLightbox.jsx',
   ]
   for (const file of files) {
     const src = readFileSync(file, 'utf8')
@@ -75,6 +92,8 @@ async function main() {
   console.log('✅ i18n client keys (EN/JA parity)')
   testEscapeHtml()
   console.log('✅ escapeHtml')
+  testEmployeePortalPhotoStability()
+  console.log('✅ employee portal photo stability')
   testNoHooksViolationPatterns()
   console.log('✅ hooks order static check')
   testBuildOutput()

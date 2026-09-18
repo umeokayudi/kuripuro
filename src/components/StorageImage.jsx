@@ -64,6 +64,7 @@ export default function StorageImage({
       <img
         src={src}
         alt={alt}
+        draggable={false}
         onLoad={() => setLoading(false)}
         onError={() => { setLoading(false); setFailed(true) }}
         onClick={onClick}

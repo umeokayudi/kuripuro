@@ -14,6 +14,7 @@ const steps = [
   ['npm run test:employee-pay', 'employee-pay'],
   ['npm run test:admin-mobile', 'admin-mobile'],
   ['npm run test:account', 'account'],
+  ['npm run test:employee-login', 'employee-login'],
   ['npm run test:job-gps', 'job-gps'],
 ]
 

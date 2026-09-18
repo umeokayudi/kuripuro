@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { viewablePhotoUrl } from '../lib/photoUrl'
+import { lockBodyScroll } from '../lib/bodyScrollLock'
 
 function unpackLightbox(url, urls) {
   if (url && typeof url === 'object' && !Array.isArray(url)) {
@@ -34,6 +35,11 @@ export default function PhotoLightbox({ url, urls, onClose, closeLabel = 'Close'
     return () => window.removeEventListener('keydown', onKey)
   }, [list, onClose])
 
+  useEffect(() => {
+    if (!list.length) return undefined
+    return lockBodyScroll()
+  }, [list.length])
+
   if (!list.length) return null
   const current = list[Math.min(index, list.length - 1)]
 
@@ -66,6 +72,7 @@ export default function PhotoLightbox({ url, urls, onClose, closeLabel = 'Close'
       <img
         src={viewablePhotoUrl(current)}
         alt=""
+        draggable={false}
         onClick={e => e.stopPropagation()}
       />
     </div>

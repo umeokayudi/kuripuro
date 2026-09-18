@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { findClientUserForLogin, clientUserToSession } from '../lib/clientCredentials'
+import { employeeToSession, findAdminForLogin, findEmployeeForLogin } from '../lib/employeeLogin'
 
 const AuthContext = createContext()
 
@@ -18,12 +19,7 @@ export function AuthProvider({ children }) {
     const em = email.trim().toLowerCase()
     const pw = password.trim()
 
-    const { data: admin } = await supabase
-      .from('admins')
-      .select('*')
-      .eq('email', em)
-      .eq('password', pw)
-      .maybeSingle()
+    const admin = await findAdminForLogin(supabase, em, pw)
     if (admin) {
       const u = { id: admin.id, name: admin.name, email: admin.email, role: 'admin' }
       setUser(u)
@@ -31,15 +27,9 @@ export function AuthProvider({ children }) {
       return { success: true }
     }
 
-    const { data: emp } = await supabase
-      .from('employees')
-      .select('id, full_name, email, password, is_active, contract_type, hourly_rate, fixed_salary, salary_type, score')
-      .eq('email', em)
-      .eq('password', pw)
-      .eq('is_active', true)
-      .maybeSingle()
+    const emp = await findEmployeeForLogin(supabase, email, pw)
     if (emp) {
-      const u = { id: emp.id, name: emp.full_name, email: emp.email, role: 'employee', contract_type: emp.contract_type, hourly_rate: emp.hourly_rate, fixed_salary: emp.fixed_salary, salary_type: emp.salary_type, score: emp.score }
+      const u = employeeToSession(emp)
       setUser(u)
       localStorage.setItem('kp_user', JSON.stringify(u))
       return { success: true }

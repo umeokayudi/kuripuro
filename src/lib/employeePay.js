@@ -50,6 +50,18 @@ export function salaryTypeLabel(type, lang = 'en') {
   return map[type] || type
 }
 
+export function elapsedSecondsFromStart(startedAt, now = Date.now()) {
+  if (!startedAt) return 0
+  const t = new Date(startedAt).getTime()
+  if (!Number.isFinite(t)) return 0
+  return Math.max(0, Math.floor((now - t) / 1000))
+}
+
+export function formatHms(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0))
+  return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
+
 /** Human-readable elapsed for stale shifts */
 export function formatShiftElapsed(seconds, lang = 'en') {
   if (seconds < 3600) {
