@@ -17,6 +17,7 @@ const steps = [
   ['npm run test:account', 'account'],
   ['npm run test:employee-login', 'employee-login'],
   ['npm run test:job-gps', 'job-gps'],
+  ['npm run test:photo-ai', 'photo-ai'],
 ]
 
 console.log('=== KuriPuro full test suite ===\n')

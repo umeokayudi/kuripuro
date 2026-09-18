@@ -51,9 +51,12 @@ import {
   DEEP_CLEAN_COMPONENTS,
   deepComponentLabel,
   getCleaningType,
+  parseDeepComponents,
   cleaningTypesForLang,
   monthCalendarCells,
 } from '../lib/cleaningType'
+import { packPhotoUrls, parsePhotoUrls } from '../lib/jobPhotoUrls'
+import { formatPhotoAiIssues, minAfterPhotosForJob, PHOTO_UPLOAD_MAX } from '../lib/photoAi'
 import { tokyoToday, tokyoYearMonth, monthBounds } from '../lib/dates'
 import { isMissingColumnError, isMissingTableError } from '../lib/schemaError'
 import { calcPeriodSalary, countWorkedDays, isAdvanceReceived } from '../lib/salaryCalc'
@@ -93,7 +96,7 @@ export default function EmployeePortal() {
   const [retroJob, setRetroJob] = useState(null)
   const [retroChecklist, setRetroChecklist] = useState([])
   const [retroText, setRetroText] = useState('')
-  const [retroPhoto, setRetroPhoto] = useState(null)
+  const [retroPhotos, setRetroPhotos] = useState([])
   const [retroEval, setRetroEval] = useState(null)
   const [retroBusy, setRetroBusy] = useState(false)
   const [salaryData, setSalaryData] = useState(null)
@@ -673,7 +676,7 @@ export default function EmployeePortal() {
   const openRetro = (job) => {
     setRetroJob(job)
     setRetroText('')
-    setRetroPhoto(null)
+    setRetroPhotos([])
     setRetroEval(null)
     setRetroChecklist(initChecklistState(job))
   }
@@ -689,7 +692,11 @@ export default function EmployeePortal() {
       return
     }
     if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return }
-    if (!retroPhoto) { toast.error(e.retroPhotoRequired); return }
+    const minAfter = minAfterPhotosForJob(retroJob)
+    if (retroPhotos.length < minAfter) {
+      toast.error(fill(e.afterPhotosMin, { n: minAfter }))
+      return
+    }
     setRetroBusy(true)
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
@@ -705,7 +712,32 @@ export default function EmployeePortal() {
       })
       const ev = await resp.json()
       if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
-      const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
+      const paths = []
+      for (let i = 0; i < retroPhotos.length; i++) {
+        paths.push(await uploadJobPhoto(`jobs/${retroJob.id}/retro_${i}.jpg`, retroPhotos[i].file))
+      }
+      const photoUrl = packPhotoUrls(paths)
+      let aiScore = null, aiApproved = null, aiIssues = null
+      try {
+        const afterList = parsePhotoUrls(photoUrl)
+        const photoResp = await fetch('/api/analyze-photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            photoUrl,
+            photoUrls: afterList,
+            locationName: retroJob.title,
+            cleaningType: getCleaningType(retroJob),
+            deepComponents: parseDeepComponents(retroJob),
+            checklist: markedDone,
+          }),
+        })
+        const pev = await photoResp.json()
+        if (!pev.error) {
+          aiScore = pev.nota ?? null
+          aiApproved = pev.aprovado ?? null
+          aiIssues = formatPhotoAiIssues(pev)
+        }
+      } catch (err) { console.log('AI photo skipped', err?.message) }
       const total = retroChecklist.length
       const done = retroChecklist.filter(c => c.done).length
       const missedLabels = retroChecklist.filter(c => !c.done).map(c => c.label)
@@ -716,6 +748,7 @@ export default function EmployeePortal() {
         photo_end_url: photoUrl, admin_reviewed: false,
         checklist_total: total || null, checklist_done: total ? done : null,
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
+        photo_ai_score: aiScore, photo_ai_approved: aiApproved, photo_ai_issues: aiIssues,
       }).eq('id', retroJob.id)
       if (error) throw error
       setRetroEval(ev)
@@ -734,12 +767,11 @@ export default function EmployeePortal() {
   }
 
   const uploadSlotPhotos = async (jobId, photos, prefix) => {
-    let firstPath = null
+    const paths = []
     for (let i = 0; i < photos.length; i++) {
-      const path = await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, photos[i].file)
-      if (i === 0) firstPath = path
+      paths.push(await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, photos[i].file))
     }
-    return firstPath
+    return packPhotoUrls(paths)
   }
 
   const handleStart = async (job) => {
@@ -772,6 +804,12 @@ export default function EmployeePortal() {
   }
 
   const handleCompleteWithSig = async (job) => {
+    const endPhotosCheck = jobPhotos.filter(p => p.slot === 'end')
+    const minAfter = minAfterPhotosForJob(job)
+    if (endPhotosCheck.length < minAfter) {
+      toast.error(fill(e.afterPhotosMin, { n: minAfter }))
+      return
+    }
     setSubmitting(true)
     try {
       const gpsCheck = await runGeofence(job)
@@ -788,8 +826,9 @@ export default function EmployeePortal() {
     if (!job) { toast.error('No active job - please refresh'); return }
     // MÍNIMO: foto Before (start, tirada ao iniciar) + foto After
     const endPhotosCheck = jobPhotos.filter(p=>p.slot==='end')
-    if (endPhotosCheck.length === 0) {
-      toast.error('Tire ao menos 1 foto "After" antes de finalizar')
+    const minAfter = minAfterPhotosForJob(job)
+    if (endPhotosCheck.length < minAfter) {
+      toast.error(fill(e.afterPhotosMin, { n: minAfter }))
       return
     }
     const requiredChecklist = resolveChecklistForJob(job, checklist)
@@ -835,14 +874,23 @@ export default function EmployeePortal() {
       // IA analisa as fotos Before/After e dá nota de qualidade
       let aiScore = null, aiApproved = null, aiIssues = null
       try {
+        const afterList = parsePhotoUrls(endPhotoUrl)
         const resp = await fetch('/api/analyze-photo', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photoUrl: endPhotoUrl, locationName: job.title }),
+          body: JSON.stringify({
+            photoUrl: endPhotoUrl,
+            photoUrls: afterList,
+            locationName: job.title,
+            cleaningType: getCleaningType(job),
+            deepComponents: parseDeepComponents(job),
+            checklist: requiredChecklist.map(c => c.label),
+          }),
         })
         const ev = await resp.json()
-        aiScore = ev.nota ?? null; aiApproved = ev.aprovado ?? null
-        aiIssues = ev.problemas?.length ? ev.problemas.join(', ') : null
-      } catch(e){ console.log('AI photo skipped', e?.message) }
+        aiScore = ev.nota ?? null
+        aiApproved = ev.aprovado ?? null
+        aiIssues = formatPhotoAiIssues(ev)
+      } catch(err){ console.log('AI photo skipped', err?.message) }
 
       const { error: coreErr } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(), notes_employee:notes,
@@ -895,8 +943,16 @@ export default function EmployeePortal() {
 
   const addPhoto = (slot, files) => {
     const cur = jobPhotos.filter(p=>p.slot===slot).length
-    const toAdd = Array.from(files).slice(0, 10-cur)
+    const toAdd = Array.from(files).slice(0, PHOTO_UPLOAD_MAX-cur)
     setJobPhotos(p=>[...p, ...toAdd.map(file=>({ file, preview:URL.createObjectURL(file), slot, id:Date.now()+Math.random() }))])
+  }
+
+  const removePhoto = (id) => {
+    setJobPhotos(p => {
+      const hit = p.find(x => x.id === id)
+      if (hit?.preview) URL.revokeObjectURL(hit.preview)
+      return p.filter(x => x.id !== id)
+    })
   }
 
   const uploadFile = async (file, path) => uploadJobPhoto(path, file)
@@ -1080,15 +1136,32 @@ export default function EmployeePortal() {
               <textarea value={retroText} onChange={e=>setRetroText(e.target.value)} rows={5} placeholder={e.retroTextPlaceholder} style={{width:'100%',marginTop:6,marginBottom:12,borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'#fff',padding:12,fontSize:14,fontFamily:'inherit',resize:'none'}} />
 
               <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600}}>{e.retroPhotoLabel}</label>
+              <div style={{marginTop:6,marginBottom:8,fontSize:11,color:'rgba(255,255,255,0.45)',lineHeight:1.4}}>
+                {getCleaningType(retroJob) === 'deep'
+                  ? fill(e.afterPhotosHintDeep, { n: minAfterPhotosForJob(retroJob) })
+                  : e.afterPhotosHintBasic}
+              </div>
               <div style={{marginTop:6,marginBottom:16}}>
-                <input type="file" accept="image/*" id="retro-photo" style={{display:'none'}} onChange={e=>setRetroPhoto(e.target.files?.[0]||null)} />
-                <label htmlFor="retro-photo" style={{display:'inline-block',padding:'10px 16px',borderRadius:12,border:'1px dashed rgba(255,255,255,0.2)',color:retroPhoto?'#4ade80':'rgba(255,255,255,0.6)',fontSize:13,cursor:'pointer'}}>
-                  {retroPhoto?'✅ '+retroPhoto.name.substring(0,24):`📷 ${e.retroPhotoAttach}`}
-                </label>
+                <PhotoSlotStrip
+                  photos={retroPhotos}
+                  slot="retro"
+                  onAdd={(_slot, files) => {
+                    const extra = Array.from(files || []).slice(0, PHOTO_UPLOAD_MAX - retroPhotos.length)
+                    setRetroPhotos(prev => [...prev, ...extra.map(file => ({ file, preview: URL.createObjectURL(file), id: Date.now() + Math.random() }))])
+                  }}
+                  onRemove={(id) => {
+                    setRetroPhotos(prev => {
+                      const hit = prev.find(p => p.id === id)
+                      if (hit?.preview) URL.revokeObjectURL(hit.preview)
+                      return prev.filter(p => p.id !== id)
+                    })
+                  }}
+                  hint={fill(e.afterPhotosMin, { n: minAfterPhotosForJob(retroJob) })}
+                />
               </div>
 
-              <button onClick={submitRetro} disabled={retroBusy || !retroChecklistOk} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk?'not-allowed':'pointer'}}>
-                {retroBusy?e.retroSubmitting:!retroChecklistOk?fill(e.retroChecklistProgress,{done:retroChecklist.filter(c=>c.done).length,required:retroChecklistRequired}):e.retroSubmit}
+              <button onClick={submitRetro} disabled={retroBusy || !retroChecklistOk || retroPhotos.length < minAfterPhotosForJob(retroJob)} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk||retroPhotos.length<minAfterPhotosForJob(retroJob)?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk||retroPhotos.length<minAfterPhotosForJob(retroJob)?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk||retroPhotos.length<minAfterPhotosForJob(retroJob)?'not-allowed':'pointer'}}>
+                {retroBusy?e.retroSubmitting:!retroChecklistOk?fill(e.retroChecklistProgress,{done:retroChecklist.filter(c=>c.done).length,required:retroChecklistRequired}):retroPhotos.length<minAfterPhotosForJob(retroJob)?`📷 ${retroPhotos.length}/${minAfterPhotosForJob(retroJob)}`:e.retroSubmit}
               </button>
             </>) : (
               <div style={{textAlign:'center'}}>
@@ -1343,7 +1416,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} today={today} S={S} addPhoto={addPhoto} removePhoto={removePhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
         )}
 
         {/* SPOTS */}
@@ -1760,7 +1833,35 @@ function DayGroupView({ allJobs, today, setSelectedJob, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNotes, jobPhotos, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
+function PhotoSlotStrip({ photos, slot, onAdd, onRemove, accent = 'rgba(255,255,255,0.2)', hint, max = PHOTO_UPLOAD_MAX }) {
+  return (
+    <div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        {photos.map(p => (
+          <div key={p.id} style={{position:'relative',width:64,height:64}}>
+            <img src={p.preview} alt="" style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} />
+            {onRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove(p.id)}
+                style={{position:'absolute',top:-6,right:-6,width:20,height:20,borderRadius:10,border:'none',background:'#0a1525',color:'#fff',fontSize:12,cursor:'pointer',lineHeight:1}}
+              >✕</button>
+            )}
+          </div>
+        ))}
+        {photos.length < max && (
+          <label style={{width:64,height:64,borderRadius:8,border:`1.5px dashed ${accent}`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+            <span style={{fontSize:20}}>📷</span>
+            <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{ onAdd(slot, e.target.files); e.target.value='' }} />
+          </label>
+        )}
+      </div>
+      {hint && <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:6,lineHeight:1.4}}>{hint}</div>}
+    </div>
+  )
+}
+
+function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNotes, jobPhotos, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, today, S, addPhoto, removePhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -1780,6 +1881,11 @@ function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNote
       : !checklistComplete(activeChecklist)
   )
   const activeInstructions = showActivePanel ? keyboxForJob(activeJob) : null
+  const minAfter = showActivePanel ? minAfterPhotosForJob(activeJob) : 1
+  const afterHint = showActivePanel && getCleaningType(activeJob) === 'deep'
+    ? fill(labels.afterPhotosHintDeep || 'Deep clean: at least {n} after photos of different areas. AI only scores dirt in the photos.', { n: minAfter })
+    : (labels.afterPhotosHintBasic || 'More photos of other areas = a fairer score. AI will not complain that one frame cannot show the whole shop.')
+  const afterBlocked = afterPhotos.length < minAfter
 
   return (
     <div>
@@ -1807,29 +1913,13 @@ function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNote
           {!activeJob.photo_start_url && (
             <div style={{marginBottom:12}}>
               <div style={{fontSize:10,color:'#f87171',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({labels.required})</div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {beforePhotos.map((p,i)=>(
-                  <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before preview" />
-                ))}
-                <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(248,113,113,0.4)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                  <span style={{fontSize:20}}>📷</span>
-                  <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                </label>
-              </div>
+              <PhotoSlotStrip photos={beforePhotos} slot="start" onAdd={addPhoto} onRemove={removePhoto} accent="rgba(248,113,113,0.4)" />
             </div>
           )}
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder={labels.notes+'...'} style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:60,boxSizing:'border-box',marginBottom:12}} />
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}) — {labels.required}</div>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-              {afterPhotos.map((p,i)=>(
-                <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="After preview" />
-              ))}
-              <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                <span style={{fontSize:20}}>📷</span>
-                <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
-              </label>
-            </div>
+            <div style={{fontSize:10,color:afterBlocked?'#fbbf24':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}/{minAfter}) — {labels.required}</div>
+            <PhotoSlotStrip photos={afterPhotos} slot="end" onAdd={addPhoto} onRemove={removePhoto} hint={afterHint} accent={afterBlocked ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.2)'} />
           </div>
           {activeIsStale && (
             <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginBottom:8,lineHeight:1.4}}>
@@ -1837,8 +1927,8 @@ function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNote
             </div>
           )}
           <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} labels={labels} lang={lang} />
-          <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):'Marque todos os itens do checklist');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
-            {submitting?'Saving...':activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
+          <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):'Marque todos os itens do checklist');return}; if(afterBlocked){toast.error(fill(labels.afterPhotosMin,{n:minAfter}));return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked||afterBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked||afterBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked||afterBlocked?'not-allowed':'pointer',marginBottom:8}}>
+            {submitting?'Saving...':activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:afterBlocked?`📷 ${afterPhotos.length}/${minAfter}`:`✅ ${labels.complete}`}
           </button>
           <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',textAlign:'center',marginBottom:8}}>{labels.gpsFenceHint}</div>
           <button type="button" onClick={()=>handleAbandonStale?.(activeJob)} disabled={submitting} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(251,191,36,0.35)',background:'rgba(251,191,36,0.08)',color:'#fbbf24',fontSize:13,fontWeight:600,cursor:submitting?'not-allowed':'pointer'}}>
@@ -1958,6 +2048,11 @@ function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNote
             {isActive&&(() => {
               const jobChecklist = resolveChecklistForJob(job, checklist)
               const checklistBlocked = jobChecklist.length > 0 && !checklistComplete(jobChecklist)
+              const jobMinAfter = minAfterPhotosForJob(job)
+              const jobAfterBlocked = afterPhotos.length < jobMinAfter
+              const jobAfterHint = getCleaningType(job) === 'deep'
+                ? fill(labels.afterPhotosHintDeep || 'Deep clean: at least {n} after photos of different areas.', { n: jobMinAfter })
+                : (labels.afterPhotosHintBasic || '')
               return (
               <div>
                 {instructions&&(
@@ -1969,47 +2064,30 @@ function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNote
                 {job.photo_start_url&&(
                   <div style={{marginBottom:12}}>
                     <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE</div>
-                    <img src={viewablePhotoUrl(job.photo_start_url)} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before" />
+                    {parsePhotoUrls(job.photo_start_url).map(url => (
+                      <img key={url} src={viewablePhotoUrl(url)} style={{width:64,height:64,borderRadius:8,objectFit:'cover',marginRight:8}} alt="Before" />
+                    ))}
                   </div>
                 )}
 
                 {!job.photo_start_url&&(
                   <div style={{marginBottom:12}}>
                     <div style={{fontSize:10,color:'#f87171',marginBottom:6,letterSpacing:1}}>📷 BEFORE (obrigatório)</div>
-                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                      {beforePhotos.map((p,i)=>(
-                        <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before preview" />
-                      ))}
-                      <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(248,113,113,0.4)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                        <span style={{fontSize:20}}>📷</span>
-                        <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Before</span>
-                        <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                      </label>
-                    </div>
+                    <PhotoSlotStrip photos={beforePhotos} slot="start" onAdd={addPhoto} onRemove={removePhoto} accent="rgba(248,113,113,0.4)" />
                   </div>
                 )}
 
                 <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:60,boxSizing:'border-box',marginBottom:12}} />
 
-                {/* AFTER photos */}
                 <div style={{marginBottom:12}}>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 AFTER ({afterPhotos.length}) — obrigatório</div>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                    {afterPhotos.map((p,i)=>(
-                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="After preview" />
-                    ))}
-                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                      <span style={{fontSize:20}}>📷</span>
-                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>After</span>
-                      <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
-                    </label>
-                  </div>
+                  <div style={{fontSize:10,color:jobAfterBlocked?'#fbbf24':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 AFTER ({afterPhotos.length}/{jobMinAfter}) — obrigatório</div>
+                  <PhotoSlotStrip photos={afterPhotos} slot="end" onAdd={addPhoto} onRemove={removePhoto} hint={jobAfterHint} accent={jobAfterBlocked ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.2)'} />
                 </div>
 
                 <ChecklistPicker checklist={jobChecklist} setChecklist={setChecklist} labels={labels} lang={lang} />
 
-                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; if(checklistBlocked){toast.error('Checklist incompleto');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||checklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||checklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||checklistBlocked?'not-allowed':'pointer'}}>
-                  {submitting?'Saving...':checklistBlocked?`✓ Checklist ${jobChecklist.filter(c=>c.done).length}/${jobChecklist.length}`:'✅ Done → Next'}
+                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; if(checklistBlocked){toast.error('Checklist incompleto');return}; if(jobAfterBlocked){toast.error(fill(labels.afterPhotosMin,{n:jobMinAfter}));return}; handleCompleteWithSig(activeJob) }} disabled={submitting||checklistBlocked||jobAfterBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||checklistBlocked||jobAfterBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||checklistBlocked||jobAfterBlocked?'not-allowed':'pointer'}}>
+                  {submitting?'Saving...':checklistBlocked?`✓ Checklist ${jobChecklist.filter(c=>c.done).length}/${jobChecklist.length}`:jobAfterBlocked?`📷 ${afterPhotos.length}/${jobMinAfter}`:'✅ Done → Next'}
                 </button>
               </div>
             )})()}
@@ -2023,20 +2101,16 @@ function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNote
                 )}
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE ({beforePhotos.length}) — obrigatório</div>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                    {beforePhotos.map((p,i)=>(
-                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before preview" />
-                    ))}
-                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                      <span style={{fontSize:20}}>📷</span>
-                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Before</span>
-                      <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                    </label>
-                  </div>
+                  <PhotoSlotStrip photos={beforePhotos} slot="start" onAdd={addPhoto} onRemove={removePhoto} />
                 </div>
                 <button onClick={()=>handleStart(job)} disabled={submitting||beforePhotos.length===0} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||beforePhotos.length===0?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting||beforePhotos.length===0?'not-allowed':'pointer'}}>
                   {submitting?'Starting...':beforePhotos.length===0?'📷 Tire a foto Before primeiro':'▶ Start — '+job.title.replace(/ — .*/,'')}
                 </button>
+                {getCleaningType(job) === 'deep' && (
+                  <div style={{fontSize:11,color:'#fbbf24',textAlign:'center',marginTop:8,lineHeight:1.4}}>
+                    {fill(labels.afterPhotosHintDeep, { n: minAfterPhotosForJob(job) })}
+                  </div>
+                )}
                 <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',textAlign:'center',marginTop:8}}>{labels.gpsFenceHint}</div>
               </div>
             )}

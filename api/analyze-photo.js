@@ -1,8 +1,15 @@
 // api/analyze-photo.js
-// Recebe a URL/path de uma foto e usa o Gemini para dar nota de qualidade.
+// Analisa uma ou várias fotos After. Só julga o que aparece no quadro.
 
 import { geminiGenerate } from './_gemini.js'
 import { fetchStorageBuffer } from './_storage.js'
+import {
+  PHOTO_AI_MAX_ANALYZE,
+  buildPhotoAiPrompt,
+  normalizePhotoAiResult,
+  parsePhotoAiJson,
+} from '../src/lib/photoAi.js'
+import { parsePhotoUrls } from '../src/lib/jobPhotoUrls.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -10,42 +17,56 @@ export default async function handler(req, res) {
     return
   }
 
-  const { photoUrl, locationName } = req.body || {}
-  if (!photoUrl) {
+  const body = req.body || {}
+  const urls = parsePhotoUrls(body.photoUrls?.length ? body.photoUrls : (body.photoUrl || ''))
+    .slice(0, PHOTO_AI_MAX_ANALYZE)
+  if (!urls.length) {
     res.status(400).json({ error: 'photoUrl is required' })
     return
   }
 
   try {
-    const { buffer, contentType } = await fetchStorageBuffer(photoUrl)
-    const base64 = buffer.toString('base64')
-    const mediaType = contentType || 'image/jpeg'
+    const images = []
+    for (const url of urls) {
+      try {
+        const { buffer, contentType } = await fetchStorageBuffer(url)
+        images.push({
+          inlineData: {
+            mimeType: contentType || 'image/jpeg',
+            data: buffer.toString('base64'),
+          },
+        })
+      } catch {
+        /* skip a missing extra photo */
+      }
+    }
+    if (!images.length) {
+      res.status(400).json({ error: 'Nenhuma foto pôde ser lida' })
+      return
+    }
 
-    const prompt = `Você é um inspetor de qualidade de limpeza de restaurante/bar. Analise esta foto tirada após a limpeza de "${locationName || 'um local'}". Responda APENAS com um JSON válido, sem nenhum texto fora dele, no formato exato:
-{"nota": <número de 1 a 10>, "aprovado": <true ou false>, "problemas": [<lista curta de problemas visíveis, em português, vazia se não houver>]}
-Considere aprovado (true) apenas se nota >= 7. Seja objetivo: sujeira visível, lixo, bagunça, manchas, poeira acumulada, chão sujo são motivos para reprovar.`
+    const prompt = buildPhotoAiPrompt({
+      locationName: body.locationName,
+      cleaningType: body.cleaningType || 'basic',
+      deepComponents: body.deepComponents || [],
+      photoCount: images.length,
+      checklist: body.checklist || [],
+    })
 
     const data = await geminiGenerate({
       contents: [{
         parts: [
-          { inlineData: { mimeType: mediaType, data: base64 } },
+          ...images,
           { text: prompt },
         ],
       }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 300 },
+      generationConfig: { temperature: 0.1, maxOutputTokens: 400, responseMimeType: 'application/json' },
     })
 
     const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '{}'
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-
-    let parsed
-    try {
-      parsed = JSON.parse(cleaned)
-    } catch {
-      parsed = { nota: null, aprovado: null, problemas: [], raw: cleaned }
-    }
-
-    res.status(200).json(parsed)
+    const parsed = parsePhotoAiJson(raw)
+    const result = normalizePhotoAiResult(parsed, { photoCount: images.length })
+    res.status(200).json(result)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

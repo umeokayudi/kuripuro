@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { viewablePhotoUrl } from '../lib/photoUrl'
 import { tokyoToday } from '../lib/dates'
+import { parsePhotoUrls } from '../lib/jobPhotoUrls'
+import { formatPhotoAiIssues, sanitizeStoredPhotoIssues } from '../lib/photoAi'
+import { getCleaningType, parseDeepComponents } from '../lib/cleaningType'
 import toast from 'react-hot-toast'
 import ContractTab from '../components/ContractTab'
 import PasswordReveal from '../components/PasswordReveal'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -105,21 +109,30 @@ export default function EmployeeProfile() {
   const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:tokyoToday() })
   const [addingEval, setAddingEval] = useState(false)
   const [analyzingId, setAnalyzingId] = useState(null)
+  const [lightbox, setLightbox] = useState(null)
 
   const analyzePhoto = async (job) => {
-    if (!job.photo_end_url) return
+    const photoUrls = parsePhotoUrls(job.photo_end_url)
+    if (!photoUrls.length) return
     setAnalyzingId(job.id)
     try {
       const resp = await fetch('/api/analyze-photo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photoUrl: job.photo_end_url, locationName: job.title }),
+        body: JSON.stringify({
+          photoUrl: photoUrls[0],
+          photoUrls,
+          locationName: job.title,
+          cleaningType: getCleaningType(job),
+          deepComponents: parseDeepComponents(job),
+        }),
       })
       const result = await resp.json()
+      if (result?.error) throw new Error(result.error)
       await supabase.from('jobs').update({
         photo_ai_score: result?.nota ?? null,
         photo_ai_approved: result?.aprovado ?? null,
-        photo_ai_issues: result?.problemas?.length ? result.problemas.join(', ') : null,
+        photo_ai_issues: formatPhotoAiIssues(result),
       }).eq('id', job.id)
       toast.success(`Analisado: nota ${result?.nota ?? '?'}/10`)
       loadAll()
@@ -408,19 +421,26 @@ export default function EmployeeProfile() {
                   </span>
                 )}
               </div>
-              {j.photo_ai_issues&&(
-                <div style={{fontSize:11,color:'var(--red)',marginTop:3}}>⚠️ {j.photo_ai_issues}</div>
+              {sanitizeStoredPhotoIssues(j.photo_ai_issues) && (
+                <div style={{fontSize:11,color:'var(--red)',marginTop:3}}>⚠️ {sanitizeStoredPhotoIssues(j.photo_ai_issues)}</div>
               )}
-              {j.photo_end_url&&(
-                <div style={{display:'flex',gap:10,alignItems:'center',marginTop:2}}>
-                  <a href={viewablePhotoUrl(j.photo_end_url)} target="_blank" rel="noreferrer" style={{fontSize:11,color:'var(--blue)'}}>Ver foto</a>
-                  <button
-                    onClick={()=>analyzePhoto(j)}
-                    disabled={analyzingId===j.id}
-                    style={{fontSize:11,color:'var(--text3)',background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'2px 8px',cursor:analyzingId===j.id?'not-allowed':'pointer'}}
-                  >
-                    {analyzingId===j.id?'Analisando...':j.photo_ai_score!=null?'🔄 Reanalisar com IA':'📷 Analisar com IA'}
-                  </button>
+              {(j.photo_start_url || j.photo_end_url) && (
+                <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
+                  <JobPhotos
+                    photoStartUrl={j.photo_start_url}
+                    photoEndUrl={j.photo_end_url}
+                    size={44}
+                    onPhotoClick={setLightbox}
+                  />
+                  {j.photo_end_url && (
+                    <button
+                      onClick={()=>analyzePhoto(j)}
+                      disabled={analyzingId===j.id}
+                      style={{fontSize:11,color:'var(--text3)',background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'2px 8px',cursor:analyzingId===j.id?'not-allowed':'pointer'}}
+                    >
+                      {analyzingId===j.id?'Analisando...':j.photo_ai_score!=null?'🔄 Reanalisar com IA':'📷 Analisar com IA'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -522,6 +542,7 @@ export default function EmployeeProfile() {
           </div>
         </div>
       )}
+      {lightbox && <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   )
 }

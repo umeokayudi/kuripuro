@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { viewablePhotoUrl } from './photoUrl'
+import { parsePhotoUrls } from './jobPhotoUrls'
 import { jobToServiceReport, fmtDuration } from './jobReport'
 import { isAdvanceReceived, isDeductionRow } from './salaryCalc'
 
@@ -366,11 +367,11 @@ export async function generateServiceReportPdf(reportOrJob, { lang = 'en', label
     y += 6
   }
 
-  const beforeUrl = report.photo_before_url || report.photo_start_url
-  const afterUrl = report.photo_after_url || report.photo_end_url
+  const beforeUrls = parsePhotoUrls(report.photo_before_url || report.photo_start_url)
+  const afterUrls = parsePhotoUrls(report.photo_after_url || report.photo_end_url)
   const duringUrl = report.photo_during_url || null
   const signatureUrl = report.signature_url || null
-  if (beforeUrl || afterUrl || duringUrl || signatureUrl) {
+  if (beforeUrls.length || afterUrls.length || duringUrl || signatureUrl) {
     doc.addPage()
     y = margin
     doc.setFont('helvetica', 'bold')
@@ -386,8 +387,8 @@ export async function generateServiceReportPdf(reportOrJob, { lang = 'en', label
 
     const pageW = W - margin * 2
     const pair = []
-    if (beforeUrl) pair.push([L.before, await loadImageDataUrl(beforeUrl)])
-    if (afterUrl) pair.push([L.after, await loadImageDataUrl(afterUrl)])
+    if (beforeUrls[0]) pair.push([L.before, await loadImageDataUrl(beforeUrls[0])])
+    if (afterUrls[0]) pair.push([afterUrls.length > 1 ? `${L.after} 1` : L.after, await loadImageDataUrl(afterUrls[0])])
 
     if (pair.length === 2) {
       const gap = 8
@@ -407,6 +408,24 @@ export async function generateServiceReportPdf(reportOrJob, { lang = 'en', label
       const dims = photoDims(packed?.width, packed?.height)
       const boxH = Math.min(210, fitRect(dims.width, dims.height, pageW, 210).h + 8)
       y = drawContainedPhoto(doc, margin, y, pageW, boxH, pair[0][0], pair[0][1], L.photoUnavailable)
+    }
+
+    for (let i = 1; i < beforeUrls.length; i++) {
+      const photo = await loadImageDataUrl(beforeUrls[i])
+      const packed = normalizePhoto(photo)
+      const dims = photoDims(packed?.width, packed?.height)
+      const boxH = Math.min(160, fitRect(dims.width, dims.height, pageW, 160).h + 8)
+      if (y + boxH > 268) { doc.addPage(); y = margin }
+      y = drawContainedPhoto(doc, margin, y, pageW, boxH, `${L.before} ${i + 1}`, photo, L.photoUnavailable)
+    }
+
+    for (let i = 1; i < afterUrls.length; i++) {
+      const photo = await loadImageDataUrl(afterUrls[i])
+      const packed = normalizePhoto(photo)
+      const dims = photoDims(packed?.width, packed?.height)
+      const boxH = Math.min(160, fitRect(dims.width, dims.height, pageW, 160).h + 8)
+      if (y + boxH > 268) { doc.addPage(); y = margin }
+      y = drawContainedPhoto(doc, margin, y, pageW, boxH, `${L.after} ${i + 1}`, photo, L.photoUnavailable)
     }
 
     if (duringUrl) {
@@ -603,8 +622,12 @@ export async function generateDailyReport(date, jobs, employeeName) {
       doc.text(j.title.replace(/ — .*/,'').substring(0, 50), margin, y)
       y += 4
       let x = margin
-      for (const [label, url] of [['Before', j.photo_start_url], ['After', j.photo_end_url]]) {
-        if (!url) continue
+      const shots = [
+        ...parsePhotoUrls(j.photo_start_url).map((url, i, arr) => [arr.length > 1 ? `Before ${i + 1}` : 'Before', url]),
+        ...parsePhotoUrls(j.photo_end_url).map((url, i, arr) => [arr.length > 1 ? `After ${i + 1}` : 'After', url]),
+      ]
+      for (const [label, url] of shots) {
+        if (x + imgW > W - margin) { x = margin; y += imgH + 10; if (y > 220) { doc.addPage(); y = margin } }
         const data = await loadImageDataUrl(url)
         drawContainedPhoto(doc, x, y, imgW, imgH, label, data, 'Photo unavailable')
         x += imgW + gap

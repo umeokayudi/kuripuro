@@ -4,6 +4,7 @@ import { jobToServiceReport, fmtDuration, syncServiceReport, mergeReportWithJob,
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
+import { sanitizeStoredPhotoIssues } from '../lib/photoAi'
 import { useLang, fill } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
@@ -315,8 +316,8 @@ export default function Reports() {
               <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--red)' }}>{tr.missedItems}: {selected.checklist_missed_items}</div>
             )}
 
-            {selected.photo_ai_issues && (
-              <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text3)' }}>{tr.photoIssues}: {selected.photo_ai_issues}</div>
+            {sanitizeStoredPhotoIssues(selected.photo_ai_issues) && (
+              <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text3)' }}>{tr.photoIssues}: {sanitizeStoredPhotoIssues(selected.photo_ai_issues)}</div>
             )}
 
             {(selected.photo_before_url || selected.photo_after_url) && (

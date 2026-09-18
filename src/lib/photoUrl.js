@@ -1,9 +1,12 @@
+import { primaryPhotoUrl } from './jobPhotoUrls'
+
 export function isStoragePhotoUrl(url) {
   if (!url) return false
-  if (url.startsWith('jobs/') || url.startsWith('claims/')) return true
+  const raw = primaryPhotoUrl(url) || String(url)
+  if (raw.startsWith('jobs/') || raw.startsWith('claims/')) return true
   try {
-    const host = new URL(url).host
-    return host.includes('supabase.co') && url.includes('/storage/')
+    const host = new URL(raw).host
+    return host.includes('supabase.co') && raw.includes('/storage/')
   } catch {
     return false
   }
@@ -11,12 +14,14 @@ export function isStoragePhotoUrl(url) {
 
 /** URL que o navegador consegue carregar (proxy para bucket privado) */
 export function viewablePhotoUrl(url) {
-  if (!url) return null
-  if (url.startsWith('data:') || url.startsWith('blob:')) return url
-  if (isStoragePhotoUrl(url)) return `/api/photo?url=${encodeURIComponent(url)}`
-  return url
+  const raw = primaryPhotoUrl(url) || url
+  if (!raw) return null
+  if (String(raw).startsWith('data:') || String(raw).startsWith('blob:')) return raw
+  if (isStoragePhotoUrl(raw)) return `/api/photo?url=${encodeURIComponent(raw)}`
+  return raw
 }
 
 export function isHeicUrl(url) {
-  return /\.heic($|\?)/i.test(url || '') || /\.heif($|\?)/i.test(url || '')
+  const raw = primaryPhotoUrl(url) || url
+  return /\.heic($|\?)/i.test(raw || '') || /\.heif($|\?)/i.test(raw || '')
 }
