@@ -468,7 +468,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
 .emp-shell .kp-lang-btn { padding: 4px 8px; min-width: 36px; font-size: 10px; }
 .emp-shell .jp-figure-label { color: rgba(255,255,255,0.35); }
 .emp-shell .jp-frame { border-color: rgba(255,255,255,0.12); max-height: 280px; }
-.emp-shell .photo-lightbox { z-index: 500; }
+.emp-shell .photo-lightbox { z-index: 1200; }
 .emp-job-modal {
   position: fixed;
   inset: 0;
@@ -525,7 +525,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.94);
-  z-index: 400;
+  z-index: 1200;
   display: flex;
   align-items: center;
   justify-content: center;
