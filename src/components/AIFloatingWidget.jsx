@@ -14,6 +14,7 @@ import {
   aiButtonPos,
   aiPanelBox,
 } from '../lib/aiWidgetPos'
+import { isBodyScrollLocked, KP_SCROLL_LOCK_EVENT } from '../lib/bodyScrollLock'
 
 export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false, layoutKey = 'default' }) {
   const location = useLocation()
@@ -23,8 +24,19 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
   const [pos, setPos] = useState(() => loadAiPos(mode, layoutKey))
   const [vp, setVp] = useState(() => viewportSize())
   const [frame, setFrame] = useState(null)
+  const [scrollLocked, setScrollLocked] = useState(() => isBodyScrollLocked())
   const drag = useRef({ active: false, moved: false, sx: 0, sy: 0, sl: 0, st: 0 })
   const btnRef = useRef(null)
+
+  useEffect(() => {
+    const sync = () => {
+      const locked = isBodyScrollLocked()
+      setScrollLocked(locked)
+      if (locked) setOpen(false)
+    }
+    window.addEventListener(KP_SCROLL_LOCK_EVENT, sync)
+    return () => window.removeEventListener(KP_SCROLL_LOCK_EVENT, sync)
+  }, [])
 
   useEffect(() => {
     setPos(loadAiPos(mode, layoutKey))
@@ -39,6 +51,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
 
   useEffect(() => {
     const apply = () => {
+      if (isBodyScrollLocked()) return
       const nextVp = viewportSize()
       setVp(nextVp)
       const shellSel = mode === 'employee' ? '.emp-shell' : '.app-shell'
@@ -133,7 +146,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
   }, [onPointerMove, onPointerUp])
 
   const btnPos = getBtnPos()
-  if (hideOnPage || layoutKey === 'mobile') return null
+  if (hideOnPage || layoutKey === 'mobile' || scrollLocked) return null
   if (mode === 'employee' && !frame) return null
 
   const title = mode === 'employee' ? (t.employee?.aiDragHint || 'AI') : (t.app?.aiDragHint || t.sidebar.ai)

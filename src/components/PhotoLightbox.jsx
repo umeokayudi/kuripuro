@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { lockBodyScroll } from '../lib/bodyScrollLock'
 
@@ -43,7 +44,7 @@ export default function PhotoLightbox({ url, urls, onClose, closeLabel = 'Close'
   if (!list.length) return null
   const current = list[Math.min(index, list.length - 1)]
 
-  return (
+  const node = (
     <div className="photo-lightbox" onClick={onClose}>
       <button type="button" className="photo-lightbox-close" onClick={onClose}>
         ✕ {closeLabel}
@@ -77,4 +78,5 @@ export default function PhotoLightbox({ url, urls, onClose, closeLabel = 'Close'
       />
     </div>
   )
+  return typeof document !== 'undefined' ? createPortal(node, document.body) : node
 }

@@ -23,6 +23,7 @@ import { youtubeEmbedUrl } from '../lib/youtube'
 import LanguageToggle from '../components/LanguageToggle'
 import EmployeeAccountPanel from '../components/EmployeeAccountPanel'
 import EmployeeJobModal from '../components/EmployeeJobModal'
+import EmpSheetPortal from '../components/EmpSheetPortal'
 import { EmpElapsed, EmpHourWatch, EmpLiveDate, EmpLiveTime } from '../components/EmpLiveClock'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
 import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate, resolveChecklistForJob, checklistDisplayLabel } from '../lib/jobChecklist'
@@ -59,6 +60,7 @@ import { packPhotoUrls, parsePhotoUrls } from '../lib/jobPhotoUrls'
 import { formatPhotoAiIssues, minAfterPhotosForJob, PHOTO_UPLOAD_MAX } from '../lib/photoAi'
 import { tokyoToday, tokyoYearMonth, monthBounds } from '../lib/dates'
 import { isMissingColumnError, isMissingTableError } from '../lib/schemaError'
+import { isBodyScrollLocked } from '../lib/bodyScrollLock'
 import { calcPeriodSalary, countWorkedDays, isAdvanceReceived } from '../lib/salaryCalc'
 import {
   enrichJobValues,
@@ -463,6 +465,7 @@ export default function EmployeePortal() {
       toast(e.finishExistingShift || 'You have an open shift — finish it below first')
       setTab('shift')
       setTimeout(() => {
+        if (isBodyScrollLocked()) return
         const el = document.getElementById('active-job-card')
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 150)
@@ -557,6 +560,7 @@ export default function EmployeePortal() {
         toast(e.finishExistingShift || 'Open shift found — complete it below')
         setTab('shift')
         setTimeout(() => {
+          if (isBodyScrollLocked()) return
           const el = document.getElementById('active-job-card')
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }, 150)
@@ -1059,6 +1063,7 @@ export default function EmployeePortal() {
 
   const scrollToActiveJob = () => {
     setTimeout(() => {
+      if (isBodyScrollLocked()) return
       const el = document.getElementById('active-job-card')
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 200)
@@ -1123,8 +1128,8 @@ export default function EmployeePortal() {
       )}
 
       {retroJob&&(
-        <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:'100%',maxHeight:'88vh',overflowY:'auto'}}>
+        <EmpSheetPortal onBackdrop={()=>!retroBusy&&setRetroJob(null)}>
+          <div className="emp-job-sheet" data-kp-scroll onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:'100%'}}>
             <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4}}>📝 {e.retroTitle}</div>
             <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:14}}>{retroJob.title.replace(/ — .*/,'')} · {retroJob.scheduled_date}</div>
 
@@ -1173,7 +1178,7 @@ export default function EmployeePortal() {
               </div>
             )}
           </div>
-        </div>
+        </EmpSheetPortal>
       )}
 
       {/* HEADER */}
@@ -2253,8 +2258,8 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
   }
 
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:300,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
-      <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px'}}>
+    <EmpSheetPortal>
+      <div className="emp-job-sheet" data-kp-scroll style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px'}}>
         <div style={{width:40,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 18px'}} />
         <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4,textAlign:'center'}}>{labels?.signToComplete || 'Sign to complete'}</div>
         <div style={{fontSize:12,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>{jobTitle}</div>
@@ -2277,7 +2282,7 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
           </button>
         </div>
       </div>
-    </div>
+    </EmpSheetPortal>
   )
 }
 
@@ -2286,8 +2291,8 @@ function TrainingModal({ job, contract, onClose, lang, labels }) {
   const items = parseTrainingChecklist(contract?.training_checklist)
   const loc = (job?.title || '').replace(/ — .*/, '')
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'flex-end' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <EmpSheetPortal onBackdrop={onClose}>
+      <div className="emp-job-sheet" data-kp-scroll onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
             <div style={{ fontSize: 11, color: '#c19c56', fontWeight: 700 }}>🎬 {labels?.cleaningManual || (lang === 'ja' ? '清掃マニュアル' : 'Cleaning manual')}</div>
@@ -2317,7 +2322,7 @@ function TrainingModal({ job, contract, onClose, lang, labels }) {
           {labels?.closeAndStart || (lang === 'ja' ? '閉じて作業を開始' : 'Close and start work')}
         </button>
       </div>
-    </div>
+    </EmpSheetPortal>
   )
 }
 
@@ -2511,8 +2516,8 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           : labels.addServiceConfirm
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <EmpSheetPortal onBackdrop={() => !busy && onClose()}>
+      <div className="emp-job-sheet" data-kp-scroll onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>+ {labels.addServiceTitle}</div>
@@ -2641,7 +2646,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           {busy ? '...' : picked ? confirmLabel : labels.addServiceConfirm}
         </button>
       </div>
-    </div>
+    </EmpSheetPortal>
   )
 }
 
@@ -2689,8 +2694,8 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
   const canConfirm = picked && deepReady && (picked.state === 'available' || !picked.state)
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 270, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <EmpSheetPortal onBackdrop={() => !busy && onClose()}>
+      <div className="emp-job-sheet" data-kp-scroll onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#e8c47a' }}>✓ {labels.pastServiceTitle}</div>
@@ -2825,6 +2830,6 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
           {busy ? '...' : labels.pastServiceConfirm}
         </button>
       </div>
-    </div>
+    </EmpSheetPortal>
   )
 }

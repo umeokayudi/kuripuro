@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { GEOFENCE_M, mapsPointUrl } from '../lib/jobGps'
@@ -42,13 +43,13 @@ export default function EmployeeJobModal({
   const dDate = job.scheduled_date
   const instructions = keyboxForJob(job)
 
-  return (
+  const node = (
     <>
       <div
         className="emp-job-modal"
         onClick={() => { if (!lightbox) onClose?.() }}
       >
-        <div className="emp-job-sheet" onClick={ev => ev.stopPropagation()}>
+        <div className="emp-job-sheet" data-kp-scroll onClick={ev => ev.stopPropagation()}>
           <div style={{ width: 40, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, margin: '0 auto 18px' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div style={{ flex: 1, marginRight: 12 }}>
@@ -146,4 +147,5 @@ export default function EmployeeJobModal({
       )}
     </>
   )
+  return typeof document !== 'undefined' ? createPortal(node, document.body) : node
 }

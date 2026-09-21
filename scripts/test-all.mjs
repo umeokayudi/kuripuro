@@ -16,6 +16,7 @@ const steps = [
   ['npm run test:admin-mobile', 'admin-mobile'],
   ['npm run test:account', 'account'],
   ['npm run test:employee-login', 'employee-login'],
+  ['npm run test:body-scroll-lock', 'body-scroll-lock'],
   ['npm run test:job-gps', 'job-gps'],
   ['npm run test:photo-ai', 'photo-ai'],
   ['npm run test:client-portal', 'client-portal'],

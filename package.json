@@ -27,6 +27,7 @@
     "test:admin-mobile": "npx vite-node scripts/test-admin-mobile.mjs",
     "test:account": "npx vite-node scripts/test-account-credentials.mjs",
     "test:employee-login": "npx vite-node scripts/test-employee-login.mjs",
+    "test:body-scroll-lock": "node scripts/test-body-scroll-lock.mjs",
     "test:job-gps": "npx vite-node scripts/test-job-gps.mjs",
     "test:photo-ai": "npx vite-node scripts/test-photo-ai.mjs",
     "test:client-portal": "npx vite-node scripts/test-client-portal.mjs",
