@@ -3,10 +3,12 @@ import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import { tokyoToday } from '../lib/dates'
 
 export default function Faturas() {
   const { t } = useLang()
+  const confirm = useConfirm()
   const inv = t.invoices
   const [faturas, setFaturas] = useState([])
   const [clients, setClients] = useState([])
@@ -87,7 +89,7 @@ export default function Faturas() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm(inv.deleteConfirm)) return
+    if (!(await confirm({ title: t.dialog.delete, message: inv.deleteConfirm, tone: 'danger', confirmLabel: t.dialog.delete }))) return
     await supabase.from('faturas').delete().eq('id', id)
     toast(inv.deleted); load()
   }

@@ -2,12 +2,17 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { useLang, fill } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import PasswordReveal from '../components/PasswordReveal'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 export default function Employees() {
   const navigate = useNavigate()
+  const { t } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [tab, setTab] = useState('list')
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
@@ -90,7 +95,7 @@ export default function Employees() {
   }
 
   const handleDelete = async (id, name) => {
-    if (!window.confirm(`⚠️ Delete ${name}? This will also delete all their jobs, payments, evaluations and history. This action cannot be undone.`)) return
+    if (!(await confirm({ title: name, message: fill(dlg.deleteEmployee, { name }), tone: 'danger', confirmLabel: dlg.delete }))) return
     try {
       await supabase.from('jobs').delete().eq('employee_id', id)
       await supabase.from('checkins').delete().eq('employee_id', id)

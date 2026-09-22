@@ -6,6 +6,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { sanitizeStoredPhotoIssues } from '../lib/photoAi'
 import { useLang, fill } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import { apiPost } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 
@@ -21,6 +22,7 @@ function typeLabel(type, tr) {
 
 export default function Reports() {
   const { lang, t } = useLang()
+  const confirm = useConfirm()
   const tr = t.reports
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
@@ -134,7 +136,7 @@ export default function Reports() {
 
   const handleDelete = async (report) => {
     const label = `${report.employee_name} · ${report.client_name || report.job_title} · ${report.report_date}`
-    if (!confirm(fill(tr.deleteConfirm, { label }))) return
+    if (!(await confirm({ title: tr.delete, message: fill(tr.deleteConfirm, { label }), tone: 'danger', confirmLabel: t.dialog.delete }))) return
 
     const { error: srErr } = await supabase.from('service_reports').delete().eq('job_id', report.job_id)
     if (srErr) { toast.error(srErr.message); return }

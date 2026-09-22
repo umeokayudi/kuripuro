@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { tokyoYearMonth } from '../lib/dates'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, dateLocale } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import {
   DEFAULT_LOCATIONS, buildMonthSchedule, scheduleStats, jobsToRows,
   contractsForActiveEmployees, locationsFromContracts, DOW_EN, DOW_JA,
@@ -11,8 +12,9 @@ import {
 
 export default function ScheduleGenerator() {
   const { lang, t } = useLang()
+  const confirm = useConfirm()
   const s = t.schedule
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const loc = dateLocale(lang)
   const dowLabels = lang === 'ja' ? DOW_JA : DOW_EN
 
   const [month, setMonth] = useState(() => tokyoYearMonth())
@@ -101,15 +103,15 @@ export default function ScheduleGenerator() {
 
     const summary = Object.entries(scheduleStats(jobs).byEmployee).map(([n, c]) => `${n}: ${c}`).join(', ')
     if (fillMissingMode) {
-      if (!confirm(fill(s.confirmFillMissing, { count: jobs.length }))) return
+      if (!(await confirm({ title: s.fillMissingDeep, message: fill(s.confirmFillMissing, { count: jobs.length }), tone: 'primary', confirmLabel: s.generate ? fill(s.generate, { count: jobs.length }) : t.dialog.continue }))) return
     } else if (existingCount > 0) {
-      if (!confirm(fill(s.confirmReplace, { existing: existingCount, month, count: jobs.length, summary }))) return
+      if (!(await confirm({ title: s.generator, message: fill(s.confirmReplace, { existing: existingCount, month, count: jobs.length, summary }), tone: 'danger', confirmLabel: t.dialog.continue }))) return
       await supabase.from('jobs').delete()
         .gte('scheduled_date', `${month}-01`)
         .lte('scheduled_date', `${month}-31`)
         .eq('status', 'assigned')
         .neq('job_category', 'spot')
-    } else if (!confirm(fill(s.confirmCreate, { count: jobs.length, summary }))) return
+    } else if (!(await confirm({ title: s.generator, message: fill(s.confirmCreate, { count: jobs.length, summary }), tone: 'primary', confirmLabel: t.dialog.continue }))) return
 
     setLoading(true)
     const rows = jobsToRows(jobs, contracts)
@@ -215,7 +217,7 @@ export default function ScheduleGenerator() {
                   <button type="button" onClick={() => setExpandedDay(isOpen ? null : date)}
                     style={{ width: '100%', display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface2)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>
-                      {dowLabels[dow]} {new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
+                      {dowLabels[dow]} {new Date(date + 'T12:00:00').toLocaleDateString(loc, { day: 'numeric', month: 'short' })}
                     </span>
                     <span style={{ fontSize: 12, color: 'var(--text3)' }}>{dayJobs.length} {s.jobsLabel} {isOpen ? '▲' : '▼'}</span>
                   </button>

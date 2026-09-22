@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { tokyoToday, tokyoYearMonth } from '../lib/dates'
+import { useLang } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 
 /** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
 function normalizeEntry(row) {
@@ -14,6 +16,9 @@ function normalizeEntry(row) {
 }
 
 export default function Cashflow() {
+  const { t } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('overview')
@@ -50,6 +55,7 @@ export default function Cashflow() {
   }
 
   const handleDelete = async (id) => {
+    if (!(await confirm({ title: dlg.deleteCashflow, message: dlg.dangerHint, tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('cashflow').delete().eq('id', id)
     toast('Entry removed.'); load()
   }

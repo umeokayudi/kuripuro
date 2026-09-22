@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 
 export default function Deductions() {
   const { t } = useLang()
+  const confirm = useConfirm()
   const d = t.deductDesk
   const [employees, setEmployees] = useState([])
   const [history, setHistory] = useState([])
@@ -60,6 +62,7 @@ export default function Deductions() {
   }
 
   const handleDelete = async (id) => {
+    if (!(await confirm({ title: t.dialog.deleteDeduction, message: t.dialog.dangerHint, tone: 'danger', confirmLabel: t.dialog.delete }))) return
     await supabase.from('salary_payments').delete().eq('id',id)
     toast(d.removed)
     load()

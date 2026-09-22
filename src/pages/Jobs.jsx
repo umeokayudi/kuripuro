@@ -5,7 +5,8 @@ import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
 } from '../lib/cleaningType'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, dateLocale } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -85,10 +86,11 @@ function statusStyle(status, labels) {
 
 function DayScheduleView({ onClose }) {
   const { lang, t } = useLang()
+  const confirm = useConfirm()
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const loc = dateLocale(lang)
   const [date, setDate] = useState(tokyoToday())
   const [calMonth, setCalMonth] = useState(() => tokyoToday().slice(0, 7))
   const [showCalendar, setShowCalendar] = useState(false)
@@ -143,7 +145,7 @@ function DayScheduleView({ onClose }) {
   const weekDays = lang === 'ja'
     ? ['月', '火', '水', '木', '金', '土', '日']
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
+  const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(loc, { month: 'long', year: 'numeric' })
   const todayStr = tokyoToday()
 
   const handleReassign = async (jobId, empId) => {
@@ -169,7 +171,7 @@ function DayScheduleView({ onClose }) {
   }
 
   const handleDelete = async (jobId, title) => {
-    if (!confirm(fill(jt.deleteJobConfirm, { title }))) return
+    if (!(await confirm({ title: jt.deleteJob, message: fill(jt.deleteJobConfirm, { title }), tone: 'danger', confirmLabel: t.dialog.delete }))) return
     await supabase.from('jobs').delete().eq('id', jobId)
     toast.success(jt.jobDeleted)
     loadJobs()
@@ -193,8 +195,8 @@ function DayScheduleView({ onClose }) {
   const inProgress = jobs.filter(j => j.status === 'in_progress').length
   const pending = jobs.filter(j => j.status === 'assigned').length
   const progressPct = jobs.length ? Math.round((done / jobs.length) * 100) : 0
-  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })
-  const dateShort = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long' })
+  const dateShort = new Date(date + 'T12:00:00').toLocaleDateString(loc, { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   const JobCard = ({ j, idx }) => {
     const stl = statusStyle(j.status, st)
@@ -847,6 +849,7 @@ export default function Jobs() {
 
 function LocationsTab() {
   const { t } = useLang()
+  const confirm = useConfirm()
   const jt = t.jobs
   const [locations, setLocations] = useState([])
   const [showDaySchedule, setShowDaySchedule] = useState(false)
@@ -897,6 +900,7 @@ function LocationsTab() {
   }
 
   const handleDelete = async (id) => {
+    if (!(await confirm({ title: t.dialog.removeLocation, message: t.dialog.deactivateLocation, tone: 'danger', confirmLabel: t.dialog.delete }))) return
     await supabase.from('locations').update({ is_active: false }).eq('id', id)
     load()
   }

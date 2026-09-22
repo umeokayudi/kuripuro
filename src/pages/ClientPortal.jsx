@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, dateLocale } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
+import AppDialog from '../components/AppDialog'
 import LanguageToggle from '../components/LanguageToggle'
 import {
   buildDaySummaries,
@@ -33,6 +35,7 @@ import {
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday, addCalendarDays } from '../lib/dates'
+import { weekdayShortLabels } from '../lib/appDialog'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import './client-portal.css'
 
@@ -85,8 +88,9 @@ function visitRangeForPreset(preset, today) {
 export default function ClientPortal() {
   const { user, logout, updateSession } = useAuth()
   const { lang, switchLang, t: tr } = useLang()
+  const confirm = useConfirm()
   const c = tr?.client
-  const dateLocale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
+  const loc = dateLocale(lang)
 
   const [desktopMode, setDesktopMode] = useState(() => {
     const saved = localStorage.getItem('cp_view_mode')
@@ -349,8 +353,8 @@ export default function ClientPortal() {
     return filterDeepCleanProgressByLocation(deepProgressAll, deepProgressStore)
   }, [deepProgressAll, canSelectDeepStore, deepProgressStore])
   const deepProgressMonthLabel = useMemo(() => (
-    new Date(`${deepProgressMonth}-01T12:00:00`).toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
-  ), [deepProgressMonth, dateLocale])
+    new Date(`${deepProgressMonth}-01T12:00:00`).toLocaleDateString(loc, { month: 'long', year: 'numeric' })
+  ), [deepProgressMonth, loc])
 
   if (!c) {
     return (
@@ -527,6 +531,13 @@ export default function ClientPortal() {
   }
 
   const markInvoicePaid = async (invoice) => {
+    const ok = await confirm({
+      title: tr.dialog.markPaidTitle,
+      message: fill(tr.dialog.markPaidMessage, { amount: formatYen(invoice.total) }),
+      tone: 'gold',
+      confirmLabel: c.markInvoicePaid,
+    })
+    if (!ok) return
     const { error } = await supabase.from('client_requests').insert({
       client_id: user.client_id, client_user_id: user.id,
       location_name: user.location_name || null,
@@ -744,7 +755,7 @@ export default function ClientPortal() {
                 <div className="cp-brand-tag">KuriPuro · {c.portal}</div>
                 <div className="cp-header-title">{user.client_name || user.name}</div>
                 <div className="cp-header-meta">
-                  {user.location_name || c.allLocations} · {clock.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Tokyo' })}
+                  {user.location_name || c.allLocations} · {clock.toLocaleDateString(loc, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Tokyo' })}
                 </div>
               </div>
               {desktopMode && (
@@ -778,7 +789,7 @@ export default function ClientPortal() {
                 </div>
                 <div className="cp-stat">
                   <div className="cp-stat-val">{avgRating}</div>
-                  <div className="cp-stat-lbl">★ {lang === 'ja' ? '評価' : 'Rating'}</div>
+                  <div className="cp-stat-lbl">★ {c.ratingLabel || 'Rating'}</div>
                 </div>
                 <div className="cp-stat">
                   <div className="cp-stat-val">{todayJobs.length}</div>
@@ -1214,35 +1225,6 @@ export default function ClientPortal() {
                         </select>
                       </div>
                     )}
-                    {bookingExtra && (
-                      <div className="cp-card" style={{ marginBottom: 12 }}>
-                        <div className="cp-label">{extraLabel(bookingExtra.id, lang)} · {formatYen(bookingExtra.price)}</div>
-                        <div className="cp-field" style={{ marginTop: 10 }}>
-                          <span className="cp-label">{c.requestDate}</span>
-                          <input type="date" className="cp-input" min={today} value={extraDate} onChange={e => setExtraDate(e.target.value)} />
-                        </div>
-                        <div className="cp-field">
-                          <span className="cp-label">{c.extraTime}</span>
-                          <div className="cp-period-pills">
-                            {EXTRA_TIMES.map(id => (
-                              <button
-                                key={id}
-                                type="button"
-                                className={`cp-period-pill${extraTime === id ? ' active' : ''}`}
-                                onClick={() => setExtraTime(id)}
-                              >
-                                {extraTimeLabel(id, lang)}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="cp-field">
-                          <span className="cp-label">{c.extraNotes}</span>
-                          <textarea className="cp-textarea" rows={3} value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder={c.extraNotesPh} />
-                        </div>
-                        <button type="button" className="cp-btn cp-btn-gold" onClick={() => bookExtra(bookingExtra)}>{c.confirmExtra} · {formatYen(bookingExtra.price)}</button>
-                      </div>
-                    )}
                     <div className="cp-extra-grid">
                       {extraCatalog.map(ex => (
                         <button
@@ -1399,6 +1381,56 @@ export default function ClientPortal() {
           )}
         </div>
       </div>
+      <AppDialog
+        open={Boolean(bookingExtra)}
+        dark
+        title={tr.dialog.extraTitle}
+        confirmLabel={bookingExtra ? `${c.confirmExtra} · ${formatYen(bookingExtra.price)}` : c.confirmExtra}
+        cancelLabel={tr.dialog.extraCancel}
+        tone="gold"
+        confirmDisabled={!bookingExtra}
+        onConfirm={() => bookExtra(bookingExtra)}
+        onCancel={() => setBookingExtra(null)}
+      >
+        {bookingExtra && (
+          <>
+            <div className="cp-label" style={{ marginBottom: 10 }}>
+              {extraLabel(bookingExtra.id, lang)} · {formatYen(bookingExtra.price)}
+            </div>
+            {locations.length > 1 && !user.location_name && (
+              <div className="cp-field">
+                <span className="cp-label">{c.requestLocation}</span>
+                <select className="cp-select" value={extraLoc} onChange={e => setExtraLocation(e.target.value)}>
+                  {locations.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="cp-field">
+              <span className="cp-label">{c.requestDate}</span>
+              <input type="date" className="cp-input" min={today} value={extraDate} onChange={e => setExtraDate(e.target.value)} />
+            </div>
+            <div className="cp-field">
+              <span className="cp-label">{c.extraTime}</span>
+              <div className="cp-period-pills">
+                {EXTRA_TIMES.map(id => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`cp-period-pill${extraTime === id ? ' active' : ''}`}
+                    onClick={() => setExtraTime(id)}
+                  >
+                    {extraTimeLabel(id, lang)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="cp-field">
+              <span className="cp-label">{c.extraNotes}</span>
+              <textarea className="cp-textarea" rows={3} value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder={c.extraNotesPh} />
+            </div>
+          </>
+        )}
+      </AppDialog>
     </div>
   )
 }
@@ -1483,9 +1515,7 @@ function DeepCleanProgressCard({
   const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
   const storeRows = storeProgressRows(allByLocation || {}, today, lang)
   const storeNames = Object.keys(allByLocation || {}).sort((a, b) => a.localeCompare(b))
-  const weekdays = lang === 'ja'
-    ? ['日', '月', '火', '水', '木', '金', '土']
-    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const weekdays = weekdayShortLabels(lang)
   const slotLabels = {
     slotMissing: labels.deepCleanMissing,
     slotUnscheduled: labels.deepCleanUnscheduled || labels.deepCleanMissing,

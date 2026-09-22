@@ -6,6 +6,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import { tokyoToday } from '../lib/dates'
 import { JOB_GPS_SETUP_SQL, fenceOk, isLocationFresh, liveDistanceToJob, liveFocusJob, mapsPointUrl, mergeLocationHints, summarizeStaffStatus } from '../lib/jobGps'
 import { isMissingColumnError } from '../lib/schemaError'
@@ -13,6 +14,7 @@ import { SUPABASE_SQL_URL } from '../lib/salarySetupSql'
 
 export default function LiveTracking() {
   const { t } = useLang()
+  const confirm = useConfirm()
   const L = t.live
   const [employees, setEmployees] = useState([])
   const [jobs, setJobs] = useState([])
@@ -34,7 +36,12 @@ export default function LiveTracking() {
   }
 
   const cleanPhotos = async () => {
-    if (!window.confirm(L.cleanConfirm)) return
+    if (!(await confirm({
+      title: L.photoStorage,
+      message: L.cleanConfirm,
+      tone: 'danger',
+      confirmLabel: L.cleanOld,
+    }))) return
     setCleaning(true)
     try {
       const r = await apiFetch('/api/cleanup-photos', { method: 'POST' })

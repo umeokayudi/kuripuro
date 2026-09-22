@@ -5,6 +5,7 @@ import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress, getCurrentPosition } from '../lib/geocode'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
@@ -82,6 +83,7 @@ const BADGE_DEFS = [
 export default function EmployeePortal() {
   const { user, logout, updateSession } = useAuth()
   const { lang, t: tr } = useLang()
+  const confirm = useConfirm()
   const e = tr.employee
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -506,10 +508,15 @@ export default function EmployeePortal() {
 
   const handleAbandonStaleShift = async (job) => {
     if (!job) return
-    const msg = lang === 'ja'
+    const msg = e.staleShiftConfirm || (lang === 'ja'
       ? 'この作業をリセットして最初からやり直しますか？（開始時刻が消えます）'
-      : 'Reset this job so you can start fresh? (Timer will be cleared)'
-    if (!window.confirm(msg)) return
+      : 'Reset this job so you can start fresh? (Timer will be cleared)')
+    if (!(await confirm({
+      title: e.staleShiftTitle,
+      message: msg,
+      tone: 'danger',
+      confirmLabel: e.staleShiftReset,
+    }))) return
     setSubmitting(true)
     try {
       const { error } = await supabase.from('jobs').update({

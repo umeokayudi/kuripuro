@@ -302,9 +302,10 @@ h1, h2, .brand, .topbar-title { font-family: var(--font-display); letter-spacing
 
 /* Buttons */
 .btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 16px; border-radius: var(--radius-sm);
-  font-size: 13px; font-weight: 500; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 16px; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  min-height: 44px;
   border: 1px solid var(--border); background: var(--surface);
   color: var(--text); transition: all 0.15s; font-family: inherit;
 }
@@ -322,7 +323,7 @@ h1, h2, .brand, .topbar-title { font-family: var(--font-display); letter-spacing
 .btn-success:hover { opacity: 0.9; }
 .btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
 .btn-danger:hover { opacity: 0.9; }
-.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-sm { padding: 7px 12px; font-size: 12px; min-height: 36px; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 
 /* Tables */
@@ -566,6 +567,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   flex: 1;
   min-width: 0;
   padding: 8px 2px 6px;
+  min-height: 48px;
   border: none;
   background: none;
   cursor: pointer;
@@ -577,8 +579,8 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   color: rgba(255,255,255,0.25);
 }
 .emp-tab-label {
-  font-size: 8px;
-  font-weight: 500;
+  font-size: 10px;
+  font-weight: 650;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -617,18 +619,6 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   padding: 20px 20px max(50px, env(safe-area-inset-bottom, 0px));
   width: 100%;
   max-width: var(--phone-w);
-  max-height: 90vh;
-  max-height: 90dvh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-}
-.emp-job-sheet {
-  background: #0d1f35;
-  border-radius: 24px 24px 0 0;
-  padding: 20px 20px max(50px, env(safe-area-inset-bottom, 0px));
   max-height: 90vh;
   max-height: 90dvh;
   overflow-y: auto;
@@ -845,7 +835,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
 .dash-quick-btn span { font-size: 11px; color: var(--text3); }
 .app-shell.admin-mobile .dash-stale { flex-wrap: wrap; }
 .app-shell.admin-mobile .dash-clock { font-size: 22px; }
-.app-shell.admin-mobile .btn { min-height: 40px; }
+.app-shell.admin-mobile .btn { min-height: 44px; }
 .app-shell.admin-mobile .nav-item { padding: 11px 12px; min-height: 44px; }
 .app-shell.admin-mobile .ai-page { display: flex; flex-direction: column; min-height: 100%; }
 .app-shell.admin-mobile .ai-page-panel { flex: 1; min-height: 0; max-width: none; }
@@ -989,4 +979,158 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
 
 @media (max-width: 720px) {
   input, select, textarea { font-size: 16px !important; }
+}
+
+/* Shared popup / confirm sheet */
+.kp-dialog-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 16, 28, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.kp-dialog-sheet {
+  width: 100%;
+  max-width: 420px;
+  max-height: min(88vh, 88dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 22px;
+  padding: 10px 18px 18px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.28);
+  outline: none;
+}
+.kp-dialog-sheet.is-wide { max-width: 520px; }
+.kp-dialog-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  margin: 4px auto 12px;
+}
+.kp-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.kp-dialog-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.kp-dialog-x {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 16px;
+  cursor: pointer;
+}
+.kp-dialog-message {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text2);
+  white-space: pre-wrap;
+}
+.kp-dialog-body { margin-bottom: 14px; }
+.kp-dialog-actions {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+}
+.kp-dialog-btn {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 12px 16px;
+}
+.kp-dialog-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.kp-dialog-btn-cancel {
+  background: transparent;
+  color: var(--text2);
+}
+.kp-dialog-btn-primary {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+}
+.kp-dialog-btn-danger {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+.kp-dialog-btn-gold {
+  background: var(--gold);
+  color: var(--navy);
+  border-color: var(--gold);
+}
+.kp-dialog-btn-success {
+  background: var(--green);
+  color: #fff;
+  border-color: var(--green);
+}
+.kp-dialog-root.is-dark {
+  background: rgba(0, 0, 0, 0.72);
+}
+.kp-dialog-root.is-dark .kp-dialog-sheet {
+  background: #10233a;
+  color: #f4f7fb;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.kp-dialog-root.is-dark .kp-dialog-title { color: #fff; }
+.kp-dialog-root.is-dark .kp-dialog-message { color: rgba(255,255,255,0.72); }
+.kp-dialog-root.is-dark .kp-dialog-handle { background: rgba(255,255,255,0.18); }
+.kp-dialog-root.is-dark .kp-dialog-x {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.7);
+}
+.kp-dialog-root.is-dark .kp-dialog-btn-cancel {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.82);
+  border-color: rgba(255,255,255,0.12);
+}
+.kp-dialog-root.is-dark .kp-dialog-body .cp-label { color: rgba(255,255,255,0.5); }
+.kp-dialog-root.is-dark .kp-dialog-body .cp-input,
+.kp-dialog-root.is-dark .kp-dialog-body .cp-select,
+.kp-dialog-root.is-dark .kp-dialog-body .cp-textarea {
+  background: rgba(0,0,0,0.28);
+  color: #fff;
+  border-color: rgba(255,255,255,0.12);
+}
+
+@media (min-width: 640px) {
+  .kp-dialog-root {
+    align-items: center;
+    padding: 24px;
+  }
+  .kp-dialog-sheet {
+    border-radius: 18px;
+    padding: 18px 22px 20px;
+  }
+  .kp-dialog-handle { display: none; }
+  .kp-dialog-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+  .kp-dialog-btn { width: auto; min-width: 120px; }
 }

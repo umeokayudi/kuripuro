@@ -4,8 +4,13 @@ import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } from '../lib/portalStores'
 import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
+import { useLang, fill } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 
 export default function Clients() {
+  const { t } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [tab, setTab] = useState('list')
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -139,7 +144,7 @@ export default function Clients() {
   }
 
   const deletePortalUser = async (id) => {
-    if (!confirm('Delete this portal account?')) return
+    if (!(await confirm({ title: dlg.deletePortalAccount, message: dlg.dangerHint, tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('client_users').delete().eq('id', id)
     loadPortal(portalClientId)
   }
@@ -177,7 +182,12 @@ export default function Clients() {
 
   const provisionAllStores = async () => {
     if (!portalSchemaOk) return toast.error('Primeiro rode o SQL no Supabase')
-    if (!confirm(`Criar/atualizar ${getPortalStores().length} contas (On The Planet + Atomic)?\nSenha padrão: ${DEFAULT_PORTAL_PASSWORD}`)) return
+    if (!(await confirm({
+      title: dlg.confirmTitle,
+      message: fill(dlg.provisionStores, { count: getPortalStores().length, password: DEFAULT_PORTAL_PASSWORD }),
+      tone: 'gold',
+      confirmLabel: dlg.continue,
+    }))) return
     setBulkProvisionBusy(true)
     try {
       const results = await provisionAllStoreAccounts(supabase, clients)
@@ -222,7 +232,7 @@ export default function Clients() {
   }
 
   const handleDelete = async (id, name) => {
-    if (!confirm(`Delete ${name}?`)) return
+    if (!(await confirm({ title: name, message: fill(dlg.deleteNamed, { name }), tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('clients').delete().eq('id', id)
     toast('Client deleted.')
     load()

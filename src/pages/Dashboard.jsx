@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, buildDaySummaries, currentYearMonth, deepCleanScheduleLabel, formatScheduleDate, storeProgressRows, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, dateLocale } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
+import AppDialog from '../components/AppDialog'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
 import { tokyoToday, monthBounds } from '../lib/dates'
@@ -18,9 +20,10 @@ function shiftYearMonth(ym, delta) {
 
 export default function Dashboard() {
   const { lang, t } = useLang()
+  const confirm = useConfirm()
   const d = t.dashboard
   const slotLabels = { ...d, status: t.status }
-  const dateLocale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
+  const loc = dateLocale(lang)
 
   const [clients, setClients] = useState([])
   const [employees, setEmployees] = useState([])
@@ -71,7 +74,12 @@ export default function Dashboard() {
 
   const cancelStaleJobs = async () => {
     const today = tokyoToday()
-    if (!window.confirm(fill(d.cancelStaleConfirm, { today }))) return
+    if (!(await confirm({
+      title: d.cancelStale,
+      message: fill(d.cancelStaleConfirm, { today }),
+      tone: 'danger',
+      confirmLabel: d.cancelStale,
+    }))) return
     const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).eq('status', 'assigned').lt('scheduled_date', today)
     if (error) return toast.error(error.message)
     toast.success(d.staleCancelled)
@@ -105,7 +113,7 @@ export default function Dashboard() {
   const missingDays = daySummaries.filter(d => d.state === 'missing').length
   const lateDays = storeRows.reduce((s, r) => s + (r.late || 0), 0)
   const dayPct = daySummaries.length ? Math.round((completedDays / daySummaries.length) * 100) : 0
-  const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
+  const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(loc, { month: 'long', year: 'numeric' })
 
   const ratings30 = ratingsInPeriod(clientRatings, 30)
   const ratings7 = ratingsInPeriod(clientRatings, 7)
@@ -118,67 +126,59 @@ export default function Dashboard() {
 
   const closeDetail = () => { setDetailLoc(null); setDetailTuesday(null) }
 
-  const DetailModal = () => {
-    if (!detailLoc && !detailTuesday) return null
-    const title = detailLoc
-      ? `${detailLoc} — ${monthLabel}${deepProgress.byLocation[detailLoc]?.schedule ? ` (${deepProgress.byLocation[detailLoc].schedule})` : ''}`
-      : fill(d.tuesdayTitle, { date: formatScheduleDate(detailTuesday, lang) })
+  const detailTitle = detailLoc
+    ? `${detailLoc} — ${monthLabel}${deepProgress.byLocation[detailLoc]?.schedule ? ` (${deepProgress.byLocation[detailLoc].schedule})` : ''}`
+    : detailTuesday
+      ? fill(d.tuesdayTitle, { date: formatScheduleDate(detailTuesday, lang) })
+      : ''
 
-    const rows = detailLoc
-      ? (deepProgress.byLocation[detailLoc]?.expectedDates || []).map(date => ({ date, job: deepProgress.byLocation[detailLoc]?.byDate[date] || null, loc: detailLoc }))
-      : DEEP_CLEAN_LOCATIONS.filter(loc => deepProgress.byLocation[loc]?.expectedDates?.includes(detailTuesday)).map(loc => ({ date: detailTuesday, job: deepProgress.byLocation[loc]?.byDate[detailTuesday] || null, loc }))
-
-    return (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={closeDetail}>
-        <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 24, maxWidth: 520, width: '100%', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{d.closeOutside}</div>
-            </div>
-            <button onClick={closeDetail} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
-          </div>
-
-          <div style={{ display: 'grid', gap: 8 }}>
-            {rows.map(({ date, job, loc }) => {
-              const slot = tuesdaySlotInfo(job, slotLabels, date)
-              const dateLabel = detailLoc ? formatScheduleDate(date, lang) : loc
-              const sub = detailLoc
-                ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : d.noJob)
-                : (job ? formatScheduleDate(date, lang) + ` · ${job.employee_name || '—'}` : d.noJob)
-              return (
-                <div key={`${loc}-${date}`} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: `${slot.color}10`, border: `1px solid ${slot.color}35` }}>
-                  <div style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{slot.icon}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{dateLabel}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{sub}</div>
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: slot.color, textAlign: 'right' }}>{slot.label}</div>
-                </div>
-              )
-            })}
-          </div>
-
-          {detailLoc && deepProgress.byLocation[detailLoc] && (
-            <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 10, fontSize: 13 }}>
-              <b>{d.summary}:</b> {fill(d.summaryLine, { completed: deepProgress.byLocation[detailLoc].completed, expected: deepProgress.byLocation[detailLoc].expected })}
-              {deepProgress.byLocation[detailLoc].missing > 0 && (
-                <span style={{ color: '#f87171' }}>{fill(d.missingTuesdays, { n: deepProgress.byLocation[detailLoc].missing })}</span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const detailRows = detailLoc
+    ? (deepProgress.byLocation[detailLoc]?.expectedDates || []).map(date => ({ date, job: deepProgress.byLocation[detailLoc]?.byDate[date] || null, loc: detailLoc }))
+    : detailTuesday
+      ? DEEP_CLEAN_LOCATIONS.filter(locName => deepProgress.byLocation[locName]?.expectedDates?.includes(detailTuesday)).map(locName => ({ date: detailTuesday, job: deepProgress.byLocation[locName]?.byDate[detailTuesday] || null, loc: locName }))
+      : []
 
   return (
     <div>
-      <DetailModal />
+      <AppDialog
+        open={Boolean(detailLoc || detailTuesday)}
+        title={detailTitle}
+        cancelLabel={t.dialog.close}
+        onClose={closeDetail}
+        wide
+      >
+        <div style={{ display: 'grid', gap: 8 }}>
+          {detailRows.map(({ date, job, loc: locName }) => {
+            const slot = tuesdaySlotInfo(job, slotLabels, date)
+            const dateLabel = detailLoc ? formatScheduleDate(date, lang) : locName
+            const sub = detailLoc
+              ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : d.noJob)
+              : (job ? formatScheduleDate(date, lang) + ` · ${job.employee_name || '—'}` : d.noJob)
+            return (
+              <div key={`${locName}-${date}`} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: `${slot.color}10`, border: `1px solid ${slot.color}35` }}>
+                <div style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{slot.icon}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{dateLabel}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{sub}</div>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: slot.color, textAlign: 'right' }}>{slot.label}</div>
+              </div>
+            )
+          })}
+        </div>
+        {detailLoc && deepProgress.byLocation[detailLoc] && (
+          <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 10, fontSize: 13 }}>
+            <b>{d.summary}:</b> {fill(d.summaryLine, { completed: deepProgress.byLocation[detailLoc].completed, expected: deepProgress.byLocation[detailLoc].expected })}
+            {deepProgress.byLocation[detailLoc].missing > 0 && (
+              <span style={{ color: '#f87171' }}>{fill(d.missingTuesdays, { n: deepProgress.byLocation[detailLoc].missing })}</span>
+            )}
+          </div>
+        )}
+      </AppDialog>
       <div className="dash-hero">
         <div>
           <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>
-            {clock.toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Tokyo' })}
+            {clock.toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Tokyo' })}
             <span style={{ marginLeft: 8 }}>{d.tokyo}</span>
             {lastUpdate && <span style={{ marginLeft: 10 }}>· {d.updated} {lastUpdate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}</span>}
             <button type="button" onClick={load} aria-label={d.updating} style={{ marginLeft: 10, fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text3)', cursor: 'pointer' }}>↻</button>

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useLang, fill } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import toast from 'react-hot-toast'
 import { tokyoToday, tokyoYearMonth } from '../lib/dates'
 import { plannedWeeklyAdvances, isDeductionRow } from '../lib/salaryCalc'
 
 export default function Payments() {
   const { t } = useLang()
+  const confirm = useConfirm()
   const desk = t.salaryDesk
   const p = t.payDesk
   const [employees, setEmployees] = useState([])
@@ -66,7 +68,7 @@ export default function Payments() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm(p.deleteConfirm)) return
+    if (!(await confirm({ title: t.dialog.delete, message: p.deleteConfirm, tone: 'danger', confirmLabel: t.dialog.delete }))) return
     await supabase.from('salary_payments').delete().eq('id',id)
     toast(p.deleted); load()
   }
@@ -81,7 +83,7 @@ export default function Payments() {
     const month = tokyoYearMonth()
     const drafts = plannedWeeklyAdvances(emp, month, payments.filter(row => row.employee_id === emp.id && row.payment_type === 'advance' && row.period === month))
     if (!drafts.length) return toast(desk.weeklyNone)
-    if (!confirm(fill(desk.weeklyAdvances, { n: drafts.length }))) return
+    if (!(await confirm({ title: desk.weeklyAdvances ? fill(desk.weeklyAdvances, { n: drafts.length }) : t.dialog.confirmTitle, message: fill(desk.weeklyAdvances, { n: drafts.length }), tone: 'primary', confirmLabel: t.dialog.continue }))) return
     const rows = drafts.map(d => ({ ...d, employee_id: emp.id, employee_name: emp.full_name, period: month }))
     const { error } = await supabase.from('salary_payments').insert(rows)
     if (error) return toast.error(error.message)

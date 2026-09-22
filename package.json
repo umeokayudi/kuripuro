@@ -32,6 +32,7 @@
     "test:photo-ai": "npx vite-node scripts/test-photo-ai.mjs",
     "test:client-portal": "npx vite-node scripts/test-client-portal.mjs",
     "test:schedule-assign": "npx vite-node scripts/test-schedule-assign.mjs",
+    "test:app-dialog": "node scripts/test-app-dialog.mjs",
     "lint": "eslint src api scripts --ext .js,.jsx,.mjs --max-warnings 80",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh",

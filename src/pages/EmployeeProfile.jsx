@@ -6,6 +6,8 @@ import { parsePhotoUrls } from '../lib/jobPhotoUrls'
 import { formatPhotoAiIssues, sanitizeStoredPhotoIssues } from '../lib/photoAi'
 import { getCleaningType, parseDeepComponents } from '../lib/cleaningType'
 import toast from 'react-hot-toast'
+import { useLang } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import ContractTab from '../components/ContractTab'
 import PasswordReveal from '../components/PasswordReveal'
 import JobPhotos from '../components/JobPhotos'
@@ -96,6 +98,9 @@ function RecentDays({ jobs, onDayClick }) {
 export default function EmployeeProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { t } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [tab, setTab] = useState('overview')
   const [emp, setEmp] = useState(null)
   const [jobs, setJobs] = useState([])
@@ -203,6 +208,7 @@ export default function EmployeeProfile() {
   }
 
   const handleDeleteEval = async (evalId, pts) => {
+    if (!(await confirm({ title: dlg.deleteEval, message: dlg.dangerHint, tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('evaluations').delete().eq('id', evalId)
     const newScore = Math.max(0, Math.min(100, (emp.score||100) - pts))
     await supabase.from('employees').update({ score:newScore }).eq('id', id)
@@ -214,7 +220,7 @@ export default function EmployeeProfile() {
   const statusColor = s => ({assigned:'badge-blue',in_progress:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
   const today = tokyoToday()
 
-  if (loading) return <div style={{color:'var(--text3)',padding:20}}>Loading...</div>
+  if (loading) return <div style={{color:'var(--text3)',padding:20}}>{t.app.loading}</div>
   if (!emp) return <div style={{color:'var(--text3)',padding:20}}>Employee not found</div>
 
   return (

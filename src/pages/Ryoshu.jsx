@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
-import { useLang } from '../hooks/useLang'
+import { useLang, fill } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import toast from 'react-hot-toast'
 import { tokyoToday, tokyoYearMonth } from '../lib/dates'
 
 export default function Ryoshu() {
   const { t, lang } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [receipts, setReceipts] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -53,7 +56,7 @@ export default function Ryoshu() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this receipt?')) return
+    if (!(await confirm({ title: dlg.deleteReceipt, message: dlg.dangerHint, tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('ryoshu').delete().eq('id', id)
     toast('Deleted.'); load()
   }
@@ -94,7 +97,7 @@ export default function Ryoshu() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <div>
           <h2 className="page-head" style={{margin:0,fontSize:22}}>{t.sidebar.ryoshu}</h2>
-          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{lang==='ja'?'今月合計':'This month'}: <strong>¥{totalMonth.toLocaleString()}</strong></div>
+          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{t.client?.visitThisMonth || 'This month'}: <strong>¥{totalMonth.toLocaleString()}</strong></div>
         </div>
         <button className="btn btn-primary" onClick={()=>setShowForm(!showForm)}>+ {lang==='ja'?'新規作成':'New receipt'}</button>
       </div>

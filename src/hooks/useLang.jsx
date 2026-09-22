@@ -1,5 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 import { translations, fill } from '../i18n/translations'
+import { dateLocale } from '../lib/appDialog'
 
 const LangContext = createContext()
 const LANGS = new Set(['en', 'ja', 'pt'])
@@ -30,4 +31,4 @@ export function LangProvider({ children }) {
 }
 
 export const useLang = () => useContext(LangContext)
-export { fill }
+export { fill, dateLocale }
