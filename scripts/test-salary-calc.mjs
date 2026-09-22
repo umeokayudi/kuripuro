@@ -82,7 +82,7 @@ function testTransportAndBonuses() {
   assert(calc.bonuses === 3000, `bonuses ${calc.bonuses}`)
   assert(calc.transport === 280, `transport ${calc.transport}`)
   assert(calc.gross === calc.base + 3000 + 10000, `gross ${calc.gross}`)
-  assert(calc.toPay === calc.net - 10000 + 280, `toPay ${calc.toPay}`)
+  assert(calc.toPay === calc.net - 10000, `toPay ${calc.toPay}`)
   assert(isTransportRow({ payment_type: 'extra', description: 'Transport reimbursement' }), 'extra transport')
   assert(!isTransportRow({ payment_type: 'extra', description: 'Spot extra' }), 'extra without transport')
 }
@@ -96,9 +96,9 @@ function testAttendanceBonusNeedsFullMonth() {
 
 function testAdvanceReceived() {
   assert(isAdvanceReceived({ status: 'paid', payment_date: '2026-09-20' }, '2026-09-16') === true, 'paid is received')
-  assert(isAdvanceReceived({ status: 'scheduled', payment_date: '2026-09-10' }, '2026-09-16') === true, 'past date received')
+  assert(isAdvanceReceived({ status: 'scheduled', payment_date: '2026-09-10' }, '2026-09-16') === false, 'scheduled is not received')
   assert(isAdvanceReceived({ status: 'scheduled', payment_date: '2026-09-20' }, '2026-09-16') === false, 'future still pending')
-  assert(isAdvanceReceived({ description: 'Jun 13 advance', payment_date: '2026-06-13' }, '2026-09-16') === true, 'uses payment_date not Jun regex')
+  assert(isAdvanceReceived({ description: 'Jun 13 advance', payment_date: '2026-06-13' }, '2026-09-16') === false, 'date alone does not count as received')
 }
 
 function testWeeklyPlan() {
@@ -136,7 +136,7 @@ async function main() {
   testAttendanceBonusNeedsFullMonth()
   console.log('✅ completion bonus waits for full month')
   testAdvanceReceived()
-  console.log('✅ isAdvanceReceived uses payment_date')
+  console.log('✅ isAdvanceReceived uses status=paid only')
   testWeeklyPlan()
   console.log('✅ weekly advance plan')
   testPeriodHelpers()

@@ -4,6 +4,7 @@ import {
   pickByNormalizedEmail,
   pickEmployeeForLogin,
 } from '../src/lib/employeeLogin.js'
+import { hashPassword, passwordMatches, isHashedPassword } from '../src/lib/passwordMatch.js'
 import { elapsedSecondsFromStart, formatHms } from '../src/lib/employeePay.js'
 
 function assert(cond, msg) {
@@ -30,6 +31,15 @@ assert(!pickEmployeeForLogin(staff, 'Daniel', 'twin'), 'duplicate first name is 
 assert(pickEmployeeForLogin(staff, 'Daniel Two', 'twin')?.id === 'd2', 'full name still unique among twins')
 assert(!pickEmployeeForLogin(staff, '', 'secret12'), 'empty login')
 assert(!pickEmployeeForLogin(staff, 'guilherme', ''), 'empty password')
+
+const hashed = { ...staff[0], password: hashPassword('secret12') }
+assert(isHashedPassword(hashed.password), 'hash prefix')
+assert(passwordMatches(hashed.password, 'secret12'), 'hash matches plaintext given')
+assert(!passwordMatches(hashed.password, 'wrong'), 'hash rejects wrong')
+assert(pickEmployeeForLogin([hashed, staff[1]], 'guilherme@kuripuro.com', 'secret12')?.id === 'g', 'login with hashed password')
+assert(pickEmployeeForLogin(staff, 'guilherme@kuripuro.com', 'secret12')?.id === 'g', 'legacy plaintext still works')
+assert(passwordMatches('secret12', 'secret12'), 'legacy plaintext match never rewrites')
+assert(hashPassword('abc') === 'sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad', 'sha256 abc')
 
 const session = employeeToSession(staff[0])
 assert(session.role === 'employee' && session.name === 'Guilherme Silva' && session.email === 'Guilherme@Kuripuro.com', 'session shape')

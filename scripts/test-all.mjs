@@ -20,6 +20,7 @@ const steps = [
   ['npm run test:job-gps', 'job-gps'],
   ['npm run test:photo-ai', 'photo-ai'],
   ['npm run test:client-portal', 'client-portal'],
+  ['npm run test:schedule-assign', 'schedule-assign'],
 ]
 
 console.log('=== KuriPuro full test suite ===\n')

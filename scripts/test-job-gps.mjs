@@ -70,13 +70,13 @@ const edge = evaluateGeofence(store, store)
 assert(edge.ok, '0m allowed')
 
 const noPin = evaluateGeofence(far, null)
-assert(noPin.ok && noPin.reason === 'no_pin', 'no pin still saves GPS')
+assert(!noPin.ok && noPin.reason === 'no_pin', 'no pin is fail-closed')
 
 const noGps = evaluateGeofence(null, store)
 assert(!noGps.ok && noGps.reason === 'gps_unavailable', 'missing GPS blocked when pin exists')
 
 const noGpsNoPin = evaluateGeofence(null, null)
-assert(noGpsNoPin.ok && noGpsNoPin.reason === 'no_pin', 'no pin and no GPS allowed')
+assert(!noGpsNoPin.ok && noGpsNoPin.reason === 'no_pin', 'no pin and no GPS blocked')
 
 const jobPin = { gps_lat: store.lat, gps_lng: store.lng, title: 'Ibushio — Basic Cleaning', address: '' }
 assert(resolveJobTargetSync(jobPin).source === 'job', 'job pin wins')
@@ -98,6 +98,7 @@ assert(fromAddr && fromAddr.source === 'address', 'parses maps URL on the job')
 
 const hints = catalogLocationHints()
 assert(hints.some(h => h.name === 'Ibushio' && h.address), 'catalog hints include OTP stores')
+assert(hints.some(h => h.name === 'Atomic Bar' && h.gps_lat && h.gps_lng), 'Atomic has a GPS pin')
 
 const geocoded = await resolveJobTarget(
   { title: 'Mystery Store', address: 'https://maps.google.com/no-coords' },
@@ -152,8 +153,8 @@ const jobs = [
 ]
 assert(staffWorkStatus({ employee: empA, jobs, today }).key === 'working', 'in_progress = working')
 assert(staffWorkStatus({ employee: empB, jobs, today }).key === 'idle', 'has jobs, not started = idle')
-assert(staffWorkStatus({ employee: empC, jobs, today }).key === 'folga', 'only cancelled = folga')
-assert(staffWorkStatus({ employee: { id: 'd', full_name: 'Dan' }, jobs, today }).key === 'folga', 'no jobs = folga')
+assert(staffWorkStatus({ employee: empC, jobs, today }).key === 'unscheduled', 'only cancelled = unscheduled')
+assert(staffWorkStatus({ employee: { id: 'd', full_name: 'Dan' }, jobs, today }).key === 'unscheduled', 'no jobs = unscheduled')
 
 const staleActive = staffWorkStatus({
   employee: empC,
@@ -163,8 +164,8 @@ const staleActive = staffWorkStatus({
 assert(staleActive.key === 'working', 'yesterday in_progress still working now')
 
 const summary = summarizeStaffStatus([empC, empB, empA], jobs, today)
-assert(summary.working === 1 && summary.idle === 1 && summary.folga === 1, 'counts')
-assert(summary.rows[0].key === 'working' && summary.rows[2].key === 'folga', 'sort working then idle then folga')
+assert(summary.working === 1 && summary.idle === 1 && summary.unscheduled === 1, 'counts')
+assert(summary.rows[0].key === 'working' && summary.rows[2].key === 'unscheduled', 'sort working then idle then unscheduled')
 
 const liveM = liveDistanceToJob(
   { last_lat: onSite.lat, last_lng: onSite.lng },
@@ -196,5 +197,5 @@ assert(!isMissingColumnError(null), 'null error')
 
 console.log('✅ geofence 100m hard-block')
 console.log('✅ start/end GPS field mapping')
-console.log('✅ working / idle / folga')
+console.log('✅ working / idle / unscheduled')
 console.log('\n✅ All job GPS tests passed')

@@ -14,6 +14,7 @@ import {
   itemsForInvoice,
   clientLocations,
   locationFromJob,
+  clientMonthlyCost,
 } from '../src/lib/clientPortal.js'
 import {
   extrasForLocation,
@@ -22,6 +23,8 @@ import {
   packPaymentNotice,
   parsePaymentNotice,
   extraLabel,
+  extraTimeLabel,
+  extraInvoiceDraft,
   mergeExtraNotes,
 } from '../src/lib/clientExtras.js'
 import { DEFAULT_DEEP_CLEAN_PRICE } from '../src/lib/serviceCatalog.js'
@@ -84,9 +87,20 @@ const inv = visibleInvoices([
   { id: 'd', status: 'cancelled', total: 3 },
   { id: 'e', status: 'pending', total: 9 },
 ])
-assert(inv.map(i => i.id).join() === 'b,c', 'hide draft/cancelled/pending invoices')
-assert(unpaidInvoices([{ status: 'sent' }, { status: 'paid' }]).length === 1, 'unpaid = sent')
-assert(filterInvoices([{ status: 'sent' }, { status: 'paid' }, { status: 'draft' }], 'paid').length === 1, 'paid filter hides draft')
+assert(inv.map(i => i.id).join() === 'b,c,e', 'hide only draft/cancelled — pending stays visible')
+assert(unpaidInvoices([{ status: 'sent' }, { status: 'paid' }, { status: 'pending' }]).length === 2, 'unpaid = sent+pending')
+assert(filterInvoices([{ status: 'sent' }, { status: 'paid' }, { status: 'draft' }, { status: 'pending' }], 'paid').length === 1, 'paid filter hides draft')
+assert(filterInvoices([{ status: 'sent' }, { status: 'pending' }, { status: 'paid' }], 'unpaid').length === 2, 'unpaid filter includes pending')
+assert(extraTimeLabel('after_close', 'pt').includes('fechamento'), 'pt extra time')
+const draft = extraInvoiceDraft({
+  extra: { extraId: 'extra_deep', price: 5000, locationName: 'Ibushio' },
+  request: { client_id: otp.client_id, client_name: 'OTP', ticket_number: 'KP-1' },
+  today: '2026-09-22',
+  extraTitle: 'Extra deep clean',
+})
+assert(draft.fatura.status === 'sent' && draft.fatura.total === 5500, `extra invoice ${draft.fatura.total}`)
+assert(draft.item.unit_price === 5000 && draft.item.description.includes('Ibushio'), 'extra line item')
+assert(clientMonthlyCost({ monthly_cost: 0, monthly_cost_estimate: 12000 }) === 12000, 'cost falls back to estimate')
 assert(lastDeepVisit(jobs)?.id === '2', 'last deep is Ibushio Sept 16')
 assert(itemsForInvoice([{ fatura_id: 'b', total: 10 }, { fatura_id: 'c', total: 20 }], 'b').length === 1, 'invoice lines scoped')
 assert(clientLocations(otp, [{ location_name: 'Ibushio' }, { location_name: 'Kodama Shinbashi' }], jobs).join() === 'Kodama Shinbashi', 'store user locked to own shop')

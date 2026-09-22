@@ -7,6 +7,7 @@ import {
   pickOwnAdmin,
   filterCredentialRows,
 } from '../src/lib/accountCredentials.js'
+import { hashPassword, passwordMatches } from '../src/lib/passwordMatch.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -40,7 +41,7 @@ const okOwn = buildCredentialPatch({
   newEmail: 'hq@kuripuro.com',
   newPassword: 'newpass',
 })
-assert(okOwn.ok && okOwn.patch.email === 'hq@kuripuro.com' && okOwn.patch.password === 'newpass', `own patch ${JSON.stringify(okOwn)}`)
+assert(okOwn.ok && okOwn.patch.email === 'hq@kuripuro.com' && passwordMatches(okOwn.patch.password, 'newpass'), `own patch ${JSON.stringify(okOwn)}`)
 
 const sameEmail = buildCredentialPatch({
   currentEmail: 'admin@kuripuro.com',
@@ -56,7 +57,7 @@ const adminEdit = buildCredentialPatch({
   newPassword: 'staff99',
   requireCurrent: false,
 })
-assert(adminEdit.ok && adminEdit.patch.password === 'staff99' && !adminEdit.patch.email, 'admin can set staff password without current')
+assert(adminEdit.ok && passwordMatches(adminEdit.patch.password, 'staff99') && !adminEdit.patch.email, 'admin can set staff password without current')
 
 const mismatch = buildCredentialPatch({
   currentEmail: 'admin@kuripuro.com',
@@ -74,7 +75,16 @@ const matched = buildCredentialPatch({
   newPassword: 'newpass',
   confirmPassword: 'newpass',
 })
-assert(matched.ok && matched.patch.password === 'newpass', 'matching confirm is ok')
+assert(matched.ok && passwordMatches(matched.patch.password, 'newpass'), 'matching confirm is ok')
+
+const hashedStored = hashPassword('oldpass')
+const hashedLogin = buildCredentialPatch({
+  currentEmail: 'admin@kuripuro.com',
+  storedPassword: hashedStored,
+  submittedCurrent: 'oldpass',
+  newEmail: 'hq2@kuripuro.com',
+})
+assert(hashedLogin.ok && hashedLogin.patch.email === 'hq2@kuripuro.com' && !hashedLogin.patch.password, 'hashed current password matches without rewrite')
 
 const picked = pickOwnAdmin(
   [{ id: 'a', email: 'hq@kuripuro.com' }, { id: 'b', email: 'admin@kuripuro.com' }],
