@@ -402,7 +402,7 @@ export function daySummaryState(day) {
 }
 
 /** Per-store rows for the HQ dashboard (lowest completion first) */
-export function storeProgressRows(byLocation, today = tokyoToday(), lang = 'en') {
+export function storeProgressRows(byLocation, _today = tokyoToday(), lang = 'en') {
   return Object.entries(byLocation || {}).map(([name, data]) => {
     const expected = data.expected || 0
     const completed = data.completed || 0
