@@ -144,7 +144,6 @@ export default function Dashboard() {
   const todayOverdue = partCount(todaySplit, 'late')
   const monthOverdue = partCount(monthSplit, 'late')
   const overdueNow = staleCount + todayOverdue
-  const monthOverduePct = partPct(monthSplit, 'late')
   const deepDonePct = partPct(deepVisitSplit, 'done')
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(loc, { month: 'long', year: 'numeric' })
 
@@ -276,9 +275,14 @@ export default function Dashboard() {
             <div className="dash-ops-overdue-lbl">{d.mixOverdue}</div>
             <div className="dash-ops-overdue-hint">
               {overdueNow
-                ? fill(d.mixOverdueHint, { n: overdueNow, pct: monthOverduePct })
+                ? fill(d.mixOverdueHint, { n: overdueNow })
                 : d.mixNoneOverdue}
             </div>
+            {overdueNow > 0 && staleCount > monthOverdue && (
+              <div className="dash-ops-overdue-hint">
+                {fill(d.mixOverdueOlder, { older: staleCount - monthOverdue })}
+              </div>
+            )}
           </div>
           <ProgressSplit
             compact
