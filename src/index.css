@@ -998,9 +998,10 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   width: 100%;
   max-width: 420px;
   max-height: min(88vh, 88dvh);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
   background: var(--surface);
   color: var(--text);
   border-radius: 22px;
@@ -1015,6 +1016,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   border-radius: 2px;
   background: var(--border);
   margin: 4px auto 12px;
+  flex-shrink: 0;
 }
 .kp-dialog-head {
   display: flex;
@@ -1022,6 +1024,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
+  flex-shrink: 0;
 }
 .kp-dialog-title {
   margin: 0;
@@ -1040,6 +1043,13 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   font-size: 16px;
   cursor: pointer;
 }
+.kp-dialog-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 .kp-dialog-message {
   margin: 0 0 14px;
   font-size: 14px;
@@ -1047,11 +1057,13 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   color: var(--text2);
   white-space: pre-wrap;
 }
-.kp-dialog-body { margin-bottom: 14px; }
+.kp-dialog-body { margin-bottom: 8px; }
 .kp-dialog-actions {
   display: flex;
   flex-direction: column-reverse;
   gap: 8px;
+  flex-shrink: 0;
+  padding-top: 10px;
 }
 .kp-dialog-btn {
   width: 100%;

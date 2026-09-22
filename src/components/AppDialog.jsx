@@ -78,7 +78,6 @@ export default function AppDialog({
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         tabIndex={-1}
-        data-kp-scroll
         onClick={(e) => e.stopPropagation()}
       >
         <div className="kp-dialog-handle" aria-hidden="true" />
@@ -86,8 +85,10 @@ export default function AppDialog({
           {title ? <h2 id={titleId} className="kp-dialog-title">{title}</h2> : <span />}
           <button type="button" className="kp-dialog-x" onClick={close} aria-label={cancelText}>✕</button>
         </div>
-        {message ? <p className="kp-dialog-message">{message}</p> : null}
-        {children ? <div className="kp-dialog-body">{children}</div> : null}
+        <div className="kp-dialog-scroll" data-kp-scroll>
+          {message ? <p className="kp-dialog-message">{message}</p> : null}
+          {children ? <div className="kp-dialog-body">{children}</div> : null}
+        </div>
         {(showConfirm || showCancel) && (
           <div className="kp-dialog-actions">
             {showCancel && (

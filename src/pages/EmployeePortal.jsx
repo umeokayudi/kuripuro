@@ -4,8 +4,9 @@ import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, dateLocale } from '../hooks/useLang'
 import { useConfirm } from '../hooks/useConfirm'
+import { weekdayShortLabels } from '../lib/appDialog'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress, getCurrentPosition } from '../lib/geocode'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
@@ -2182,7 +2183,7 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
       </div>
       {sel&&(
         <div>
-          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString(dateLocale(lang),{weekday:'long',day:'numeric',month:'long'})}</div>
           {selJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map(j=>{
             const sc={completed:'#4ade80',assigned:'#60a5fa',in_progress:'#fbbf24',cancelled:'rgba(255,255,255,0.2)'}[j.status]
             const duration=j.started_at&&j.completed_at?Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000):null
@@ -2382,8 +2383,8 @@ function PossibleDayPicker({ date, onChange, cleaningType, location, labels, lan
     location: location || null,
   }))
   const cells = monthCalendarCells(ym)
-  const headers = lang === 'ja' ? ['日', '月', '火', '水', '木', '金', '土'] : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
-  const monthLabel = new Date(`${ym}-01T12:00:00`).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { month: 'short', year: 'numeric' })
+  const headers = weekdayShortLabels(lang)
+  const monthLabel = new Date(`${ym}-01T12:00:00`).toLocaleDateString(dateLocale(lang), { month: 'short', year: 'numeric' })
 
   return (
     <div style={{ marginBottom: 14 }}>

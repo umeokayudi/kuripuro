@@ -7,6 +7,7 @@ import {
 } from './serviceCatalog'
 import { isOverdueAssignedJob } from './jobOverdue'
 import { tokyoToday } from './dates'
+import { dateLocale } from './appDialog'
 
 export const CLEANING_TYPES = {
   basic: { label: 'Basic cleaning', suffix: 'Basic Cleaning', short: 'Basic', color: '#60a5fa' },
@@ -38,8 +39,15 @@ export const REST_DAY_MAINTENANCE_COMPONENTS = [
 
 export const ALL_DEEP_COMPONENT_IDS = DEEP_CLEAN_COMPONENTS.map(c => c.id)
 
+const CLEANING_TYPES_PT = {
+  basic: { label: 'Limpeza básica', suffix: 'Basic Cleaning', short: 'Básica', color: '#60a5fa' },
+  deep: { label: 'Deep cleaning', suffix: 'Deep Clean', short: 'Deep', color: '#fbbf24' },
+}
+
 export function cleaningTypesForLang(lang) {
-  return lang === 'ja' ? CLEANING_TYPES_JA : CLEANING_TYPES
+  if (lang === 'ja') return CLEANING_TYPES_JA
+  if (lang === 'pt') return CLEANING_TYPES_PT
+  return CLEANING_TYPES
 }
 
 export function deepComponentLabel(id, lang = 'en') {
@@ -213,8 +221,14 @@ export function expectedDeepCleanDatesForLocation(locName, yearMonth) {
 }
 
 export function deepCleanScheduleLabel(locName, lang = 'en') {
-  if (isOtpDeepOnlyLocation(locName)) return lang === 'ja' ? '月・水' : 'Mon + Wed'
-  return lang === 'ja' ? '火' : 'Tue'
+  if (isOtpDeepOnlyLocation(locName)) {
+    if (lang === 'ja') return '月・水'
+    if (lang === 'pt') return 'seg + qua'
+    return 'Mon + Wed'
+  }
+  if (lang === 'ja') return '火'
+  if (lang === 'pt') return 'ter'
+  return 'Tue'
 }
 
 function matchLocation(title) {
@@ -507,8 +521,7 @@ export function tuesdaySlotInfo(job, labels, date) {
 }
 
 export function formatScheduleDate(date, lang = 'en') {
-  const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
-  return new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
+  return new Date(date + 'T12:00:00').toLocaleDateString(dateLocale(lang), { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 /** @deprecated use formatScheduleDate */

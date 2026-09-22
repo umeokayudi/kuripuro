@@ -258,11 +258,11 @@ function testDeepCleanProgressForUser() {
   assert(cells[0] === null || cells[0].endsWith('-01'), 'leading pad or month start')
 
   const hqDaysFixed = buildDaySummaries(all.byLocation, '2026-09-16')
-  assert(hqDaysFixed.find(d => d.date === '2026-09-01')?.state === 'late', 'past empty tuesday is late')
+  assert(hqDaysFixed.find(d => d.date === '2026-09-01')?.state === 'missing', 'past empty tuesday is unscheduled')
   assert(hqDaysFixed.find(d => d.date === '2026-09-22')?.state === 'missing', 'future empty tuesday is missing')
-  assert(hqDaysFixed.find(d => d.date === '2026-09-07')?.state === 'late', 'past assigned-not-done is late')
+  assert(hqDaysFixed.find(d => d.date === '2026-09-07')?.state === 'partial', 'past assigned-not-done stays scheduled/partial')
   assert(hqDaysFixed.find(d => d.date === '2026-09-08')?.state === 'partial', 'past with some done is partial')
-  assert(daySummaryState({ expected: 8, done: 0, pending: 0, past: true, overdueCount: 8 }) === 'late', 'late helper')
+  assert(daySummaryState({ expected: 8, done: 0, pending: 0, past: true, overdueCount: 8 }) === 'missing', 'empty past day is unscheduled')
   assert(daySummaryState({ expected: 8, done: 8, pending: 0, past: true }) === 'done', 'done helper')
 }
 
@@ -314,7 +314,7 @@ function testTuesdaySlotInfo() {
   const late = tuesdaySlotInfo(assigned, { slotLate: 'Late' }, '2026-09-07')
   assert(late.state === 'late', `past assigned is late: ${late.state}`)
   const missingPast = tuesdaySlotInfo(null, {}, '2026-09-01')
-  assert(missingPast.state === 'late', `past empty is late: ${missingPast.state}`)
+  assert(missingPast.state === 'missing', `past empty is unscheduled: ${missingPast.state}`)
   const missingFuture = tuesdaySlotInfo(null, {}, '2026-12-29')
   assert(missingFuture.state === 'missing', `future empty is missing: ${missingFuture.state}`)
   const done = tuesdaySlotInfo({ status: 'completed', scheduled_date: '2026-09-08' }, {}, '2026-09-08')

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { dateLocale } from '../lib/appDialog'
 import {
   elapsedSecondsFromStart,
   formatHms,
@@ -15,7 +16,7 @@ export function EmpLiveDate({ lang }) {
   }, [])
   return (
     <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
-      {clock.toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
+      {clock.toLocaleDateString(dateLocale(lang), { weekday: 'long', day: 'numeric', month: 'short' })}
     </div>
   )
 }

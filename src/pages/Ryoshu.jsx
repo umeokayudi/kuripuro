@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang } from '../hooks/useLang'
 import { useConfirm } from '../hooks/useConfirm'
 import toast from 'react-hot-toast'
 import { tokyoToday, tokyoYearMonth } from '../lib/dates'

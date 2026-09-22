@@ -127,7 +127,7 @@ export default function Dashboard() {
   const closeDetail = () => { setDetailLoc(null); setDetailTuesday(null) }
 
   const detailTitle = detailLoc
-    ? `${detailLoc} — ${monthLabel}${deepProgress.byLocation[detailLoc]?.schedule ? ` (${deepProgress.byLocation[detailLoc].schedule})` : ''}`
+    ? `${detailLoc} — ${monthLabel} (${deepCleanScheduleLabel(detailLoc, lang)})`
     : detailTuesday
       ? fill(d.tuesdayTitle, { date: formatScheduleDate(detailTuesday, lang) })
       : ''
