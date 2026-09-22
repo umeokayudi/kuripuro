@@ -50,6 +50,12 @@ export function partPct(split, key) {
   return split?.parts?.find(p => p.key === key)?.pct || 0
 }
 
+export function dominantPart(split) {
+  const parts = (split?.parts || []).filter(p => p.count > 0)
+  if (!parts.length) return null
+  return [...parts].sort((a, b) => b.count - a.count || b.pct - a.pct)[0]
+}
+
 /** Visit-level deep-clean mix: done / on-track / overdue / not generated. */
 export function deepCleanVisitSplit(byLocation, today = tokyoToday()) {
   const todayStr = String(today || tokyoToday()).slice(0, 10)

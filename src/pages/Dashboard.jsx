@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, buildDaySummaries, currentYearMonth, deepCleanScheduleLabel, formatScheduleDate, storeProgressRows, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
-import { deepCleanVisitSplit, jobMixSplit, partCount, partPct, storeRowSplit, withLabels } from '../lib/progressSplit'
+import { deepCleanVisitSplit, dominantPart, jobMixSplit, partCount, partPct, storeRowSplit, withLabels } from '../lib/progressSplit'
 import ProgressSplit, { ProgressSplitMini } from '../components/ProgressSplit'
 import { useLang, fill, dateLocale } from '../hooks/useLang'
 import { useConfirm } from '../hooks/useConfirm'
@@ -144,7 +144,17 @@ export default function Dashboard() {
   const todayOverdue = partCount(todaySplit, 'late')
   const monthOverdue = partCount(monthSplit, 'late')
   const overdueNow = staleCount + todayOverdue
+  const overdueOlder = Math.max(0, staleCount - monthOverdue)
   const deepDonePct = partPct(deepVisitSplit, 'done')
+  const monthLatePct = partPct(monthSplit, 'late')
+  const deepTop = dominantPart(deepVisitSplit)
+  const deepStory = deepTop?.key === 'missing'
+    ? fill(d.mixStoryMissing, { n: deepTop.count, expected: deepVisitSplit.total, pct: deepTop.pct })
+    : deepTop?.key === 'late'
+      ? fill(d.mixStoryLate, { n: deepTop.count, pct: deepTop.pct })
+      : deepTop?.key === 'done'
+        ? fill(d.mixStoryDone, { n: deepTop.count, expected: deepVisitSplit.total, pct: deepTop.pct })
+        : ''
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(loc, { month: 'long', year: 'numeric' })
 
   const ratings30 = ratingsInPeriod(clientRatings, 30)
@@ -274,30 +284,45 @@ export default function Dashboard() {
             <div className="dash-ops-overdue-n">{overdueNow}</div>
             <div className="dash-ops-overdue-lbl">{d.mixOverdue}</div>
             <div className="dash-ops-overdue-hint">
-              {overdueNow
-                ? fill(d.mixOverdueHint, { n: overdueNow })
-                : d.mixNoneOverdue}
+              {overdueNow ? fill(d.mixOverdueHint, { n: overdueNow }) : d.mixNoneOverdue}
             </div>
-            {overdueNow > 0 && staleCount > monthOverdue && (
-              <div className="dash-ops-overdue-hint">
-                {fill(d.mixOverdueOlder, { older: staleCount - monthOverdue })}
+            {overdueNow > 0 && (
+              <div className="dash-ops-pills">
+                <div className="dash-ops-pill">
+                  <b>{monthOverdue}</b>
+                  <span>{d.mixOverdueMonth}</span>
+                </div>
+                <div className="dash-ops-pill">
+                  <b>{overdueOlder}</b>
+                  <span>{d.mixOverdueOlderShort || d.mixOverdueOlder}</span>
+                </div>
               </div>
             )}
           </div>
-          <ProgressSplit
-            compact
-            title={d.mixTodayTitle}
-            headline={todayJobs.length ? String(todayJobs.length) : '0'}
-            headlineHint={todayJobs.length ? `${todayOverdue} ${d.mixLate || d.lateSlots}` : d.mixTodayEmpty}
-            parts={todaySplit.parts}
-          />
-          <ProgressSplit
-            compact
-            title={d.mixMonthTitle}
-            headline={monthJobs.length ? String(monthJobs.length) : '0'}
-            headlineHint={monthJobs.length ? `${monthOverdue} ${d.mixLate || d.lateSlots}` : d.mixMonthEmpty}
-            parts={monthSplit.parts}
-          />
+          <div className="dash-ops-mixes">
+            <ProgressSplit
+              compact
+              title={d.mixMonthTitle}
+              headline={monthJobs.length ? String(monthJobs.length) : ''}
+              headlineHint={monthJobs.length
+                ? fill(d.mixLateOf, { n: monthOverdue, total: monthJobs.length, pct: monthLatePct })
+                : ''}
+              emptyText={d.mixMonthEmpty}
+              story=""
+              parts={monthSplit.parts}
+            />
+            <ProgressSplit
+              compact
+              title={d.mixTodayTitle}
+              headline={todayJobs.length ? String(todayJobs.length) : ''}
+              headlineHint={todayJobs.length
+                ? fill(d.mixLateOf, { n: todayOverdue, total: todayJobs.length, pct: partPct(todaySplit, 'late') })
+                : ''}
+              emptyText={d.mixTodayEmpty}
+              story=""
+              parts={todaySplit.parts}
+            />
+          </div>
         </div>
       </div>
 
@@ -412,7 +437,7 @@ export default function Dashboard() {
             title={d.progress}
             headline={fill(d.mixVisits, { done: partCount(deepVisitSplit, 'done'), expected: deepProgress.totals.expected })}
             headlineHint={fill(d.mixVisitPct, { pct: deepDonePct })}
-            subtitle={d.deepSplitHint}
+            story={deepStory}
             parts={deepVisitSplit.parts}
           />
         </div>

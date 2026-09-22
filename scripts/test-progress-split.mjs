@@ -8,6 +8,7 @@ import {
   splitFromCounts,
   storeRowSplit,
   withLabels,
+  dominantPart,
 } from '../src/lib/progressSplit.js'
 
 function assert(cond, msg) {
@@ -83,5 +84,9 @@ assert(partCount(mix, 'progress') === 1, 'mix in progress')
 assert(partCount(mix, 'assigned') === 1, 'future assigned')
 assert(partCount(mix, 'late') === 1, 'past assigned overdue')
 assert(mix.total === 4, 'cancelled jobs skipped from mix')
+
+const top = dominantPart(visits)
+assert(top?.key === 'done' || top?.count === 1, 'dominant exists')
+assert(dominantPart(labeled)?.key === 'done', 'dominant is done 75%')
 
 console.log('ok')

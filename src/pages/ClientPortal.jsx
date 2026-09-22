@@ -21,7 +21,7 @@ import {
 } from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
-import { deepCleanVisitSplit, partCount, partPct, storeRowSplit, withLabels } from '../lib/progressSplit'
+import { deepCleanVisitSplit, dominantPart, partCount, partPct, storeRowSplit, withLabels } from '../lib/progressSplit'
 import ProgressSplit, { ProgressSplitMini } from '../components/ProgressSplit'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -1514,8 +1514,19 @@ function DeepCleanProgressCard({
     late: labels.deepCleanLate,
     missing: labels.deepCleanMissing,
   })
-  const lateVisits = partCount(visitSplit, 'late')
   const donePct = partPct(visitSplit, 'done')
+  const visitTop = dominantPart(visitSplit)
+  const visitStory = visitTop?.key === 'missing'
+    ? fill(labels.deepCleanStoryMissing || labels.deepCleanSplitHint, {
+      n: visitTop.count,
+      expected: visitSplit.total,
+      pct: visitTop.pct,
+    })
+    : visitTop?.key === 'late'
+      ? fill(labels.deepCleanStoryLate || labels.deepCleanLate, { n: visitTop.count, pct: visitTop.pct })
+      : visitTop?.key === 'done'
+        ? fill(labels.deepCleanPctDone, { pct: donePct })
+        : ''
   const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
   const storeRows = storeProgressRows(allByLocation || {}, today, lang)
   const storeNames = Object.keys(allByLocation || {}).sort((a, b) => a.localeCompare(b))
@@ -1630,7 +1641,7 @@ function DeepCleanProgressCard({
             expected: visitSplit.total || expectedDays,
           })}
           headlineHint={fill(labels.deepCleanPctDone, { pct: donePct })}
-          subtitle={labels.deepCleanSplitHint}
+          story={visitStory}
           parts={visitSplit.parts}
         />
         {remainingDays > 0 && (
@@ -1714,9 +1725,12 @@ function DeepCleanProgressCard({
 
       <div className="cp-cal-legend">
         <span><span className="cp-deep-dot done" /> {labels.deepCleanDone} {completedDays}</span>
-        <span><span className="cp-deep-dot pending" /> {labels.deepCleanPending} {partialDays}</span>
-        <span><span className="cp-deep-dot late" /> {labels.deepCleanLate} {lateVisits}</span>
-        <span><span className="cp-deep-dot missing" /> {labels.deepCleanMissing} {missingDays}</span>
+        {partialDays > 0 && (
+          <span><span className="cp-deep-dot pending" /> {labels.deepCleanPartialDays || labels.deepCleanPending} {partialDays}</span>
+        )}
+        {missingDays > 0 && (
+          <span><span className="cp-deep-dot missing" /> {labels.deepCleanMissing} {missingDays}</span>
+        )}
       </div>
 
       <div className={`cp-cal-day${selected ? ` ${selected.state}` : ''}`}>
