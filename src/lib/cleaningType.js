@@ -428,11 +428,13 @@ export function storeProgressRows(byLocation, _today = tokyoToday(), lang = 'en'
       if (job?.status === 'completed') return
       if (job && isOverdueAssignedJob(job)) late += 1
     })
+    const open = Math.max(0, pending - late)
     return {
       name,
       expected,
       completed,
       pending,
+      open,
       missing,
       late,
       pct: expected ? Math.round((completed / expected) * 100) : 0,

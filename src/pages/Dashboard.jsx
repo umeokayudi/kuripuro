@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, buildDaySummaries, currentYearMonth, deepCleanScheduleLabel, formatScheduleDate, storeProgressRows, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
+import { deepCleanVisitSplit, jobMixSplit, partCount, partPct, storeRowSplit, withLabels } from '../lib/progressSplit'
+import ProgressSplit, { ProgressSplitMini } from '../components/ProgressSplit'
 import { useLang, fill, dateLocale } from '../hooks/useLang'
 import { useConfirm } from '../hooks/useConfirm'
 import AppDialog from '../components/AppDialog'
@@ -112,7 +114,38 @@ export default function Dashboard() {
   const completedDays = daySummaries.filter(d => d.state === 'done').length
   const missingDays = daySummaries.filter(d => d.state === 'missing').length
   const lateDays = storeRows.reduce((s, r) => s + (r.late || 0), 0)
-  const dayPct = daySummaries.length ? Math.round((completedDays / daySummaries.length) * 100) : 0
+  const deepVisitSplit = useMemo(
+    () => withLabels(deepCleanVisitSplit(deepProgress.byLocation), {
+      done: d.mixDone || d.completed,
+      pending: d.pending,
+      late: d.mixLate || d.lateSlots,
+      missing: d.mixMissing || d.missingSchedule,
+    }),
+    [deepProgress, d],
+  )
+  const todaySplit = useMemo(
+    () => withLabels(jobMixSplit(todayJobs), {
+      done: d.mixDone || d.completed,
+      progress: d.mixProgress || d.slotProgress,
+      assigned: d.mixAssigned || d.pending,
+      late: d.mixLate || d.lateSlots,
+    }),
+    [todayJobs, d],
+  )
+  const monthSplit = useMemo(
+    () => withLabels(jobMixSplit(monthJobs), {
+      done: d.mixDone || d.completed,
+      progress: d.mixProgress || d.slotProgress,
+      assigned: d.mixAssigned || d.pending,
+      late: d.mixLate || d.lateSlots,
+    }),
+    [monthJobs, d],
+  )
+  const todayOverdue = partCount(todaySplit, 'late')
+  const monthOverdue = partCount(monthSplit, 'late')
+  const overdueNow = staleCount + todayOverdue
+  const monthOverduePct = partPct(monthSplit, 'late')
+  const deepDonePct = partPct(deepVisitSplit, 'done')
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(loc, { month: 'long', year: 'numeric' })
 
   const ratings30 = ratingsInPeriod(clientRatings, 30)
@@ -229,6 +262,41 @@ export default function Dashboard() {
         ))}
       </div>
 
+      <div className="card dash-ops" style={{ borderLeft: `4px solid ${overdueNow ? '#f87171' : '#4ade80'}` }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{d.mixTitle}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{fill(d.mixHint, { month: monthLabel })}</div>
+          </div>
+          <Link to="/jobs" style={{ fontSize: 12, color: '#c19c56', fontWeight: 600, textDecoration: 'none' }}>{d.mixOpenJobs}</Link>
+        </div>
+        <div className="dash-ops-grid">
+          <div className={`dash-ops-overdue${overdueNow ? '' : ' ok'}`}>
+            <div className="dash-ops-overdue-n">{overdueNow}</div>
+            <div className="dash-ops-overdue-lbl">{d.mixOverdue}</div>
+            <div className="dash-ops-overdue-hint">
+              {overdueNow
+                ? fill(d.mixOverdueHint, { n: overdueNow, pct: monthOverduePct })
+                : d.mixNoneOverdue}
+            </div>
+          </div>
+          <ProgressSplit
+            compact
+            title={d.mixTodayTitle}
+            headline={todayJobs.length ? String(todayJobs.length) : '0'}
+            headlineHint={todayJobs.length ? `${todayOverdue} ${d.mixLate || d.lateSlots}` : d.mixTodayEmpty}
+            parts={todaySplit.parts}
+          />
+          <ProgressSplit
+            compact
+            title={d.mixMonthTitle}
+            headline={monthJobs.length ? String(monthJobs.length) : '0'}
+            headlineHint={monthJobs.length ? `${monthOverdue} ${d.mixLate || d.lateSlots}` : d.mixMonthEmpty}
+            parts={monthSplit.parts}
+          />
+        </div>
+      </div>
+
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #4ade80' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
           <div>
@@ -335,23 +403,27 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <div style={{ marginBottom: 16 }}>
+          <ProgressSplit
+            title={d.progress}
+            headline={fill(d.mixVisits, { done: partCount(deepVisitSplit, 'done'), expected: deepProgress.totals.expected })}
+            headlineHint={fill(d.mixVisitPct, { pct: deepDonePct })}
+            subtitle={d.deepSplitHint}
+            parts={deepVisitSplit.parts}
+          />
+        </div>
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
           {[
             [d.serviceDays, `${completedDays}/${daySummaries.length}`, '#4ade80'],
             [d.missingDays || d.missingSchedule, missingDays, '#fbbf24'],
             [d.lateSlots, lateDays, '#f87171'],
-            [d.completed, deepProgress.totals.completed, '#4ade80'],
-            [d.progress, `${dayPct}%`, '#fbbf24'],
           ].map(([l, v, c]) => (
             <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 16px', minWidth: 100 }}>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: c }}>{v}</div>
             </div>
           ))}
-        </div>
-
-        <div style={{ height: 10, background: 'var(--surface2)', borderRadius: 5, overflow: 'hidden', marginBottom: 16 }}>
-          <div style={{ height: '100%', width: `${dayPct}%`, background: 'linear-gradient(90deg,#fbbf24,#4ade80)', borderRadius: 5, transition: 'width 0.4s' }} />
         </div>
 
         {daySummaries.length > 0 && (
@@ -388,13 +460,11 @@ export default function Dashboard() {
                 style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</div>
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{row.schedule || deepCleanScheduleLabel(row.name, lang)}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>
                   <span>{fill(d.doneCount, { done: row.completed, expected: row.expected })}</span>
                   <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{row.pct}%</span>
                 </div>
-                <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${row.pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
-                </div>
+                <ProgressSplitMini parts={storeRowSplit(row).parts} />
                 {row.late > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {d.lateSlots}: {row.late}</div>}
                 {row.missing > 0 && <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: row.missing })}</div>}
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{d.clickRestaurant}</div>

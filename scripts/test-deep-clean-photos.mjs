@@ -232,6 +232,8 @@ function testDeepCleanProgressForUser() {
   assert(rows.length === Object.keys(all.byLocation).length, 'one row per store')
   const oimachi = rows.find(r => r.name === 'Kodama Oimachi')
   assert(oimachi?.completed === 1, 'oimachi row completed')
+  assert(typeof oimachi.open === 'number', 'open slots field')
+  assert(oimachi.open === Math.max(0, oimachi.pending - oimachi.late), 'open is pending minus late')
   assert(oimachi.pct === Math.round((1 / oimachi.expected) * 100), `oimachi pct ${oimachi.pct}`)
   assert(rows.every((row, i) => i === 0 || rows[i - 1].pct <= row.pct), 'sorted by pct')
 

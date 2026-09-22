@@ -21,6 +21,8 @@ import {
 } from '../lib/cleaningType'
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
+import { deepCleanVisitSplit, partCount, partPct, storeRowSplit, withLabels } from '../lib/progressSplit'
+import ProgressSplit, { ProgressSplitMini } from '../components/ProgressSplit'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
@@ -1504,14 +1506,16 @@ function DeepCleanProgressCard({
   const expectedDays = daySummaries.length
   const completedDays = daySummaries.filter(d => d.state === 'done').length
   const partialDays = daySummaries.filter(d => d.state === 'partial').length
-  const lateDays = daySummaries.filter(d => d.state === 'late').length
   const missingDays = daySummaries.filter(d => d.state === 'missing').length
   const remainingDays = daySummaries.filter(d => !d.past && d.state !== 'done').length
-  const donePct = expectedDays ? Math.round((completedDays / expectedDays) * 100) : 0
-  const doneShare = expectedDays ? (completedDays / expectedDays) * 100 : 0
-  const partialShare = expectedDays ? (partialDays / expectedDays) * 100 : 0
-  const lateShare = expectedDays ? (lateDays / expectedDays) * 100 : 0
-  const missingShare = expectedDays ? (missingDays / expectedDays) * 100 : 0
+  const visitSplit = withLabels(deepCleanVisitSplit(progress.byLocation, today), {
+    done: labels.deepCleanDone,
+    pending: labels.deepCleanOnTrack || labels.deepCleanPending,
+    late: labels.deepCleanLate,
+    missing: labels.deepCleanMissing,
+  })
+  const lateVisits = partCount(visitSplit, 'late')
+  const donePct = partPct(visitSplit, 'done')
   const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
   const storeRows = storeProgressRows(allByLocation || {}, today, lang)
   const storeNames = Object.keys(allByLocation || {}).sort((a, b) => a.localeCompare(b))
@@ -1556,7 +1560,6 @@ function DeepCleanProgressCard({
     : monthLabel
   const todaySummary = today && today.startsWith(progressMonth) ? dayByDate[today] : null
   const printSummary = () => window.print()
-  const visitDone = progress?.totals?.completed || 0
 
   return (
     <div className="cp-deep-progress">
@@ -1620,21 +1623,16 @@ function DeepCleanProgressCard({
       </div>
 
       <div className="cp-deep-headline">
-        <div className="cp-deep-headline-main">
-          {fill(labels.deepCleanOfDays, { done: completedDays, expected: expectedDays })}
-        </div>
-        <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
-        {missingDays > 0 && (
-          <div className="cp-deep-headline-pct late">{labels.deepCleanMissing} {missingDays}</div>
-        )}
-        {lateDays > 0 && (
-          <div className="cp-deep-headline-pct late">{labels.deepCleanLate} {lateDays}</div>
-        )}
-        {visitDone > 0 && (
-          <div className="cp-deep-headline-visits">
-            {fill(labels.deepCleanVisitsDone, { done: visitDone })}
-          </div>
-        )}
+        <ProgressSplit
+          variant="dark"
+          headline={fill(labels.deepCleanVisitMix || labels.deepCleanOfDays, {
+            done: partCount(visitSplit, 'done'),
+            expected: visitSplit.total || expectedDays,
+          })}
+          headlineHint={fill(labels.deepCleanPctDone, { pct: donePct })}
+          subtitle={labels.deepCleanSplitHint}
+          parts={visitSplit.parts}
+        />
         {remainingDays > 0 && (
           <div className="cp-deep-headline-left">
             {fill(labels.deepCleanRemaining, { n: remainingDays })}
@@ -1717,15 +1715,8 @@ function DeepCleanProgressCard({
       <div className="cp-cal-legend">
         <span><span className="cp-deep-dot done" /> {labels.deepCleanDone} {completedDays}</span>
         <span><span className="cp-deep-dot pending" /> {labels.deepCleanPending} {partialDays}</span>
-        <span><span className="cp-deep-dot late" /> {labels.deepCleanLate} {lateDays}</span>
+        <span><span className="cp-deep-dot late" /> {labels.deepCleanLate} {lateVisits}</span>
         <span><span className="cp-deep-dot missing" /> {labels.deepCleanMissing} {missingDays}</span>
-      </div>
-
-      <div className="cp-deep-bar stacked" aria-hidden="true">
-        <div className="cp-deep-bar-seg done" style={{ width: `${doneShare}%` }} />
-        <div className="cp-deep-bar-seg pending" style={{ width: `${partialShare}%` }} />
-        <div className="cp-deep-bar-seg late" style={{ width: `${lateShare}%` }} />
-        <div className="cp-deep-bar-seg missing" style={{ width: `${missingShare}%` }} />
       </div>
 
       <div className={`cp-cal-day${selected ? ` ${selected.state}` : ''}`}>
@@ -1833,9 +1824,7 @@ function DeepCleanProgressCard({
                     {fill(labels.deepCleanOfDays, { done: row.completed, expected: row.expected })}
                     {row.late > 0 ? ` · ${labels.deepCleanLate} ${row.late}` : ''}
                   </div>
-                  <div className="cp-deep-store-mini">
-                    <div className="cp-deep-store-mini-fill" style={{ width: `${row.pct}%` }} />
-                  </div>
+                  <ProgressSplitMini parts={storeRowSplit(row).parts} />
                 </button>
               )
             })}

@@ -22,6 +22,7 @@ const steps = [
   ['npm run test:client-portal', 'client-portal'],
   ['npm run test:schedule-assign', 'schedule-assign'],
   ['npm run test:app-dialog', 'app-dialog'],
+  ['npm run test:progress-split', 'progress-split'],
 ]
 
 console.log('=== KuriPuro full test suite ===\n')
