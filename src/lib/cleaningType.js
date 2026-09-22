@@ -396,8 +396,8 @@ export function daySummaryState(day) {
   if (!day?.expected) return 'empty'
   if (day.done >= day.expected) return 'done'
   if (day.done > 0) return 'partial'
-  if (day.past) return 'late'
   if (day.pending > 0) return 'partial'
+  if (day.past) return 'missing'
   return 'missing'
 }
 
@@ -412,7 +412,7 @@ export function storeProgressRows(byLocation, today = tokyoToday(), lang = 'en')
     ;(data.expectedDates || []).forEach(date => {
       const job = data.byDate?.[date] || (data.jobs || []).find(j => j.scheduled_date === date)
       if (job?.status === 'completed') return
-      if (job ? isOverdueAssignedJob(job) : date < today) late += 1
+      if (job && isOverdueAssignedJob(job)) late += 1
     })
     return {
       name,
@@ -492,7 +492,7 @@ export function tuesdaySlotInfo(job, labels, date) {
   const dateStr = date || job?.scheduled_date
   const past = !!dateStr && dateStr < today
   if (!job) {
-    if (past) return { state: 'late', label: labels?.slotLate || labels?.slotMissing || 'Late', icon: '⚠️', color: '#f87171' }
+    if (past) return { state: 'missing', label: labels?.slotUnscheduled || labels?.slotMissing || 'Not scheduled', icon: '❌', color: '#fbbf24' }
     return { state: 'missing', label: labels?.slotMissing || 'Not scheduled', icon: '❌', color: '#f87171' }
   }
   if (job.status === 'completed') return { state: 'done', label: labels?.slotDone || 'Completed', icon: '✅', color: '#4ade80' }

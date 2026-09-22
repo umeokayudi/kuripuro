@@ -122,6 +122,8 @@ export const ATOMIC_LOCATION = {
   pricePerVisit: 37500,
   client: 'Atomic Bar',
   scheduledTime: '21:00',
+  gps_lat: 35.6628,
+  gps_lng: 139.7316,
 }
 
 /** Duskin — domingos especiais do mês */

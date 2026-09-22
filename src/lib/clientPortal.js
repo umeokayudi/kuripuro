@@ -76,19 +76,30 @@ export function monthCompletedCount(jobs, yearMonth) {
 export function visibleInvoices(rows) {
   return (rows || []).filter(f => {
     const s = String(f.status || '').toLowerCase()
-    return s && s !== 'draft' && s !== 'cancelled' && s !== 'pending'
+    return s && s !== 'draft' && s !== 'cancelled'
   })
 }
 
+export function isUnpaidInvoiceStatus(status) {
+  const s = String(status || '').toLowerCase()
+  return s === 'sent' || s === 'pending'
+}
+
 export function unpaidInvoices(rows) {
-  return visibleInvoices(rows).filter(f => f.status === 'sent')
+  return visibleInvoices(rows).filter(f => isUnpaidInvoiceStatus(f.status))
 }
 
 export function filterInvoices(rows, status = 'all') {
   const vis = visibleInvoices(rows)
-  if (status === 'sent' || status === 'unpaid') return vis.filter(f => f.status === 'sent')
+  if (status === 'sent' || status === 'unpaid' || status === 'pending') {
+    return vis.filter(f => isUnpaidInvoiceStatus(f.status))
+  }
   if (status === 'paid') return vis.filter(f => f.status === 'paid')
   return vis
+}
+
+export function clientMonthlyCost(client) {
+  return Number(client?.monthly_cost || client?.monthly_cost_estimate || 0)
 }
 
 export function lastDeepVisit(jobs) {

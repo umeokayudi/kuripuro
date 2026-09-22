@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { tokyoYearMonth } from '../lib/dates'
-import { shiftYearMonth } from '../lib/salaryPeriod'
 import { useLang, fill } from '../hooks/useLang'
 import {
   DEFAULT_LOCATIONS, buildMonthSchedule, scheduleStats, jobsToRows,
@@ -16,7 +15,7 @@ export default function ScheduleGenerator() {
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   const dowLabels = lang === 'ja' ? DOW_JA : DOW_EN
 
-  const [month, setMonth] = useState(() => shiftYearMonth(tokyoYearMonth(), 1))
+  const [month, setMonth] = useState(() => tokyoYearMonth())
   const [preview, setPreview] = useState([])
   const [loading, setLoading] = useState(false)
   const [existingCount, setExistingCount] = useState(0)
@@ -138,7 +137,7 @@ export default function ScheduleGenerator() {
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             {contracts.map(c => (
-              <div key={c.employeeId} style={{ display: 'flex', gap: 12, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 10, borderLeft: `4px solid ${c.color}` }}>
+              <div key={`${c.template}-${c.employeeId}`} style={{ display: 'flex', gap: 12, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 10, borderLeft: `4px solid ${c.color}` }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{c.employeeName}</div>
                   <div style={{ fontSize: 12, color: c.color, fontWeight: 600 }}>{c.label}</div>
@@ -191,7 +190,7 @@ export default function ScheduleGenerator() {
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
             {contracts.map(c => (
-              <div key={c.employeeId} style={{ padding: '10px 14px', borderRadius: 10, background: `${c.color}12`, border: `1px solid ${c.color}30`, minWidth: 100 }}>
+              <div key={`${c.template}-${c.employeeId}`} style={{ padding: '10px 14px', borderRadius: 10, background: `${c.color}12`, border: `1px solid ${c.color}30`, minWidth: 100 }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>{c.shortName}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: c.color }}>{stats.byEmployee[c.shortName] || 0}</div>
               </div>

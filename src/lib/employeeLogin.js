@@ -1,4 +1,5 @@
 import { normalizeLoginKey } from './portalStores'
+import { passwordMatches } from './passwordMatch'
 
 export const EMPLOYEE_LOGIN_FIELDS =
   'id, full_name, email, password, is_active, contract_type, hourly_rate, fixed_salary, salary_type, score'
@@ -21,7 +22,7 @@ export function employeeToSession(emp) {
 function activeWithPassword(rows, password) {
   const pw = String(password || '').trim()
   if (!pw) return []
-  return (rows || []).filter(r => r && r.is_active !== false && String(r.password || '') === pw)
+  return (rows || []).filter(r => r && r.is_active !== false && passwordMatches(r.password, pw))
 }
 
 function uniqueMatch(list) {
@@ -66,16 +67,14 @@ export async function findEmployeeForLogin(supabase, login, password) {
     .from('employees')
     .select(EMPLOYEE_LOGIN_FIELDS)
     .eq('email', key)
-    .eq('password', pw)
     .eq('is_active', true)
     .maybeSingle()
-  if (byEmail) return byEmail
+  if (byEmail && passwordMatches(byEmail.password, pw)) return byEmail
 
   const { data: byIlike, error: ilikeErr } = await supabase
     .from('employees')
     .select(EMPLOYEE_LOGIN_FIELDS)
     .ilike('email', key)
-    .eq('password', pw)
     .eq('is_active', true)
 
   if (!ilikeErr && byIlike?.length) {
@@ -83,13 +82,12 @@ export async function findEmployeeForLogin(supabase, login, password) {
     if (hit) return hit
   }
 
-  const { data: byPass } = await supabase
+  const { data: active } = await supabase
     .from('employees')
     .select(EMPLOYEE_LOGIN_FIELDS)
-    .eq('password', pw)
     .eq('is_active', true)
 
-  return pickEmployeeForLogin(byPass, login, password)
+  return pickEmployeeForLogin(active, login, password)
 }
 
 export async function findAdminForLogin(supabase, login, password) {
@@ -101,14 +99,14 @@ export async function findAdminForLogin(supabase, login, password) {
     .from('admins')
     .select('*')
     .eq('email', key)
-    .eq('password', pw)
     .maybeSingle()
-  if (exact) return exact
+  if (exact && passwordMatches(exact.password, pw)) return exact
 
   const { data: rows } = await supabase
     .from('admins')
     .select('*')
-    .eq('password', pw)
 
-  return pickByNormalizedEmail(rows, login)
+  const hit = pickByNormalizedEmail(rows, login)
+  if (hit && passwordMatches(hit.password, pw)) return hit
+  return null
 }

@@ -1,3 +1,5 @@
+import { hashPassword, passwordMatches } from './passwordMatch'
+
 export const MIN_LOGIN_PASSWORD = 6
 
 export function validateEmail(email) {
@@ -53,7 +55,7 @@ export function buildCredentialPatch({
 } = {}) {
   if (requireCurrent) {
     const given = String(submittedCurrent || '')
-    if (!given || given !== String(storedPassword || '')) {
+    if (!given || !passwordMatches(storedPassword, given)) {
       return { ok: false, error: 'wrong_current_password' }
     }
   }
@@ -71,7 +73,7 @@ export function buildCredentialPatch({
     if (confirmPassword !== undefined && String(confirmPassword) !== pw.value) {
       return { ok: false, error: 'password_mismatch' }
     }
-    patch.password = pw.value
+    patch.password = hashPassword(pw.value)
   }
 
   if (!Object.keys(patch).length) return { ok: false, error: 'nothing_to_update' }

@@ -95,7 +95,7 @@ export async function resolveJobTarget(job, { locations = [], geocode = null } =
 
 export function evaluateGeofence(position, target, radiusM = GEOFENCE_M) {
   if (!target) {
-    return { ok: true, reason: 'no_pin', distanceM: null, target: null, position: position || null }
+    return { ok: false, reason: 'no_pin', distanceM: null, target: null, position: position || null }
   }
   if (!position || !validCoords(position.lat, position.lng)) {
     return { ok: false, reason: 'gps_unavailable', distanceM: null, target, position: null }
@@ -172,7 +172,7 @@ export function staffWorkStatus({ employee, jobs = [], today }) {
   const todayJobs = jobsForEmployeeToday(jobs, employee?.id, today)
   const active = (jobs || []).find(j => j.employee_id === employee?.id && j.status === 'in_progress')
   if (active) return { key: 'working', job: active, todayJobs }
-  if (todayJobs.length === 0) return { key: 'folga', job: null, todayJobs }
+  if (todayJobs.length === 0) return { key: 'unscheduled', job: null, todayJobs }
   return { key: 'idle', job: null, todayJobs }
 }
 
@@ -181,17 +181,19 @@ export function summarizeStaffStatus(employees, jobs, today) {
     employee,
     ...staffWorkStatus({ employee, jobs, today }),
   }))
-  const order = { working: 0, idle: 1, folga: 2 }
+  const order = { working: 0, idle: 1, unscheduled: 2, folga: 3 }
   rows.sort((a, b) => {
-    const d = order[a.key] - order[b.key]
+    const d = (order[a.key] ?? 9) - (order[b.key] ?? 9)
     if (d) return d
     return String(a.employee?.full_name || '').localeCompare(String(b.employee?.full_name || ''))
   })
+  const unscheduled = rows.filter(r => r.key === 'unscheduled' || r.key === 'folga').length
   return {
     rows,
     working: rows.filter(r => r.key === 'working').length,
     idle: rows.filter(r => r.key === 'idle').length,
-    folga: rows.filter(r => r.key === 'folga').length,
+    unscheduled,
+    folga: unscheduled,
   }
 }
 

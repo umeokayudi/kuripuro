@@ -56,11 +56,9 @@ export function advanceDate(row) {
   return String(row?.payment_date || row?.received_at || row?.created_at || '').slice(0, 10) || null
 }
 
-export function isAdvanceReceived(row, todayStr = tokyoToday()) {
+export function isAdvanceReceived(row, _todayStr = tokyoToday()) {
   if (!row) return false
-  if (row.status === 'paid') return true
-  const date = advanceDate(row)
-  return !!(date && date < todayStr)
+  return row.status === 'paid'
 }
 
 export function sumAmounts(rows) {
@@ -138,7 +136,7 @@ function remainingWeekdays() {
 /**
  * One salary breakdown for admin + portal + month close.
  * net = earned after deductions (what they earned)
- * toPay = net minus advances already given, plus transport (15th transfer)
+ * toPay = net minus advances already paid. Transport stays a separate extra row.
  */
 export function calcPeriodSalary(empInfo, allJobs, payments = [], { period, today } = {}) {
   const todayStr = today || tokyoToday()
@@ -146,9 +144,10 @@ export function calcPeriodSalary(empInfo, allJobs, payments = [], { period, toda
   const completed = completedJobsInMonth(allJobs, ym, todayStr)
   const { base, totalMins, workedDays, fixedMax, dailyRate, type } = computeBase(empInfo, completed)
 
-  const spotEarned = completed
-    .filter(j => j.job_category === 'spot')
-    .reduce((s, j) => s + Number(j.spot_value || 0), 0)
+  const spotJobs = completed.filter(j => j.job_category === 'spot')
+  const spotEarned = (type === 'per_job' || type === 'mixed')
+    ? 0
+    : spotJobs.reduce((s, j) => s + Number(j.spot_value || 0), 0)
 
   const deductionRows = (payments || []).filter(isDeductionRow)
   const advanceRows = (payments || []).filter(isAdvanceRow)
@@ -169,7 +168,7 @@ export function calcPeriodSalary(empInfo, allJobs, payments = [], { period, toda
   const earned = base + spotEarned + bonuses + attendanceBonus
   const gross = earned
   const net = Math.max(0, gross - deductions)
-  const toPay = Math.max(0, net - advancesReceived) + transport
+  const toPay = Math.max(0, net - advancesReceived)
   const remain = ym === tokyoYearMonth() ? remainingWeekdays() : 0
 
   return {
