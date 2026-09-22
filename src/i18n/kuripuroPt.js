@@ -108,7 +108,7 @@ export const kuripuroPt = {
     closeOutside: 'Toque fora para fechar',
     cancelStaleConfirm: 'Cancelar todos os serviços "assigned" antes de {today}?',
     cancelStale: 'Cancelar atrasados',
-    staleJobs: '{count} serviços assigned atrasados',
+    staleJobs: '{count} serviços atrasados de datas passadas',
     todayJobsTitle: 'Serviços de hoje',
     recentEvals: 'Avaliações recentes',
     noTodayJobs: 'Nenhum serviço agendado hoje.',
