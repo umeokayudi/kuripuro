@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { tokyoToday } from '../lib/dates'
 import toast from 'react-hot-toast'
 
 const POSITIVE_CATS = ['Excellent work', 'On time', 'Great attitude', 'Client praised', 'Extra effort', 'Perfect cleaning']
@@ -53,7 +54,7 @@ export default function Evaluations() {
       points_change: pts,
       category: form.category,
       description: form.description,
-      eval_date: new Date().toISOString().split('T')[0],
+      eval_date: tokyoToday(),
     })
     if (error) { toast.error(error.message); setSubmitting(false); return }
 

@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { tokyoToday, tokyoYearMonth } from '../lib/dates'
+import { useLang } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 
 /** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
 function normalizeEntry(row) {
@@ -13,10 +16,13 @@ function normalizeEntry(row) {
 }
 
 export default function Cashflow() {
+  const { t } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('overview')
-  const [form, setForm] = useState({ type:'income', category:'Client Payment', amount:'', description:'', date:new Date().toISOString().split('T')[0] })
+  const [form, setForm] = useState({ type:'income', category:'Client Payment', amount:'', description:'', date:tokyoToday() })
 
   const INCOME_CATS = ['Client Payment','Spot Job','Bonus','Other Income']
   const EXPENSE_CATS = ['Salary','Supplies','Transport','Equipment','Tax','Other Expense']
@@ -44,16 +50,17 @@ export default function Cashflow() {
     })
     if (error) return toast.error(error.message)
     toast.success('Entry added!')
-    setForm({ type:'income', category:'Client Payment', amount:'', description:'', date:new Date().toISOString().split('T')[0] })
+    setForm({ type:'income', category:'Client Payment', amount:'', description:'', date:tokyoToday() })
     load(); setTab('overview')
   }
 
   const handleDelete = async (id) => {
+    if (!(await confirm({ title: dlg.deleteCashflow, message: dlg.dangerHint, tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('cashflow').delete().eq('id', id)
     toast('Entry removed.'); load()
   }
 
-  const month = new Date().toISOString().slice(0,7)
+  const month = tokyoYearMonth()
   const thisMonth = entries.filter(e=>e.date?.startsWith(month))
   const income = thisMonth.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount||0),0)
   const expense = thisMonth.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount||0),0)

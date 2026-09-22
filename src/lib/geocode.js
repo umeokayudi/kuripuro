@@ -1,11 +1,30 @@
 export { isMapsUrl, isNavigableAddress } from './mapsLink.js'
 
-function parseCoordsFromUrl(url) {
+export function validCoords(lat, lng) {
+  const a = Number(lat)
+  const b = Number(lng)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null
+  if (a < -90 || a > 90 || b < -180 || b > 180) return null
+  if (a === 0 && b === 0) return null
+  return { lat: a, lng: b }
+}
+
+export function parseCoordsFromUrl(url) {
   if (!url) return null
-  const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
-  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) }
-  const m2 = url.match(/[?&](?:q|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/)
-  if (m2) return { lat: parseFloat(m2[1]), lng: parseFloat(m2[2]) }
+  const text = String(url)
+
+  let m = text.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+  if (m) return validCoords(m[1], m[2])
+
+  m = text.match(/[?&](?:q|ll|query)=(-?\d+\.\d+),(-?\d+\.\d+)/)
+  if (m) return validCoords(m[1], m[2])
+
+  m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)
+  if (m) return validCoords(m[1], m[2])
+
+  m = text.match(/\/(-?\d+\.\d+),(-?\d+\.\d+)(?:\/|,|\?|$)/)
+  if (m) return validCoords(m[1], m[2])
+
   return null
 }
 

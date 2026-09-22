@@ -6,11 +6,12 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
+import { parseExtraRequest, parsePaymentNotice, extraLabel, formatYen, settleClientRequest } from '../lib/clientExtras'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
 export default function ClientFeedback() {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const f = t.feedback
   const [tab, setTab] = useState('ratings')
   const [ratings, setRatings] = useState([])
@@ -89,6 +90,13 @@ export default function ClientFeedback() {
 
   const saveRequest = async (row, status) => {
     const admin_notes = draft(row.id)
+    if (status === 'completed') {
+      const settled = await settleClientRequest(supabase, row, {
+        today: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 10),
+        extraTitle: extraLabel(parseExtraRequest(row.description)?.extraId, lang),
+      })
+      if (!settled.ok) return toast.error(settled.error)
+    }
     const { error } = await supabase.from('client_requests').update({
       admin_notes,
       status,
@@ -251,7 +259,7 @@ export default function ClientFeedback() {
             <div key={row.id} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ fontWeight: 600 }}>
-                  {row.ticket_number || `#${row.id.slice(0, 8)}`} · {clientName(row.client_id)}
+                {row.ticket_number || `#${row.id.slice(0, 8)}`} · {clientName(row.client_id)}
                 </div>
                 <span className={`badge ${row.status === 'completed' ? 'badge-green' : 'badge-amber'}`}>{row.status}</span>
               </div>
@@ -259,7 +267,33 @@ export default function ClientFeedback() {
                 {row.location_name || f.allLocations} · {new Date(row.created_at).toLocaleDateString()}
                 {row.preferred_date ? ` · ${fill(f.preferredDate, { date: row.preferred_date })}` : ''}
               </div>
-              <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>
+              <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>
+                {(() => {
+                  const extra = parseExtraRequest(row.description)
+                  const pay = parsePaymentNotice(row.description)
+                  if (extra) {
+                    return (
+                      <>
+                        <div style={{ fontWeight: 700, color: 'var(--gold, #c19c56)', marginBottom: 6 }}>
+                          ✨ {extraLabel(extra.extraId, lang)} · {formatYen(extra.price)}
+                        </div>
+                        {extra.notes || extra.locationName}
+                      </>
+                    )
+                  }
+                  if (pay) {
+                    return (
+                      <>
+                        <div style={{ fontWeight: 700, color: 'var(--gold, #c19c56)', marginBottom: 6 }}>
+                          💴 {formatYen(pay.total)} · client marked paid
+                        </div>
+                        {pay.notes}
+                      </>
+                    )
+                  }
+                  return row.description
+                })()}
+              </div>
               <textarea value={draft(row.id) || row.admin_notes || ''} onChange={e => setResponseDraft(d => ({ ...d, [row.id]: e.target.value }))} placeholder={f.adminNotes} rows={2} style={{ width: '100%', marginBottom: 8 }} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-sm btn-primary" onClick={() => saveRequest(row, row.status)}>{f.saveNotes}</button>

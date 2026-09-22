@@ -4,14 +4,29 @@ import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, dateLocale } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
+import { weekdayShortLabels } from '../lib/appDialog'
 import { supabase } from '../lib/supabase'
-import { distanceMeters, getCurrentPosition } from '../lib/geocode'
+import { geocodeAddress, getCurrentPosition } from '../lib/geocode'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import {
+  GEOFENCE_M,
+  checkJobGeofence,
+  employeePresencePatch,
+  evaluateGeofence,
+  jobGpsWriteFields,
+  mergeLocationHints,
+  resolveJobTargetSync,
+} from '../lib/jobGps'
 import toast from 'react-hot-toast'
-import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
+import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates, shiftYearMonth } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
 import LanguageToggle from '../components/LanguageToggle'
+import EmployeeAccountPanel from '../components/EmployeeAccountPanel'
+import EmployeeJobModal from '../components/EmployeeJobModal'
+import EmpSheetPortal from '../components/EmpSheetPortal'
+import { EmpElapsed, EmpHourWatch, EmpLiveDate, EmpLiveTime } from '../components/EmpLiveClock'
 import { contractForJob, parseTrainingChecklist } from '../lib/training'
 import { initChecklistState, checklistComplete, checklistTemplateForJob, parseChecklistTemplate, resolveChecklistForJob, checklistDisplayLabel } from '../lib/jobChecklist'
 import {
@@ -22,8 +37,13 @@ import {
   checklistCompleteForRetro,
   isJobFullyRegistered,
   isDuskinJob,
-  pastServicePrefillFromJob,
+  isManualServiceAllowedOnDate,
+  possibleManualDates,
+  snapToPossibleDate,
+  manualServiceDateWindow,
+  formatManualServiceDays,
   ALL_DEEP_COMPONENT_IDS,
+  isAddServiceActionable,
 } from '../lib/employeeAddJob'
 import {
   isOverdueAssignedJob,
@@ -34,14 +54,20 @@ import {
   DEEP_CLEAN_COMPONENTS,
   deepComponentLabel,
   getCleaningType,
+  parseDeepComponents,
   cleaningTypesForLang,
+  monthCalendarCells,
 } from '../lib/cleaningType'
-import { tokyoToday, recentTokyoDates } from '../lib/dates'
-import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
+import { packPhotoUrls, parsePhotoUrls } from '../lib/jobPhotoUrls'
+import { formatPhotoAiIssues, minAfterPhotosForJob, PHOTO_UPLOAD_MAX } from '../lib/photoAi'
+import { tokyoToday, tokyoYearMonth, monthBounds } from '../lib/dates'
+import { isMissingColumnError, isMissingTableError } from '../lib/schemaError'
+import { isBodyScrollLocked } from '../lib/bodyScrollLock'
+import { calcPeriodSalary, countWorkedDays, isAdvanceReceived } from '../lib/salaryCalc'
 import {
   enrichJobValues,
+  elapsedSecondsFromStart,
   employeeEarningsForJob,
-  formatShiftElapsed,
   isStaleActiveJob,
   salaryTypeLabel,
 } from '../lib/employeePay'
@@ -56,8 +82,9 @@ const BADGE_DEFS = [
 ]
 
 export default function EmployeePortal() {
-  const { user, logout } = useAuth()
+  const { user, logout, updateSession } = useAuth()
   const { lang, t: tr } = useLang()
+  const confirm = useConfirm()
   const e = tr.employee
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -65,28 +92,28 @@ export default function EmployeePortal() {
   const [allJobs, setAllJobs] = useState([])
   const [spotJobs, setSpotJobs] = useState([])
   const [activeJob, setActiveJob] = useState(null)
-  const [elapsed, setElapsed] = useState(0)
   const [checklist, setChecklist] = useState([])
   const [notes, setNotes] = useState('')
   const [jobPhotos, setJobPhotos] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('')
+  const [storePins, setStorePins] = useState(() => mergeLocationHints())
   const [retroJob, setRetroJob] = useState(null)
   const [retroChecklist, setRetroChecklist] = useState([])
   const [retroText, setRetroText] = useState('')
-  const [retroPhoto, setRetroPhoto] = useState(null)
+  const [retroPhotos, setRetroPhotos] = useState([])
   const [retroEval, setRetroEval] = useState(null)
   const [retroBusy, setRetroBusy] = useState(false)
   const [salaryData, setSalaryData] = useState(null)
   const [payments, setPayments] = useState([])
   const [weekDeductions, setWeekDeductions] = useState([])
-  const [monthDeductions, setMonthDeductions] = useState([])
+  const [monthLedger, setMonthLedger] = useState([])
+  const [schemaEquipment, setSchemaEquipment] = useState(true)
   const [advances, setAdvances] = useState([])
   const [claims, setClaims] = useState([])
   const [messages, setMessages] = useState([])
   const [newMsg, setNewMsg] = useState('')
   const [badges, setBadges] = useState([])
-  const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
   const [empData, setEmpData] = useState(null)
   const [selectedJob, setSelectedJob] = useState(null)
@@ -121,9 +148,6 @@ export default function EmployeePortal() {
   const [todayAllJobs, setTodayAllJobs] = useState([])
   const [userScrolled, setUserScrolled] = useState(false)
 
-  const timerRef = useRef()
-  const clockRef = useRef()
-  const hourWarnedRef = useRef(false)
   const photoInputRef = useRef()
   const claimPhotoRef = useRef()
   const claimReceiptRef = useRef()
@@ -145,31 +169,22 @@ export default function EmployeePortal() {
 
   useEffect(() => {
     loadAll()
-    clockRef.current = setInterval(() => setClock(new Date()), 1000)
     const msgPoll = setInterval(loadMessages, 10000)
     // Ping presence every 60s
     const pingPresence = async () => {
-      const update = { last_seen: new Date().toISOString(), is_online: true }
-      // Compartilha GPS automaticamente durante o expediente (job em andamento)
-      const working = document.body.getAttribute('data-working') === 'yes'
-      if (navigator.geolocation && working) {
+      let position = null
+      if (navigator.geolocation) {
         try {
-          const pos = await new Promise((res, rej) =>
-            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 30000 }))
-          update.last_lat = pos.coords.latitude
-          update.last_lng = pos.coords.longitude
-          update.last_location_at = new Date().toISOString()
-          update.location_sharing = true
+          position = await getCurrentPosition()
         } catch {}
       }
+      const update = employeePresencePatch(position)
       await supabase.from('employees').update(update).eq('id', user.id)
     }
     pingPresence()
     const presencePoll = setInterval(pingPresence, 30000)
     // Set offline on unmount
     return () => {
-      clearInterval(clockRef.current)
-      clearInterval(timerRef.current)
       clearInterval(msgPoll)
       clearInterval(presencePoll)
       supabase.from('employees').update({ is_online: false }).eq('id', user.id)
@@ -189,22 +204,6 @@ export default function EmployeePortal() {
   }, [activeJob?.id])
 
   useEffect(() => {
-    hourWarnedRef.current = false
-    if (activeJob?.started_at) {
-      const start = new Date(activeJob.started_at)
-      timerRef.current = setInterval(() => {
-        const secs = Math.floor((Date.now()-start)/1000)
-        setElapsed(secs)
-        if (secs === 3600 && !hourWarnedRef.current) {
-          hourWarnedRef.current = true
-          toast('⏱️ 1 hour on this job — everything ok?', { duration: 8000 })
-        }
-      }, 1000)
-    }
-    return () => clearInterval(timerRef.current)
-  }, [activeJob])
-
-  useEffect(() => {
     if (tab==='chat') {
       markRead()
       // Only auto-scroll if user hasn't scrolled up
@@ -222,30 +221,35 @@ export default function EmployeePortal() {
 
   const loadAll = async () => {
     const today = tokyoToday()
+    const ym = today.slice(0, 7)
+    const { from: monthFrom, to: monthTo } = monthBounds(ym)
     const { start:weekStart, end:weekEnd } = getWeekRange()
-    const monthStart = today.slice(0, 7) + '-01'
-    const [active, all, emp, pay, adv, clm, eqp, bdg, weekPay, monthPay, contractsRes] = await Promise.all([
+    const [active, all, emp, pay, adv, clm, eqp, bdg, weekPay, monthPay, contractsRes, locRes] = await Promise.all([
       supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
       supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
-      supabase.from('employees').select('id,full_name,email,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days,score,is_active').eq('id',user.id).maybeSingle(),
+      supabase.from('employees').select('id,full_name,email,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days,attendance_bonus,advance_per_week,score,is_active').eq('id',user.id).maybeSingle(),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).gte('payment_date',today).order('payment_date').limit(10),
       supabase.from('salary_payments').select('*').eq('employee_id', user.id).eq('payment_type', 'advance').order('payment_date', { ascending: false }).limit(10),
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
       supabase.from('equipment_requests').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(30),
       supabase.from('badges').select('*').eq('employee_id',user.id),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
-      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
+      supabase.from('salary_payments').select('*').eq('employee_id',user.id).or(`period.eq.${ym},and(payment_date.gte.${monthFrom},payment_date.lte.${monthTo})`),
       supabase.from('service_contracts').select('location_name,price_per_visit,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
+      supabase.from('locations').select('id,name,address,gps_lat,gps_lng'),
     ])
     const visible = (list) => (list || []).filter(j => !isDuskinJob(j))
     const regular = visible(active.data).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = visible(active.data).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
     const allVisible = visible(all.data)
-    setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[]); setEquipmentRequests(eqp.data||[])
+    setPayments(pay.data||[]); setAdvances(adv.data||[]); setClaims(clm.data||[])
+    if (isMissingTableError(eqp.error)) setSchemaEquipment(false)
+    else { setSchemaEquipment(true); setEquipmentRequests(eqp.data||[]) }
     setWeekDeductions(weekPay.data||[])
-    setMonthDeductions(monthPay.data||[])
+    setMonthLedger(monthPay.data||[])
     setBadges(bdg.data||[])
     setServiceContracts(contractsRes.data || [])
+    setStorePins(mergeLocationHints(isMissingTableError(locRes.error) ? [] : (locRes.data || [])))
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
     let inProgress = regular.find(j=>j.status==='in_progress')
     if (!inProgress) inProgress = allVisible.find(j => j.status === 'in_progress')
@@ -261,8 +265,6 @@ export default function EmployeePortal() {
       localStorage.setItem(`kp_ck_${inProgress.id}`, JSON.stringify(ck))
     } else {
       setActiveJob(null)
-      clearInterval(timerRef.current)
-      setElapsed(0)
     }
     calcSalary(enrichJobValues(allVisible, contractsRes.data || []), emp.data, monthPay.data||[])
     loadMessages()
@@ -272,7 +274,8 @@ export default function EmployeePortal() {
 
   const loadStatement = async () => {
     const period = getConfirmablePeriod()
-    const { data } = await supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle()
+    const { data, error } = await supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle()
+    if (isMissingTableError(error)) return
     setStatement(data)
   }
 
@@ -364,16 +367,21 @@ export default function EmployeePortal() {
       allJobs.filter(j => j.status === 'completed' && j.scheduled_date >= start && j.scheduled_date <= end),
       serviceContracts,
     )
-    const gross = weekJobs.reduce((s, j) => s + employeeEarningsForJob(j, empData), 0)
+    const isFixed = (empData?.salary_type || 'fixed') === 'fixed'
+    const weekDays = countWorkedDays(weekJobs)
+    const daily = Number(empData?.fixed_salary || 0) / (empData?.monthly_work_days || 22)
+    const gross = isFixed
+      ? Math.round(daily * weekDays)
+      : weekJobs.reduce((s, j) => s + employeeEarningsForJob(j, empData), 0)
     const deductions = weekDeductions.reduce((s,d)=>s+Number(d.amount||0),0)
     const totalChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_total||0),0)
     const doneChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_done??0),0)
     const rate = totalChecklist>0 ? Math.round((doneChecklist/totalChecklist)*100) : 100
-    return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate }
+    return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate, isFixed, weekDays }
   }
 
-  const calcSalary = (allData, empInfo, deductionsList = []) => {
-    setSalaryData(calcEmployeeMonthlySalary(empInfo, allData, deductionsList))
+  const calcSalary = (allData, empInfo, paymentsList = []) => {
+    setSalaryData(calcPeriodSalary(empInfo, allData, paymentsList, { period: tokyoYearMonth() }))
   }
 
   const awardBadges = async (allData, existing) => {
@@ -395,22 +403,47 @@ export default function EmployeePortal() {
     }
   }
 
-  const checkGPS = async (job) => {
-    if (!job.gps_lat||!job.gps_lng) return true
-    setGpsStatus('📍 Checking...')
-    try {
-      const pos = await getCurrentPosition()
-      const dist = distanceMeters(pos.lat,pos.lng,Number(job.gps_lat),Number(job.gps_lng))
-      if (dist>100) {
-        setGpsStatus(`⚠️ ${Math.round(dist)}m away`)
-        return { ok: true, dist: Math.round(dist), override: true }
-      }
-      setGpsStatus(`✅ ${Math.round(dist)}m`)
-      return { ok: true, dist: Math.round(dist), override: false }
-    } catch {
-      setGpsStatus('⚠️ GPS unavailable')
-      return { ok: true, dist: null, override: true }
+  const geofenceFailMessage = (check) => {
+    if (check?.reason === 'too_far') {
+      return fill(e.gpsTooFar, { n: Math.round(check.distanceM || 0), max: GEOFENCE_M })
     }
+    if (check?.reason === 'no_pin') {
+      return e.gpsNoPin || e.gpsRequired
+    }
+    return e.gpsRequired
+  }
+
+  const runGeofence = async (job) => {
+    setGpsStatus(e.gpsChecking)
+    const check = await checkJobGeofence(job, {
+      getPosition: getCurrentPosition,
+      locations: storePins,
+      geocode: geocodeAddress,
+    })
+    if (!check.ok) {
+      const msg = geofenceFailMessage(check)
+      setGpsStatus(`🚫 ${msg}`)
+      toast.error(msg)
+      return check
+    }
+    if (check.distanceM != null) {
+      setGpsStatus(`✅ ${fill(e.gpsOk, { n: Math.round(check.distanceM) })}`)
+    } else {
+      setGpsStatus(`✅ ${e.gpsSaved}`)
+    }
+    return check
+  }
+
+  const persistJobGps = async (jobId, phase, check, job) => {
+    const patch = jobGpsWriteFields(phase, check, job)
+    const { error } = await supabase.from('jobs').update(patch).eq('id', jobId)
+    if (error && !isMissingColumnError(error)) console.warn('job gps', error.message)
+    return patch
+  }
+
+  const pingWorkGps = async (position) => {
+    if (!position) return
+    await supabase.from('employees').update(employeePresencePatch(position)).eq('id', user.id)
   }
 
   const handleAcceptSpot = async (job) => {
@@ -438,6 +471,7 @@ export default function EmployeePortal() {
       toast(e.finishExistingShift || 'You have an open shift — finish it below first')
       setTab('shift')
       setTimeout(() => {
+        if (isBodyScrollLocked()) return
         const el = document.getElementById('active-job-card')
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 150)
@@ -475,10 +509,15 @@ export default function EmployeePortal() {
 
   const handleAbandonStaleShift = async (job) => {
     if (!job) return
-    const msg = lang === 'ja'
+    const msg = e.staleShiftConfirm || (lang === 'ja'
       ? 'この作業をリセットして最初からやり直しますか？（開始時刻が消えます）'
-      : 'Reset this job so you can start fresh? (Timer will be cleared)'
-    if (!window.confirm(msg)) return
+      : 'Reset this job so you can start fresh? (Timer will be cleared)')
+    if (!(await confirm({
+      title: e.staleShiftTitle,
+      message: msg,
+      tone: 'danger',
+      confirmLabel: e.staleShiftReset,
+    }))) return
     setSubmitting(true)
     try {
       const { error } = await supabase.from('jobs').update({
@@ -490,7 +529,6 @@ export default function EmployeePortal() {
       setActiveJob(null)
       setJobPhotos([])
       setChecklist([])
-      setElapsed(0)
       toast.success(e.staleShiftReset)
       await loadAll()
     } catch (err) {
@@ -520,16 +558,20 @@ export default function EmployeePortal() {
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
         else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
+        else if (result.error === 'not_possible_day') toast.error(e.notPossibleDay)
+        else if (result.error === 'future_not_allowed') toast.error(e.futureNotAllowed)
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
       setShowPastService(false)
       setPastServicePrefill(null)
       await loadAll()
+      await pingGpsNearLocation(location, { distanceToast: date === tokyoToday(), job: result.job })
       if (result.action === 'finish_existing') {
         toast(e.finishExistingShift || 'Open shift found — complete it below')
         setTab('shift')
         setTimeout(() => {
+          if (isBodyScrollLocked()) return
           const el = document.getElementById('active-job-card')
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }, 150)
@@ -547,7 +589,44 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleAddService = async (location, cleaningType, deepComponents, option) => {
+  const pingGpsNearLocation = async (location, { distanceToast = true, job = null } = {}) => {
+    try {
+      const position = await getCurrentPosition()
+      await supabase.from('employees').update(employeePresencePatch(position)).eq('id', user.id)
+      let target = resolveJobTargetSync(
+        {
+          title: job?.title || location?.name,
+          address: job?.address || location?.address,
+          gps_lat: job?.gps_lat ?? location?.gps_lat,
+          gps_lng: job?.gps_lng ?? location?.gps_lng,
+        },
+        storePins,
+      ) || resolveJobTargetSync(
+        { title: location?.name, address: location?.address, gps_lat: location?.gps_lat, gps_lng: location?.gps_lng },
+        location ? [location] : [],
+      )
+      if (!target && (location?.address || job?.address)) {
+        const geo = await geocodeAddress(location?.address || job?.address)
+        if (geo?.lat != null && geo?.lng != null) target = { lat: geo.lat, lng: geo.lng, source: 'geocode' }
+      }
+      if (job?.id && target) {
+        await supabase.from('jobs').update({ gps_lat: target.lat, gps_lng: target.lng }).eq('id', job.id)
+      }
+      if (!distanceToast) return
+      const check = evaluateGeofence(position, target)
+      if (check.distanceM != null) {
+        const msg = fill(e.addServiceGpsDistance, { n: Math.round(check.distanceM) })
+        if (check.ok) toast.success('📍 ' + msg)
+        else toast('📍 ' + msg, { icon: '⚠️', duration: 6000 })
+      } else if (position) {
+        toast.success(e.addServiceGpsSaved)
+      }
+    } catch {
+      /* GPS is optional when adding to the route */
+    }
+  }
+
+  const handleAddService = async (location, cleaningType, deepComponents, option, date) => {
     if (addServiceBusy) return
     if (option?.state === 'mine') {
       return toast.error(e.addServiceAlreadyYours)
@@ -558,16 +637,21 @@ export default function EmployeePortal() {
     if (option?.state === 'done_today') {
       if (isJobFullyRegistered(option.job)) return toast.error(e.pastServiceAlreadyDone)
       setShowAddService(false)
-      await handlePastService({ location, date: tokyoToday(), cleaningType, deepComponents })
+      await handlePastService({ location, date: date || tokyoToday(), cleaningType, deepComponents })
       return
     }
-    const date = tokyoToday()
+    const day = date || tokyoToday()
+    if (day < tokyoToday()) {
+      setShowAddService(false)
+      await handlePastService({ location, date: day, cleaningType, deepComponents })
+      return
+    }
     setAddServiceBusy(true)
     try {
       const result = await employeeAddService(supabase, {
         employee: { id: user.id, name: user.name },
         location,
-        date,
+        date: day,
         cleaningType,
         deepComponents: cleaningType === 'deep' ? deepComponents : [],
       })
@@ -579,6 +663,8 @@ export default function EmployeePortal() {
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
         else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
+        else if (result.error === 'not_possible_day') toast.error(e.notPossibleDay)
+        else if (result.error === 'future_not_allowed') toast.error(e.futureNotAllowed)
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
@@ -592,6 +678,10 @@ export default function EmployeePortal() {
       setShowAddService(false)
       await loadAll()
       setTab('shift')
+      if (day === tokyoToday()) {
+        await pingGpsNearLocation(location, { job: result.job })
+        if (result.job) setSelectedJob(result.job)
+      }
     } finally {
       setAddServiceBusy(false)
     }
@@ -601,7 +691,7 @@ export default function EmployeePortal() {
   const openRetro = (job) => {
     setRetroJob(job)
     setRetroText('')
-    setRetroPhoto(null)
+    setRetroPhotos([])
     setRetroEval(null)
     setRetroChecklist(initChecklistState(job))
   }
@@ -617,7 +707,11 @@ export default function EmployeePortal() {
       return
     }
     if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return }
-    if (!retroPhoto) { toast.error(e.retroPhotoRequired); return }
+    const minAfter = minAfterPhotosForJob(retroJob)
+    if (retroPhotos.length < minAfter) {
+      toast.error(fill(e.afterPhotosMin, { n: minAfter }))
+      return
+    }
     setRetroBusy(true)
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
@@ -633,7 +727,32 @@ export default function EmployeePortal() {
       })
       const ev = await resp.json()
       if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
-      const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
+      const paths = []
+      for (let i = 0; i < retroPhotos.length; i++) {
+        paths.push(await uploadJobPhoto(`jobs/${retroJob.id}/retro_${i}.jpg`, retroPhotos[i].file))
+      }
+      const photoUrl = packPhotoUrls(paths)
+      let aiScore = null, aiApproved = null, aiIssues = null
+      try {
+        const afterList = parsePhotoUrls(photoUrl)
+        const photoResp = await fetch('/api/analyze-photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            photoUrl,
+            photoUrls: afterList,
+            locationName: retroJob.title,
+            cleaningType: getCleaningType(retroJob),
+            deepComponents: parseDeepComponents(retroJob),
+            checklist: markedDone,
+          }),
+        })
+        const pev = await photoResp.json()
+        if (!pev.error) {
+          aiScore = pev.nota ?? null
+          aiApproved = pev.aprovado ?? null
+          aiIssues = formatPhotoAiIssues(pev)
+        }
+      } catch (err) { console.log('AI photo skipped', err?.message) }
       const total = retroChecklist.length
       const done = retroChecklist.filter(c => c.done).length
       const missedLabels = retroChecklist.filter(c => !c.done).map(c => c.label)
@@ -644,6 +763,7 @@ export default function EmployeePortal() {
         photo_end_url: photoUrl, admin_reviewed: false,
         checklist_total: total || null, checklist_done: total ? done : null,
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
+        photo_ai_score: aiScore, photo_ai_approved: aiApproved, photo_ai_issues: aiIssues,
       }).eq('id', retroJob.id)
       if (error) throw error
       setRetroEval(ev)
@@ -662,12 +782,11 @@ export default function EmployeePortal() {
   }
 
   const uploadSlotPhotos = async (jobId, photos, prefix) => {
-    let firstPath = null
+    const paths = []
     for (let i = 0; i < photos.length; i++) {
-      const path = await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, photos[i].file)
-      if (i === 0) firstPath = path
+      paths.push(await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, photos[i].file))
     }
-    return firstPath
+    return packPhotoUrls(paths)
   }
 
   const handleStart = async (job) => {
@@ -683,16 +802,15 @@ export default function EmployeePortal() {
         toast.error(e.alreadyInProgress)
         return
       }
-      const gpsResult = await checkGPS(job)
-      if (gpsResult.override) {
-        const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
-        if (!proceed) { setGpsStatus(''); return }
-      }
+      const gpsCheck = await runGeofence(job)
+      if (!gpsCheck.ok) return
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
       const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
       if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
+      const gpsPatch = await persistJobGps(job.id, 'start', gpsCheck, job)
+      await pingWorkGps(gpsCheck.position)
       setChecklist(initChecklistState(job))
-      setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!')
+      setActiveJob({ ...data, ...gpsPatch }); setJobPhotos([]); toast.success('✅ Started!')
     } catch (err) {
       toast.error(err?.message || e.startError)
     } finally {
@@ -700,9 +818,22 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleCompleteWithSig = (job) => {
-    setSignatureJob(job)
-    setShowSignature(true)
+  const handleCompleteWithSig = async (job) => {
+    const endPhotosCheck = jobPhotos.filter(p => p.slot === 'end')
+    const minAfter = minAfterPhotosForJob(job)
+    if (endPhotosCheck.length < minAfter) {
+      toast.error(fill(e.afterPhotosMin, { n: minAfter }))
+      return
+    }
+    setSubmitting(true)
+    try {
+      const gpsCheck = await runGeofence(job)
+      if (!gpsCheck.ok) return
+      setSignatureJob(job)
+      setShowSignature(true)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleComplete = async (sigDataUrl, jobOverride) => {
@@ -710,12 +841,13 @@ export default function EmployeePortal() {
     if (!job) { toast.error('No active job - please refresh'); return }
     // MÍNIMO: foto Before (start, tirada ao iniciar) + foto After
     const endPhotosCheck = jobPhotos.filter(p=>p.slot==='end')
-    if (endPhotosCheck.length === 0) {
-      toast.error('Tire ao menos 1 foto "After" antes de finalizar')
+    const minAfter = minAfterPhotosForJob(job)
+    if (endPhotosCheck.length < minAfter) {
+      toast.error(fill(e.afterPhotosMin, { n: minAfter }))
       return
     }
     const requiredChecklist = resolveChecklistForJob(job, checklist)
-    const staleJob = isStaleActiveJob(job, tokyoToday(), elapsed)
+    const staleJob = isStaleActiveJob(job, tokyoToday(), elapsedSecondsFromStart(job.started_at))
     const checklistOk = staleJob
       ? checklistCompleteForRetro(requiredChecklist)
       : checklistComplete(requiredChecklist)
@@ -729,6 +861,8 @@ export default function EmployeePortal() {
         : e.markAllChecklist)
       return
     }
+    const gpsCheck = await runGeofence(job)
+    if (!gpsCheck.ok) return
     setSubmitting(true)
     try {
       let startPhotoUrl = job.photo_start_url
@@ -755,20 +889,30 @@ export default function EmployeePortal() {
       // IA analisa as fotos Before/After e dá nota de qualidade
       let aiScore = null, aiApproved = null, aiIssues = null
       try {
+        const afterList = parsePhotoUrls(endPhotoUrl)
         const resp = await fetch('/api/analyze-photo', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photoUrl: endPhotoUrl, locationName: job.title }),
+          body: JSON.stringify({
+            photoUrl: endPhotoUrl,
+            photoUrls: afterList,
+            locationName: job.title,
+            cleaningType: getCleaningType(job),
+            deepComponents: parseDeepComponents(job),
+            checklist: requiredChecklist.map(c => c.label),
+          }),
         })
         const ev = await resp.json()
-        aiScore = ev.nota ?? null; aiApproved = ev.aprovado ?? null
-        aiIssues = ev.problemas?.length ? ev.problemas.join(', ') : null
-      } catch(e){ console.log('AI photo skipped', e?.message) }
+        aiScore = ev.nota ?? null
+        aiApproved = ev.aprovado ?? null
+        aiIssues = formatPhotoAiIssues(ev)
+      } catch(err){ console.log('AI photo skipped', err?.message) }
 
       const { error: coreErr } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(), notes_employee:notes,
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      await persistJobGps(job.id, 'end', gpsCheck, job)
       try {
         await supabase.from('jobs').update({
           checklist_total: total || null, checklist_done: total ? done : null,
@@ -802,9 +946,8 @@ export default function EmployeePortal() {
         }
       }
 
-      clearInterval(timerRef.current)
       localStorage.removeItem(`kp_ck_${job.id}`)
-      setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
+      setActiveJob(null); setChecklist([]); setNotes(''); setJobPhotos([])
       const scoreMsg = aiScore!=null ? ` · IA: ${aiScore}/10${aiApproved?' ✅':' ⚠️'}` : ''
       if (missed>0) toast(`${fill(e.completePartial, { done, total })}${scoreMsg}`, {icon:'⚠️', duration:5000})
       else toast.success(`🎉 ${e.completeSuccess}${scoreMsg}`)
@@ -815,8 +958,16 @@ export default function EmployeePortal() {
 
   const addPhoto = (slot, files) => {
     const cur = jobPhotos.filter(p=>p.slot===slot).length
-    const toAdd = Array.from(files).slice(0, 10-cur)
+    const toAdd = Array.from(files).slice(0, PHOTO_UPLOAD_MAX-cur)
     setJobPhotos(p=>[...p, ...toAdd.map(file=>({ file, preview:URL.createObjectURL(file), slot, id:Date.now()+Math.random() }))])
+  }
+
+  const removePhoto = (id) => {
+    setJobPhotos(p => {
+      const hit = p.find(x => x.id === id)
+      if (hit?.preview) URL.revokeObjectURL(hit.preview)
+      return p.filter(x => x.id !== id)
+    })
   }
 
   const uploadFile = async (file, path) => uploadJobPhoto(path, file)
@@ -879,7 +1030,6 @@ export default function EmployeePortal() {
     setSubmittingEquipment(false)
   }
 
-  const fmt = s=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
   const scoreColor = s=>s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
   const today = tokyoToday()
 
@@ -900,28 +1050,6 @@ export default function EmployeePortal() {
     input: { width:'100%', padding:'12px 14px', fontSize:14, borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.06)', color:'#fff', fontFamily:'inherit', boxSizing:'border-box' },
   }
 
-  const PhotoGrid = ({ slot, label }) => {
-    const photos = jobPhotos.filter(p=>p.slot===slot)
-    return (
-      <div style={{marginBottom:14}}>
-        <span style={S.label}>{label} ({photos.length}/10)</span>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:4}}>
-          {photos.map(p=>(
-            <div key={p.id} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden'}}>
-              <img src={p.preview} style={{width:'100%',height:'100%',objectFit:'cover'}} />
-              <button onClick={()=>setJobPhotos(ps=>ps.filter(ph=>ph.id!==p.id))} style={{position:'absolute',top:3,right:3,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,0.7)',border:'none',color:'#fff',fontSize:11,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
-            </div>
-          ))}
-          {photos.length<10&&(
-            <div onClick={()=>{photoInputRef.current.dataset.slot=slot;photoInputRef.current.click()}} style={{aspectRatio:'1',borderRadius:10,border:'2px dashed rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.03)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:4}}>
-              <span style={{fontSize:22}}>📷</span><span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>Add</span>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
   const menuItems = [
     {key:'home',icon:'🏠',label:e.dashboard},
@@ -934,6 +1062,7 @@ export default function EmployeePortal() {
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
     {key:'achievements',icon:'🏆',label:e.achievements},
+    {key:'account',icon:'🔑',label:e.account},
   ]
 
   const bottomTabs = [
@@ -945,6 +1074,7 @@ export default function EmployeePortal() {
 
   const scrollToActiveJob = () => {
     setTimeout(() => {
+      if (isBodyScrollLocked()) return
       const el = document.getElementById('active-job-card')
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 200)
@@ -959,81 +1089,26 @@ export default function EmployeePortal() {
     if (tab === 'shift' && activeJob) scrollToActiveJob()
   }, [tab, activeJob?.id])
 
-  const JobPhoto = ({ url, label }) => {
-    const [failed, setFailed] = useState(false)
-    const displayUrl = viewablePhotoUrl(url)
-    if (!url) return null
-    return (
-      <div>
-        <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
-        {failed ? (
-          <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
-        ) : (
-          <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
-        )}
-      </div>
-    )
-  }
-
-  const JobModal = ({ job, onClose }) => {
-    const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
-    const cl = (job.checklist_template||'').split('\n').filter(Boolean)
-    const dDate = displayDate(job)
-    const instructions = keyboxForJob(job)
-    return (
-      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',zIndex:200,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={onClose}>
-        <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
-          <div style={{width:40,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 18px'}} />
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
-            <div style={{flex:1,marginRight:12}}>
-              <div style={{fontSize:18,fontWeight:700,color:'#fff',lineHeight:1.3,marginBottom:4}}>{job.title}</div>
-              <div style={{fontSize:11,color:'rgba(255,255,255,0.4)'}}>{job.client_name}</div>
-            </div>
-            <div style={{fontSize:18,fontWeight:800,color:'#c19c56'}}>¥{Number(job.spot_value||job.value||0).toLocaleString()}</div>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:14}}>
-            {[['📅 '+e.jobDate,dDate],['🕐 '+e.jobStart,job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,tr.status[job.status]||job.status]].map(([l,v])=>(
-              <div key={l} style={{background:'rgba(255,255,255,0.06)',borderRadius:12,padding:'10px 12px'}}>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{l}</div>
-                <div style={{fontSize:12,fontWeight:500,color:'#fff'}}>{v}</div>
-              </div>
-            ))}
-          </div>
-          {instructions&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:5}}>📋 {e.instructionsKeybox}</div>
-            <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{instructions}</div>
-          </div>}
-          {cl.length>0&&<div style={{marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : fill(e.checklistCount,{n:cl.length})}</div>
-            {cl.map((label,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:10,color:'rgba(255,255,255,0.4)'}}>{i+1}</div><span style={{fontSize:13,color:'rgba(255,255,255,0.75)'}}>{label}</span></div>)}
-          </div>}
-          {job.notes_employee&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{e.yourNotes}</div>
-            <div style={{fontSize:13,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>{job.notes_employee}</div>
-          </div>}
-          {(job.photo_start_url||job.photo_end_url)&&<div style={{marginBottom:14}}>
-            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>{e.photos}</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              <JobPhoto url={job.photo_start_url} label={e.photoStart} />
-              <JobPhoto url={job.photo_end_url} label={e.photoEnd} />
-            </div>
-          </div>}
-          {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
-          {job.status==='assigned'&&!activeJob&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
-          <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>{e.close}</button>
-        </div>
-      </div>
-    )
-  }
+  const activeStale = isStaleActiveJob(activeJob, today, elapsedSecondsFromStart(activeJob?.started_at))
 
   return (
     <div className="emp-backdrop">
-    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
+    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:64}}>
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
 
-      {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
+      {activeJob?.started_at && <EmpHourWatch startedAt={activeJob.started_at} />}
+      {selectedJob && (
+        <EmployeeJobModal
+          job={selectedJob}
+          onClose={()=>setSelectedJob(null)}
+          labels={e}
+          statusLabels={tr.status}
+          canRetro={!activeJob}
+          onRetro={openRetro}
+        />
+      )}
       {showSignature&&<SignatureModal
         jobTitle={signatureJob?.title||activeJob?.title||''}
         labels={e}
@@ -1064,8 +1139,8 @@ export default function EmployeePortal() {
       )}
 
       {retroJob&&(
-        <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:480,maxHeight:'88vh',overflowY:'auto'}}>
+        <EmpSheetPortal onBackdrop={()=>!retroBusy&&setRetroJob(null)}>
+          <div className="emp-job-sheet" data-kp-scroll onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:'100%'}}>
             <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4}}>📝 {e.retroTitle}</div>
             <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:14}}>{retroJob.title.replace(/ — .*/,'')} · {retroJob.scheduled_date}</div>
 
@@ -1077,15 +1152,32 @@ export default function EmployeePortal() {
               <textarea value={retroText} onChange={e=>setRetroText(e.target.value)} rows={5} placeholder={e.retroTextPlaceholder} style={{width:'100%',marginTop:6,marginBottom:12,borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'#fff',padding:12,fontSize:14,fontFamily:'inherit',resize:'none'}} />
 
               <label style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:600}}>{e.retroPhotoLabel}</label>
+              <div style={{marginTop:6,marginBottom:8,fontSize:11,color:'rgba(255,255,255,0.45)',lineHeight:1.4}}>
+                {getCleaningType(retroJob) === 'deep'
+                  ? fill(e.afterPhotosHintDeep, { n: minAfterPhotosForJob(retroJob) })
+                  : e.afterPhotosHintBasic}
+              </div>
               <div style={{marginTop:6,marginBottom:16}}>
-                <input type="file" accept="image/*" id="retro-photo" style={{display:'none'}} onChange={e=>setRetroPhoto(e.target.files?.[0]||null)} />
-                <label htmlFor="retro-photo" style={{display:'inline-block',padding:'10px 16px',borderRadius:12,border:'1px dashed rgba(255,255,255,0.2)',color:retroPhoto?'#4ade80':'rgba(255,255,255,0.6)',fontSize:13,cursor:'pointer'}}>
-                  {retroPhoto?'✅ '+retroPhoto.name.substring(0,24):`📷 ${e.retroPhotoAttach}`}
-                </label>
+                <PhotoSlotStrip
+                  photos={retroPhotos}
+                  slot="retro"
+                  onAdd={(_slot, files) => {
+                    const extra = Array.from(files || []).slice(0, PHOTO_UPLOAD_MAX - retroPhotos.length)
+                    setRetroPhotos(prev => [...prev, ...extra.map(file => ({ file, preview: URL.createObjectURL(file), id: Date.now() + Math.random() }))])
+                  }}
+                  onRemove={(id) => {
+                    setRetroPhotos(prev => {
+                      const hit = prev.find(p => p.id === id)
+                      if (hit?.preview) URL.revokeObjectURL(hit.preview)
+                      return prev.filter(p => p.id !== id)
+                    })
+                  }}
+                  hint={fill(e.afterPhotosMin, { n: minAfterPhotosForJob(retroJob) })}
+                />
               </div>
 
-              <button onClick={submitRetro} disabled={retroBusy || !retroChecklistOk} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk?'not-allowed':'pointer'}}>
-                {retroBusy?e.retroSubmitting:!retroChecklistOk?fill(e.retroChecklistProgress,{done:retroChecklist.filter(c=>c.done).length,required:retroChecklistRequired}):e.retroSubmit}
+              <button onClick={submitRetro} disabled={retroBusy || !retroChecklistOk || retroPhotos.length < minAfterPhotosForJob(retroJob)} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk||retroPhotos.length<minAfterPhotosForJob(retroJob)?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk||retroPhotos.length<minAfterPhotosForJob(retroJob)?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk||retroPhotos.length<minAfterPhotosForJob(retroJob)?'not-allowed':'pointer'}}>
+                {retroBusy?e.retroSubmitting:!retroChecklistOk?fill(e.retroChecklistProgress,{done:retroChecklist.filter(c=>c.done).length,required:retroChecklistRequired}):retroPhotos.length<minAfterPhotosForJob(retroJob)?`📷 ${retroPhotos.length}/${minAfterPhotosForJob(retroJob)}`:e.retroSubmit}
               </button>
             </>) : (
               <div style={{textAlign:'center'}}>
@@ -1097,43 +1189,40 @@ export default function EmployeePortal() {
               </div>
             )}
           </div>
-        </div>
+        </EmpSheetPortal>
       )}
 
       {/* HEADER */}
-      <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-          <div>
-            <div className="emp-brand">KuriPuro by JBM · v33</div>
-            <div className="emp-name" style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
+      <div className="emp-header">
+        <div className="emp-header-row">
+          <div className="emp-header-left">
+            <div className="emp-brand">KuriPuro by JBM</div>
+            <div className="emp-name" style={{fontSize:18,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1.1,marginTop:1}}>{user.name.split(' ')[0]}</div>
+            <EmpLiveDate lang={lang} />
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div style={{background:`rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.1)`,border:`1px solid rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.2)`,borderRadius:14,padding:'7px 12px',textAlign:'center'}}>
-              <div style={{fontSize:20,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
+          <div className="emp-header-right">
+            <div className="emp-score-chip" style={{background:`rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.1)`,border:`1px solid rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.2)`}}>
+              <div style={{fontSize:16,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
               <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>{e.score}</div>
             </div>
             <LanguageToggle variant="dark" compact />
-            <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+            <button type="button" className="emp-icon-btn" onClick={()=>setTab('chat')} style={{position:'relative'}}>
               🔔
-              {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
+              {unreadMsgs>0&&<div style={{position:'absolute',top:2,right:2,minWidth:14,height:14,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
             </button>
-            <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,position:'relative'}}>
-              {[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
-              {spotJobs.length>0&&<div style={{position:'absolute',top:4,right:4,width:8,height:8,borderRadius:'50%',background:'#c19c56',border:'2px solid #060d18'}} />}
+            <button type="button" className="emp-icon-btn" onClick={()=>setMenuOpen(!menuOpen)} style={{flexDirection:'column',gap:3,position:'relative'}}>
+              {[0,1,2].map(i=><div key={i} style={{width:3.5,height:3.5,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
+              {spotJobs.length>0&&<div style={{position:'absolute',top:3,right:3,width:7,height:7,borderRadius:'50%',background:'#c19c56',border:'2px solid #060d18'}} />}
             </button>
           </div>
         </div>
-        <div style={{marginTop:10,display:'flex',alignItems:'baseline',gap:4}}>
-          <span style={{fontSize:44,fontWeight:700,color:'#fff',fontFamily:'monospace',letterSpacing:-3,lineHeight:1}}>{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
-          <span style={{fontSize:20,color:'rgba(255,255,255,0.2)',fontFamily:'monospace'}}>{String(clock.getSeconds()).padStart(2,'0')}</span>
-        </div>
+        <EmpLiveTime />
         {!isOnline&&<div style={{background:'rgba(248,113,113,0.15)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:8,padding:'6px 12px',fontSize:11,color:'#f87171',fontWeight:600,marginTop:8,textAlign:'center'}}>
           ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div style={{background:gpsStatus.includes('✅')?'rgba(74,222,128,0.1)':gpsStatus.includes('🚫')?'rgba(248,113,113,0.1)':'rgba(255,255,255,0.06)',borderRadius:20,padding:'4px 10px',fontSize:10,color:gpsStatus.includes('✅')?'#4ade80':gpsStatus.includes('🚫')?'#f87171':'rgba(255,255,255,0.4)',fontWeight:500,border:'1px solid rgba(255,255,255,0.08)'}}>{gpsStatus}</div>}
-          {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
+          {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ <EmpElapsed job={activeJob} today={today} lang={lang} /></div>}
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
           {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#f87171',cursor:'pointer',fontWeight:600}}>💬 {unreadMsgs}</div>}
         </div>
@@ -1162,25 +1251,25 @@ export default function EmployeePortal() {
       )}
 
       {/* CONTENT */}
-      <div style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+      <div style={{flex:1,padding:'12px 12px 16px',overflowY:'auto',overflowX:'hidden',position:'relative',zIndex:1}}>
 
         {/* HOME */}
         {tab==='home'&&(
           <div>
             {/* Active job banner */}
-            {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:isStaleActiveJob(activeJob,today,elapsed)?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${isStaleActiveJob(activeJob,today,elapsed)?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
+            {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:activeStale?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${activeStale?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
-                  <div style={{fontSize:10,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:3}}>
-                    ● {isStaleActiveJob(activeJob,today,elapsed)?e.staleShiftTitle:e.activeShiftTitle}
+                  <div style={{fontSize:10,color:activeStale?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:3}}>
+                    ● {activeStale?e.staleShiftTitle:e.activeShiftTitle}
                   </div>
                   <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.split(' —')[0]}</div>
                   <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>
                     {activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:''}{e.tapToFinish}
                   </div>
                 </div>
-                <div style={{fontSize:isStaleActiveJob(activeJob,today,elapsed)?14:28,fontWeight:700,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontFamily:'monospace',textAlign:'right',maxWidth:120}}>
-                  {isStaleActiveJob(activeJob,today,elapsed)?formatShiftElapsed(elapsed,lang):fmt(elapsed)}
+                <div style={{fontSize:activeStale?14:28,fontWeight:700,color:activeStale?'#fbbf24':'#4ade80',fontFamily:'monospace',textAlign:'right',maxWidth:120}}>
+                  <EmpElapsed job={activeJob} today={today} lang={lang} />
                 </div>
               </div>
             </div>}
@@ -1195,6 +1284,15 @@ export default function EmployeePortal() {
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',fontWeight:500,marginTop:4}}>{e.pastServiceHint}</div>
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={()=>openAddService()}
+              style={{width:'100%',padding:'14px 16px',marginBottom:12,borderRadius:16,border:'1px dashed rgba(96,165,250,0.35)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:14,fontWeight:800,cursor:'pointer',textAlign:'left'}}
+            >
+              + {e.addService}
+              <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',fontWeight:500,marginTop:4}}>{e.addServiceHint}</div>
+            </button>
 
             {/* Today shift — pendente */}
             {todayPendingJobs.length>0&&!activeJob&&(
@@ -1289,7 +1387,7 @@ export default function EmployeePortal() {
                 </div>
               ))}
             </div>
-            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&!(empData.salary_type==='fixed'&&Number(empData.fixed_salary||0)===0)&&(
+            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&(
               <div style={{background:'rgba(251,191,36,0.08)',border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,padding:'10px 12px',marginBottom:12,fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>
                 ⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}
               </div>
@@ -1334,7 +1432,7 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} today={today} S={S} addPhoto={addPhoto} removePhoto={removePhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
         )}
 
         {/* SPOTS */}
@@ -1359,7 +1457,7 @@ export default function EmployeePortal() {
 
         {/* HISTORY */}
         {tab==='history'&&(
-          <DayGroupView allJobs={allJobs} displayDate={displayDate} today={today} setSelectedJob={setSelectedJob} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} PhotoGrid={PhotoGrid} submitting={submitting} fmt={fmt} S={S} labels={{ ...e, statusCompleted: tr.status.completed, statusAssigned: tr.status.assigned, statusProgress: tr.status.in_progress, statusCancelled: tr.status.cancelled }} />
+          <DayGroupView allJobs={allJobs} today={today} setSelectedJob={setSelectedJob} S={S} labels={{ ...e, statusCompleted: tr.status.completed, statusAssigned: tr.status.assigned, statusProgress: tr.status.in_progress, statusCancelled: tr.status.cancelled }} />
         )}
 
         {/* SALARY */}
@@ -1367,7 +1465,7 @@ export default function EmployeePortal() {
           <div>
             {statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period) && (
               <div style={{background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.25)',borderRadius:20,padding:18,marginBottom:14}}>
-                <div style={{fontSize:10,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 {fill(e.confirmSalary, { period: fmtPeriod(statement.period) })}</div>
+                <div style={{fontSize:10,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 {fill(e.confirmSalary, { period: fmtPeriod(statement.period, lang) })}</div>
                 <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>¥{Number(statement.net_total||0).toLocaleString()}</div>
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:12}}>
                   {e.basePay} ¥{Number(statement.base_salary||0).toLocaleString()} · {e.deductionsLabel} -¥{Number(statement.deductions||0).toLocaleString()}
@@ -1381,12 +1479,12 @@ export default function EmployeePortal() {
             )}
             {statement?.employee_confirmed_at && (
               <div style={{background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#4ade80'}}>
-                ✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period), payDate: getPeriodDates(statement.period).payDate })}
+                ✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period, lang), payDate: getPeriodDates(statement.period).payDate })}
               </div>
             )}
             {statement?.employee_disputed_at && (
               <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#f87171'}}>
-                ⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period) })}
+                ⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period, lang) })}
               </div>
             )}
             {showComplaintForm && (
@@ -1408,8 +1506,9 @@ export default function EmployeePortal() {
             )}
             <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
               <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>{e.earnedThisMonth}</div>
-                <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>{fill(e.netGross, { gross: (salaryData?.total||0).toLocaleString(), deductions: (salaryData?.deductions||0).toLocaleString() })}</div>
+                <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.toPay ?? salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>{fill(e.netGross, { gross: (salaryData?.total||0).toLocaleString(), deductions: (salaryData?.deductions||0).toLocaleString(), advances: (salaryData?.advancesReceived||0).toLocaleString() })}</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>{e.toPayHint}</div>
               <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>{fill(e.ofMax,{max:(salaryData?.fixedMax||0).toLocaleString()})}</div>
               <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 14px 5px',overflow:'hidden'}}>
                 <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
@@ -1423,16 +1522,16 @@ export default function EmployeePortal() {
                 <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>📅 {fill(e.weekRange,{start:w.start,end:w.end})}</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
                   <div>
-                    <div style={{fontSize:16,fontWeight:800,color:'#4ade80'}}>¥{w.gross.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.generated}</div>
+                    <div style={{fontSize:16,fontWeight:800,color:'#4ade80'}}>{w.isFixed ? w.weekDays : `¥${w.gross.toLocaleString()}`}</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{w.isFixed ? e.weekDaysLabel : e.generated}</div>
                   </div>
                   <div>
                     <div style={{fontSize:16,fontWeight:800,color:w.deductions>0?'#f87171':'rgba(255,255,255,0.3)'}}>-¥{w.deductions.toLocaleString()}</div>
                     <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.deductionsLabel}</div>
                   </div>
                   <div>
-                    <div style={{fontSize:16,fontWeight:800,color:'#c19c56'}}>¥{w.net.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.netLabel}</div>
+                    <div style={{fontSize:16,fontWeight:800,color:'#c19c56'}}>{w.isFixed ? `${w.weekJobs.length}` : `¥${w.net.toLocaleString()}`}</div>
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{w.isFixed ? e.statJobs : e.netLabel}</div>
                   </div>
                 </div>
                 <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
@@ -1452,14 +1551,16 @@ export default function EmployeePortal() {
             {/* PDF buttons */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
-                const month = new Date().toISOString().slice(0,7)
+                const month = tokyoYearMonth()
                 const { generatePayslipJP, generatePayslip } = await import('../lib/generatePDF')
+                const ledger = monthLedger.length ? monthLedger : [...(payments||[]), ...(advances||[])]
+                const advRows = salaryData?.advanceRows || advances
                 if (lang==='ja') {
-                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
+                  const doc = await generatePayslipJP(empData||{}, month, salaryData, ledger, advRows)
                   doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('給与明細ダウンロード完了!')
                 } else {
-                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, advances)
+                  const doc = await generatePayslip(empData||{}, month, salaryData, ledger, advRows)
                   doc.save('payslip_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('Payslip downloaded!')
                 }
@@ -1475,14 +1576,14 @@ export default function EmployeePortal() {
                 const { generateDailyReport } = await import('../lib/generatePDF')
                 const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
                 doc.save(`report_${today2}.pdf`)
-                toast.success('Report downloaded!')
+                toast.success(e.pdfReady || 'Report downloaded!')
               }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(96,165,250,0.3)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                📋 Download Today's Service Report
+                📋 {e.downloadTodayReport}
               </button>
             </div>
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
-              {[['📋','Jobs',salaryData?.jobs||0],['⏱','Hours',(salaryData?.hours||0)+'h'],['💴','Base','¥'+(salaryData?.base||0).toLocaleString()],['⚡','Spot','¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
+              {[['📋',e.statJobs,salaryData?.jobs||0],['⏱',e.hoursStat, (salaryData?.hours||0)+'h'],['💴',e.basePay,'¥'+(salaryData?.base||0).toLocaleString()],['⚡',e.spotStat,'¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
                 <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 10px'}}>
                   <div style={{fontSize:20,marginBottom:6}}>{icon}</div>
                   <div style={{fontSize:18,fontWeight:700,color:'#fff'}}>{v}</div>
@@ -1492,7 +1593,7 @@ export default function EmployeePortal() {
             </div>
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
               <div style={{background:'rgba(96,165,250,0.08)',border:'1px solid rgba(96,165,250,0.18)',borderRadius:18,padding:16,marginBottom:14}}>
-                <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>💴 Upcoming Payments</div>
+                <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>💴 {e.upcomingPayments}</div>
                 {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').map((p,i)=>(
                   <div key={p.id} style={{paddingBottom:i<1?10:0,marginBottom:i<1?10:0,borderBottom:i<1?'1px solid rgba(255,255,255,0.06)':'none'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -1504,11 +1605,8 @@ export default function EmployeePortal() {
               </div>
             )}
             {(() => {
-              const todayStr = tokyoToday()
-              const parseAdvDate = (a) => (a.payment_date || a.received_at || a.created_at || '').slice(0, 10) || null
-              const isReceived = (a) => a.status === 'paid' || (parseAdvDate(a) && parseAdvDate(a) < todayStr)
-              const received = advances.filter(isReceived)
-              const pending = advances.filter(a => !isReceived(a))
+              const received = advances.filter(a => isAdvanceReceived(a))
+              const pending = advances.filter(a => !isAdvanceReceived(a))
               return (<>
                 {received.length>0&&<div style={{marginBottom:14}}>
                   <span style={S.label}>{e.advancesReceived}</span>
@@ -1530,6 +1628,11 @@ export default function EmployeePortal() {
         {/* EQUIPMENT */}
         {tab==='equipment'&&(
           <div>
+            {!schemaEquipment && (
+              <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 12, padding: 12, marginBottom: 14, fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+                {tr.payroll.setupNeeded} — {tr.payroll.setupHint}
+              </div>
+            )}
             <span style={S.label}>{e.equipmentSubmitTitle}</span>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 12, lineHeight: 1.5 }}>{e.equipmentSubmitHint}</div>
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 20, padding: 18, marginBottom: 16 }}>
@@ -1686,22 +1789,25 @@ export default function EmployeePortal() {
             </div>
           </div>
         )}
+
+        {tab==='account'&&(
+          <EmployeeAccountPanel user={user} labels={e} updateSession={updateSession} />
+        )}
       </div>
 
       {/* BOTTOM TAB BAR */}
-      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <div className="emp-tabbar">
         {bottomTabs.map(t=>(
-          <button key={t.key} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
-            <div style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>
-            <div style={{fontSize:9,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.25)',fontWeight:tab===t.key?600:400,transition:'color 0.15s'}}>{t.label}</div>
-            {tab===t.key&&<div style={{position:'absolute',bottom:0,left:'50%',transform:'translateX(-50%)',width:20,height:2,background:'#c19c56',borderRadius:1}} />}
-            {t.badge>0&&<div style={{position:'absolute',top:6,right:'calc(50% - 14px)',width:16,height:16,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff'}}>{t.badge}</div>}
+          <button key={t.key} type="button" className="emp-tab" onClick={()=>goToTab(t.key)}>
+            <div style={{fontSize:t.key==='salary'?15:16,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit'}}>{t.icon}</div>
+            <div className="emp-tab-label" style={{color:tab===t.key?'#c19c56':undefined,fontWeight:tab===t.key?600:400}}>{t.label}</div>
+            {tab===t.key&&<div style={{position:'absolute',bottom:0,left:'50%',transform:'translateX(-50%)',width:16,height:2,background:'#c19c56',borderRadius:1}} />}
+            {t.badge>0&&<div style={{position:'absolute',top:4,right:'calc(50% - 12px)',width:14,height:14,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'#fff'}}>{t.badge}</div>}
           </button>
         ))}
-        {/* More button */}
-        <button onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-          <div style={{display:'flex',gap:2.5,marginBottom:1}}>{[0,1,2].map(i=><div key={i} style={{width:3.5,height:3.5,borderRadius:'50%',background:'rgba(255,255,255,0.3)'}} />)}</div>
-          <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{e.more}</div>
+        <button type="button" className="emp-tab" onClick={()=>setMenuOpen(true)}>
+          <div style={{display:'flex',gap:2,marginBottom:1}}>{[0,1,2].map(i=><div key={i} style={{width:3,height:3,borderRadius:'50%',background:'rgba(255,255,255,0.3)'}} />)}</div>
+          <div className="emp-tab-label">{e.more}</div>
         </button>
       </div>
     </div>
@@ -1709,7 +1815,7 @@ export default function EmployeePortal() {
   )
 }
 
-function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
+function DayGroupView({ allJobs, today, setSelectedJob, S, labels }) {
   const statusColor = { completed:'#4ade80', assigned:'#60a5fa', in_progress:'#fbbf24', cancelled:'rgba(255,255,255,0.3)' }
   const statusLabel = { completed: labels?.statusCompleted || 'Completed', assigned: labels?.statusAssigned || 'Pending', in_progress: labels?.statusProgress || 'In progress', cancelled: labels?.statusCancelled || 'Cancelled' }
   const groups = {}
@@ -1742,7 +1848,35 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
+function PhotoSlotStrip({ photos, slot, onAdd, onRemove, accent = 'rgba(255,255,255,0.2)', hint, max = PHOTO_UPLOAD_MAX }) {
+  return (
+    <div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        {photos.map(p => (
+          <div key={p.id} style={{position:'relative',width:64,height:64}}>
+            <img src={p.preview} alt="" style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} />
+            {onRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove(p.id)}
+                style={{position:'absolute',top:-6,right:-6,width:20,height:20,borderRadius:10,border:'none',background:'#0a1525',color:'#fff',fontSize:12,cursor:'pointer',lineHeight:1}}
+              >✕</button>
+            )}
+          </div>
+        ))}
+        {photos.length < max && (
+          <label style={{width:64,height:64,borderRadius:8,border:`1.5px dashed ${accent}`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+            <span style={{fontSize:20}}>📷</span>
+            <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{ onAdd(slot, e.target.files); e.target.value='' }} />
+          </label>
+        )}
+      </div>
+      {hint && <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:6,lineHeight:1.4}}>{hint}</div>}
+    </div>
+  )
+}
+
+function ShiftView({ allJobs, activeJob, checklist, setChecklist, notes, setNotes, jobPhotos, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, today, S, addPhoto, removePhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -1750,7 +1884,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
   const beforePhotos = jobPhotos.filter(p=>p.slot==='start')
   const afterPhotos = jobPhotos.filter(p=>p.slot==='end')
   const showActivePanel = !!activeJob
-  const activeIsStale = showActivePanel && isStaleActiveJob(activeJob, today, elapsed)
+  const activeIsStale = showActivePanel && isStaleActiveJob(activeJob, today, elapsedSecondsFromStart(activeJob?.started_at))
   const activeChecklist = showActivePanel ? resolveChecklistForJob(activeJob, checklist) : []
   const activeChecklistRequired = activeIsStale
     ? (activeChecklist.length <= 3 ? activeChecklist.length : Math.ceil(activeChecklist.length * 0.7))
@@ -1762,9 +1896,17 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
       : !checklistComplete(activeChecklist)
   )
   const activeInstructions = showActivePanel ? keyboxForJob(activeJob) : null
+  const minAfter = showActivePanel ? minAfterPhotosForJob(activeJob) : 1
+  const afterHint = showActivePanel && getCleaningType(activeJob) === 'deep'
+    ? fill(labels.afterPhotosHintDeep || 'Deep clean: at least {n} after photos of different areas. AI only scores dirt in the photos.', { n: minAfter })
+    : (labels.afterPhotosHintBasic || 'More photos of other areas = a fairer score. AI will not complain that one frame cannot show the whole shop.')
+  const afterBlocked = afterPhotos.length < minAfter
 
   return (
     <div>
+      <div style={{background:'rgba(96,165,250,0.08)',border:'1px solid rgba(96,165,250,0.18)',borderRadius:12,padding:'10px 12px',marginBottom:14,fontSize:12,color:'rgba(255,255,255,0.7)',lineHeight:1.45}}>
+        📍 {labels.gpsFenceHint}
+      </div>
       {showActivePanel && (
         <div id="active-job-card" style={{...S.card,marginBottom:14,border:'1px solid rgba(251,191,36,0.45)',background:'linear-gradient(135deg,rgba(251,191,36,0.12),rgba(251,191,36,0.03))'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
@@ -1774,7 +1916,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:3}}>{activeJob.scheduled_date} · {labels.tapToFinish}</div>
             </div>
             <div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
-              {isStaleActiveJob(activeJob, today, elapsed) ? formatShiftElapsed(elapsed, lang) : fmt(elapsed)}
+              <EmpElapsed job={activeJob} today={today} lang={lang} />
             </div>
           </div>
           {activeInstructions && (
@@ -1786,29 +1928,13 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
           {!activeJob.photo_start_url && (
             <div style={{marginBottom:12}}>
               <div style={{fontSize:10,color:'#f87171',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({labels.required})</div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {beforePhotos.map((p,i)=>(
-                  <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before preview" />
-                ))}
-                <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(248,113,113,0.4)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                  <span style={{fontSize:20}}>📷</span>
-                  <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                </label>
-              </div>
+              <PhotoSlotStrip photos={beforePhotos} slot="start" onAdd={addPhoto} onRemove={removePhoto} accent="rgba(248,113,113,0.4)" />
             </div>
           )}
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder={labels.notes+'...'} style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:60,boxSizing:'border-box',marginBottom:12}} />
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}) — {labels.required}</div>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-              {afterPhotos.map((p,i)=>(
-                <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="After preview" />
-              ))}
-              <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                <span style={{fontSize:20}}>📷</span>
-                <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
-              </label>
-            </div>
+            <div style={{fontSize:10,color:afterBlocked?'#fbbf24':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}/{minAfter}) — {labels.required}</div>
+            <PhotoSlotStrip photos={afterPhotos} slot="end" onAdd={addPhoto} onRemove={removePhoto} hint={afterHint} accent={afterBlocked ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.2)'} />
           </div>
           {activeIsStale && (
             <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginBottom:8,lineHeight:1.4}}>
@@ -1816,9 +1942,10 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
             </div>
           )}
           <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} labels={labels} lang={lang} />
-          <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):'Marque todos os itens do checklist');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
-            {submitting?'Saving...':activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
+          <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):'Marque todos os itens do checklist');return}; if(afterBlocked){toast.error(fill(labels.afterPhotosMin,{n:minAfter}));return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked||afterBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked||afterBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked||afterBlocked?'not-allowed':'pointer',marginBottom:8}}>
+            {submitting?'Saving...':activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:afterBlocked?`📷 ${afterPhotos.length}/${minAfter}`:`✅ ${labels.complete}`}
           </button>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',textAlign:'center',marginBottom:8}}>{labels.gpsFenceHint}</div>
           <button type="button" onClick={()=>handleAbandonStale?.(activeJob)} disabled={submitting} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(251,191,36,0.35)',background:'rgba(251,191,36,0.08)',color:'#fbbf24',fontSize:13,fontWeight:600,cursor:submitting?'not-allowed':'pointer'}}>
             {labels.staleShiftReset}
           </button>
@@ -1833,7 +1960,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
           ✓ {labels?.pastServiceButton || 'Already did this'}
         </button>
       )}
-      {!activeJob && onOpenAddService&&(
+      {onOpenAddService&&(
         <button
           type="button"
           onClick={onOpenAddService}
@@ -1892,7 +2019,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
-                {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
+                {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ <EmpElapsed job={job} today={today} lang={lang} /></span>}
                 {isDone&&<span style={{fontSize:10,color:'#4ade80',fontWeight:600}}>Ver detalhes ›</span>}
                 {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
               </div>
@@ -1936,6 +2063,11 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
             {isActive&&(() => {
               const jobChecklist = resolveChecklistForJob(job, checklist)
               const checklistBlocked = jobChecklist.length > 0 && !checklistComplete(jobChecklist)
+              const jobMinAfter = minAfterPhotosForJob(job)
+              const jobAfterBlocked = afterPhotos.length < jobMinAfter
+              const jobAfterHint = getCleaningType(job) === 'deep'
+                ? fill(labels.afterPhotosHintDeep || 'Deep clean: at least {n} after photos of different areas.', { n: jobMinAfter })
+                : (labels.afterPhotosHintBasic || '')
               return (
               <div>
                 {instructions&&(
@@ -1947,47 +2079,30 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 {job.photo_start_url&&(
                   <div style={{marginBottom:12}}>
                     <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE</div>
-                    <img src={viewablePhotoUrl(job.photo_start_url)} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before" />
+                    {parsePhotoUrls(job.photo_start_url).map(url => (
+                      <img key={url} src={viewablePhotoUrl(url)} style={{width:64,height:64,borderRadius:8,objectFit:'cover',marginRight:8}} alt="Before" />
+                    ))}
                   </div>
                 )}
 
                 {!job.photo_start_url&&(
                   <div style={{marginBottom:12}}>
                     <div style={{fontSize:10,color:'#f87171',marginBottom:6,letterSpacing:1}}>📷 BEFORE (obrigatório)</div>
-                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                      {beforePhotos.map((p,i)=>(
-                        <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before preview" />
-                      ))}
-                      <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(248,113,113,0.4)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                        <span style={{fontSize:20}}>📷</span>
-                        <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Before</span>
-                        <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                      </label>
-                    </div>
+                    <PhotoSlotStrip photos={beforePhotos} slot="start" onAdd={addPhoto} onRemove={removePhoto} accent="rgba(248,113,113,0.4)" />
                   </div>
                 )}
 
                 <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:60,boxSizing:'border-box',marginBottom:12}} />
 
-                {/* AFTER photos */}
                 <div style={{marginBottom:12}}>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 AFTER ({afterPhotos.length}) — obrigatório</div>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                    {afterPhotos.map((p,i)=>(
-                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="After preview" />
-                    ))}
-                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                      <span style={{fontSize:20}}>📷</span>
-                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>After</span>
-                      <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
-                    </label>
-                  </div>
+                  <div style={{fontSize:10,color:jobAfterBlocked?'#fbbf24':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 AFTER ({afterPhotos.length}/{jobMinAfter}) — obrigatório</div>
+                  <PhotoSlotStrip photos={afterPhotos} slot="end" onAdd={addPhoto} onRemove={removePhoto} hint={jobAfterHint} accent={jobAfterBlocked ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.2)'} />
                 </div>
 
                 <ChecklistPicker checklist={jobChecklist} setChecklist={setChecklist} labels={labels} lang={lang} />
 
-                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; if(checklistBlocked){toast.error('Checklist incompleto');return}; handleCompleteWithSig(activeJob) }} disabled={submitting||checklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||checklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||checklistBlocked?'not-allowed':'pointer'}}>
-                  {submitting?'Saving...':checklistBlocked?`✓ Checklist ${jobChecklist.filter(c=>c.done).length}/${jobChecklist.length}`:'✅ Done → Next'}
+                <button onClick={()=>{ if(!activeJob){toast.error('No active job');return}; if(checklistBlocked){toast.error('Checklist incompleto');return}; if(jobAfterBlocked){toast.error(fill(labels.afterPhotosMin,{n:jobMinAfter}));return}; handleCompleteWithSig(activeJob) }} disabled={submitting||checklistBlocked||jobAfterBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||checklistBlocked||jobAfterBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||checklistBlocked||jobAfterBlocked?'not-allowed':'pointer'}}>
+                  {submitting?'Saving...':checklistBlocked?`✓ Checklist ${jobChecklist.filter(c=>c.done).length}/${jobChecklist.length}`:jobAfterBlocked?`📷 ${afterPhotos.length}/${jobMinAfter}`:'✅ Done → Next'}
                 </button>
               </div>
             )})()}
@@ -2001,20 +2116,17 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 )}
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 BEFORE ({beforePhotos.length}) — obrigatório</div>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                    {beforePhotos.map((p,i)=>(
-                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt="Before preview" />
-                    ))}
-                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                      <span style={{fontSize:20}}>📷</span>
-                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>Before</span>
-                      <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                    </label>
-                  </div>
+                  <PhotoSlotStrip photos={beforePhotos} slot="start" onAdd={addPhoto} onRemove={removePhoto} />
                 </div>
                 <button onClick={()=>handleStart(job)} disabled={submitting||beforePhotos.length===0} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||beforePhotos.length===0?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting||beforePhotos.length===0?'not-allowed':'pointer'}}>
                   {submitting?'Starting...':beforePhotos.length===0?'📷 Tire a foto Before primeiro':'▶ Start — '+job.title.replace(/ — .*/,'')}
                 </button>
+                {getCleaningType(job) === 'deep' && (
+                  <div style={{fontSize:11,color:'#fbbf24',textAlign:'center',marginTop:8,lineHeight:1.4}}>
+                    {fill(labels.afterPhotosHintDeep, { n: minAfterPhotosForJob(job) })}
+                  </div>
+                )}
+                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',textAlign:'center',marginTop:8}}>{labels.gpsFenceHint}</div>
               </div>
             )}
           </div>
@@ -2043,10 +2155,10 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
         <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{new Date(year,month).toLocaleString(lang==='ja'?'ja-JP':'en',{month:'long',year:'numeric'})}</div>
         <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month+1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>›</button>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:4}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',gap:3,marginBottom:4}}>
         {['S','M','T','W','T','F','S'].map((d,i)=><div key={i} style={{textAlign:'center',fontSize:9,color:'rgba(255,255,255,0.3)',fontWeight:600,padding:'4px 0'}}>{d}</div>)}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:16}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,minmax(0,1fr))',gap:3,marginBottom:16}}>
         {Array(firstDay).fill(null).map((_,i)=><div key={'e'+i} />)}
         {Array(daysInMonth).fill(null).map((_,i)=>{
           const day=i+1
@@ -2071,7 +2183,7 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
       </div>
       {sel&&(
         <div>
-          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString(dateLocale(lang),{weekday:'long',day:'numeric',month:'long'})}</div>
           {selJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map(j=>{
             const sc={completed:'#4ade80',assigned:'#60a5fa',in_progress:'#fbbf24',cancelled:'rgba(255,255,255,0.2)'}[j.status]
             const duration=j.started_at&&j.completed_at?Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000):null
@@ -2157,8 +2269,8 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
   }
 
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:300,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
-      <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px'}}>
+    <EmpSheetPortal>
+      <div className="emp-job-sheet" data-kp-scroll style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px'}}>
         <div style={{width:40,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 18px'}} />
         <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4,textAlign:'center'}}>{labels?.signToComplete || 'Sign to complete'}</div>
         <div style={{fontSize:12,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>{jobTitle}</div>
@@ -2181,7 +2293,7 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
           </button>
         </div>
       </div>
-    </div>
+    </EmpSheetPortal>
   )
 }
 
@@ -2190,8 +2302,8 @@ function TrainingModal({ job, contract, onClose, lang, labels }) {
   const items = parseTrainingChecklist(contract?.training_checklist)
   const loc = (job?.title || '').replace(/ — .*/, '')
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'flex-end' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <EmpSheetPortal onBackdrop={onClose}>
+      <div className="emp-job-sheet" data-kp-scroll onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
             <div style={{ fontSize: 11, color: '#c19c56', fontWeight: 700 }}>🎬 {labels?.cleaningManual || (lang === 'ja' ? '清掃マニュアル' : 'Cleaning manual')}</div>
@@ -2221,7 +2333,7 @@ function TrainingModal({ job, contract, onClose, lang, labels }) {
           {labels?.closeAndStart || (lang === 'ja' ? '閉じて作業を開始' : 'Close and start work')}
         </button>
       </div>
-    </div>
+    </EmpSheetPortal>
   )
 }
 
@@ -2253,22 +2365,120 @@ function ChecklistPicker({ checklist, setChecklist, relaxed = false, labels, lan
   )
 }
 
+function PossibleDayPicker({ date, onChange, cleaningType, location, labels, lang }) {
+  const win = manualServiceDateWindow()
+  const minYm = win.from.slice(0, 7)
+  const maxYm = tokyoToday().slice(0, 7)
+  const [ym, setYm] = useState(() => (date || tokyoToday()).slice(0, 7))
+
+  useEffect(() => {
+    if (date) setYm(date.slice(0, 7))
+  }, [date])
+
+  const monthEnd = ym === maxYm ? tokyoToday() : monthBounds(ym).to
+  const allowed = new Set(possibleManualDates({
+    cleaningType,
+    fromYmd: monthBounds(ym).from,
+    toYmd: monthEnd,
+    location: location || null,
+  }))
+  const cells = monthCalendarCells(ym)
+  const headers = weekdayShortLabels(lang)
+  const monthLabel = new Date(`${ym}-01T12:00:00`).toLocaleDateString(dateLocale(lang), { month: 'short', year: 'numeric' })
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <button
+          type="button"
+          disabled={ym <= minYm}
+          onClick={() => setYm(shiftYearMonth(ym, -1))}
+          style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', cursor: ym <= minYm ? 'not-allowed' : 'pointer', opacity: ym <= minYm ? 0.35 : 1 }}
+        >‹</button>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{monthLabel}</div>
+        <button
+          type="button"
+          disabled={ym >= maxYm}
+          onClick={() => setYm(shiftYearMonth(ym, 1))}
+          style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#fff', cursor: ym >= maxYm ? 'not-allowed' : 'pointer', opacity: ym >= maxYm ? 0.35 : 1 }}
+        >›</button>
+      </div>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8, lineHeight: 1.4 }}>
+        {labels.pastServicePossibleDays}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
+        {headers.map((h, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', padding: '4px 0' }}>{h}</div>
+        ))}
+        {cells.map((d, i) => {
+          if (!d) return <div key={`p${i}`} />
+          const possible = allowed.has(d)
+          const selected = d === date
+          const isToday = d === tokyoToday()
+          return (
+            <button
+              key={d}
+              type="button"
+              disabled={!possible}
+              onClick={() => possible && onChange(d)}
+              style={{
+                padding: '8px 0', borderRadius: 8, border: selected ? '1px solid rgba(193,156,86,0.7)' : '1px solid transparent',
+                background: selected ? 'rgba(193,156,86,0.28)' : possible ? 'rgba(255,255,255,0.06)' : 'transparent',
+                color: selected ? '#e8c47a' : possible ? '#fff' : 'rgba(255,255,255,0.18)',
+                fontSize: 12, fontWeight: selected || isToday ? 800 : 500,
+                cursor: possible ? 'pointer' : 'default',
+              }}
+            >
+              {Number(d.slice(8))}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, onAdd }) {
   const [search, setSearch] = useState('')
+  const [date, setDate] = useState(() => snapToPossibleDate(tokyoToday(), 'basic'))
   const [cleaningType, setCleaningType] = useState('basic')
   const [deepComponents, setDeepComponents] = useState([...ALL_DEEP_COMPONENT_IDS])
   const [picked, setPicked] = useState(null)
+  const [dayJobs, setDayJobs] = useState(todayJobs || [])
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
-  const visibleLocations = cleaningType === 'deep'
-    ? locations.filter(loc => loc.group === 'OTP')
-    : locations.filter(loc => !loc.deepOnly)
-  const options = buildAddServiceOptions(visibleLocations, todayJobs, employeeId, cleaningType)
+  const options = buildAddServiceOptions(locations, dayJobs, employeeId, cleaningType, date)
   const q = search.trim().toLowerCase()
   const filtered = q
     ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
     : options
+  const possibleCount = options.filter(o => isAddServiceActionable(o.state) || o.state === 'available').length
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      if (date === tokyoToday()) {
+        setDayJobs(todayJobs || [])
+        return
+      }
+      const { data } = await supabase
+        .from('jobs')
+        .select('id, title, employee_id, employee_name, status, started_at, scheduled_date, retro_report, photo_end_url, completed_at')
+        .eq('scheduled_date', date)
+        .in('status', ['assigned', 'in_progress', 'completed'])
+      if (!cancelled) setDayJobs((data || []).filter(j => !isDuskinJob(j)))
+    }
+    load()
+    return () => { cancelled = true }
+  }, [date, todayJobs])
+
+  const switchToDeepForLocation = (location) => {
+    setCleaningType('deep')
+    setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
+    setDate(d => snapToPossibleDate(d, 'deep', location))
+    setPicked({ location, state: 'available' })
+  }
 
   const badge = (opt) => {
     if (opt.state === 'mine') return { text: labels.addServiceMine, color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
@@ -2279,6 +2489,9 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
     if (opt.state === 'claim') return { text: labels.addServiceClaim, color: '#34d399', bg: 'rgba(52,211,153,0.12)' }
     if (opt.state === 'transfer') return { text: fill(labels.addServiceTransfer, { name: opt.fromEmployee }), color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
     if (opt.state === 'blocked') return { text: labels.addServiceBlocked, color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
+    if (opt.state === 'wrong_day') return { text: labels.addServiceWrongDay, color: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.06)' }
+    if (opt.state === 'wrong_type' && opt.reason === 'deep_only') return { text: labels.addServiceDeepOnly, color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
+    if (opt.state === 'wrong_type') return { text: labels.addServiceNoDeep, color: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.06)' }
     return { text: labels.addServiceAvailable, color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' }
   }
 
@@ -2295,31 +2508,47 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   const switchCleaningType = (t) => {
     setCleaningType(t)
     setPicked(null)
+    setDate(d => snapToPossibleDate(d, t))
     if (t === 'deep') setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
   }
 
   const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
   const doneNeedsRetro = picked?.state === 'done_today' && !isJobFullyRegistered(picked.job)
-  const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || doneNeedsRetro)
+  const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && picked.state !== 'wrong_day' && picked.state !== 'wrong_type' && (picked.state !== 'done_today' || doneNeedsRetro)
 
-  const confirmLabel = picked?.state === 'done_today' && doneNeedsRetro
-    ? labels.addServiceDoneTodayRetro
-    : picked?.state === 'transfer'
-      ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
-      : picked?.state === 'claim'
-        ? labels.addServiceClaimConfirm
-        : labels.addServiceConfirm
+  const confirmLabel = date < tokyoToday()
+    ? labels.pastServiceConfirm
+    : picked?.state === 'done_today' && doneNeedsRetro
+      ? labels.addServiceDoneTodayRetro
+      : picked?.state === 'transfer'
+        ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
+        : picked?.state === 'claim'
+          ? labels.addServiceClaimConfirm
+          : labels.addServiceConfirm
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <EmpSheetPortal onBackdrop={() => !busy && onClose()}>
+      <div className="emp-job-sheet" data-kp-scroll onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>+ {labels.addServiceTitle}</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 6, lineHeight: 1.5 }}>{labels.addServiceHint}</div>
+            <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 6 }}>{fill(labels.addServicePossibleCount, { n: possibleCount, total: options.length })}</div>
           </div>
           <button type="button" onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: busy ? 'not-allowed' : 'pointer' }}>✕</button>
         </div>
+
+        <PossibleDayPicker
+          date={date}
+          onChange={d => {
+            setDate(d)
+            if (picked && !isManualServiceAllowedOnDate(picked.location, d, cleaningType)) setPicked(null)
+          }}
+          cleaningType={cleaningType}
+          location={picked?.location}
+          labels={labels}
+          lang={lang}
+        />
 
         <input
           value={search}
@@ -2375,13 +2604,23 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           {filtered.map(opt => {
             const b = badge(opt)
             const selected = picked?.location?.name === opt.location.name
-            const disabled = opt.state === 'mine' || opt.state === 'blocked' || (opt.state === 'done_today' && isJobFullyRegistered(opt.job))
+            const deepOnlyTap = opt.state === 'wrong_type' && opt.reason === 'deep_only'
+            const disabled = opt.state === 'mine' || opt.state === 'blocked' || opt.state === 'wrong_day' || (opt.state === 'wrong_type' && !deepOnlyTap) || (opt.state === 'done_today' && isJobFullyRegistered(opt.job))
             return (
               <button
                 key={opt.location.name}
                 type="button"
+                data-add-state={opt.state}
+                data-add-reason={opt.reason || ''}
+                data-location={opt.location.name}
                 disabled={disabled}
-                onClick={() => setPicked(opt)}
+                onClick={() => {
+                  if (deepOnlyTap) {
+                    switchToDeepForLocation(opt.location)
+                    return
+                  }
+                  if (!disabled) setPicked(opt)
+                }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, borderRadius: 12,
                   border: selected ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.08)',
@@ -2392,19 +2631,22 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{opt.location.name}</div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{opt.location.group}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{opt.location.group} · {formatManualServiceDays(opt.location, cleaningType, lang)}</div>
                   </div>
                   <span style={{ fontSize: 9, fontWeight: 700, padding: '4px 8px', borderRadius: 20, color: b.color, background: b.bg, whiteSpace: 'nowrap' }}>{b.text}</span>
                 </div>
               </button>
             )
           })}
+          {!filtered.length && (
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '16px 8px' }}>{labels.pastServiceNoLocations}</div>
+          )}
         </div>
 
         <button
           type="button"
           disabled={!canConfirm || busy}
-          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked)}
+          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked, date)}
           style={{
             width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
             background: canConfirm && !busy ? 'linear-gradient(135deg,#60a5fa,#3b82f6)' : 'rgba(255,255,255,0.08)',
@@ -2415,27 +2657,25 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           {busy ? '...' : picked ? confirmLabel : labels.addServiceConfirm}
         </button>
       </div>
-    </div>
+    </EmpSheetPortal>
   )
 }
 
 function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
   const [search, setSearch] = useState('')
-  const [date, setDate] = useState(prefill?.date || tokyoToday())
   const [cleaningType, setCleaningType] = useState(prefill?.cleaningType || 'basic')
+  const [date, setDate] = useState(() => snapToPossibleDate(prefill?.date || tokyoToday(), prefill?.cleaningType || 'basic', prefill?.location || null))
   const [deepComponents, setDeepComponents] = useState(prefill?.deepComponents || [...ALL_DEEP_COMPONENT_IDS])
   const [picked, setPicked] = useState(prefill?.location ? { location: prefill.location } : null)
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
-  const visibleLocations = cleaningType === 'deep'
-    ? locations.filter(loc => loc.group === 'OTP')
-    : locations.filter(loc => !loc.deepOnly)
+  const options = buildAddServiceOptions(locations, [], null, cleaningType, date)
   const q = search.trim().toLowerCase()
   const filtered = q
-    ? visibleLocations.filter(loc => loc.name.toLowerCase().includes(q) || (loc.group || '').toLowerCase().includes(q))
-    : visibleLocations
-  const dateOptions = recentTokyoDates(14)
+    ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
+    : options
+  const possibleCount = options.filter(o => o.state === 'available').length
 
   const toggleDeepComponent = (id) => {
     setDeepComponents(prev => {
@@ -2450,45 +2690,44 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
   const switchCleaningType = (t) => {
     setCleaningType(t)
     setPicked(null)
+    setDate(d => snapToPossibleDate(d, t))
     if (t === 'deep') setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
   }
 
+  const switchToDeepForLocation = (location) => {
+    setCleaningType('deep')
+    setDeepComponents([...ALL_DEEP_COMPONENT_IDS])
+    setDate(d => snapToPossibleDate(d, 'deep', location))
+    setPicked({ location, state: 'available' })
+  }
+
   const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
-  const canConfirm = picked && deepReady
+  const canConfirm = picked && deepReady && (picked.state === 'available' || !picked.state)
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 270, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <EmpSheetPortal onBackdrop={() => !busy && onClose()}>
+      <div className="emp-job-sheet" data-kp-scroll onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#e8c47a' }}>✓ {labels.pastServiceTitle}</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 6, lineHeight: 1.5 }}>{labels.pastServiceHint}</div>
+            <div style={{ fontSize: 11, color: '#e8c47a', marginTop: 6 }}>{fill(labels.addServicePossibleCount, { n: possibleCount, total: options.length })}</div>
           </div>
           <button type="button" onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: busy ? 'not-allowed' : 'pointer' }}>✕</button>
         </div>
 
         <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.45)', marginBottom: 8, letterSpacing: 0.3 }}>{labels.pastServiceDate}</div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 14, paddingBottom: 4 }}>
-          {dateOptions.map(d => {
-            const isToday = d === tokyoToday()
-            const selected = d === date
-            const label = isToday ? `${d.slice(5)} (today)` : d.slice(5)
-            return (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDate(d)}
-                style={{
-                  flexShrink: 0, padding: '8px 12px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer',
-                  background: selected ? 'rgba(193,156,86,0.25)' : 'rgba(255,255,255,0.05)',
-                  color: selected ? '#e8c47a' : 'rgba(255,255,255,0.45)',
-                }}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
+        <PossibleDayPicker
+          date={date}
+          onChange={d => {
+            setDate(d)
+            if (picked && !isManualServiceAllowedOnDate(picked.location, d, cleaningType)) setPicked(null)
+          }}
+          cleaningType={cleaningType}
+          location={picked?.location}
+          labels={labels}
+          lang={lang}
+        />
 
         <input
           value={search}
@@ -2540,28 +2779,54 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
         )}
 
         <div style={{ maxHeight: '38vh', overflowY: 'auto', marginBottom: 14 }}>
-          {filtered.map(loc => {
+          {filtered.map(opt => {
+            const loc = opt.location
             const selected = picked?.location?.name === loc.name
+            const deepOnlyTap = opt.state === 'wrong_type' && opt.reason === 'deep_only'
+            const blocked = opt.state === 'wrong_day' || (opt.state === 'wrong_type' && !deepOnlyTap)
+            const badgeText = opt.state === 'wrong_day'
+              ? labels.addServiceWrongDay
+              : deepOnlyTap
+                ? labels.addServiceDeepOnly
+                : opt.state === 'wrong_type'
+                  ? labels.addServiceNoDeep
+                  : null
             return (
               <button
                 key={loc.name}
                 type="button"
-                onClick={() => setPicked({ location: loc })}
+                data-add-state={opt.state}
+                data-add-reason={opt.reason || ''}
+                data-location={loc.name}
+                disabled={blocked}
+                onClick={() => {
+                  if (deepOnlyTap) {
+                    switchToDeepForLocation(loc)
+                    return
+                  }
+                  if (!blocked) setPicked(opt)
+                }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, borderRadius: 12,
                   border: selected ? '1px solid rgba(193,156,86,0.5)' : '1px solid rgba(255,255,255,0.08)',
                   background: selected ? 'rgba(193,156,86,0.12)' : 'rgba(255,255,255,0.03)',
-                  cursor: 'pointer',
+                  cursor: blocked ? 'not-allowed' : 'pointer',
+                  opacity: blocked ? 0.6 : 1,
                 }}
               >
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{loc.name}</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{loc.group}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{loc.name}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{loc.group} · {formatManualServiceDays(loc, cleaningType, lang)}</div>
+                  </div>
+                  {badgeText && <span style={{ fontSize: 9, fontWeight: 700, padding: '4px 8px', borderRadius: 20, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.06)', whiteSpace: 'nowrap' }}>{badgeText}</span>}
+                </div>
               </button>
             )
           })}
         </div>
 
-        {!picked && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 10 }}>{labels.pastServicePickLocation || 'Tap a location above to continue'}</div>}
+        {!picked && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 10 }}>{filtered.length ? labels.pastServicePickLocation : labels.pastServiceNoLocations}</div>}
         <button
           type="button"
           disabled={!canConfirm || busy}
@@ -2576,6 +2841,6 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
           {busy ? '...' : labels.pastServiceConfirm}
         </button>
       </div>
-    </div>
+    </EmpSheetPortal>
   )
 }

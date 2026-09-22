@@ -1,9 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { viewablePhotoUrl } from '../lib/photoUrl'
+import { tokyoToday } from '../lib/dates'
+import { parsePhotoUrls } from '../lib/jobPhotoUrls'
+import { formatPhotoAiIssues, sanitizeStoredPhotoIssues } from '../lib/photoAi'
+import { getCleaningType, parseDeepComponents } from '../lib/cleaningType'
 import toast from 'react-hot-toast'
+import { useLang } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import ContractTab from '../components/ContractTab'
+import PasswordReveal from '../components/PasswordReveal'
+import JobPhotos from '../components/JobPhotos'
+import PhotoLightbox from '../components/PhotoLightbox'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -90,6 +98,9 @@ function RecentDays({ jobs, onDayClick }) {
 export default function EmployeeProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { t } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [tab, setTab] = useState('overview')
   const [emp, setEmp] = useState(null)
   const [jobs, setJobs] = useState([])
@@ -100,24 +111,33 @@ export default function EmployeeProfile() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [workDays, setWorkDays] = useState([])
-  const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
+  const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:tokyoToday() })
   const [addingEval, setAddingEval] = useState(false)
   const [analyzingId, setAnalyzingId] = useState(null)
+  const [lightbox, setLightbox] = useState(null)
 
   const analyzePhoto = async (job) => {
-    if (!job.photo_end_url) return
+    const photoUrls = parsePhotoUrls(job.photo_end_url)
+    if (!photoUrls.length) return
     setAnalyzingId(job.id)
     try {
       const resp = await fetch('/api/analyze-photo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photoUrl: job.photo_end_url, locationName: job.title }),
+        body: JSON.stringify({
+          photoUrl: photoUrls[0],
+          photoUrls,
+          locationName: job.title,
+          cleaningType: getCleaningType(job),
+          deepComponents: parseDeepComponents(job),
+        }),
       })
       const result = await resp.json()
+      if (result?.error) throw new Error(result.error)
       await supabase.from('jobs').update({
         photo_ai_score: result?.nota ?? null,
         photo_ai_approved: result?.aprovado ?? null,
-        photo_ai_issues: result?.problemas?.length ? result.problemas.join(', ') : null,
+        photo_ai_issues: formatPhotoAiIssues(result),
       }).eq('id', job.id)
       toast.success(`Analisado: nota ${result?.nota ?? '?'}/10`)
       loadAll()
@@ -134,7 +154,7 @@ export default function EmployeeProfile() {
   const loadAll = async () => {
     setLoading(true)
     const [e, j, ev, p, adv] = await Promise.all([
-      supabase.from('employees').select('id,full_name,email,phone,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active,work_days,notes,hire_date').eq('id', id).maybeSingle(),
+      supabase.from('employees').select('id,full_name,email,password,phone,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active,work_days,notes,hire_date').eq('id', id).maybeSingle(),
       supabase.from('jobs').select('*').eq('employee_id', id).order('scheduled_date', { ascending:false }).limit(30),
       supabase.from('evaluations').select('*').eq('employee_id', id).order('created_at', { ascending:false }),
       supabase.from('salary_payments').select('*').eq('employee_id', id).order('payment_date', { ascending:true }),
@@ -151,8 +171,8 @@ export default function EmployeeProfile() {
   const toggleDay = d => setWorkDays(w=>w.includes(d)?w.filter(x=>x!==d):[...w,d])
 
   const handleSave = async () => {
-    const { error } = await supabase.from('employees').update({
-      full_name:form.full_name, email:form.email, password:form.password,
+    const patch = {
+      full_name:form.full_name, email:(form.email||'').trim().toLowerCase(),
       phone:form.phone, address:form.address, contract_type:form.contract_type,
       salary_type:form.salary_type, hourly_rate:parseFloat(form.hourly_rate)||0,
       fixed_salary:parseFloat(form.fixed_salary)||0, job_bonus_rate:parseFloat(form.job_bonus_rate)||0,
@@ -167,7 +187,9 @@ export default function EmployeeProfile() {
       hours_per_shift:parseFloat(form.hours_per_shift)||0,
       shifts_per_week:parseInt(form.shifts_per_week)||0,
       monthly_work_days:parseInt(form.monthly_work_days)||22,
-    }).eq('id', id)
+    }
+    if (String(form.password || '').trim()) patch.password = String(form.password).trim()
+    const { error } = await supabase.from('employees').update(patch).eq('id', id)
     if (error) return toast.error(error.message)
     toast.success('Saved!')
     setEditing(false); loadAll()
@@ -181,11 +203,12 @@ export default function EmployeeProfile() {
     await supabase.from('employees').update({ score:newScore }).eq('id', id)
     toast.success(`Evaluation added! Score: ${newScore}`)
     setAddingEval(false)
-    setEvalForm({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
+    setEvalForm({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:tokyoToday() })
     loadAll()
   }
 
   const handleDeleteEval = async (evalId, pts) => {
+    if (!(await confirm({ title: dlg.deleteEval, message: dlg.dangerHint, tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('evaluations').delete().eq('id', evalId)
     const newScore = Math.max(0, Math.min(100, (emp.score||100) - pts))
     await supabase.from('employees').update({ score:newScore }).eq('id', id)
@@ -195,9 +218,9 @@ export default function EmployeeProfile() {
 
   const scoreColor = s => s>=90?'var(--green)':s>=70?'#EF9F27':'var(--red)'
   const statusColor = s => ({assigned:'badge-blue',in_progress:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
-  const today = new Date().toISOString().split('T')[0]
+  const today = tokyoToday()
 
-  if (loading) return <div style={{color:'var(--text3)',padding:20}}>Loading...</div>
+  if (loading) return <div style={{color:'var(--text3)',padding:20}}>{t.app.loading}</div>
   if (!emp) return <div style={{color:'var(--text3)',padding:20}}>Employee not found</div>
 
   return (
@@ -404,19 +427,26 @@ export default function EmployeeProfile() {
                   </span>
                 )}
               </div>
-              {j.photo_ai_issues&&(
-                <div style={{fontSize:11,color:'var(--red)',marginTop:3}}>⚠️ {j.photo_ai_issues}</div>
+              {sanitizeStoredPhotoIssues(j.photo_ai_issues) && (
+                <div style={{fontSize:11,color:'var(--red)',marginTop:3}}>⚠️ {sanitizeStoredPhotoIssues(j.photo_ai_issues)}</div>
               )}
-              {j.photo_end_url&&(
-                <div style={{display:'flex',gap:10,alignItems:'center',marginTop:2}}>
-                  <a href={viewablePhotoUrl(j.photo_end_url)} target="_blank" rel="noreferrer" style={{fontSize:11,color:'var(--blue)'}}>Ver foto</a>
-                  <button
-                    onClick={()=>analyzePhoto(j)}
-                    disabled={analyzingId===j.id}
-                    style={{fontSize:11,color:'var(--text3)',background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'2px 8px',cursor:analyzingId===j.id?'not-allowed':'pointer'}}
-                  >
-                    {analyzingId===j.id?'Analisando...':j.photo_ai_score!=null?'🔄 Reanalisar com IA':'📷 Analisar com IA'}
-                  </button>
+              {(j.photo_start_url || j.photo_end_url) && (
+                <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
+                  <JobPhotos
+                    photoStartUrl={j.photo_start_url}
+                    photoEndUrl={j.photo_end_url}
+                    size={44}
+                    onPhotoClick={setLightbox}
+                  />
+                  {j.photo_end_url && (
+                    <button
+                      onClick={()=>analyzePhoto(j)}
+                      disabled={analyzingId===j.id}
+                      style={{fontSize:11,color:'var(--text3)',background:'none',border:'1px solid var(--border)',borderRadius:6,padding:'2px 8px',cursor:analyzingId===j.id?'not-allowed':'pointer'}}
+                    >
+                      {analyzingId===j.id?'Analisando...':j.photo_ai_score!=null?'🔄 Reanalisar com IA':'📷 Analisar com IA'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -470,7 +500,11 @@ export default function EmployeeProfile() {
           <div className="grid-2">
             <div className="form-group"><label>Full Name</label><input value={form.full_name||''} onChange={e=>upd('full_name',e.target.value)} /></div>
             <div className="form-group"><label>Email</label><input value={form.email||''} onChange={e=>upd('email',e.target.value)} /></div>
-            <div className="form-group"><label>Password</label><input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" /></div>
+            <div className="form-group">
+              <label>Password</label>
+              <PasswordReveal value={form.password} showLabel="Show" hideLabel="Hide" />
+              <input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" style={{ marginTop: 8 }} />
+            </div>
             <div className="form-group"><label>Phone</label><input value={form.phone||''} onChange={e=>upd('phone',e.target.value)} /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address||''} onChange={e=>upd('address',e.target.value)} /></div>
           </div>
@@ -514,6 +548,7 @@ export default function EmployeeProfile() {
           </div>
         </div>
       )}
+      {lightbox && <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   )
 }

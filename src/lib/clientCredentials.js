@@ -1,4 +1,5 @@
 import { normalizeLoginKey } from './portalStores'
+import { hashPassword, passwordMatches } from './passwordMatch'
 
 export async function findClientUserForLogin(supabase, login, password) {
   const key = normalizeLoginKey(login)
@@ -11,22 +12,22 @@ export async function findClientUserForLogin(supabase, login, password) {
     .from('client_users')
     .select(fields)
     .eq('email', key)
-    .eq('password', pw)
     .eq('is_active', true)
     .maybeSingle()
 
-  if (byEmail) return byEmail
+  if (byEmail && passwordMatches(byEmail.password, pw)) return byEmail
 
   const { data: candidates } = await supabase
     .from('client_users')
     .select(fields)
-    .eq('password', pw)
     .eq('is_active', true)
     .not('location_name', 'is', null)
 
   if (!candidates?.length) return null
 
-  return candidates.find(u => normalizeLoginKey(u.location_name) === key) || null
+  return candidates.find(u =>
+    normalizeLoginKey(u.location_name) === key && passwordMatches(u.password, pw)
+  ) || null
 }
 
 export function clientUserToSession(clientUser) {
@@ -49,7 +50,7 @@ export async function updateClientCredentials(supabase, userId, { currentPasswor
     .maybeSingle()
 
   if (fetchErr || !row) return { success: false, error: fetchErr?.message || 'Account not found' }
-  if (row.password !== (currentPassword || '').trim()) {
+  if (!passwordMatches(row.password, (currentPassword || '').trim())) {
     return { success: false, error: 'Current password is incorrect' }
   }
 
@@ -57,7 +58,7 @@ export async function updateClientCredentials(supabase, userId, { currentPasswor
   if (newEmail?.trim()) patch.email = newEmail.trim().toLowerCase()
   if (newPassword?.trim()) {
     if (newPassword.trim().length < 6) return { success: false, error: 'Password must be at least 6 characters' }
-    patch.password = newPassword.trim()
+    patch.password = hashPassword(newPassword.trim())
   }
 
   if (!Object.keys(patch).length) return { success: false, error: 'Nothing to update' }

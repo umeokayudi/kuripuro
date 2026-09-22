@@ -1,4 +1,19 @@
 import { kuripuroEn, kuripuroJa } from './kuripuro'
+import { kuripuroPt } from './kuripuroPt'
+
+export function deepMerge(base, overlay) {
+  if (!overlay) return base
+  const out = { ...(base || {}) }
+  for (const key of Object.keys(overlay)) {
+    const value = overlay[key]
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      out[key] = deepMerge(base?.[key] && typeof base[key] === 'object' ? base[key] : {}, value)
+    } else {
+      out[key] = value
+    }
+  }
+  return out
+}
 
 export const translations = {
   en: {
@@ -373,5 +388,7 @@ export const translations = {
     ...kuripuroJa,
   },
 }
+
+translations.pt = deepMerge(translations.en, kuripuroPt)
 
 export { fill } from './kuripuro'

@@ -2,15 +2,19 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import { useLang } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import toast from 'react-hot-toast'
+import { tokyoToday, tokyoYearMonth } from '../lib/dates'
 
 export default function Ryoshu() {
   const { t, lang } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [receipts, setReceipts] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date:new Date().toISOString().split('T')[0], tax_rate:10 })
+  const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date:tokyoToday(), tax_rate:10 })
 
   useEffect(() => { load() }, [])
 
@@ -47,12 +51,12 @@ export default function Ryoshu() {
     })
     if (error) return toast.error(error.message)
     toast.success('領収書を作成しました!')
-    setForm({ client_id:'', client_name:'', amount:'', description:'', issue_date:new Date().toISOString().split('T')[0], tax_rate:10 })
+    setForm({ client_id:'', client_name:'', amount:'', description:'', issue_date:tokyoToday(), tax_rate:10 })
     setShowForm(false); load()
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this receipt?')) return
+    if (!(await confirm({ title: dlg.deleteReceipt, message: dlg.dangerHint, tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('ryoshu').delete().eq('id', id)
     toast('Deleted.'); load()
   }
@@ -86,14 +90,14 @@ export default function Ryoshu() {
     w.print()
   }
 
-  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,r)=>s+Number(r.total_amount||0),0)
+  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(tokyoYearMonth())).reduce((s,r)=>s+Number(r.total_amount||0),0)
 
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <div>
           <h2 className="page-head" style={{margin:0,fontSize:22}}>{t.sidebar.ryoshu}</h2>
-          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{lang==='ja'?'今月合計':'This month'}: <strong>¥{totalMonth.toLocaleString()}</strong></div>
+          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{t.client?.visitThisMonth || 'This month'}: <strong>¥{totalMonth.toLocaleString()}</strong></div>
         </div>
         <button className="btn btn-primary" onClick={()=>setShowForm(!showForm)}>+ {lang==='ja'?'新規作成':'New receipt'}</button>
       </div>

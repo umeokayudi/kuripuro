@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
+import { useLang } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const SERVICE_TYPES = ['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning']
 
 export default function ServiceContracts() {
+  const { t } = useLang()
+  const confirm = useConfirm()
+  const dlg = t.dialog
   const [clients, setClients] = useState([])
   const [contracts, setContracts] = useState([])
   const [selectedClient, setSelectedClient] = useState(null)
@@ -74,7 +79,7 @@ export default function ServiceContracts() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Remove this location?')) return
+    if (!(await confirm({ title: dlg.removeLocation, message: dlg.dangerHint, tone: 'danger', confirmLabel: dlg.delete }))) return
     await supabase.from('service_contracts').update({ is_active:false }).eq('id',id)
     toast('Removed.')
     loadContracts(selectedClient)

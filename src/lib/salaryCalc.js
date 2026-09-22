@@ -1,4 +1,4 @@
-import { tokyoNow, tokyoToday, workedDayKey } from './dates'
+import { tokyoNow, tokyoToday, tokyoYearMonth, monthBounds, workedDayKey } from './dates'
 
 export function jobMinutes(job) {
   if (job?.started_at && job?.completed_at) {
@@ -13,10 +13,13 @@ export function jobPay(job) {
 }
 
 export function completedJobsInMonth(jobs, month, todayStr = tokyoToday()) {
+  const { from, to } = monthBounds(month)
+  if (!from || !to) return []
+  const end = todayStr < to ? todayStr : to
   return (jobs || []).filter(j =>
     j.status === 'completed'
-    && j.scheduled_date?.startsWith(month)
-    && j.scheduled_date <= todayStr,
+    && j.scheduled_date >= from
+    && j.scheduled_date <= end,
   )
 }
 
@@ -29,32 +32,85 @@ export function countWorkedDays(jobs) {
   return set.size
 }
 
-/**
- * Employee portal monthly salary breakdown (shared logic).
- */
-export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = []) {
-  const todayStr = tokyoToday()
-  const month = todayStr.slice(0, 7)
-  const completed = completedJobsInMonth(allJobs, month, todayStr)
+export function isDeductionRow(row) {
+  return !!(row?.is_deduction || row?.payment_type === 'deduction')
+}
+
+export function isAdvanceRow(row) {
+  return row?.payment_type === 'advance'
+}
+
+/** Live DB check only allows salary|advance|bonus|deduction|extra. Transport is stored as extra. */
+export function isTransportRow(row) {
+  if (!row || isDeductionRow(row)) return false
+  if (row.payment_type === 'transport') return true
+  if (row.payment_type === 'extra') return /transport|交通/i.test(String(row.description || ''))
+  return false
+}
+
+export function transportLedgerType() {
+  return 'extra'
+}
+
+export function advanceDate(row) {
+  return String(row?.payment_date || row?.received_at || row?.created_at || '').slice(0, 10) || null
+}
+
+export function isAdvanceReceived(row, _todayStr = tokyoToday()) {
+  if (!row) return false
+  return row.status === 'paid'
+}
+
+export function sumAmounts(rows) {
+  return (rows || []).reduce((s, r) => s + Number(r.amount || 0), 0)
+}
+
+export function fridaysInMonth(period) {
+  const { from, to } = monthBounds(period)
+  if (!from || !to) return []
+  const last = Number(to.slice(8, 10))
+  const dates = []
+  for (let d = 1; d <= last; d++) {
+    const date = `${period}-${String(d).padStart(2, '0')}`
+    if (new Date(`${date}T12:00:00`).getDay() === 5) dates.push(date)
+  }
+  return dates
+}
+
+/** Weekly advance drafts that are not already on the ledger. Does not insert. */
+export function plannedWeeklyAdvances(emp, period, existingAdvances = []) {
+  const amount = Number(emp?.advance_per_week || 0)
+  if (amount <= 0) return []
+  const taken = new Set((existingAdvances || []).map(a => a.payment_date).filter(Boolean))
+  return fridaysInMonth(period)
+    .filter(date => !taken.has(date))
+    .map(date => ({
+      payment_date: date,
+      amount,
+      description: `Weekly advance ${date}`,
+      payment_type: 'advance',
+      status: 'scheduled',
+      is_deduction: false,
+    }))
+}
+
+function computeBase(empInfo, completed) {
   const totalMins = completed.reduce((s, j) => s + jobMinutes(j), 0)
-  const spotEarned = completed
-    .filter(j => j.job_category === 'spot')
-    .reduce((s, j) => s + Number(j.spot_value || 0), 0)
-  const deductions = (deductionsList || []).reduce((s, d) => s + Number(d.amount || 0), 0)
   const workedDays = countWorkedDays(completed)
-  const fixedMax = empInfo?.fixed_salary || 0
+  const fixedMax = Number(empInfo?.fixed_salary || 0)
   const monthlyDays = empInfo?.monthly_work_days || 22
-  const dailyRate = fixedMax / monthlyDays
+  const dailyRate = monthlyDays ? fixedMax / monthlyDays : 0
   const bonusRate = (empInfo?.job_bonus_rate || 100) / 100
+  const type = empInfo?.salary_type || 'fixed'
 
   let base = 0
-  if (empInfo?.salary_type === 'fixed') {
+  if (type === 'fixed') {
     base = Math.min(Math.round(dailyRate * workedDays), fixedMax)
-  } else if (empInfo?.salary_type === 'hourly') {
+  } else if (type === 'hourly') {
     base = Math.round((totalMins / 60) * (empInfo?.hourly_rate || 0))
-  } else if (empInfo?.salary_type === 'per_job') {
+  } else if (type === 'per_job') {
     base = completed.reduce((s, j) => s + Math.round(jobPay(j) * bonusRate), 0)
-  } else if (empInfo?.salary_type === 'mixed') {
+  } else if (type === 'mixed') {
     const fixedPart = Math.min(Math.round(dailyRate * workedDays), fixedMax)
     const hourlyPart = Math.round((totalMins / 60) * (empInfo?.hourly_rate || 0))
     const bonusPart = completed.reduce((s, j) => s + Math.round(jobPay(j) * ((empInfo?.job_bonus_rate || 0) / 100)), 0)
@@ -63,6 +119,10 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [])
     base = Math.round(fixedMax + (totalMins / 60) * (empInfo?.hourly_rate || 0))
   }
 
+  return { base, totalMins, workedDays, fixedMax, dailyRate: Math.round(dailyRate), type }
+}
+
+function remainingWeekdays() {
   const now = tokyoNow()
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   let remain = 0
@@ -70,19 +130,81 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [])
     const day = new Date(now.getFullYear(), now.getMonth(), d).getDay()
     if (day !== 0 && day !== 6) remain++
   }
+  return remain
+}
 
-  const total = base + spotEarned
+/**
+ * One salary breakdown for admin + portal + month close.
+ * net = earned after deductions (what they earned)
+ * toPay = net minus advances already paid. Transport stays a separate extra row.
+ */
+export function calcPeriodSalary(empInfo, allJobs, payments = [], { period, today } = {}) {
+  const todayStr = today || tokyoToday()
+  const ym = period || tokyoYearMonth()
+  const completed = completedJobsInMonth(allJobs, ym, todayStr)
+  const { base, totalMins, workedDays, fixedMax, dailyRate, type } = computeBase(empInfo, completed)
+
+  const spotJobs = completed.filter(j => j.job_category === 'spot')
+  const spotEarned = (type === 'per_job' || type === 'mixed')
+    ? 0
+    : spotJobs.reduce((s, j) => s + Number(j.spot_value || 0), 0)
+
+  const deductionRows = (payments || []).filter(isDeductionRow)
+  const advanceRows = (payments || []).filter(isAdvanceRow)
+  const bonusRows = (payments || []).filter(p => p.payment_type === 'bonus' && !isDeductionRow(p))
+  const transportRows = (payments || []).filter(isTransportRow)
+  const salaryRows = (payments || []).filter(p => p.payment_type === 'salary' && !isDeductionRow(p))
+
+  const deductions = sumAmounts(deductionRows)
+  const advancesReceived = sumAmounts(advanceRows.filter(a => isAdvanceReceived(a, todayStr)))
+  const advancesPending = sumAmounts(advanceRows.filter(a => !isAdvanceReceived(a, todayStr)))
+  const bonuses = sumAmounts(bonusRows)
+  const transport = sumAmounts(transportRows)
+
+  const monthlyDays = empInfo?.monthly_work_days || 22
+  const attendanceBonusRaw = Number(empInfo?.attendance_bonus || 0)
+  const attendanceBonus = attendanceBonusRaw > 0 && workedDays >= monthlyDays ? attendanceBonusRaw : 0
+
+  const earned = base + spotEarned + bonuses + attendanceBonus
+  const gross = earned
+  const net = Math.max(0, gross - deductions)
+  const toPay = Math.max(0, net - advancesReceived)
+  const remain = ym === tokyoYearMonth() ? remainingWeekdays() : 0
+
   return {
+    period: ym,
+    salaryType: type,
     jobs: completed.length,
+    completed,
     hours: (totalMins / 60).toFixed(1),
     base,
     spotEarned,
+    bonuses,
+    attendanceBonus,
+    transport,
     deductions,
-    net: Math.max(0, total - deductions),
-    total,
+    deductionRows,
+    advanceRows,
+    advancesReceived,
+    advancesPending,
+    salaryRows,
+    gross,
+    total: gross,
+    net,
+    toPay,
     workedDays,
     fixedMax,
-    dailyRate: Math.round(dailyRate),
-    projected: Math.min(base + Math.round(dailyRate * remain), fixedMax),
+    dailyRate,
+    projected: fixedMax ? Math.min(base + Math.round(dailyRate * remain), fixedMax) : base,
   }
+}
+
+/**
+ * Employee portal monthly salary breakdown (current Tokyo month).
+ */
+export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = []) {
+  const payments = (deductionsList || []).map(d => (
+    d.payment_type ? d : { ...d, payment_type: 'deduction', is_deduction: true }
+  ))
+  return calcPeriodSalary(empInfo, allJobs, payments, { period: tokyoYearMonth() })
 }

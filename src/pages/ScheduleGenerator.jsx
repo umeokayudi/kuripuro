@@ -1,23 +1,23 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import { useLang, fill } from '../hooks/useLang'
+import { tokyoYearMonth } from '../lib/dates'
+import { useLang, fill, dateLocale } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import {
   DEFAULT_LOCATIONS, buildMonthSchedule, scheduleStats, jobsToRows,
   contractsForActiveEmployees, locationsFromContracts, DOW_EN, DOW_JA,
+  buildMissingDeepCleanJobs,
 } from '../lib/scheduleGenerator'
 
 export default function ScheduleGenerator() {
   const { lang, t } = useLang()
+  const confirm = useConfirm()
   const s = t.schedule
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const loc = dateLocale(lang)
   const dowLabels = lang === 'ja' ? DOW_JA : DOW_EN
 
-  const [month, setMonth] = useState(() => {
-    const d = new Date()
-    d.setMonth(d.getMonth() + 1)
-    return d.toISOString().slice(0, 7)
-  })
+  const [month, setMonth] = useState(() => tokyoYearMonth())
   const [preview, setPreview] = useState([])
   const [loading, setLoading] = useState(false)
   const [existingCount, setExistingCount] = useState(0)
@@ -25,6 +25,7 @@ export default function ScheduleGenerator() {
   const [contracts, setContracts] = useState([])
   const [locations, setLocations] = useState(DEFAULT_LOCATIONS)
   const [expandedDay, setExpandedDay] = useState(null)
+  const [fillMissingMode, setFillMissingMode] = useState(false)
 
   useEffect(() => { loadData() }, [])
   useEffect(() => { loadExisting() }, [month])
@@ -58,8 +59,31 @@ export default function ScheduleGenerator() {
       return
     }
     const jobs = buildMonthSchedule(month, { contracts, locations, includeDuskin })
+    setFillMissingMode(false)
     setPreview(jobs)
     toast.success(fill(s.previewToast, { count: jobs.length, employees: contracts.length }))
+  }
+
+  const runFillMissing = async () => {
+    if (!contracts.length) {
+      toast.error(s.noActiveContracts)
+      return
+    }
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('id, title, scheduled_date, status, client_id, client_name')
+      .gte('scheduled_date', `${month}-01`)
+      .lte('scheduled_date', `${month}-31`)
+      .limit(2000)
+    if (error) {
+      toast.error(error.message)
+      return
+    }
+    const missing = buildMissingDeepCleanJobs(month, data || [], { contracts })
+    setFillMissingMode(true)
+    setPreview(missing)
+    if (!missing.length) toast.success(s.fillMissingNone)
+    else toast.success(fill(s.fillMissingToast, { count: missing.length }))
   }
 
   const stats = useMemo(() => scheduleStats(preview), [preview])
@@ -72,18 +96,22 @@ export default function ScheduleGenerator() {
 
   const handleGenerate = async () => {
     if (!contracts.length) { toast.error(s.noContractsToast); return }
-    const jobs = preview.length ? preview : buildMonthSchedule(month, { contracts, locations, includeDuskin })
-    if (!jobs.length) { toast.error(s.previewFirst); return }
+    const jobs = fillMissingMode
+      ? preview
+      : (preview.length ? preview : buildMonthSchedule(month, { contracts, locations, includeDuskin }))
+    if (!jobs.length) { toast.error(fillMissingMode ? s.fillMissingNone : s.previewFirst); return }
 
     const summary = Object.entries(scheduleStats(jobs).byEmployee).map(([n, c]) => `${n}: ${c}`).join(', ')
-    if (existingCount > 0) {
-      if (!confirm(fill(s.confirmReplace, { existing: existingCount, month, count: jobs.length, summary }))) return
+    if (fillMissingMode) {
+      if (!(await confirm({ title: s.fillMissingDeep, message: fill(s.confirmFillMissing, { count: jobs.length }), tone: 'primary', confirmLabel: s.generate ? fill(s.generate, { count: jobs.length }) : t.dialog.continue }))) return
+    } else if (existingCount > 0) {
+      if (!(await confirm({ title: s.generator, message: fill(s.confirmReplace, { existing: existingCount, month, count: jobs.length, summary }), tone: 'danger', confirmLabel: t.dialog.continue }))) return
       await supabase.from('jobs').delete()
         .gte('scheduled_date', `${month}-01`)
         .lte('scheduled_date', `${month}-31`)
         .eq('status', 'assigned')
         .neq('job_category', 'spot')
-    } else if (!confirm(fill(s.confirmCreate, { count: jobs.length, summary }))) return
+    } else if (!(await confirm({ title: s.generator, message: fill(s.confirmCreate, { count: jobs.length, summary }), tone: 'primary', confirmLabel: t.dialog.continue }))) return
 
     setLoading(true)
     const rows = jobsToRows(jobs, contracts)
@@ -91,8 +119,9 @@ export default function ScheduleGenerator() {
       const { error } = await supabase.from('jobs').insert(rows.slice(i, i + 50))
       if (error) { toast.error(error.message); setLoading(false); return }
     }
-    toast.success(fill(s.jobsCreated, { count: rows.length }))
+    toast.success(fill(fillMissingMode ? s.fillMissingCreated : s.jobsCreated, { count: rows.length }))
     setLoading(false)
+    setFillMissingMode(false)
     loadExisting()
   }
 
@@ -110,7 +139,7 @@ export default function ScheduleGenerator() {
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             {contracts.map(c => (
-              <div key={c.employeeId} style={{ display: 'flex', gap: 12, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 10, borderLeft: `4px solid ${c.color}` }}>
+              <div key={`${c.template}-${c.employeeId}`} style={{ display: 'flex', gap: 12, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 10, borderLeft: `4px solid ${c.color}` }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{c.employeeName}</div>
                   <div style={{ fontSize: 12, color: c.color, fontWeight: 600 }}>{c.label}</div>
@@ -132,7 +161,7 @@ export default function ScheduleGenerator() {
         <div className="grid-2" style={{ marginBottom: 14 }}>
           <div className="form-group">
             <label>{s.month}</label>
-            <input type="month" value={month} onChange={e => { setMonth(e.target.value); setPreview([]) }} />
+            <input type="month" value={month} onChange={e => { setMonth(e.target.value); setPreview([]); setFillMissingMode(false) }} />
           </div>
           <div className="form-group">
             <label>{s.existingJobs}</label>
@@ -149,10 +178,12 @@ export default function ScheduleGenerator() {
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button className="btn" onClick={runPreview} disabled={!contracts.length}>👁 {s.preview}</button>
+          <button className="btn" onClick={runFillMissing} disabled={!contracts.length || loading}>🧩 {s.fillMissingDeep}</button>
           <button className="btn btn-primary" onClick={handleGenerate} disabled={loading || !contracts.length}>
-            {loading ? s.creating : `✅ ${fill(s.generate, { count: preview.length || '…' })}`}
+            {loading ? s.creating : `✅ ${fill(fillMissingMode ? s.fillMissingDeep : s.generate, { count: preview.length || '…' })}`}
           </button>
         </div>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>{s.fillMissingHint}</div>
       </div>
 
       {preview.length > 0 && (
@@ -161,7 +192,7 @@ export default function ScheduleGenerator() {
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
             {contracts.map(c => (
-              <div key={c.employeeId} style={{ padding: '10px 14px', borderRadius: 10, background: `${c.color}12`, border: `1px solid ${c.color}30`, minWidth: 100 }}>
+              <div key={`${c.template}-${c.employeeId}`} style={{ padding: '10px 14px', borderRadius: 10, background: `${c.color}12`, border: `1px solid ${c.color}30`, minWidth: 100 }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>{c.shortName}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: c.color }}>{stats.byEmployee[c.shortName] || 0}</div>
               </div>
@@ -186,7 +217,7 @@ export default function ScheduleGenerator() {
                   <button type="button" onClick={() => setExpandedDay(isOpen ? null : date)}
                     style={{ width: '100%', display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface2)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>
-                      {dowLabels[dow]} {new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
+                      {dowLabels[dow]} {new Date(date + 'T12:00:00').toLocaleDateString(loc, { day: 'numeric', month: 'short' })}
                     </span>
                     <span style={{ fontSize: 12, color: 'var(--text3)' }}>{dayJobs.length} {s.jobsLabel} {isOpen ? '▲' : '▼'}</span>
                   </button>

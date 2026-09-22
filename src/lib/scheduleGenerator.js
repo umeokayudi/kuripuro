@@ -12,6 +12,7 @@ import {
   isOtpDeepOnlyLocation,
 } from './serviceCatalog.js'
 import { checklistTemplateForJob } from './jobChecklist.js'
+import { buildDeepCleanProgress } from './cleaningType.js'
 
 export { SCHEDULE_CLIENTS } from './serviceCatalog.js'
 export { OTP_BASIC_LOCATIONS, ATOMIC_LOCATION } from './serviceCatalog.js'
@@ -43,45 +44,74 @@ export const DOW_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 export const DOW_JA = ['日', '月', '火', '水', '木', '金', '土']
 export const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+function normName(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function firstName(value) {
+  return normName(value).split(/\s+/)[0]
+}
+
 /**
- * Contrato de escala por funcionário (employee_id do Supabase).
- * Deep clean e manutenção mensal: inserir manualmente no admin.
+ * Templates de escala. `assignTo` é a fila de operadores (nome completo ou primeiro nome).
+ * O primeiro funcionário ATIVO na fila recebe o contrato — André inativo não mata a geração.
  */
-export const EMPLOYEE_SCHEDULE_CONTRACTS = [
+export const SCHEDULE_TEMPLATES = [
   {
-    employeeId: '583d1ad6-1046-41db-8944-8f69120be41d',
-    label: 'OTP · limpeza básica diária',
-    detail: 'Todos os restaurantes OTP nos dias do contrato. Segunda: Atomic até 21:00.',
     template: 'otp_basic',
     mondayAtomic: true,
+    assignTo: ['Alexandre Umeoka', 'Sasaki Kazuma', 'Guilherme Henrique'],
+    label: 'OTP · limpeza básica diária',
+    detail: 'Todos os restaurantes OTP nos dias do contrato. Segunda: Atomic até 21:00.',
   },
   {
-    employeeId: '583d1ad6-1046-41db-8944-8f69120be41d',
+    template: 'otp_deep_only',
+    assignTo: ['Sasaki Kazuma', 'Alexandre Umeoka', 'Guilherme Henrique'],
     label: 'OTP · deep-only seg+qua + manutenção folga',
     detail: 'Ibushio, Nyu Ibushio, Horumon, Manmosu — deep seg+qua; grease trap 2x/mês; fogão, range hood, grelha e ar 1x/mês no dia de folga.',
-    template: 'otp_deep_only',
   },
   {
-    employeeId: '583d1ad6-1046-41db-8944-8f69120be41d',
+    template: 'duskin_sunday',
+    assignTo: ['Guilherme Henrique', 'Pedro Bacana', 'Alexandre Umeoka'],
     label: 'Duskin · domingos do mês',
     detail: '1º dom (cera/polidora/banheiros/prédios), 3º dom (prédios + Sugita Restaurant), penúltimo dom (limpeza geral).',
-    template: 'duskin_sunday',
   },
 ]
 
+/** @deprecated use SCHEDULE_TEMPLATES — kept so old seeds still import a list */
+export const EMPLOYEE_SCHEDULE_CONTRACTS = SCHEDULE_TEMPLATES
+
+export function pickEmployeeForTemplate(activeEmployees, assignTo = []) {
+  const active = (activeEmployees || []).filter(e => e && e.is_active !== false)
+  for (const name of assignTo || []) {
+    const key = normName(name)
+    const hit = active.find(e => {
+      const full = normName(e.full_name)
+      return full === key || firstName(e.full_name) === firstName(name)
+    })
+    if (hit) return hit
+  }
+  return active[0] || null
+}
+
 export function contractsForActiveEmployees(activeEmployees) {
-  const activeIds = new Set((activeEmployees || []).filter(e => e.is_active !== false).map(e => e.id))
-  return EMPLOYEE_SCHEDULE_CONTRACTS
-    .filter(c => activeIds.has(c.employeeId))
-    .map((c, i) => {
-      const emp = activeEmployees.find(e => e.id === c.employeeId)
+  const used = new Set()
+  return SCHEDULE_TEMPLATES
+    .map((tmpl, i) => {
+      const pool = (activeEmployees || []).filter(e => e && e.is_active !== false && !used.has(e.id))
+      const emp = pickEmployeeForTemplate(pool.length ? pool : activeEmployees, tmpl.assignTo)
+        || pickEmployeeForTemplate(activeEmployees, tmpl.assignTo)
+      if (!emp) return null
+      used.add(emp.id)
       return {
-        ...c,
-        employeeName: emp?.full_name || 'Funcionário',
-        shortName: (emp?.full_name || '?').split(' ')[0],
+        ...tmpl,
+        employeeId: emp.id,
+        employeeName: emp.full_name || 'Funcionário',
+        shortName: (emp.full_name || '?').split(' ')[0],
         color: PALETTE[i % PALETTE.length],
       }
     })
+    .filter(Boolean)
 }
 
 export function locationsFromContracts(serviceContracts) {
@@ -291,6 +321,22 @@ export function buildMonthSchedule(month, {
             serviceLabel: 'Basic Cleaning',
           }))
         })
+
+        if (dow === 2) {
+          basicLocs.forEach((loc, i) => {
+            jobs.push(makeJob({
+              id: jobId++,
+              date: dateStr,
+              time: '01:30',
+              employee: emp,
+              empId,
+              location: loc,
+              seq: 80 + i,
+              serviceLabel: 'Deep Clean',
+              category: 'deep',
+            }))
+          })
+        }
       }
 
       if (contract.template === 'otp_deep_only' && (dow === 1 || dow === 3)) {
@@ -401,4 +447,40 @@ export function jobsToRows(jobs, contracts) {
     value: Number(j.value || j.price || 0) || null,
     ...(j.completed_at ? { completed_at: j.completed_at } : { completed_at: null }),
   }))
+}
+
+/** Drafts for expected OTP deep-clean slots that have no job yet. */
+export function buildMissingDeepCleanJobs(yearMonth, existingJobs, { contracts = [] } = {}) {
+  const normalized = (existingJobs || []).map(j => ({
+    ...j,
+    scheduled_date: j.scheduled_date || j.date,
+    client_name: j.client_name || j.client,
+    status: j.status || 'assigned',
+  }))
+  const progress = buildDeepCleanProgress(normalized, yearMonth)
+  const assignee = contracts.find(c => c.template === 'otp_deep_only')
+    || contracts.find(c => c.template === 'otp_basic')
+    || contracts[0]
+  if (!assignee) return []
+
+  const locByName = Object.fromEntries(OTP_BASIC_LOCATIONS.map(l => [l.name, l]))
+  const jobs = []
+  Object.entries(progress.byLocation || {}).forEach(([name, data]) => {
+    const location = locByName[name] || { name, notes: '', address: '', deepCleanPrice: 5000 }
+    ;(data.expectedDates || []).forEach(date => {
+      if (data.byDate?.[date]) return
+      jobs.push(makeJob({
+        id: jobs.length + 1,
+        date,
+        time: isOtpDeepOnlyLocation(name) ? '00:30' : '01:30',
+        employee: assignee.shortName || assignee.employeeName,
+        empId: assignee.employeeId,
+        location,
+        seq: 90,
+        serviceLabel: 'Deep Clean',
+        category: 'deep',
+      }))
+    })
+  })
+  return jobs
 }

@@ -5,11 +5,14 @@ import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
 } from '../lib/cleaningType'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, dateLocale } from '../hooks/useLang'
+import { useConfirm } from '../hooks/useConfirm'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
+import { tokyoToday, formatLocalYmd } from '../lib/dates'
+import { fenceOk, mapsPointUrl } from '../lib/jobGps'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
@@ -26,7 +29,8 @@ function applyGeocodeResult(result, setCoords, mapsMsg) {
 }
 
 function toDateStr(d) {
-  return d.toISOString().split('T')[0]
+  if (typeof d === 'string') return d.slice(0, 10)
+  return formatLocalYmd(d)
 }
 
 function shiftDate(dateStr, days) {
@@ -82,12 +86,13 @@ function statusStyle(status, labels) {
 
 function DayScheduleView({ onClose }) {
   const { lang, t } = useLang()
+  const confirm = useConfirm()
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
-  const [date, setDate] = useState(toDateStr(new Date()))
-  const [calMonth, setCalMonth] = useState(() => toDateStr(new Date()).slice(0, 7))
+  const loc = dateLocale(lang)
+  const [date, setDate] = useState(tokyoToday())
+  const [calMonth, setCalMonth] = useState(() => tokyoToday().slice(0, 7))
   const [showCalendar, setShowCalendar] = useState(false)
   const [jobs, setJobs] = useState([])
   const [monthJobStats, setMonthJobStats] = useState({})
@@ -140,8 +145,8 @@ function DayScheduleView({ onClose }) {
   const weekDays = lang === 'ja'
     ? ['月', '火', '水', '木', '金', '土', '日']
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
-  const todayStr = toDateStr(new Date())
+  const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(loc, { month: 'long', year: 'numeric' })
+  const todayStr = tokyoToday()
 
   const handleReassign = async (jobId, empId) => {
     if (!empId) {
@@ -166,7 +171,7 @@ function DayScheduleView({ onClose }) {
   }
 
   const handleDelete = async (jobId, title) => {
-    if (!confirm(fill(jt.deleteJobConfirm, { title }))) return
+    if (!(await confirm({ title: jt.deleteJob, message: fill(jt.deleteJobConfirm, { title }), tone: 'danger', confirmLabel: t.dialog.delete }))) return
     await supabase.from('jobs').delete().eq('id', jobId)
     toast.success(jt.jobDeleted)
     loadJobs()
@@ -190,8 +195,8 @@ function DayScheduleView({ onClose }) {
   const inProgress = jobs.filter(j => j.status === 'in_progress').length
   const pending = jobs.filter(j => j.status === 'assigned').length
   const progressPct = jobs.length ? Math.round((done / jobs.length) * 100) : 0
-  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })
-  const dateShort = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long' })
+  const dateShort = new Date(date + 'T12:00:00').toLocaleDateString(loc, { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   const JobCard = ({ j, idx }) => {
     const stl = statusStyle(j.status, st)
@@ -321,12 +326,12 @@ function DayScheduleView({ onClose }) {
               <div style={{ fontWeight: 800, fontSize: 14, textTransform: 'capitalize' }}>{monthLabel}</div>
               <button type="button" className="btn btn-sm" onClick={() => shiftCalMonth(1)}>▶</button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4, marginBottom: 4 }}>
               {weekDays.map(w => (
                 <div key={w} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text3)', padding: '2px 0' }}>{w}</div>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
               {calendarDays.map((ds, i) => {
                 if (!ds) return <div key={`pad-${i}`} />
                 const dayNum = Number(ds.split('-')[2])
@@ -557,6 +562,19 @@ export default function Jobs() {
     loadAll()
   }
 
+  const handleDownloadPdf = async (job) => {
+    const preview = typeof window !== 'undefined' ? window.open('', '_blank') : null
+    const toastId = toast.loading(jt.generatingPdf)
+    try {
+      const { saveServiceReportPdf } = await import('../lib/generatePDF')
+      await saveServiceReportPdf(job, { lang, labels: { ...jt, ...t.reports }, previewWindow: preview })
+      toast.success(jt.pdfReady, { id: toastId })
+    } catch (err) {
+      try { preview?.close() } catch {}
+      toast.error(err?.message || jt.pdfFailed, { id: toastId })
+    }
+  }
+
   const handleCancel = async (id) => {
     await supabase.from('jobs').update({ status: 'cancelled' }).eq('id', id)
     loadAll()
@@ -692,9 +710,20 @@ export default function Jobs() {
                 </label>
                 {j.photo_required && <span className="badge badge-amber">📷 {jt.photoRequired}</span>}
                 {j.gps_lat && <span className="badge badge-navy">📍 GPS</span>}
+                {j.gps_start_distance_m != null && (
+                  <a href={mapsPointUrl(j.gps_start_lat, j.gps_start_lng) || undefined} target="_blank" rel="noreferrer" className="badge" style={{background:fenceOk(j.gps_start_distance_m)?'rgba(74,222,128,0.15)':'rgba(248,113,113,0.15)',color:fenceOk(j.gps_start_distance_m)?'#4ade80':'#f87171',textDecoration:'none'}}>
+                    {fill(jt.gpsStart, { n: Math.round(j.gps_start_distance_m) })}
+                  </a>
+                )}
+                {j.gps_end_distance_m != null && (
+                  <a href={mapsPointUrl(j.gps_end_lat, j.gps_end_lng) || undefined} target="_blank" rel="noreferrer" className="badge" style={{background:fenceOk(j.gps_end_distance_m)?'rgba(74,222,128,0.15)':'rgba(248,113,113,0.15)',color:fenceOk(j.gps_end_distance_m)?'#4ade80':'#f87171',textDecoration:'none'}}>
+                    {fill(jt.gpsEnd, { n: Math.round(j.gps_end_distance_m) })}
+                  </a>
+                )}
                 {hasMapsLink(j.address, locName) && (
                   <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 {jt.maps}</a>
                 )}
+                {j.status === 'completed' && <button className="btn btn-sm" onClick={() => handleDownloadPdf(j)}>📄 {jt.downloadPdf}</button>}
                 {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>{jt.cancel}</button>}
               </div>
             </div>
@@ -820,6 +849,7 @@ export default function Jobs() {
 
 function LocationsTab() {
   const { t } = useLang()
+  const confirm = useConfirm()
   const jt = t.jobs
   const [locations, setLocations] = useState([])
   const [showDaySchedule, setShowDaySchedule] = useState(false)
@@ -870,6 +900,7 @@ function LocationsTab() {
   }
 
   const handleDelete = async (id) => {
+    if (!(await confirm({ title: t.dialog.removeLocation, message: t.dialog.deactivateLocation, tone: 'danger', confirmLabel: t.dialog.delete }))) return
     await supabase.from('locations').update({ is_active: false }).eq('id', id)
     load()
   }
