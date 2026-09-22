@@ -6,7 +6,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
-import { parseExtraRequest, parsePaymentNotice, extraLabel, formatYen } from '../lib/clientExtras'
+import { parseExtraRequest, parsePaymentNotice, extraLabel, formatYen, settleClientRequest } from '../lib/clientExtras'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
@@ -90,6 +90,13 @@ export default function ClientFeedback() {
 
   const saveRequest = async (row, status) => {
     const admin_notes = draft(row.id)
+    if (status === 'completed') {
+      const settled = await settleClientRequest(supabase, row, {
+        today: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 10),
+        extraTitle: extraLabel(parseExtraRequest(row.description)?.extraId, lang),
+      })
+      if (!settled.ok) return toast.error(settled.error)
+    }
     const { error } = await supabase.from('client_requests').update({
       admin_notes,
       status,

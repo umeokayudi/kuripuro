@@ -7,6 +7,7 @@ import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '.
 import toast from 'react-hot-toast'
 import { tokyoToday, monthBounds } from '../lib/dates'
 import { summarizeStaffStatus } from '../lib/jobGps'
+import { clientMonthlyCost } from '../lib/clientPortal'
 
 function shiftYearMonth(ym, delta) {
   const [y, m] = String(ym || '').split('-').map(Number)
@@ -19,7 +20,7 @@ export default function Dashboard() {
   const { lang, t } = useLang()
   const d = t.dashboard
   const slotLabels = { ...d, status: t.status }
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
 
   const [clients, setClients] = useState([])
   const [employees, setEmployees] = useState([])
@@ -79,8 +80,9 @@ export default function Dashboard() {
 
   const fmt = n => '¥' + Number(n || 0).toLocaleString()
   const revenue = clients.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0)
-  const cost = clients.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
+  const cost = clients.reduce((s, c) => s + clientMonthlyCost(c), 0)
   const profit = revenue - cost
+  const costsUnset = clients.length > 0 && clients.every(c => clientMonthlyCost(c) === 0)
 
   const byEmp = {}
   todayJobs.forEach(j => {
@@ -91,16 +93,17 @@ export default function Dashboard() {
   const liveSummary = summarizeStaffStatus(employees, [...todayJobs, ...inProgressJobs], tokyoToday())
 
   const sortedClients = [...clients].sort((a, b) =>
-    (Number(b.monthly_revenue || 0) - Number(b.monthly_cost || 0)) - (Number(a.monthly_revenue || 0) - Number(a.monthly_cost || 0))
+    (Number(b.monthly_revenue || 0) - clientMonthlyCost(b)) - (Number(a.monthly_revenue || 0) - clientMonthlyCost(a))
   )
-  const maxProfit = Math.max(...clients.map(c => Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0)), 1)
+  const maxProfit = Math.max(...clients.map(c => Number(c.monthly_revenue || 0) - clientMonthlyCost(c)), 1)
   const statusColor = s => ({ assigned: '#60a5fa', in_progress: '#fbbf24', completed: '#4ade80', cancelled: 'rgba(255,255,255,0.2)' }[s] || '#60a5fa')
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const daySummaries = useMemo(() => buildDaySummaries(deepProgress.byLocation), [deepProgress])
   const storeRows = useMemo(() => storeProgressRows(deepProgress.byLocation, tokyoToday(), lang), [deepProgress, lang])
   const completedDays = daySummaries.filter(d => d.state === 'done').length
-  const lateDays = daySummaries.filter(d => d.state === 'late').length
+  const missingDays = daySummaries.filter(d => d.state === 'missing').length
+  const lateDays = storeRows.reduce((s, r) => s + (r.late || 0), 0)
   const dayPct = daySummaries.length ? Math.round((completedDays / daySummaries.length) * 100) : 0
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
 
@@ -215,7 +218,7 @@ export default function Dashboard() {
       <div className="dash-metrics">
         {[
           [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
-          [d.netProfit, fmt(profit), 'var(--green)'],
+          [costsUnset ? (d.costsUnset || d.netProfit) : d.netProfit, costsUnset ? '—' : fmt(profit), costsUnset ? 'var(--text3)' : 'var(--green)'],
           [d.activeEmployees, employees.length, 'var(--text)'],
           [d.todayJobs, todayJobs.length, 'var(--text)'],
         ].map(([l, v, c]) => (
@@ -238,7 +241,7 @@ export default function Dashboard() {
           {[
             [d.liveNow, liveSummary.working, '#4ade80'],
             [d.liveIdle, liveSummary.idle, '#60a5fa'],
-            [d.liveFolga, liveSummary.folga, 'var(--text3)'],
+            [d.liveUnscheduled || d.liveFolga, liveSummary.unscheduled, 'var(--text3)'],
           ].map(([label, n, color]) => (
             <div key={label} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
@@ -335,9 +338,9 @@ export default function Dashboard() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
           {[
             [d.serviceDays, `${completedDays}/${daySummaries.length}`, '#4ade80'],
-            [d.lateDays, lateDays, '#f87171'],
+            [d.missingDays || d.missingSchedule, missingDays, '#fbbf24'],
+            [d.lateSlots, lateDays, '#f87171'],
             [d.completed, deepProgress.totals.completed, '#4ade80'],
-            [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#fbbf24'],
             [d.progress, `${dayPct}%`, '#fbbf24'],
           ].map(([l, v, c]) => (
             <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 16px', minWidth: 100 }}>
@@ -439,7 +442,7 @@ export default function Dashboard() {
           <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.profitByClient}</div>
           {sortedClients.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{d.noClients}</div>}
           {sortedClients.map(c => {
-            const p = Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0)
+            const p = Number(c.monthly_revenue || 0) - clientMonthlyCost(c)
             const pct = Math.round(p / maxProfit * 100)
             const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? '#EF9F27' : 'var(--red)'
             return (

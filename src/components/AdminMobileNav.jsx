@@ -5,9 +5,9 @@ import { isAdminMobileTabPath } from '../lib/adminView'
 
 export const ADMIN_MOBILE_TABS = [
   { to: '/', key: 'dashboard', icon: Icons.dashboard, end: true },
+  { to: '/live', key: 'liveTrack', icon: Icons.users },
   { to: '/jobs', key: 'jobs', icon: Icons.list },
-  { to: '/reports', key: 'reports', icon: Icons.file },
-  { to: '/ai', key: 'ai', icon: Icons.sparkle },
+  { to: '/salary-periods', key: 'payrollClose', icon: Icons.calc },
 ]
 
 export default function AdminMobileNav({ onMore, moreOpen }) {
@@ -26,7 +26,7 @@ export default function AdminMobileNav({ onMore, moreOpen }) {
           className={({ isActive }) => `admin-tab${isActive ? ' on' : ''}`}
         >
           <Icon />
-          <span>{key === 'ai' ? (s.aiTab || s.ai) : s[key]}</span>
+          <span>{s[key]}</span>
         </NavLink>
       ))}
       <button

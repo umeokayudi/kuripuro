@@ -10,11 +10,10 @@ const groups = [
     key: 'navOps',
     items: [
       { to: '/', key: 'dashboard', icon: Icons.dashboard },
-      { to: '/jobs', key: 'jobs', icon: Icons.list },
-      { to: '/schedule', key: 'schedule', icon: Icons.list },
       { to: '/live', key: 'liveTrack', icon: Icons.users },
-      { to: '/reports', key: 'reports', icon: Icons.file },
-      { to: '/ai', key: 'ai', icon: Icons.sparkle },
+      { to: '/jobs', key: 'jobs', icon: Icons.list },
+      { to: '/salary-periods', key: 'payrollClose', icon: Icons.calc },
+      { to: '/schedule', key: 'schedule', icon: Icons.list },
     ],
   },
   {
@@ -31,7 +30,6 @@ const groups = [
     key: 'navPayroll',
     items: [
       { to: '/salary', key: 'salary', icon: Icons.calc },
-      { to: '/salary-periods', key: 'payrollClose', icon: Icons.calc },
       { to: '/payments', key: 'payments', icon: Icons.calc },
       { to: '/deductions', key: 'deductions', icon: Icons.calc },
       { to: '/salary-complaints', key: 'salaryIssues', icon: Icons.list },
@@ -43,6 +41,8 @@ const groups = [
       { to: '/clients', key: 'clients', icon: Icons.building },
       { to: '/contracts', key: 'contracts', icon: Icons.file },
       { to: '/client-feedback', key: 'clientFeedback', icon: Icons.receipt },
+      { to: '/reports', key: 'reports', icon: Icons.file },
+      { to: '/ai', key: 'ai', icon: Icons.sparkle },
       { to: '/adminchat', key: 'chat', icon: Icons.users },
     ],
   },

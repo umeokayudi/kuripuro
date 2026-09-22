@@ -24,7 +24,7 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
   filterClientVisits, monthCompletedCount, visibleInvoices, unpaidInvoices,
-  filterInvoices, lastDeepVisit, itemsForInvoice, clientLocations,
+  filterInvoices, lastDeepVisit, itemsForInvoice, clientLocations, isUnpaidInvoiceStatus,
 } from '../lib/clientPortal'
 import {
   extrasForLocation, extraLabel, extraHint, extraTimeLabel, EXTRA_TIMES, mergeExtraNotes,
@@ -86,7 +86,7 @@ export default function ClientPortal() {
   const { user, logout, updateSession } = useAuth()
   const { lang, switchLang, t: tr } = useLang()
   const c = tr?.client
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
 
   const [desktopMode, setDesktopMode] = useState(() => {
     const saved = localStorage.getItem('cp_view_mode')
@@ -539,8 +539,6 @@ export default function ClientPortal() {
     })
     if (error) return toast.error(error.message)
     toast.success(c.invoicePaidSent)
-    setRequestTab('history')
-    setTab('requests')
     loadAll({ silent: true })
   }
 
@@ -584,14 +582,18 @@ export default function ClientPortal() {
   const complaintCat = (k) => ({ quality: c.catQuality, missed: c.catMissed, damage: c.catDamage, late: c.catLate, other: c.catOther }[k] || k)
   const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
-  const navItems = [
+  const primaryNav = [
     { key: 'home', icon: '🏠', label: c.home },
     { key: 'visits', icon: '📋', label: c.visits },
+    { key: 'bills', icon: '💴', label: c.invoices, badge: billsDue.length },
     { key: 'chat', icon: '💬', label: c.chat, badge: unreadMsgs },
+    { key: 'requests', icon: '✨', label: c.requests },
+  ]
+  const extraNav = [
     { key: 'complaints', icon: '⚠️', label: c.complaints },
-    { key: 'requests', icon: '📝', label: c.requests },
     { key: 'settings', icon: '⚙️', label: c.settings },
   ]
+  const navItems = desktopMode ? [...primaryNav, ...extraNav] : primaryNav
 
   const avgRating = ratings.length
     ? (ratings.reduce((s, r) => s + r.stars, 0) / ratings.length).toFixed(1)
@@ -755,6 +757,12 @@ export default function ClientPortal() {
               )}
               <div className="cp-header-actions">
                 <LanguageToggle variant="dark" compact={!desktopMode} />
+                {!desktopMode && (
+                  <>
+                    <button type="button" className={`cp-view-toggle${tab === 'complaints' ? ' on' : ''}`} onClick={() => setTab('complaints')} aria-label={c.complaints}>⚠️</button>
+                    <button type="button" className={`cp-view-toggle${tab === 'settings' ? ' on' : ''}`} onClick={() => setTab('settings')} aria-label={c.settings}>⚙️</button>
+                  </>
+                )}
                 {desktopMode && (
                   <button type="button" className="cp-view-toggle" onClick={toggleView}>
                     📱 {c.mobileView}
@@ -796,7 +804,7 @@ export default function ClientPortal() {
                     <b>{unratedCount}</b>
                     <small>{c.unratedVisits}</small>
                   </button>
-                  <button type="button" className="cp-quick" onClick={() => { setTab('requests'); setRequestTab('bills') }}>
+                  <button type="button" className="cp-quick" onClick={() => setTab('bills')}>
                     <span>💴</span>
                     <b>{billsDue.length}</b>
                     <small>{c.invoicesDue}</small>
@@ -1133,12 +1141,65 @@ export default function ClientPortal() {
               </>
             )}
 
+            {!loading && tab === 'bills' && (
+              <>
+                <div className="cp-section-title">{c.invoices}</div>
+                <p className="cp-muted-copy">{c.invoicesHint}</p>
+                <div className="cp-period-pills" style={{ marginBottom: 12 }}>
+                  {[
+                    ['all', c.invoiceAll],
+                    ['sent', c.invoiceSent],
+                    ['paid', c.invoicePaid],
+                  ].map(([key, label]) => (
+                    <button key={key} type="button" className={`cp-period-pill${invoiceFilter === key ? ' active' : ''}`} onClick={() => setInvoiceFilter(key)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {shownInvoices.length === 0 ? <PortalEmpty icon="💴" text={c.noInvoices} /> : shownInvoices.map(inv => {
+                  const lines = itemsForInvoice(invoiceItems, inv.id)
+                  return (
+                  <div key={inv.id} className="cp-card">
+                    <div className="cp-card-top">
+                      <div>
+                        <div className="cp-card-loc">{inv.period_start && inv.period_end ? `${inv.period_start} – ${inv.period_end}` : inv.issue_date}</div>
+                        <div className="cp-card-date">{c.invoiceIssued}: {inv.issue_date || '—'}{inv.due_date ? ` · ${c.invoiceDue}: ${inv.due_date}` : ''}</div>
+                      </div>
+                      <span className={`cp-badge ${inv.status === 'paid' ? 'done' : 'progress'}`}>
+                        {inv.status === 'paid' ? c.invoicePaid : c.invoiceSent}
+                      </span>
+                    </div>
+                    <div className="cp-extra-price" style={{ margin: '8px 0' }}>{formatYen(inv.total)}</div>
+                    {lines.length > 0 && (
+                      <ul className="cp-invoice-lines">
+                        {lines.map(it => (
+                          <li key={it.id || `${it.description}-${it.total}`}>
+                            <span>{it.description}</span>
+                            <b>{formatYen(it.total)}</b>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {inv.notes && (
+                      <div className="cp-admin-reply">
+                        <div className="cp-label">{c.invoiceNotes}</div>
+                        <div>{inv.notes}</div>
+                      </div>
+                    )}
+                    {isUnpaidInvoiceStatus(inv.status) && (
+                      <button type="button" className="cp-btn cp-btn-gold" onClick={() => markInvoicePaid(inv)}>{c.markInvoicePaid}</button>
+                    )}
+                  </div>
+                  )
+                })}
+              </>
+            )}
+
             {!loading && tab === 'requests' && (
               <>
                 <div className="cp-pills">
                   <button type="button" className={`cp-pill${requestTab === 'extras' ? ' active-green' : ''}`} onClick={() => setRequestTab('extras')}>✨ {c.bookExtra}</button>
                   <button type="button" className={`cp-pill${requestTab === 'custom' ? ' active-green' : ''}`} onClick={() => setRequestTab('custom')}>📝 {c.newRequest}</button>
-                  <button type="button" className={`cp-pill${requestTab === 'bills' ? ' active-green' : ''}`} onClick={() => setRequestTab('bills')}>💴 {c.invoices}{billsDue.length ? ` (${billsDue.length})` : ''}</button>
                   <button type="button" className={`cp-pill${requestTab === 'history' ? ' active-green' : ''}`} onClick={() => setRequestTab('history')}>{c.requestHistory}</button>
                 </div>
 
@@ -1221,59 +1282,6 @@ export default function ClientPortal() {
                     </div>
                     <button type="button" className="cp-btn cp-btn-gold" onClick={submitRequest}>{c.submitRequest}</button>
                   </div>
-                )}
-
-                {requestTab === 'bills' && (
-                  <>
-                    <p className="cp-muted-copy">{c.invoicesHint}</p>
-                    <div className="cp-period-pills" style={{ marginBottom: 12 }}>
-                      {[
-                        ['all', c.invoiceAll],
-                        ['sent', c.invoiceSent],
-                        ['paid', c.invoicePaid],
-                      ].map(([key, label]) => (
-                        <button key={key} type="button" className={`cp-period-pill${invoiceFilter === key ? ' active' : ''}`} onClick={() => setInvoiceFilter(key)}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    {shownInvoices.length === 0 ? <PortalEmpty icon="💴" text={c.noInvoices} /> : shownInvoices.map(inv => {
-                      const lines = itemsForInvoice(invoiceItems, inv.id)
-                      return (
-                      <div key={inv.id} className="cp-card">
-                        <div className="cp-card-top">
-                          <div>
-                            <div className="cp-card-loc">{inv.period_start && inv.period_end ? `${inv.period_start} – ${inv.period_end}` : inv.issue_date}</div>
-                            <div className="cp-card-date">{c.invoiceIssued}: {inv.issue_date || '—'}{inv.due_date ? ` · ${c.invoiceDue}: ${inv.due_date}` : ''}</div>
-                          </div>
-                          <span className={`cp-badge ${inv.status === 'paid' ? 'done' : 'progress'}`}>
-                            {inv.status === 'paid' ? c.invoicePaid : c.invoiceSent}
-                          </span>
-                        </div>
-                        <div className="cp-extra-price" style={{ margin: '8px 0' }}>{formatYen(inv.total)}</div>
-                        {lines.length > 0 && (
-                          <ul className="cp-invoice-lines">
-                            {lines.map(it => (
-                              <li key={it.id || `${it.description}-${it.total}`}>
-                                <span>{it.description}</span>
-                                <b>{formatYen(it.total)}</b>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        {inv.notes && (
-                          <div className="cp-admin-reply">
-                            <div className="cp-label">{c.invoiceNotes}</div>
-                            <div>{inv.notes}</div>
-                          </div>
-                        )}
-                        {inv.status === 'sent' && (
-                          <button type="button" className="cp-btn cp-btn-gold" onClick={() => markInvoicePaid(inv)}>{c.markInvoicePaid}</button>
-                        )}
-                      </div>
-                      )
-                    })}
-                  </>
                 )}
 
                 {requestTab === 'history' && (
@@ -1480,9 +1488,11 @@ function DeepCleanProgressCard({
     : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   const slotLabels = {
     slotMissing: labels.deepCleanMissing,
+    slotUnscheduled: labels.deepCleanUnscheduled || labels.deepCleanMissing,
     slotDone: labels.deepCleanDone,
     slotProgress: labels.deepCleanPending,
     slotPending: labels.deepCleanPending,
+    slotLate: labels.deepCleanLate,
   }
   const serviceDates = daySummaries.map(d => d.date)
 
@@ -1584,6 +1594,9 @@ function DeepCleanProgressCard({
           {fill(labels.deepCleanOfDays, { done: completedDays, expected: expectedDays })}
         </div>
         <div className="cp-deep-headline-pct">{fill(labels.deepCleanPctDone, { pct: donePct })}</div>
+        {missingDays > 0 && (
+          <div className="cp-deep-headline-pct late">{labels.deepCleanMissing} {missingDays}</div>
+        )}
         {lateDays > 0 && (
           <div className="cp-deep-headline-pct late">{labels.deepCleanLate} {lateDays}</div>
         )}

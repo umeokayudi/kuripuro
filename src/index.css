@@ -448,7 +448,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
 .login-lang { position: absolute; top: 20px; right: 20px; }
 .login-lang-row { display: flex; justify-content: center; margin-bottom: 18px; }
 .kp-lang { min-height: 34px; }
-.kp-lang-btn { min-width: 44px; }
+.kp-lang-btn { min-width: 36px; }
 .login-card {
   width: 100%; max-width: 400px;
   background: rgba(255,255,255,0.045);
@@ -596,7 +596,7 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   max-width: 100%;
 }
 .emp-shell .kp-lang { transform: scale(0.92); transform-origin: right center; }
-.emp-shell .kp-lang-btn { padding: 4px 8px; min-width: 36px; font-size: 10px; }
+.emp-shell .kp-lang-btn { padding: 4px 6px; min-width: 28px; font-size: 10px; }
 .emp-shell .jp-figure-label { color: rgba(255,255,255,0.35); }
 .emp-shell .jp-frame { border-color: rgba(255,255,255,0.12); max-height: 280px; }
 .emp-shell .photo-lightbox { z-index: 1300; }

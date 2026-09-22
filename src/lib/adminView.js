@@ -33,8 +33,8 @@ export function isAdminPhoneStage(desktopMode, width) {
 export function isAdminMobileTabPath(pathname) {
   const path = String(pathname || '')
   if (path === '/') return true
+  if (path === '/live' || path.startsWith('/live/')) return true
   if (path === '/jobs' || path.startsWith('/jobs/')) return true
-  if (path === '/reports') return true
-  if (path === '/ai') return true
+  if (path === '/salary-periods' || path.startsWith('/salary-periods/')) return true
   return false
 }

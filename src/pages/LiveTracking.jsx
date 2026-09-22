@@ -146,7 +146,7 @@ export default function LiveTracking() {
         {[
           [L.workingNow, summary.working, '#4ade80'],
           [L.onShift, summary.idle, '#60a5fa'],
-          [L.folga, summary.folga, 'var(--text3)'],
+          [L.unscheduled || L.folga, summary.unscheduled, 'var(--text3)'],
         ].map(([label, n, color]) => (
           <div key={label} style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
             <div style={{fontSize:11,color:'var(--text3)'}}>{label}</div>
@@ -214,11 +214,12 @@ export default function LiveTracking() {
           const focusJob = activeJob || liveFocusJob(todayJobs)
           const liveM = focusJob ? liveDistanceToJob(emp, focusJob, locations) : null
           const liveOk = fenceOk(liveM)
-          const statusLabel = workKey === 'working' ? L.workingNow : workKey === 'idle' ? L.onShift : L.folga
+          const offShift = workKey === 'unscheduled' || workKey === 'folga'
+          const statusLabel = workKey === 'working' ? L.workingNow : workKey === 'idle' ? L.onShift : (L.unscheduled || L.folga)
           const statusColorLive = workKey === 'working' ? '#4ade80' : workKey === 'idle' ? '#60a5fa' : 'rgba(255,255,255,0.35)'
           return (
             <div key={emp.id} onClick={()=>setSelected(selected===emp.id?null:emp.id)}
-              style={{background:'var(--surface)',border:`1px solid ${lateMin>=15?'rgba(248,113,113,0.4)':workKey==='working'?'rgba(74,222,128,0.35)':workKey==='folga'?'rgba(255,255,255,0.06)':'var(--border)'}`,borderRadius:14,padding:14,cursor:'pointer',transition:'all 0.2s',opacity:workKey==='folga'?0.78:1}}>
+              style={{background:'var(--surface)',border:`1px solid ${lateMin>=15?'rgba(248,113,113,0.4)':workKey==='working'?'rgba(74,222,128,0.35)':offShift?'rgba(255,255,255,0.06)':'var(--border)'}`,borderRadius:14,padding:14,cursor:'pointer',transition:'all 0.2s',opacity:offShift?0.78:1}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
                 <div>
                   <div style={{fontWeight:600,fontSize:14,display:'flex',alignItems:'center',gap:6}}>
@@ -237,7 +238,7 @@ export default function LiveTracking() {
                 </div>
               </div>
 
-              {workKey==='folga' && (
+              {offShift && (
                 <div style={{fontSize:11,color:'var(--text3)'}}>{L.noJobsToday}</div>
               )}
 
@@ -259,7 +260,7 @@ export default function LiveTracking() {
                 </div>
               )}
 
-              {!activeJob && focusJob && workKey !== 'folga' && (
+              {!activeJob && focusJob && !offShift && (
                 <div style={{background:liveOk===false?'rgba(248,113,113,0.08)':'rgba(96,165,250,0.08)',border:`1px solid ${liveOk===false?'rgba(248,113,113,0.25)':'rgba(96,165,250,0.2)'}`,borderRadius:8,padding:'8px 10px',marginBottom:8}}>
                   <div style={{fontSize:11,fontWeight:600,color:liveOk===false?'#f87171':'#60a5fa',marginBottom:2}}>○ {focusJob.title.replace(/ — .*/,'').substring(0,28)}</div>
                   {liveM != null && (

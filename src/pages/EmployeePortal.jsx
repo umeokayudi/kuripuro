@@ -404,6 +404,9 @@ export default function EmployeePortal() {
     if (check?.reason === 'too_far') {
       return fill(e.gpsTooFar, { n: Math.round(check.distanceM || 0), max: GEOFENCE_M })
     }
+    if (check?.reason === 'no_pin') {
+      return e.gpsNoPin || e.gpsRequired
+    }
     return e.gpsRequired
   }
 
@@ -1185,7 +1188,7 @@ export default function EmployeePortal() {
       <div className="emp-header">
         <div className="emp-header-row">
           <div className="emp-header-left">
-            <div className="emp-brand">KuriPuro by JBM · v33</div>
+            <div className="emp-brand">KuriPuro by JBM</div>
             <div className="emp-name" style={{fontSize:18,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1.1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <EmpLiveDate lang={lang} />
           </div>
@@ -1376,7 +1379,7 @@ export default function EmployeePortal() {
                 </div>
               ))}
             </div>
-            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&!(empData.salary_type==='fixed'&&Number(empData.fixed_salary||0)===0)&&(
+            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&(
               <div style={{background:'rgba(251,191,36,0.08)',border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,padding:'10px 12px',marginBottom:12,fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>
                 ⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}
               </div>
