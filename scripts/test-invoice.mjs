@@ -112,6 +112,7 @@ function testPrint() {
   assert(!html.includes('<script>x</script>'), 'escaped name')
   assert(html.includes('&lt;script&gt;'), 'escaped')
   assert(html.includes(APP_VERSION), 'version in print')
+  assert(html.includes('〒204-0012 東京都清瀬市中清戸4-907-17'), 'kiyose fallback address')
   assert(cashflowDescription('KP-202610-001', 'Kodama').includes('請求書 KP-202610-001'), 'cashflow desc')
 }
 
