@@ -160,7 +160,7 @@ function AppContent() {
         onClose={() => setMenuOpen(false)}
         onUseDesktop={() => { setView('desktop'); setMenuOpen(false) }}
       />
-      <AIFloatingWidget mode="admin" lift={mobile} />
+      {location.pathname !== '/ai' && <AIFloatingWidget mode="admin" lift={mobile} />}
       <div className="main">
         <header className="topbar">
           {mobile && (

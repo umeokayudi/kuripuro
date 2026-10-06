@@ -234,7 +234,6 @@ export default function SalespersonPortal() {
 
         {tab === 'ai' && (
           <div className="ai-workspace" style={{ minHeight: '70dvh', padding: 0, background: 'transparent' }}>
-            <p className="ai-workspace-hint" style={{ color: 'rgba(255,255,255,0.55)' }}>{sp.aiHint}</p>
             <AIChatPanel
               mode="salesperson"
               employeeId={user.id}

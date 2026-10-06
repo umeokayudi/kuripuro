@@ -4,10 +4,11 @@ import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
 import { loadChatHistory, saveChatHistory, clearChatHistory } from '../lib/aiChatHistory'
 import { useLang } from '../hooks/useLang'
+import { fill } from '../i18n/translations'
 
 function formatText(text) {
   if (!text) return null
-  return text.split('\n').map((line, i) => {
+  return String(text).split('\n').map((line, i) => {
     const isBullet = /^\s*[-*•]\s+/.test(line)
     const content = line.replace(/^\s*[-*•]\s+/, '')
     const parts = content.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
@@ -15,12 +16,20 @@ function formatText(text) {
       return part
     })
     return (
-      <div key={i} style={{ display: 'flex', gap: isBullet ? 6 : 0, marginBottom: line.trim() ? 2 : 8 }}>
-        {isBullet && <span style={{ opacity: 0.5 }}>•</span>}
+      <div key={i} className={`ai-gpt-line${isBullet ? ' is-bullet' : ''}${line.trim() ? '' : ' is-gap'}`}>
+        {isBullet && <span className="ai-gpt-bullet">•</span>}
         <span>{parts}</span>
       </div>
     )
   })
+}
+
+function SendIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 19V5M12 5l-7 7M12 5l7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
 }
 
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, workspace = false, suggestions = [] }) {
@@ -45,8 +54,14 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const [voiceName, setVoiceName] = useState(getSavedVoiceName())
   const voiceRef = useRef(null)
   const bottomRef = useRef(null)
+  const taRef = useRef(null)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
+
+  const started = messages.some(m => m.role === 'user')
+  const title = mode === 'employee' ? ai.employeeTitle : mode === 'salesperson' ? ai.salesTitle : ai.adminTitle
+  const placeholder = mode === 'employee' ? ai.placeholderEmployee : mode === 'salesperson' ? ai.placeholderSales : ai.placeholderAdmin
+  const voiceOptions = voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en'))
 
   useEffect(() => {
     loadVoices().then(v => {
@@ -61,13 +76,20 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     if (v) { voiceRef.current = v; saveVoiceName(v.name) }
   }, [voiceName, voices])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
   useEffect(() => {
     saveChatHistory(mode, employeeId, messages)
   }, [messages, mode, employeeId])
 
   const speakReply = (text) => speakText(text, { voice: voiceRef.current })
+
+  const resizeTa = () => {
+    const el = taRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }
 
   const callAPI = async (allMessages) => {
     const payload = allMessages.slice(-24)
@@ -108,13 +130,15 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     recognition.start()
   }
 
-  const send = async () => {
-    if ((!input.trim() && !photoB64) || loading) return
-    const userMsg = { role: 'user', content: input.trim() || (mode === 'salesperson' ? (ai.meishiPrompt || 'Read this meishi') : 'photo'), image: photoB64 || undefined }
+  const send = async (preset) => {
+    const text = (preset ?? input).trim()
+    if ((!text && !photoB64) || loading) return
+    const userMsg = { role: 'user', content: text || (mode === 'salesperson' ? (ai.meishiPrompt || 'Read this meishi') : 'photo'), image: photoB64 || undefined }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
     setInput('')
     setPhotoB64('')
+    if (taRef.current) taRef.current.style.height = 'auto'
     setLoading(true)
     try {
       const data = await callAPI(newMessages)
@@ -130,114 +154,121 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const clear = () => {
     clearChatHistory(mode, employeeId)
     setMessages(welcome)
+    setInput('')
   }
 
-  const userBubble = dark ? 'linear-gradient(135deg,#1a3a5c,#0f2540)' : 'var(--navy)'
-  const botBubble = dark ? 'rgba(255,255,255,0.07)' : '#fff'
-  const botColor = dark ? '#fff' : 'var(--text)'
-  const botBorder = dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)'
+  const cls = [
+    'ai-gpt',
+    compact ? 'ai-gpt-compact' : '',
+    workspace ? 'ai-gpt-workspace' : '',
+    dark ? 'ai-gpt-dark' : '',
+  ].filter(Boolean).join(' ')
 
   return (
-    <div className={workspace ? 'ai-panel-workspace' : undefined} style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : workspace ? '100%' : 'calc(100dvh - 140px)', minHeight: 0, flex: workspace ? 1 : undefined }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: compact ? 8 : 12, padding: compact ? '8px 12px 0' : 0 }}>
-        <div style={{ fontSize: compact ? 12 : 14, fontWeight: 700, color: dark ? 'rgba(255,255,255,0.7)' : 'var(--text2)' }}>
-          {mode === 'employee' ? `🤖 ${ai.employeeTitle}` : mode === 'salesperson' ? `🤖 ${ai.salesTitle}` : `✨ ${ai.adminTitle}`}
+    <div className={cls}>
+      <header className="ai-gpt-top">
+        <div className="ai-gpt-brand">
+          <span className="ai-gpt-mark">K</span>
+          <span className="ai-gpt-name">{title}</span>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {workspace && (
-            <button type="button" onClick={clear} className="btn btn-sm">{ai.clearChat}</button>
-          )}
-          {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).length > 0 && (
-            <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title="AI voice"
-              style={{ fontSize: 11, padding: '5px 8px', borderRadius: 8, border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit', maxWidth: 130 }}>
-              {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).map(v => (
+        <div className="ai-gpt-tools">
+          <button type="button" className="ai-gpt-icon-btn" onClick={clear} title={ai.clearChat}>{ai.clearChat}</button>
+          {voiceOptions.length > 0 && (
+            <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title={ai.voiceLabel} className="ai-gpt-voice">
+              {voiceOptions.map(v => (
                 <option key={v.name} value={v.name}>{v.name.split(' ')[0]}</option>
               ))}
             </select>
           )}
-          <button onClick={() => setVoiceReplies(v => !v)} title="Ler respostas em voz alta"
-            style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: voiceReplies ? '#c19c56' : dark ? 'rgba(255,255,255,0.06)' : '#fff', color: voiceReplies ? '#0a1929' : dark ? '#fff' : 'var(--text)', borderRadius: 10, padding: '5px 9px', cursor: 'pointer', fontSize: 12 }}>
+          <button type="button" className={`ai-gpt-icon-btn${voiceReplies ? ' on' : ''}`} onClick={() => setVoiceReplies(v => !v)} title={ai.readAloud}>
             {voiceReplies ? '🔊' : '🔇'}
           </button>
-          <button onClick={() => setCallOpen(true)} title={ai.call}
-            style={{ border: 'none', background: 'linear-gradient(135deg,#4ade80,#22c55e)', color: '#0a1929', borderRadius: 10, padding: '5px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-            📞 {ai.call}
-          </button>
+          <button type="button" className="ai-gpt-call" onClick={() => setCallOpen(true)} title={ai.call}>☎ {ai.call}</button>
         </div>
-      </div>
+      </header>
 
       {callOpen && <AICallMode onClose={() => setCallOpen(false)} sendToAI={sendFromCall} />}
 
-      {workspace && suggestions.length > 0 && (
-        <div className="ai-suggest">
-          {suggestions.map(text => (
-            <button key={text} type="button" className="ai-chip" onClick={() => setInput(text)}>{text}</button>
-          ))}
-        </div>
-      )}
-
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: compact ? '0 12px' : '0 4px 0 0' }}>
-        {messages.map((m, i) => (
-          <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%' }}>
-            <div style={{
-              background: m.role === 'user' ? userBubble : botBubble,
-              color: m.role === 'user' ? '#fff' : botColor,
-              borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-              padding: '10px 14px', fontSize: 13.5, lineHeight: 1.5,
-              border: m.role === 'user' ? 'none' : botBorder,
-            }}>
-              {formatText(m.content)}
-              {m.toolLog?.length > 0 && (
-                <details style={{ marginTop: 6 }}>
-                  <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {m.toolLog.length} consulta(s)</summary>
-                  {m.toolLog.map((t, j) => (
-                    <div key={j} style={{ fontSize: 10, color: t.ok ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
-                      {t.ok ? '✓' : '✗'} {t.name}
-                    </div>
+      <div className="ai-gpt-scroll">
+        <div className="ai-gpt-col">
+          {!started && (
+            <div className="ai-gpt-hero">
+              <div className="ai-gpt-hero-mark">K</div>
+              <h1>{ai.greeting}</h1>
+              {suggestions.length > 0 && (
+                <div className="ai-gpt-cards">
+                  {suggestions.map(text => (
+                    <button key={text} type="button" className="ai-gpt-card" onClick={() => send(text)}>{text}</button>
                   ))}
-                </details>
+                </div>
               )}
             </div>
-          </div>
-        ))}
-        {loading && <div style={{ alignSelf: 'flex-start', fontSize: 12, opacity: 0.5, padding: '8px 12px' }}>{ai.thinking}</div>}
-        <div ref={bottomRef} />
+          )}
+
+          {started && messages.filter((m, i) => !(i === 0 && m.role === 'assistant')).map((m, i) => (
+            <div key={i} className={`ai-gpt-row ${m.role === 'user' ? 'is-user' : 'is-bot'}`}>
+              {m.role !== 'user' && <div className="ai-gpt-avatar" aria-hidden="true">K</div>}
+              <div className="ai-gpt-bubble">
+                {formatText(m.content)}
+                {m.toolLog?.length > 0 && (
+                  <details className="ai-gpt-tools-log">
+                    <summary>{fill(ai.toolQueries || '{n}', { n: m.toolLog.length })}</summary>
+                    {m.toolLog.map((log, j) => (
+                      <div key={j} className={log.ok ? 'ok' : 'bad'}>{log.ok ? '✓' : '✗'} {log.name}</div>
+                    ))}
+                  </details>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {loading && (
+            <div className="ai-gpt-row is-bot">
+              <div className="ai-gpt-avatar" aria-hidden="true">K</div>
+              <div className="ai-gpt-bubble">
+                <div className="ai-gpt-dots" aria-label={ai.thinking}>
+                  <span /><span /><span />
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 10, borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`, padding: compact ? 12 : '12px 0 0' }}>
-        <button onClick={startVoiceInput} title="Speak"
-          style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: recording ? 'rgba(248,113,113,0.2)' : dark ? 'rgba(255,255,255,0.06)' : '#fff', borderRadius: 12, width: 40, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 16 }}>
-          {recording ? '🔴' : '🎤'}
-        </button>
-        {mode === 'salesperson' && (
-          <>
-            <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={async (e) => {
-              const file = e.target.files?.[0]
-              if (!file) return
-              const { prepareImageForUpload } = await import('../lib/imageUpload')
-              const prepared = await prepareImageForUpload(file)
-              const buf = await prepared.arrayBuffer()
-              const bytes = new Uint8Array(buf)
-              let binary = ''
-              for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-              setPhotoB64(btoa(binary))
-            }} />
-            <button type="button" onClick={() => photoRef.current?.click()} title={ai.meishi}
-              style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: photoB64 ? '#c19c56' : dark ? 'rgba(255,255,255,0.06)' : '#fff', borderRadius: 12, width: 40, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 16 }}>
-              📷
-            </button>
-          </>
-        )}
-        <textarea value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={mode === 'employee' ? ai.placeholderEmployee : mode === 'salesperson' ? ai.placeholderSales : ai.placeholderAdmin}
-          rows={compact ? 1 : 2}
-          style={{ flex: 1, resize: 'none', borderRadius: 12, border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'var(--border)'}`, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit' }}
-        />
-        <button onClick={send} disabled={loading}
-          style={{ alignSelf: 'flex-end', padding: '10px 16px', borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
-          {ai.send}
-        </button>
+      <div className="ai-gpt-dock">
+        <div className="ai-gpt-box">
+          <button type="button" className={`ai-gpt-mic${recording ? ' rec' : ''}`} onClick={startVoiceInput} title={ai.speak}>
+            {recording ? '●' : '🎤'}
+          </button>
+          {mode === 'salesperson' && (
+            <>
+              <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                const { prepareImageForUpload } = await import('../lib/imageUpload')
+                const prepared = await prepareImageForUpload(file)
+                const buf = await prepared.arrayBuffer()
+                const bytes = new Uint8Array(buf)
+                let binary = ''
+                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+                setPhotoB64(btoa(binary))
+              }} />
+              <button type="button" className={`ai-gpt-mic${photoB64 ? ' on' : ''}`} onClick={() => photoRef.current?.click()} title={ai.meishi}>📷</button>
+            </>
+          )}
+          <textarea
+            ref={taRef}
+            value={input}
+            onChange={e => { setInput(e.target.value); resizeTa() }}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            placeholder={placeholder}
+            rows={1}
+          />
+          <button type="button" className="ai-gpt-send" onClick={() => send()} disabled={loading || (!input.trim() && !photoB64)} title={ai.send}>
+            <SendIcon />
+          </button>
+        </div>
       </div>
     </div>
   )

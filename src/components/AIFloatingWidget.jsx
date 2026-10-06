@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import AIChatPanel from './AIChatPanel'
+import { useLang } from '../hooks/useLang'
 
 const BTN = 56
 const PANEL_W = 380
@@ -15,6 +16,8 @@ function loadPos() {
 }
 
 export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false, lift = false }) {
+  const { t } = useLang()
+  const title = t.ai?.widgetTitle || 'KuriPuro AI'
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(loadPos)
   const drag = useRef({ active: false, moved: false, sx: 0, sy: 0, sl: 0, st: 0 })
@@ -129,7 +132,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
           letterSpacing: open ? 0 : 0.5,
           fontFamily: 'inherit',
         }}
-        title={mode === 'employee' ? 'Assistente IA — arraste para mover' : 'Assistente Admin IA — arraste para mover'}
+        title={title}
       >
         {open ? '✕' : 'AI'}
       </button>
