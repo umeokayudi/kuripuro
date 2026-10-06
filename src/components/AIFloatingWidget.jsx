@@ -52,7 +52,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
       maxWidth: 'calc(100vw - 24px)',
       height: PANEL_H,
       maxHeight: 'calc(100dvh - 24px)',
-      background: dark ? '#0d1f35' : 'var(--bg, #f4f6f9)',
+      background: dark ? '#0d1f35' : '#f7f8fb',
       borderRadius: 20,
       boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
       border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)',
