@@ -13,7 +13,6 @@ import {
   quoteTotals,
   quoteWritePayload,
 } from '../src/lib/sales.js'
-import { QUOTE_LOGO_PATH } from '../src/lib/quoteIssuer.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -72,7 +71,7 @@ function testQuoteNumberAndPrint() {
     tax_amount: 1000,
     total: 11000,
     status: 'accepted',
-  }, [{ description: 'Daily', quantity: 1, unit_price: 10000, total: 10000 }], { logoUrl: '/kuripuro-logo.jpg' })
+  }, [{ description: 'Daily', quantity: 1, unit_price: 10000, total: 10000 }])
   assert(html.includes('見積書'), 'title')
   assert(html.includes('成約'), 'accepted stamp')
   assert(html.includes('KPQ-202610-001'), 'number')
@@ -88,7 +87,6 @@ function testQuoteNumberAndPrint() {
   assert(!html.includes('ご要望'), 'no needs label')
   assert(html.includes('brand-name'), 'styled header')
   assert(html.includes('issuer-card'), 'issuer card')
-  assert(html.includes('/kuripuro-logo.jpg'), 'logo')
 }
 
 function testEditableAndPayload() {
@@ -121,7 +119,6 @@ function testSqlFile() {
   assert(SALES_SETUP_STEPS.length === 3, 'three steps')
   assert(SALES_CRM_SQL.includes('sales_touchpoints'), 'crm table')
   assert(SALES_CRM_SQL.includes('interest'), 'interest column')
-  assert(QUOTE_LOGO_PATH === '/kuripuro-logo.jpg', 'logo path')
 }
 
 function testI18n() {

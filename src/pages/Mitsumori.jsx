@@ -6,7 +6,7 @@ import { useLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { APP_VERSION } from '../lib/appVersion'
 import { lineTotal } from '../lib/invoice'
-import { QUOTE_ISSUER, quoteLogoUrl } from '../lib/quoteIssuer'
+import { QUOTE_ISSUER } from '../lib/quoteIssuer'
 import {
   buildMitsumoriPrintHtml,
   defaultValidUntil,
@@ -290,10 +290,7 @@ export default function Mitsumori() {
     if (error) return toast.error(error.message)
     const w = window.open('', '_blank')
     if (!w) return toast.error(s.popupBlocked)
-    w.document.write(buildMitsumoriPrintHtml(row, data || [], {
-      ...QUOTE_ISSUER,
-      logoUrl: quoteLogoUrl(window.location.origin),
-    }))
+    w.document.write(buildMitsumoriPrintHtml(row, data || [], QUOTE_ISSUER))
     w.document.close()
     if (autoPrint) { w.focus(); w.print() }
   }

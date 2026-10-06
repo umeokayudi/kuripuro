@@ -212,7 +212,6 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   const issuerPerson = escapeHtml(issuer.name || QUOTE_ISSUER.name)
   const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
   const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
-  const logo = escapeHtml(issuer.logoUrl || '')
   const rows = (items || []).map(it => `
       <tr>
         <td>${escapeHtml(it.description || '')}</td>
@@ -229,9 +228,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   * { box-sizing: border-box; }
   body{font-family:'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif;color:#152033;max-width:740px;margin:0 auto;padding:8px 12px 24px;background:#fff}
   .head{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:3px solid #0c1c30;padding-bottom:14px;margin-bottom:10px}
-  .brand{display:flex;align-items:center;gap:12px}
-  .brand img{width:72px;height:72px;object-fit:cover;border-radius:14px;border:1px solid #e6d7b0}
-  .brand-name{font-size:22px;font-weight:800;letter-spacing:0.18em;color:#0c1c30}
+  .brand-name{font-size:26px;font-weight:800;letter-spacing:0.28em;color:#0c1c30}
   .doc-title{text-align:right}
   .doc-title h1{font-size:28px;letter-spacing:0.45em;margin:0 0 4px;font-weight:800}
   .doc-title .no{font-size:12px;color:#667}
@@ -257,7 +254,6 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
     ${accepted ? '<div class="stamp">成約</div>' : ''}
     <div class="head">
       <div class="brand">
-        ${logo ? `<img src="${logo}" alt="${issuerCompany}">` : ''}
         <div class="brand-name">${issuerCompany}</div>
       </div>
       <div class="doc-title">
