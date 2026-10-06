@@ -5,7 +5,8 @@ import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySl
 import { useLang, fill } from '../hooks/useLang'
 import { usePeriod } from '../hooks/usePeriod'
 import { tokyoToday } from '../lib/dates'
-import { growthWindows, monthBuckets, sumInvoices, growthPct, previousEqualRange } from '../lib/period'
+import { sumInvoices, growthPct, previousEqualRange } from '../lib/period'
+import RevenueGrowth from '../components/RevenueGrowth'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import { billingPeriodForDate, isMonthEndBillingDay } from '../lib/invoice'
 import toast from 'react-hot-toast'
@@ -32,7 +33,7 @@ export default function Dashboard() {
   const [invoices, setInvoices] = useState([])
   const [invoiceAlert, setInvoiceAlert] = useState(null)
 
-  const { start, end, setPreset, setCustom } = usePeriod()
+  const { start, end } = usePeriod()
 
   const load = async () => {
     const today = tokyoToday()
@@ -102,8 +103,6 @@ export default function Dashboard() {
   const receivedPrev = sumInvoices(invoices, prevRange.start, prevRange.end, ['paid'])
   const billedDelta = growthPct(billed, billedPrev)
   const receivedDelta = growthPct(received, receivedPrev)
-  const windows = useMemo(() => growthWindows(invoices), [invoices])
-  const months = useMemo(() => monthBuckets(invoices, 12), [invoices])
   const p = t.period
 
   const growthClass = n => (n > 0 ? 'growth-up' : n < 0 ? 'growth-down' : '')
@@ -255,63 +254,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{p.tableTitle}</div>
-        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>{fill(p.showing, { start, end })} · {p.clickRow}</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="growth-table">
-            <thead>
-              <tr>
-                <th>{p.window}</th>
-                <th className="num">{p.billed}</th>
-                <th className="num">{p.prev}</th>
-                <th className="num">{p.growthCol}</th>
-                <th className="num">{p.received}</th>
-                <th className="num">{p.growthCol}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {windows.map(w => (
-                <tr key={w.months} className="growth-row" onClick={() => setPreset(`m${w.months}`)}>
-                  <td>{fill(p.monthsN, { n: w.months })}</td>
-                  <td className="num">{fmt(w.billed)}</td>
-                  <td className="num">{fmt(w.billedPrev)}</td>
-                  <td className={`num ${growthClass(w.billedGrowth)}`}>{growthLabel(w.billedGrowth)}</td>
-                  <td className="num">{fmt(w.received)}</td>
-                  <td className={`num ${growthClass(w.receivedGrowth)}`}>{growthLabel(w.receivedGrowth)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={{ fontWeight: 700, fontSize: 14, margin: '18px 0 8px' }}>{p.monthlyTitle}</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="growth-table">
-            <thead>
-              <tr>
-                <th>{p.monthCol}</th>
-                <th className="num">{p.billed}</th>
-                <th className="num">{p.received}</th>
-                <th className="num">{p.mom}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {months.map((m, i) => {
-                const prev = i > 0 ? months[i - 1] : null
-                const mom = prev ? growthPct(m.billed, prev.billed) : 0
-                return (
-                  <tr key={m.ym} className="growth-row" onClick={() => setCustom(m.start, m.end)}>
-                    <td>{m.ym}</td>
-                    <td className="num">{fmt(m.billed)}</td>
-                    <td className="num">{fmt(m.received)}</td>
-                    <td className={`num ${prev ? growthClass(mom) : ''}`}>{prev ? growthLabel(mom) : '—'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <RevenueGrowth invoices={invoices} fmt={fmt} />
 
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>

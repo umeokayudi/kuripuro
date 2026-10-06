@@ -597,7 +597,7 @@ export const kuripuroEn = {
     contractRun: 'Contract run-rate / month',
     monthsN: '{n} months',
     mom: 'MoM',
-    clickRow: 'Click a row to apply that period',
+    clickRow: 'Tap a bar to apply that month',
   },
   dashboard: {
     staleJobs: '{count} stale assigned jobs (past dates)',
@@ -1688,7 +1688,7 @@ export const kuripuroJa = {
     contractRun: '契約月額（目安）',
     monthsN: '{n}か月',
     mom: '前月比',
-    clickRow: '行をタップするとその期間が適用されます',
+    clickRow: '棒をタップするとその月が適用されます',
   },
   dashboard: {
     staleJobs: '期限切れの未完了作業が{count}件あります',
