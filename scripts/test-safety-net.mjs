@@ -31,6 +31,13 @@ function testI18nClientKeys() {
   assert(kuripuroJa.employee?.wrongDeepDay, 'ja employee.wrongDeepDay')
   assert(kuripuroEn.employee.noShiftToday, 'en employee.noShiftToday')
   assert(kuripuroJa.dashboard.noTodayJobs, 'ja dashboard.noTodayJobs')
+  assertKeyParity(kuripuroEn.invoices, kuripuroJa.invoices, 'invoices')
+  assertKeyParity(kuripuroEn.invoices.statuses, kuripuroJa.invoices.statuses, 'invoices.statuses')
+  assertKeyParity(kuripuroEn.sales, kuripuroJa.sales, 'sales')
+  assertKeyParity(kuripuroEn.sales.sources, kuripuroJa.sales.sources, 'sales.sources')
+  assertKeyParity(kuripuroEn.sales.stages, kuripuroJa.sales.stages, 'sales.stages')
+  assertKeyParity(kuripuroEn.sales.quoteStatuses, kuripuroJa.sales.quoteStatuses, 'sales.quoteStatuses')
+  assertKeyParity(kuripuroEn.sidebar, kuripuroJa.sidebar, 'sidebar')
 }
 
 function testEscapeHtml() {

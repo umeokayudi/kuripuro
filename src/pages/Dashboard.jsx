@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
+import { billingPeriodForDate, isMonthEndBillingDay } from '../lib/invoice'
 import toast from 'react-hot-toast'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
@@ -27,12 +28,13 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
   const [lastUpdate, setLastUpdate] = useState(null)
+  const [invoiceAlert, setInvoiceAlert] = useState(null)
 
   const load = async () => {
     const today = tokyoToday()
     const monthStart = progressMonth + '-01'
     const monthEnd = progressMonth + '-31'
-    const [c, e, j, ev, stale, mj, cr] = await Promise.all([
+    const [c, e, j, ev, stale, mj, cr, inv] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
@@ -40,6 +42,7 @@ export default function Dashboard() {
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('faturas').select('id,client_id,period_start,status'),
     ])
     setClients(c.data || [])
     setEmployees(e.data || [])
@@ -48,6 +51,23 @@ export default function Dashboard() {
     setStaleCount(stale.count || 0)
     setMonthJobs(mj.data || [])
     setClientRatings(cr.data || [])
+    if (isMonthEndBillingDay(today)) {
+      const period = billingPeriodForDate(today)
+      let dismissed = false
+      try { dismissed = localStorage.getItem('kp_invoice_month_end_dismiss') === period.start } catch { dismissed = false }
+      const rows = inv.error ? [] : (inv.data || [])
+      const forPeriod = rows.filter(f => f.period_start === period.start && f.status !== 'cancelled')
+      const draftsN = forPeriod.filter(f => f.status === 'draft').length
+      const billed = new Set(forPeriod.map(f => f.client_id))
+      const missing = (c.data || []).filter(cl => Number(cl.monthly_revenue || 0) > 0 && !billed.has(cl.id)).length
+      if (!dismissed && (missing > 0 || draftsN > 0)) {
+        setInvoiceAlert({ missing, drafts: draftsN, period })
+      } else {
+        setInvoiceAlert(null)
+      }
+    } else {
+      setInvoiceAlert(null)
+    }
     setLastUpdate(new Date())
     setLoading(false)
   }
@@ -170,6 +190,27 @@ export default function Dashboard() {
           {clock.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}
         </div>
       </div>
+
+      {invoiceAlert && (
+        <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text2)' }}>
+            ⚠️ {invoiceAlert.missing > 0 ? d.invoiceMonthEnd : fill(d.invoiceMonthEndReview, { n: invoiceAlert.drafts })}
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <Link to="/faturas?tab=auto" className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', textDecoration: 'none' }}>{d.invoiceMonthEndAction}</Link>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => {
+                try { localStorage.setItem('kp_invoice_month_end_dismiss', invoiceAlert.period.start) } catch { /* ignore */ }
+                setInvoiceAlert(null)
+              }}
+            >
+              {d.invoiceMonthEndDismiss}
+            </button>
+          </div>
+        </div>
+      )}
 
       {staleCount > 0 && (
         <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>

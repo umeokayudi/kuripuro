@@ -16,6 +16,7 @@ import {
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
+import { APP_VERSION } from '../lib/appVersion'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import './client-portal.css'
 
@@ -532,7 +533,7 @@ export default function ClientPortal() {
         {desktopMode && (
           <aside className="cp-sidebar">
             <div className="cp-brand">
-              <div className="cp-brand-tag">KuriPuro</div>
+              <div className="cp-brand-tag">KuriPuro · {APP_VERSION}</div>
               <div className="cp-brand-name">{user.client_name || user.name}</div>
               <div className="cp-brand-sub">{user.location_name || c.allLocations}</div>
             </div>
@@ -559,7 +560,7 @@ export default function ClientPortal() {
           <header className="cp-header">
             <div className="cp-header-row">
               <div className="cp-header-mobile-only">
-                <div className="cp-brand-tag">KuriPuro · {c.portal}</div>
+                <div className="cp-brand-tag">KuriPuro · {APP_VERSION}</div>
                 <div className="cp-header-title">{user.client_name || user.name}</div>
                 <div className="cp-header-meta">
                   {user.location_name || c.allLocations} · {clock.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Tokyo' })}

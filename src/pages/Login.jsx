@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
+import { APP_VERSION } from '../lib/appVersion'
 
 export default function Login() {
   const { login } = useAuth()
@@ -26,7 +27,7 @@ export default function Login() {
       <div className="login-card">
         <div className="login-lang-row"><LanguageToggle variant="dark" /></div>
         <div className="login-mark">KuriPuro</div>
-        <div className="login-sub">by JBM</div>
+        <div className="login-sub">by JBM · {APP_VERSION}</div>
         <div className="login-title">{a.signIn}</div>
         <div className="login-hint">{a.loginHint}</div>
         <form onSubmit={handleSubmit}>
