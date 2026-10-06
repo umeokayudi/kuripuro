@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { usePeriod } from '../hooks/usePeriod'
-import { dateInRange, invoiceDate } from '../lib/period'
+import { filterByPeriodKeepOpen } from '../lib/period'
 import { APP_VERSION } from '../lib/appVersion'
 import { QUOTE_ISSUER } from '../lib/quoteIssuer'
 import {
@@ -426,7 +426,7 @@ export default function Faturas() {
     load()
   }
 
-  const periodRows = faturas.filter(f => dateInRange(invoiceDate(f), start, end))
+  const periodRows = filterByPeriodKeepOpen(faturas, start, end, ['issue_date', 'period_start', 'created_at'], f => f.status === 'draft')
   const visible = periodRows.filter(f => statusFilter === 'all' || f.status === statusFilter)
   const outstanding = periodRows.filter(f => f.status === 'sent').reduce((s, f) => s + Number(f.total || 0), 0)
   const paidMonth = periodRows.filter(f => f.status === 'paid').reduce((s, f) => s + Number(f.total || 0), 0)
@@ -469,7 +469,7 @@ export default function Faturas() {
       )}
 
       <div className="tab-pills">
-        <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => { setTab('list'); setSearchParams({}) }}>{fill(inv.list, { n: faturas.length })}</button>
+        <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => { setTab('list'); setSearchParams({}) }}>{fill(inv.list, { n: periodRows.length })}</button>
         <button type="button" className={`tab-pill${tab === 'auto' ? ' active' : ''}`} onClick={openAuto}>{inv.auto}</button>
         <button type="button" className={`tab-pill${tab === 'new' ? ' active' : ''}`} onClick={() => setTab('new')}>{inv.new}</button>
       </div>
