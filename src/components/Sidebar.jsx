@@ -56,6 +56,7 @@ const groups = [
       { to: '/mitsumori', key: 'mitsumori', icon: Icons.file },
       { to: '/sales-followup', key: 'followup', icon: Icons.building },
       { to: '/sales-approaches', key: 'approaches', icon: Icons.users },
+      { to: '/sales-team', key: 'salesTeam', icon: Icons.users },
     ],
   },
   {

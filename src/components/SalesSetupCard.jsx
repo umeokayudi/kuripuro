@@ -7,6 +7,8 @@ import {
   SALES_SETUP_SQL,
   SALES_SETUP_STEPS,
   SALES_SQL_FILE_URL,
+  SALESPERSON_SQL,
+  SALESPERSON_SQL_URL,
   SUPABASE_SQL_URL,
 } from '../lib/salesSetupSql'
 
@@ -92,6 +94,39 @@ export function SalesCrmSetupCard({ onRecheck }) {
         value={SALES_CRM_SQL}
         onFocus={e => e.target.select()}
         style={{ width: '100%', minHeight: 160, fontFamily: 'ui-monospace, monospace', fontSize: 11, lineHeight: 1.4, padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}
+      />
+    </div>
+  )
+}
+
+export function SalespersonSetupCard({ onRecheck }) {
+  const { t } = useLang()
+  const s = t.salesperson || t.sales
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(SALESPERSON_SQL)
+      toast.success(s.copied || t.sales.copied)
+    } catch {
+      toast.error(t.sales.copyFailed)
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 14, borderColor: 'var(--amber)' }}>
+      <div style={{ fontWeight: 600, marginBottom: 6 }}>{s.setupNeeded}</div>
+      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 10, lineHeight: 1.55 }}>{s.setupHint}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        <button type="button" className="btn btn-primary" onClick={copy}>{s.copySql}</button>
+        <a className="btn" href={SUPABASE_SQL_URL} target="_blank" rel="noreferrer">{t.sales.openSql}</a>
+        <a className="btn" href={SALESPERSON_SQL_URL} target="_blank" rel="noreferrer">{s.openSqlFile}</a>
+        {onRecheck && <button type="button" className="btn" onClick={onRecheck}>{t.sales.recheck}</button>}
+      </div>
+      <textarea
+        readOnly
+        value={SALESPERSON_SQL}
+        onFocus={e => e.target.select()}
+        style={{ width: '100%', minHeight: 180, fontFamily: 'ui-monospace, monospace', fontSize: 11, lineHeight: 1.4, padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}
       />
     </div>
   )

@@ -80,6 +80,9 @@ function testQuoteNumberAndPrint() {
   assert(html.includes('梅岡アレサンドレユウジ'), 'issuer name')
   assert(html.includes('umeokagroup@gmail.com'), 'email')
   assert(html.includes('070-9073-2909'), 'phone')
+  assert(html.includes('代表'), 'daihyo')
+  assert(html.includes('〒160-0023'), 'commercial address')
+  assert(html.includes('登録番号'), 'touroku')
   assert(!html.includes('電子発行'), 'no e-issue line')
   assert(!html.includes('KuriPuro by JBM'), 'no old brand')
   assert(!html.includes('INTERNAL_INTEREST_SECRET'), 'interest stays off print')
@@ -119,6 +122,7 @@ function testSqlFile() {
   assert(SALES_SETUP_STEPS.length === 3, 'three steps')
   assert(SALES_CRM_SQL.includes('sales_touchpoints'), 'crm table')
   assert(SALES_CRM_SQL.includes('interest'), 'interest column')
+  assert(SALES_CRM_SQL.includes('site_name'), 'restaurant column')
 }
 
 function testI18n() {

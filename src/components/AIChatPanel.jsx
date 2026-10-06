@@ -26,9 +26,10 @@ function formatText(text) {
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, workspace = false, suggestions = [] }) {
   const { t, lang } = useLang()
   const ai = t.ai || {}
-  const welcome = useMemo(() => (
-    [{ role: 'assistant', content: (mode === 'employee' ? ai.employeeWelcome : ai.adminWelcome) || '' }]
-  ), [mode, ai.employeeWelcome, ai.adminWelcome])
+  const welcome = useMemo(() => {
+    const text = mode === 'employee' ? ai.employeeWelcome : mode === 'salesperson' ? ai.salesWelcome : ai.adminWelcome
+    return [{ role: 'assistant', content: text || '' }]
+  }, [mode, ai.employeeWelcome, ai.salesWelcome, ai.adminWelcome])
 
   const [messages, setMessages] = useState(() =>
     loadChatHistory(mode, employeeId, welcome)
@@ -38,6 +39,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const [callOpen, setCallOpen] = useState(false)
   const [voiceReplies, setVoiceReplies] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [photoB64, setPhotoB64] = useState('')
+  const photoRef = useRef(null)
   const [voices, setVoices] = useState([])
   const [voiceName, setVoiceName] = useState(getSavedVoiceName())
   const voiceRef = useRef(null)
@@ -68,10 +71,12 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
 
   const callAPI = async (allMessages) => {
     const payload = allMessages.slice(-24)
-    const endpoint = mode === 'employee' ? '/api/employee-ai' : '/api/admin-ai'
+    const endpoint = mode === 'employee' ? '/api/employee-ai' : mode === 'salesperson' ? '/api/sales-ai' : '/api/admin-ai'
     const body = mode === 'employee'
       ? { messages: payload, employeeId, employeeName }
-      : { messages: payload }
+      : mode === 'salesperson'
+        ? { messages: payload, salespersonId: employeeId, salespersonName: employeeName }
+        : { messages: payload }
     const resp = await apiPost(endpoint, body)
     let data
     try { data = await resp.json() } catch { throw new Error(`Invalid response (${resp.status})`) }
@@ -104,11 +109,12 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   }
 
   const send = async () => {
-    if (!input.trim() || loading) return
-    const userMsg = { role: 'user', content: input.trim() }
+    if ((!input.trim() && !photoB64) || loading) return
+    const userMsg = { role: 'user', content: input.trim() || (mode === 'salesperson' ? (ai.meishiPrompt || 'Read this meishi') : 'photo'), image: photoB64 || undefined }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
     setInput('')
+    setPhotoB64('')
     setLoading(true)
     try {
       const data = await callAPI(newMessages)
@@ -135,7 +141,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     <div className={workspace ? 'ai-panel-workspace' : undefined} style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : workspace ? '100%' : 'calc(100dvh - 140px)', minHeight: 0, flex: workspace ? 1 : undefined }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: compact ? 8 : 12, padding: compact ? '8px 12px 0' : 0 }}>
         <div style={{ fontSize: compact ? 12 : 14, fontWeight: 700, color: dark ? 'rgba(255,255,255,0.7)' : 'var(--text2)' }}>
-          {mode === 'employee' ? `🤖 ${ai.employeeTitle}` : `✨ ${ai.adminTitle}`}
+          {mode === 'employee' ? `🤖 ${ai.employeeTitle}` : mode === 'salesperson' ? `🤖 ${ai.salesTitle}` : `✨ ${ai.adminTitle}`}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {workspace && (
@@ -199,13 +205,32 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 10, borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`, padding: compact ? 12 : '12px 0 0' }}>
-        <button onClick={startVoiceInput} title="Falar"
+        <button onClick={startVoiceInput} title="Speak"
           style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: recording ? 'rgba(248,113,113,0.2)' : dark ? 'rgba(255,255,255,0.06)' : '#fff', borderRadius: 12, width: 40, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 16 }}>
           {recording ? '🔴' : '🎤'}
         </button>
+        {mode === 'salesperson' && (
+          <>
+            <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              const { prepareImageForUpload } = await import('../lib/imageUpload')
+              const prepared = await prepareImageForUpload(file)
+              const buf = await prepared.arrayBuffer()
+              const bytes = new Uint8Array(buf)
+              let binary = ''
+              for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+              setPhotoB64(btoa(binary))
+            }} />
+            <button type="button" onClick={() => photoRef.current?.click()} title={ai.meishi}
+              style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: photoB64 ? '#c19c56' : dark ? 'rgba(255,255,255,0.06)' : '#fff', borderRadius: 12, width: 40, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 16 }}>
+              📷
+            </button>
+          </>
+        )}
         <textarea value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={mode === 'employee' ? ai.placeholderEmployee : ai.placeholderAdmin}
+          placeholder={mode === 'employee' ? ai.placeholderEmployee : mode === 'salesperson' ? ai.placeholderSales : ai.placeholderAdmin}
           rows={compact ? 1 : 2}
           style={{ flex: 1, resize: 'none', borderRadius: 12, border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'var(--border)'}`, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit' }}
         />

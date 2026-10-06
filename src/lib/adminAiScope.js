@@ -34,6 +34,9 @@ export const ADMIN_AI_TABLES = [
   'mitsumori',
   'mitsumori_items',
   'sales_touchpoints',
+  'salespeople',
+  'sales_day_reports',
+  'sales_field_approaches',
 ]
 
 export const HIDDEN_AI_FIELDS = ['password', 'password_hash', 'pin', 'secret']
@@ -55,5 +58,7 @@ evaluations, complaints (staff), messages (admin↔employee), badges,
 salary_payments (pay, advances, deductions), payroll, salary_periods, salary_statements, salary_complaints,
 transport_claims, equipment_requests,
 cashflow, ryoshu (receipts), faturas + fatura_items (invoices),
-sales_leads (approaches/follow-up; interest is INTERNAL), mitsumori + mitsumori_items (quotes),
-sales_touchpoints (replies and what was said).`
+sales_leads (approaches/follow-up; interest is INTERNAL; site_name is restaurant/store), mitsumori + mitsumori_items (quotes),
+sales_touchpoints (replies and what was said),
+salespeople (field sellers; never output password_hash), sales_day_reports (hours + written day report),
+sales_field_approaches (places approached; meishi photo required).`

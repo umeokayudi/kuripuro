@@ -30,6 +30,7 @@ export function emptyLead(today, stage = 'approach') {
   return {
     company_name: '',
     company_kana: '',
+    site_name: '',
     address: '',
     phone: '',
     email: '',
@@ -67,6 +68,7 @@ export function mergeLeadFromQuote(existing, form, today) {
   return {
     company_name: String(form.company_name || '').trim(),
     company_kana: form.company_kana || '',
+    site_name: form.site_name || '',
     address: form.address || '',
     phone: form.phone || '',
     email: form.email || '',
@@ -99,6 +101,7 @@ export function leadWritePayload(form, today, stage) {
   return {
     company_name: String(form.company_name || '').trim(),
     company_kana: form.company_kana || '',
+    site_name: form.site_name || '',
     address: form.address || '',
     phone: form.phone || '',
     email: form.email || '',
@@ -149,6 +152,7 @@ export function quoteWritePayload(form, leadId, totals, extra = {}) {
     lead_id: leadId || null,
     company_name: String(form.company_name || '').trim(),
     company_kana: form.company_kana || '',
+    site_name: form.site_name || '',
     address: form.address || '',
     phone: form.phone || '',
     email: form.email || '',
@@ -206,12 +210,19 @@ export const TOUCH_TYPES = ['reply', 'call', 'note', 'sent']
 
 export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   const company = escapeHtml(quote.company_name)
+  const siteName = escapeHtml(quote.site_name || '')
   const contact = escapeHtml([quote.contact_title, quote.contact_name].filter(Boolean).join(' '))
   const number = escapeHtml(quote.quote_number || quote.id?.slice?.(0, 8) || '')
   const issuerCompany = escapeHtml(issuer.company || QUOTE_ISSUER.company)
+  const issuerTitle = escapeHtml(issuer.title || QUOTE_ISSUER.title || '代表')
   const issuerPerson = escapeHtml(issuer.name || QUOTE_ISSUER.name)
+  const issuerAddress = escapeHtml(issuer.address || QUOTE_ISSUER.address || '')
+  const issuerReg = escapeHtml(issuer.regNumber || QUOTE_ISSUER.regNumber || '')
   const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
   const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
+  const billTo = siteName
+    ? `<div class="bill-to">${siteName} 御中</div>${company && company !== siteName ? `<div class="muted">${company}</div>` : ''}`
+    : `<div class="bill-to">${company} 御中</div>`
   const rows = (items || []).map(it => `
       <tr>
         <td>${escapeHtml(it.description || '')}</td>
@@ -264,7 +275,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
     <div class="gold"></div>
     <div class="meta">
       <div>
-        <div class="bill-to">${company} 御中</div>
+        ${billTo}
         ${contact ? `<div class="muted">ご担当: ${contact}</div>` : ''}
         ${quote.address ? `<div class="muted">${escapeHtml(quote.address)}</div>` : ''}
       </div>
@@ -286,7 +297,9 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
     <div class="issuer">
       <div class="issuer-card">
         <strong>${issuerCompany}</strong>
-        <div>${issuerPerson}</div>
+        <div>${issuerTitle} ${issuerPerson}</div>
+        ${issuerAddress ? `<div>${issuerAddress}</div>` : ''}
+        ${issuerReg ? `<div>${issuerReg}</div>` : ''}
         <div>${issuerEmail}</div>
         <div>${issuerPhone}</div>
       </div>

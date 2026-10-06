@@ -39,6 +39,8 @@ const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
+const SalespersonPortal = lazy(() => import('./pages/SalespersonPortal'))
+const SalesTeam = lazy(() => import('./pages/SalesTeam'))
 
 function PortalLoading() {
   return (
@@ -91,6 +93,7 @@ const PAGE_KEYS = {
   '/salary-complaints': 'salaryIssues',
   '/equipment-requests': 'equipmentRequests',
   '/ai': 'ai',
+  '/sales-team': 'salesTeam',
 }
 
 function pageTitle(pathname, sidebar) {
@@ -137,6 +140,13 @@ function AppContent() {
     <PortalErrorBoundary label="Client portal">
       <Suspense fallback={<PortalLoading />}>
         <ClientPortal />
+      </Suspense>
+    </PortalErrorBoundary>
+  )
+  if (user.role === 'salesperson') return (
+    <PortalErrorBoundary label="Salesperson portal">
+      <Suspense fallback={<PortalLoading />}>
+        <SalespersonPortal />
       </Suspense>
     </PortalErrorBoundary>
   )
@@ -203,6 +213,7 @@ function AppContent() {
               <Route path="/salary-complaints" element={<SalaryComplaints />} />
               <Route path="/equipment-requests" element={<EquipmentRequests />} />
               <Route path="/ai" element={<AdminAI />} />
+              <Route path="/sales-team" element={<SalesTeam />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Suspense>

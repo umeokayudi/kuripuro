@@ -330,8 +330,8 @@ export default function Mitsumori() {
             <div key={q.id} className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{q.company_name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>{q.quote_number} · {s.contact}: {q.contact_name || '—'}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{q.site_name || q.company_name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>{q.quote_number} · {q.site_name ? `${q.company_name} · ` : ''}{s.contact}: {q.contact_name || '—'}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.firstContact}: {q.first_contact_date || '—'} · {s.validUntil}: {q.valid_until || '—'}</div>
                   {q.needs && <div style={{ fontSize: 12, marginTop: 4 }}>{s.needs}: {q.needs}</div>}
                 </div>
