@@ -29,6 +29,8 @@ assert(css.includes('100dvh'), 'dynamic viewport')
 assert(!css.includes('min-width: 520px'), 'no forced table width')
 assert(css.includes('.ai-workspace'), 'ai desk')
 assert(css.includes('.ai-gpt'), 'chatgpt-like ai')
+assert(css.includes('.period-strip'), 'period strip')
+assert(css.includes('.growth-table'), 'growth table')
 
 assert(ADMIN_AI_TABLES.includes('faturas'), 'invoices')
 assert(ADMIN_AI_TABLES.includes('cashflow'), 'cashflow')

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { usePeriod } from '../hooks/usePeriod'
 
 /** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
 function normalizeEntry(row) {
@@ -21,11 +22,13 @@ export default function Cashflow() {
   const INCOME_CATS = ['Client Payment','Spot Job','Bonus','Other Income']
   const EXPENSE_CATS = ['Salary','Supplies','Transport','Equipment','Tax','Other Expense']
 
-  useEffect(() => { load() }, [])
+  const { start, end } = usePeriod()
+
+  useEffect(() => { load() }, [start, end])
 
   const load = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('cashflow').select('*').order('entry_date', { ascending:false }).limit(100)
+    const { data, error } = await supabase.from('cashflow').select('*').gte('entry_date', start).lte('entry_date', end).order('entry_date', { ascending:false }).limit(2000)
     if (error) return toast.error(error.message)
     setEntries((data || []).map(normalizeEntry))
     setLoading(false)
@@ -53,8 +56,7 @@ export default function Cashflow() {
     toast('Entry removed.'); load()
   }
 
-  const month = new Date().toISOString().slice(0,7)
-  const thisMonth = entries.filter(e=>e.date?.startsWith(month))
+  const thisMonth = entries
   const income = thisMonth.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount||0),0)
   const expense = thisMonth.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount||0),0)
   const balance = income - expense

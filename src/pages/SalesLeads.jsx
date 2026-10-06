@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase'
 import { useLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { yen } from '../lib/invoice'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriod } from '../lib/period'
 import {
   emptyLead,
   isSalesSchemaMissing,
@@ -23,6 +25,7 @@ import SalesTouchpoints from '../components/SalesTouchpoints'
 
 export default function SalesLeads({ stage }) {
   const { t } = useLang()
+  const { start, end } = usePeriod()
   const s = t.sales
   const navigate = useNavigate()
   const today = tokyoToday()
@@ -57,7 +60,10 @@ export default function SalesLeads({ stage }) {
 
   useEffect(() => { load() }, [stage])
 
-  const rows = leadsForStage(leads, stage)
+  const stageRows = leadsForStage(leads, stage)
+  const rows = (stage === 'won' || stage === 'lost')
+    ? filterByPeriod(stageRows, start, end, ['last_contact_date', 'first_contact_date', 'created_at'])
+    : stageRows
 
   const startNew = () => {
     setEditingId(null)

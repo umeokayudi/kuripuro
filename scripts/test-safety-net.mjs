@@ -41,6 +41,8 @@ function testI18nClientKeys() {
   assertKeyParity(kuripuroEn.sales.touchTypes, kuripuroJa.sales.touchTypes, 'sales.touchTypes')
   assertKeyParity(kuripuroEn.sidebar, kuripuroJa.sidebar, 'sidebar')
   assertKeyParity(kuripuroEn.ai, kuripuroJa.ai, 'ai')
+  assertKeyParity(kuripuroEn.period, kuripuroJa.period, 'period')
+  assert(kuripuroEn.period.m12, 'period m12')
   assert(kuripuroEn.sidebar.navAi, 'navAi')
 }
 

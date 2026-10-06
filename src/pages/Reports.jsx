@@ -5,6 +5,7 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill } from '../hooks/useLang'
+import { usePeriod } from '../hooks/usePeriod'
 import { apiPost } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 
@@ -25,32 +26,33 @@ export default function Reports() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [filterEmp, setFilterEmp] = useState('')
-  const [filterDays, setFilterDays] = useState(30)
+  const { start, end } = usePeriod()
   const [aiAnalysis, setAiAnalysis] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [lightbox, setLightbox] = useState(null)
 
-  useEffect(() => { loadReports() }, [filterDays, lang])
+  useEffect(() => { loadReports() }, [start, end, lang])
 
   const loadReports = async () => {
     setLoading(true)
-    const sinceIso = new Date(Date.now() - filterDays * 86400000).toISOString()
-    const sinceDate = sinceIso.split('T')[0]
+    const sinceIso = `${start}T00:00:00.000Z`
 
     const [{ data: srData, error: srErr }, { data: jobs, error: jobErr }] = await Promise.all([
       supabase
         .from('service_reports')
         .select('*')
-        .gte('report_date', sinceDate)
+        .gte('report_date', start)
+        .lte('report_date', end)
         .order('created_at', { ascending: false })
-        .limit(100),
+        .limit(500),
       supabase
         .from('jobs')
         .select('*')
         .eq('status', 'completed')
         .gte('completed_at', sinceIso)
+        .lte('completed_at', `${end}T23:59:59.999Z`)
         .order('completed_at', { ascending: false })
-        .limit(100),
+        .limit(500),
     ])
 
     if (srErr && jobErr) {
@@ -135,7 +137,7 @@ export default function Reports() {
     setAiAnalysis('')
     try {
       const resp = await apiPost('/api/analyze-reports', {
-        days: filterDays,
+        days: Math.max(1, Math.round((Date.parse(`${end}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) / 86400000) + 1),
         employeeName: filterEmp || undefined,
         lang,
       })
@@ -152,14 +154,6 @@ export default function Reports() {
   return (
     <div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.period}</div>
-          <select value={filterDays} onChange={e => setFilterDays(Number(e.target.value))} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <option value={7}>{tr.days7}</option>
-            <option value={30}>{tr.days30}</option>
-            <option value={90}>{tr.days90}</option>
-          </select>
-        </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.employee}</div>
           <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', minWidth: 160 }}>

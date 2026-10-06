@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriod } from '../lib/period'
 
 export default function Deductions() {
+  const { start, end } = usePeriod()
   const [employees, setEmployees] = useState([])
   const [history, setHistory] = useState([])
   const [form, setForm] = useState({ employee_id:'', amount:'', description:'', payment_date: new Date().toISOString().split('T')[0], deduction_type:'damage' })
@@ -16,15 +19,15 @@ export default function Deductions() {
     { key:'other', label:'Other' },
   ]
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [start, end])
 
   const load = async () => {
     const [e, h] = await Promise.all([
       supabase.from('employees').select('id,full_name').eq('is_active',true).order('full_name'),
-      supabase.from('salary_payments').select('*').eq('is_deduction',true).order('created_at',{ascending:false}).limit(30),
+      supabase.from('salary_payments').select('*').eq('is_deduction',true).order('created_at',{ascending:false}).limit(500),
     ])
     setEmployees(e.data||[])
-    setHistory(h.data||[])
+    setHistory(filterByPeriod(h.data||[], start, end, ['payment_date', 'created_at']))
   }
 
   const handleAdd = async () => {

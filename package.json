@@ -1,7 +1,7 @@
 {
   "name": "kuripuro",
   "private": true,
-  "version": "1.48.0",
+  "version": "1.49.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,6 +23,7 @@
     "test:past-service": "npx vite-node scripts/test-past-service.mjs",
     "test:job-overdue": "npx vite-node scripts/test-job-overdue.mjs",
     "test:employee-pay": "npx vite-node scripts/test-employee-pay.mjs",
+    "test:period": "npx vite-node scripts/test-period.mjs",
     "test:invoice": "npx vite-node scripts/test-invoice.mjs",
     "test:sales": "npx vite-node scripts/test-sales.mjs",
     "test:salesperson": "npx vite-node scripts/test-salesperson.mjs",

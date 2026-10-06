@@ -13,6 +13,7 @@ const steps = [
   ['npm run test:job-overdue', 'job-overdue'],
   ['npm run test:employee-pay', 'employee-pay'],
   ['npm run test:invoice', 'invoice'],
+  ['npm run test:period', 'period'],
   ['npm run test:sales', 'sales'],
   ['npm run test:salesperson', 'salesperson'],
   ['npm run test:admin-layout', 'admin-layout'],

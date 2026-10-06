@@ -1,25 +1,27 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
-import { useLang } from '../hooks/useLang'
+import { useLang, fill } from '../hooks/useLang'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 import { yen } from '../lib/invoice'
+import { usePeriod } from '../hooks/usePeriod'
 
 export default function Ryoshu() {
   const { t, lang } = useLang()
+  const { start, end } = usePeriod()
   const [receipts, setReceipts] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date: tokyoToday(), tax_rate:10 })
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [start, end])
 
   const load = async () => {
     setLoading(true)
     const [r, c] = await Promise.all([
-      supabase.from('ryoshu').select('*').order('issue_date', { ascending:false }).limit(50),
+      supabase.from('ryoshu').select('*').gte('issue_date', start).lte('issue_date', end).order('issue_date', { ascending:false }).limit(500),
       supabase.from('clients').select('id,company_name').eq('is_active',true).order('company_name'),
     ])
     setReceipts(r.data||[]); setClients(c.data||[])
@@ -88,14 +90,14 @@ export default function Ryoshu() {
     w.print()
   }
 
-  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(tokyoToday().slice(0,7))).reduce((s,r)=>s+Number(r.total_amount||0),0)
+  const totalPeriod = receipts.reduce((s,r)=>s+Number(r.total_amount||0),0)
 
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <div>
           <h2 className="page-head" style={{margin:0,fontSize:22}}>{t.sidebar.ryoshu}</h2>
-          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{lang==='ja'?'今月合計':'This month'}: <strong>¥{totalMonth.toLocaleString()}</strong></div>
+          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{fill(t.period.showing, { start, end })}: <strong>¥{totalPeriod.toLocaleString()}</strong></div>
         </div>
         <button className="btn btn-primary" onClick={()=>setShowForm(!showForm)}>+ {lang==='ja'?'新規作成':'New receipt'}</button>
       </div>

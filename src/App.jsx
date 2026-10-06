@@ -10,6 +10,8 @@ import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
 import { APP_VERSION } from './lib/appVersion'
+import { PeriodProvider } from './hooks/usePeriod'
+import PeriodFilter from './components/PeriodFilter'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -180,10 +182,15 @@ function AppContent() {
               <button type="button" className="btn btn-sm admin-desktop-toggle" onClick={() => setView('desktop')}>{t.sidebar.desktopView}</button>
             )}
             {!mobile && pref === 'desktop' && width <= 900 && (
-              <button type="button" className="btn btn-sm" onClick={() => setView('auto')}>{t.sidebar.mobileView}</button>
-            )}
-          </div>
+              <button type="button" className="btn btn-sm" onClick={() => setView('auto')}>{t.sidebar.mobileView}            </button>
+          )}
+        </div>
         </header>
+        {!['/ai', '/live', '/adminchat'].includes(location.pathname) && (
+          <div className="period-strip">
+            <PeriodFilter />
+          </div>
+        )}
         <main className={`page-content${location.pathname === '/ai' ? ' page-content-ai' : ''}`}>
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
             <Routes>
@@ -229,8 +236,10 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <LangProvider>
-          <AppContent />
-          <Toaster position="top-center" toastOptions={{ style:{ fontSize:13 } }} />
+          <PeriodProvider>
+            <AppContent />
+            <Toaster position="top-center" toastOptions={{ style:{ fontSize:13 } }} />
+          </PeriodProvider>
         </LangProvider>
       </AuthProvider>
     </BrowserRouter>

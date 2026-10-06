@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase'
 import { useLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { APP_VERSION } from '../lib/appVersion'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriod } from '../lib/period'
 import { lineTotal } from '../lib/invoice'
 import { QUOTE_ISSUER } from '../lib/quoteIssuer'
 import {
@@ -46,6 +48,7 @@ function blankForm(today) {
 
 export default function Mitsumori() {
   const { t } = useLang()
+  const { start, end } = usePeriod()
   const s = t.sales
   const inv = t.invoices
   const today = tokyoToday()
@@ -310,7 +313,8 @@ export default function Mitsumori() {
     if (autoPrint) { w.focus(); w.print() }
   }
 
-  const visible = quotes.filter(q => statusFilter === 'all' || q.status === statusFilter)
+  const visible = filterByPeriod(quotes, start, end, ['issue_date', 'created_at'])
+    .filter(q => statusFilter === 'all' || q.status === statusFilter)
   const editingQuote = editingId ? quotes.find(q => q.id === editingId) : null
   const badge = st => ({ draft: 'badge-amber', sent: 'badge-blue', accepted: 'badge-green', declined: 'badge-red', expired: 'badge-navy' }[st] || 'badge-navy')
 

@@ -1,19 +1,22 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriodKeepOpen } from '../lib/period'
 
 export default function TransportClaims() {
+  const { start, end } = usePeriod()
   const [claims, setClaims] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [note, setNote] = useState({})
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [start, end])
 
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('transport_claims').select('*').order('created_at', { ascending: false })
-    setClaims(data || [])
+    setClaims(filterByPeriodKeepOpen(data || [], start, end, ['claim_date', 'created_at'], c => c.status === 'pending'))
     setLoading(false)
   }
 

@@ -126,6 +126,49 @@ h1, h2, .brand, .topbar-title { font-family: var(--font-display); letter-spacing
 }
 .topbar-title { font-size: 20px; font-weight: 650; color: var(--navy); }
 .topbar-right { display: flex; align-items: center; gap: 12px; color: var(--text2); font-size: 13px; }
+.period-strip {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 28px;
+  position: sticky;
+  top: 57px;
+  z-index: 40;
+}
+.period-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.period-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
+.period-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.period-chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.period-chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.period-dates { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.period-dates label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text3); }
+.period-dates input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  background: #fff;
+}
+.growth-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.growth-table th { text-align: left; font-size: 11px; color: var(--text3); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.growth-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+.growth-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.growth-table .growth-row { cursor: pointer; }
+.growth-table .growth-row:hover { background: var(--surface2); }
+.growth-up { color: var(--green); font-weight: 700; }
+.growth-down { color: var(--red); font-weight: 700; }
+.app-shell-mobile .period-strip { padding: 8px 12px; top: 52px; }
+.app-shell-mobile .period-dates { margin-left: 0; }
 .topbar-version {
   font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
   color: var(--navy); background: var(--gold); border-radius: 999px;

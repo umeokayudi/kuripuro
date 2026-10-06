@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriod } from '../lib/period'
 
 const POSITIVE_CATS = ['Excellent work', 'On time', 'Great attitude', 'Client praised', 'Extra effort', 'Perfect cleaning']
 const COMPLAINT_CATS = ['Incomplete service', 'Lateness', 'Bad attitude', 'Property damage', 'Client complaint', 'No-show']
 const POINTS = { positive: { 1:2, 2:3, 3:5, 4:8, 5:10 }, complaint: { 1:-2, 2:-3, 3:-5, 4:-8, 5:-10 } }
 
 export default function Evaluations() {
+  const { start, end } = usePeriod()
   const [tab, setTab] = useState('new')
   const [employees, setEmployees] = useState([])
   const [jobs, setJobs] = useState([])
@@ -15,7 +18,7 @@ export default function Evaluations() {
   const [form, setForm] = useState({ employee_id:'', job_id:'', type:'positive', stars:5, category:'', description:'' })
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => { loadEmployees(); loadEvals() }, [])
+  useEffect(() => { loadEmployees(); loadEvals() }, [start, end])
   useEffect(() => { if (form.employee_id) loadJobs(form.employee_id) }, [form.employee_id])
 
   const loadEmployees = async () => {
@@ -29,7 +32,7 @@ export default function Evaluations() {
   }
 
   const loadEvals = async () => {
-    const { data } = await supabase.from('evaluations').select('*').order('created_at',{ascending:false}).limit(100)
+    const { data } = await supabase.from('evaluations').select('*').order('created_at',{ascending:false}).limit(500)
     setEvals(data||[])
   }
 
@@ -67,7 +70,8 @@ export default function Evaluations() {
     setSubmitting(false)
   }
 
-  const filtered = filterEmp ? evals.filter(e=>e.employee_id===filterEmp) : evals
+  const periodEvals = filterByPeriod(evals, start, end, ['eval_date', 'created_at'])
+  const filtered = filterEmp ? periodEvals.filter(e=>e.employee_id===filterEmp) : periodEvals
   const stars = (n) => '★'.repeat(n) + '☆'.repeat(5-n)
 
   return (

@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
+import { usePeriod } from '../hooks/usePeriod'
+import { dateInRange, invoiceDate } from '../lib/period'
 import { APP_VERSION } from '../lib/appVersion'
 import { QUOTE_ISSUER } from '../lib/quoteIssuer'
 import {
@@ -66,6 +68,7 @@ export default function Faturas() {
     [inv.monthlyLine, inv.monthlyFallback, inv.discountLine, inv.discountDaysLine]
   )
   const today = tokyoToday()
+  const { start, end } = usePeriod()
   const monthEnd = isMonthEndBillingDay(today)
   const defaultPeriod = billingPeriodForDate(today)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -423,10 +426,10 @@ export default function Faturas() {
     load()
   }
 
-  const visible = faturas.filter(f => statusFilter === 'all' || f.status === statusFilter)
-  const month = today.slice(0, 7)
-  const outstanding = faturas.filter(f => f.status === 'sent').reduce((s, f) => s + Number(f.total || 0), 0)
-  const paidMonth = faturas.filter(f => f.status === 'paid' && String(f.issue_date || '').startsWith(month)).reduce((s, f) => s + Number(f.total || 0), 0)
+  const periodRows = faturas.filter(f => dateInRange(invoiceDate(f), start, end))
+  const visible = periodRows.filter(f => statusFilter === 'all' || f.status === statusFilter)
+  const outstanding = periodRows.filter(f => f.status === 'sent').reduce((s, f) => s + Number(f.total || 0), 0)
+  const paidMonth = periodRows.filter(f => f.status === 'paid').reduce((s, f) => s + Number(f.total || 0), 0)
   const drafts = faturas.filter(f => f.status === 'draft')
   const periodDrafts = drafts.filter(f => f.period_start === defaultPeriod.start)
   const billedIds = new Set(
