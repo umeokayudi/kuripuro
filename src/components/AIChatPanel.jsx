@@ -71,7 +71,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
 
   const callAPI = async (allMessages) => {
     const payload = allMessages.slice(-24)
-    const endpoint = mode === 'employee' ? '/api/employee-ai' : mode === 'salesperson' ? '/api/sales-ai' : '/api/admin-ai'
+    const endpoint = mode === 'employee' || mode === 'salesperson' ? '/api/employee-ai' : '/api/admin-ai'
     const body = mode === 'employee'
       ? { messages: payload, employeeId, employeeName }
       : mode === 'salesperson'

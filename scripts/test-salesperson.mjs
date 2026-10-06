@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readdirSync } from 'fs'
 import { kuripuroEn, kuripuroJa } from '../src/i18n/kuripuro.js'
 import { SALESPERSON_SQL } from '../src/lib/salesSetupSql.js'
 import { QUOTE_ISSUER } from '../src/lib/quoteIssuer.js'
@@ -88,6 +89,8 @@ function testSqlAndI18n() {
   assert(SALESPERSON_SQL.includes('meishi_photo_url text not null'), 'meishi required')
   assert(SALESPERSON_SQL.includes('sales_day_reports'), 'reports table')
   assert(!SALESPERSON_SQL.includes('```'), 'no fences')
+  const fns = readdirSync(new URL('../api', import.meta.url)).filter(f => f.endsWith('.js') && !f.startsWith('_'))
+  assert(fns.length <= 12, `vercel hobby functions ${fns.length}: ${fns.join(',')}`)
   assert(isSalespersonSchemaMissing({ code: 'PGRST205' }), 'pgrst')
   const en = Object.keys(kuripuroEn.salesperson).sort()
   const ja = Object.keys(kuripuroJa.salesperson).sort()
