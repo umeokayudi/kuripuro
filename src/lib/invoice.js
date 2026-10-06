@@ -22,7 +22,7 @@ export function invoiceTotals(items, taxRate = 10) {
     }, 0)
   )
   const rate = Number(taxRate) || 0
-  const taxAmount = roundYen(subtotal * rate / 100)
+  const taxAmount = subtotal <= 0 ? 0 : roundYen(subtotal * rate / 100)
   return { subtotal, taxAmount, total: subtotal + taxAmount, taxRate: rate }
 }
 
@@ -40,6 +40,21 @@ export function nextInvoiceNumber(existing, issueDate) {
   return `${prefix}${String(max + 1).padStart(3, '0')}`
 }
 
+export function lastDayOfMonth(iso) {
+  const [y, m] = String(iso).split('-').map(Number)
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
+}
+
+export function daysInIsoMonth(iso) {
+  const [y, m] = String(iso).split('-').map(Number)
+  return new Date(Date.UTC(y, m, 0)).getUTCDate()
+}
+
+export function calendarMonthPeriod(iso) {
+  const start = `${String(iso).slice(0, 7)}-01`
+  return { start, end: lastDayOfMonth(iso) }
+}
+
 export function previousCalendarMonth(today) {
   const [y, m] = String(today).split('-').map(Number)
   const startDate = new Date(Date.UTC(y, m - 2, 1))
@@ -48,6 +63,140 @@ export function previousCalendarMonth(today) {
     start: startDate.toISOString().slice(0, 10),
     end: endDate.toISOString().slice(0, 10),
   }
+}
+
+/** Day 31, or the last calendar day when the month has no 31st. */
+export function isMonthEndBillingDay(today) {
+  const day = Number(String(today).slice(8, 10))
+  return day === 31 || String(today) === lastDayOfMonth(today)
+}
+
+export function billingPeriodForDate(today) {
+  if (isMonthEndBillingDay(today)) return calendarMonthPeriod(today)
+  return previousCalendarMonth(today)
+}
+
+function fillTpl(tpl, vars) {
+  if (!tpl) return ''
+  return String(tpl).replace(/\{(\w+)\}/g, (_, k) => (vars[k] != null ? String(vars[k]) : ''))
+}
+
+export function dailyRateFromMonthly(monthlyAmount, periodIso) {
+  const days = daysInIsoMonth(periodIso || '2026-01-31')
+  if (!days) return 0
+  return roundYen((Number(monthlyAmount) || 0) / days)
+}
+
+export function contractMonthlyAmount(contract) {
+  if (!contract) return 0
+  if (contract.billing_type === 'fixed_monthly') {
+    return roundYen(contract.fixed_monthly || contract.monthly_revenue || 0)
+  }
+  const fromVisits = (Number(contract.visits_per_month) || 0) * (Number(contract.price_per_visit) || 0)
+  return roundYen(contract.monthly_revenue || fromVisits || 0)
+}
+
+export function buildMonthlyChargeItems(contracts, client, labels = {}) {
+  const list = (contracts || []).filter(c => c && c.is_active !== false && contractMonthlyAmount(c) > 0)
+  if (list.length) {
+    return list.map(c => {
+      const amount = contractMonthlyAmount(c)
+      const place = c.location_name || ''
+      const service = c.service_type || ''
+      const description = labels.monthlyLine
+        ? fillTpl(labels.monthlyLine, { place, service })
+        : [place, service, 'monthly'].filter(Boolean).join(' — ')
+      return {
+        job_id: null,
+        kind: 'monthly',
+        description,
+        quantity: 1,
+        unit_price: amount,
+        total: amount,
+      }
+    })
+  }
+  const fallback = roundYen(client?.monthly_revenue || 0)
+  if (fallback <= 0) return []
+  return [{
+    job_id: null,
+    kind: 'monthly',
+    description: labels.monthlyFallback || 'Monthly contract',
+    quantity: 1,
+    unit_price: fallback,
+    total: fallback,
+  }]
+}
+
+export function makeDiscountLine({ reason = '', days = 0, dailyRate = 0, amount, labels = {} } = {}) {
+  const daysN = Number(days) || 0
+  const rate = roundYen(dailyRate)
+  let total = amount != null && amount !== '' ? -Math.abs(roundYen(amount)) : 0
+  if (!total && daysN && rate) total = -roundYen(daysN * rate)
+  const qty = daysN || 1
+  const unit = daysN && rate ? -rate : total
+  const description = daysN
+    ? (labels.discountDaysLine
+      ? fillTpl(labels.discountDaysLine, { days: String(daysN), rate: yen(rate), reason })
+      : `Discount — ${daysN} day(s) × ${yen(rate)}/day (${reason})`)
+    : (labels.discountLine
+      ? fillTpl(labels.discountLine, { reason })
+      : `Discount — ${reason}`)
+  return {
+    job_id: null,
+    kind: 'discount',
+    description,
+    quantity: qty,
+    unit_price: unit,
+    total,
+  }
+}
+
+export function invoiceAlreadyExists(existing, clientId, period) {
+  return (existing || []).some(f =>
+    f.client_id === clientId
+    && f.period_start === period.start
+    && f.period_end === period.end
+    && f.status !== 'cancelled'
+  )
+}
+
+export function complaintInPeriod(row, period) {
+  const d = String(row?.created_at || row?.complaint_date || '').slice(0, 10)
+  if (!d || !period?.start || !period?.end) return false
+  return d >= period.start && d <= period.end
+}
+
+export function planMonthlyInvoices({ clients, contracts, existing, period, labels = {} }) {
+  const byClient = {}
+  for (const c of contracts || []) {
+    if (!c?.client_id || c.is_active === false) continue
+    if (!byClient[c.client_id]) byClient[c.client_id] = []
+    byClient[c.client_id].push(c)
+  }
+  const planned = []
+  const skipped = []
+  for (const client of clients || []) {
+    if (!client?.id || client.is_active === false) continue
+    const items = buildMonthlyChargeItems(byClient[client.id] || [], client, labels)
+    if (!items.length) {
+      skipped.push({ client, reason: 'noContract' })
+      continue
+    }
+    if (invoiceAlreadyExists(existing, client.id, period)) {
+      skipped.push({ client, reason: 'alreadyBilled' })
+      continue
+    }
+    const monthlyAmount = items.reduce((s, it) => s + Number(it.total || 0), 0)
+    planned.push({
+      client_id: client.id,
+      client_name: client.company_name,
+      items,
+      monthlyAmount,
+      dailyRate: dailyRateFromMonthly(monthlyAmount, period.end || period.start),
+    })
+  }
+  return { planned, skipped }
 }
 
 export function addDays(isoDate, days) {
