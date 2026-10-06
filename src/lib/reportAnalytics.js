@@ -85,7 +85,7 @@ export function filterInvoices(rows, { start, end, clientId, status, today }) {
   })
 }
 
-export function filterJobs(rows, { start, end, clientId, store, serviceType, jobStatus }) {
+export function filterJobs(rows, { start, end, clientId, store, serviceType, jobStatus, employee }) {
   return (rows || []).filter(row => {
     const d = jobWorkDate(row)
     if (!dateInRange(d, start, end)) return false
@@ -93,6 +93,7 @@ export function filterJobs(rows, { start, end, clientId, store, serviceType, job
     if (store && jobStoreName(row) !== store) return false
     if (serviceType && serviceType !== 'all' && jobServiceType(row) !== serviceType) return false
     if (jobStatus && jobStatus !== 'all' && row.status !== jobStatus) return false
+    if (employee && employee !== 'all' && row.employee_name !== employee) return false
     return true
   })
 }
@@ -198,6 +199,27 @@ export function rankClients(invoices, clients, limit = 8) {
     .sort((a, b) => b.billed - a.billed)
     .slice(0, limit)
     .map(r => ({ ...r, value: r.billed }))
+}
+
+export function rankStores(jobs, limit = 8) {
+  const map = new Map()
+  for (const job of jobs || []) {
+    if (job.status !== 'completed') continue
+    const name = jobStoreName(job) || '—'
+    const cur = map.get(name) || { id: name, name, billed: 0, count: 0, clientId: job.client_id || '' }
+    cur.billed += Number(job.value || job.spot_value || 0)
+    cur.count += 1
+    if (!cur.clientId && job.client_id) cur.clientId = job.client_id
+    map.set(name, cur)
+  }
+  return [...map.values()]
+    .sort((a, b) => b.billed - a.billed || b.count - a.count)
+    .slice(0, limit)
+    .map(r => ({ ...r, value: r.billed || r.count }))
+}
+
+export function uniqueEmployees(jobs) {
+  return [...new Set((jobs || []).map(j => j.employee_name).filter(Boolean))].sort()
 }
 
 export function uniqueStores(jobs) {

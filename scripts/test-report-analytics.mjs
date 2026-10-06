@@ -10,6 +10,8 @@ import {
   buildTimeBuckets,
   bucketGrain,
   rankClients,
+  rankStores,
+  uniqueEmployees,
   statusSlices,
   isOverdueInvoice,
   clientInsight,
@@ -75,15 +77,23 @@ const pendingNet = slices.find(s => s.key === 'pending').value
 assert(pendingNet + slices.find(s => s.key === 'overdue').value === k.toCollect, 'pending+overdue = collect')
 
 const jobs = [
-  { id: 'j1', status: 'completed', scheduled_date: '2026-09-10', client_id: 'c1', location_name: 'Shop A', cleaning_type: 'regular', value: 3000 },
-  { id: 'j2', status: 'completed', scheduled_date: '2026-10-02', client_id: 'c1', location_name: 'Shop A', job_category: 'deep', value: 8000 },
-  { id: 'j3', status: 'assigned', scheduled_date: '2026-10-05', client_id: 'c2', location_name: 'Shop B' },
+  { id: 'j1', status: 'completed', scheduled_date: '2026-09-10', client_id: 'c1', location_name: 'Shop A', cleaning_type: 'regular', value: 3000, employee_name: 'Ken' },
+  { id: 'j2', status: 'completed', scheduled_date: '2026-10-02', client_id: 'c1', location_name: 'Shop A', job_category: 'deep', value: 8000, employee_name: 'Ken' },
+  { id: 'j3', status: 'assigned', scheduled_date: '2026-10-05', client_id: 'c2', location_name: 'Shop B', employee_name: 'Yuri' },
+  { id: 'j4', status: 'completed', scheduled_date: '2026-09-20', client_id: 'c2', location_name: 'Shop B', value: 1000, employee_name: 'Yuri' },
 ]
 const cj = filterJobs(jobs, { start, end })
 const jk = jobKpis(cj, [])
-assert(jk.services === 2, `services ${jk.services}`)
+assert(jk.services === 3, `services ${jk.services}`)
 const js = jobSeries(cj, buckets)
-assert(js.reduce((s, x) => s + x.value, 0) === 2, 'job series count')
+assert(js.reduce((s, x) => s + x.value, 0) === 3, 'job series count')
+const kenJobs = filterJobs(jobs, { start, end, employee: 'Ken' })
+assert(kenJobs.length === 2, 'employee filter')
+assert(uniqueEmployees(jobs).join() === 'Ken,Yuri', uniqueEmployees(jobs).join())
+const storesRank = rankStores(cj, 8)
+assert(storesRank[0].name === 'Shop A', storesRank[0].name)
+assert(storesRank[0].billed === 11000, storesRank[0].billed)
+assert(storesRank[0].value === 11000, 'store value alias')
 
 const insight = clientInsight('c1', current, cj, [{ id: 'c1', company_name: 'Alpha' }], { start, end })
 assert(insight.name === 'Alpha', insight.name)

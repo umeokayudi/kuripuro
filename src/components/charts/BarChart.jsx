@@ -19,13 +19,13 @@ export default function BarChart({ rows = [], format, empty, onSelect }) {
           >
             <span className="rdash-bar-name">{r.name}</span>
             <span className="rdash-bar-track"><span className="rdash-bar-fill" style={{ width: `${pct}%` }} /></span>
-            <span className="rdash-bar-val">{format ? format(r.value) : r.value}</span>
+            <span className="rdash-bar-val">{format ? format(r.value, r) : r.value}</span>
           </button>
         )
       })}
       {tip && (
         <div className="rdash-tip">
-          {tip.name} · {format ? format(tip.value) : tip.value}
+          {tip.name} · {format ? format(tip.value, tip) : tip.value}
           {tip.count != null ? ` · ${tip.count}` : ''}
         </div>
       )}

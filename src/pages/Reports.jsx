@@ -23,8 +23,10 @@ import {
   revenueSeries,
   jobSeries,
   rankClients,
+  rankStores,
   uniqueStores,
   uniqueServiceTypes,
+  uniqueEmployees,
   clientInsight,
   previousWindow,
 } from '../lib/reportAnalytics'
@@ -68,6 +70,7 @@ function FilterFields({
   invStatus, onInvStatus,
   serviceType, types, onType,
   jobStatus, onJobStatus,
+  employee, employees, onEmployee,
   showPeriod = true,
 }) {
   return (
@@ -136,6 +139,13 @@ function FilterFields({
           ))}
         </select>
       </label>
+      <label>
+        {tr.employee}
+        <select value={employee || ''} onChange={e => onEmployee(e.target.value)}>
+          <option value="">{tr.all}</option>
+          {(employees || []).map(name => <option key={name} value={name}>{name}</option>)}
+        </select>
+      </label>
     </div>
   )
 }
@@ -147,7 +157,7 @@ export default function Reports() {
   const dashSt = t.invoices.statuses
   const jobSt = t.status
   const today = tokyoToday()
-  const initial = rangeForPreset('thisMonth', today)
+  const initial = rangeForPreset('m12', today)
 
   const [preset, setPreset] = useState(initial.preset)
   const [start, setStart] = useState(initial.start)
@@ -173,6 +183,7 @@ export default function Reports() {
   const [aiLoading, setAiLoading] = useState(false)
   const [lightbox, setLightbox] = useState(null)
   const [insightId, setInsightId] = useState('')
+  const [rankMode, setRankMode] = useState('client')
   const [pdfBusy, setPdfBusy] = useState(false)
 
   const applyPreset = (k) => {
@@ -250,7 +261,8 @@ export default function Reports() {
     store: store || undefined,
     serviceType,
     jobStatus,
-  }), [start, end, clientId, invStatus, today, store, serviceType, jobStatus])
+    employee: filterEmp || undefined,
+  }), [start, end, clientId, invStatus, today, store, serviceType, jobStatus, filterEmp])
 
   const currentInv = useMemo(() => filterInvoices(invoices, filterOpts), [invoices, filterOpts])
   const prevInv = useMemo(() => filterInvoices(invoices, { ...filterOpts, start: prevRange.start, end: prevRange.end }), [invoices, filterOpts, prevRange])
@@ -263,10 +275,13 @@ export default function Reports() {
   const buckets = useMemo(() => buildTimeBuckets(start, end, grain), [start, end, grain])
   const revSeries = useMemo(() => revenueSeries(currentInv, buckets), [currentInv, buckets])
   const svcSeries = useMemo(() => jobSeries(currentJobs, buckets), [currentJobs, buckets])
-  const ranking = useMemo(() => rankClients(currentInv, clients, 8), [currentInv, clients])
+  const clientRanking = useMemo(() => rankClients(currentInv, clients, 8), [currentInv, clients])
+  const storeRanking = useMemo(() => rankStores(currentJobs, 8), [currentJobs])
+  const ranking = rankMode === 'store' ? storeRanking : clientRanking
   const slices = useMemo(() => statusSlices(currentInv, today), [currentInv, today])
   const stores = useMemo(() => uniqueStores(jobs), [jobs])
   const types = useMemo(() => uniqueServiceTypes(jobs), [jobs])
+  const staffNames = useMemo(() => uniqueEmployees(jobs), [jobs])
   const insight = useMemo(
     () => insightId ? clientInsight(insightId, currentInv, currentJobs, clients, { start, end }) : null,
     [insightId, currentInv, currentJobs, clients, start, end],
@@ -297,7 +312,14 @@ export default function Reports() {
     ? (lang === 'ja' ? `${start.slice(0, 4)}年${Number(start.slice(5, 7))}月` : `${start.slice(0, 7).replace('-', '/')}`)
     : `${start} – ${end}`
 
-  const activeFilterN = [clientId, store, invStatus !== 'all' && invStatus, serviceType !== 'all' && serviceType, jobStatus !== 'all' && jobStatus].filter(Boolean).length
+  useEffect(() => {
+    if (insightId) return
+    const top = clientRanking[0]
+    if (top?.id) setInsightId(String(top.id))
+  }, [clientRanking, insightId])
+
+  const emptyPeriod = !dashLoading && ik.billed === 0 && jk.services === 0
+  const activeFilterN = [clientId, store, invStatus !== 'all' && invStatus, serviceType !== 'all' && serviceType, jobStatus !== 'all' && jobStatus, filterEmp].filter(Boolean).length
 
   const handleDelete = async (report) => {
     const label = `${report.employee_name} · ${report.client_name || report.job_title} · ${report.report_date}`
@@ -369,6 +391,9 @@ export default function Reports() {
     invStatus, onInvStatus: setInvStatus,
     serviceType, types, onType: setServiceType,
     jobStatus, onJobStatus: setJobStatus,
+    employee: filterEmp,
+    employees: staffNames.length ? staffNames : employees,
+    onEmployee: setFilterEmp,
   }
 
   return (
@@ -431,6 +456,15 @@ export default function Reports() {
         </div>
       )}
 
+      {emptyPeriod && (
+        <div className="rdash-empty-cta">
+          <p>{tr.emptyHint}</p>
+          {preset !== 'm12' && (
+            <button type="button" className="btn btn-primary" onClick={() => applyPreset('m12')}>{tr.use12m}</button>
+          )}
+        </div>
+      )}
+
       <div className="rdash-charts">
         <section className="rdash-card">
           <h3>{tr.chartRevenue} <span>{tr[`grain${grain[0].toUpperCase()}${grain.slice(1)}`] || grain}</span></h3>
@@ -443,13 +477,25 @@ export default function Reports() {
           />
         </section>
         <section className="rdash-card">
-          <h3>{tr.chartClients}</h3>
+          <div className="rdash-card-head">
+            <h3>{rankMode === 'store' ? tr.chartStores : tr.chartClients}</h3>
+            <div className="rdash-rank-tabs" role="tablist">
+              <button type="button" className={rankMode === 'client' ? 'on' : ''} onClick={() => setRankMode('client')}>{tr.rankClients}</button>
+              <button type="button" className={rankMode === 'store' ? 'on' : ''} onClick={() => setRankMode('store')}>{tr.rankStores}</button>
+            </div>
+          </div>
           <BarChart
             rows={ranking}
-            format={yenFmt}
+            format={(v, r) => (r?.billed ? yenFmt(r.billed) : fill(tr.jobsN, { n: r?.count ?? v }))}
             empty={tr.emptyChart}
             onSelect={r => {
-              setInsightId(String(r.id))
+              if (rankMode === 'store') {
+                setStore(r.name)
+                if (r.clientId) setInsightId(String(r.clientId))
+              } else {
+                setClientId(String(r.id))
+                setInsightId(String(r.id))
+              }
               document.getElementById('rdash-client')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
             }}
           />
