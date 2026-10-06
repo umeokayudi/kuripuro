@@ -624,6 +624,17 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
   overflow: hidden; text-overflow: ellipsis; line-height: 1.2; letter-spacing: 0;
 }
 .admin-bottom-item.active, .admin-bottom-item:active { color: var(--gold2); }
+.kp-print-overlay {
+  position: fixed; inset: 0; z-index: 400;
+  background: #fff; display: flex; flex-direction: column;
+  width: 100%; max-width: 100%;
+}
+.kp-print-overlay-bar {
+  flex: 0 0 auto; display: flex; gap: 8px; align-items: center;
+  padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid var(--border); background: #fff;
+}
+.kp-print-frame { flex: 1; width: 100%; border: 0; min-height: 0; background: #fff; }
 .app-shell-mobile .period-chips {
   flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
   max-width: 100%; padding-bottom: 2px;

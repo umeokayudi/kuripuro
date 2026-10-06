@@ -9,6 +9,7 @@ import { usePeriod } from '../hooks/usePeriod'
 import { filterByPeriod } from '../lib/period'
 import { lineTotal } from '../lib/invoice'
 import { QUOTE_ISSUER } from '../lib/quoteIssuer'
+import { openPrintHtml } from '../lib/openPrintHtml'
 import {
   buildMitsumoriPrintHtml,
   defaultValidUntil,
@@ -301,8 +302,6 @@ export default function Mitsumori() {
   const openPrint = async (row, autoPrint, lang = 'ja') => {
     const { data, error } = await supabase.from('mitsumori_items').select('*').eq('mitsumori_id', row.id)
     if (error) return toast.error(error.message)
-    const w = window.open('', '_blank')
-    if (!w) return toast.error(s.popupBlocked)
     const lead = leads.find(x => x.id === row.lead_id)
     const fromForm = editingId && row.id === editingId ? form : {}
     const printRow = {
@@ -322,9 +321,8 @@ export default function Mitsumori() {
         || restaurantFromNotes(lead?.notes)
         || '',
     }
-    w.document.write(buildMitsumoriPrintHtml(printRow, data || [], {}, lang))
-    w.document.close()
-    if (autoPrint) { w.focus(); w.print() }
+    const opened = openPrintHtml(buildMitsumoriPrintHtml(printRow, data || [], {}, lang), { autoPrint })
+    if (!opened.ok) toast.error(s.popupBlocked)
   }
 
   const visible = filterByPeriod(quotes, start, end, ['issue_date', 'created_at'])

@@ -129,6 +129,7 @@ function testPrint() {
   assert(html.includes('070-9073-2909'), 'phone')
   assert(html.includes('ご請求申し上げます'), 'thanks')
   assert(html.includes('width=device-width'), 'mobile viewport')
+  assert(html.includes('font-size:34px'), 'phone title size')
   assert(html.includes('@page { size: A4'), 'A4 page')
   assert(html.includes('@media screen and (max-width: 720px)'), 'screen mobile scale')
   assert(html.includes('@media print'), 'print keeps A4')
@@ -187,8 +188,8 @@ function testVersionLock() {
   const api = readFileSync(new URL('../api/_gemini.js', import.meta.url), 'utf8')
   const match = api.match(/export const API_BUILD = '([^']+)'/)
   assert(match?.[1] === APP_BUILD, `API_BUILD ${match?.[1]} vs ${APP_BUILD}`)
-  assert(APP_VERSION === 'v57', APP_VERSION)
-  assert(APP_BUILD.endsWith('-v57'), APP_BUILD)
+  assert(APP_VERSION === 'v58', APP_VERSION)
+  assert(APP_BUILD.endsWith('-v58'), APP_BUILD)
 }
 
 function testMonthlyAndDiscounts() {

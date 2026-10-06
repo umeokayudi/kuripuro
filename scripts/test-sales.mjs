@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'fs'
 import { kuripuroEn, kuripuroJa } from '../src/i18n/kuripuro.js'
 import { SALES_CRM_SQL, SALES_SETUP_SQL, SALES_SETUP_STEPS } from '../src/lib/salesSetupSql.js'
 import {
@@ -170,6 +171,12 @@ function testQuoteNumberAndPrint() {
   assert(quoteRestaurantName({ notes: '店舗：魚豪商コダマ\nmemo' }) === '魚豪商コダマ', 'store colon in notes')
   assert(quoteRestaurantName({ notes: '店名：魚豪商コダマ' }) === '魚豪商コダマ', 'tenmei in notes')
   assert(html.includes('&lt;x&gt; 御中'), 'company as 御中 fallback')
+  const opener = readFileSync(new URL('../src/lib/openPrintHtml.js', import.meta.url), 'utf8')
+  assert(opener.includes('srcdoc'), 'phone preview uses iframe srcdoc')
+  assert(opener.includes('kp-print-overlay'), 'fullscreen overlay')
+  const mitsuPage = readFileSync(new URL('../src/pages/Mitsumori.jsx', import.meta.url), 'utf8')
+  assert(mitsuPage.includes('openPrintHtml'), 'quotes use overlay opener')
+  assert(!mitsuPage.includes("window.open('', '_blank')"), 'quotes do not use about:blank')
 }
 
 function testEditableAndPayload() {

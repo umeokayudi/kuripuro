@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 import { yen } from '../lib/invoice'
 import { usePeriod } from '../hooks/usePeriod'
+import { openPrintHtml } from '../lib/openPrintHtml'
 
 export default function Ryoshu() {
   const { t, lang } = useLang()
@@ -62,12 +63,11 @@ export default function Ryoshu() {
   }
 
   const handlePrint = (r) => {
-    const w = window.open('', '_blank')
     const clientName = escapeHtml(r.client_name)
     const issueDate = escapeHtml(r.issue_date)
     const description = escapeHtml(r.description || 'サービス代として')
-    w.document.write(`
-      <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>領収書</title>
+    openPrintHtml(`
+      <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>領収書</title>
       <style>
       @page { size: A4; margin: 16mm; }
       html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
@@ -97,8 +97,6 @@ export default function Ryoshu() {
         <div style="margin-top:40px;text-align:right"><p>KuriPuro by JBM</p></div>
       </body></html>
     `)
-    w.document.close()
-    w.print()
   }
 
   const totalPeriod = receipts.reduce((s,r)=>s+Number(r.total_amount||0),0)

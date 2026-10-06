@@ -38,24 +38,27 @@ export const PRINT_DOC_CSS = `
   .lines-wrap{width:100%}
   html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   @media screen and (max-width: 720px) {
-    body{max-width:100%;width:100%;margin:0;padding:16px 16px calc(28px + env(safe-area-inset-bottom, 0px))}
+    html, body { width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+    body{padding:20px 16px calc(32px + env(safe-area-inset-bottom, 0px)); font-size:17px}
     .mast{flex-wrap:wrap;gap:10px}
-    .mast h1{font-size:26px}
-    .party-name{font-size:20px}
+    .mast h1{font-size:34px; letter-spacing:0.18em}
+    .mast .no{font-size:14px}
+    .party-name{font-size:24px}
+    .party-co, .party-meta{font-size:15px}
     .top{grid-template-columns:1fr;gap:14px}
-    table.dates{font-size:14px}
+    table.dates{font-size:16px}
     table.dates td.v{text-align:left}
-    .thanks{font-size:15px;line-height:1.7;max-width:none}
+    .thanks{font-size:16px;line-height:1.75;max-width:none}
     .lines-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-    table.lines th{font-size:12px;padding:10px 8px}
-    table.lines td{font-size:15px;padding:10px 8px}
+    table.lines th{font-size:13px;padding:10px 8px}
+    table.lines td{font-size:16px;padding:12px 8px}
     .totals{width:100%;max-width:100%;margin-left:0}
-    .totals td{font-size:15px}
-    .total-row td{font-size:18px}
+    .totals td{font-size:16px}
+    .total-row td{font-size:20px}
     .foot{justify-content:stretch}
-    .issuer-card{min-width:0;max-width:100%;width:100%}
+    .issuer-card{min-width:0;max-width:100%;width:100%;font-size:15px}
     .issuer-line{grid-template-columns:5rem minmax(0,1fr)}
-    .issuer-brand{font-size:16px}
+    .issuer-brand{font-size:18px}
   }
   @media print {
     body{max-width:none;width:auto;margin:0;padding:0}

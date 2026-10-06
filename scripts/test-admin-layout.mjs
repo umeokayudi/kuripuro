@@ -44,6 +44,8 @@ const printCss = readFileSync(new URL('../src/lib/printDoc.js', import.meta.url)
 assert(printCss.includes('width=device-width'), 'print viewport')
 assert(printCss.includes('@page { size: A4'), 'print still A4')
 assert(printCss.includes('@media print'), 'print media keeps desktop A4')
+assert(printCss.includes('font-size:34px'), 'phone print title large')
+assert(css.includes('.kp-print-overlay'), 'print overlay')
 
 const reports = readFileSync(new URL('../src/pages/Reports.jsx', import.meta.url), 'utf8')
 assert(reports.includes('LineChart'), 'revenue chart')

@@ -8,6 +8,7 @@ import { usePeriod } from '../hooks/usePeriod'
 import { filterByPeriodKeepOpen } from '../lib/period'
 import { APP_VERSION } from '../lib/appVersion'
 import { QUOTE_ISSUER } from '../lib/quoteIssuer'
+import { openPrintHtml } from '../lib/openPrintHtml'
 import {
   addDays,
   billingPeriodForDate,
@@ -328,13 +329,11 @@ export default function Faturas() {
   const openPrint = async (f, autoPrint, lang = 'ja') => {
     const { data: printItems, error } = await supabase.from('fatura_items').select('*').eq('fatura_id', f.id)
     if (error) return toast.error(error.message)
-    const w = window.open('', '_blank')
-    if (!w) return toast.error(inv.popupBlocked)
     const client = clients.find(c => c.id === f.client_id)
     const locNames = [...new Set(
       contracts.filter(c => c.client_id === f.client_id).map(c => c.location_name).filter(Boolean)
     )]
-    w.document.write(buildInvoicePrintHtml(
+    const opened = openPrintHtml(buildInvoicePrintHtml(
       { ...f, invoice_number: displayNumber(f) },
       printItems || [],
       { bank: inv.bankNote },
@@ -344,12 +343,8 @@ export default function Faturas() {
         contact: client?.contact_name || f.contact_name || '',
         locations: locNames,
       },
-    ))
-    w.document.close()
-    if (autoPrint) {
-      w.focus()
-      w.print()
-    }
+    ), { autoPrint })
+    if (!opened.ok) toast.error(inv.popupBlocked)
   }
 
   const openAuto = () => {
