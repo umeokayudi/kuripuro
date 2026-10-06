@@ -122,7 +122,7 @@ function testQuoteNumberAndPrint() {
   }, [])
   assert(fromNotes.includes('Kodama Kinshicho 御中'), 'restaurant from notes when column missing')
   assert(!fromNotes.includes('【店舗】'), 'store tag stripped from 備考')
-  assert(fromNotes.includes('備考: 内部メモ'), 'human notes remain')
+  assert(fromNotes.includes('備考：内部メモ'), 'human notes remain')
   assert(html.includes('ご返答をお待ちしております'), 'thanks ja')
   assert(html.includes('誠にありがとうございます'), 'thanks ja gratitude')
   const en = buildMitsumoriPrintHtml({

@@ -330,7 +330,8 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') 
   const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
   const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
   const printNotes = notesForPrint(quote.notes)
-  const billName = L.honorific ? `${siteName || company} ${L.honorific}` : (siteName || company)
+  const billCore = siteName || company
+  const billName = L.honorific ? `${billCore} ${L.honorific}` : billCore
   const billTo = siteName
     ? `<div class="site-kicker">${L.store}</div><div class="bill-to">${billName}</div>${company && company !== siteName ? `<div class="muted">${L.company}${L.colon}${company}</div>` : ''}`
     : `<div class="bill-to">${billName}</div>`
