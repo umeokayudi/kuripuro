@@ -5,7 +5,7 @@ export function yenFmt(n) {
 }
 
 export function jobStoreName(job) {
-  const loc = String(job?.location_name || '').trim()
+  const loc = String(job?.location_name || job?.client_name || '').trim()
   if (loc) return loc
   return String(job?.title || '').split(' — ')[0].trim()
 }

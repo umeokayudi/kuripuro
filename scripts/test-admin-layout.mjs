@@ -42,7 +42,9 @@ const reports = readFileSync(new URL('../src/pages/Reports.jsx', import.meta.url
 assert(reports.includes('LineChart'), 'revenue chart')
 assert(reports.includes('BarChart'), 'client ranking')
 assert(reports.includes('DonutChart'), 'status donut')
-assert(reports.includes('t.invoices.statuses'), 'invoice status i18n')
+assert(reports.includes("from('faturas').select('*')"), 'invoices star select')
+assert(reports.includes("from('jobs').select('*')"), 'jobs star select')
+assert(!reports.includes('jobs.location_name'), 'no assumed job column')
 assert(reports.includes('viewDetails'), 'tables secondary')
 
 assert(ADMIN_AI_TABLES.includes('faturas'), 'invoices')

@@ -190,8 +190,8 @@ export default function Reports() {
     const prev = previousWindow(start, end)
     const loadStart = prev.start < start ? prev.start : start
     const [{ data: inv, error: invErr }, { data: jobRows, error: jobErr }, { data: cl }] = await Promise.all([
-      supabase.from('faturas').select('id,client_id,client_name,period_start,issue_date,due_date,created_at,status,total').limit(4000),
-      supabase.from('jobs').select('id,client_id,title,location_name,cleaning_type,job_category,value,spot_value,status,scheduled_date,completed_at')
+      supabase.from('faturas').select('*').limit(4000),
+      supabase.from('jobs').select('*')
         .gte('scheduled_date', loadStart)
         .lte('scheduled_date', end)
         .limit(8000),
