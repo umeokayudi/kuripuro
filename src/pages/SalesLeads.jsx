@@ -12,6 +12,8 @@ import {
   leadIsOverdue,
   leadsForStage,
   leadWritePayload,
+  isCrmSchemaMissing,
+  stripCrmExtras,
 } from '../lib/sales'
 import SalesLeadFields from '../components/SalesLeadFields'
 import SalesSetupCard, { SalesCrmSetupCard } from '../components/SalesSetupCard'
@@ -73,10 +75,9 @@ export default function SalesLeads({ stage }) {
       ? supabase.from('sales_leads').update(body).eq('id', editingId)
       : supabase.from('sales_leads').insert(body)
     let { error } = await query(payload)
-    if (error && String(error.message || '').toLowerCase().includes('interest')) {
+    if (error && isCrmSchemaMissing(error)) {
       setCrmOk(false)
-      const { interest: _i, ...rest } = payload
-      ;({ error } = await query(rest))
+      ;({ error } = await query(stripCrmExtras(payload)))
     }
     setSaving(false)
     if (error) {
@@ -146,8 +147,9 @@ export default function SalesLeads({ stage }) {
               <div key={row.id} className="card" style={{ marginBottom: 12, borderColor: overdue ? 'var(--amber)' : undefined }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{row.company_name}</div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{row.site_name || row.company_name}</div>
                     <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                      {row.site_name && row.company_name ? `${row.company_name} · ` : ''}
                       {row.contact_title ? `${row.contact_title} ` : ''}{row.contact_name || '—'}
                       {row.contact_phone ? ` · ${row.contact_phone}` : ''}
                     </div>

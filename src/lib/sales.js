@@ -13,7 +13,19 @@ export function isSalesSchemaMissing(error) {
 
 export function isCrmSchemaMissing(error) {
   const msg = String(error?.message || '').toLowerCase()
-  return msg.includes('sales_touchpoints') || (msg.includes('interest') && (msg.includes('column') || msg.includes('schema cache')))
+  return msg.includes('sales_touchpoints')
+    || msg.includes('site_name')
+    || (msg.includes('interest') && (msg.includes('column') || msg.includes('schema cache')))
+}
+
+export function stripCrmExtras(payload) {
+  if (!payload || typeof payload !== 'object') return payload
+  const { interest: _i, site_name: _s, ...rest } = payload
+  return rest
+}
+
+export function quoteRestaurantName(quote) {
+  return String(quote?.site_name || '').trim()
 }
 
 export function normalizeCompanyKey(name) {
@@ -210,7 +222,8 @@ export const TOUCH_TYPES = ['reply', 'call', 'note', 'sent']
 
 export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   const company = escapeHtml(quote.company_name)
-  const siteName = escapeHtml(quote.site_name || '')
+  const siteName = escapeHtml(quoteRestaurantName(quote))
+  const printTitle = siteName || company
   const contact = escapeHtml([quote.contact_title, quote.contact_name].filter(Boolean).join(' '))
   const number = escapeHtml(quote.quote_number || quote.id?.slice?.(0, 8) || '')
   const issuerCompany = escapeHtml(issuer.company || QUOTE_ISSUER.company)
@@ -221,7 +234,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
   const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
   const billTo = siteName
-    ? `<div class="bill-to">${siteName} 御中</div>${company && company !== siteName ? `<div class="muted">${company}</div>` : ''}`
+    ? `<div class="site-kicker">店舗</div><div class="bill-to">${siteName} 御中</div>${company && company !== siteName ? `<div class="muted">会社：${company}</div>` : ''}`
     : `<div class="bill-to">${company} 御中</div>`
   const rows = (items || []).map(it => `
       <tr>
@@ -233,7 +246,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   const accepted = quote.status === 'accepted'
 
   return `<!DOCTYPE html>
-<html lang="ja"><head><meta charset="utf-8"><title>見積書 ${number} - ${company}</title>
+<html lang="ja"><head><meta charset="utf-8"><title>見積書 ${number} - ${printTitle}</title>
 <style>
   @page { size: A4; margin: 14mm; }
   * { box-sizing: border-box; }
@@ -245,7 +258,8 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   .doc-title .no{font-size:12px;color:#667}
   .gold{height:4px;background:linear-gradient(90deg,#c4a35a,#ead9a8,#c4a35a);margin:0 0 20px}
   .meta{display:flex;justify-content:space-between;gap:24px;margin-bottom:18px;font-size:13px}
-  .bill-to{font-size:18px;font-weight:800;margin-bottom:6px}
+  .bill-to{font-size:22px;font-weight:800;margin-bottom:6px;letter-spacing:0.04em}
+  .site-kicker{font-size:11px;letter-spacing:0.28em;color:#886;margin-bottom:2px}
   .muted{color:#667;line-height:1.6}
   table.lines{width:100%;border-collapse:collapse;margin:8px 0 4px}
   table.lines th{background:#0c1c30;color:#f7efd8;padding:9px 10px;text-align:left;font-size:12px;font-weight:600}

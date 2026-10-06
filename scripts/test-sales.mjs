@@ -10,6 +10,7 @@ import {
   leadsForStage,
   mergeLeadFromQuote,
   nextQuoteNumber,
+  quoteRestaurantName,
   quoteTotals,
   quoteWritePayload,
 } from '../src/lib/sales.js'
@@ -93,6 +94,20 @@ function testQuoteNumberAndPrint() {
   assert(!html.includes('ご要望'), 'no needs label')
   assert(html.includes('brand-name'), 'styled header')
   assert(html.includes('issuer-card'), 'issuer card')
+  assert(quoteRestaurantName({ site_name: '  Kodama  ' }) === 'Kodama', 'trim restaurant')
+  const shop = buildMitsumoriPrintHtml({
+    company_name: 'Parent Co',
+    site_name: 'Kodama Kinshicho',
+    quote_number: 'KPQ-202610-002',
+    tax_rate: 10,
+    subtotal: 0,
+    tax_amount: 0,
+    total: 0,
+  }, [])
+  assert(shop.includes('店舗'), 'store kicker')
+  assert(shop.includes('Kodama Kinshicho 御中'), 'restaurant 御中')
+  assert(shop.includes('会社：Parent Co'), 'legal company under restaurant')
+  assert(shop.includes('見積書 KPQ-202610-002 - Kodama Kinshicho'), 'title uses restaurant')
 }
 
 function testEditableAndPayload() {

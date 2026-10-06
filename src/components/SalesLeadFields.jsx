@@ -1,18 +1,18 @@
 import { LEAD_SOURCES } from '../lib/sales'
 
-export default function SalesLeadFields({ form, onChange, s, locked = false }) {
+export default function SalesLeadFields({ form, onChange, s, locked = false, requiredSite = false }) {
   const upd = (k, v) => onChange({ ...form, [k]: v })
   return (
     <>
       <div className="card-title">{s.companySection}</div>
       <div className="grid-2">
         <div className="form-group" style={{ gridColumn: '1/-1' }}>
-          <label>{s.company} *</label>
-          <input value={form.company_name} disabled={locked} onChange={e => upd('company_name', e.target.value)} />
+          <label>{s.siteName}{requiredSite ? ' *' : ''}</label>
+          <input value={form.site_name || ''} disabled={locked} onChange={e => upd('site_name', e.target.value)} placeholder={s.siteHint} />
         </div>
         <div className="form-group" style={{ gridColumn: '1/-1' }}>
-          <label>{s.siteName}</label>
-          <input value={form.site_name || ''} disabled={locked} onChange={e => upd('site_name', e.target.value)} placeholder={s.siteHint} />
+          <label>{s.company} *</label>
+          <input value={form.company_name} disabled={locked} onChange={e => upd('company_name', e.target.value)} />
         </div>
         <div className="form-group"><label>{s.companyKana}</label><input value={form.company_kana || ''} disabled={locked} onChange={e => upd('company_kana', e.target.value)} /></div>
         <div className="form-group"><label>{s.industry}</label><input value={form.industry || ''} disabled={locked} onChange={e => upd('industry', e.target.value)} /></div>

@@ -22,6 +22,7 @@ import {
   quoteWritePayload,
   yen,
   isSalesSchemaMissing,
+  stripCrmExtras,
 } from '../lib/sales'
 import SalesLeadFields from '../components/SalesLeadFields'
 import SalesSetupCard, { SalesCrmSetupCard } from '../components/SalesSetupCard'
@@ -168,8 +169,7 @@ export default function Mitsumori() {
     let { data, error } = await run(leadPayload)
     if (error && isCrmSchemaMissing(error)) {
       setCrmOk(false)
-      const { interest: _i, ...rest } = leadPayload
-      ;({ data, error } = await run(rest))
+      ;({ data, error } = await run(stripCrmExtras(leadPayload)))
     }
     if (error) throw error
     return data
@@ -205,6 +205,7 @@ export default function Mitsumori() {
 
   const handleSave = async () => {
     if (!String(form.company_name || '').trim()) return toast.error(s.missingCompany)
+    if (!String(form.site_name || '').trim()) return toast.error(s.missingSite)
     if (!String(form.contact_name || '').trim()) return toast.error(s.missingContact)
     if (!locked && (!items.length || items.every(it => !it.description))) return toast.error(s.addItem)
     setSaving(true)
@@ -223,8 +224,7 @@ export default function Mitsumori() {
         let { error } = await supabase.from('mitsumori').update(payload).eq('id', editingId)
         if (error && isCrmSchemaMissing(error)) {
           setCrmOk(false)
-          const { interest: _i, ...rest } = payload
-          ;({ error } = await supabase.from('mitsumori').update(rest).eq('id', editingId))
+          ;({ error } = await supabase.from('mitsumori').update(stripCrmExtras(payload)).eq('id', editingId))
         }
         if (error) {
           if (isSalesSchemaMissing(error)) setSchemaOk(false)
@@ -242,8 +242,7 @@ export default function Mitsumori() {
         let { data: quote, error: qErr } = await supabase.from('mitsumori').insert(payload).select().single()
         if (qErr && isCrmSchemaMissing(qErr)) {
           setCrmOk(false)
-          const { interest: _i, ...rest } = payload
-          ;({ data: quote, error: qErr } = await supabase.from('mitsumori').insert(rest).select().single())
+          ;({ data: quote, error: qErr } = await supabase.from('mitsumori').insert(stripCrmExtras(payload)).select().single())
         }
         if (qErr) {
           if (isSalesSchemaMissing(qErr)) setSchemaOk(false)
@@ -364,11 +363,11 @@ export default function Mitsumori() {
                 <label>{s.prefillLead}</label>
                 <select value="" onChange={e => { if (e.target.value) pickLead(e.target.value) }}>
                   <option value="">{s.prefillLead}</option>
-                  {leads.map(l => <option key={l.id} value={l.id}>{l.company_name} — {l.contact_name || ''} ({s.stages?.[l.stage] || l.stage})</option>)}
+                  {leads.map(l => <option key={l.id} value={l.id}>{(l.site_name ? `${l.site_name} / ` : '') + l.company_name} — {l.contact_name || ''} ({s.stages?.[l.stage] || l.stage})</option>)}
                 </select>
               </div>
             )}
-            <SalesLeadFields form={form} onChange={setForm} s={s} locked={locked} />
+            <SalesLeadFields form={form} onChange={setForm} s={s} locked={locked} requiredSite />
             <div className="grid-2" style={{ marginTop: 8 }}>
               <div className="form-group"><label>{s.validUntil}</label><input type="date" value={form.valid_until || ''} disabled={locked} onChange={e => setForm({ ...form, valid_until: e.target.value })} /></div>
               <div className="form-group"><label>{inv.taxRate}</label>
