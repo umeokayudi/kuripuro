@@ -76,6 +76,8 @@ function testQuoteNumberAndPrint() {
     status: 'accepted',
   }, [{ description: 'Daily', quantity: 1, unit_price: 10000, total: 10000 }])
   assert(html.includes('見積書'), 'title')
+  assert(html.includes('width=device-width'), 'quote viewport')
+  assert(html.includes('@page { size: A4'), 'quote A4')
   assert(html.includes('成約'), 'accepted stamp')
   assert(html.includes('KPQ-202610-001'), 'number')
   assert(!html.includes('<x>'), 'escaped')

@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { viewablePhotoUrl } from './photoUrl'
+import { a4JsPdf } from './pdfView'
 
 // Carrega uma imagem de URL como dataURL pra embutir no PDF
 async function loadImageDataUrl(url) {
@@ -19,7 +20,7 @@ async function loadImageDataUrl(url) {
 
 
 export async function generateDailyReport(date, jobs, employeeName) {
-  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
+  const doc = a4JsPdf(jsPDF)
   const W = 210, margin = 14
   let y = margin
 
@@ -197,7 +198,7 @@ export async function generateDailyReport(date, jobs, employeeName) {
 }
 
 export async function generatePayslip(employee, month, salaryData, payments, advances) {
-  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
+  const doc = a4JsPdf(jsPDF)
   const W = 210, margin = 14
   let y = margin
 
@@ -383,7 +384,7 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
 
 export async function generatePayslipJP(employee, month, salaryData, payments, advances) {
   const { jsPDF } = await import('jspdf')
-  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
+  const doc = a4JsPdf(jsPDF)
   const W = 210, margin = 14
   let y = margin
 

@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { yenFmt } from './reportAnalytics'
+import { a4JsPdf } from './pdfView'
 
 function drawBars(doc, series, x, y, w, h) {
   const max = Math.max(...(series || []).map(s => Number(s.value) || 0), 0)
@@ -33,7 +34,7 @@ export function generateReportPdf({
   invoices = [],
   generatedAt,
 }) {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const doc = a4JsPdf(jsPDF)
   const W = 210
   const margin = 14
   let y = 12

@@ -128,6 +128,11 @@ function testPrint() {
   assert(html.includes('umeokagroup@gmail.com'), 'email')
   assert(html.includes('070-9073-2909'), 'phone')
   assert(html.includes('ご請求申し上げます'), 'thanks')
+  assert(html.includes('width=device-width'), 'mobile viewport')
+  assert(html.includes('@page { size: A4'), 'A4 page')
+  assert(html.includes('@media screen and (max-width: 720px)'), 'screen mobile scale')
+  assert(html.includes('@media print'), 'print keeps A4')
+  assert(html.includes('lines-wrap'), 'table wrap')
   assert(!html.includes('電子発行'), 'no e-issue line')
   assert(!html.includes('KuriPuro by JBM'), 'no old brand')
   assert(html.includes('備考：a &amp; b'), 'notes colon')
@@ -182,8 +187,8 @@ function testVersionLock() {
   const api = readFileSync(new URL('../api/_gemini.js', import.meta.url), 'utf8')
   const match = api.match(/export const API_BUILD = '([^']+)'/)
   assert(match?.[1] === APP_BUILD, `API_BUILD ${match?.[1]} vs ${APP_BUILD}`)
-  assert(APP_VERSION === 'v54', APP_VERSION)
-  assert(APP_BUILD.endsWith('-v54'), APP_BUILD)
+  assert(APP_VERSION === 'v55', APP_VERSION)
+  assert(APP_BUILD.endsWith('-v55'), APP_BUILD)
 }
 
 function testMonthlyAndDiscounts() {

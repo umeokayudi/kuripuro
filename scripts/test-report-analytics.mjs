@@ -114,5 +114,7 @@ const doc = generateReportPdf({
   generatedAt: '2026-10-06 12:00',
 })
 assert(typeof doc.save === 'function', 'jspdf doc')
+const pdfBytes = String(doc.output())
+assert(pdfBytes.includes('FitH') || pdfBytes.includes('/FitH'), 'open at page width')
 
 console.log('✅ report analytics / pdf')

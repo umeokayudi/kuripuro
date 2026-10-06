@@ -67,12 +67,23 @@ export default function Ryoshu() {
     const issueDate = escapeHtml(r.issue_date)
     const description = escapeHtml(r.description || 'サービス代として')
     w.document.write(`
-      <html><head><title>領収書</title>
-      <style>body{font-family:sans-serif;padding:40px;max-width:400px;margin:0 auto}
+      <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>領収書</title>
+      <style>
+      @page { size: A4; margin: 16mm; }
+      html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+      body{font-family:sans-serif;padding:40px;max-width:400px;margin:0 auto}
       h1{text-align:center;font-size:24px;margin-bottom:30px}
-      .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}
+      .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #eee}
+      .row span:last-child{text-align:right;overflow-wrap:anywhere}
       .total{font-size:20px;font-weight:bold;color:#0F6E56}
       .stamp{border:3px solid red;color:red;padding:4px 12px;display:inline-block;transform:rotate(-15deg);font-size:18px;font-weight:bold;margin-top:20px}
+      @media screen and (max-width: 720px) {
+        body{max-width:100%;width:100%;padding:20px 16px calc(28px + env(safe-area-inset-bottom, 0px))}
+        h1{font-size:28px}
+        .row{font-size:16px}
+        .total{font-size:22px}
+      }
+      @media print { body{max-width:none;margin:0;padding:0} }
       </style></head>
       <body>
         <h1>領収書</h1>

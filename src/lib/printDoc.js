@@ -35,6 +35,36 @@ export const PRINT_DOC_CSS = `
   .issuer-line div{min-width:0;overflow-wrap:break-word;word-break:keep-all;hyphens:none}
   .rep-name{font-weight:800;color:#122033}
   .stamp{position:absolute;right:8px;top:8px;border:2px solid #0f6e56;color:#0f6e56;padding:4px 10px;font-weight:800;transform:rotate(-8deg);font-size:13px;letter-spacing:0.12em}
+  .lines-wrap{width:100%}
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  @media screen and (max-width: 720px) {
+    body{max-width:100%;width:100%;margin:0;padding:16px 16px calc(28px + env(safe-area-inset-bottom, 0px))}
+    .mast{flex-wrap:wrap;gap:10px}
+    .mast h1{font-size:26px}
+    .party-name{font-size:20px}
+    .top{grid-template-columns:1fr;gap:14px}
+    table.dates{font-size:14px}
+    table.dates td.v{text-align:left}
+    .thanks{font-size:15px;line-height:1.7;max-width:none}
+    .lines-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    table.lines th{font-size:12px;padding:10px 8px}
+    table.lines td{font-size:15px;padding:10px 8px}
+    .totals{width:100%;max-width:100%;margin-left:0}
+    .totals td{font-size:15px}
+    .total-row td{font-size:18px}
+    .foot{justify-content:stretch}
+    .issuer-card{min-width:0;max-width:100%;width:100%}
+    .issuer-line{grid-template-columns:5rem minmax(0,1fr)}
+    .issuer-brand{font-size:16px}
+  }
+  @media print {
+    body{max-width:none;width:auto;margin:0;padding:0}
+    .top{grid-template-columns:minmax(0,1fr) 220px}
+    .lines-wrap{overflow:visible}
+    .totals{width:260px;margin-left:auto}
+    .foot{justify-content:flex-end}
+    .issuer-card{min-width:19rem;max-width:24rem;width:auto}
+  }
 `
 
 export const INVOICE_PRINT_COPY = {
@@ -168,7 +198,7 @@ export function wrapPrintHtml({
   issuerHtml,
 }) {
   return `<!DOCTYPE html>
-<html lang="${L.htmlLang}"><head><meta charset="utf-8"><title>${escapeHtml(L.docTitle)} ${escapeHtml(number)} - ${printTitle}</title>
+<html lang="${L.htmlLang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>${escapeHtml(L.docTitle)} ${escapeHtml(number)} - ${printTitle}</title>
 <style>${PRINT_DOC_CSS}
   .mast h1{letter-spacing:${L.titleTracking}}
 </style></head>
@@ -187,10 +217,12 @@ export function wrapPrintHtml({
       ${partyHtml}
       ${datesHtml}
     </div>
+    <div class="lines-wrap">
     <table class="lines">
       <thead><tr>${columnHead}</tr></thead>
       <tbody>${rows || '<tr><td colspan="4">—</td></tr>'}</tbody>
     </table>
+    </div>
     ${totalsHtml}
     ${notesHtml}
     ${thanks ? `<p class="thanks">${thanks}</p>` : ''}
