@@ -1,6 +1,6 @@
 import { escapeHtml } from './escapeHtml'
 import { addDays, invoiceTotals, lineTotal, yen } from './invoice'
-import { PRINT_DOC_CSS, localizePrintText, formatAddressForLang } from './printDoc'
+import { localizePrintText, formatAddressForLang, printPartyHtml, printDatesHtml, printIssuerHtml, wrapPrintHtml } from './printDoc'
 import { printIssuer } from './quoteIssuer'
 
 export const LEAD_SOURCES = ['visit', 'phone', 'referral', 'web', 'walkin', 'other']
@@ -333,31 +333,17 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') 
   const L = quotePrintCopy(lang)
   const loc = printIssuer(issuer, lang)
   const restaurant = localizePrintText(quoteRestaurantName(quote), lang)
-  const companyRaw = localizePrintText(String(quote.company_name || '').trim(), lang)
-  const company = escapeHtml(companyRaw)
-  const siteName = escapeHtml(restaurant)
-  const printTitle = siteName || company
-  const contact = escapeHtml(localizePrintText([quote.contact_title, quote.contact_name].filter(Boolean).join(' '), lang))
-  const number = escapeHtml(quote.quote_number || quote.id?.slice?.(0, 8) || '')
-  const issuerCompany = escapeHtml(loc.company)
-  const issuerTitle = escapeHtml(L.rep)
-  const issuerPerson = escapeHtml(loc.name)
-  const issuerAddress = escapeHtml(loc.address || '')
-  const issuerReg = escapeHtml(loc.regNumber || '')
-  const issuerEmail = escapeHtml(loc.email)
-  const issuerPhone = escapeHtml(loc.phone)
+  const company = localizePrintText(String(quote.company_name || '').trim(), lang)
+  const printTitle = escapeHtml(restaurant || company)
+  const contact = localizePrintText([quote.contact_title, quote.contact_name].filter(Boolean).join(' '), lang)
+  const number = quote.quote_number || quote.id?.slice?.(0, 8) || ''
   const printNotes = localizePrintText(notesForPrint(quote.notes), lang)
   const clientAddress = formatAddressForLang(quote.address || '', lang)
-  const freqBits = [
+  const extra = [
     quote.frequency ? localizePrintText(quote.frequency, lang) : '',
     quote.hours_per_visit ? `${quote.hours_per_visit}${lang === 'en' ? ' h' : '時間'}` : '',
   ].filter(Boolean).join(lang === 'en' ? ' · ' : '　')
-  const billCore = siteName || company
-  const billName = L.honorific ? `${billCore} ${L.honorific}` : billCore
-  const companyLine = company && company !== billCore
-    ? `<div class="muted">${L.company}${L.colon}${company}</div>`
-    : ''
-  const billTo = `<div class="site-kicker">${L.store}</div><div class="bill-to">${billName}</div>${companyLine}`
+  const extraHtml = extra ? `<div class="party-meta">${escapeHtml(extra)}</div>` : ''
   const rows = (items || []).map(it => `
       <tr>
         <td>${escapeHtml(localizePrintText(it.description || '', lang))}</td>
@@ -365,71 +351,31 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') 
         <td class="num">${yen(it.unit_price)}</td>
         <td class="num">${yen(it.total)}</td>
       </tr>`).join('')
-  const accepted = quote.status === 'accepted'
-  const brandTrack = lang === 'en' ? '0.08em' : '0.28em'
-
-  return `<!DOCTYPE html>
-<html lang="${L.htmlLang}"><head><meta charset="utf-8"><title>${L.docTitle} ${number} - ${printTitle}</title>
-<style>${PRINT_DOC_CSS}
-  .doc-title h1{letter-spacing:${L.titleTracking}}
-  .brand-name{letter-spacing:${brandTrack}}
-</style></head>
-<body>
-  <div class="wrap">
-    ${accepted ? `<div class="stamp">${L.accepted}</div>` : ''}
-    <div class="head">
-      <div class="brand">
-        <div class="brand-name">${issuerCompany}</div>
-      </div>
-      <div class="doc-title">
-        <h1>${L.docTitle}</h1>
-        <div class="no">${number}</div>
-      </div>
-    </div>
-    <div class="gold"></div>
-    <div class="meta">
-      <div>
-        ${billTo}
-        ${contact ? `<div class="muted">${L.contact}${L.colon}${contact}</div>` : ''}
-        ${clientAddress ? `<div class="muted">${escapeHtml(clientAddress)}</div>` : ''}
-        ${freqBits ? `<div class="muted">${escapeHtml(freqBits)}</div>` : ''}
-      </div>
-      <div class="meta-side muted">
-        <div>${L.issueDate}${L.colon}${escapeHtml(quote.issue_date || '')}</div>
-        <div>${L.validUntil}${L.colon}${escapeHtml(quote.valid_until || '—')}</div>
-        <div class="rep-block">
-          <div class="rep-kicker">${issuerTitle}</div>
-          <div class="rep-name">${issuerPerson}</div>
-        </div>
-        <div style="margin-top:6px;color:#152033;font-weight:800">${issuerCompany}</div>
-        ${issuerAddress ? `<div>${issuerAddress}</div>` : ''}
-        ${issuerReg ? `<div>${L.reg}${L.colon}${issuerReg}</div>` : ''}
-      </div>
-    </div>
-    <table class="lines">
-      <thead><tr><th>${L.desc}</th><th class="num">${L.qty}</th><th class="num">${L.unit}</th><th class="num">${L.amount}</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4">—</td></tr>'}</tbody>
-    </table>
-    <table class="totals">
+  const totalsHtml = `<table class="totals">
       <tr><td>${L.subtotal}</td><td class="num">${yen(quote.subtotal)}</td></tr>
       <tr><td>${L.tax} (${escapeHtml(String(quote.tax_rate ?? 10))}%)</td><td class="num">${yen(quote.tax_amount)}</td></tr>
       <tr class="total-row"><td>${L.total}</td><td class="num">${yen(quote.total)}</td></tr>
-    </table>
-    ${printNotes ? `<p class="muted" style="margin-top:18px">${L.notes}${L.colon}${escapeHtml(printNotes)}</p>` : ''}
-    <p class="thanks">${L.thanks}</p>
-    <div class="issuer">
-      <div class="issuer-card">
-        <div class="issuer-kicker">${L.issuer}</div>
-        <strong>${issuerCompany}</strong>
-        <div class="issuer-line"><span>${issuerTitle}</span><div>${issuerPerson}</div></div>
-        ${issuerAddress ? `<div class="issuer-line"><span>${L.address}</span><div>${issuerAddress}</div></div>` : ''}
-        ${issuerReg ? `<div class="issuer-line"><span>${L.reg}</span><div>${issuerReg}</div></div>` : ''}
-        <div class="issuer-line"><span>${L.email}</span><div>${issuerEmail}</div></div>
-        <div class="issuer-line"><span>${L.phone}</span><div>${issuerPhone}</div></div>
-      </div>
-    </div>
-  </div>
-</body></html>`
+    </table>`
+  const notesHtml = printNotes
+    ? `<p class="muted" style="margin-top:16px">${escapeHtml(L.notes)}${L.colon}${escapeHtml(printNotes)}</p>`
+    : ''
+  return wrapPrintHtml({
+    L,
+    number,
+    printTitle,
+    stamp: quote.status === 'accepted' ? L.accepted : '',
+    partyHtml: printPartyHtml(L, { restaurant, company, contact, address: clientAddress, extra: extraHtml }),
+    datesHtml: printDatesHtml([
+      [L.issueDate, escapeHtml(quote.issue_date || '')],
+      [L.validUntil, escapeHtml(quote.valid_until || '—')],
+    ]),
+    columnHead: `<th>${L.desc}</th><th class="num">${L.qty}</th><th class="num">${L.unit}</th><th class="num">${L.amount}</th>`,
+    rows,
+    totalsHtml,
+    notesHtml,
+    thanks: L.thanks,
+    issuerHtml: printIssuerHtml(L, loc),
+  })
 }
 
 export { lineTotal, yen }

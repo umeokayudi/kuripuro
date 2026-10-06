@@ -87,16 +87,19 @@ function testQuoteNumberAndPrint() {
   assert(html.includes('住所'), 'address labeled')
   assert(html.includes('〒204-0012'), 'kiyose postal')
   assert(html.includes('東京都清瀬市中清戸4-907-17'), 'kiyose street')
-  assert(html.includes('登録番号：'), 'touroku labeled')
-  assert(html.includes('発行者'), 'issuer kicker')
+  assert(html.includes('登録番号'), 'touroku labeled')
   assert(html.includes('T1234567890123'), 'reg digits')
   assert(!html.includes('電子発行'), 'no e-issue line')
   assert(!html.includes('KuriPuro by JBM'), 'no old brand')
   assert(!html.includes('INTERNAL_INTEREST_SECRET'), 'interest stays off print')
   assert(!html.includes('SECRET_INTEREST_SHOULD_NOT_PRINT'), 'needs stay off print')
   assert(!html.includes('ご要望'), 'no needs label')
-  assert(html.includes('brand-name'), 'styled header')
   assert(html.includes('issuer-card'), 'issuer card')
+  assert(html.includes('issuer-brand'), 'issuer once at foot')
+  assert((html.split('〒204-0012').length - 1) === 1, 'kiyose once')
+  assert((html.split('梅岡アレサンドレユウジ').length - 1) === 1, 'daihyo once')
+  assert((html.split('クリプロ').length - 1) === 1, 'company once')
+  assert(!html.includes('brand-name'), 'no duplicate header brand')
   assert(quoteRestaurantName({ site_name: '  Kodama  ' }) === 'Kodama', 'trim restaurant')
   const shop = buildMitsumoriPrintHtml({
     company_name: 'Parent Co',
@@ -107,9 +110,8 @@ function testQuoteNumberAndPrint() {
     tax_amount: 0,
     total: 0,
   }, [])
-  assert(shop.includes('店舗'), 'store kicker')
   assert(shop.includes('Kodama Kinshicho 御中'), 'restaurant 御中')
-  assert(shop.includes('会社：Parent Co'), 'legal company under restaurant')
+  assert(shop.includes('Parent Co'), 'legal company under restaurant')
   assert(shop.includes('見積書 KPQ-202610-002 - Kodama Kinshicho'), 'title uses restaurant')
   const fromNotes = buildMitsumoriPrintHtml({
     company_name: 'Parent Co',
@@ -139,7 +141,6 @@ function testQuoteNumberAndPrint() {
   assert(en.includes('lang="en"'), 'html lang en')
   assert(en.includes('Thank you for requesting this quotation'), 'thanks en')
   assert(en.includes('we look forward to your reply'), 'await reply en')
-  assert(en.includes('Store'), 'store kicker en')
   assert(en.includes('Kodama Kinshicho'), 'restaurant en')
   assert(!en.includes('御中'), 'no 御中 on english print')
   assert(en.includes('Rep.'), 'rep en')
@@ -166,7 +167,6 @@ function testQuoteNumberAndPrint() {
   assert(!jaLine.includes('日常清掃'), 'no japanese service line')
   assert(quoteRestaurantName({ notes: '店舗：魚豪商コダマ\nmemo' }) === '魚豪商コダマ', 'store colon in notes')
   assert(quoteRestaurantName({ notes: '店名：魚豪商コダマ' }) === '魚豪商コダマ', 'tenmei in notes')
-  assert(html.includes('店舗'), 'store kicker even without site_name')
   assert(html.includes('&lt;x&gt; 御中'), 'company as 御中 fallback')
 }
 

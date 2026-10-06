@@ -330,7 +330,21 @@ export default function Faturas() {
     if (error) return toast.error(error.message)
     const w = window.open('', '_blank')
     if (!w) return toast.error(inv.popupBlocked)
-    w.document.write(buildInvoicePrintHtml({ ...f, invoice_number: displayNumber(f) }, printItems || [], { bank: inv.bankNote }, lang))
+    const client = clients.find(c => c.id === f.client_id)
+    const locNames = [...new Set(
+      contracts.filter(c => c.client_id === f.client_id).map(c => c.location_name).filter(Boolean)
+    )]
+    w.document.write(buildInvoicePrintHtml(
+      { ...f, invoice_number: displayNumber(f) },
+      printItems || [],
+      { bank: inv.bankNote },
+      lang,
+      {
+        address: client?.address || f.address || '',
+        contact: client?.contact_name || f.contact_name || '',
+        locations: locNames,
+      },
+    ))
     w.document.close()
     if (autoPrint) {
       w.focus()

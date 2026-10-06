@@ -1,5 +1,5 @@
 import { escapeHtml } from './escapeHtml'
-import { PRINT_DOC_CSS, invoicePrintCopy, localizePrintText } from './printDoc'
+import { invoicePrintCopy, localizePrintText, formatAddressForLang, printPartyHtml, printDatesHtml, printIssuerHtml, wrapPrintHtml } from './printDoc'
 import { printIssuer } from './quoteIssuer'
 
 export function roundYen(n) {
@@ -111,6 +111,7 @@ export function buildMonthlyChargeItems(contracts, client, labels = {}) {
       return {
         job_id: null,
         kind: 'monthly',
+        location_name: place || null,
         description,
         quantity: 1,
         unit_price: amount,
@@ -226,27 +227,59 @@ export function cashflowDescription(invoiceNumber, clientName) {
   return `請求書 ${no} · ${clientName || ''}`.trim()
 }
 
-export function buildInvoicePrintHtml(invoice, items, issuer = {}, lang = 'ja') {
+export function placesFromInvoiceItems(items) {
+  const seen = new Set()
+  const out = []
+  const add = (raw) => {
+    const t = String(raw || '').replace(/\u3000/g, ' ').trim()
+    if (!t) return
+    const key = t.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(t)
+  }
+  for (const it of items || []) {
+    if (it.kind === 'discount') continue
+    const desc = String(it.description || '')
+    if (/^(discount|値引|値引き)/i.test(desc)) continue
+    add(it.location_name)
+    const m = desc.match(/^(.+?)\s+[—–−-]\s+/)
+    if (m && m[1].length < 80) add(m[1])
+  }
+  return out
+}
+
+export function invoiceRestaurantName(invoice, items = [], extras = {}) {
+  const first = (...vals) => {
+    for (const v of vals) {
+      const s = String(v || '').replace(/\u3000/g, ' ').trim()
+      if (s) return s
+    }
+    return ''
+  }
+  const fromItems = placesFromInvoiceItems(items)
+  const fromContracts = [...new Set((extras.locations || []).map(s => String(s || '').trim()).filter(Boolean))]
+  return first(
+    invoice?.site_name,
+    invoice?.location_name,
+    invoice?.store_name,
+    invoice?.restaurant,
+    fromItems.length ? fromItems.join(' / ') : '',
+    fromContracts.length === 1 ? fromContracts[0] : '',
+  )
+}
+
+export function buildInvoicePrintHtml(invoice, items, issuer = {}, lang = 'ja', extras = {}) {
   const L = invoicePrintCopy(lang)
   const loc = printIssuer(issuer, lang)
-  const clientName = escapeHtml(localizePrintText(invoice.client_name, lang))
-  const billName = L.honorific ? `${clientName} ${L.honorific}` : clientName
-  const issueDate = escapeHtml(invoice.issue_date || '')
-  const periodStart = escapeHtml(invoice.period_start || '—')
-  const periodEnd = escapeHtml(invoice.period_end || '—')
-  const dueDate = escapeHtml(invoice.due_date || '—')
-  const notes = escapeHtml(localizePrintText(invoice.notes || '', lang))
-  const number = escapeHtml(invoice.invoice_number || invoice.id?.slice?.(0, 8) || '')
-  const issuerCompany = escapeHtml(loc.company)
-  const issuerTitle = escapeHtml(L.rep)
-  const issuerPerson = escapeHtml(loc.name)
-  const issuerAddress = escapeHtml(loc.address || '')
-  const issuerReg = escapeHtml(loc.regNumber || '')
-  const issuerEmail = escapeHtml(loc.email)
-  const issuerPhone = escapeHtml(loc.phone)
-  const bank = escapeHtml(localizePrintText(loc.bank || '', lang))
-  const paid = invoice.status === 'paid'
-  const brandTrack = lang === 'en' ? '0.08em' : '0.28em'
+  const company = localizePrintText(invoice.client_name, lang)
+  const restaurant = localizePrintText(invoiceRestaurantName(invoice, items, extras), lang)
+  const printTitle = escapeHtml(restaurant || company)
+  const number = invoice.invoice_number || invoice.id?.slice?.(0, 8) || ''
+  const notes = localizePrintText(invoice.notes || '', lang)
+  const address = formatAddressForLang(extras.address || invoice.address || '', lang)
+  const contact = localizePrintText(extras.contact || invoice.contact_name || '', lang)
+  const bank = localizePrintText(loc.bank || '', lang)
   const rows = (items || []).map(it => `
       <tr>
         <td>${escapeHtml(localizePrintText(it.description || '', lang))}</td>
@@ -254,66 +287,30 @@ export function buildInvoicePrintHtml(invoice, items, issuer = {}, lang = 'ja') 
         <td class="num">${yen(it.unit_price)}</td>
         <td class="num">${yen(it.total)}</td>
       </tr>`).join('')
-
-  return `<!DOCTYPE html>
-<html lang="${L.htmlLang}"><head><meta charset="utf-8"><title>${L.docTitle} ${number} - ${clientName}</title>
-<style>${PRINT_DOC_CSS}
-  .doc-title h1{letter-spacing:${L.titleTracking}}
-  .brand-name{letter-spacing:${brandTrack}}
-</style></head>
-<body>
-  <div class="wrap">
-    ${paid ? `<div class="stamp">${L.paid}</div>` : ''}
-    <div class="head">
-      <div class="brand">
-        <div class="brand-name">${issuerCompany}</div>
-      </div>
-      <div class="doc-title">
-        <h1>${L.docTitle}</h1>
-        <div class="no">${number}</div>
-      </div>
-    </div>
-    <div class="gold"></div>
-    <div class="meta">
-      <div>
-        <div class="bill-to">${billName}</div>
-        <div class="muted">${L.period}${L.colon}${periodStart}${L.rangeSep}${periodEnd}</div>
-      </div>
-      <div class="meta-side muted">
-        <div>${L.issueDate}${L.colon}${issueDate}</div>
-        <div>${L.due}${L.colon}${dueDate}</div>
-        <div class="rep-block">
-          <div class="rep-kicker">${issuerTitle}</div>
-          <div class="rep-name">${issuerPerson}</div>
-        </div>
-        <div style="margin-top:6px;color:#152033;font-weight:800">${issuerCompany}</div>
-        ${issuerAddress ? `<div>${issuerAddress}</div>` : ''}
-        ${issuerReg ? `<div>${L.reg}${L.colon}${issuerReg}</div>` : ''}
-      </div>
-    </div>
-    <table class="lines">
-      <thead><tr><th>${L.desc}</th><th class="num">${L.qty}</th><th class="num">${L.unit}</th><th class="num">${L.amount}</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4">—</td></tr>'}</tbody>
-    </table>
-    <table class="totals">
+  const totalsHtml = `<table class="totals">
       <tr><td>${L.subtotal}</td><td class="num">${yen(invoice.subtotal)}</td></tr>
       <tr><td>${L.tax} (${escapeHtml(String(invoice.tax_rate ?? 10))}%)</td><td class="num">${yen(invoice.tax_amount)}</td></tr>
       <tr class="total-row"><td>${L.total}</td><td class="num">${yen(invoice.total)}</td></tr>
-    </table>
-    ${notes ? `<p class="muted" style="margin-top:18px">${L.notes}${L.colon}${notes}</p>` : ''}
-    <p class="thanks">${L.thanks}</p>
-    <div class="issuer">
-      <div class="issuer-card">
-        <div class="issuer-kicker">${L.issuer}</div>
-        <strong>${issuerCompany}</strong>
-        <div class="issuer-line"><span>${issuerTitle}</span><div>${issuerPerson}</div></div>
-        ${issuerAddress ? `<div class="issuer-line"><span>${L.address}</span><div>${issuerAddress}</div></div>` : ''}
-        ${issuerReg ? `<div class="issuer-line"><span>${L.reg}</span><div>${issuerReg}</div></div>` : ''}
-        <div class="issuer-line"><span>${L.email}</span><div>${issuerEmail}</div></div>
-        <div class="issuer-line"><span>${L.phone}</span><div>${issuerPhone}</div></div>
-        ${bank ? `<div class="issuer-line"><span>${L.bank}</span><div>${bank}</div></div>` : ''}
-      </div>
-    </div>
-  </div>
-</body></html>`
+    </table>`
+  const notesHtml = notes
+    ? `<p class="muted" style="margin-top:16px">${escapeHtml(L.notes)}${L.colon}${escapeHtml(notes)}</p>`
+    : ''
+  return wrapPrintHtml({
+    L,
+    number,
+    printTitle,
+    stamp: invoice.status === 'paid' ? L.paid : '',
+    partyHtml: printPartyHtml(L, { restaurant, company, contact, address }),
+    datesHtml: printDatesHtml([
+      [L.issueDate, escapeHtml(invoice.issue_date || '')],
+      [L.period, `${escapeHtml(invoice.period_start || '—')}${L.rangeSep}${escapeHtml(invoice.period_end || '—')}`],
+      [L.due, escapeHtml(invoice.due_date || '—')],
+    ]),
+    columnHead: `<th>${L.desc}</th><th class="num">${L.qty}</th><th class="num">${L.unit}</th><th class="num">${L.amount}</th>`,
+    rows,
+    totalsHtml,
+    notesHtml,
+    thanks: L.thanks,
+    issuerHtml: printIssuerHtml(L, loc, { bank }),
+  })
 }

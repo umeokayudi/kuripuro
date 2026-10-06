@@ -111,16 +111,19 @@ function testPrint() {
   assert(html.includes('入金済'), 'paid stamp')
   assert(!html.includes('<script>x</script>'), 'escaped name')
   assert(html.includes('&lt;script&gt;'), 'escaped')
-  assert(html.includes('brand-name'), 'quote-matching header')
   assert(html.includes('issuer-card'), 'issuer card')
-  assert(html.includes('gold'), 'gold bar')
+  assert(html.includes('issuer-brand'), 'single issuer brand')
+  assert(html.includes('rule'), 'gold rule')
+  assert((html.split('〒204-0012').length - 1) === 1, 'address once')
+  assert((html.split('梅岡アレサンドレユウジ').length - 1) === 1, 'name once')
+  assert((html.split('クリプロ').length - 1) === 1, 'company once')
+  assert(!html.includes('brand-name'), 'no header brand duplicate')
   assert(html.includes('クリプロ'), 'issuer company')
   assert(html.includes('梅岡アレサンドレユウジ'), 'issuer name')
   assert(html.includes('代表'), 'daihyo')
   assert(html.includes('住所'), 'address labeled')
   assert(html.includes('〒204-0012 東京都清瀬市中清戸4-907-17'), 'kiyose')
-  assert(html.includes('登録番号：'), 'touroku')
-  assert(html.includes('発行者'), 'issuer kicker')
+  assert(html.includes('登録番号'), 'touroku')
   assert(html.includes('T1234567890123'), 'reg')
   assert(html.includes('umeokagroup@gmail.com'), 'email')
   assert(html.includes('070-9073-2909'), 'phone')
@@ -155,15 +158,32 @@ function testPrint() {
   assert(en.includes('Nakakiyoto'), 'en address')
   assert(en.includes('KuriPuro'), 'en company')
   assert(en.includes('rep-name'), 'name on own line')
-  assert(!en.includes('梅岡アレサンドレユウジ'), 'no katakana name on en')
+  assert((en.split('Alexandre Yuji Umeoka').length - 1) === 1, 'en name once')
+  assert((en.split('Nakakiyoto').length - 1) === 1, 'en address once')
+  assert((en.split('KuriPuro').length - 1) === 1, 'en company once')
+  const withShop = buildInvoicePrintHtml({
+    client_name: 'On The Planet',
+    site_name: 'Kodama Kinshicho',
+    invoice_number: 'KP-202610-003',
+    issue_date: '2026-10-06',
+    period_start: '2026-09-01',
+    period_end: '2026-09-30',
+    due_date: '2026-11-05',
+    tax_rate: 10,
+    subtotal: 0,
+    tax_amount: 0,
+    total: 0,
+  }, [{ description: 'Kodama Kinshicho — Daily cleaning (monthly)', quantity: 1, unit_price: 0, total: 0, location_name: 'Kodama Kinshicho' }])
+  assert(withShop.includes('Kodama Kinshicho 御中'), 'invoice restaurant 御中')
+  assert(withShop.includes('On The Planet'), 'invoice legal company')
 }
 
 function testVersionLock() {
   const api = readFileSync(new URL('../api/_gemini.js', import.meta.url), 'utf8')
   const match = api.match(/export const API_BUILD = '([^']+)'/)
   assert(match?.[1] === APP_BUILD, `API_BUILD ${match?.[1]} vs ${APP_BUILD}`)
-  assert(APP_VERSION === 'v51', APP_VERSION)
-  assert(APP_BUILD.endsWith('-v51'), APP_BUILD)
+  assert(APP_VERSION === 'v52', APP_VERSION)
+  assert(APP_BUILD.endsWith('-v52'), APP_BUILD)
 }
 
 function testMonthlyAndDiscounts() {

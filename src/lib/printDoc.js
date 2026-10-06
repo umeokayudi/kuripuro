@@ -1,39 +1,40 @@
+import { escapeHtml } from './escapeHtml'
+
 /** Shared A4 print styles for 見積書 and 請求書. */
 export const PRINT_DOC_CSS = `
-  @page { size: A4; margin: 14mm; }
+  @page { size: A4; margin: 16mm; }
   * { box-sizing: border-box; }
-  body{font-family:'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif;color:#152033;max-width:740px;margin:0 auto;padding:8px 12px 24px;background:#fff}
-  .head{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:3px solid #0c1c30;padding-bottom:14px;margin-bottom:10px}
-  .brand-name{font-size:26px;font-weight:800;letter-spacing:0.28em;color:#0c1c30}
-  .doc-title{text-align:right}
-  .doc-title h1{font-size:28px;letter-spacing:var(--title-tracking, 0.45em);margin:0 0 4px;font-weight:800}
-  .doc-title .no{font-size:12px;color:#667}
-  .gold{height:4px;background:linear-gradient(90deg,#c4a35a,#ead9a8,#c4a35a);margin:0 0 20px}
-  .meta{display:flex;justify-content:space-between;align-items:flex-start;gap:28px;margin-bottom:18px;font-size:13px}
-  .meta-side{flex:0 0 22rem;width:22rem;max-width:46%;text-align:right;overflow:visible}
-  .bill-to{font-size:22px;font-weight:800;margin-bottom:6px;letter-spacing:0.04em}
-  .site-kicker{font-size:11px;letter-spacing:0.28em;color:#886;margin-bottom:2px}
-  .muted{color:#667;line-height:1.6}
-  .rep-block{margin-top:12px}
-  .rep-kicker{font-size:10px;letter-spacing:0.16em;color:#886;margin:0 0 2px}
-  .rep-name{display:block;width:100%;font-weight:800;color:#152033;font-size:13px;line-height:1.4;letter-spacing:0;white-space:normal;word-break:keep-all;overflow-wrap:break-word;overflow:visible;hyphens:none}
-  .thanks{margin:20px 0 0;font-size:13px;line-height:1.85;color:#334;max-width:34em}
-  table.lines{width:100%;border-collapse:collapse;margin:8px 0 4px}
-  table.lines th{background:#0c1c30;color:#f7efd8;padding:9px 10px;text-align:left;font-size:12px;font-weight:600}
+  body{font-family:'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif;color:#122033;max-width:720px;margin:0 auto;padding:4px 8px 20px;background:#fff}
+  .wrap{position:relative}
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;border-bottom:2px solid #122033;padding-bottom:12px}
+  .mast h1{font-size:30px;letter-spacing:var(--title-tracking, 0.4em);margin:0;font-weight:800;line-height:1}
+  .mast .no{margin-top:6px;font-size:12px;color:#5c6573;letter-spacing:0.04em}
+  .rule{height:3px;background:#c4a35a;margin:0 0 22px}
+  .top{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:28px;align-items:start;margin-bottom:20px}
+  .party-name{font-size:22px;font-weight:800;letter-spacing:0.03em;line-height:1.35;margin:0 0 6px}
+  .party-co{font-size:13px;color:#3a4556;margin:0 0 8px}
+  .party-meta{font-size:12px;color:#5c6573;line-height:1.65}
+  table.dates{width:100%;border-collapse:collapse;font-size:12px}
+  table.dates td{padding:4px 0;vertical-align:top}
+  table.dates td.k{color:#5c6573;white-space:nowrap;padding-right:10px;width:1%}
+  table.dates td.v{text-align:right;font-weight:600;color:#122033;word-break:keep-all}
+  .muted{color:#5c6573;line-height:1.6;font-size:12px}
+  .thanks{margin:18px 0 0;font-size:13px;line-height:1.85;color:#334;max-width:36em}
+  table.lines{width:100%;border-collapse:collapse;margin:4px 0}
+  table.lines th{background:#122033;color:#f7efd8;padding:8px 10px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.06em}
   table.lines td{padding:9px 10px;border-bottom:1px solid #e6ebf2;font-size:13px}
   .num{text-align:right;white-space:nowrap}
-  .totals{width:280px;margin:12px 0 0 auto}
+  .totals{width:260px;margin:14px 0 0 auto;border-collapse:collapse}
   .totals td{border:none;padding:5px 8px;font-size:13px}
-  .total-row td{border-top:2px solid #152033;font-weight:800;font-size:16px}
-  .issuer{margin-top:32px;display:flex;justify-content:flex-end}
-  .issuer-card{border:1px solid #e6d7b0;background:#fbf8f1;border-radius:12px;padding:14px 18px;min-width:20rem;max-width:28rem;font-size:12px;line-height:1.75;color:#334}
-  .issuer-kicker{font-size:10px;letter-spacing:0.2em;color:#886;margin-bottom:4px}
-  .issuer-card strong{display:block;font-size:15px;color:#0c1c30;margin-bottom:6px}
-  .issuer-line{display:grid;grid-template-columns:6.2rem minmax(0,1fr);gap:6px 10px;margin:2px 0;align-items:start}
-  .issuer-line span{color:#886;white-space:nowrap}
+  .total-row td{border-top:2px solid #122033;font-weight:800;font-size:16px;padding-top:8px}
+  .foot{margin-top:28px;display:flex;justify-content:flex-end}
+  .issuer-card{border:1px solid #122033;padding:14px 16px 14px 18px;min-width:19rem;max-width:24rem;font-size:12px;line-height:1.7;color:#334}
+  .issuer-brand{font-size:16px;font-weight:800;color:#122033;margin:0 0 8px;letter-spacing:0.08em}
+  .issuer-line{display:grid;grid-template-columns:5.6rem minmax(0,1fr);gap:2px 10px;margin:2px 0;align-items:start}
+  .issuer-line span{color:#5c6573;white-space:nowrap}
   .issuer-line div{min-width:0;overflow-wrap:break-word;word-break:keep-all;hyphens:none}
-  .stamp{position:absolute;right:28px;top:86px;border:3px solid #0f6e56;color:#0f6e56;padding:6px 14px;font-weight:800;transform:rotate(-12deg);font-size:18px}
-  .wrap{position:relative}
+  .rep-name{font-weight:800;color:#122033}
+  .stamp{position:absolute;right:8px;top:8px;border:2px solid #0f6e56;color:#0f6e56;padding:4px 10px;font-weight:800;transform:rotate(-8deg);font-size:13px;letter-spacing:0.12em}
 `
 
 export const INVOICE_PRINT_COPY = {
@@ -41,6 +42,9 @@ export const INVOICE_PRINT_COPY = {
     htmlLang: 'ja',
     docTitle: '請求書',
     honorific: '御中',
+    store: '店舗',
+    company: '会社',
+    contact: 'ご担当',
     issueDate: '発行日',
     period: '対象期間',
     due: '支払期限',
@@ -69,6 +73,9 @@ export const INVOICE_PRINT_COPY = {
     htmlLang: 'en',
     docTitle: 'INVOICE',
     honorific: '',
+    store: 'Store',
+    company: 'Company',
+    contact: 'Contact',
     issueDate: 'Issue date',
     period: 'Billing period',
     due: 'Due date',
@@ -90,13 +97,106 @@ export const INVOICE_PRINT_COPY = {
     paid: 'PAID',
     colon: ': ',
     rangeSep: ' – ',
-    thanks: 'Thank you for your continued business. Please find this invoice below.',
+    thanks: 'Thank you for your continued business. Please find the details below.',
     titleTracking: '0.12em',
   },
 }
 
 export function invoicePrintCopy(lang) {
   return INVOICE_PRINT_COPY[lang === 'en' ? 'en' : 'ja']
+}
+
+export function countNeedle(hay, needle) {
+  if (!needle) return 0
+  return String(hay).split(needle).length - 1
+}
+
+export function printPartyHtml(L, { restaurant, company, contact, address, extra = '' }) {
+  const site = String(restaurant || '').trim()
+  const co = String(company || '').trim()
+  const headline = site || co
+  const honor = L.honorific && headline ? ` ${L.honorific}` : ''
+  const coLine = co && co !== headline
+    ? `<div class="party-co">${escapeHtml(co)}</div>`
+    : ''
+  return `<div class="party">
+      <div class="party-name">${escapeHtml(headline)}${honor}</div>
+      ${coLine}
+      ${contact ? `<div class="party-meta">${escapeHtml(L.contact)}${L.colon}${escapeHtml(contact)}</div>` : ''}
+      ${address ? `<div class="party-meta">${escapeHtml(address)}</div>` : ''}
+      ${extra}
+    </div>`
+}
+
+export function printDatesHtml(rows) {
+  const body = (rows || [])
+    .filter(([, v]) => v != null && String(v).trim() !== '')
+    .map(([k, v]) => `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${v}</td></tr>`)
+    .join('')
+  return `<table class="dates">${body}</table>`
+}
+
+export function printIssuerHtml(L, loc, { bank = '' } = {}) {
+  const line = (label, value, cls = '') => value
+    ? `<div class="issuer-line"><span>${escapeHtml(label)}</span><div class="${cls}">${value}</div></div>`
+    : ''
+  return `<div class="foot">
+      <div class="issuer-card">
+        <div class="issuer-brand">${escapeHtml(loc.company || '')}</div>
+        ${line(L.rep, `<span class="rep-name">${escapeHtml(loc.name || '')}</span>`)}
+        ${line(L.address, escapeHtml(loc.address || ''))}
+        ${line(L.reg, escapeHtml(loc.regNumber || ''))}
+        ${line(L.email, escapeHtml(loc.email || ''))}
+        ${line(L.phone, escapeHtml(loc.phone || ''))}
+        ${line(L.bank, escapeHtml(bank || loc.bank || ''))}
+      </div>
+    </div>`
+}
+
+export function wrapPrintHtml({
+  L,
+  number,
+  printTitle,
+  stamp = '',
+  partyHtml,
+  datesHtml,
+  columnHead,
+  rows,
+  totalsHtml,
+  notesHtml = '',
+  thanks = '',
+  issuerHtml,
+}) {
+  return `<!DOCTYPE html>
+<html lang="${L.htmlLang}"><head><meta charset="utf-8"><title>${escapeHtml(L.docTitle)} ${escapeHtml(number)} - ${printTitle}</title>
+<style>${PRINT_DOC_CSS}
+  .mast h1{letter-spacing:${L.titleTracking}}
+</style></head>
+<body>
+  <div class="wrap">
+    ${stamp ? `<div class="stamp">${stamp}</div>` : ''}
+    <div class="mast">
+      <div></div>
+      <div class="doc-title" style="text-align:right">
+        <h1>${escapeHtml(L.docTitle)}</h1>
+        <div class="no">${escapeHtml(number)}</div>
+      </div>
+    </div>
+    <div class="rule"></div>
+    <div class="top">
+      ${partyHtml}
+      ${datesHtml}
+    </div>
+    <table class="lines">
+      <thead><tr>${columnHead}</tr></thead>
+      <tbody>${rows || '<tr><td colspan="4">—</td></tr>'}</tbody>
+    </table>
+    ${totalsHtml}
+    ${notesHtml}
+    ${thanks ? `<p class="thanks">${thanks}</p>` : ''}
+    ${issuerHtml}
+  </div>
+</body></html>`
 }
 
 /** Longer Japanese phrases first. */
