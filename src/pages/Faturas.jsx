@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { APP_VERSION } from '../lib/appVersion'
+import { QUOTE_ISSUER } from '../lib/quoteIssuer'
 import {
   addDays,
   billingPeriodForDate,
@@ -322,9 +323,9 @@ export default function Faturas() {
   }
 
   const issuer = {
-    company: 'KuriPuro by JBM',
-    address: t.ryoshu?.companyAddress || '',
-    regNumber: t.ryoshu?.regNumber || '',
+    company: QUOTE_ISSUER.company,
+    address: QUOTE_ISSUER.address,
+    regNumber: t.ryoshu?.regNumber || QUOTE_ISSUER.regNumber,
     bank: inv.bankNote,
     version: APP_VERSION,
   }

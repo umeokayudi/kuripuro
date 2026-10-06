@@ -18,14 +18,42 @@ export function isCrmSchemaMissing(error) {
     || (msg.includes('interest') && (msg.includes('column') || msg.includes('schema cache')))
 }
 
+export function dropSiteNameKeepNote(payload) {
+  if (!payload || typeof payload !== 'object') return payload
+  const { site_name, ...rest } = payload
+  return { ...rest, notes: embedRestaurantNote(rest.notes, site_name) }
+}
+
 export function stripCrmExtras(payload) {
   if (!payload || typeof payload !== 'object') return payload
-  const { interest: _i, site_name: _s, ...rest } = payload
+  const { interest: _interest, ...rest } = payload
   return rest
 }
 
+const SITE_NOTE_RE = /^【店舗】(.+)\n?/
+
+export function embedRestaurantNote(notes, siteName) {
+  const site = String(siteName || '').trim()
+  const body = String(notes || '').replace(SITE_NOTE_RE, '')
+  if (!site) return body
+  return `【店舗】${site}\n${body}`
+}
+
+export function restaurantFromNotes(notes) {
+  const m = String(notes || '').match(SITE_NOTE_RE)
+  return m ? String(m[1] || '').trim() : ''
+}
+
+export function notesForPrint(notes) {
+  return String(notes || '').replace(SITE_NOTE_RE, '').trim()
+}
+
 export function quoteRestaurantName(quote) {
-  return String(quote?.site_name || '').trim()
+  return String(
+    quote?.site_name
+    || restaurantFromNotes(quote?.notes)
+    || '',
+  ).trim()
 }
 
 export function normalizeCompanyKey(name) {
@@ -71,7 +99,10 @@ export function emptyLead(today, stage = 'approach') {
 }
 
 export function leadFromRow(row, today) {
-  return { ...emptyLead(today, row.stage || 'approach'), ...row, locations_count: row.locations_count ?? '', expected_monthly: row.expected_monthly ?? '' }
+  const merged = { ...emptyLead(today, row.stage || 'approach'), ...row, locations_count: row.locations_count ?? '', expected_monthly: row.expected_monthly ?? '' }
+  if (!String(merged.site_name || '').trim()) merged.site_name = restaurantFromNotes(row.notes)
+  merged.notes = notesForPrint(row.notes)
+  return merged
 }
 
 export function mergeLeadFromQuote(existing, form, today) {
@@ -102,7 +133,7 @@ export function mergeLeadFromQuote(existing, form, today) {
     expected_monthly: form.expected_monthly === '' || form.expected_monthly == null ? (existing?.expected_monthly ?? null) : Number(form.expected_monthly),
     expected_start: form.expected_start || existing?.expected_start || null,
     competitor: form.competitor || existing?.competitor || '',
-    notes: form.notes || existing?.notes || '',
+    notes: embedRestaurantNote(form.notes, form.site_name),
     interest: form.interest || existing?.interest || '',
     stage: keepWon ? 'won' : 'followup',
     updated_at: new Date().toISOString(),
@@ -135,7 +166,7 @@ export function leadWritePayload(form, today, stage) {
     expected_monthly: form.expected_monthly === '' || form.expected_monthly == null ? null : Number(form.expected_monthly),
     expected_start: form.expected_start || null,
     competitor: form.competitor || '',
-    notes: form.notes || '',
+    notes: embedRestaurantNote(form.notes, form.site_name),
     interest: form.interest || '',
     stage: stage || form.stage || 'approach',
     updated_at: new Date().toISOString(),
@@ -176,7 +207,7 @@ export function quoteWritePayload(form, leadId, totals, extra = {}) {
     needs: form.needs || '',
     still_needed: form.still_needed || '',
     source: form.source || '',
-    notes: form.notes || '',
+    notes: embedRestaurantNote(form.notes, form.site_name),
     interest: form.interest || '',
     valid_until: form.valid_until || null,
     site_visit_date: form.site_visit_date || null,
@@ -233,6 +264,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   const issuerReg = escapeHtml(issuer.regNumber || QUOTE_ISSUER.regNumber || '')
   const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
   const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
+  const printNotes = notesForPrint(quote.notes)
   const billTo = siteName
     ? `<div class="site-kicker">店舗</div><div class="bill-to">${siteName} 御中</div>${company && company !== siteName ? `<div class="muted">会社：${company}</div>` : ''}`
     : `<div class="bill-to">${company} 御中</div>`
@@ -316,7 +348,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
       <tr><td>消費税 (${escapeHtml(String(quote.tax_rate ?? 10))}%)</td><td class="num">${yen(quote.tax_amount)}</td></tr>
       <tr class="total-row"><td>合計（税込）</td><td class="num">${yen(quote.total)}</td></tr>
     </table>
-    ${quote.notes ? `<p class="muted" style="margin-top:18px">備考: ${escapeHtml(quote.notes)}</p>` : ''}
+    ${printNotes ? `<p class="muted" style="margin-top:18px">備考: ${escapeHtml(printNotes)}</p>` : ''}
     <div class="issuer">
       <div class="issuer-card">
         <div class="issuer-kicker">発行者</div>

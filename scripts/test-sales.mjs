@@ -13,6 +13,8 @@ import {
   quoteRestaurantName,
   quoteTotals,
   quoteWritePayload,
+  dropSiteNameKeepNote,
+  stripCrmExtras,
 } from '../src/lib/sales.js'
 
 function assert(cond, msg) {
@@ -83,7 +85,8 @@ function testQuoteNumberAndPrint() {
   assert(html.includes('070-9073-2909'), 'phone')
   assert(html.includes('代表：'), 'daihyo labeled')
   assert(html.includes('住所：'), 'address labeled')
-  assert(html.includes('〒160-0023'), 'commercial address')
+  assert(html.includes('〒204-0012'), 'kiyose postal')
+  assert(html.includes('東京都清瀬市中清戸4-907-17'), 'kiyose street')
   assert(html.includes('登録番号：'), 'touroku labeled')
   assert(html.includes('発行者'), 'issuer kicker')
   assert(html.includes('T1234567890123'), 'reg digits')
@@ -108,6 +111,18 @@ function testQuoteNumberAndPrint() {
   assert(shop.includes('Kodama Kinshicho 御中'), 'restaurant 御中')
   assert(shop.includes('会社：Parent Co'), 'legal company under restaurant')
   assert(shop.includes('見積書 KPQ-202610-002 - Kodama Kinshicho'), 'title uses restaurant')
+  const fromNotes = buildMitsumoriPrintHtml({
+    company_name: 'Parent Co',
+    notes: '【店舗】Kodama Kinshicho\n内部メモ',
+    quote_number: 'KPQ-202610-003',
+    tax_rate: 10,
+    subtotal: 0,
+    tax_amount: 0,
+    total: 0,
+  }, [])
+  assert(fromNotes.includes('Kodama Kinshicho 御中'), 'restaurant from notes when column missing')
+  assert(!fromNotes.includes('【店舗】'), 'store tag stripped from 備考')
+  assert(fromNotes.includes('備考: 内部メモ'), 'human notes remain')
 }
 
 function testEditableAndPayload() {
@@ -117,14 +132,20 @@ function testEditableAndPayload() {
   assert(isQuoteEditable('accepted') === false, 'accepted locked')
   const payload = quoteWritePayload({
     company_name: 'Cafe A',
+    site_name: 'Kodama',
     contact_name: 'Ken',
     interest: 'warm',
     tax_rate: 10,
     notes: 'print me',
   }, 'lead-1', { subtotal: 100, taxAmount: 10, total: 110 })
   assert(payload.interest === 'warm', 'interest stored')
-  assert(payload.notes === 'print me', 'notes stored')
+  assert(payload.notes === '【店舗】Kodama\nprint me', 'restaurant embedded in notes')
   assert(payload.lead_id === 'lead-1', 'lead id')
+  const fallback = dropSiteNameKeepNote(stripCrmExtras(payload))
+  assert(!('site_name' in fallback), 'column-missing retry drops site_name')
+  assert(!('interest' in fallback), 'column-missing retry drops interest')
+  assert(fallback.notes === '【店舗】Kodama\nprint me', 'restaurant survives retry')
+  assert(quoteRestaurantName({ notes: fallback.notes }) === 'Kodama', 'print reads restaurant from notes')
 }
 
 function testSchemaDetect() {

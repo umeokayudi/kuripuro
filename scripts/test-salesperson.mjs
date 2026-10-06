@@ -64,7 +64,7 @@ function testPayloads() {
 
 function testQuotePrint() {
   assert(QUOTE_ISSUER.title === '代表', 'daihyo')
-  assert(QUOTE_ISSUER.address.includes('西新宿'), 'address')
+  assert(QUOTE_ISSUER.address.includes('清瀬市中清戸4-907-17'), 'kiyose address')
   assert(QUOTE_ISSUER.regNumber.includes('T123'), 'touroku')
   const html = buildMitsumoriPrintHtml({
     company_name: 'Parent Co',
@@ -80,7 +80,7 @@ function testQuotePrint() {
   assert(html.includes('Kodama Kinshicho 御中'), 'restaurant 御中')
   assert(html.includes('Parent Co'), 'legal company under restaurant')
   assert(html.includes('代表'), 'rep title')
-  assert(html.includes('〒160-0023'), 'commercial address')
+  assert(html.includes('〒204-0012'), 'kiyose postal')
   assert(html.includes('登録番号'), 'reg number')
 }
 

@@ -14,6 +14,8 @@ import {
   leadWritePayload,
   isCrmSchemaMissing,
   stripCrmExtras,
+  dropSiteNameKeepNote,
+  restaurantFromNotes,
 } from '../lib/sales'
 import SalesLeadFields from '../components/SalesLeadFields'
 import SalesSetupCard, { SalesCrmSetupCard } from '../components/SalesSetupCard'
@@ -43,7 +45,10 @@ export default function SalesLeads({ stage }) {
       setLeads([])
     } else {
       setSchemaOk(true)
-      setLeads(data || [])
+      setLeads((data || []).map(row => ({
+        ...row,
+        site_name: row.site_name || restaurantFromNotes(row.notes) || '',
+      })))
     }
     if (tp.error && (String(tp.error.message || '').includes('sales_touchpoints') || tp.error.code === 'PGRST205')) setCrmOk(false)
     else if (!tp.error) setCrmOk(true)
@@ -77,7 +82,7 @@ export default function SalesLeads({ stage }) {
     let { error } = await query(payload)
     if (error && isCrmSchemaMissing(error)) {
       setCrmOk(false)
-      ;({ error } = await query(stripCrmExtras(payload)))
+      ;({ error } = await query(dropSiteNameKeepNote(stripCrmExtras(payload))))
     }
     setSaving(false)
     if (error) {

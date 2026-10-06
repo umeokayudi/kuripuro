@@ -1,4 +1,5 @@
 import { escapeHtml } from './escapeHtml'
+import { QUOTE_ISSUER } from './quoteIssuer'
 
 export function roundYen(n) {
   return Math.round(Number(n) || 0)
@@ -232,9 +233,9 @@ export function buildInvoicePrintHtml(invoice, items, issuer = {}) {
   const dueDate = escapeHtml(invoice.due_date || '—')
   const notes = escapeHtml(invoice.notes || '')
   const number = escapeHtml(invoice.invoice_number || invoice.id?.slice?.(0, 8) || '')
-  const company = escapeHtml(issuer.company || 'KuriPuro by JBM')
-  const address = escapeHtml(issuer.address || '')
-  const regNumber = escapeHtml(issuer.regNumber || '')
+  const company = escapeHtml(issuer.company || QUOTE_ISSUER.company)
+  const address = escapeHtml(issuer.address || QUOTE_ISSUER.address || '')
+  const regNumber = escapeHtml(issuer.regNumber || QUOTE_ISSUER.regNumber || '')
   const bank = escapeHtml(issuer.bank || '')
   const paid = invoice.status === 'paid'
   const rows = (items || []).map(it => `

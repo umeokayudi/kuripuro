@@ -22,7 +22,9 @@ import {
   quoteWritePayload,
   yen,
   isSalesSchemaMissing,
-  stripCrmExtras,
+  dropSiteNameKeepNote,
+  restaurantFromNotes,
+  notesForPrint,
 } from '../lib/sales'
 import SalesLeadFields from '../components/SalesLeadFields'
 import SalesSetupCard, { SalesCrmSetupCard } from '../components/SalesSetupCard'
@@ -77,8 +79,14 @@ export default function Mitsumori() {
       else toast.error(err.message)
     } else {
       setSchemaOk(true)
-      setQuotes(q.data || [])
-      setLeads(l.data || [])
+      setQuotes((q.data || []).map(row => ({
+        ...row,
+        site_name: row.site_name || restaurantFromNotes(row.notes) || '',
+      })))
+      setLeads((l.data || []).map(row => ({
+        ...row,
+        site_name: row.site_name || restaurantFromNotes(row.notes) || '',
+      })))
     }
     if (tp.error) {
       if (isCrmSchemaMissing(tp.error) || isSalesSchemaMissing(tp.error)) setCrmOk(false)
@@ -136,6 +144,8 @@ export default function Mitsumori() {
       ...blankForm(today),
       ...(lead ? leadFromRow(lead, today) : {}),
       ...row,
+      site_name: row.site_name || restaurantFromNotes(row.notes) || lead?.site_name || '',
+      notes: notesForPrint(row.notes),
       tax_rate: row.tax_rate ?? 10,
       hours_per_visit: row.hours_per_visit ?? '',
     })
@@ -169,7 +179,7 @@ export default function Mitsumori() {
     let { data, error } = await run(leadPayload)
     if (error && isCrmSchemaMissing(error)) {
       setCrmOk(false)
-      ;({ data, error } = await run(stripCrmExtras(leadPayload)))
+      ;({ data, error } = await run(dropSiteNameKeepNote(stripCrmExtras(leadPayload))))
     }
     if (error) throw error
     return data
@@ -224,7 +234,7 @@ export default function Mitsumori() {
         let { error } = await supabase.from('mitsumori').update(payload).eq('id', editingId)
         if (error && isCrmSchemaMissing(error)) {
           setCrmOk(false)
-          ;({ error } = await supabase.from('mitsumori').update(stripCrmExtras(payload)).eq('id', editingId))
+          ;({ error } = await supabase.from('mitsumori').update(dropSiteNameKeepNote(stripCrmExtras(payload))).eq('id', editingId))
         }
         if (error) {
           if (isSalesSchemaMissing(error)) setSchemaOk(false)
@@ -242,7 +252,7 @@ export default function Mitsumori() {
         let { data: quote, error: qErr } = await supabase.from('mitsumori').insert(payload).select().single()
         if (qErr && isCrmSchemaMissing(qErr)) {
           setCrmOk(false)
-          ;({ data: quote, error: qErr } = await supabase.from('mitsumori').insert(stripCrmExtras(payload)).select().single())
+          ;({ data: quote, error: qErr } = await supabase.from('mitsumori').insert(dropSiteNameKeepNote(stripCrmExtras(payload))).select().single())
         }
         if (qErr) {
           if (isSalesSchemaMissing(qErr)) setSchemaOk(false)
@@ -289,7 +299,12 @@ export default function Mitsumori() {
     if (error) return toast.error(error.message)
     const w = window.open('', '_blank')
     if (!w) return toast.error(s.popupBlocked)
-    w.document.write(buildMitsumoriPrintHtml(row, data || [], QUOTE_ISSUER))
+    const lead = leads.find(x => x.id === row.lead_id)
+    const printRow = {
+      ...row,
+      site_name: row.site_name || restaurantFromNotes(row.notes) || lead?.site_name || '',
+    }
+    w.document.write(buildMitsumoriPrintHtml(printRow, data || [], QUOTE_ISSUER))
     w.document.close()
     if (autoPrint) { w.focus(); w.print() }
   }
