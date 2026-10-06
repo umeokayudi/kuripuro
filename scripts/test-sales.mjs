@@ -123,6 +123,28 @@ function testQuoteNumberAndPrint() {
   assert(fromNotes.includes('Kodama Kinshicho 御中'), 'restaurant from notes when column missing')
   assert(!fromNotes.includes('【店舗】'), 'store tag stripped from 備考')
   assert(fromNotes.includes('備考: 内部メモ'), 'human notes remain')
+  assert(html.includes('ご返答をお待ちしております'), 'thanks ja')
+  assert(html.includes('誠にありがとうございます'), 'thanks ja gratitude')
+  const en = buildMitsumoriPrintHtml({
+    company_name: 'Parent Co',
+    site_name: 'Kodama Kinshicho',
+    quote_number: 'KPQ-202610-002',
+    issue_date: '2026-10-06',
+    tax_rate: 10,
+    subtotal: 0,
+    tax_amount: 0,
+    total: 0,
+  }, [], {}, 'en')
+  assert(en.includes('QUOTATION'), 'en title')
+  assert(en.includes('lang="en"'), 'html lang en')
+  assert(en.includes('Thank you for requesting this quotation'), 'thanks en')
+  assert(en.includes('we look forward to your reply'), 'await reply en')
+  assert(en.includes('Store'), 'store kicker en')
+  assert(en.includes('Kodama Kinshicho'), 'restaurant en')
+  assert(!en.includes('御中'), 'no 御中 on english print')
+  assert(en.includes('Representative'), 'rep en')
+  assert(en.includes('Issue date'), 'issue date en')
+  assert(!en.includes('<h1>見積書</h1>'), 'no ja h1 on en')
 }
 
 function testEditableAndPayload() {

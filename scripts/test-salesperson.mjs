@@ -82,6 +82,19 @@ function testQuotePrint() {
   assert(html.includes('代表'), 'rep title')
   assert(html.includes('〒204-0012'), 'kiyose postal')
   assert(html.includes('登録番号'), 'reg number')
+  const en = buildMitsumoriPrintHtml({
+    company_name: 'Parent Co',
+    site_name: 'Kodama Kinshicho',
+    contact_name: 'Sato',
+    quote_number: 'KPQ-202610-009',
+    issue_date: '2026-10-06',
+    tax_rate: 10,
+    subtotal: 1000,
+    tax_amount: 100,
+    total: 1100,
+  }, [], {}, 'en')
+  assert(en.includes('QUOTATION'), 'en quotation')
+  assert(en.includes('Thank you for requesting this quotation'), 'en thanks')
 }
 
 function testSqlAndI18n() {

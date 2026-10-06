@@ -295,7 +295,7 @@ export default function Mitsumori() {
     load()
   }
 
-  const openPrint = async (row, autoPrint) => {
+  const openPrint = async (row, autoPrint, lang = 'ja') => {
     const { data, error } = await supabase.from('mitsumori_items').select('*').eq('mitsumori_id', row.id)
     if (error) return toast.error(error.message)
     const w = window.open('', '_blank')
@@ -305,12 +305,13 @@ export default function Mitsumori() {
       ...row,
       site_name: row.site_name || restaurantFromNotes(row.notes) || lead?.site_name || '',
     }
-    w.document.write(buildMitsumoriPrintHtml(printRow, data || [], QUOTE_ISSUER))
+    w.document.write(buildMitsumoriPrintHtml(printRow, data || [], QUOTE_ISSUER, lang))
     w.document.close()
     if (autoPrint) { w.focus(); w.print() }
   }
 
   const visible = quotes.filter(q => statusFilter === 'all' || q.status === statusFilter)
+  const editingQuote = editingId ? quotes.find(q => q.id === editingId) : null
   const badge = st => ({ draft: 'badge-amber', sent: 'badge-blue', accepted: 'badge-green', declined: 'badge-red', expired: 'badge-navy' }[st] || 'badge-navy')
 
   return (
@@ -357,8 +358,8 @@ export default function Mitsumori() {
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
                 <button type="button" className="btn btn-sm btn-primary" onClick={() => startEdit(q)}>{s.edit}</button>
-                <button type="button" className="btn btn-sm" onClick={() => openPrint(q, false)}>{s.view}</button>
-                <button type="button" className="btn btn-sm" onClick={() => openPrint(q, true)}>{s.print}</button>
+                <button type="button" className="btn btn-sm" onClick={() => openPrint(q, false, 'ja')}>{s.printJa}</button>
+                <button type="button" className="btn btn-sm" onClick={() => openPrint(q, false, 'en')}>{s.printEn}</button>
                 {q.status === 'draft' && <button type="button" className="btn btn-sm btn-primary" onClick={() => handleStatus(q, 'sent')}>{s.markSent}</button>}
                 {q.status === 'sent' && <button type="button" className="btn btn-sm" style={{ background: 'var(--green)', color: '#fff' }} onClick={() => handleStatus(q, 'accepted')}>{s.markAccepted}</button>}
                 {q.status !== 'declined' && q.status !== 'accepted' && <button type="button" className="btn btn-sm btn-danger" onClick={() => handleStatus(q, 'declined')}>{s.markDeclined}</button>}
@@ -435,8 +436,14 @@ export default function Mitsumori() {
             />
           )}
 
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>{saving ? t.app.loading : (editingId ? s.saveQuote : s.createQuote)}</button>
+            {editingQuote && (
+              <>
+                <button type="button" className="btn" onClick={() => openPrint(editingQuote, false, 'ja')}>{s.printJa}</button>
+                <button type="button" className="btn" onClick={() => openPrint(editingQuote, false, 'en')}>{s.printEn}</button>
+              </>
+            )}
             <button type="button" className="btn" onClick={() => setTab('list')}>{s.cancel}</button>
           </div>
         </div>

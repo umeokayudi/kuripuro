@@ -1,3 +1,3 @@
 /** Single display/build stamp for admin, employee, and API. */
-export const APP_VERSION = 'v46'
-export const APP_BUILD = '2026-10-06-v46'
+export const APP_VERSION = 'v47'
+export const APP_BUILD = '2026-10-06-v47'
