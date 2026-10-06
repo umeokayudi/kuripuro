@@ -10,7 +10,7 @@ import DonutChart from '../components/charts/DonutChart'
 import { useLang, fill } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
 import { tokyoToday } from '../lib/dates'
-import { REPORT_PRESETS, rangeForPreset } from '../lib/period'
+import { REPORT_PRESETS, rangeForPreset, invoiceDate } from '../lib/period'
 import {
   yenFmt,
   filterInvoices,
@@ -27,7 +27,6 @@ import {
   uniqueServiceTypes,
   clientInsight,
   previousWindow,
-  invoiceDate,
 } from '../lib/reportAnalytics'
 import { generateReportPdf } from '../lib/reportPdf'
 import toast from 'react-hot-toast'
@@ -241,12 +240,21 @@ export default function Reports() {
   }
 
   const prevRange = useMemo(() => previousWindow(start, end), [start, end])
-  const filterOpts = { start, end, clientId: clientId || undefined, status: invStatus, today, store: store || undefined, serviceType, jobStatus }
+  const filterOpts = useMemo(() => ({
+    start,
+    end,
+    clientId: clientId || undefined,
+    status: invStatus,
+    today,
+    store: store || undefined,
+    serviceType,
+    jobStatus,
+  }), [start, end, clientId, invStatus, today, store, serviceType, jobStatus])
 
-  const currentInv = useMemo(() => filterInvoices(invoices, filterOpts), [invoices, start, end, clientId, invStatus, today])
-  const prevInv = useMemo(() => filterInvoices(invoices, { ...filterOpts, start: prevRange.start, end: prevRange.end }), [invoices, prevRange, clientId, invStatus, today])
-  const currentJobs = useMemo(() => filterJobs(jobs, filterOpts), [jobs, start, end, clientId, store, serviceType, jobStatus])
-  const prevJobs = useMemo(() => filterJobs(jobs, { ...filterOpts, start: prevRange.start, end: prevRange.end }), [jobs, prevRange, clientId, store, serviceType, jobStatus])
+  const currentInv = useMemo(() => filterInvoices(invoices, filterOpts), [invoices, filterOpts])
+  const prevInv = useMemo(() => filterInvoices(invoices, { ...filterOpts, start: prevRange.start, end: prevRange.end }), [invoices, filterOpts, prevRange])
+  const currentJobs = useMemo(() => filterJobs(jobs, filterOpts), [jobs, filterOpts])
+  const prevJobs = useMemo(() => filterJobs(jobs, { ...filterOpts, start: prevRange.start, end: prevRange.end }), [jobs, filterOpts, prevRange])
 
   const ik = useMemo(() => invoiceKpis(currentInv, prevInv, today), [currentInv, prevInv, today])
   const jk = useMemo(() => jobKpis(currentJobs, prevJobs), [currentJobs, prevJobs])
