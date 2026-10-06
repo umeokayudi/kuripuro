@@ -25,7 +25,7 @@ export const PRINT_DOC_CSS = `
   .issuer-card{border:1px solid #e6d7b0;background:#fbf8f1;border-radius:12px;padding:14px 18px;min-width:280px;font-size:12px;line-height:1.75;color:#334}
   .issuer-kicker{font-size:10px;letter-spacing:0.2em;color:#886;margin-bottom:4px}
   .issuer-card strong{display:block;font-size:15px;color:#0c1c30;margin-bottom:6px}
-  .issuer-line{display:grid;grid-template-columns:5.2em 1fr;gap:6px;margin:2px 0}
+  .issuer-line{display:grid;grid-template-columns:9em 1fr;gap:6px;margin:2px 0}
   .issuer-line span{color:#886}
   .stamp{position:absolute;right:28px;top:86px;border:3px solid #0f6e56;color:#0f6e56;padding:6px 14px;font-weight:800;transform:rotate(-12deg);font-size:18px}
   .wrap{position:relative}
