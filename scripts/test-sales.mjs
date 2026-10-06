@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { kuripuroEn, kuripuroJa } from '../src/i18n/kuripuro.js'
 import { APP_VERSION } from '../src/lib/appVersion.js'
+import { SALES_SETUP_SQL, SALES_SETUP_STEPS } from '../src/lib/salesSetupSql.js'
 import {
   buildMitsumoriPrintHtml,
   findLeadByCompany,
@@ -80,6 +81,13 @@ function testSchemaDetect() {
   assert(!isSalesSchemaMissing({ message: 'JWT' }), 'other')
 }
 
+function testSqlFile() {
+  assert(SALES_SETUP_SQL.includes('public.sales_leads'), 'leads sql')
+  assert(SALES_SETUP_SQL.includes('public.mitsumori_items'), 'items sql')
+  assert(!SALES_SETUP_SQL.includes('```'), 'no fences')
+  assert(SALES_SETUP_STEPS.length === 3, 'three steps')
+}
+
 function testI18n() {
   const en = Object.keys(kuripuroEn.sales).sort()
   const ja = Object.keys(kuripuroJa.sales).sort()
@@ -91,6 +99,7 @@ function main() {
   testStageFilter()
   testQuoteNumberAndPrint()
   testSchemaDetect()
+  testSqlFile()
   testI18n()
   console.log('✅ sales / 見積書 tests passed')
 }

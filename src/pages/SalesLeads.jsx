@@ -13,8 +13,8 @@ import {
   leadsForStage,
   leadWritePayload,
 } from '../lib/sales'
-import { SALES_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/salesSetupSql'
 import SalesLeadFields from '../components/SalesLeadFields'
+import SalesSetupCard from '../components/SalesSetupCard'
 
 export default function SalesLeads({ stage }) {
   const { t } = useLang()
@@ -46,11 +46,6 @@ export default function SalesLeads({ stage }) {
   useEffect(() => { load() }, [stage])
 
   const rows = leadsForStage(leads, stage)
-
-  const copySql = async () => {
-    await navigator.clipboard.writeText(SALES_SETUP_SQL)
-    toast.success(s.copied)
-  }
 
   const startNew = () => {
     setEditingId(null)
@@ -121,16 +116,7 @@ export default function SalesLeads({ stage }) {
         </div>
       </div>
 
-      {!schemaOk && (
-        <div className="card" style={{ marginBottom: 14, borderColor: 'var(--amber)' }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>{s.setupNeeded}</div>
-          <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 10 }}>{s.setupHint}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-primary" onClick={copySql}>{s.copySql}</button>
-            <a className="btn" href={SUPABASE_SQL_URL} target="_blank" rel="noreferrer">{s.openSql}</a>
-          </div>
-        </div>
-      )}
+      {!schemaOk && <SalesSetupCard onRecheck={load} />}
 
       <div className="tab-pills">
         <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => setTab('list')}>{fill(s.listCount, { n: rows.length })}</button>
