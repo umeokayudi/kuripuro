@@ -116,8 +116,8 @@ function testPrint() {
   assert(html.includes('gold'), 'gold bar')
   assert(html.includes('クリプロ'), 'issuer company')
   assert(html.includes('梅岡アレサンドレユウジ'), 'issuer name')
-  assert(html.includes('代表：'), 'daihyo')
-  assert(html.includes('住所：'), 'address labeled')
+  assert(html.includes('代表'), 'daihyo')
+  assert(html.includes('住所'), 'address labeled')
   assert(html.includes('〒204-0012 東京都清瀬市中清戸4-907-17'), 'kiyose')
   assert(html.includes('登録番号：'), 'touroku')
   assert(html.includes('発行者'), 'issuer kicker')
@@ -150,15 +150,20 @@ function testPrint() {
   assert(en.includes('Billing period'), 'period en')
   assert(en.includes('Due date'), 'due en')
   assert(en.includes('Thank you for your continued business'), 'thanks en')
-  assert(en.includes('Representative'), 'rep en')
+  assert(en.includes('Rep.'), 'rep en')
+  assert(en.includes('Alexandre Yuji Umeoka'), 'en name')
+  assert(en.includes('Nakakiyoto'), 'en address')
+  assert(en.includes('KuriPuro'), 'en company')
+  assert(en.includes('rep-name'), 'name on own line')
+  assert(!en.includes('梅岡アレサンドレユウジ'), 'no katakana name on en')
 }
 
 function testVersionLock() {
   const api = readFileSync(new URL('../api/_gemini.js', import.meta.url), 'utf8')
   const match = api.match(/export const API_BUILD = '([^']+)'/)
   assert(match?.[1] === APP_BUILD, `API_BUILD ${match?.[1]} vs ${APP_BUILD}`)
-  assert(APP_VERSION === 'v50', APP_VERSION)
-  assert(APP_BUILD.endsWith('-v50'), APP_BUILD)
+  assert(APP_VERSION === 'v51', APP_VERSION)
+  assert(APP_BUILD.endsWith('-v51'), APP_BUILD)
 }
 
 function testMonthlyAndDiscounts() {

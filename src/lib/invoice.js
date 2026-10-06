@@ -1,6 +1,6 @@
 import { escapeHtml } from './escapeHtml'
-import { QUOTE_ISSUER } from './quoteIssuer'
-import { PRINT_DOC_CSS, invoicePrintCopy } from './printDoc'
+import { PRINT_DOC_CSS, invoicePrintCopy, localizePrintText } from './printDoc'
+import { printIssuer } from './quoteIssuer'
 
 export function roundYen(n) {
   return Math.round(Number(n) || 0)
@@ -228,26 +228,28 @@ export function cashflowDescription(invoiceNumber, clientName) {
 
 export function buildInvoicePrintHtml(invoice, items, issuer = {}, lang = 'ja') {
   const L = invoicePrintCopy(lang)
-  const clientName = escapeHtml(invoice.client_name)
+  const loc = printIssuer(issuer, lang)
+  const clientName = escapeHtml(localizePrintText(invoice.client_name, lang))
   const billName = L.honorific ? `${clientName} ${L.honorific}` : clientName
   const issueDate = escapeHtml(invoice.issue_date || '')
   const periodStart = escapeHtml(invoice.period_start || '—')
   const periodEnd = escapeHtml(invoice.period_end || '—')
   const dueDate = escapeHtml(invoice.due_date || '—')
-  const notes = escapeHtml(invoice.notes || '')
+  const notes = escapeHtml(localizePrintText(invoice.notes || '', lang))
   const number = escapeHtml(invoice.invoice_number || invoice.id?.slice?.(0, 8) || '')
-  const issuerCompany = escapeHtml(issuer.company || QUOTE_ISSUER.company)
+  const issuerCompany = escapeHtml(loc.company)
   const issuerTitle = escapeHtml(L.rep)
-  const issuerPerson = escapeHtml(issuer.name || QUOTE_ISSUER.name)
-  const issuerAddress = escapeHtml(issuer.address || QUOTE_ISSUER.address || '')
-  const issuerReg = escapeHtml(issuer.regNumber || QUOTE_ISSUER.regNumber || '')
-  const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
-  const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
-  const bank = escapeHtml(issuer.bank || '')
+  const issuerPerson = escapeHtml(loc.name)
+  const issuerAddress = escapeHtml(loc.address || '')
+  const issuerReg = escapeHtml(loc.regNumber || '')
+  const issuerEmail = escapeHtml(loc.email)
+  const issuerPhone = escapeHtml(loc.phone)
+  const bank = escapeHtml(localizePrintText(loc.bank || '', lang))
   const paid = invoice.status === 'paid'
+  const brandTrack = lang === 'en' ? '0.08em' : '0.28em'
   const rows = (items || []).map(it => `
       <tr>
-        <td>${escapeHtml(it.description || '')}</td>
+        <td>${escapeHtml(localizePrintText(it.description || '', lang))}</td>
         <td class="num">${escapeHtml(String(it.quantity ?? ''))}</td>
         <td class="num">${yen(it.unit_price)}</td>
         <td class="num">${yen(it.total)}</td>
@@ -257,6 +259,7 @@ export function buildInvoicePrintHtml(invoice, items, issuer = {}, lang = 'ja') 
 <html lang="${L.htmlLang}"><head><meta charset="utf-8"><title>${L.docTitle} ${number} - ${clientName}</title>
 <style>${PRINT_DOC_CSS}
   .doc-title h1{letter-spacing:${L.titleTracking}}
+  .brand-name{letter-spacing:${brandTrack}}
 </style></head>
 <body>
   <div class="wrap">
@@ -276,15 +279,16 @@ export function buildInvoicePrintHtml(invoice, items, issuer = {}, lang = 'ja') 
         <div class="bill-to">${billName}</div>
         <div class="muted">${L.period}${L.colon}${periodStart}${L.rangeSep}${periodEnd}</div>
       </div>
-      <div class="muted" style="text-align:right">
+      <div class="meta-side muted">
         <div>${L.issueDate}${L.colon}${issueDate}</div>
         <div>${L.due}${L.colon}${dueDate}</div>
-        <div style="margin-top:12px;color:#152033;text-align:right;line-height:1.7">
-          <div style="font-weight:800">${issuerCompany}</div>
-          <div>${issuerTitle}${L.colon}${issuerPerson}</div>
-          ${issuerAddress ? `<div>${L.address}${L.colon}${issuerAddress}</div>` : ''}
-          ${issuerReg ? `<div>${L.reg}${L.colon}${issuerReg}</div>` : ''}
+        <div class="rep-block">
+          <div class="rep-kicker">${issuerTitle}</div>
+          <div class="rep-name">${issuerPerson}</div>
         </div>
+        <div style="margin-top:6px;color:#152033;font-weight:800">${issuerCompany}</div>
+        ${issuerAddress ? `<div>${issuerAddress}</div>` : ''}
+        ${issuerReg ? `<div>${L.reg}${L.colon}${issuerReg}</div>` : ''}
       </div>
     </div>
     <table class="lines">

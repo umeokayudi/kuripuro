@@ -325,17 +325,12 @@ export default function Faturas() {
     load()
   }
 
-  const issuer = {
-    ...QUOTE_ISSUER,
-    bank: inv.bankNote,
-  }
-
   const openPrint = async (f, autoPrint, lang = 'ja') => {
     const { data: printItems, error } = await supabase.from('fatura_items').select('*').eq('fatura_id', f.id)
     if (error) return toast.error(error.message)
     const w = window.open('', '_blank')
     if (!w) return toast.error(inv.popupBlocked)
-    w.document.write(buildInvoicePrintHtml({ ...f, invoice_number: displayNumber(f) }, printItems || [], issuer, lang))
+    w.document.write(buildInvoicePrintHtml({ ...f, invoice_number: displayNumber(f) }, printItems || [], { bank: inv.bankNote }, lang))
     w.document.close()
     if (autoPrint) {
       w.focus()

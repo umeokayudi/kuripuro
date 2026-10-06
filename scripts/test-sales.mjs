@@ -83,8 +83,8 @@ function testQuoteNumberAndPrint() {
   assert(html.includes('梅岡アレサンドレユウジ'), 'issuer name')
   assert(html.includes('umeokagroup@gmail.com'), 'email')
   assert(html.includes('070-9073-2909'), 'phone')
-  assert(html.includes('代表：'), 'daihyo labeled')
-  assert(html.includes('住所：'), 'address labeled')
+  assert(html.includes('代表'), 'daihyo labeled')
+  assert(html.includes('住所'), 'address labeled')
   assert(html.includes('〒204-0012'), 'kiyose postal')
   assert(html.includes('東京都清瀬市中清戸4-907-17'), 'kiyose street')
   assert(html.includes('登録番号：'), 'touroku labeled')
@@ -142,9 +142,32 @@ function testQuoteNumberAndPrint() {
   assert(en.includes('Store'), 'store kicker en')
   assert(en.includes('Kodama Kinshicho'), 'restaurant en')
   assert(!en.includes('御中'), 'no 御中 on english print')
-  assert(en.includes('Representative'), 'rep en')
+  assert(en.includes('Rep.'), 'rep en')
   assert(en.includes('Issue date'), 'issue date en')
   assert(!en.includes('<h1>見積書</h1>'), 'no ja h1 on en')
+  assert(en.includes('Alexandre Yuji Umeoka'), 'en legal name')
+  assert(en.includes('Nakakiyoto'), 'en address')
+  assert(en.includes('KuriPuro'), 'en company')
+  assert(en.includes('rep-name'), 'name on own line')
+  assert(!en.includes('梅岡アレサンドレユウジ'), 'no katakana name on en')
+  assert(!en.includes('東京都清瀬市'), 'no ja street on en')
+  assert(!en.includes('Representative: 梅'), 'label not concatenated into name')
+  const jaLine = buildMitsumoriPrintHtml({
+    company_name: 'Parent Co',
+    site_name: 'Kodama Kinshicho',
+    quote_number: 'KPQ-202610-004',
+    tax_rate: 10,
+    subtotal: 10000,
+    tax_amount: 1000,
+    total: 11000,
+  }, [{ description: '日常清掃（月額）', quantity: 1, unit_price: 10000, total: 10000 }], {}, 'en')
+  assert(jaLine.includes('Daily cleaning'), 'service line in english')
+  assert(jaLine.includes('monthly'), 'monthly in english')
+  assert(!jaLine.includes('日常清掃'), 'no japanese service line')
+  assert(quoteRestaurantName({ notes: '店舗：魚豪商コダマ\nmemo' }) === '魚豪商コダマ', 'store colon in notes')
+  assert(quoteRestaurantName({ notes: '店名：魚豪商コダマ' }) === '魚豪商コダマ', 'tenmei in notes')
+  assert(html.includes('店舗'), 'store kicker even without site_name')
+  assert(html.includes('&lt;x&gt; 御中'), 'company as 御中 fallback')
 }
 
 function testEditableAndPayload() {

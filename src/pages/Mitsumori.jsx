@@ -304,11 +304,25 @@ export default function Mitsumori() {
     const w = window.open('', '_blank')
     if (!w) return toast.error(s.popupBlocked)
     const lead = leads.find(x => x.id === row.lead_id)
+    const fromForm = editingId && row.id === editingId ? form : {}
     const printRow = {
       ...row,
-      site_name: row.site_name || restaurantFromNotes(row.notes) || lead?.site_name || '',
+      ...fromForm,
+      company_name: fromForm.company_name || row.company_name,
+      address: fromForm.address || row.address,
+      contact_name: fromForm.contact_name || row.contact_name,
+      contact_title: fromForm.contact_title || row.contact_title,
+      notes: fromForm.notes || row.notes,
+      frequency: fromForm.frequency || row.frequency,
+      hours_per_visit: fromForm.hours_per_visit || row.hours_per_visit,
+      site_name: fromForm.site_name
+        || row.site_name
+        || restaurantFromNotes(fromForm.notes || row.notes)
+        || lead?.site_name
+        || restaurantFromNotes(lead?.notes)
+        || '',
     }
-    w.document.write(buildMitsumoriPrintHtml(printRow, data || [], QUOTE_ISSUER, lang))
+    w.document.write(buildMitsumoriPrintHtml(printRow, data || [], {}, lang))
     w.document.close()
     if (autoPrint) { w.focus(); w.print() }
   }

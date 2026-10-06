@@ -1,7 +1,7 @@
 import { escapeHtml } from './escapeHtml'
 import { addDays, invoiceTotals, lineTotal, yen } from './invoice'
-import { QUOTE_ISSUER } from './quoteIssuer'
-import { PRINT_DOC_CSS } from './printDoc'
+import { PRINT_DOC_CSS, localizePrintText, formatAddressForLang } from './printDoc'
+import { printIssuer } from './quoteIssuer'
 
 export const LEAD_SOURCES = ['visit', 'phone', 'referral', 'web', 'walkin', 'other']
 export const LEAD_STAGES = ['approach', 'followup', 'won', 'lost']
@@ -32,30 +32,43 @@ export function stripCrmExtras(payload) {
   return rest
 }
 
-const SITE_NOTE_RE = /^【店舗】(.+)\n?/
+const SITE_TAG_RE = /(?:【店舗】|【店名】|(?:店舗名|店名|店舗|現場名|現場|レストラン名|レストラン|Restaurant|Store name|Store)\s*[:：]?\s*)/i
+const SITE_NOTE_RE = new RegExp(`(?:^|\\n)\\s*${SITE_TAG_RE.source}([^\\n]+)`, 'i')
+const SITE_LINE_RE = new RegExp(`^(?:${SITE_TAG_RE.source})[^\\n]*\\n?`, 'i')
 
 export function embedRestaurantNote(notes, siteName) {
-  const site = String(siteName || '').trim()
-  const body = String(notes || '').replace(SITE_NOTE_RE, '')
+  const site = String(siteName || '').replace(/\u3000/g, ' ').trim()
+  const body = String(notes || '').replace(SITE_LINE_RE, '')
   if (!site) return body
   return `【店舗】${site}\n${body}`
 }
 
 export function restaurantFromNotes(notes) {
   const m = String(notes || '').match(SITE_NOTE_RE)
-  return m ? String(m[1] || '').trim() : ''
+  return m ? String(m[1] || '').replace(/\u3000/g, ' ').trim() : ''
 }
 
 export function notesForPrint(notes) {
-  return String(notes || '').replace(SITE_NOTE_RE, '').trim()
+  return String(notes || '').replace(SITE_LINE_RE, '').trim()
 }
 
 export function quoteRestaurantName(quote) {
-  return String(
-    quote?.site_name
-    || restaurantFromNotes(quote?.notes)
-    || '',
-  ).trim()
+  const first = (...vals) => {
+    for (const v of vals) {
+      const s = String(v || '').replace(/\u3000/g, ' ').trim()
+      if (s) return s
+    }
+    return ''
+  }
+  return first(
+    quote?.site_name,
+    restaurantFromNotes(quote?.notes),
+    quote?.location_name,
+    quote?.store_name,
+    quote?.restaurant_name,
+    quote?.restaurant,
+    quote?.place,
+  )
 }
 
 export function normalizeCompanyKey(name) {
@@ -291,7 +304,7 @@ export const QUOTE_PRINT_COPY = {
     contact: 'Contact',
     issueDate: 'Issue date',
     validUntil: 'Valid until',
-    rep: 'Representative',
+    rep: 'Rep.',
     address: 'Address',
     reg: 'Reg. No.',
     desc: 'Description',
@@ -318,37 +331,48 @@ export function quotePrintCopy(lang) {
 
 export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') {
   const L = quotePrintCopy(lang)
-  const company = escapeHtml(quote.company_name)
-  const siteName = escapeHtml(quoteRestaurantName(quote))
+  const loc = printIssuer(issuer, lang)
+  const restaurant = localizePrintText(quoteRestaurantName(quote), lang)
+  const companyRaw = localizePrintText(String(quote.company_name || '').trim(), lang)
+  const company = escapeHtml(companyRaw)
+  const siteName = escapeHtml(restaurant)
   const printTitle = siteName || company
-  const contact = escapeHtml([quote.contact_title, quote.contact_name].filter(Boolean).join(' '))
+  const contact = escapeHtml(localizePrintText([quote.contact_title, quote.contact_name].filter(Boolean).join(' '), lang))
   const number = escapeHtml(quote.quote_number || quote.id?.slice?.(0, 8) || '')
-  const issuerCompany = escapeHtml(issuer.company || QUOTE_ISSUER.company)
+  const issuerCompany = escapeHtml(loc.company)
   const issuerTitle = escapeHtml(L.rep)
-  const issuerPerson = escapeHtml(issuer.name || QUOTE_ISSUER.name)
-  const issuerAddress = escapeHtml(issuer.address || QUOTE_ISSUER.address || '')
-  const issuerReg = escapeHtml(issuer.regNumber || QUOTE_ISSUER.regNumber || '')
-  const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
-  const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
-  const printNotes = notesForPrint(quote.notes)
+  const issuerPerson = escapeHtml(loc.name)
+  const issuerAddress = escapeHtml(loc.address || '')
+  const issuerReg = escapeHtml(loc.regNumber || '')
+  const issuerEmail = escapeHtml(loc.email)
+  const issuerPhone = escapeHtml(loc.phone)
+  const printNotes = localizePrintText(notesForPrint(quote.notes), lang)
+  const clientAddress = formatAddressForLang(quote.address || '', lang)
+  const freqBits = [
+    quote.frequency ? localizePrintText(quote.frequency, lang) : '',
+    quote.hours_per_visit ? `${quote.hours_per_visit}${lang === 'en' ? ' h' : '時間'}` : '',
+  ].filter(Boolean).join(lang === 'en' ? ' · ' : '　')
   const billCore = siteName || company
   const billName = L.honorific ? `${billCore} ${L.honorific}` : billCore
-  const billTo = siteName
-    ? `<div class="site-kicker">${L.store}</div><div class="bill-to">${billName}</div>${company && company !== siteName ? `<div class="muted">${L.company}${L.colon}${company}</div>` : ''}`
-    : `<div class="bill-to">${billName}</div>`
+  const companyLine = company && company !== billCore
+    ? `<div class="muted">${L.company}${L.colon}${company}</div>`
+    : ''
+  const billTo = `<div class="site-kicker">${L.store}</div><div class="bill-to">${billName}</div>${companyLine}`
   const rows = (items || []).map(it => `
       <tr>
-        <td>${escapeHtml(it.description || '')}</td>
+        <td>${escapeHtml(localizePrintText(it.description || '', lang))}</td>
         <td class="num">${escapeHtml(String(it.quantity ?? ''))}</td>
         <td class="num">${yen(it.unit_price)}</td>
         <td class="num">${yen(it.total)}</td>
       </tr>`).join('')
   const accepted = quote.status === 'accepted'
+  const brandTrack = lang === 'en' ? '0.08em' : '0.28em'
 
   return `<!DOCTYPE html>
 <html lang="${L.htmlLang}"><head><meta charset="utf-8"><title>${L.docTitle} ${number} - ${printTitle}</title>
 <style>${PRINT_DOC_CSS}
   .doc-title h1{letter-spacing:${L.titleTracking}}
+  .brand-name{letter-spacing:${brandTrack}}
 </style></head>
 <body>
   <div class="wrap">
@@ -367,17 +391,19 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') 
       <div>
         ${billTo}
         ${contact ? `<div class="muted">${L.contact}${L.colon}${contact}</div>` : ''}
-        ${quote.address ? `<div class="muted">${escapeHtml(quote.address)}</div>` : ''}
+        ${clientAddress ? `<div class="muted">${escapeHtml(clientAddress)}</div>` : ''}
+        ${freqBits ? `<div class="muted">${escapeHtml(freqBits)}</div>` : ''}
       </div>
-      <div class="muted" style="text-align:right">
+      <div class="meta-side muted">
         <div>${L.issueDate}${L.colon}${escapeHtml(quote.issue_date || '')}</div>
         <div>${L.validUntil}${L.colon}${escapeHtml(quote.valid_until || '—')}</div>
-        <div style="margin-top:12px;color:#152033;text-align:right;line-height:1.7">
-          <div style="font-weight:800">${issuerCompany}</div>
-          <div>${issuerTitle}${L.colon}${issuerPerson}</div>
-          ${issuerAddress ? `<div>${L.address}${L.colon}${issuerAddress}</div>` : ''}
-          ${issuerReg ? `<div>${L.reg}${L.colon}${issuerReg}</div>` : ''}
+        <div class="rep-block">
+          <div class="rep-kicker">${issuerTitle}</div>
+          <div class="rep-name">${issuerPerson}</div>
         </div>
+        <div style="margin-top:6px;color:#152033;font-weight:800">${issuerCompany}</div>
+        ${issuerAddress ? `<div>${issuerAddress}</div>` : ''}
+        ${issuerReg ? `<div>${L.reg}${L.colon}${issuerReg}</div>` : ''}
       </div>
     </div>
     <table class="lines">
