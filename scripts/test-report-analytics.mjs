@@ -96,7 +96,7 @@ assert(week.start === '2026-10-05' && week.end === today, `week ${week.start}`)
 const enK = Object.keys(kuripuroEn.reports).sort()
 const jaK = Object.keys(kuripuroJa.reports).sort()
 assert(enK.join() === jaK.join(), `reports i18n ${enK.filter(k => !jaK.includes(k))} / ${jaK.filter(k => !enK.includes(k))}`)
-assert(kuripuroEn.period.today && kuripuroJa.period.today, 'period today')
+assert(kuripuroEn.invoices.statuses.draft && kuripuroJa.invoices.statuses.draft, 'invoice status labels')
 assert(kuripuroEn.period.thisWeek && kuripuroJa.period.thisWeek, 'period week')
 
 const doc = generateReportPdf({

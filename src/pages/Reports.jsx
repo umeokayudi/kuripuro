@@ -143,7 +143,7 @@ export default function Reports() {
   const { lang, t } = useLang()
   const tr = t.reports
   const p = t.period
-  const dashSt = t.dashboard.statuses
+  const dashSt = t.invoices.statuses
   const jobSt = t.status
   const today = tokyoToday()
   const initial = rangeForPreset('thisMonth', today)
