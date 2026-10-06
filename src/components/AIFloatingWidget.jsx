@@ -22,7 +22,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
 
   const clamp = (x, y) => ({
     x: Math.max(8, Math.min(window.innerWidth - BTN - 8, x)),
-    y: Math.max(8, Math.min(window.innerHeight - BTN - 8, y)),
+    y: Math.max(8, Math.min((window.visualViewport?.height || window.innerHeight) - BTN - 8, y)),
   })
 
   const getBtnPos = useCallback(() => {
@@ -45,10 +45,10 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
       left,
       top: Math.max(12, Math.min(window.innerHeight - PANEL_H - 12, top)),
       zIndex: 998,
-      width: PANEL_W,
+      width: `min(${PANEL_W}px, calc(100vw - 24px))`,
       maxWidth: 'calc(100vw - 24px)',
       height: PANEL_H,
-      maxHeight: 'calc(100vh - 24px)',
+      maxHeight: 'calc(100dvh - 24px)',
       background: dark ? '#0d1f35' : 'var(--bg, #f4f6f9)',
       borderRadius: 20,
       boxShadow: '0 12px 40px rgba(0,0,0,0.35)',

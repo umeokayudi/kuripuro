@@ -167,7 +167,7 @@ function AppContent() {
               </button>
             )}
             {mobile && (
-              <button type="button" className="btn btn-sm" onClick={() => setView('desktop')}>{t.sidebar.desktopView}</button>
+              <button type="button" className="btn btn-sm admin-desktop-toggle" onClick={() => setView('desktop')}>{t.sidebar.desktopView}</button>
             )}
             {!mobile && pref === 'desktop' && width <= 900 && (
               <button type="button" className="btn btn-sm" onClick={() => setView('auto')}>{t.sidebar.mobileView}</button>
