@@ -1,21 +1,15 @@
 // api/admin-ai.js
-// Assistente de IA para o admin do KuriPuro. Usa Gemini com "function calling"
-// pra poder consultar e alterar dados no Supabase a partir de linguagem natural.
+// Assistente de IA para o admin do KuriPuro. Lê o sistema inteiro via PostgREST.
 
 import { API_BUILD } from './_gemini.js'
 import { runGeminiToolLoop } from './_tool-loop.js'
 import { requireAdminSecret } from './_auth.js'
+import { ADMIN_AI_TABLE_GUIDE, ADMIN_AI_TABLES, scrubAiRow } from '../src/lib/adminAiScope.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
 
-const ALLOWED_TABLES = [
-  'employees', 'jobs', 'clients', 'salary_payments', 'complaints',
-  'evaluations', 'transport_claims', 'equipment_requests', 'badges', 'checkins', 'messages',
-  'locations', 'client_users', 'client_messages', 'client_complaints', 'client_compliments',
-  'client_ratings', 'client_requests', 'service_contracts', 'service_reports',
-  'sales_leads', 'mitsumori', 'mitsumori_items', 'sales_touchpoints',
-]
+const ALLOWED_TABLES = ADMIN_AI_TABLES
 
 async function sbFetch(path, options = {}) {
   const resp = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -24,7 +18,7 @@ async function sbFetch(path, options = {}) {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
-      Prefer: options.method && options.method !== 'GET' ? 'return=representation' : undefined,
+      Prefer: options.headers?.Prefer || (options.method && options.method !== 'GET' ? 'return=representation' : undefined),
       ...options.headers,
     },
   })
@@ -32,16 +26,15 @@ async function sbFetch(path, options = {}) {
   let data
   try { data = JSON.parse(text) } catch { data = text }
   if (!resp.ok) throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
-  return data
+  return { data, headers: resp.headers }
 }
 
 function checkTable(table) {
   if (!ALLOWED_TABLES.includes(table)) {
-    throw new Error(`Tabela "${table}" não permitida. Tabelas disponíveis: ${ALLOWED_TABLES.join(', ')}`)
+    throw new Error(`Tabela "${table}" não permitida. Tabelas: ${ALLOWED_TABLES.join(', ')}`)
   }
 }
 
-/** filters: { col: value } → eq, ou { col: { op: 'ilike', value: '%x%' } } */
 function buildQuery(filters = {}) {
   if (!filters || typeof filters !== 'object' || Array.isArray(filters)) return ''
   const parts = []
@@ -59,35 +52,52 @@ function buildQuery(filters = {}) {
 const TOOLS = [{
   functionDeclarations: [
     {
+      name: 'list_tables',
+      description: 'Lista todas as tabelas do sistema que você pode ler. Use primeiro se não souber onde está um dado.',
+      parameters: { type: 'OBJECT', properties: {} },
+    },
+    {
       name: 'query_data',
-      description: 'Busca registros de uma tabela. Para nomes parciais use filters com op ilike, ex: {"full_name": {"op": "ilike", "value": "%leticia%"}}',
+      description: 'Lê registros de qualquer tabela do sistema. Para nomes parciais use ilike, ex: {"full_name":{"op":"ilike","value":"%leticia%"}}',
       parameters: {
         type: 'OBJECT',
         properties: {
           table: { type: 'STRING', description: `Tabela: ${ALLOWED_TABLES.join(', ')}` },
-          select: { type: 'STRING', description: 'Colunas separadas por vírgula ou "*"' },
-          filters: { type: 'OBJECT', description: 'Filtros: igualdade {"status":"assigned"} ou ilike {"full_name":{"op":"ilike","value":"%nome%"}}' },
-          order: { type: 'STRING', description: 'Ordenação PostgREST, ex: scheduled_date.asc' },
-          limit: { type: 'NUMBER', description: 'Máximo de registros (padrão 50)' },
+          select: { type: 'STRING', description: 'Colunas ou "*"' },
+          filters: { type: 'OBJECT', description: 'Filtros eq ou {op,value}' },
+          order: { type: 'STRING', description: 'ex: scheduled_date.desc' },
+          limit: { type: 'NUMBER', description: 'Máximo (padrão 80, máx 200)' },
+        },
+        required: ['table'],
+      },
+    },
+    {
+      name: 'count_data',
+      description: 'Conta registros de uma tabela com filtros. Use para totais (jobs hoje, faturas abertas, etc).',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          table: { type: 'STRING' },
+          filters: { type: 'OBJECT' },
         },
         required: ['table'],
       },
     },
     {
       name: 'insert_data',
-      description: 'Insere registro(s). Para vários jobs, chame várias vezes ou passe array em data.rows. Confirme com usuário antes de criar jobs em massa.',
+      description: 'Insere registro(s). Confirme com o usuário antes de criar em massa.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          table: { type: 'STRING', description: `Tabela: ${ALLOWED_TABLES.join(', ')}` },
-          data: { type: 'OBJECT', description: 'Campos do registro, ou { rows: [ {...}, {...} ] } para lote' },
+          table: { type: 'STRING' },
+          data: { type: 'OBJECT', description: 'Campos, ou { rows: [...] }' },
         },
         required: ['table', 'data'],
       },
     },
     {
       name: 'update_data',
-      description: 'Atualiza registros que combinam com os filtros. Confirme antes de alterar.',
+      description: 'Atualiza registros. Confirme antes.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -100,7 +110,7 @@ const TOOLS = [{
     },
     {
       name: 'delete_data',
-      description: 'Apaga registros. Ação permanente — confirme antes.',
+      description: 'Apaga registros. Permanente — confirme antes.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -114,52 +124,74 @@ const TOOLS = [{
 }]
 
 async function executeTool(name, args) {
+  if (name === 'list_tables') {
+    return { tables: ALLOWED_TABLES, guide: ADMIN_AI_TABLE_GUIDE }
+  }
   if (name === 'query_data') {
     checkTable(args.table)
     const query = buildQuery(args.filters)
     const select = encodeURIComponent(args.select || '*')
-    const limit = args.limit || 50
+    const limit = Math.min(Math.max(parseInt(args.limit, 10) || 80, 1), 200)
     const order = args.order ? `&order=${encodeURIComponent(args.order)}` : ''
     const path = `${args.table}?select=${select}${query ? '&' + query : ''}${order}&limit=${limit}`
-    return await sbFetch(path)
+    const { data } = await sbFetch(path)
+    return scrubAiRow(data)
+  }
+  if (name === 'count_data') {
+    checkTable(args.table)
+    const query = buildQuery(args.filters)
+    const path = `${args.table}?select=id${query ? '&' + query : ''}`
+    const { headers } = await sbFetch(path, {
+      headers: { Prefer: 'count=exact', Range: '0-0' },
+    })
+    const cr = headers.get('content-range') || ''
+    const total = cr.includes('/') ? Number(cr.split('/')[1]) : null
+    return { table: args.table, count: Number.isFinite(total) ? total : null, contentRange: cr }
   }
   if (name === 'insert_data') {
     checkTable(args.table)
     const rows = args.data?.rows
     if (Array.isArray(rows) && rows.length) {
-      return await sbFetch(args.table, { method: 'POST', body: JSON.stringify(rows) })
+      const { data } = await sbFetch(args.table, { method: 'POST', body: JSON.stringify(rows) })
+      return scrubAiRow(data)
     }
-    return await sbFetch(args.table, { method: 'POST', body: JSON.stringify([args.data]) })
+    const { data } = await sbFetch(args.table, { method: 'POST', body: JSON.stringify([args.data]) })
+    return scrubAiRow(data)
   }
   if (name === 'update_data') {
     checkTable(args.table)
     const query = buildQuery(args.filters)
     if (!query) throw new Error('update_data exige filters')
-    return await sbFetch(`${args.table}?${query}`, { method: 'PATCH', body: JSON.stringify(args.changes) })
+    const { data } = await sbFetch(`${args.table}?${query}`, { method: 'PATCH', body: JSON.stringify(args.changes) })
+    return scrubAiRow(data)
   }
   if (name === 'delete_data') {
     checkTable(args.table)
     const query = buildQuery(args.filters)
     if (!query) throw new Error('delete_data exige filters')
-    return await sbFetch(`${args.table}?${query}`, { method: 'DELETE' })
+    const { data } = await sbFetch(`${args.table}?${query}`, { method: 'DELETE' })
+    return scrubAiRow(data)
   }
   throw new Error(`Função desconhecida: ${name}`)
 }
 
-const SYSTEM_INSTRUCTION = `Você é o assistente de IA do painel administrativo do KuriPuro (gestão de limpeza de restaurantes/bares).
+const SYSTEM_INSTRUCTION = `Você é a IA central do KuriPuro (limpeza de restaurantes/bares no Japão). Esta tela é a área exclusiva de IA do admin: você PODE e DEVE consultar o banco para responder.
 Tabelas: ${ALLOWED_TABLES.join(', ')}.
+Guia: ${ADMIN_AI_TABLE_GUIDE}
 
 Regras:
-- Responda sempre em português.
-- Use query_data para buscar dados. Para nomes use ilike: {"full_name":{"op":"ilike","value":"%leticia%"}}.
-- Para CRIAR jobs de escala: 1) busque employee_id e full_name em employees; 2) use insert_data em jobs com campos obrigatórios: title (ex: "Kodama Kinshicho — Limpeza básica"), employee_id, employee_name, scheduled_date (YYYY-MM-DD), scheduled_time (ex: "00:30"), status "assigned", address (URL maps ou texto), client_id/client_name se souber.
-- Locais comuns (título do job): Kodama Kinshicho, Kodama Oimachi, Kodama Yurakucho, Kodama Shinbashi, Ibushio, etc.
-- Para agendar vários dias, crie um job por dia por local (várias chamadas insert_data ou data.rows em lote).
-- Para mudanças (insert/update/delete), se o pedido já for claro e específico, execute. Se ambíguo, explique e peça confirmação.
-- Nunca invente IDs — busque antes com query_data.
-- Comercial / 見積書: use sales_leads, mitsumori, mitsumori_items e sales_touchpoints. O campo interest é INTERNO (banco + avaliação). Nunca está no PDF da 見積書. sales_touchpoints guarda respostas do cliente e o que foi falado (channel, said_by, body, happened_at).
-- Para avaliar uma negociação: leia o lead, a 見積書 (status draft/sent/accepted/declined), interest, e as touchpoints. Resuma temperatura, risco de perda, próximo passo.
-- Seja direto. Ao final, resuma o que foi feito (quantos jobs criados, datas, funcionário).`
+- Responda no idioma do usuário (português, japonês ou inglês).
+- Nunca invente números. Sempre use query_data e/ou count_data. Se a tabela não existir (erro PGRST205), diga que o SQL ainda não foi aplicado.
+- Para visão geral, use count_data e depois query_data nas linhas relevantes.
+- Nomes parciais: ilike {"full_name":{"op":"ilike","value":"%nome%"}} ou company_name.
+- Jobs: status assigned / in_progress / completed / cancelled. Datas YYYY-MM-DD (Tóquio).
+- Faturas: faturas + fatura_items. Status draft/sent/paid/cancelled.
+- Comercial: sales_leads, mitsumori, mitsumori_items, sales_touchpoints. interest é INTERNO (não vai no PDF da 見積書).
+- Folha: salary_payments, salary_periods, salary_statements, salary_complaints, payroll, transport_claims.
+- Nunca mostre senhas ou password_hash. Pode falar de salário, contratos, interesse do cliente, reclamações.
+- Para CRIAR jobs: busque employee_id em employees; insert_data em jobs com title, employee_id, employee_name, scheduled_date, scheduled_time, status "assigned", address.
+- Mudanças (insert/update/delete): se o pedido for claro, execute; se ambíguo, confirme.
+- Seja direto. Cite as tabelas que usou. No final, resuma.`
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
@@ -168,6 +200,7 @@ export default async function handler(req, res) {
       api: 'admin-ai',
       build: API_BUILD,
       geminiKey: !!process.env.GEMINI_API_KEY,
+      tables: ALLOWED_TABLES,
     })
   }
 
@@ -195,7 +228,7 @@ export default async function handler(req, res) {
       tools: TOOLS,
       systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
       executeTool,
-      maxIterations: 14,
+      maxIterations: 16,
     })
 
     res.status(200).json({ reply, toolLog })

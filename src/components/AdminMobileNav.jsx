@@ -4,10 +4,10 @@ import { Icons } from './Icons'
 import { ADMIN_MOBILE_TABS, adminTabActive } from '../lib/adminLayout'
 
 const ICONS = {
+  ai: Icons.sparkle,
   dashboard: Icons.dashboard,
   jobs: Icons.list,
   mitsumori: Icons.file,
-  followup: Icons.building,
 }
 
 export default function AdminMobileNav({ pathname, onMore }) {

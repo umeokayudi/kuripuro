@@ -20,10 +20,10 @@ export function isAdminMobileLayout(width, pref = 'auto') {
 }
 
 export const ADMIN_MOBILE_TABS = [
+  { to: '/ai', key: 'ai' },
   { to: '/', key: 'dashboard' },
   { to: '/jobs', key: 'jobs' },
   { to: '/mitsumori', key: 'mitsumori' },
-  { to: '/sales-followup', key: 'followup' },
 ]
 
 export function adminTabActive(pathname, to) {

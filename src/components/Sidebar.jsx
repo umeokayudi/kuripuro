@@ -7,6 +7,12 @@ import { APP_VERSION } from '../lib/appVersion'
 
 const groups = [
   {
+    key: 'navAi',
+    items: [
+      { to: '/ai', key: 'ai', icon: Icons.sparkle },
+    ],
+  },
+  {
     key: 'navOps',
     items: [
       { to: '/', key: 'dashboard', icon: Icons.dashboard },

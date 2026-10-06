@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { apiPost } from '../lib/apiFetch'
 import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
-import { loadChatHistory, saveChatHistory } from '../lib/aiChatHistory'
+import { loadChatHistory, saveChatHistory, clearChatHistory } from '../lib/aiChatHistory'
 import { useLang } from '../hooks/useLang'
 
 function formatText(text) {
@@ -23,7 +23,7 @@ function formatText(text) {
   })
 }
 
-export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false }) {
+export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, workspace = false, suggestions = [] }) {
   const { t, lang } = useLang()
   const ai = t.ai || {}
   const welcome = useMemo(() => (
@@ -67,10 +67,11 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const speakReply = (text) => speakText(text, { voice: voiceRef.current })
 
   const callAPI = async (allMessages) => {
+    const payload = allMessages.slice(-24)
     const endpoint = mode === 'employee' ? '/api/employee-ai' : '/api/admin-ai'
     const body = mode === 'employee'
-      ? { messages: allMessages, employeeId, employeeName }
-      : { messages: allMessages }
+      ? { messages: payload, employeeId, employeeName }
+      : { messages: payload }
     const resp = await apiPost(endpoint, body)
     let data
     try { data = await resp.json() } catch { throw new Error(`Invalid response (${resp.status})`) }
@@ -120,18 +121,26 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     setLoading(false)
   }
 
+  const clear = () => {
+    clearChatHistory(mode, employeeId)
+    setMessages(welcome)
+  }
+
   const userBubble = dark ? 'linear-gradient(135deg,#1a3a5c,#0f2540)' : 'var(--navy)'
   const botBubble = dark ? 'rgba(255,255,255,0.07)' : '#fff'
   const botColor = dark ? '#fff' : 'var(--text)'
   const botBorder = dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : 'calc(100vh - 140px)' }}>
+    <div className={workspace ? 'ai-panel-workspace' : undefined} style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : workspace ? '100%' : 'calc(100dvh - 140px)', minHeight: 0, flex: workspace ? 1 : undefined }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: compact ? 8 : 12, padding: compact ? '8px 12px 0' : 0 }}>
         <div style={{ fontSize: compact ? 12 : 14, fontWeight: 700, color: dark ? 'rgba(255,255,255,0.7)' : 'var(--text2)' }}>
           {mode === 'employee' ? `🤖 ${ai.employeeTitle}` : `✨ ${ai.adminTitle}`}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {workspace && (
+            <button type="button" onClick={clear} className="btn btn-sm">{ai.clearChat}</button>
+          )}
           {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).length > 0 && (
             <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title="AI voice"
               style={{ fontSize: 11, padding: '5px 8px', borderRadius: 8, border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit', maxWidth: 130 }}>
@@ -152,6 +161,14 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       </div>
 
       {callOpen && <AICallMode onClose={() => setCallOpen(false)} sendToAI={sendFromCall} />}
+
+      {workspace && suggestions.length > 0 && (
+        <div className="ai-suggest">
+          {suggestions.map(text => (
+            <button key={text} type="button" className="ai-chip" onClick={() => setInput(text)}>{text}</button>
+          ))}
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: compact ? '0 12px' : '0 4px 0 0' }}>
         {messages.map((m, i) => (

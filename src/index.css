@@ -551,3 +551,52 @@ svg.icon { width: 16px; height: 16px; flex-shrink: 0; }
 }
 .admin-bottom-item svg { width: 20px; height: 20px; }
 .admin-bottom-item.active, .admin-bottom-item:active { color: var(--gold2); }
+
+.page-content-ai {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.ai-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 12px 16px 8px;
+}
+.ai-workspace-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+.ai-workspace-hint {
+  font-size: 13px;
+  color: var(--text3);
+  margin: 6px 0 0;
+  line-height: 1.5;
+  max-width: 720px;
+}
+.ai-workspace-head { margin-bottom: 10px; flex-shrink: 0; }
+.ai-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; flex-shrink: 0; }
+.ai-chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.ai-chip:hover { border-color: var(--gold); color: var(--navy); }
+.app-shell-mobile .page-content-ai { padding: 0; }
+.app-shell-mobile .ai-workspace { padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); }
+.app-shell-mobile .ai-workspace-head h2 { font-size: 18px !important; }

@@ -174,7 +174,7 @@ function AppContent() {
             )}
           </div>
         </header>
-        <main className="page-content">
+        <main className={`page-content${location.pathname === '/ai' ? ' page-content-ai' : ''}`}>
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
             <Routes>
               <Route path="/" element={<Dashboard />} />

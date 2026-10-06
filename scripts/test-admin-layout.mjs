@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'fs'
-import { adminTabActive, isAdminMobileLayout } from '../src/lib/adminLayout.js'
+import { adminTabActive, isAdminMobileLayout, ADMIN_MOBILE_TABS } from '../src/lib/adminLayout.js'
+import { ADMIN_AI_TABLES, scrubAiRow } from '../src/lib/adminAiScope.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -14,6 +15,9 @@ assert(adminTabActive('/', '/') === true, 'home')
 assert(adminTabActive('/jobs', '/jobs') === true, 'jobs')
 assert(adminTabActive('/jobs', '/') === false, 'not home')
 assert(adminTabActive('/mitsumori', '/mitsumori') === true, 'quote')
+assert(adminTabActive('/ai', '/ai') === true, 'ai tab')
+assert(adminTabActive('/ai', '/') === false, 'ai not home')
+assert(ADMIN_MOBILE_TABS.some(t => t.to === '/ai'), 'ai in bottom nav')
 
 const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
 assert(css.includes('overflow-x: clip'), 'no sideways bounce')
@@ -23,4 +27,15 @@ assert(css.includes('.app-shell-mobile .page-content table { min-width: 0'), 'ta
 assert(css.includes('.emp-bottom-nav'), 'emp nav class')
 assert(css.includes('100dvh'), 'dynamic viewport')
 assert(!css.includes('min-width: 520px'), 'no forced table width')
+assert(css.includes('.ai-workspace'), 'ai desk')
+
+assert(ADMIN_AI_TABLES.includes('faturas'), 'invoices')
+assert(ADMIN_AI_TABLES.includes('cashflow'), 'cashflow')
+assert(ADMIN_AI_TABLES.includes('salary_periods'), 'payroll')
+assert(ADMIN_AI_TABLES.includes('sales_touchpoints'), 'crm')
+assert(ADMIN_AI_TABLES.includes('ryoshu'), 'receipts')
+assert(ADMIN_AI_TABLES.includes('jobs'), 'jobs')
+assert(ADMIN_AI_TABLES.length >= 30, `tables ${ADMIN_AI_TABLES.length}`)
+assert(scrubAiRow({ password: 'x', full_name: 'A' }).full_name === 'A', 'keep name')
+assert(scrubAiRow({ password: 'x', full_name: 'A' }).password === undefined, 'strip password')
 console.log('✅ admin mobile layout tests passed')

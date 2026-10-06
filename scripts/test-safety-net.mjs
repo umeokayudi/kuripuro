@@ -40,6 +40,8 @@ function testI18nClientKeys() {
   assertKeyParity(kuripuroEn.sales.channels, kuripuroJa.sales.channels, 'sales.channels')
   assertKeyParity(kuripuroEn.sales.touchTypes, kuripuroJa.sales.touchTypes, 'sales.touchTypes')
   assertKeyParity(kuripuroEn.sidebar, kuripuroJa.sidebar, 'sidebar')
+  assertKeyParity(kuripuroEn.ai, kuripuroJa.ai, 'ai')
+  assert(kuripuroEn.sidebar.navAi, 'navAi')
 }
 
 function testEscapeHtml() {
