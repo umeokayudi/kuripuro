@@ -70,7 +70,7 @@ export function buildTimeBuckets(start, end, grain = bucketGrain(start, end)) {
 }
 
 export function isOverdueInvoice(row, today) {
-  if (row?.status !== 'sent') return false
+  if (row?.status !== 'sent' && row?.status !== 'pending') return false
   const due = String(row.due_date || '').slice(0, 10)
   return /^\d{4}-\d{2}-\d{2}$/.test(due) && due < today
 }
@@ -108,17 +108,17 @@ function countStatus(rows, statuses) {
 }
 
 export function invoiceKpis(current, previous, today) {
-  const billed = sumStatus(current, ['sent', 'paid'])
-  const billedPrev = sumStatus(previous, ['sent', 'paid'])
+  const billed = sumStatus(current, ['sent', 'paid', 'pending'])
+  const billedPrev = sumStatus(previous, ['sent', 'paid', 'pending'])
   const received = sumStatus(current, ['paid'])
   const receivedPrev = sumStatus(previous, ['paid'])
-  const toCollect = sumStatus(current, ['sent'])
-  const open = sumStatus(current, ['draft', 'sent'])
+  const toCollect = sumStatus(current, ['sent', 'pending'])
+  const open = sumStatus(current, ['draft', 'sent', 'pending'])
   const overdue = (current || []).reduce((s, r) => s + (isOverdueInvoice(r, today) ? Number(r.total || 0) : 0), 0)
   const cancelled = sumStatus(current, ['cancelled'])
-  const billedN = countStatus(current, ['sent', 'paid'])
+  const billedN = countStatus(current, ['sent', 'paid', 'pending'])
   const ticket = billedN ? Math.round(billed / billedN) : 0
-  const ticketPrevN = countStatus(previous, ['sent', 'paid'])
+  const ticketPrevN = countStatus(previous, ['sent', 'paid', 'pending'])
   const ticketPrev = ticketPrevN ? Math.round(billedPrev / ticketPrevN) : 0
   return {
     billed,
@@ -153,7 +153,7 @@ export function jobKpis(current, previous) {
 
 export function statusSlices(rows, today) {
   const paid = sumStatus(rows, ['paid'])
-  const pending = sumStatus(rows, ['sent'])
+  const pending = sumStatus(rows, ['sent', 'pending'])
   const overdue = (rows || []).reduce((s, r) => s + (isOverdueInvoice(r, today) ? Number(r.total || 0) : 0), 0)
   const pendingNet = Math.max(0, pending - overdue)
   const cancelled = sumStatus(rows, ['cancelled'])
@@ -174,7 +174,7 @@ export function seriesFromBuckets(rows, buckets, pickDate, pickValue) {
 }
 
 export function revenueSeries(invoices, buckets) {
-  const billed = (invoices || []).filter(r => r.status === 'sent' || r.status === 'paid')
+  const billed = (invoices || []).filter(r => r.status === 'sent' || r.status === 'paid' || r.status === 'pending')
   return seriesFromBuckets(billed, buckets, invoiceDate, r => Number(r.total || 0))
 }
 
@@ -187,7 +187,7 @@ export function rankClients(invoices, clients, limit = 8) {
   const names = Object.fromEntries((clients || []).map(c => [c.id, c.company_name]))
   const map = new Map()
   for (const row of invoices || []) {
-    if (row.status !== 'sent' && row.status !== 'paid') continue
+    if (row.status !== 'sent' && row.status !== 'paid' && row.status !== 'pending') continue
     const id = row.client_id || row.client_name || '—'
     const cur = map.get(id) || { id, name: names[row.client_id] || row.client_name || '—', billed: 0, count: 0 }
     cur.billed += Number(row.total || 0)
@@ -212,11 +212,11 @@ export function clientInsight(clientId, invoices, jobs, clients, range) {
   const client = (clients || []).find(c => String(c.id) === String(clientId))
   const inv = (invoices || []).filter(r => String(r.client_id) === String(clientId))
   const jb = (jobs || []).filter(j => String(j.client_id) === String(clientId))
-  const billed = sumStatus(inv, ['sent', 'paid'])
+  const billed = sumStatus(inv, ['sent', 'paid', 'pending'])
   const received = sumStatus(inv, ['paid'])
-  const open = sumStatus(inv, ['draft', 'sent'])
+  const open = sumStatus(inv, ['draft', 'sent', 'pending'])
   const done = jb.filter(j => j.status === 'completed')
-  const ticketN = countStatus(inv, ['sent', 'paid'])
+  const ticketN = countStatus(inv, ['sent', 'paid', 'pending'])
   const monthly = range?.start && range?.end
     ? revenueSeries(inv, buildTimeBuckets(range.start, range.end, 'month'))
     : []

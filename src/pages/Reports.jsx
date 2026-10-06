@@ -114,6 +114,7 @@ function FilterFields({
           <option value="all">{tr.allStatuses}</option>
           <option value="draft">{dashSt.draft}</option>
           <option value="sent">{dashSt.sent}</option>
+          <option value="pending">{dashSt.pending}</option>
           <option value="paid">{dashSt.paid}</option>
           <option value="overdue">{tr.statusOverdue}</option>
           <option value="cancelled">{dashSt.cancelled}</option>

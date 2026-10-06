@@ -29,19 +29,21 @@ const rows = [
   { id: '4', status: 'paid', total: 25000, created_at: '2026-10-02T03:00:00Z', client_id: 'c2', client_name: 'B' },
   { id: '5', status: 'cancelled', total: 999, issue_date: '2026-10-03', client_id: 'c1' },
   { id: '6', status: 'sent', total: 40000, issue_date: '2026-10-04', client_id: 'c1', client_name: 'A', due_date: '2026-10-01' },
+  { id: '7', status: 'pending', total: 10000, issue_date: '2026-08-15', client_id: 'c2', client_name: 'B' },
 ]
 
 const { start, end } = rangeForPreset('m3', today)
 assert(start === '2026-08-01' && end === today, 'm3 range')
 
-const billed = sumInvoices(rows, start, end, ['sent', 'paid'])
+const billedSentPaid = sumInvoices(rows, start, end, ['sent', 'paid'])
+assert(billedSentPaid === 215000, 'sent+paid window')
 const current = filterInvoices(rows, { start, end, today })
 const prev = previousEqualRange({ start, end })
 const previous = filterInvoices(rows, { start: prev.start, end: prev.end, today })
 const k = invoiceKpis(current, previous, today)
-assert(k.billed === billed, `kpi billed ${k.billed} vs ${billed}`)
+assert(k.billed === 225000, `kpi billed ${k.billed}`)
 assert(k.received === sumInvoices(rows, start, end, ['paid']), `received ${k.received}`)
-assert(k.toCollect === 140000, `toCollect ${k.toCollect}`)
+assert(k.toCollect === 150000, `toCollect ${k.toCollect}`)
 assert(k.cancelled === 999, `cancelled ${k.cancelled}`)
 assert(k.overdue === 140000, `overdue ${k.overdue}`)
 assert(k.billedGrowth === growthPct(k.billed, k.billedPrev), 'growth matches')
@@ -70,7 +72,7 @@ const slices = statusSlices(current, today)
 assert(slices.find(s => s.key === 'received').value === k.received, 'slice received')
 assert(slices.find(s => s.key === 'cancelled').value === 999, 'slice cancelled')
 const pendingNet = slices.find(s => s.key === 'pending').value
-assert(pendingNet + slices.find(s => s.key === 'overdue').value === k.toCollect, 'pending+overdue = sent')
+assert(pendingNet + slices.find(s => s.key === 'overdue').value === k.toCollect, 'pending+overdue = collect')
 
 const jobs = [
   { id: 'j1', status: 'completed', scheduled_date: '2026-09-10', client_id: 'c1', location_name: 'Shop A', cleaning_type: 'regular', value: 3000 },
