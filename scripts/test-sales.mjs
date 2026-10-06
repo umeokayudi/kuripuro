@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { kuripuroEn, kuripuroJa } from '../src/i18n/kuripuro.js'
-import { APP_VERSION } from '../src/lib/appVersion.js'
 import { SALES_SETUP_SQL, SALES_SETUP_STEPS } from '../src/lib/salesSetupSql.js'
 import {
   buildMitsumoriPrintHtml,
@@ -67,12 +66,17 @@ function testQuoteNumberAndPrint() {
     tax_amount: 1000,
     total: 11000,
     status: 'accepted',
-  }, [{ description: 'Daily', quantity: 1, unit_price: 10000, total: 10000 }], { version: APP_VERSION })
+  }, [{ description: 'Daily', quantity: 1, unit_price: 10000, total: 10000 }])
   assert(html.includes('見積書'), 'title')
   assert(html.includes('成約'), 'accepted stamp')
   assert(html.includes('KPQ-202610-001'), 'number')
   assert(!html.includes('<x>'), 'escaped')
-  assert(html.includes(APP_VERSION), 'version')
+  assert(html.includes('クリプロ'), 'issuer company')
+  assert(html.includes('梅岡アレサンドレユウジ'), 'issuer name')
+  assert(html.includes('umeokagroup@gmail.com'), 'email')
+  assert(html.includes('070-9073-2909'), 'phone')
+  assert(!html.includes('電子発行'), 'no e-issue line')
+  assert(!html.includes('KuriPuro by JBM'), 'no old brand')
 }
 
 function testSchemaDetect() {

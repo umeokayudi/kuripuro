@@ -194,12 +194,7 @@ export default function Mitsumori() {
     if (error) return toast.error(error.message)
     const w = window.open('', '_blank')
     if (!w) return toast.error(s.popupBlocked)
-    w.document.write(buildMitsumoriPrintHtml(row, data || [], {
-      company: 'KuriPuro by JBM',
-      address: t.ryoshu?.companyAddress || '',
-      regNumber: t.ryoshu?.regNumber || '',
-      version: APP_VERSION,
-    }))
+    w.document.write(buildMitsumoriPrintHtml(row, data || []))
     w.document.close()
     if (autoPrint) { w.focus(); w.print() }
   }

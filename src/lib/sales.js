@@ -1,5 +1,6 @@
 import { escapeHtml } from './escapeHtml'
 import { addDays, invoiceTotals, lineTotal, yen } from './invoice'
+import { QUOTE_ISSUER } from './quoteIssuer'
 
 export const LEAD_SOURCES = ['visit', 'phone', 'referral', 'web', 'walkin', 'other']
 export const LEAD_STAGES = ['approach', 'followup', 'won', 'lost']
@@ -157,7 +158,10 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   const company = escapeHtml(quote.company_name)
   const contact = escapeHtml([quote.contact_title, quote.contact_name].filter(Boolean).join(' '))
   const number = escapeHtml(quote.quote_number || quote.id?.slice?.(0, 8) || '')
-  const issuerName = escapeHtml(issuer.company || 'KuriPuro by JBM')
+  const issuerCompany = escapeHtml(issuer.company || QUOTE_ISSUER.company)
+  const issuerPerson = escapeHtml(issuer.name || QUOTE_ISSUER.name)
+  const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
+  const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
   const rows = (items || []).map(it => `
       <tr>
         <td>${escapeHtml(it.description || '')}</td>
@@ -191,7 +195,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   <div class="wrap">
     ${accepted ? '<div class="stamp">成約</div>' : ''}
     <h1>見積書</h1>
-    <div class="sub">${issuerName}</div>
+    <div class="sub">${issuerCompany}</div>
     <div class="meta">
       <div>
         <div class="bill-to">${company} 御中</div>
@@ -217,9 +221,10 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
     </table>
     ${quote.notes ? `<p style="margin-top:18px;font-size:13px;color:#556">備考: ${escapeHtml(quote.notes)}</p>` : ''}
     <div class="footer">
-      ${issuer.address ? `<div>${escapeHtml(issuer.address)}</div>` : ''}
-      ${issuer.regNumber ? `<div>${escapeHtml(issuer.regNumber)}</div>` : ''}
-      <div style="margin-top:8px">本見積書は電子発行です。KuriPuro ${escapeHtml(issuer.version || '')}</div>
+      <div>${issuerCompany}</div>
+      <div>${issuerPerson}</div>
+      <div>メール: ${issuerEmail}</div>
+      <div>電話: ${issuerPhone}</div>
     </div>
   </div>
 </body></html>`
