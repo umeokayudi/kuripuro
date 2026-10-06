@@ -31,6 +31,8 @@ function testI18nClientKeys() {
   assert(kuripuroJa.employee?.wrongDeepDay, 'ja employee.wrongDeepDay')
   assert(kuripuroEn.employee.noShiftToday, 'en employee.noShiftToday')
   assert(kuripuroJa.dashboard.noTodayJobs, 'ja dashboard.noTodayJobs')
+  assertKeyParity(kuripuroEn.invoices, kuripuroJa.invoices, 'invoices')
+  assertKeyParity(kuripuroEn.invoices.statuses, kuripuroJa.invoices.statuses, 'invoices.statuses')
 }
 
 function testEscapeHtml() {

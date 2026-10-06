@@ -1,7 +1,7 @@
 {
   "name": "kuripuro",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.34.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,7 +22,7 @@
     "test:salary-calc": "npx vite-node scripts/test-salary-calc.mjs",
     "test:past-service": "npx vite-node scripts/test-past-service.mjs",
     "test:job-overdue": "npx vite-node scripts/test-job-overdue.mjs",
-    "test:employee-pay": "npx vite-node scripts/test-employee-pay.mjs",
+    "test:invoice": "npx vite-node scripts/test-invoice.mjs",
     "lint": "eslint src api scripts --ext .js,.jsx,.mjs --max-warnings 80",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh",

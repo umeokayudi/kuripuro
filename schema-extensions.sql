@@ -121,3 +121,10 @@ create table if not exists service_reports (
 );
 alter table service_reports enable row level security;
 create policy if not exists "allow_all_service_reports" on service_reports for all using (true);
+
+-- Invoice numbers for 請求書
+alter table if exists faturas
+  add column if not exists invoice_number text;
+create unique index if not exists faturas_invoice_number_uidx
+  on faturas (invoice_number)
+  where invoice_number is not null;

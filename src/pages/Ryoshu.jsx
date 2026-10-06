@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
+import { tokyoToday } from '../lib/dates'
+import { yen } from '../lib/invoice'
 
 export default function Ryoshu() {
   const { t, lang } = useLang()
@@ -10,7 +12,7 @@ export default function Ryoshu() {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date:new Date().toISOString().split('T')[0], tax_rate:10 })
+  const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date: tokyoToday(), tax_rate:10 })
 
   useEffect(() => { load() }, [])
 
@@ -32,7 +34,7 @@ export default function Ryoshu() {
   }
 
   const handleCreate = async () => {
-    if (!form.amount||!form.client_name) return toast.error('Fill required fields')
+    if (!form.amount||!form.client_name) return toast.error(lang==='ja'?'必須項目を入力':'Fill required fields')
     const amount = parseFloat(form.amount)||0
     const tax = Math.round(amount * form.tax_rate/100)
     const total = amount + tax
@@ -46,13 +48,13 @@ export default function Ryoshu() {
       status: 'issued'
     })
     if (error) return toast.error(error.message)
-    toast.success('領収書を作成しました!')
-    setForm({ client_id:'', client_name:'', amount:'', description:'', issue_date:new Date().toISOString().split('T')[0], tax_rate:10 })
+    toast.success(lang==='ja'?'領収書を作成しました':'Receipt created')
+    setForm({ client_id:'', client_name:'', amount:'', description:'', issue_date: tokyoToday(), tax_rate:10 })
     setShowForm(false); load()
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this receipt?')) return
+    if (!confirm(lang==='ja'?'この領収書を削除しますか？':'Delete this receipt?')) return
     await supabase.from('ryoshu').delete().eq('id', id)
     toast('Deleted.'); load()
   }
@@ -86,7 +88,7 @@ export default function Ryoshu() {
     w.print()
   }
 
-  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,r)=>s+Number(r.total_amount||0),0)
+  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(tokyoToday().slice(0,7))).reduce((s,r)=>s+Number(r.total_amount||0),0)
 
   return (
     <div>
@@ -138,7 +140,7 @@ export default function Ryoshu() {
               <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{r.issue_date} · {r.description||'サービス代'}</div>
             </div>
             <div style={{textAlign:'right'}}>
-              <div style={{fontSize:16,fontWeight:700,color:'var(--green)'}}>¥{Number(r.total_amount||0).toLocaleString()}</div>
+              <div style={{fontSize:16,fontWeight:700,color:'var(--green)'}}>{yen(r.total_amount)}</div>
               <div style={{fontSize:11,color:'var(--text3)'}}>税込 ({r.tax_rate}%)</div>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
 import LanguageToggle from './LanguageToggle'
+import { APP_VERSION } from '../lib/appVersion'
 
 const groups = [
   {
@@ -62,7 +63,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-logo">
         <div className="brand">KuriPuro</div>
-        <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
+        <div className="sub">by JBM · {s.adminTag || 'Admin'} · {APP_VERSION}</div>
       </div>
       <nav className="sidebar-nav">
         {groups.map(group => (

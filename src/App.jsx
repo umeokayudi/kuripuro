@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
+import { APP_VERSION } from './lib/appVersion'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -131,6 +132,7 @@ function AppContent() {
         <header className="topbar">
           <span className="topbar-title">{title}</span>
           <div className="topbar-right">
+            <span className="topbar-version">{APP_VERSION}</span>
             <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
             <span style={{ color:'var(--text3)' }}>·</span>
             <Clock />
