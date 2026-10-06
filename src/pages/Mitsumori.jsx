@@ -23,6 +23,7 @@ import {
   yen,
   isSalesSchemaMissing,
   dropSiteNameKeepNote,
+  stripCrmExtras,
   restaurantFromNotes,
   notesForPrint,
 } from '../lib/sales'

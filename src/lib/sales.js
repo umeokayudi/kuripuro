@@ -26,7 +26,8 @@ export function dropSiteNameKeepNote(payload) {
 
 export function stripCrmExtras(payload) {
   if (!payload || typeof payload !== 'object') return payload
-  const { interest: _interest, ...rest } = payload
+  const { interest, ...rest } = payload
+  void interest
   return rest
 }
 
