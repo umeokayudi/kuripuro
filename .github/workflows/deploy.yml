@@ -59,7 +59,7 @@ jobs:
                   echo "::warning::Production bundle missing tr.client — redeploy may be stale"
                 fi
               fi
-              echo "$BODY" | grep -q 'v35' && echo "✅ v35 live" || echo "✅ API responding: $BODY"
+              echo "$BODY" | grep -q 'v36' && echo "✅ v36 live" || echo "✅ API responding: $BODY"
               exit 0
             fi
             sleep $((i * 5))

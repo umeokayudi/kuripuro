@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import React, { lazy, Suspense } from 'react'
+import React, { lazy, Suspense, useState } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { LangProvider, useLang } from './hooks/useLang'
 import { AuthProvider, useAuth } from './hooks/useAuth'
+import { useAdminLayout } from './hooks/useAdminLayout'
 import Sidebar from './components/Sidebar'
+import AdminMobileNav from './components/AdminMobileNav'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
@@ -102,6 +104,16 @@ function AppContent() {
   const location = useLocation()
   const a = t.app
   const title = pageTitle(location.pathname, t.sidebar)
+  const { mobile, pref, setView, width } = useAdminLayout()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  React.useEffect(() => { setMenuOpen(false) }, [location.pathname])
+  React.useEffect(() => {
+    if (!mobile || !menuOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [mobile, menuOpen])
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -130,20 +142,36 @@ function AppContent() {
   )
 
   return (
-    <div className="app-shell">
-      <Sidebar />
-      <AIFloatingWidget mode="admin" />
+    <div className={`app-shell${mobile ? ' app-shell-mobile' : ''}`}>
+      {mobile && menuOpen && <button type="button" className="admin-drawer-backdrop" aria-label={t.sidebar.menu} onClick={() => setMenuOpen(false)} />}
+      <Sidebar
+        mobile={mobile}
+        open={!mobile || menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onUseDesktop={() => { setView('desktop'); setMenuOpen(false) }}
+      />
+      <AIFloatingWidget mode="admin" lift={mobile} />
       <div className="main">
         <header className="topbar">
+          {mobile && (
+            <button type="button" className="admin-menu-btn" onClick={() => setMenuOpen(true)} aria-label={t.sidebar.menu}>☰</button>
+          )}
           <span className="topbar-title">{title}</span>
           <div className="topbar-right">
             <span className="topbar-version">{APP_VERSION}</span>
-            <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
-            <span style={{ color:'var(--text3)' }}>·</span>
-            <Clock />
-            <button type="button" onClick={logout} className="btn btn-sm" style={{ marginLeft:8 }}>
-              {t.sidebar.logout}
-            </button>
+            <span className="topbar-user">{user.name}</span>
+            <span className="topbar-clock"><Clock /></span>
+            {!mobile && (
+              <button type="button" onClick={logout} className="btn btn-sm" style={{ marginLeft:8 }}>
+                {t.sidebar.logout}
+              </button>
+            )}
+            {mobile && (
+              <button type="button" className="btn btn-sm" onClick={() => setView('desktop')}>{t.sidebar.desktopView}</button>
+            )}
+            {!mobile && pref === 'desktop' && width <= 900 && (
+              <button type="button" className="btn btn-sm" onClick={() => setView('auto')}>{t.sidebar.mobileView}</button>
+            )}
           </div>
         </header>
         <main className="page-content">
@@ -179,6 +207,7 @@ function AppContent() {
             </Routes>
           </Suspense>
         </main>
+        {mobile && <AdminMobileNav pathname={location.pathname} onMore={() => setMenuOpen(true)} />}
       </div>
     </div>
   )
@@ -190,7 +219,7 @@ export default function App() {
       <AuthProvider>
         <LangProvider>
           <AppContent />
-          <Toaster position="top-right" toastOptions={{ style:{ fontSize:13 } }} />
+          <Toaster position="top-center" toastOptions={{ style:{ fontSize:13 } }} />
         </LangProvider>
       </AuthProvider>
     </BrowserRouter>

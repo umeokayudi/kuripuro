@@ -14,7 +14,7 @@ function loadPos() {
   return null
 }
 
-export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false }) {
+export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false, lift = false }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(loadPos)
   const drag = useRef({ active: false, moved: false, sx: 0, sy: 0, sl: 0, st: 0 })
@@ -27,11 +27,12 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
 
   const getBtnPos = useCallback(() => {
     if (pos) return pos
+    const bottomGap = lift ? 88 : 24
     return {
-      x: window.innerWidth - BTN - 24,
-      y: window.innerHeight - BTN - 24,
+      x: window.innerWidth - BTN - 16,
+      y: window.innerHeight - BTN - bottomGap,
     }
-  }, [pos])
+  }, [pos, lift])
 
   const panelStyle = () => {
     const { x, y } = getBtnPos()

@@ -44,7 +44,7 @@ chmod +x scripts/deploy.sh
 **Importante:** `dist/` não vai mais pro Git (evita conflito no `git pull`). O Vercel gera o build na hora.
 
 Depois do deploy, teste: https://kuripuro.vercel.app/api/admin-ai  
-Deve retornar `{"ok":true,"build":"2026-10-06-v35",...}`
+Deve retornar `{"ok":true,"build":"2026-10-06-v36",...}`
 
 Variável obrigatória no Vercel: `GEMINI_API_KEY` (https://aistudio.google.com/apikey)
 
