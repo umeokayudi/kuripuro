@@ -326,19 +326,16 @@ export default function Faturas() {
   }
 
   const issuer = {
-    company: QUOTE_ISSUER.company,
-    address: QUOTE_ISSUER.address,
-    regNumber: t.ryoshu?.regNumber || QUOTE_ISSUER.regNumber,
+    ...QUOTE_ISSUER,
     bank: inv.bankNote,
-    version: APP_VERSION,
   }
 
-  const openPrint = async (f, autoPrint) => {
+  const openPrint = async (f, autoPrint, lang = 'ja') => {
     const { data: printItems, error } = await supabase.from('fatura_items').select('*').eq('fatura_id', f.id)
     if (error) return toast.error(error.message)
     const w = window.open('', '_blank')
     if (!w) return toast.error(inv.popupBlocked)
-    w.document.write(buildInvoicePrintHtml({ ...f, invoice_number: displayNumber(f) }, printItems || [], issuer))
+    w.document.write(buildInvoicePrintHtml({ ...f, invoice_number: displayNumber(f) }, printItems || [], issuer, lang))
     w.document.close()
     if (autoPrint) {
       w.focus()
@@ -518,8 +515,8 @@ export default function Faturas() {
                 {(f.status === 'draft' || f.status === 'pending') && (
                   <button type="button" className="btn btn-sm btn-primary" onClick={() => handleEditDraft(f)}>{inv.editDraft}</button>
                 )}
-                <button type="button" className="btn btn-sm" onClick={() => openPrint(f, false)}>{inv.view}</button>
-                <button type="button" className="btn btn-sm" onClick={() => openPrint(f, true)}>{inv.print}</button>
+                <button type="button" className="btn btn-sm" onClick={() => openPrint(f, false, 'ja')}>{inv.printJa}</button>
+                <button type="button" className="btn btn-sm" onClick={() => openPrint(f, false, 'en')}>{inv.printEn}</button>
                 {(f.status === 'draft' || f.status === 'pending') && (
                   <button type="button" className="btn btn-sm btn-primary" onClick={() => handleStatusChange(f, 'sent')}>{inv.markSent}</button>
                 )}
@@ -669,6 +666,13 @@ export default function Faturas() {
               </div>
               <div className="form-group" style={{ gridColumn: '1/-1' }}><label>{inv.notes}</label><input value={form.notes} onChange={e => upd('notes', e.target.value)} /></div>
             </div>
+            <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.65 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '0.08em', marginBottom: 4 }}>{t.sales.issuer}</div>
+              <div style={{ fontWeight: 700 }}>{QUOTE_ISSUER.company}</div>
+              <div>{t.sales.issuerTitle}：{QUOTE_ISSUER.name}</div>
+              <div>{t.sales.issuerAddress}：{QUOTE_ISSUER.address}</div>
+              <div>{t.sales.issuerReg}：{QUOTE_ISSUER.regNumber}</div>
+            </div>
           </div>
 
           <div className="card" style={{ marginBottom: 14 }}>
@@ -721,8 +725,14 @@ export default function Faturas() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" disabled={saving} onClick={handleCreate}>{saving ? t.app.loading : (form.id ? inv.editDraft : inv.create)}</button>
+            {form.id && (
+              <>
+                <button type="button" className="btn" onClick={() => openPrint(faturas.find(x => x.id === form.id) || { ...form, invoice_number: displayNumber(form) }, false, 'ja')}>{inv.printJa}</button>
+                <button type="button" className="btn" onClick={() => openPrint(faturas.find(x => x.id === form.id) || { ...form, invoice_number: displayNumber(form) }, false, 'en')}>{inv.printEn}</button>
+              </>
+            )}
             <button type="button" className="btn" onClick={() => { setTab('list'); setForm(emptyForm(today)); setItems([]) }}>{inv.cancel}</button>
           </div>
         </div>

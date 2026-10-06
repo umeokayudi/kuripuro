@@ -1,6 +1,7 @@
 import { escapeHtml } from './escapeHtml'
 import { addDays, invoiceTotals, lineTotal, yen } from './invoice'
 import { QUOTE_ISSUER } from './quoteIssuer'
+import { PRINT_DOC_CSS } from './printDoc'
 
 export const LEAD_SOURCES = ['visit', 'phone', 'referral', 'web', 'walkin', 'other']
 export const LEAD_STAGES = ['approach', 'followup', 'won', 'lost']
@@ -346,36 +347,8 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') 
 
   return `<!DOCTYPE html>
 <html lang="${L.htmlLang}"><head><meta charset="utf-8"><title>${L.docTitle} ${number} - ${printTitle}</title>
-<style>
-  @page { size: A4; margin: 14mm; }
-  * { box-sizing: border-box; }
-  body{font-family:'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif;color:#152033;max-width:740px;margin:0 auto;padding:8px 12px 24px;background:#fff}
-  .head{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:3px solid #0c1c30;padding-bottom:14px;margin-bottom:10px}
-  .brand-name{font-size:26px;font-weight:800;letter-spacing:0.28em;color:#0c1c30}
-  .doc-title{text-align:right}
-  .doc-title h1{font-size:28px;letter-spacing:${L.titleTracking};margin:0 0 4px;font-weight:800}
-  .doc-title .no{font-size:12px;color:#667}
-  .gold{height:4px;background:linear-gradient(90deg,#c4a35a,#ead9a8,#c4a35a);margin:0 0 20px}
-  .meta{display:flex;justify-content:space-between;gap:24px;margin-bottom:18px;font-size:13px}
-  .bill-to{font-size:22px;font-weight:800;margin-bottom:6px;letter-spacing:0.04em}
-  .site-kicker{font-size:11px;letter-spacing:0.28em;color:#886;margin-bottom:2px}
-  .muted{color:#667;line-height:1.6}
-  .thanks{margin:20px 0 0;font-size:13px;line-height:1.85;color:#334;max-width:34em}
-  table.lines{width:100%;border-collapse:collapse;margin:8px 0 4px}
-  table.lines th{background:#0c1c30;color:#f7efd8;padding:9px 10px;text-align:left;font-size:12px;font-weight:600}
-  table.lines td{padding:9px 10px;border-bottom:1px solid #e6ebf2;font-size:13px}
-  .num{text-align:right;white-space:nowrap}
-  .totals{width:280px;margin:12px 0 0 auto}
-  .totals td{border:none;padding:5px 8px;font-size:13px}
-  .total-row td{border-top:2px solid #152033;font-weight:800;font-size:16px}
-  .issuer{margin-top:32px;display:flex;justify-content:flex-end}
-  .issuer-card{border:1px solid #e6d7b0;background:#fbf8f1;border-radius:12px;padding:14px 18px;min-width:280px;font-size:12px;line-height:1.75;color:#334}
-  .issuer-kicker{font-size:10px;letter-spacing:0.2em;color:#886;margin-bottom:4px}
-  .issuer-card strong{display:block;font-size:15px;color:#0c1c30;margin-bottom:6px}
-  .issuer-line{display:grid;grid-template-columns:5.2em 1fr;gap:6px;margin:2px 0}
-  .issuer-line span{color:#886}
-  .stamp{position:absolute;right:28px;top:86px;border:3px solid #0f6e56;color:#0f6e56;padding:6px 14px;font-weight:800;transform:rotate(-12deg);font-size:18px}
-  .wrap{position:relative}
+<style>${PRINT_DOC_CSS}
+  .doc-title h1{letter-spacing:${L.titleTracking}}
 </style></head>
 <body>
   <div class="wrap">

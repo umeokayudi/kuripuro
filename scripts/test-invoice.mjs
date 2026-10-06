@@ -104,24 +104,61 @@ function testPrint() {
       status: 'paid',
     },
     [{ description: 'Daily <b>', quantity: 1, unit_price: 10000, total: 10000 }],
-    { company: 'KuriPuro by JBM', version: APP_VERSION }
+    { company: 'クリプロ', bank: 'Please transfer separately' }
   )
   assert(html.includes('請求書'), 'title')
   assert(html.includes('KP-202610-001'), 'number')
   assert(html.includes('入金済'), 'paid stamp')
   assert(!html.includes('<script>x</script>'), 'escaped name')
   assert(html.includes('&lt;script&gt;'), 'escaped')
-  assert(html.includes(APP_VERSION), 'version in print')
-  assert(html.includes('〒204-0012 東京都清瀬市中清戸4-907-17'), 'kiyose fallback address')
+  assert(html.includes('brand-name'), 'quote-matching header')
+  assert(html.includes('issuer-card'), 'issuer card')
+  assert(html.includes('gold'), 'gold bar')
+  assert(html.includes('クリプロ'), 'issuer company')
+  assert(html.includes('梅岡アレサンドレユウジ'), 'issuer name')
+  assert(html.includes('代表：'), 'daihyo')
+  assert(html.includes('住所：'), 'address labeled')
+  assert(html.includes('〒204-0012 東京都清瀬市中清戸4-907-17'), 'kiyose')
+  assert(html.includes('登録番号：'), 'touroku')
+  assert(html.includes('発行者'), 'issuer kicker')
+  assert(html.includes('T1234567890123'), 'reg')
+  assert(html.includes('umeokagroup@gmail.com'), 'email')
+  assert(html.includes('070-9073-2909'), 'phone')
+  assert(html.includes('ご請求申し上げます'), 'thanks')
+  assert(!html.includes('電子発行'), 'no e-issue line')
+  assert(!html.includes('KuriPuro by JBM'), 'no old brand')
+  assert(html.includes('備考：a &amp; b'), 'notes colon')
+  assert(html.includes('Please transfer separately'), 'bank')
   assert(cashflowDescription('KP-202610-001', 'Kodama').includes('請求書 KP-202610-001'), 'cashflow desc')
+
+  const en = buildInvoicePrintHtml({
+    client_name: 'Kodama',
+    invoice_number: 'KP-202610-002',
+    issue_date: '2026-10-06',
+    period_start: '2026-09-01',
+    period_end: '2026-09-30',
+    due_date: '2026-11-05',
+    tax_rate: 10,
+    subtotal: 0,
+    tax_amount: 0,
+    total: 0,
+    status: 'sent',
+  }, [], {}, 'en')
+  assert(en.includes('<h1>INVOICE</h1>'), 'en title')
+  assert(!en.includes('<h1>請求書</h1>'), 'no ja h1 on en')
+  assert(!en.includes('御中'), 'no honorific en')
+  assert(en.includes('Billing period'), 'period en')
+  assert(en.includes('Due date'), 'due en')
+  assert(en.includes('Thank you for your continued business'), 'thanks en')
+  assert(en.includes('Representative'), 'rep en')
 }
 
 function testVersionLock() {
   const api = readFileSync(new URL('../api/_gemini.js', import.meta.url), 'utf8')
   const match = api.match(/export const API_BUILD = '([^']+)'/)
   assert(match?.[1] === APP_BUILD, `API_BUILD ${match?.[1]} vs ${APP_BUILD}`)
-  assert(APP_VERSION === 'v49', APP_VERSION)
-  assert(APP_BUILD.endsWith('-v49'), APP_BUILD)
+  assert(APP_VERSION === 'v50', APP_VERSION)
+  assert(APP_BUILD.endsWith('-v50'), APP_BUILD)
 }
 
 function testMonthlyAndDiscounts() {
