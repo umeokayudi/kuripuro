@@ -14,6 +14,7 @@ const ALLOWED_TABLES = [
   'evaluations', 'transport_claims', 'equipment_requests', 'badges', 'checkins', 'messages',
   'locations', 'client_users', 'client_messages', 'client_complaints', 'client_compliments',
   'client_ratings', 'client_requests', 'service_contracts', 'service_reports',
+  'sales_leads', 'mitsumori', 'mitsumori_items', 'sales_touchpoints',
 ]
 
 async function sbFetch(path, options = {}) {
@@ -156,6 +157,8 @@ Regras:
 - Para agendar vários dias, crie um job por dia por local (várias chamadas insert_data ou data.rows em lote).
 - Para mudanças (insert/update/delete), se o pedido já for claro e específico, execute. Se ambíguo, explique e peça confirmação.
 - Nunca invente IDs — busque antes com query_data.
+- Comercial / 見積書: use sales_leads, mitsumori, mitsumori_items e sales_touchpoints. O campo interest é INTERNO (banco + avaliação). Nunca está no PDF da 見積書. sales_touchpoints guarda respostas do cliente e o que foi falado (channel, said_by, body, happened_at).
+- Para avaliar uma negociação: leia o lead, a 見積書 (status draft/sent/accepted/declined), interest, e as touchpoints. Resuma temperatura, risco de perda, próximo passo.
 - Seja direto. Ao final, resuma o que foi feito (quantos jobs criados, datas, funcionário).`
 
 export default async function handler(req, res) {

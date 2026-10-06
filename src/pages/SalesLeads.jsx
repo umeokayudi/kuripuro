@@ -14,7 +14,8 @@ import {
   leadWritePayload,
 } from '../lib/sales'
 import SalesLeadFields from '../components/SalesLeadFields'
-import SalesSetupCard from '../components/SalesSetupCard'
+import SalesSetupCard, { SalesCrmSetupCard } from '../components/SalesSetupCard'
+import SalesTouchpoints from '../components/SalesTouchpoints'
 
 export default function SalesLeads({ stage }) {
   const { t } = useLang()
@@ -24,6 +25,7 @@ export default function SalesLeads({ stage }) {
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [schemaOk, setSchemaOk] = useState(true)
+  const [crmOk, setCrmOk] = useState(true)
   const [tab, setTab] = useState('list')
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(() => emptyLead(today, stage))
@@ -32,6 +34,7 @@ export default function SalesLeads({ stage }) {
   const load = async () => {
     setLoading(true)
     const { data, error } = await supabase.from('sales_leads').select('*').order('updated_at', { ascending: false })
+    const tp = await supabase.from('sales_touchpoints').select('id').limit(1)
     if (error) {
       if (isSalesSchemaMissing(error)) setSchemaOk(false)
       else toast.error(error.message)
@@ -40,6 +43,8 @@ export default function SalesLeads({ stage }) {
       setSchemaOk(true)
       setLeads(data || [])
     }
+    if (tp.error && (String(tp.error.message || '').includes('sales_touchpoints') || tp.error.code === 'PGRST205')) setCrmOk(false)
+    else if (!tp.error) setCrmOk(true)
     setLoading(false)
   }
 
@@ -64,10 +69,15 @@ export default function SalesLeads({ stage }) {
     if (!String(form.contact_name || '').trim()) return toast.error(s.missingContact)
     setSaving(true)
     const payload = leadWritePayload(form, today, stage)
-    const query = editingId
-      ? supabase.from('sales_leads').update(payload).eq('id', editingId)
-      : supabase.from('sales_leads').insert(payload)
-    const { error } = await query
+    const query = (body) => editingId
+      ? supabase.from('sales_leads').update(body).eq('id', editingId)
+      : supabase.from('sales_leads').insert(body)
+    let { error } = await query(payload)
+    if (error && String(error.message || '').toLowerCase().includes('interest')) {
+      setCrmOk(false)
+      const { interest: _i, ...rest } = payload
+      ;({ error } = await query(rest))
+    }
     setSaving(false)
     if (error) {
       if (isSalesSchemaMissing(error)) setSchemaOk(false)
@@ -117,6 +127,7 @@ export default function SalesLeads({ stage }) {
       </div>
 
       {!schemaOk && <SalesSetupCard onRecheck={load} />}
+      {schemaOk && !crmOk && <SalesCrmSetupCard onRecheck={load} />}
 
       <div className="tab-pills">
         <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => setTab('list')}>{fill(s.listCount, { n: rows.length })}</button>
@@ -143,6 +154,7 @@ export default function SalesLeads({ stage }) {
                     <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.firstContact}: {row.first_contact_date || '—'} · {s.nextFollowup}: {row.next_followup_date || '—'}</div>
                     {row.needs && <div style={{ fontSize: 12, marginTop: 4 }}>{s.needs}: {row.needs}</div>}
                     {row.still_needed && <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 2 }}>{s.stillNeeded}: {row.still_needed}</div>}
+                    {row.interest && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{s.interest}: {row.interest}</div>}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     {row.expected_monthly ? <div style={{ fontWeight: 700, color: 'var(--green)' }}>{yen(row.expected_monthly)}</div> : null}
@@ -165,12 +177,24 @@ export default function SalesLeads({ stage }) {
       )}
 
       {tab === 'form' && (
-        <div className="card">
-          <SalesLeadFields form={form} onChange={setForm} s={s} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>{saving ? t.app.loading : s.save}</button>
-            <button type="button" className="btn" onClick={() => setTab('list')}>{s.cancel}</button>
+        <div>
+          <div className="card">
+            <SalesLeadFields form={form} onChange={setForm} s={s} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>{saving ? t.app.loading : s.save}</button>
+              <button type="button" className="btn" onClick={() => setTab('list')}>{s.cancel}</button>
+            </div>
           </div>
+          {editingId && (
+            <div style={{ marginTop: 14 }}>
+              <SalesTouchpoints
+                leadId={editingId}
+                s={s}
+                today={today}
+                onCrmMissing={() => setCrmOk(false)}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
