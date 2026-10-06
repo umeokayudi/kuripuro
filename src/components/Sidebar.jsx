@@ -45,6 +45,14 @@ const groups = [
     ],
   },
   {
+    key: 'navSales',
+    items: [
+      { to: '/mitsumori', key: 'mitsumori', icon: Icons.file },
+      { to: '/sales-followup', key: 'followup', icon: Icons.building },
+      { to: '/sales-approaches', key: 'approaches', icon: Icons.users },
+    ],
+  },
+  {
     key: 'navBilling',
     items: [
       { to: '/faturas', key: 'faturas', icon: Icons.file },
