@@ -255,8 +255,11 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
   .totals td{border:none;padding:5px 8px;font-size:13px}
   .total-row td{border-top:2px solid #152033;font-weight:800;font-size:16px}
   .issuer{margin-top:32px;display:flex;justify-content:flex-end}
-  .issuer-card{border:1px solid #e6d7b0;background:#fbf8f1;border-radius:12px;padding:14px 18px;min-width:240px;font-size:12px;line-height:1.7;color:#334}
-  .issuer-card strong{display:block;font-size:14px;color:#0c1c30;margin-bottom:4px}
+  .issuer-card{border:1px solid #e6d7b0;background:#fbf8f1;border-radius:12px;padding:14px 18px;min-width:280px;font-size:12px;line-height:1.75;color:#334}
+  .issuer-kicker{font-size:10px;letter-spacing:0.2em;color:#886;margin-bottom:4px}
+  .issuer-card strong{display:block;font-size:15px;color:#0c1c30;margin-bottom:6px}
+  .issuer-line{display:grid;grid-template-columns:4.5em 1fr;gap:6px;margin:2px 0}
+  .issuer-line span{color:#886}
   .stamp{position:absolute;right:28px;top:86px;border:3px solid #0f6e56;color:#0f6e56;padding:6px 14px;font-weight:800;transform:rotate(-12deg);font-size:18px}
   .wrap{position:relative}
 </style></head>
@@ -282,6 +285,12 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
       <div class="muted" style="text-align:right">
         <div>発行日: ${escapeHtml(quote.issue_date || '')}</div>
         <div>有効期限: ${escapeHtml(quote.valid_until || '—')}</div>
+        <div style="margin-top:12px;color:#152033;text-align:right;line-height:1.7">
+          <div style="font-weight:800">${issuerCompany}</div>
+          <div>${issuerTitle}：${issuerPerson}</div>
+          ${issuerAddress ? `<div>住所：${issuerAddress}</div>` : ''}
+          ${issuerReg ? `<div>登録番号：${issuerReg}</div>` : ''}
+        </div>
       </div>
     </div>
     <table class="lines">
@@ -296,12 +305,13 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
     ${quote.notes ? `<p class="muted" style="margin-top:18px">備考: ${escapeHtml(quote.notes)}</p>` : ''}
     <div class="issuer">
       <div class="issuer-card">
+        <div class="issuer-kicker">発行者</div>
         <strong>${issuerCompany}</strong>
-        <div>${issuerTitle} ${issuerPerson}</div>
-        ${issuerAddress ? `<div>${issuerAddress}</div>` : ''}
-        ${issuerReg ? `<div>${issuerReg}</div>` : ''}
-        <div>${issuerEmail}</div>
-        <div>${issuerPhone}</div>
+        <div class="issuer-line"><span>${issuerTitle}</span><div>${issuerPerson}</div></div>
+        ${issuerAddress ? `<div class="issuer-line"><span>住所</span><div>${issuerAddress}</div></div>` : ''}
+        ${issuerReg ? `<div class="issuer-line"><span>登録番号</span><div>${issuerReg}</div></div>` : ''}
+        <div class="issuer-line"><span>メール</span><div>${issuerEmail}</div></div>
+        <div class="issuer-line"><span>電話</span><div>${issuerPhone}</div></div>
       </div>
     </div>
   </div>

@@ -380,6 +380,13 @@ export default function Mitsumori() {
               <div className="form-group"><label>{s.hours}</label><input type="number" value={form.hours_per_visit || ''} disabled={locked} onChange={e => setForm({ ...form, hours_per_visit: e.target.value })} /></div>
               <div className="form-group"><label>{s.siteVisit}</label><input type="date" value={form.site_visit_date || ''} disabled={locked} onChange={e => setForm({ ...form, site_visit_date: e.target.value })} /></div>
             </div>
+            <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.65 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '0.08em', marginBottom: 4 }}>{s.issuer}</div>
+              <div style={{ fontWeight: 700 }}>{QUOTE_ISSUER.company}</div>
+              <div>{s.issuerTitle}：{QUOTE_ISSUER.name}</div>
+              <div>{s.issuerAddress}：{QUOTE_ISSUER.address}</div>
+              <div>{s.issuerReg}：{QUOTE_ISSUER.regNumber}</div>
+            </div>
           </div>
 
           <div className="card" style={{ marginBottom: 14 }}>
