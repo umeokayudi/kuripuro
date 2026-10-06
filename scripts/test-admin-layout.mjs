@@ -2,6 +2,7 @@
 import { readFileSync } from 'fs'
 import { adminTabActive, isAdminMobileLayout, ADMIN_MOBILE_TABS } from '../src/lib/adminLayout.js'
 import { ADMIN_AI_TABLES, scrubAiRow } from '../src/lib/adminAiScope.js'
+import { kuripuroEn, kuripuroJa } from '../src/i18n/kuripuro.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -28,7 +29,10 @@ assert(css.includes('overflow-x: clip'), 'no sideways bounce')
 assert(css.includes('.emp-shell'), 'emp shell')
 assert(css.includes('max-width: 100%'), 'full bleed width')
 assert(css.includes('.app-shell-mobile .page-content table { min-width: 0'), 'tables not 520')
-assert(css.includes('.emp-bottom-nav'), 'emp nav class')
+assert(css.includes('.admin-bottom-item span'), 'bottom nav labels one line')
+assert(css.includes('white-space: nowrap'), 'nowrap labels')
+assert(kuripuroJa.sidebar.tabDashboard === 'ホーム', 'ja dashboard tab one word')
+assert(kuripuroEn.sidebar.tabDashboard === 'Home', 'en dashboard tab')
 assert(css.includes('100dvh'), 'dynamic viewport')
 assert(!css.includes('min-width: 520px'), 'no forced table width')
 assert(css.includes('.ai-workspace'), 'ai desk')

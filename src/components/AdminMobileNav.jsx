@@ -10,6 +10,13 @@ const ICONS = {
   mitsumori: Icons.file,
 }
 
+const TAB_COPY = {
+  ai: 'tabAi',
+  dashboard: 'tabDashboard',
+  jobs: 'tabJobs',
+  mitsumori: 'tabMitsumori',
+}
+
 export default function AdminMobileNav({ pathname, onMore }) {
   const { t } = useLang()
   const s = t.sidebar
@@ -22,13 +29,13 @@ export default function AdminMobileNav({ pathname, onMore }) {
         return (
           <NavLink key={to} to={to} end={to === '/'} className={`admin-bottom-item${active ? ' active' : ''}`}>
             <Icon />
-            <span>{s[key]}</span>
+            <span>{s[TAB_COPY[key]] || s[key]}</span>
           </NavLink>
         )
       })}
       <button type="button" className="admin-bottom-item" onClick={onMore}>
         <Icons.list />
-        <span>{s.more}</span>
+        <span>{s.tabMore || s.more}</span>
       </button>
     </nav>
   )
