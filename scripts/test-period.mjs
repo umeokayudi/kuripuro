@@ -20,6 +20,11 @@ function assert(cond, msg) {
 
 const today = '2026-10-06'
 
+const todayR = rangeForPreset('today', today)
+assert(todayR.start === today && todayR.end === today, 'today')
+const week = rangeForPreset('thisWeek', today)
+assert(week.start === '2026-10-05' && week.end === today, `thisWeek ${week.start}`)
+
 const thisMonth = rangeForPreset('thisMonth', today)
 assert(thisMonth.start === '2026-10-01' && thisMonth.end === today, 'thisMonth')
 

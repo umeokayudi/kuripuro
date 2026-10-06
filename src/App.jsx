@@ -186,7 +186,7 @@ function AppContent() {
           )}
         </div>
         </header>
-        {!['/ai', '/live', '/adminchat'].includes(location.pathname) && (
+        {!['/ai', '/live', '/adminchat', '/reports'].includes(location.pathname) && (
           <div className="period-strip">
             <PeriodFilter />
           </div>

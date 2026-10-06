@@ -54,7 +54,20 @@ export function invoiceDate(row) {
   return pickDate(row, ['issue_date', 'period_start', 'created_at'])
 }
 
+/** Monday of the ISO week containing `iso` (Tokyo calendar date). */
+export function isoWeekStart(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  const dow = dt.getUTCDay()
+  const back = dow === 0 ? 6 : dow - 1
+  return addTokyoDays(iso, -back)
+}
+
+export const REPORT_PRESETS = ['today', 'thisWeek', 'thisMonth', 'lastMonth', 'm3', 'm6', 'm12', 'custom']
+
 export function rangeForPreset(preset, today = tokyoToday()) {
+  if (preset === 'today') return { preset, start: today, end: today }
+  if (preset === 'thisWeek') return { preset, start: isoWeekStart(today), end: today }
   if (preset === 'lastMonth') {
     const prev = shiftMonth(today, -1)
     return { preset, start: monthStart(prev), end: monthEnd(prev) }

@@ -182,8 +182,8 @@ function testVersionLock() {
   const api = readFileSync(new URL('../api/_gemini.js', import.meta.url), 'utf8')
   const match = api.match(/export const API_BUILD = '([^']+)'/)
   assert(match?.[1] === APP_BUILD, `API_BUILD ${match?.[1]} vs ${APP_BUILD}`)
-  assert(APP_VERSION === 'v53', APP_VERSION)
-  assert(APP_BUILD.endsWith('-v53'), APP_BUILD)
+  assert(APP_VERSION === 'v54', APP_VERSION)
+  assert(APP_BUILD.endsWith('-v54'), APP_BUILD)
 }
 
 function testMonthlyAndDiscounts() {
@@ -230,6 +230,12 @@ function testI18n() {
   const enD = Object.keys(kuripuroEn.dashboard).sort()
   const jaD = Object.keys(kuripuroJa.dashboard).sort()
   assert(enD.join() === jaD.join(), `dashboard keys ${enD.filter(k => !jaD.includes(k))} / ${jaD.filter(k => !enD.includes(k))}`)
+  const enR = Object.keys(kuripuroEn.reports).sort()
+  const jaR = Object.keys(kuripuroJa.reports).sort()
+  assert(enR.join() === jaR.join(), `reports keys ${enR.filter(k => !jaR.includes(k))} / ${jaR.filter(k => !enR.includes(k))}`)
+  const enP = Object.keys(kuripuroEn.period).sort()
+  const jaP = Object.keys(kuripuroJa.period).sort()
+  assert(enP.join() === jaP.join(), `period keys ${enP.filter(k => !jaP.includes(k))} / ${jaP.filter(k => !enP.includes(k))}`)
 }
 
 function main() {
