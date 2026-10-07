@@ -14,9 +14,11 @@ function normalizeEntry(row) {
 
 export default function Cashflow() {
   const [entries, setEntries] = useState([])
+  const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('overview')
   const [form, setForm] = useState({ type:'income', category:'Client Payment', amount:'', description:'', date:new Date().toISOString().split('T')[0] })
+  const [period, setPeriod] = useState(new Date().toISOString().slice(0,7))
 
   const INCOME_CATS = ['Client Payment','Spot Job','Bonus','Other Income']
   const EXPENSE_CATS = ['Salary','Supplies','Transport','Equipment','Tax','Other Expense']
@@ -53,11 +55,17 @@ export default function Cashflow() {
     toast('Entry removed.'); load()
   }
 
-  const month = new Date().toISOString().slice(0,7)
+  const month = period
   const thisMonth = entries.filter(e=>e.date?.startsWith(month))
   const income = thisMonth.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount||0),0)
   const expense = thisMonth.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount||0),0)
   const balance = income - expense
+  const issued = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status !== 'cancelled').reduce((s,f)=>s+Number(f.total||0),0)
+  const receivedByInvoice = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status === 'paid').reduce((s,f)=>s+Number(f.total||0),0)
+  const receivable = invoices.filter(f=>f.status === 'sent' || f.status === 'draft').reduce((s,f)=>s+Number(f.total||0),0)
+  const today = new Date().toISOString().slice(0,10)
+  const overdue = invoices.filter(f=>(f.status === 'sent' || f.status === 'draft') && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
+  const projected = income + receivable - expense
 
   return (
     <div>
@@ -69,6 +77,44 @@ export default function Cashflow() {
 
       {tab==='overview'&&(
         <div>
+          <div className="finance-toolbar">
+            <div>
+              <div className="finance-eyebrow">FINANCE HQ</div>
+              <h3>Visão financeira</h3>
+              <p>Caixa real + faturamento + valores que ainda precisam entrar.</p>
+            </div>
+            <input type="month" value={period} onChange={e=>setPeriod(e.target.value)} />
+          </div>
+          <div className="finance-kpis">
+            {[
+              ['Faturado', issued, 'var(--navy)'],
+              ['Recebido', receivedByInvoice + income, 'var(--green)'],
+              ['A receber', receivable, 'var(--hq-blue)'],
+              ['Vencido', overdue, 'var(--red)'],
+              ['Despesas', expense, 'var(--red)'],
+              ['Projeção', projected, projected >= 0 ? 'var(--green)' : 'var(--red)'],
+            ].map(([label,value,color]) => (
+              <div className="finance-kpi" key={label}>
+                <span>{label}</span><strong style={{color}}>¥{Math.abs(value).toLocaleString()}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="finance-summary-grid">
+            <div className="card finance-focus-card">
+              <div className="card-title">Situação do mês</div>
+              <div className="finance-big-row"><span>Entradas registradas</span><strong className="finance-positive">¥{income.toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>Despesas registradas</span><strong className="finance-negative">¥{expense.toLocaleString()}</strong></div>
+              <div className="finance-big-row finance-total"><span>Saldo de caixa</span><strong>¥{Math.abs(balance).toLocaleString()}</strong></div>
+            </div>
+            <div className="card finance-focus-card">
+              <div className="card-title">Cobranças</div>
+              <div className="finance-big-row"><span>Faturas emitidas</span><strong>¥{issued.toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>Em aberto</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
+              <div className="finance-big-row finance-total"><span>Vencido</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-title">Movimentações do mês</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:16}}>
             {[['💴 Income',income,'var(--green)'],['💸 Expenses',expense,'var(--red)'],['💰 Balance',balance,balance>=0?'var(--green)':'var(--red)']].map(([l,v,c])=>(
               <div key={l} className="card" style={{textAlign:'center',padding:'18px'}}>
