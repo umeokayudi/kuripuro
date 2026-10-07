@@ -586,6 +586,17 @@ export default function ClientPortal() {
               </div>
             </div>
             {tab === 'home' && !loading && (
+              <>
+              <div className="cp-client-command">
+                <div>
+                  <div className="cp-client-eyebrow">{c.portal}</div>
+                  <div className="cp-client-command-title">{c.today}</div>
+                  <div className="cp-client-command-meta">{today}</div>
+                </div>
+                <div className="cp-client-command-score">
+                  <b>{avgRating}</b><span>★ {lang === 'ja' ? '評価' : 'Rating'}</span>
+                </div>
+              </div>
               <div className="cp-stats">
                 <div className="cp-stat">
                   <div className="cp-stat-val">{completed.length}</div>
@@ -600,6 +611,7 @@ export default function ClientPortal() {
                   <div className="cp-stat-lbl">{c.today}</div>
                 </div>
               </div>
+              </>
             )}
           </header>
 
