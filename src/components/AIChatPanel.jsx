@@ -23,7 +23,7 @@ function formatText(text) {
   })
 }
 
-export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false }) {
+export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [] }) {
   const { t, lang } = useLang()
   const ai = t.ai || {}
   const welcome = useMemo(() => (
@@ -127,9 +127,13 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : 'calc(100vh - 140px)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: compact ? 8 : 12, padding: compact ? '8px 12px 0' : 0 }}>
-        <div style={{ fontSize: compact ? 12 : 14, fontWeight: 700, color: dark ? 'rgba(255,255,255,0.7)' : 'var(--text2)' }}>
-          {mode === 'employee' ? `🤖 ${ai.employeeTitle}` : `✨ ${ai.adminTitle}`}
+      <div className={`ai-chat-header${compact ? ' ai-chat-header-compact' : ''}`}>
+        <div className="ai-chat-identity">
+          <div className="ai-avatar">✦</div>
+          <div>
+            <div className="ai-chat-title">{mode === 'employee' ? ai.employeeTitle : 'Kuripuro AI'}</div>
+            {!compact && <div className="ai-chat-subtitle">Seu centro de comando inteligente</div>}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).length > 0 && (
@@ -152,6 +156,17 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       </div>
 
       {callOpen && <AICallMode onClose={() => setCallOpen(false)} sendToAI={sendFromCall} />}
+
+      {!compact && messages.length <= 1 && suggestions.length > 0 && (
+        <div className="ai-suggestions">
+          {suggestions.map((suggestion, i) => (
+            <button type="button" key={i} onClick={() => setInput(suggestion.prompt)} className="ai-suggestion">
+              <span className="ai-suggestion-icon">{suggestion.icon || '✦'}</span>
+              <span><strong>{suggestion.title}</strong><small>{suggestion.prompt}</small></span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: compact ? '0 12px' : '0 4px 0 0' }}>
         {messages.map((m, i) => (
