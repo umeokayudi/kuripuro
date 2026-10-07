@@ -23,7 +23,7 @@ function formatText(text) {
   })
 }
 
-export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [] }) {
+export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0 }) {
   const { t, lang } = useLang()
   const ai = t.ai || {}
   const welcome = useMemo(() => (
@@ -31,7 +31,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   ), [mode, ai.employeeWelcome, ai.adminWelcome])
 
   const [messages, setMessages] = useState(() =>
-    loadChatHistory(mode, employeeId, welcome)
+    newChatId ? welcome : loadChatHistory(mode, employeeId, welcome)
   )
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
