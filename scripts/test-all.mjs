@@ -5,6 +5,7 @@ const steps = [
   ['npm run lint', 'lint'],
   ['npm run build', 'build'],
   ['npm run test:salary-calc', 'salary-calc'],
+  ['npm run test:payroll-close', 'payroll-close'],
   ['npm run test:safety-net', 'safety-net'],
   ['npm run test:deep-clean', 'deep-clean'],
   ['npm run test:portal-auth', 'portal-auth'],

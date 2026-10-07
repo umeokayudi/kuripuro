@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
+import { closePayrollMonth, periodsFromPayroll } from '../lib/payrollClose'
 import { useLang, fill } from '../hooks/useLang'
 
 export default function SalaryPeriods() {
@@ -19,15 +20,19 @@ export default function SalaryPeriods() {
   useEffect(() => { if (selectedPeriod) loadStatements(selectedPeriod) }, [selectedPeriod])
 
   const loadPeriods = async () => {
-    const { data, error } = await supabase.from('salary_periods').select('*').order('period', { ascending: false })
+    const { data, error } = await supabase.from('payroll').select('*').order('period', { ascending: false })
     if (error?.code === 'PGRST205') { setSchemaOk(false); setLoading(false); return }
-    setPeriods(data || [])
-    if (data?.length && !selectedPeriod) setSelectedPeriod(data[0].period)
+    if (error) { toast.error(error.message); setLoading(false); return }
+    setSchemaOk(true)
+    const list = periodsFromPayroll(data)
+    setPeriods(list)
+    if (list.length && !selectedPeriod) setSelectedPeriod(list[0].period)
     setLoading(false)
   }
 
   const loadStatements = async (period) => {
-    const { data } = await supabase.from('salary_statements').select('*').eq('period', period).order('employee_name')
+    const { data, error } = await supabase.from('payroll').select('*').eq('period', period).order('employee_name')
+    if (error) { toast.error(error.message); return }
     setStatements(data || [])
   }
 
@@ -36,69 +41,13 @@ export default function SalaryPeriods() {
     if (!window.confirm(fill(p.closeConfirm, { period: fmtPeriod(period), deadline: confirmDeadline, payDate }))) return
     setClosing(true)
     try {
-      await supabase.from('salary_periods').upsert({
-        period, closed_at: new Date().toISOString(), confirm_deadline: confirmDeadline,
-        pay_date: payDate, status: 'closed',
-      }, { onConflict: 'period' })
-
-      const { data: employees } = await supabase.from('employees').select('*').eq('is_active', true)
-      const monthStart = period + '-01'
-      const monthEnd = period + '-31'
-
-      for (const emp of employees || []) {
-        const { data: jobs } = await supabase.from('jobs').select('*')
-          .eq('employee_id', emp.id).eq('status', 'completed')
-          .gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd)
-
-        const { data: deductions } = await supabase.from('salary_payments').select('amount')
-          .eq('employee_id', emp.id).eq('period', period).eq('is_deduction', true)
-
-        const jobPay = (j) => Number(j.retro_value ?? j.value ?? 0)
-        let base = 0
-        if (emp.salary_type === 'fixed') {
-          const days = new Set((jobs || []).map(j => j.scheduled_date)).size
-          base = Math.min(Math.round((emp.fixed_salary || 0) / (emp.monthly_work_days || 22) * days), emp.fixed_salary || 0)
-        } else if (emp.salary_type === 'hourly') {
-          base = (jobs || []).reduce((s, j) => {
-            if (j.started_at && j.completed_at) return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
-            return s + (j.retro_time_min || 45)
-          }, 0) / 60 * (emp.hourly_rate || 0)
-          base = Math.round(base)
-        } else if (emp.salary_type === 'per_job') {
-          base = (jobs || []).reduce((s, j) => s + Math.round(jobPay(j) * ((emp.job_bonus_rate || 100) / 100)), 0)
-        } else {
-          base = emp.fixed_salary || 0
-        }
-
-        const dedTotal = (deductions || []).reduce((s, d) => s + Number(d.amount || 0), 0)
-        const net = Math.max(0, base - dedTotal)
-        const desc = fill(p.salaryDesc, { period: fmtPeriod(period) })
-
-        await supabase.from('salary_statements').upsert({
-          period, employee_id: emp.id, employee_name: emp.full_name,
-          base_salary: base, deductions: dedTotal, net_total: net,
-          breakdown: { jobs: jobs?.length || 0, salary_type: emp.salary_type },
-          status: 'awaiting_confirmation',
-        }, { onConflict: 'period,employee_id' })
-
-        await supabase.from('salary_payments').upsert({
-          employee_id: emp.id, employee_name: emp.full_name,
-          period, amount: net, payment_date: payDate,
-          description: desc,
-          status: 'scheduled', payment_type: 'salary', is_deduction: false,
-        }, { onConflict: 'employee_id,period,payment_type', ignoreDuplicates: false }).catch(() => {
-          supabase.from('salary_payments').insert({
-            employee_id: emp.id, employee_name: emp.full_name,
-            period, amount: net, payment_date: payDate,
-            description: desc,
-            status: 'scheduled', payment_type: 'salary', is_deduction: false,
-          })
-        })
-      }
-
-      toast.success(fill(p.closed, { period: fmtPeriod(period) }))
-      loadPeriods()
-      loadStatements(period)
+      const result = await closePayrollMonth(supabase, period, {
+        salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(period) }),
+      })
+      toast.success(fill(p.closed, { period: fmtPeriod(result.period) }))
+      setSelectedPeriod(period)
+      await loadPeriods()
+      await loadStatements(period)
     } catch (e) {
       toast.error(e.message)
     }
@@ -106,7 +55,11 @@ export default function SalaryPeriods() {
   }
 
   const finalizeStatement = async (id) => {
-    await supabase.from('salary_statements').update({ status: 'finalized', admin_finalized_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.from('payroll').update({
+      status: 'paid',
+      paid_at: new Date().toISOString(),
+    }).eq('id', id)
+    if (error) return toast.error(error.message)
     toast.success(p.finalized)
     loadStatements(selectedPeriod)
   }
@@ -169,12 +122,10 @@ export default function SalaryPeriods() {
                   {p.base} ¥{Number(s.base_salary).toLocaleString()} · {p.deductions} -¥{Number(s.deductions).toLocaleString()} · {p.net} <b>¥{Number(s.net_total).toLocaleString()}</b>
                 </div>
                 <div style={{ fontSize: 11, marginTop: 2 }}>
-                  {s.employee_confirmed_at && <span style={{ color: 'var(--green)' }}>✓ {p.confirmed} </span>}
-                  {s.employee_disputed_at && <span style={{ color: 'var(--red)' }}>⚠ {p.disputed} </span>}
-                  <span className={`badge ${s.status === 'finalized' ? 'badge-green' : 'badge-amber'}`}>{s.status}</span>
+                  <span className={`badge ${s.status === 'paid' ? 'badge-green' : 'badge-amber'}`}>{s.status}</span>
                 </div>
               </div>
-              {s.status !== 'finalized' && s.employee_confirmed_at && (
+              {s.status !== 'paid' && (
                 <button className="btn btn-sm btn-primary" onClick={() => finalizeStatement(s.id)}>{p.finalize}</button>
               )}
             </div>

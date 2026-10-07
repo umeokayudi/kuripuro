@@ -1453,14 +1453,17 @@ export default function EmployeePortal() {
             {/* PDF buttons */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
-                const month = new Date().toISOString().slice(0,7)
+                const month = tokyoToday().slice(0, 7)
+                const { data: allAdv } = await supabase.from('salary_payments').select('*')
+                  .eq('employee_id', user.id).eq('payment_type', 'advance').limit(200)
                 const { generatePayslipJP, generatePayslip } = await import('../lib/generatePDF')
+                const slipAdvances = allAdv || advances
                 if (lang==='ja') {
-                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
+                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, slipAdvances)
                   doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('給与明細ダウンロード完了!')
                 } else {
-                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, advances)
+                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, slipAdvances)
                   doc.save('payslip_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('Payslip downloaded!')
                 }
@@ -1513,7 +1516,7 @@ export default function EmployeePortal() {
               return (<>
                 {received.length>0&&<div style={{marginBottom:14}}>
                   <span style={S.label}>{e.advancesReceived}</span>
-                  {received.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ {e.received}</span></div>)}
+                  {received.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{parseAdvDate(a) || '—'} · {a.description}</div></div><span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ {e.received}</span></div>)}
                   <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>{e.totalReceived}</span>
                     <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
@@ -1521,7 +1524,7 @@ export default function EmployeePortal() {
                 </div>}
                 {pending.length>0&&<div style={{marginBottom:14}}>
                   <span style={S.label}>{e.advancesPending}</span>
-                  {pending.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>{e.pendingAdv}</span></div>)}
+                  {pending.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{parseAdvDate(a) || '—'} · {a.description}</div></div><span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>{e.pendingAdv}</span></div>)}
                 </div>}
               </>)
             })()}

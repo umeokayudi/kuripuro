@@ -1,7 +1,7 @@
 {
   "name": "kuripuro",
   "private": true,
-  "version": "1.59.0",
+  "version": "1.60.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,6 +20,7 @@
     "test:add-service": "node scripts/test-employee-add-service.mjs",
     "test:deep-clean": "npx vite-node scripts/test-deep-clean-photos.mjs",
     "test:salary-calc": "npx vite-node scripts/test-salary-calc.mjs",
+    "test:payroll-close": "npx vite-node scripts/test-payroll-close.mjs",
     "test:past-service": "npx vite-node scripts/test-past-service.mjs",
     "test:job-overdue": "npx vite-node scripts/test-job-overdue.mjs",
     "test:employee-pay": "npx vite-node scripts/test-employee-pay.mjs",

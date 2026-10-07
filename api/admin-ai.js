@@ -84,6 +84,23 @@ const TOOLS = [{
       },
     },
     {
+      name: 'record_salary_advance',
+      description: 'Registra um adiantamento em salary_payments SOMENTE depois que o admin confirmar. Nunca chame na primeira mensagem. Primeiro busque o funcionário, mostre nome + valor + data + período, espere o sim, e só então chame com confirmed=true.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          employee_id: { type: 'STRING', description: 'UUID do employees.id' },
+          employee_name: { type: 'STRING' },
+          amount: { type: 'NUMBER', description: 'Valor em ienes' },
+          payment_date: { type: 'STRING', description: 'YYYY-MM-DD (Tóquio)' },
+          period: { type: 'STRING', description: 'YYYY-MM; padrão = mês da payment_date' },
+          description: { type: 'STRING' },
+          confirmed: { type: 'BOOLEAN', description: 'true só depois do admin confirmar os dados' },
+        },
+        required: ['employee_id', 'amount', 'payment_date', 'confirmed'],
+      },
+    },
+    {
       name: 'insert_data',
       description: 'Insere registro(s). Confirme com o usuário antes de criar em massa.',
       parameters: {
@@ -148,6 +165,48 @@ async function executeTool(name, args) {
     const total = cr.includes('/') ? Number(cr.split('/')[1]) : null
     return { table: args.table, count: Number.isFinite(total) ? total : null, contentRange: cr }
   }
+  if (name === 'record_salary_advance') {
+    const amount = Number(args.amount)
+    const payment_date = String(args.payment_date || '').slice(0, 10)
+    const period = String(args.period || payment_date.slice(0, 7)).slice(0, 7)
+    const description = args.description || 'Advance payment'
+    const preview = {
+      employee_id: args.employee_id,
+      employee_name: args.employee_name || '',
+      amount,
+      payment_date,
+      period,
+      description,
+    }
+    if (!args.confirmed) {
+      return {
+        needs_confirmation: true,
+        message: 'Mostre estes dados ao admin e só chame de novo com confirmed=true após o sim.',
+        preview,
+      }
+    }
+    if (!args.employee_id || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(payment_date) || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new Error('record_salary_advance exige employee_id, amount > 0, payment_date YYYY-MM-DD e confirmed=true')
+    }
+    const dupQuery = `salary_payments?select=id,amount,payment_date,employee_name,period,description&employee_id=eq.${encodeURIComponent(args.employee_id)}&payment_type=eq.advance&payment_date=eq.${payment_date}&amount=eq.${amount}&limit=5`
+    const { data: existing } = await sbFetch(dupQuery)
+    if (Array.isArray(existing) && existing.length) {
+      return { skipped_duplicate: true, existing: scrubAiRow(existing) }
+    }
+    const row = {
+      employee_id: args.employee_id,
+      employee_name: args.employee_name || '',
+      period,
+      amount,
+      payment_date,
+      description,
+      payment_type: 'advance',
+      status: 'scheduled',
+      is_deduction: false,
+    }
+    const { data } = await sbFetch('salary_payments', { method: 'POST', body: JSON.stringify([row]) })
+    return { inserted: true, row: scrubAiRow(data) }
+  }
   if (name === 'insert_data') {
     checkTable(args.table)
     const rows = args.data?.rows
@@ -187,10 +246,12 @@ Regras:
 - Jobs: status assigned / in_progress / completed / cancelled. Datas YYYY-MM-DD (Tóquio).
 - Faturas: faturas + fatura_items. Status draft/sent/paid/cancelled.
 - Comercial: sales_leads, mitsumori, mitsumori_items, sales_touchpoints. interest é INTERNO (não vai no PDF da 見積書).
-- Folha: salary_payments, salary_periods, salary_statements, salary_complaints, payroll, transport_claims.
+- Folha: salary_payments (adiantamentos e salário), payroll (fechamento). salary_periods/salary_statements podem não existir — use payroll.
+- Adiantamento: NUNCA grave na primeira mensagem. 1) query employees pelo nome, 2) mostre employee_name, amount, payment_date (YYYY-MM-DD Tóquio) e period (YYYY-MM), 3) espere o admin confirmar, 4) record_salary_advance com confirmed=true. Não use insert_data para adiantamento. Se faltar data ou valor, pergunte. period = mês da payment_date. Evite duplicar o mesmo employee_id+data+valor.
+- Fechamento de salário: o admin fecha em Payroll Close; a IA não inventa totais. Se pedir holerite, cite cada adiantamento com data e valor.
 - Nunca mostre senhas ou password_hash. Pode falar de salário, contratos, interesse do cliente, reclamações.
 - Para CRIAR jobs: busque employee_id em employees; insert_data em jobs com title, employee_id, employee_name, scheduled_date, scheduled_time, status "assigned", address.
-- Mudanças (insert/update/delete): se o pedido for claro, execute; se ambíguo, confirme.
+- Mudanças (insert/update/delete): se o pedido for claro, execute; se ambíguo, confirme. Adiantamento sempre confirma.
 - Seja direto. Cite as tabelas que usou. No final, resuma.`
 
 export default async function handler(req, res) {

@@ -60,7 +60,7 @@ export const kuripuroEn = {
   },
   payroll: {
     title: 'Payroll close',
-    hint: 'Close on the last day of the month → staff confirm by the 5th → pay on the 15th',
+    hint: 'Close writes payroll automatically (last real day of the month). Advances already registered are deducted and listed on the payslip.',
     setupNeeded: 'One-time setup required',
     setupHint: 'Run schema-extensions.sql in the Supabase SQL Editor to enable PDF contracts and payroll close.',
     closing: 'Closing...',
@@ -1211,7 +1211,7 @@ export const kuripuroJa = {
   },
   payroll: {
     title: '給与締め',
-    hint: '月末に締め → 従業員は5日までに確認 → 15日に支払',
+    hint: '締めは payroll に自動保存します（その月の実在する最終日）。登録済み前払いは控除し、明細に日付と金額を出します。',
     setupNeeded: '初回セットアップが必要です',
     setupHint: 'Supabase SQL Editor で schema-extensions.sql を実行し、契約PDFと給与締めを有効化してください。',
     closing: '締め処理中...',

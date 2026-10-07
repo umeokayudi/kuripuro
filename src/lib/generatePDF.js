@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { viewablePhotoUrl } from './photoUrl'
 import { a4JsPdf } from './pdfView'
+import { otherDeductionTotal, payslipAdvanceLines, payslipNetPay } from './salaryCalc'
 
 // Carrega uma imagem de URL como dataURL pra embutir no PDF
 async function loadImageDataUrl(url) {
@@ -277,16 +278,9 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
   doc.text(`¥${(salaryData?.total||0).toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
   y += 14
 
-  // Deductions
-  const deductions = payments.filter(p=>p.is_deduction)
-
-  const todayPdf = new Date().toISOString().split('T')[0]
-  const receivedAdvances = advances.filter(a => {
-    const jun = a.description?.match(/Jun (\d+)/); if (jun) return '2026-06-'+jun[1].padStart(2,'0') < todayPdf
-    const jul = a.description?.match(/Jul (\d+)/); if (jul) return '2026-07-'+jul[1].padStart(2,'0') < todayPdf
-    return false
-  })
-  const advancesTotal = receivedAdvances.reduce((s,a)=>s+Number(a.amount),0)
+  const deductions = (payments || []).filter(p => p.is_deduction && p.payment_type !== 'advance')
+  const advSlip = payslipAdvanceLines([...(advances || []), ...(payments || [])], month)
+  const advancesTotal = advSlip.total
   if (deductions.length > 0 || advancesTotal > 0) {
     doc.setFont('helvetica','bold')
     doc.setFontSize(11)
@@ -301,32 +295,34 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
     doc.text('Amount', W-margin-4, y+5, {align:'right'})
     y += 9
 
-    if (advancesTotal > 0) {
-      doc.setFillColor(255,245,245)
-      doc.rect(margin,y-1,W-margin*2,8,'F')
+    advSlip.lines.forEach((line, i) => {
+      if (y > 270) { doc.addPage(); y = 16 }
+      if (i%2===0) { doc.setFillColor(255,245,245); doc.rect(margin,y-1,W-margin*2,8,'F') }
       doc.setTextColor(50,50,50)
       doc.setFont('helvetica','normal')
       doc.setFontSize(9)
-      doc.text('Salary Advances', margin+4, y+5)
+      const extra = line.description && line.description !== 'Advance' ? ` — ${line.description.substring(0, 28)}` : ''
+      doc.text(`Advance ${line.date}${extra}`.substring(0, 52), margin+4, y+5)
       doc.setFont('helvetica','bold')
       doc.setTextColor(180,30,30)
-      doc.text(`-¥${advancesTotal.toLocaleString()}`, W-margin-4, y+5, {align:'right'})
+      doc.text(`-¥${line.amount.toLocaleString()}`, W-margin-4, y+5, {align:'right'})
       y += 8
-    }
+    })
 
     deductions.forEach((d,i) => {
+      if (y > 270) { doc.addPage(); y = 16 }
       if (i%2!==0) { doc.setFillColor(255,245,245); doc.rect(margin,y-1,W-margin*2,8,'F') }
       doc.setTextColor(50,50,50)
       doc.setFont('helvetica','normal')
       doc.setFontSize(9)
-      doc.text(d.description.substring(0,50), margin+4, y+5)
+      doc.text((d.description || 'Deduction').substring(0,50), margin+4, y+5)
       doc.setFont('helvetica','bold')
       doc.setTextColor(180,30,30)
       doc.text(`-¥${Number(d.amount).toLocaleString()}`, W-margin-4, y+5, {align:'right'})
       y += 8
     })
 
-    const totalDeductions = advancesTotal + deductions.reduce((s,d)=>s+Number(d.amount),0)
+    const totalDeductions = advancesTotal + otherDeductionTotal(payments)
     doc.setFillColor(180,30,30)
     doc.rect(margin, y, W-margin*2, 8, 'F')
     doc.setTextColor(255,255,255)
@@ -337,9 +333,7 @@ export async function generatePayslip(employee, month, salaryData, payments, adv
     y += 14
   }
 
-  // Net pay
-  // Net pay = only actual salary payments (not advances)
-  const netPay = payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance'&&p.payment_type!=='deduction').reduce((s,p)=>s+Number(p.amount),0)
+  const netPay = payslipNetPay(salaryData, payments, advancesTotal)
   doc.setFillColor(6,13,24)
   doc.rect(margin, y, W-margin*2, 14, 'F')
   doc.setTextColor(193,156,86)
@@ -471,15 +465,9 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   doc.text(`¥${(salaryData?.total||0).toLocaleString()}`, W-margin-4, y+5.5, {align:'right'})
   y += 14
 
-  // Deductions
-  const todayPdf = new Date().toISOString().split('T')[0]
-  const receivedAdv = advances.filter(a => {
-    const jun = a.description?.match(/Jun (\d+)/); if (jun) return '2026-06-'+jun[1].padStart(2,'0') < todayPdf
-    const jul = a.description?.match(/Jul (\d+)/); if (jul) return '2026-07-'+jul[1].padStart(2,'0') < todayPdf
-    return false
-  })
-  const advTotal = receivedAdv.reduce((s,a)=>s+Number(a.amount),0)
-  const deds = payments.filter(p=>p.is_deduction)
+  const advSlip = payslipAdvanceLines([...(advances || []), ...(payments || [])], month)
+  const advTotal = advSlip.total
+  const deds = (payments || []).filter(p => p.is_deduction && p.payment_type !== 'advance')
 
   if (deds.length>0 || advTotal>0) {
     doc.setFont('helvetica','bold')
@@ -488,9 +476,12 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
     doc.text('控除項目', margin, y)
     y += 5
     sectionHeader('項目', 180, 30, 30)
-    if (advTotal>0) tableRow('給与前払い', `-¥${advTotal.toLocaleString()}`, 0, [180,30,30])
-    deds.forEach((d,i)=>tableRow(d.description.substring(0,45), `-¥${Number(d.amount).toLocaleString()}`, i+1, [180,30,30]))
-    const totalDeds = advTotal + deds.reduce((s,d)=>s+Number(d.amount),0)
+    advSlip.lines.forEach((line, i) => {
+      if (y > 270) { doc.addPage(); y = 16 }
+      tableRow(`前払い ${line.date}`, `-¥${line.amount.toLocaleString()}`, i, [180,30,30])
+    })
+    deds.forEach((d,i)=>tableRow((d.description || '控除').substring(0,45), `-¥${Number(d.amount).toLocaleString()}`, advSlip.lines.length + i, [180,30,30]))
+    const totalDeds = advTotal + otherDeductionTotal(payments)
     doc.setFillColor(180,30,30)
     doc.rect(margin, y, W-margin*2, 8, 'F')
     doc.setTextColor(255,255,255)
@@ -502,7 +493,7 @@ export async function generatePayslipJP(employee, month, salaryData, payments, a
   }
 
   // Net
-  const netPay = payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance'&&p.payment_type!=='deduction').reduce((s,p)=>s+Number(p.amount),0)
+  const netPay = payslipNetPay(salaryData, payments, advTotal)
   doc.setFillColor(6,13,24)
   doc.rect(margin, y, W-margin*2, 14, 'F')
   doc.setTextColor(193,156,86)
