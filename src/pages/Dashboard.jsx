@@ -26,8 +26,6 @@ export default function Dashboard() {
   const [detailLoc, setDetailLoc] = useState(null)
   const [detailTuesday, setDetailTuesday] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [clock, setClock] = useState(new Date())
-  const [lastUpdate, setLastUpdate] = useState(null)
 
   const load = async () => {
     const today = tokyoToday()
@@ -49,15 +47,13 @@ export default function Dashboard() {
     setStaleCount(stale.count || 0)
     setMonthJobs(mj.data || [])
     setClientRatings(cr.data || [])
-    setLastUpdate(new Date())
     setLoading(false)
   }
 
   useEffect(() => {
     load()
-    const tick = setInterval(() => setClock(new Date()), 1000)
     const refresh = setInterval(load, 15000)
-    return () => { clearInterval(tick); clearInterval(refresh) }
+    return () => clearInterval(refresh)
   }, [progressMonth])
 
   const cancelStaleJobs = async () => {
@@ -74,18 +70,9 @@ export default function Dashboard() {
   const cost = clients.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
   const profit = revenue - cost
 
-  const byEmp = {}
-  todayJobs.forEach(j => {
-    const k = j.employee_name || '—'
-    if (!byEmp[k]) byEmp[k] = []
-    byEmp[k].push(j)
-  })
-
-  const sortedClients = [...clients].sort((a, b) =>
+ [...clients].sort((a, b) =>
     (Number(b.monthly_revenue || 0) - Number(b.monthly_cost || 0)) - (Number(a.monthly_revenue || 0) - Number(a.monthly_cost || 0))
   )
-  const maxProfit = Math.max(...clients.map(c => Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0)), 1)
-  const statusColor = s => ({ assigned: '#60a5fa', in_progress: '#fbbf24', completed: '#4ade80', cancelled: 'rgba(255,255,255,0.2)' }[s] || '#60a5fa')
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
@@ -96,8 +83,6 @@ export default function Dashboard() {
   const atRisk = satisfactionByClient.filter(x => x.avg != null && x.avg < 3.5)
   const overallAvg = avgStars(ratings30)
   const weeklyAvg = avgStars(ratings7)
-  const monthlyAvg = overallAvg
-  const levelColor = l => ({ excellent: 'var(--green)', good: '#60a5fa', warning: '#EF9F27', critical: 'var(--red)', none: 'var(--text3)' }[l] || 'var(--text3)')
   const completedToday = todayJobs.filter(j => j.status === 'completed').length
   const assignedToday = todayJobs.filter(j => j.status === 'assigned').length
   const attentionCount = staleCount + atRisk.length + assignedToday
