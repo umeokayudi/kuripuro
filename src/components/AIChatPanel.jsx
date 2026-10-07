@@ -132,7 +132,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
           <div className="ai-avatar">✦</div>
           <div>
             <div className="ai-chat-title">{mode === 'employee' ? ai.employeeTitle : 'Kuripuro AI'}</div>
-            {!compact && <div className="ai-chat-subtitle">{ai.commandCenter?.title || ai.adminTitle}</div>}
+            {!compact && <div className="ai-chat-subtitle">{mode === 'employee' ? ai.employeeTitle : ai.commandCenter?.title || ai.adminTitle}</div>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
