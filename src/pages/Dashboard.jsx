@@ -235,6 +235,45 @@ export default function Dashboard() {
         deepProgress={deepProgress}
       />
 
+      {(() => {
+        const unassigned = todayJobs.filter(j => !j.employee_id && j.status !== 'cancelled')
+        const overdue = todayJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled' && j.scheduled_time && j.scheduled_time < clock.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }))
+        const activeToday = todayJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled')
+        const workload = employees.map(emp => ({
+          emp,
+          count: activeToday.filter(j => j.employee_id === emp.id).length
+        })).filter(x => x.count > 0).sort((a,b) => b.count-a.count)
+        const avgLoad = workload.length ? activeToday.length / workload.length : 0
+        const overloaded = workload.filter(x => x.count >= Math.max(3, Math.ceil(avgLoad * 1.5)))
+        const attention = [
+          unassigned.length && { title: 'Jobs sem funcionário', value: unassigned.length, detail: 'Precisam de atribuição hoje.', tone: 'attention' },
+          overdue.length && { title: 'Jobs em risco de atraso', value: overdue.length, detail: 'O horário previsto já passou.', tone: 'warning' },
+          overloaded.length && { title: 'Possível sobrecarga', value: overloaded.length, detail: overloaded.map(x => x.emp.full_name).join(', '), tone: 'warning' }
+        ].filter(Boolean)
+        if (!attention.length) return null
+        return (
+          <div className="card attention-card" style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+              <div>
+                <div className="finance-eyebrow">OPERATION ALERTS</div>
+                <h3 style={{margin:'2px 0 0'}}>O que precisa da sua atenção</h3>
+                <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Problemas operacionais detectados automaticamente hoje.</p>
+              </div>
+              <Link to="/jobs" className="btn">Abrir operação →</Link>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}}>
+              {attention.map((item,i) => (
+                <div key={i} style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:item.tone==='attention'?'var(--red)':'#EF9F27'}}>{item.title}</div>
+                  <div style={{fontSize:25,fontWeight:800,marginTop:5}}>{item.value}</div>
+                  <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>{item.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
           <div>
