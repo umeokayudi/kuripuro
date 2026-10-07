@@ -1,4 +1,4 @@
-import { ExecutiveDashboard } from '../components/AnalyticsCharts'
+import { LineChart, BarChart } from '../components/AnalyticsCharts'
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -98,6 +98,29 @@ export default function Dashboard() {
   const weeklyAvg = avgStars(ratings7)
   const monthlyAvg = overallAvg
   const levelColor = l => ({ excellent: 'var(--green)', good: '#60a5fa', warning: '#EF9F27', critical: 'var(--red)', none: 'var(--text3)' }[l] || 'var(--text3)')
+  const completedToday = todayJobs.filter(j => j.status === 'completed').length
+  const assignedToday = todayJobs.filter(j => j.status === 'assigned').length
+  const attentionCount = staleCount + atRisk.length + assignedToday
+
+  const serviceTrend = useMemo(() => {
+    const byDay = {}
+    monthJobs.forEach(j => {
+      const date = (j.completed_at || j.scheduled_date || j.created_at || '').slice(0, 10)
+      if (date) byDay[date] = (byDay[date] || 0) + 1
+    })
+    return Object.entries(byDay)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-14)
+      .map(([date, value]) => ({ label: date.slice(5).replace('-', '/'), value }))
+  }, [monthJobs])
+
+  const clientProfitData = useMemo(() => [...clients]
+    .map(c => ({
+      label: c.company_name || '—',
+      value: Math.max(0, Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0))
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5), [clients])
 
   const closeDetail = () => { setDetailLoc(null); setDetailTuesday(null) }
 
@@ -112,270 +135,221 @@ export default function Dashboard() {
       : DEEP_CLEAN_LOCATIONS.filter(loc => deepProgress.byLocation[loc]?.expectedDates?.includes(detailTuesday)).map(loc => ({ date: detailTuesday, job: deepProgress.byLocation[loc]?.byDate[detailTuesday] || null, loc }))
 
     return (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={closeDetail}>
-        <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 24, maxWidth: 520, width: '100%', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{d.closeOutside}</div>
-            </div>
-            <button onClick={closeDetail} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
-          </div>
+    <div className="dashboard-v2">
+      <DetailModal />
 
-          <div style={{ display: 'grid', gap: 8 }}>
-            {rows.map(({ date, job, loc }) => {
-              const slot = tuesdaySlotInfo(job, slotLabels)
-              const dateLabel = detailLoc ? formatScheduleDate(date, lang) : loc
-              const sub = detailLoc
-                ? (job ? `${job.employee_name || '—'} · ${job.scheduled_time || '—'}` : d.noJob)
-                : (job ? formatScheduleDate(date, lang) + ` · ${job.employee_name || '—'}` : d.noJob)
-              return (
-                <div key={`${loc}-${date}`} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: `${slot.color}10`, border: `1px solid ${slot.color}35` }}>
-                  <div style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{slot.icon}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{dateLabel}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{sub}</div>
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: slot.color, textAlign: 'right' }}>{slot.label}</div>
+      <header className="dashboard-v2-head">
+        <div className="dashboard-v2-title">
+          <div className="dashboard-v2-eyebrow">{d.commandCenter}</div>
+          <h1>{d.title}</h1>
+          <p>{d.subtitle}</p>
+        </div>
+        <div className="dashboard-v2-actions">
+          <Link to="/jobs" className="btn btn-primary">{d.newJob}</Link>
+          <Link to="/clients" className="btn">{d.newClient}</Link>
+          <Link to="/faturas" className="btn">{d.newInvoice}</Link>
+        </div>
+      </header>
+
+      <section className="dashboard-v2-kpis" aria-label={d.overview}>
+        <div className="dashboard-v2-kpi">
+          <span className="dashboard-v2-kpi-icon">✓</span>
+          <div><span>{d.todayJobs}</span><strong>{completedToday}/{todayJobs.length}</strong><small>{d.completedToday}</small></div>
+        </div>
+        <div className="dashboard-v2-kpi">
+          <span className="dashboard-v2-kpi-icon">♙</span>
+          <div><span>{d.activeClients}</span><strong>{clients.length}</strong><small>{d.activeAccounts}</small></div>
+        </div>
+        <div className="dashboard-v2-kpi">
+          <span className="dashboard-v2-kpi-icon">♙</span>
+          <div><span>{d.activeEmployees}</span><strong>{employees.length}</strong><small>{d.currentTeam}</small></div>
+        </div>
+        <div className={`dashboard-v2-kpi ${attentionCount ? 'is-alert' : 'is-good'}`}>
+          <span className="dashboard-v2-kpi-icon">{attentionCount ? '!' : '✓'}</span>
+          <div><span>{d.attention}</span><strong>{attentionCount}</strong><small>{attentionCount ? d.needsReview : d.everythingOnTrack}</small></div>
+        </div>
+      </section>
+
+      <section className="dashboard-v2-grid dashboard-v2-top">
+        <article className="dashboard-v2-card dashboard-v2-priority">
+          <div className="dashboard-v2-card-head">
+            <div><h2>{d.priority}</h2><p>{d.prioritySubtitle}</p></div>
+            {attentionCount > 0 && <span className="dashboard-v2-count dashboard-v2-count-alert">{attentionCount}</span>}
+          </div>
+          <div className="dashboard-v2-priority-list">
+            {staleCount > 0 && (
+              <div className="dashboard-v2-priority-row is-warning">
+                <span>!</span><div><strong>{fill(d.staleJobs, { count: staleCount })}</strong><small>{d.staleJobsHint}</small></div>
+                <Link to="/jobs">{d.open}</Link>
+              </div>
+            )}
+            {assignedToday > 0 && (
+              <div className="dashboard-v2-priority-row">
+                <span>→</span><div><strong>{fill(d.assignedToday, { count: assignedToday })}</strong><small>{d.assignedTodayHint}</small></div>
+                <Link to="/jobs">{d.open}</Link>
+              </div>
+            )}
+            {atRisk.length > 0 && (
+              <div className="dashboard-v2-priority-row is-danger">
+                <span>!</span><div><strong>{fill(d.atRiskClients, { count: atRisk.length })}</strong><small>{d.atRiskHint}</small></div>
+                <Link to="/client-feedback">{d.open}</Link>
+              </div>
+            )}
+            {!attentionCount && (
+              <div className="dashboard-v2-empty-inline"><span>✓</span><div><strong>{d.everythingOnTrack}</strong><small>{d.noMajorAlerts}</small></div></div>
+            )}
+          </div>
+        </article>
+
+        <article className="dashboard-v2-card dashboard-v2-finance">
+          <div className="dashboard-v2-card-head">
+            <div><h2>{d.financialSnapshot}</h2><p>{d.financialSubtitle}</p></div>
+            <Link to="/cashflow">{d.viewCashflow}</Link>
+          </div>
+          <div className="dashboard-v2-money-main">
+            <span>{d.contractBase}</span>
+            <strong>{fmt(revenue)}</strong>
+          </div>
+          <div className="dashboard-v2-money-grid">
+            <div><span>{d.estimatedCost}</span><strong>{fmt(cost)}</strong></div>
+            <div><span>{d.estimatedProfit}</span><strong className={profit >= 0 ? 'positive' : 'negative'}>{fmt(profit)}</strong></div>
+            <div><span>{d.margin}</span><strong>{revenue ? ((profit / revenue) * 100).toFixed(1) : '0.0'}%</strong></div>
+          </div>
+        </article>
+      </section>
+
+      <article className="dashboard-v2-card dashboard-v2-operations">
+        <div className="dashboard-v2-card-head">
+          <div><h2>{d.todayOperations}</h2><p>{fill(d.todayOperationsSubtitle, { count: todayJobs.length })}</p></div>
+          <Link to="/jobs">{d.viewAll}</Link>
+        </div>
+        {todayJobs.length === 0 ? (
+          <div className="dashboard-v2-empty"><strong>{d.noTodayJobs}</strong><span>{d.noTodayJobsHint}</span></div>
+        ) : (
+          <div className="dashboard-v2-job-list">
+            {todayJobs.slice(0, 8).map(j => (
+              <div className="dashboard-v2-job-row" key={j.id}>
+                <span className="dashboard-v2-job-time">{j.scheduled_time || '—'}</span>
+                <div className="dashboard-v2-job-main">
+                  <strong>{j.title?.replace(/ — .*/, '') || '—'}</strong>
+                  <span>{j.employee_name || d.unassigned}</span>
                 </div>
+                <span className={`dashboard-v2-status status-${j.status}`}>{t.status[j.status] || j.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </article>
+
+      <section className="dashboard-v2-grid dashboard-v2-middle">
+        <article className="dashboard-v2-card">
+          <div className="dashboard-v2-card-head">
+            <div><h2>{d.serviceVolume}</h2><p>{d.serviceVolumeSubtitle}</p></div>
+            <strong className="dashboard-v2-card-kpi">{monthJobs.length}</strong>
+          </div>
+          <LineChart data={serviceTrend} lineLabel={d.jobsLabel} />
+        </article>
+
+        <article className="dashboard-v2-card">
+          <div className="dashboard-v2-card-head">
+            <div><h2>{d.clientProfitability}</h2><p>{d.clientProfitabilitySubtitle}</p></div>
+            <Link to="/reports">{d.viewReports}</Link>
+          </div>
+          {clientProfitData.length ? (
+            <BarChart data={clientProfitData} valueFormatter={fmt} />
+          ) : (
+            <div className="dashboard-v2-empty"><strong>{d.noClients}</strong></div>
+          )}
+        </article>
+      </section>
+
+      <section className="dashboard-v2-grid dashboard-v2-bottom">
+        <article className="dashboard-v2-card">
+          <div className="dashboard-v2-card-head">
+            <div><h2>{d.clientSatisfaction}</h2><p>{d.satisfactionSubtitle}</p></div>
+            <Link to="/client-feedback">{d.viewAll}</Link>
+          </div>
+          <div className="dashboard-v2-quality-grid">
+            <div><span>{d.avgRating}</span><strong>{overallAvg != null ? overallAvg.toFixed(1) : '—'}</strong></div>
+            <div><span>{d.weeklyAvg}</span><strong>{weeklyAvg != null ? weeklyAvg.toFixed(1) : '—'}</strong></div>
+            <div><span>{d.ratings30}</span><strong>{ratings30.length}</strong></div>
+            <div className={atRisk.length ? 'is-danger' : ''}><span>{d.atRiskClientsShort}</span><strong>{atRisk.length}</strong></div>
+          </div>
+          {satisfactionByClient.length > 0 && (
+            <div className="dashboard-v2-chip-list">
+              {[...satisfactionByClient].sort((a,b) => (b.avg || 0) - (a.avg || 0)).slice(0, 5).map(({ client, avg, level }) => (
+                <div className="dashboard-v2-client-chip" key={client.id}>
+                  <span>{client.company_name}</span><strong className={`tone-${level}`}>{avg != null ? avg.toFixed(1) : '—'}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="dashboard-v2-card">
+          <div className="dashboard-v2-card-head">
+            <div><h2>{d.deepCleanTitle}</h2><p>{fill(d.deepCleanSubtitle, { month: monthLabel })}</p></div>
+            <input aria-label={d.month} type="month" value={progressMonth} onChange={e => setProgressMonth(e.target.value)} />
+          </div>
+          <div className="dashboard-v2-progress-summary">
+            <div><span>{d.completed}</span><strong>{deepProgress.totals.completed}</strong></div>
+            <div><span>{d.pending}</span><strong>{deepProgress.totals.pending}</strong></div>
+            <div><span>{d.progress}</span><strong>{deepProgress.totals.pct}%</strong></div>
+          </div>
+          <div className="dashboard-v2-progress"><span style={{ width: `${deepProgress.totals.pct}%` }} /></div>
+          <div className="dashboard-v2-location-list">
+            {Object.entries(deepProgress.byLocation).slice(0, 5).map(([loc, data]) => {
+              const pct = data.expected ? Math.round((data.completed / data.expected) * 100) : 0
+              return (
+                <button key={loc} type="button" onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }} className="dashboard-v2-location">
+                  <span>{loc}</span><strong>{pct}%</strong>
+                </button>
               )
             })}
           </div>
+        </article>
+      </section>
 
-          {detailLoc && deepProgress.byLocation[detailLoc] && (
-            <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 10, fontSize: 13 }}>
-              <b>{d.summary}:</b> {fill(d.summaryLine, { completed: deepProgress.byLocation[detailLoc].completed, expected: deepProgress.byLocation[detailLoc].expected })}
-              {deepProgress.byLocation[detailLoc].missing > 0 && (
-                <span style={{ color: '#f87171' }}>{fill(d.missingTuesdays, { n: deepProgress.byLocation[detailLoc].missing })}</span>
-              )}
+      <section className="dashboard-v2-grid dashboard-v2-bottom">
+        <article className="dashboard-v2-card">
+          <div className="dashboard-v2-card-head">
+            <div><h2>{d.recentEvals}</h2><p>{d.recentEvalsSubtitle}</p></div>
+          </div>
+          {evals.length === 0 ? <div className="dashboard-v2-empty"><strong>{d.noEvals}</strong></div> : (
+            <div className="dashboard-v2-eval-list">
+              {evals.slice(0, 5).map(e => (
+                <div key={e.id} className="dashboard-v2-eval-row">
+                  <div><strong>{e.employee_name || '—'}</strong><span>{e.category || '—'} · {e.eval_date || '—'}</span></div>
+                  <span className={e.points_change > 0 ? 'positive' : 'negative'}>{e.points_change > 0 ? '+' : ''}{e.points_change}</span>
+                </div>
+              ))}
             </div>
           )}
-        </div>
-      </div>
-    )
-  }
+        </article>
 
-  return (
-    <div>
-      <DetailModal />
-      <div className="dash-ref-head"><div><div className="dash-ref-eyebrow">COMMAND CENTER · TOKYO</div><h1>Good evening, Alexandre 👋</h1><p>Here's what's happening with your business today.</p></div><div className="dash-ref-actions"><Link to="/jobs" className="btn dash-ref-primary">＋ New Job</Link><Link to="/clients" className="btn">＋ New Client</Link><Link to="/faturas" className="btn">＋ Invoice</Link></div></div>
-      <div className="dash-ref-kpis">
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Contract Base</span><span className="dash-ref-kpi-icon">¥</span></div><div className="dash-ref-kpi-value">{fmt(revenue)}</div><div className="dash-ref-kpi-meta positive">Current contract base</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Profit</span><span className="dash-ref-kpi-icon">↗</span></div><div className="dash-ref-kpi-value">{fmt(profit)}</div><div className="dash-ref-kpi-meta positive">{revenue ? ((profit/revenue)*100).toFixed(1) : '0.0'}% margin</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Jobs Completion</span><span className="dash-ref-kpi-icon">✓</span></div><div className="dash-ref-kpi-value">{todayJobs.length ? Math.round(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100) : 0}%</div><div className="dash-ref-kpi-meta">Today</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Active Clients</span><span className="dash-ref-kpi-icon">♙</span></div><div className="dash-ref-kpi-value">{clients.length}</div><div className="dash-ref-kpi-meta positive">Active accounts</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Open Issues</span><span className="dash-ref-kpi-icon">!</span></div><div className="dash-ref-kpi-value">{staleCount + atRisk.length}</div><div className="dash-ref-kpi-meta danger">{staleCount} delayed · {atRisk.length} client risk</div></div>
-      </div>
-      <div className="dash-ref-grid">
-        
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Business Health</div><div className="dash-ref-card-sub">Live indicators</div></div></div><div className="dash-ref-health"><div className="dash-ref-score"><div className="dash-ref-score-inner"><strong>{revenue ? Math.max(0,Math.min(100,Math.round(profit/revenue*100))) : 0}</strong><span>OVERALL</span></div></div><div className="dash-ref-health-list"><div className="dash-ref-health-row"><span>Service Quality</span><strong>{overallAvg ? Math.round(overallAvg*20) : '—'}</strong></div><div className="dash-ref-health-row"><span>Customer Satisfaction</span><strong>{overallAvg ? Math.round(overallAvg*20) : '—'}</strong></div><div className="dash-ref-health-row"><span>Schedule Adherence</span><strong>{todayJobs.length ? Math.round(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100) : 100}</strong></div></div></div></div>
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">AI Insights</div><div className="dash-ref-card-sub">Things worth checking now</div></div><Link to="/ai" className="dash-ref-link">See all</Link></div><div className="dash-ref-insights"><div className="dash-ref-insight"><span className="dash-ref-insight-icon">⚠</span><div><strong>{staleCount ? staleCount+' jobs need attention' : 'Operations are on track'}</strong><p>Review today's schedule and delayed work.</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">↗</span><div><strong>{fmt(profit)} estimated profit</strong><p>Based on current client values.</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">◎</span><div><strong>{atRisk.length} client risks</strong><p>Low satisfaction accounts to review.</p></div></div></div></div>
-      </div>
-      <div className="dash-ref-lower">
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Today's Operations</div><div className="dash-ref-card-sub">{todayJobs.length} jobs scheduled</div></div><Link to="/jobs" className="dash-ref-link">View all</Link></div><div className="dash-ref-list">{todayJobs.slice(0,6).map(j=><div className="dash-ref-list-row" key={j.id}><span className="dash-ref-time">{j.scheduled_time||'—'}</span><span className="dash-ref-thumb"></span><div className="dash-ref-job"><strong>{j.title?.replace(/ — .*/, '')}</strong><span>{j.employee_name||'Unassigned'}</span></div><span className="dash-ref-status">{t.status[j.status]||j.status}</span></div>)}{!todayJobs.length&&<div className="empty-state"><strong>No jobs today</strong></div>}</div></div>
-        
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Recent Activity</div><div className="dash-ref-card-sub">Latest operational signals</div></div><Link to="/reports" className="dash-ref-link">View all</Link></div><div className="dash-ref-insights"><div className="dash-ref-insight"><span className="dash-ref-insight-icon">✓</span><div><strong>{todayJobs.filter(j=>j.status==='completed').length} jobs completed</strong><p>Today</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">★</span><div><strong>{ratings30.length} customer ratings</strong><p>Last 30 days</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">◌</span><div><strong>{employees.length} active employees</strong><p>Current team</p></div></div></div></div>
-      </div>
+        <article className="dashboard-v2-card dashboard-v2-secondary-note">
+          <div className="dashboard-v2-card-head">
+            <div><h2>{d.dashboardRuleTitle}</h2><p>{d.dashboardRuleSubtitle}</p></div>
+          </div>
+          <div className="dashboard-v2-rule">
+            <span>01</span><div><strong>{d.ruleAttention}</strong><small>{d.ruleAttentionHint}</small></div>
+          </div>
+          <div className="dashboard-v2-rule">
+            <span>02</span><div><strong>{d.ruleOperations}</strong><small>{d.ruleOperationsHint}</small></div>
+          </div>
+          <div className="dashboard-v2-rule">
+            <span>03</span><div><strong>{d.ruleMoney}</strong><small>{d.ruleMoneyHint}</small></div>
+          </div>
+        </article>
+      </section>
 
       {staleCount > 0 && (
-        <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ {fill(d.staleJobs, { count: staleCount })}</span>
-          <button onClick={cancelStaleJobs} className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', flexShrink: 0 }}>{d.cancelStale}</button>
+        <div className="dashboard-v2-stale">
+          <span>⚠️ {fill(d.staleJobs, { count: staleCount })}</span>
+          <button onClick={cancelStaleJobs} className="btn btn-sm">{d.cancelStale}</button>
         </div>
       )}
 
-      <ExecutiveDashboard
-        clients={clients}
-        monthJobs={monthJobs}
-        todayJobs={todayJobs}
-        employees={employees}
-        staleCount={staleCount}
-        atRisk={atRisk}
-        deepProgress={deepProgress}
-      />
-
-      <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{d.satisfactionTitle}</div>
-            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{d.satisfactionSubtitle}</div>
-          </div>
-          <Link to="/client-feedback" style={{ fontSize: 12, color: '#c19c56', fontWeight: 600, textDecoration: 'none' }}>{d.viewFeedback}</Link>
-        </div>
-
-        <div className="dash-sat">
-          {[
-            [d.avgRating, overallAvg != null ? overallAvg.toFixed(1) + ' ★' : '—'],
-            [d.weeklyAvg, weeklyAvg != null ? weeklyAvg.toFixed(1) : '—'],
-            [d.monthlyAvg, monthlyAvg != null ? monthlyAvg.toFixed(1) : '—'],
-            [d.ratingsCount, ratings30.length],
-          ].map(([l, v]) => (
-            <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#EF9F27' }}>{v}</div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{l}</div>
-            </div>
-          ))}
-        </div>
-
-        {atRisk.length > 0 && (
-          <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--red)' }}>
-            ⚠️ {d.atRiskClients}: {atRisk.map(x => x.client.company_name).join(', ')}
-          </div>
-        )}
-
-        {satisfactionByClient.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--text3)' }}>{d.noRatingsYet}</div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-            {satisfactionByClient.map(({ client, avg, count, level }) => (
-              <div key={client.id} style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--surface2)', border: `1px solid ${levelColor(level)}30` }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.company_name}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: levelColor(level) }}>{avg != null ? starsDisplay(avg) : '—'}</div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{count} {d.ratingsCount.toLowerCase()}</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 10 }}>{d.employeeScores}</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {[...employees].sort((a, b) => (b.score || 100) - (a.score || 100)).slice(0, 8).map(emp => (
-              <div key={emp.id} style={{ padding: '6px 12px', borderRadius: 20, background: 'var(--surface2)', fontSize: 12 }}>
-                <span style={{ fontWeight: 600 }}>{emp.full_name}</span>
-                <span style={{ marginLeft: 8, fontWeight: 700, color: (emp.score || 100) >= 70 ? 'var(--green)' : 'var(--red)' }}>{emp.score || 100}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #fbbf24' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{d.deepCleanTitle}</div>
-            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-              {fill(d.deepContract, { month: monthLabel, expected: deepProgress.totals.expected })}
-            </div>
-          </div>
-          <input type="month" value={progressMonth} onChange={e => setProgressMonth(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, fontWeight: 600 }} />
-        </div>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-          {[
-            [d.completed, deepProgress.totals.completed, '#4ade80'],
-            [d.pending, deepProgress.totals.pending, '#60a5fa'],
-            [d.missingSchedule, Math.max(0, deepProgress.totals.expected - deepProgress.totals.scheduled), '#f87171'],
-            [d.progress, `${deepProgress.totals.pct}%`, '#fbbf24'],
-          ].map(([l, v, c]) => (
-            <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 16px', minWidth: 100 }}>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: c }}>{v}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ height: 10, background: 'var(--surface2)', borderRadius: 5, overflow: 'hidden', marginBottom: 16 }}>
-          <div style={{ height: '100%', width: `${deepProgress.totals.pct}%`, background: 'linear-gradient(90deg,#fbbf24,#4ade80)', borderRadius: 5, transition: 'width 0.4s' }} />
-        </div>
-
-        {deepProgress.tuesdaySummary.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byTuesday}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {deepProgress.tuesdaySummary.map(({ date, expected, done }) => {
-                const ok = done >= expected
-                const shortDate = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })
-                return (
-                  <button key={date} type="button" onClick={() => { setDetailTuesday(date); setDetailLoc(null) }}
-                    style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.1)', border: `1px solid ${ok ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.25)'}`, fontSize: 12, textAlign: 'left' }}>
-                    <div style={{ fontWeight: 700 }}>{fill(d.tuesdayShort, { date: shortDate })}</div>
-                    <div style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 600 }}>{fill(d.doneOf, { done, expected })}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{d.clickTuesday}</div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 8 }}>{d.byRestaurant}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-          {Object.entries(deepProgress.byLocation).map(([loc, data]) => {
-            const pct = data.expected ? Math.round((data.completed / data.expected) * 100) : 0
-            const ok = data.completed >= data.expected
-            return (
-              <button key={loc} type="button" onClick={() => { setDetailLoc(loc); setDetailTuesday(null) }}
-                style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: 'var(--surface2)', border: `1px solid ${ok ? 'rgba(74,222,128,0.25)' : 'var(--border)'}` }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc}</div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{data.schedule || 'Tue'}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>
-                  <span>{fill(d.doneCount, { done: data.completed, expected: data.expected })}</span>
-                  <span style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 700 }}>{pct}%</span>
-                </div>
-                <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: ok ? '#4ade80' : '#fbbf24', borderRadius: 2 }} />
-                </div>
-                {data.missing > 0 && <div style={{ fontSize: 10, color: '#f87171', marginTop: 4 }}>⚠ {fill(d.notScheduled, { n: data.missing })}</div>}
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{d.clickRestaurant}</div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.todayJobsTitle} ({tokyoToday()})</div>
-        {todayJobs.length === 0 ? (
-          <div className="empty-state">
-            <strong>{d.noTodayJobs}</strong>
-          </div>
-        ) : Object.entries(byEmp).map(([name, jobs]) => (
-          <div key={name} style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 6 }}>{name}</div>
-            {jobs.map(j => (
-              <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                <span>{j.title?.replace(/ — .*/, '')} · {j.scheduled_time || '—'}</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: statusColor(j.status) }}>{t.status[j.status] || j.status}</span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <div className="dash-split">
-        <div className="card">
-          <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.recentEvals}</div>
-          {evals.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{d.noEvals}</div>}
-          {evals.map(e => (
-            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-              <div><div style={{ fontSize: 13, fontWeight: 500 }}>{e.employee_name}</div><div style={{ fontSize: 11, color: 'var(--text3)' }}>{e.category} · {e.eval_date}</div></div>
-              <span className={`badge ${e.points_change > 0 ? 'badge-green' : 'badge-red'}`}>{e.points_change > 0 ? '+' : ''}{e.points_change} pts</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="card">
-          <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.profitByClient}</div>
-          {sortedClients.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{d.noClients}</div>}
-          {sortedClients.map(c => {
-            const p = Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0)
-            const pct = Math.round(p / maxProfit * 100)
-            const color = pct >= 70 ? 'var(--green)' : pct >= 40 ? '#EF9F27' : 'var(--red)'
-            return (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                <div style={{ width: 120, fontSize: 12, fontWeight: 500, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.company_name}</div>
-                <div style={{ flex: 1, height: 14, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: pct + '%', background: color, borderRadius: 3 }} />
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 600, color, width: 70, textAlign: 'right' }}>¥{(p / 1000).toFixed(0)}k</div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      {loading && <div style={{ color: 'var(--text3)', fontSize: 12, marginTop: 8 }}>{d.updating}</div>}
+      {loading && <div className="dashboard-v2-loading">{d.updating}</div>}
     </div>
   )
-}
