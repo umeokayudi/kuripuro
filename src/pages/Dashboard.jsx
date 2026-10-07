@@ -161,7 +161,7 @@ export default function Dashboard() {
       <DetailModal />
       <div className="dash-ref-head">
         <div>
-          <div className="dash-ref-eyebrow">COMMAND CENTER · {d.tokyo}</div>
+          <div className="dash-ref-eyebrow">{c.label}</div>
           <h1>{c.greeting} 👋</h1>
           <p>{c.summary}</p>
         </div>
