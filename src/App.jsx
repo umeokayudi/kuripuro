@@ -129,15 +129,8 @@ function AppContent() {
 
       <div className="main">
         <header className="topbar">
-          <span className="topbar-title">{title}</span>
-          <div className="topbar-right">
-            <span style={{ fontSize:13, color:'var(--text2)' }}>{user.name}</span>
-            <span style={{ color:'var(--text3)' }}>·</span>
-            <Clock />
-            <button type="button" onClick={logout} className="btn btn-sm" style={{ marginLeft:8 }}>
-              {t.sidebar.logout}
-            </button>
-          </div>
+          <div className="ref-topbar-search"><span>⌕</span><span>Search clients, jobs, invoices...</span><kbd>⌘K</kbd></div>
+          <div className="topbar-right"><button type="button" className="ref-top-action" title="Notifications">♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">Administrator</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
