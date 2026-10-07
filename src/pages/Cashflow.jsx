@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { LineChart } from '../components/AnalyticsCharts'
 
 /** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
 function normalizeEntry(row) {
@@ -90,6 +91,27 @@ export default function Cashflow() {
   const realMargin = income > 0 ? (realProfit / income) * 100 : 0
   const projected = income + receivable - realCosts
 
+  const monthlyAnalytics = Array.from({length: 6}, (_, index) => {
+    const d = new Date()
+    d.setDate(1)
+    d.setMonth(d.getMonth() - (5 - index))
+    const key = d.toISOString().slice(0,7)
+    const rows = entries.filter(e => e.date?.startsWith(key))
+    const inc = rows.filter(e=>e.type==='income').reduce((sum,e)=>sum+Number(e.amount||0),0)
+    const exp = rows.filter(e=>e.type==='expense').reduce((sum,e)=>sum+Number(e.amount||0),0)
+    return { key, label: key.slice(5), income: inc, expense: exp, profit: inc-exp }
+  })
+  const currentAnalytics = monthlyAnalytics[5]
+  const previousAnalytics = monthlyAnalytics[4]
+  const incomeChange = previousAnalytics.income ? ((currentAnalytics.income - previousAnalytics.income) / previousAnalytics.income) * 100 : null
+  const profitChange = previousAnalytics.profit ? ((currentAnalytics.profit - previousAnalytics.profit) / Math.abs(previousAnalytics.profit)) * 100 : null
+  const financialAlerts = [
+    overdue > 0 && { level:'danger', text:'¥' + overdue.toLocaleString() + ' em cobranças vencidas' },
+    realProfit < 0 && { level:'danger', text:'O mês está operando com prejuízo real' },
+    realMargin >= 0 && realMargin < 20 && income > 0 && { level:'warning', text:'Margem real baixa: ' + realMargin.toFixed(1) + '%' },
+    incomeChange !== null && incomeChange < -15 && { level:'warning', text:'Recebimentos caíram ' + Math.abs(incomeChange).toFixed(1) + '% vs. mês anterior' },
+  ].filter(Boolean)
+
   return (
     <div>
       <div className="tab-pills">
@@ -126,6 +148,28 @@ export default function Cashflow() {
             <div className="finance-kpi"><span>Lucro real</span><strong style={{color:realProfit>=0?'var(--green)':'var(--red)'}}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
             <div className="finance-kpi"><span>Margem real</span><strong style={{color:realMargin>=0?'var(--green)':'var(--red)'}}>{realMargin.toFixed(1)}%</strong></div>
           </div>
+          <div className="finance-summary-grid">
+            <div className="card finance-focus-card">
+              <div className="card-title">Evolução financeira</div>
+              <div style={{fontSize:11,color:'var(--text3)',marginBottom:8}}>Últimos 6 meses · entradas e despesas registradas</div>
+              <LineChart data={monthlyAnalytics.map(m=>({label:m.label,value:m.income}))} lineLabel="Entradas" valueFormatter={v=>'¥'+Number(v).toLocaleString()} />
+            </div>
+            <div className="card finance-focus-card">
+              <div className="card-title">Comparação com mês anterior</div>
+              <div className="finance-big-row"><span>Recebimentos</span><strong className={incomeChange === null || incomeChange >= 0 ? 'finance-positive':'finance-negative'}>{incomeChange === null ? '—' : (incomeChange >= 0 ? '+' : '') + incomeChange.toFixed(1) + '%'}</strong></div>
+              <div className="finance-big-row"><span>Lucro/caixa</span><strong className={profitChange === null || profitChange >= 0 ? 'finance-positive':'finance-negative'}>{profitChange === null ? '—' : (profitChange >= 0 ? '+' : '') + profitChange.toFixed(1) + '%'}</strong></div>
+              <div className="finance-big-row"><span>Mês atual</span><strong>¥{currentAnalytics.profit.toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>Mês anterior</span><strong>¥{previousAnalytics.profit.toLocaleString()}</strong></div>
+            </div>
+          </div>
+          {financialAlerts.length > 0 && (
+            <div className="card attention-card" style={{marginBottom:14}}>
+              <div className="card-title">⚠ Alertas financeiros</div>
+              <div className="attention-list">
+                {financialAlerts.map((a,i)=><div key={i} className={'attention-item attention-'+a.level}><div><strong>{a.text}</strong></div></div>)}
+              </div>
+            </div>
+          )}
           <div className="finance-summary-grid">
             <div className="card finance-focus-card">
               <div className="card-title">Situação do mês</div>
