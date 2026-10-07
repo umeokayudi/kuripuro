@@ -54,23 +54,24 @@ const groups = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onMobileClose }) {
   const { t } = useLang()
   const { logout } = useAuth()
   const s = t.sidebar
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`}>
+    <>
+    <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " sidebar-mobile-open" : ""}`}>
       <div className="sidebar-logo">
         <div className="brand">KuriPuro</div>
         <div className="brand-mark">KP</div>
         <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
-        <button type="button" className="sidebar-collapse" onClick={() => setCollapsed(v => !v)} aria-label="Toggle navigation" title="Toggle navigation">‹</button>
+        <button type="button" className="sidebar-collapse" onClick={() => setCollapsed(v => !v)} aria-label={s.toggleNavigation || "Toggle navigation"} title={s.toggleNavigation || "Toggle navigation"}>‹</button>
       </div>
       <nav className="sidebar-nav">
         <div className="nav-group nav-group-ai">
-          <NavLink to="/ai" end className={({ isActive }) => `nav-item nav-ai${isActive ? ' active' : ''}`}>
+          <NavLink to="/ai" end onClick={onMobileClose} className={({ isActive }) => `nav-item nav-ai${isActive ? ' active' : ''}`}>
             <Icons.sparkle /><span className="nav-label">{s.ai || 'AI'}</span>
           </NavLink>
         </div>
@@ -78,7 +79,7 @@ export default function Sidebar() {
           <div key={group.key} className="nav-group">
             <div className="nav-group-label">{s[group.key]}</div>
             {group.items.map(({ to, key, icon: Icon }) => (
-              <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+              <NavLink key={to} to={to} end={to === '/'} onClick={onMobileClose} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
                 <Icon /><span className="nav-label">{s[key]}</span>
               </NavLink>
             ))}
@@ -92,5 +93,7 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+    {mobileOpen && <button type="button" className="sidebar-mobile-overlay" onClick={onMobileClose} aria-label={s.closeMenu || "Close menu"} />}
+    </>
   )
 }

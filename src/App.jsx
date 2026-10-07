@@ -93,6 +93,7 @@ function pageTitle(pathname, sidebar) {
 function AppContent() {
   const { user, loading, logout } = useAuth()
   const { t } = useLang()
+  const [sidebarOpen, setSidebarOpen] = React.useState(false)
   const location = useLocation()
   const a = t.app
   const title = pageTitle(location.pathname, t.sidebar)
@@ -125,12 +126,14 @@ function AppContent() {
 
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
 
       <div className="main">
         <header className="topbar">
-          <div className="ref-topbar-search"><span>⌕</span><span>Search clients, jobs, invoices...</span><kbd>⌘K</kbd></div>
-          <div className="topbar-right"><button type="button" className="ref-top-action" title="Notifications">♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">Administrator</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <button type="button" className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} aria-label={sidebarOpen ? a.closeMenu : a.openMenu} aria-expanded={sidebarOpen}>☰</button>
+          <div className="mobile-kp-brand">KP</div>
+          <div className="ref-topbar-search"><span>⌕</span><span>{a.searchPlaceholder}</span><kbd>⌘K</kbd></div>
+          <div className="topbar-right"><button type="button" className="ref-top-action" title={a.notifications}>♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
