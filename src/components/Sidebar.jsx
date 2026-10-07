@@ -7,6 +7,12 @@ import LanguageToggle from './LanguageToggle'
 
 const groups = [
   {
+    key: 'navAI',
+    items: [
+      { to: '/ai', key: 'ai', icon: Icons.sparkle },
+    ],
+  },
+  {
     key: 'navOps',
     items: [
       { to: '/', key: 'dashboard', icon: Icons.dashboard },
@@ -79,11 +85,6 @@ export default function Sidebar() {
             ))}
           </div>
         ))}
-            <div className="nav-group nav-group-ai">
-          <NavLink to="/ai" end className={({ isActive }) => `nav-item nav-ai${isActive ? ' active' : ''}`}>
-            <Icons.sparkle /><span className="nav-label">{s.ai || 'AI'}</span>
-          </NavLink>
-        </div>
       </nav>
       <div className="sidebar-footer">
         <LanguageToggle variant="dark" />
