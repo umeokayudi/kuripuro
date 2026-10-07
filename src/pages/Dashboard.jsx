@@ -1,3 +1,4 @@
+import { ExecutiveDashboard } from '../components/AnalyticsCharts'
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -191,6 +192,16 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      <ExecutiveDashboard
+        clients={clients}
+        monthJobs={monthJobs}
+        todayJobs={todayJobs}
+        employees={employees}
+        staleCount={staleCount}
+        atRisk={atRisk}
+        deepProgress={deepProgress}
+      />
 
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
