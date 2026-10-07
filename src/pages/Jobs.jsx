@@ -616,7 +616,7 @@ export default function Jobs() {
             <button className="btn btn-primary" onClick={() => setShowDaySchedule(true)}>📅 {jt.daySchedule}</button>
           </div>
 
-          <div className="ops-kpis">
+          <div className="ops-kpis ops-kpis-v92">
             <button className="ops-kpi" onClick={() => { setDateFilter('today'); setStatusFilter('all') }}>
               <span>Today</span><b>{todayJobsCount}</b>
             </button>
@@ -637,7 +637,7 @@ export default function Jobs() {
             </div>
           </div>
 
-          <div className="ops-filter-bar">
+          <div className="ops-filter-bar ops-filter-bar-v92">
             <div className="ops-search">
               <span>⌕</span>
               <input value={jobSearch} onChange={e => setJobSearch(e.target.value)} placeholder="Search client, employee, location..." aria-label="Search jobs" />
