@@ -392,6 +392,52 @@ export default function Dashboard() {
         )
       })()}
 
+      {(() => {
+        const employeeQuality = employees.map(emp => {
+          const empJobs = monthJobs.filter(j => j.employee_id === emp.id && j.status !== 'cancelled')
+          const completed = empJobs.filter(j => j.status === 'completed')
+          const durations = completed.map(jobDurationMin).filter(v => v != null && v > 0)
+          const avgMin = durations.length ? durations.reduce((a,b)=>a+b,0) / durations.length : null
+          const value = completed.reduce((s,j)=>s + Number(j.retro_value ?? j.value ?? 0), 0)
+          const valuePerHour = avgMin ? value / (avgMin / 60) : 0
+          const completion = empJobs.length ? (completed.length / empJobs.length) * 100 : 0
+          const qualityRatings = clientRatings.filter(r => r.employee_id === emp.id && r.created_at && r.created_at.startsWith(progressMonth))
+          const rating = qualityRatings.length ? avgStars(qualityRatings) : null
+          const risk = (completion < 70 ? 25 : 0) + (avgMin != null && avgMin > 120 ? 20 : 0) + (rating != null && rating < 3.5 ? 30 : 0) + (valuePerHour > 0 && valuePerHour < 2500 ? 15 : 0)
+          return { emp, completed: completed.length, avgMin, value, valuePerHour, completion, rating, risk }
+        }).filter(x => x.completed > 0).sort((a,b) => b.risk - a.risk).slice(0, 6)
+        const flagged = employeeQuality.filter(x => x.risk >= 25)
+        if (!flagged.length) return null
+        return (
+          <div className="card attention-card" style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+              <div>
+                <div className="finance-eyebrow">TEAM QUALITY & PRODUCTIVITY</div>
+                <h3 style={{margin:'2px 0 0'}}>Funcionários que precisam de atenção</h3>
+                <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Cruza produtividade, duração, conclusão e avaliações quando disponíveis.</p>
+              </div>
+              <Link to="/employees" className="btn">Ver equipe →</Link>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:10}}>
+              {flagged.map(({emp,completed,avgMin,valuePerHour,completion,rating,risk}) => (
+                <Link key={emp.id} to={`/employees/${emp.id}`} style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
+                  <div style={{fontSize:11,fontWeight:800,color:'var(--red)',letterSpacing:'.04em'}}>ATENÇÃO · {risk >= 50 ? 'ALTA' : 'MÉDIA'}</div>
+                  <div style={{fontSize:16,fontWeight:800,marginTop:5}}>{emp.full_name}</div>
+                  <div style={{display:'flex',gap:10,flexWrap:'wrap',fontSize:12,color:'var(--text3)',marginTop:7}}>
+                    <span>{completed} concluídos</span>
+                    <span>{completion.toFixed(0)}% execução</span>
+                    {avgMin != null && <span>{Math.round(avgMin)} min médio</span>}
+                    {rating != null && <span>★ {rating.toFixed(1)}</span>}
+                  </div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:7}}>¥{Math.round(valuePerHour).toLocaleString()}/h produzido</div>
+                  <div style={{fontSize:12,fontWeight:700,color:'var(--text2)',marginTop:8}}>Abrir funcionário →</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
           <div>
