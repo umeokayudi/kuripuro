@@ -176,52 +176,13 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
 
   return (
     <section className="executive-section">
-      <div className="section-heading-row">
+      <div className="section-heading-row executive-heading-compact">
         <div>
           <div className="eyebrow">{d.overview}</div>
           <h3>{d.now}</h3>
           <p>{d.quickDecision}</p>
         </div>
         <div className="executive-period"><span>{d.monthlyContractBase}</span><strong>{fmtYen(financial.revenue)}</strong></div>
-      </div>
-
-      <div className="executive-pulse">
-        <div className="pulse-card pulse-primary">
-          <span className="pulse-icon">¥</span>
-          <div><small>{d.estimatedProfit}</small><strong>{fmtYen(financial.profit)}</strong><em>{d.margin.replace('{value}', financial.margin.toFixed(1))}</em></div>
-        </div>
-        <div className="pulse-card">
-          <span className="pulse-icon">✓</span>
-          <div><small>{d.todayCompleted}</small><strong>{completedToday}/{todayJobs.length}</strong><em>{d.agendaProgress.replace('{value}', todayProgress)}</em></div>
-        </div>
-        <div className="pulse-card">
-          <span className="pulse-icon">!</span>
-          <div><small>{d.needsAttention}</small><strong>{staleCount + atRisk.length + assignedToday}</strong><em>{d.waitingStart.replace('{value}', assignedToday)}</em></div>
-        </div>
-        <div className="pulse-card">
-          <span className="pulse-icon">↗</span>
-          <div><small>{d.topClient}</small><strong className="pulse-client">{topClient?.name || '—'}</strong><em>{topClient ? fmtYen(topClient.profit) : d.noData}</em></div>
-        </div>
-      </div>
-
-      <div className="executive-grid executive-grid-main">
-        <div className="card executive-card executive-wide">
-          <div className="chart-card-head">
-            <div><div className="card-title">{d.serviceVolume}</div><div className="chart-subtitle">{d.serviceVolumeSubtitle}</div></div>
-            <span className="chart-kpi">{monthJobs.length} {d.jobs}</span>
-          </div>
-          <LineChart data={trend} lineLabel={d.latestDay} />
-        </div>
-
-        <div className="card executive-card">
-          <div className="chart-card-head"><div><div className="card-title">{d.financialSnapshot}</div><div className="chart-subtitle">{d.currentContractBase}</div></div></div>
-          <div className="financial-stack">
-            <div><span>{d.revenue}</span><strong>{fmtYen(financial.revenue)}</strong></div>
-            <div><span>{d.estimatedCost}</span><strong>{fmtYen(financial.cost)}</strong></div>
-            <div className="financial-profit"><span>{d.profit}</span><strong>{fmtYen(financial.profit)}</strong></div>
-            <div><span>{d.marginLabel}</span><strong>{financial.margin.toFixed(1)}%</strong></div>
-          </div>
-        </div>
       </div>
 
       <div className="executive-grid">
