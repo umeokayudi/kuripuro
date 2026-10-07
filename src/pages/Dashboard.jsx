@@ -181,14 +181,27 @@ export default function Dashboard() {
         <div className="table-wrap"><table>
           <thead><tr><th>Funcionário</th><th>Jobs</th><th>Valor</th><th>Tempo médio</th><th>Valor / hora</th><th>Score</th></tr></thead>
           <tbody>{employees.map(emp => {
-            const rows = monthJobs.filter(j => j.employee_id === emp.id && j.status === 'completed')
+            const assigned = monthJobs.filter(j => j.employee_id === emp.id && j.status !== 'cancelled')
+            const rows = assigned.filter(j => j.status === 'completed')
             const value = rows.reduce((sum,j)=>sum+Number(j.retro_value ?? j.value ?? 0),0)
             const durations = rows.map(jobDurationMin).filter(v=>v != null && v > 0)
             const avgMin = durations.length ? durations.reduce((a,b)=>a+b,0)/durations.length : null
             const valuePerHour = avgMin ? value / (avgMin / 60) : 0
-            return <tr key={emp.id}><td style={{fontWeight:700}}>{emp.full_name}</td><td>{rows.length}</td><td style={{fontWeight:700}}>¥{value.toLocaleString()}</td><td>{avgMin ? Math.round(avgMin) + ' min' : '—'}</td><td style={{fontWeight:700,color:valuePerHour>0?'var(--green)':'var(--text3)'}}>{valuePerHour ? '¥' + Math.round(valuePerHour).toLocaleString() : '—'}</td><td><span className="badge badge-green">{emp.score ?? 100}</span></td></tr>
-          })}</tbody>
-        </table></div>
+            const completion = assigned.length ? (rows.length / assigned.length) * 100 : 0
+            return { emp, rows, value, avgMin, valuePerHour, completion }
+          }).sort((a,b)=>b.valuePerHour-a.valuePerHour).map(({emp,rows,value,avgMin,valuePerHour,completion}) => {
+            const todayCount = todayJobs.filter(j=>j.employee_id===emp.id && j.status!=='cancelled').length
+            const label = rows.length===0 ? 'Sem dados' : completion >= 90 && valuePerHour > 0 ? 'Excelente' : completion >= 75 ? 'Normal' : 'Atenção'
+            const tone = label==='Excelente' ? 'badge-green' : label==='Atenção' ? 'badge-red' : 'badge-blue'
+            return <tr key={emp.id}>
+              <td style={{fontWeight:700}}>{emp.full_name}<div style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>{todayCount} job(s) hoje</div></td>
+              <td>{rows.length} <span style={{fontSize:11,color:'var(--text3)'}}>{completion ? '/ '+Math.round(completion)+'%' : ''}</span></td>
+              <td style={{fontWeight:700}}>¥{value.toLocaleString()}</td>
+              <td>{avgMin ? Math.round(avgMin) + ' min' : '—'}</td>
+              <td style={{fontWeight:700,color:valuePerHour>0?'var(--green)':'var(--text3)'}}>{valuePerHour ? '¥' + Math.round(valuePerHour).toLocaleString() : '—'}</td>
+              <td><span className="badge badge-green">{emp.score ?? 100}</span> <span className={`badge ${tone}`}>{label}</span></td>
+            </tr>
+          })}</tbody>        </table></div>
       </div>
 
       {staleCount > 0 && (
