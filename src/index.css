@@ -768,3 +768,90 @@ body { background: var(--hq-bg); }
 
 /* Finance command center */
 .finance-toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px}.finance-eyebrow{font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--gold)}.finance-toolbar h3{margin:3px 0 2px;color:var(--navy);font-size:22px;letter-spacing:-.03em}.finance-toolbar p{color:var(--hq-muted);font-size:11px}.finance-toolbar input{padding:9px 12px;border:1px solid var(--hq-border);border-radius:10px;background:#fff;color:var(--navy);font-weight:700}.finance-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;margin-bottom:14px}.finance-kpi{background:#fff;border:1px solid var(--hq-border);border-radius:12px;padding:12px;min-width:0;box-shadow:0 2px 8px rgba(15,30,50,.025)}.finance-kpi span{display:block;color:var(--hq-muted);font-size:9px;margin-bottom:5px}.finance-kpi strong{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.finance-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}.finance-focus-card{margin:0!important}.finance-big-row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--hq-border);font-size:12px}.finance-big-row span{color:var(--hq-muted)}.finance-big-row strong{color:var(--navy)}.finance-big-row.finance-total{border-bottom:0;padding-bottom:0;font-weight:800}.finance-big-row.finance-total strong{font-size:17px}.finance-positive{color:var(--green)!important}.finance-negative{color:var(--red)!important}.finance-blue{color:var(--hq-blue)!important}@media(max-width:1100px){.finance-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:720px){.finance-toolbar{flex-direction:column;align-items:stretch}.finance-toolbar input{width:100%}.finance-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-summary-grid{grid-template-columns:1fr}}
+
+
+/* KuriPuro 2026 Employee Portal — app-like mobile identity */
+.emp-backdrop {
+  background:
+    radial-gradient(ellipse 90% 40% at 50% -10%,rgba(37,99,235,.10),transparent 58%),
+    #f6f8fc !important;
+  color:#172033 !important;
+}
+.emp-shell {
+  --emp-primary:#2563eb;
+  --emp-primary2:#4f46e5;
+  --emp-bg:#f6f8fc;
+  --emp-card:#fff;
+  --emp-border:#e7ebf2;
+  --emp-text:#172033;
+  --emp-muted:#718096;
+  background:var(--emp-bg) !important;
+  color:var(--emp-text) !important;
+  min-height:100dvh;
+  font-family:var(--font);
+}
+.emp-shell .emp-brand {
+  color:#718096 !important;
+  letter-spacing:.12em;
+}
+.emp-shell .emp-name {
+  color:#172033 !important;
+}
+.emp-shell button {
+  min-height:44px;
+  border-radius:14px;
+  font-family:var(--font);
+  transition:transform .15s ease,box-shadow .15s ease,background .15s ease;
+}
+.emp-shell button:active { transform:scale(.98); }
+.emp-shell input,
+.emp-shell select,
+.emp-shell textarea {
+  min-height:46px;
+  border-radius:13px !important;
+  border:1px solid var(--emp-border) !important;
+  background:#fff !important;
+  color:var(--emp-text) !important;
+  box-shadow:0 1px 2px rgba(20,35,60,.03);
+}
+.emp-shell input:focus,
+.emp-shell select:focus,
+.emp-shell textarea:focus {
+  border-color:#93b4ff !important;
+  box-shadow:0 0 0 4px rgba(37,99,235,.10) !important;
+  outline:none !important;
+}
+.emp-shell .card,
+.emp-shell [style*="border-radius: 14px"],
+.emp-shell [style*="borderRadius: 14"] {
+  border-color:var(--emp-border) !important;
+  box-shadow:0 8px 26px rgba(20,35,60,.055);
+}
+.emp-shell a { color:var(--emp-primary); }
+.emp-shell .btn-primary,
+.emp-shell button[style*="background: rgb(193, 156, 86)"],
+.emp-shell button[style*="#c19c56"] {
+  background:linear-gradient(135deg,var(--emp-primary),var(--emp-primary2)) !important;
+  color:#fff !important;
+  border-color:transparent !important;
+  box-shadow:0 8px 18px rgba(37,99,235,.16);
+}
+.emp-shell .badge {
+  border-radius:999px;
+  padding:5px 9px;
+}
+.emp-shell img {
+  border-radius:14px;
+}
+@media (min-width:768px){
+  .emp-shell {
+    max-width:520px;
+    margin:0 auto;
+    min-height:100dvh;
+    box-shadow:0 0 0 1px #e7ebf2,0 20px 70px rgba(20,35,60,.10);
+  }
+}
+@media (max-width:767px){
+  .emp-backdrop { padding:0 !important; }
+  .emp-shell { width:100%; }
+}
