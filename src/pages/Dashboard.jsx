@@ -172,6 +172,24 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className="card" style={{marginBottom:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+          <div>
+            <div className="finance-eyebrow">OPERATION CONTROL</div>
+            <h3 style={{margin:'2px 0 0'}}>Operação de hoje</h3>
+            <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>O que já aconteceu e o que precisa de ação agora.</p>
+          </div>
+          <Link to="/jobs" className="btn btn-primary">Abrir jobs →</Link>
+        </div>
+        <div className="finance-kpis">
+          <div className="finance-kpi"><span>Total</span><strong>{todayJobs.length}</strong></div>
+          <div className="finance-kpi"><span>Concluídos</span><strong style={{color:'var(--green)'}}>{todayJobs.filter(j=>j.status==='completed').length}</strong></div>
+          <div className="finance-kpi"><span>Em andamento</span><strong style={{color:'var(--gold)'}}>{todayJobs.filter(j=>j.status==='in_progress').length}</strong></div>
+          <div className="finance-kpi"><span>Aguardando</span><strong style={{color:'var(--hq-blue)'}}>{todayJobs.filter(j=>j.status==='assigned').length}</strong></div>
+          <div className="finance-kpi"><span>Sem funcionário</span><strong style={{color: todayJobs.some(j=>!j.employee_id)?'var(--red)':'var(--green)'}}>{todayJobs.filter(j=>!j.employee_id).length}</strong></div>
+        </div>
+      </div>
+
       {staleCount > 0 && (
         <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ {fill(d.staleJobs, { count: staleCount })}</span>
