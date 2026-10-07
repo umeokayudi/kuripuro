@@ -160,20 +160,20 @@ export default function Dashboard() {
       <DetailModal />
       <div className="dash-ref-head"><div><div className="dash-ref-eyebrow">COMMAND CENTER · TOKYO</div><h1>Good evening, Alexandre 👋</h1><p>Here's what's happening with your business today.</p></div><div className="dash-ref-actions"><Link to="/jobs" className="btn dash-ref-primary">＋ New Job</Link><Link to="/clients" className="btn">＋ New Client</Link><Link to="/faturas" className="btn">＋ Invoice</Link></div></div>
       <div className="dash-ref-kpis">
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Revenue (This Month)</span><span className="dash-ref-kpi-icon">¥</span></div><div className="dash-ref-kpi-value">{fmt(revenue)}</div><div className="dash-ref-kpi-meta positive">Current contract base</div></div>
+        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Contract Base</span><span className="dash-ref-kpi-icon">¥</span></div><div className="dash-ref-kpi-value">{fmt(revenue)}</div><div className="dash-ref-kpi-meta positive">Current contract base</div></div>
         <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Profit</span><span className="dash-ref-kpi-icon">↗</span></div><div className="dash-ref-kpi-value">{fmt(profit)}</div><div className="dash-ref-kpi-meta positive">{revenue ? ((profit/revenue)*100).toFixed(1) : '0.0'}% margin</div></div>
         <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Jobs Completion</span><span className="dash-ref-kpi-icon">✓</span></div><div className="dash-ref-kpi-value">{todayJobs.length ? Math.round(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100) : 0}%</div><div className="dash-ref-kpi-meta">Today</div></div>
         <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Active Clients</span><span className="dash-ref-kpi-icon">♙</span></div><div className="dash-ref-kpi-value">{clients.length}</div><div className="dash-ref-kpi-meta positive">Active accounts</div></div>
         <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Open Issues</span><span className="dash-ref-kpi-icon">!</span></div><div className="dash-ref-kpi-value">{staleCount + atRisk.length}</div><div className="dash-ref-kpi-meta danger">{staleCount} delayed · {atRisk.length} client risk</div></div>
       </div>
       <div className="dash-ref-grid">
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Revenue & Profit</div><div className="dash-ref-card-sub">Current contract base</div></div><Link to="/reports" className="dash-ref-link">View analytics →</Link></div><div className="financial-stack"><div><span>Revenue</span><strong>{fmt(revenue)}</strong></div><div><span>Estimated cost</span><strong>{fmt(cost)}</strong></div><div className="financial-profit"><span>Profit</span><strong>{fmt(profit)}</strong></div><div><span>Margin</span><strong>{revenue ? ((profit/revenue)*100).toFixed(1) : '0.0'}%</strong></div></div></div>
+        
         <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Business Health</div><div className="dash-ref-card-sub">Live indicators</div></div></div><div className="dash-ref-health"><div className="dash-ref-score"><div className="dash-ref-score-inner"><strong>{revenue ? Math.max(0,Math.min(100,Math.round(profit/revenue*100))) : 0}</strong><span>OVERALL</span></div></div><div className="dash-ref-health-list"><div className="dash-ref-health-row"><span>Service Quality</span><strong>{overallAvg ? Math.round(overallAvg*20) : '—'}</strong></div><div className="dash-ref-health-row"><span>Customer Satisfaction</span><strong>{overallAvg ? Math.round(overallAvg*20) : '—'}</strong></div><div className="dash-ref-health-row"><span>Schedule Adherence</span><strong>{todayJobs.length ? Math.round(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100) : 100}</strong></div></div></div></div>
         <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">AI Insights</div><div className="dash-ref-card-sub">Things worth checking now</div></div><Link to="/ai" className="dash-ref-link">See all</Link></div><div className="dash-ref-insights"><div className="dash-ref-insight"><span className="dash-ref-insight-icon">⚠</span><div><strong>{staleCount ? staleCount+' jobs need attention' : 'Operations are on track'}</strong><p>Review today's schedule and delayed work.</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">↗</span><div><strong>{fmt(profit)} estimated profit</strong><p>Based on current client values.</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">◎</span><div><strong>{atRisk.length} client risks</strong><p>Low satisfaction accounts to review.</p></div></div></div></div>
       </div>
       <div className="dash-ref-lower">
         <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Today's Operations</div><div className="dash-ref-card-sub">{todayJobs.length} jobs scheduled</div></div><Link to="/jobs" className="dash-ref-link">View all</Link></div><div className="dash-ref-list">{todayJobs.slice(0,6).map(j=><div className="dash-ref-list-row" key={j.id}><span className="dash-ref-time">{j.scheduled_time||'—'}</span><span className="dash-ref-thumb"></span><div className="dash-ref-job"><strong>{j.title?.replace(/ — .*/, '')}</strong><span>{j.employee_name||'Unassigned'}</span></div><span className="dash-ref-status">{t.status[j.status]||j.status}</span></div>)}{!todayJobs.length&&<div className="empty-state"><strong>No jobs today</strong></div>}</div></div>
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Cash Position</div><div className="dash-ref-card-sub">Current contract view</div></div><Link to="/cashflow" className="dash-ref-link">View cashflow →</Link></div><div className="dash-ref-cash"><div className="dash-ref-cash-value">{fmt(revenue-cost)}</div><div className="dash-ref-cash-line"><span>Receivables</span><strong>Open invoices</strong></div><div className="dash-ref-cash-line"><span>Estimated profit</span><strong>{fmt(profit)}</strong></div></div></div>
+        
         <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Recent Activity</div><div className="dash-ref-card-sub">Latest operational signals</div></div><Link to="/reports" className="dash-ref-link">View all</Link></div><div className="dash-ref-insights"><div className="dash-ref-insight"><span className="dash-ref-insight-icon">✓</span><div><strong>{todayJobs.filter(j=>j.status==='completed').length} jobs completed</strong><p>Today</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">★</span><div><strong>{ratings30.length} customer ratings</strong><p>Last 30 days</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">◌</span><div><strong>{employees.length} active employees</strong><p>Current team</p></div></div></div></div>
       </div>
 
@@ -183,20 +183,6 @@ export default function Dashboard() {
           <button onClick={cancelStaleJobs} className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', flexShrink: 0 }}>{d.cancelStale}</button>
         </div>
       )}
-
-      <div className="dash-metrics">
-        {[
-          [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
-          [d.netProfit, fmt(profit), 'var(--green)'],
-          [d.activeEmployees, employees.length, 'var(--text)'],
-          [d.todayJobs, todayJobs.length, 'var(--text)'],
-        ].map(([l, v, c]) => (
-          <div key={l} className="metric-card">
-            <div className="metric-label">{l}</div>
-            <div className="metric-value" style={{ color: c }}>{v}</div>
-          </div>
-        ))}
-      </div>
 
       <ExecutiveDashboard
         clients={clients}
