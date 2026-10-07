@@ -27,9 +27,13 @@ export default function Cashflow() {
 
   const load = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('cashflow').select('*').order('entry_date', { ascending:false }).limit(100)
+    const [{ data, error }, { data: invoiceData }] = await Promise.all([
+      supabase.from('cashflow').select('*').order('entry_date', { ascending:false }).limit(500),
+      supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').order('issue_date', { ascending:false }).limit(500),
+    ])
     if (error) return toast.error(error.message)
     setEntries((data || []).map(normalizeEntry))
+    setInvoices(invoiceData || [])
     setLoading(false)
   }
 
@@ -61,7 +65,6 @@ export default function Cashflow() {
   const expense = thisMonth.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount||0),0)
   const balance = income - expense
   const issued = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status !== 'cancelled').reduce((s,f)=>s+Number(f.total||0),0)
-  const receivedByInvoice = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status === 'paid').reduce((s,f)=>s+Number(f.total||0),0)
   const receivable = invoices.filter(f=>f.status === 'sent' || f.status === 'draft').reduce((s,f)=>s+Number(f.total||0),0)
   const today = new Date().toISOString().slice(0,10)
   const overdue = invoices.filter(f=>(f.status === 'sent' || f.status === 'draft') && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
@@ -138,6 +141,7 @@ export default function Cashflow() {
                 </div>
               </div>
             ))}
+          </div>
           </div>
         </div>
       )}
