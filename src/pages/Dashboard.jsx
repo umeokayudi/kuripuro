@@ -211,6 +211,43 @@ export default function Dashboard() {
         </div>
       )}
 
+      {(() => {
+        const clientRisks = clients.map(client => {
+          const jobs = monthJobs.filter(j => j.client_id === client.id && j.status !== 'cancelled')
+          const pending = jobs.filter(j => j.status !== 'completed').length
+          const completed = jobs.filter(j => j.status === 'completed').length
+          const revenue = Number(client.monthly_revenue || 0)
+          const cost = Number(client.monthly_cost || 0)
+          const margin = revenue > 0 ? ((revenue - cost) / revenue) * 100 : 0
+          const riskScore = (pending * 10) + (margin < 15 ? 25 : margin < 25 ? 10 : 0)
+          return { client, pending, completed, margin, riskScore }
+        }).filter(x => x.riskScore >= 20).sort((a,b) => b.riskScore-a.riskScore).slice(0,5)
+        const delayed = monthJobs.filter(j => j.status === 'assigned' && j.scheduled_date < tokyoToday()).length
+        if (!clientRisks.length && !delayed) return null
+        return <div className="card attention-card" style={{marginBottom:16}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+            <div>
+              <div className="finance-eyebrow">PRIORITY CENTER</div>
+              <h3 style={{margin:'2px 0 0'}}>O que precisa da sua atenção</h3>
+              <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>O Kuripuro encontrou riscos operacionais que merecem ação.</p>
+            </div>
+            <Link to="/jobs" className="btn">Ver operação →</Link>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:10}}>
+            {delayed > 0 && <div style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+              <div style={{fontSize:12,fontWeight:700,color:'#EF9F27'}}>SERVIÇOS ATRASADOS</div>
+              <div style={{fontSize:25,fontWeight:800,marginTop:5}}>{delayed}</div>
+              <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>Jobs atribuídos de datas anteriores.</div>
+            </div>}
+            {clientRisks.map(({client,pending,margin}) => <div key={client.id} style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+              <div style={{fontSize:12,fontWeight:700,color:'var(--red)'}}>CLIENTE EM RISCO</div>
+              <div style={{fontSize:16,fontWeight:800,marginTop:5}}>{client.name || client.client_name || 'Cliente'}</div>
+              <div style={{fontSize:12,color:'var(--text3)',marginTop:5}}>{pending} pendente(s) · margem {Math.round(margin)}%</div>
+            </div>)}
+          </div>
+        </div>
+      })()}
+
       <div className="dash-metrics">
         {[
           [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
