@@ -449,6 +449,9 @@ export default function Jobs() {
   const CLEANING_TYPES = cleaningTypesForLang(lang)
   const [tab, setTab] = useState('list')
   const [cleaningFilter, setCleaningFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [jobSearch, setJobSearch] = useState('')
+  const [dateFilter, setDateFilter] = useState('all')
   const [jobs, setJobs] = useState([])
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
@@ -566,9 +569,26 @@ export default function Jobs() {
   const regularJobs = jobs.filter(j => j.job_category !== 'spot')
   const basicJobs = regularJobs.filter(j => getCleaningType(j) === 'basic')
   const deepJobs = regularJobs.filter(j => getCleaningType(j) === 'deep')
-  const filteredJobs = cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs
+  const filteredJobs = (cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs)
+    .filter(j => statusFilter === 'all' || j.status === statusFilter)
+    .filter(j => {
+      if (dateFilter === 'all') return true
+      const today = toDateStr(new Date())
+      if (dateFilter === 'today') return j.scheduled_date === today
+      if (dateFilter === 'overdue') return j.scheduled_date < today && !['completed', 'cancelled'].includes(j.status)
+      return true
+    })
+    .filter(j => {
+      const q = jobSearch.trim().toLowerCase()
+      if (!q) return true
+      return [j.title, j.client_name, j.employee_name, j.address].some(v => String(v || '').toLowerCase().includes(q))
+    })
   const listCompleted = filteredJobs.filter(j => j.status === 'completed').length
   const listPct = filteredJobs.length ? Math.round((listCompleted / filteredJobs.length) * 100) : 0
+  const todayJobsCount = regularJobs.filter(j => j.scheduled_date === toDateStr(new Date())).length
+  const overdueJobsCount = regularJobs.filter(j => j.scheduled_date < toDateStr(new Date()) && !['completed', 'cancelled'].includes(j.status)).length
+  const unassignedCount = regularJobs.filter(j => !j.employee_id && j.status !== 'cancelled').length
+  const activeCount = regularJobs.filter(j => ['assigned', 'in_progress'].includes(j.status)).length
 
   return (
     <div>
@@ -587,6 +607,56 @@ export default function Jobs() {
 
       {tab==='list' && (
         <div>
+          <div className="ops-command-bar">
+            <div>
+              <div className="ops-eyebrow">OPERATIONS HQ</div>
+              <div className="ops-command-title">Service control center</div>
+              <div className="ops-command-sub">Monitor workload, exceptions and execution from one place.</div>
+            </div>
+            <button className="btn btn-primary" onClick={() => setShowDaySchedule(true)}>📅 {jt.daySchedule}</button>
+          </div>
+
+          <div className="ops-kpis">
+            <button className="ops-kpi" onClick={() => { setDateFilter('today'); setStatusFilter('all') }}>
+              <span>Today</span><b>{todayJobsCount}</b>
+            </button>
+            <button className="ops-kpi" onClick={() => setStatusFilter('assigned')}>
+              <span>Waiting</span><b>{regularJobs.filter(j => j.status === 'assigned').length}</b>
+            </button>
+            <button className="ops-kpi" onClick={() => setStatusFilter('in_progress')}>
+              <span>In progress</span><b>{regularJobs.filter(j => j.status === 'in_progress').length}</b>
+            </button>
+            <button className={overdueJobsCount ? "ops-kpi ops-kpi-danger" : "ops-kpi"} onClick={() => setDateFilter('overdue')}>
+              <span>Overdue</span><b>{overdueJobsCount}</b>
+            </button>
+            <button className={unassignedCount ? "ops-kpi ops-kpi-warning" : "ops-kpi"} onClick={() => { setStatusFilter('all'); setDateFilter('all'); setJobSearch(''); }}>
+              <span>Unassigned</span><b>{unassignedCount}</b>
+            </button>
+            <div className="ops-kpi ops-kpi-neutral">
+              <span>Active workload</span><b>{activeCount}</b>
+            </div>
+          </div>
+
+          <div className="ops-filter-bar">
+            <div className="ops-search">
+              <span>⌕</span>
+              <input value={jobSearch} onChange={e => setJobSearch(e.target.value)} placeholder="Search client, employee, location..." aria-label="Search jobs" />
+              {jobSearch && <button type="button" onClick={() => setJobSearch('')}>×</button>}
+            </div>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} aria-label="Filter status">
+              <option value="all">All statuses</option>
+              <option value="assigned">{st.assigned}</option>
+              <option value="in_progress">{st.in_progress}</option>
+              <option value="completed">{st.completed}</option>
+              <option value="cancelled">{st.cancelled}</option>
+            </select>
+            <select value={dateFilter} onChange={e => setDateFilter(e.target.value)} aria-label="Filter date">
+              <option value="all">All dates</option>
+              <option value="today">Today</option>
+              <option value="overdue">Overdue</option>
+            </select>
+          </div>
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
             {[
               { key: 'all', label: jt.filterAll, count: regularJobs.length, color: 'var(--navy)' },
