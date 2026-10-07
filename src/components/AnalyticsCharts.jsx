@@ -160,7 +160,6 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
       level: 'neutral', title: d.assignedToday, value: todayJobs.filter(j => j.status === 'assigned').length, text: d.jobsWaitingToStart
     }
   ].filter(Boolean)
-  const assignedToday = todayJobs.filter(j => j.status === 'assigned').length
 
   return (
     <section className="executive-section">
@@ -199,6 +198,7 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
       </div>
 
       <div className="executive-grid">
+        <div className="card executive-card">
           <div className="chart-card-head"><div><div className="card-title">{d.serviceMix}</div><div className="chart-subtitle">{d.topServiceCategories}</div></div></div>
           <DonutChart data={serviceTypes} centerLabel={d.jobs} centerValue={monthJobs.length} />
         </div>
@@ -206,22 +206,6 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
         <div className="card executive-card">
           <div className="chart-card-head"><div><div className="card-title">{d.teamWorkload}</div><div className="chart-subtitle">{d.jobsByEmployee}</div></div><span className="chart-kpi">{employees.length} {d.people}</span></div>
           <BarChart data={employeeLoad} valueFormatter={v => v + ' ' + d.jobs} />
-        </div>
-
-        <div className="card executive-card">
-          <div className="chart-card-head"><div><div className="card-title">{d.attention}</div><div className="chart-subtitle">{d.thingsWorthChecking}</div></div></div>
-          {attention.length === 0 ? (
-            <div className="executive-ok"><span>✓</span><div><strong>{d.everythingOnTrack}</strong><p>{d.noMajorAlerts}</p></div></div>
-          ) : (
-            <div className="attention-list">
-              {attention.map((item, i) => (
-                <div className={'attention-item attention-' + item.level} key={i}>
-                  <div className="attention-value">{item.value}</div>
-                  <div><strong>{item.title}</strong><p>{item.text}</p></div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
