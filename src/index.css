@@ -770,163 +770,34 @@ body { background: var(--hq-bg); }
 .finance-toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px}.finance-eyebrow{font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--gold)}.finance-toolbar h3{margin:3px 0 2px;color:var(--navy);font-size:22px;letter-spacing:-.03em}.finance-toolbar p{color:var(--hq-muted);font-size:11px}.finance-toolbar input{padding:9px 12px;border:1px solid var(--hq-border);border-radius:10px;background:#fff;color:var(--navy);font-weight:700}.finance-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;margin-bottom:14px}.finance-kpi{background:#fff;border:1px solid var(--hq-border);border-radius:12px;padding:12px;min-width:0;box-shadow:0 2px 8px rgba(15,30,50,.025)}.finance-kpi span{display:block;color:var(--hq-muted);font-size:9px;margin-bottom:5px}.finance-kpi strong{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.finance-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}.finance-focus-card{margin:0!important}.finance-big-row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--hq-border);font-size:12px}.finance-big-row span{color:var(--hq-muted)}.finance-big-row strong{color:var(--navy)}.finance-big-row.finance-total{border-bottom:0;padding-bottom:0;font-weight:800}.finance-big-row.finance-total strong{font-size:17px}.finance-positive{color:var(--green)!important}.finance-negative{color:var(--red)!important}.finance-blue{color:var(--hq-blue)!important}@media(max-width:1100px){.finance-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:720px){.finance-toolbar{flex-direction:column;align-items:stretch}.finance-toolbar input{width:100%}.finance-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-summary-grid{grid-template-columns:1fr}}
 
 
-/* KuriPuro 2026 Employee Portal — app-like mobile identity */
-.emp-backdrop {
-  background:
-    radial-gradient(ellipse 90% 40% at 50% -10%,rgba(37,99,235,.10),transparent 58%),
-    #f6f8fc !important;
-  color:#172033 !important;
-}
-.emp-shell {
-  --emp-primary:#2563eb;
-  --emp-primary2:#4f46e5;
-  --emp-bg:#f6f8fc;
-  --emp-card:#fff;
-  --emp-border:#e7ebf2;
-  --emp-text:#172033;
-  --emp-muted:#718096;
-  background:var(--emp-bg) !important;
-  color:var(--emp-text) !important;
-  min-height:100dvh;
-  font-family:var(--font);
-}
-.emp-shell .emp-brand {
-  color:#718096 !important;
-  letter-spacing:.12em;
-}
-.emp-shell .emp-name {
-  color:#172033 !important;
-}
-.emp-shell button {
-  min-height:44px;
-  border-radius:14px;
-  font-family:var(--font);
-  transition:transform .15s ease,box-shadow .15s ease,background .15s ease;
-}
-.emp-shell button:active { transform:scale(.98); }
-.emp-shell input,
-.emp-shell select,
-.emp-shell textarea {
-  min-height:46px;
-  border-radius:13px !important;
-  border:1px solid var(--emp-border) !important;
-  background:#fff !important;
-  color:var(--emp-text) !important;
-  box-shadow:0 1px 2px rgba(20,35,60,.03);
-}
-.emp-shell input:focus,
-.emp-shell select:focus,
-.emp-shell textarea:focus {
-  border-color:#93b4ff !important;
-  box-shadow:0 0 0 4px rgba(37,99,235,.10) !important;
-  outline:none !important;
-}
-.emp-shell .card,
-.emp-shell [style*="border-radius: 14px"],
-.emp-shell [style*="borderRadius: 14"] {
-  border-color:var(--emp-border) !important;
-  box-shadow:0 8px 26px rgba(20,35,60,.055);
-}
-.emp-shell a { color:var(--emp-primary); }
-.emp-shell .btn-primary,
-.emp-shell button[style*="background: rgb(193, 156, 86)"],
-.emp-shell button[style*="#c19c56"] {
-  background:linear-gradient(135deg,var(--emp-primary),var(--emp-primary2)) !important;
-  color:#fff !important;
-  border-color:transparent !important;
-  box-shadow:0 8px 18px rgba(37,99,235,.16);
-}
-.emp-shell .badge {
-  border-radius:999px;
-  padding:5px 9px;
-}
-.emp-shell img {
-  border-radius:14px;
-}
-@media (min-width:768px){
-  .emp-shell {
-    max-width:520px;
-    margin:0 auto;
-    min-height:100dvh;
-    box-shadow:0 0 0 1px #e7ebf2,0 20px 70px rgba(20,35,60,.10);
+/* Mobile recovery: keep the admin shell compact and readable */
+@media (max-width:720px) {
+  .main { padding-top: 0 !important; padding-bottom: 70px; }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    min-height: 58px;
+    padding: 10px 14px;
+    gap: 10px;
   }
-}
-@media (max-width:767px){
-  .emp-backdrop { padding:0 !important; }
-  .emp-shell { width:100%; }
-}
-
-
-/* Employee portal 2026 navigation */
-.emp-bottom-nav {
-  position:fixed;
-  bottom:0;
-  left:50%;
-  transform:translateX(-50%);
-  width:100%;
-  max-width:520px;
-  display:flex;
-  z-index:50;
-  padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));
-  background:rgba(255,255,255,.92);
-  backdrop-filter:blur(24px);
-  -webkit-backdrop-filter:blur(24px);
-  border-top:1px solid #e7ebf2;
-  box-shadow:0 -10px 30px rgba(20,35,60,.08);
-}
-.emp-bottom-btn {
-  flex:1;
-  min-height:52px !important;
-  padding:7px 4px !important;
-  border:none !important;
-  background:transparent !important;
-  color:#8a98ab !important;
-  cursor:pointer;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:4px;
-  position:relative;
-  border-radius:14px !important;
-  box-shadow:none !important;
-}
-.emp-bottom-btn.active {
-  color:#2563eb !important;
-  background:rgba(37,99,235,.08) !important;
-}
-.emp-bottom-icon {
-  font-size:18px;
-  line-height:1;
-  font-weight:800;
-}
-.emp-bottom-label {
-  font-size:9px;
-  line-height:1;
-  font-weight:700;
-  letter-spacing:.01em;
-}
-.emp-bottom-active {
-  position:absolute;
-  bottom:2px;
-  width:18px;
-  height:3px;
-  border-radius:999px;
-  background:#2563eb;
-}
-.emp-more-icon {
-  display:flex;
-  gap:3px;
-  height:18px;
-  align-items:center;
-}
-.emp-more-icon span {
-  width:4px;
-  height:4px;
-  border-radius:50%;
-  background:#8a98ab;
-}
-.emp-bottom-btn.active .emp-more-icon span { background:#2563eb; }
-@media (min-width:768px){
-  .emp-bottom-nav { max-width:520px; border:1px solid #e7ebf2; border-bottom:none; border-radius:18px 18px 0 0; }
+  .topbar-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 17px !important;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar-right { flex-shrink: 0; }
+  .topbar-right > span:first-child,
+  .topbar-right > span:nth-child(2) { display:none; }
+  .topbar-right button {
+    margin-left: 0 !important;
+    min-height: 38px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .page-content { padding-top: 14px; }
 }
