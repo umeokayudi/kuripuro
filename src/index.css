@@ -804,3 +804,155 @@ body { background: var(--hq-bg); }
 
 /* KURIPURO REFERENCE UI */
 :root{--ref-bg:#f7f9fc;--ref-border:#e7ebf2;--ref-text:#111827;--ref-muted:#738096;--ref-primary:#315cf5;--ref-primary-soft:#eef3ff;--ref-shadow:0 4px 18px rgba(24,39,75,.045)}body{background:var(--ref-bg);color:var(--ref-text)}.app-shell,.main,.page-content{background:var(--ref-bg)}.page-content{max-width:1500px;margin:0 auto;width:100%;padding:22px 28px 40px}.topbar{height:64px;padding:0 28px;background:rgba(255,255,255,.94);border-bottom:1px solid var(--ref-border);box-shadow:none;backdrop-filter:blur(16px)}.topbar-title{display:none}.topbar-right{width:100%;justify-content:flex-end}.ref-topbar-search{margin-right:auto;width:min(420px,42vw);height:38px;border:1px solid var(--ref-border);background:#f6f8fb;border-radius:10px;display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--ref-muted);font-size:11px}.ref-topbar-search kbd{margin-left:auto;font-size:9px;border:1px solid #dce2eb;background:#fff;border-radius:5px;padding:2px 5px}.ref-top-action{height:36px;min-width:36px;border:1px solid var(--ref-border)!important;background:#fff!important;color:#667085!important;border-radius:9px!important;display:grid;place-items:center;padding:0 10px!important}.ref-user{display:flex;align-items:center;gap:8px;margin-left:4px;padding-left:10px;border-left:1px solid var(--ref-border)}.ref-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#162c46,#315cf5);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:800}.ref-user-name{font-size:11px;font-weight:700;color:var(--ref-text)}.ref-user-role{font-size:9px;color:var(--ref-muted);margin-top:1px}.sidebar{width:224px;background:linear-gradient(180deg,#0b1b2d,#10263d);border-right:1px solid rgba(255,255,255,.04);box-shadow:none}.sidebar-logo{height:76px;padding:18px!important;border-bottom:1px solid rgba(255,255,255,.07)}.sidebar-logo .brand{font-size:16px}.sidebar-logo .sub{font-size:8px;opacity:.55}.sidebar-nav{padding:12px 10px}.nav-group{margin-bottom:14px}.nav-group-label{font-size:8px!important;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.34)!important;padding:0 10px 6px!important}.nav-item{min-height:34px;padding:7px 10px!important;border-radius:8px!important;font-size:10px!important;color:rgba(255,255,255,.66)!important;gap:9px!important}.nav-item svg{width:15px;height:15px;opacity:.82}.nav-item:hover{background:rgba(255,255,255,.055)!important;color:#fff!important}.nav-item.active{background:linear-gradient(135deg,#315cf5,#496eff)!important;color:#fff!important;box-shadow:0 5px 14px rgba(49,92,245,.22)}.nav-group-ai{margin-top:2px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07)}.dash-ref-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:18px}.dash-ref-eyebrow{font-size:9px;font-weight:800;letter-spacing:.14em;color:#6b778c;text-transform:uppercase}.dash-ref-head h1{margin:4px 0 3px;font-size:26px;line-height:1.15;letter-spacing:-.045em;color:#111827}.dash-ref-head p{font-size:11px;color:#7a8799}.dash-ref-actions{display:flex;gap:7px;align-items:center}.dash-ref-actions .btn{height:34px;border-radius:8px!important;font-size:10px!important}.dash-ref-primary{background:var(--ref-primary)!important;color:#fff!important;border-color:var(--ref-primary)!important}.dash-ref-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}.dash-ref-kpi{background:#fff;border:1px solid var(--ref-border);border-radius:11px;padding:13px 14px;min-width:0;box-shadow:var(--ref-shadow)}.dash-ref-kpi-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.dash-ref-kpi-label{font-size:9px;color:#7b8798;font-weight:600}.dash-ref-kpi-icon{width:25px;height:25px;border-radius:7px;background:var(--ref-primary-soft);color:var(--ref-primary);display:grid;place-items:center;font-size:11px;font-weight:800}.dash-ref-kpi-value{font-size:19px;font-weight:800;letter-spacing:-.035em;color:#111827;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dash-ref-kpi-meta{font-size:9px;color:#7d8a9b;margin-top:3px}.dash-ref-kpi-meta.positive{color:#1ea672}.dash-ref-kpi-meta.danger{color:#e05252}.dash-ref-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,.85fr) minmax(270px,.85fr);gap:12px;margin-bottom:12px}.dash-ref-card{background:#fff;border:1px solid var(--ref-border);border-radius:12px;padding:16px;box-shadow:var(--ref-shadow);min-width:0}.dash-ref-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px}.dash-ref-card-title{font-size:11px;font-weight:800;color:#182337}.dash-ref-card-sub{font-size:9px;color:#8a96a7;margin-top:3px}.dash-ref-link{font-size:9px;color:var(--ref-primary);font-weight:700;text-decoration:none}.dash-ref-health{display:flex;align-items:center;gap:14px}.dash-ref-score{width:104px;height:104px;border-radius:50%;background:conic-gradient(#2fc58d 0 45%,#f4b83f 45% 68%,#315cf5 68% 92%,#e8edf3 92% 100%);display:grid;place-items:center;flex:0 0 104px;position:relative}.dash-ref-score:after{content:"";position:absolute;width:78px;height:78px;background:#fff;border-radius:50%}.dash-ref-score-inner{position:relative;z-index:1;text-align:center}.dash-ref-score-inner strong{display:block;font-size:23px;color:#172033}.dash-ref-score-inner span{font-size:8px;color:#8995a5}.dash-ref-health-list{display:grid;gap:7px;min-width:0;flex:1}.dash-ref-health-row{display:flex;justify-content:space-between;gap:8px;font-size:9px}.dash-ref-health-row span{color:#7d8999}.dash-ref-health-row strong{color:#273449}.dash-ref-insights{display:grid;gap:7px}.dash-ref-insight{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid #eef1f5}.dash-ref-insight:last-child{border-bottom:0}.dash-ref-insight-icon{width:24px;height:24px;border-radius:7px;background:#f1f5ff;color:#315cf5;display:grid;place-items:center;flex:0 0 24px;font-size:10px}.dash-ref-insight strong{display:block;font-size:9px;color:#263348}.dash-ref-insight p{font-size:8px;color:#8a96a7;margin-top:2px;line-height:1.35}.dash-ref-lower{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,.75fr) minmax(250px,.75fr);gap:12px}.dash-ref-list{display:grid;gap:3px}.dash-ref-list-row{display:grid;grid-template-columns:42px 30px 1fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f2f5;font-size:9px}.dash-ref-list-row:last-child{border-bottom:0}.dash-ref-time{color:#7e8999}.dash-ref-thumb{width:30px;height:30px;border-radius:7px;background:#dce3ea}.dash-ref-job{min-width:0}.dash-ref-job strong{display:block;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dash-ref-job span{display:block;color:#8b96a5;font-size:8px;margin-top:2px}.dash-ref-status{font-size:8px;font-weight:700;padding:4px 6px;border-radius:999px;background:#edf7f2;color:#1b9b68;white-space:nowrap}.dash-ref-cash{display:grid;gap:9px}.dash-ref-cash-value{font-size:22px;font-weight:800;letter-spacing:-.04em}.dash-ref-cash-line{display:flex;justify-content:space-between;font-size:9px;padding-top:8px;border-top:1px solid #eef1f4}.dash-ref-cash-line span{color:#7d8999}.dash-ref-cash-line strong{color:#253147}@media(max-width:1100px){.dash-ref-kpis{grid-template-columns:repeat(3,1fr)}.dash-ref-grid,.dash-ref-lower{grid-template-columns:1fr 1fr}.dash-ref-grid>.dash-ref-card:first-child,.dash-ref-lower>.dash-ref-card:first-child{grid-column:1/-1}}@media(max-width:720px){.page-content{padding:14px 12px 82px}.topbar{height:56px;padding:0 12px}.ref-topbar-search{width:auto;flex:1;margin-right:8px}.ref-user-name,.ref-user-role{display:none}.ref-user{padding-left:0;border-left:0}.dash-ref-head{align-items:flex-start;flex-direction:column}.dash-ref-head h1{font-size:22px}.dash-ref-actions{width:100%;overflow:auto}.dash-ref-actions .btn{white-space:nowrap}.dash-ref-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-ref-grid,.dash-ref-lower{grid-template-columns:1fr}.dash-ref-grid>.dash-ref-card:first-child,.dash-ref-lower>.dash-ref-card:first-child{grid-column:auto}}
+
+
+/* EMPLOYEE PORTAL — usable light/mobile app theme */
+.emp-backdrop{
+  background:#eef2f7 !important;
+  color:#172033 !important;
+}
+.emp-shell{
+  --emp-blue:#2563eb;
+  --emp-blue-soft:#eef4ff;
+  --emp-bg:#f6f8fc;
+  --emp-card:#ffffff;
+  --emp-border:#e4e9f1;
+  --emp-text:#172033;
+  --emp-muted:#66758b;
+  background:var(--emp-bg) !important;
+  color:var(--emp-text) !important;
+  box-shadow:none !important;
+}
+.emp-shell > div[style*="background: rgb(6, 13, 24)"],
+.emp-shell > div[style*="background:#060d18"]{
+  background:#f6f8fc !important;
+}
+.emp-shell button{
+  font-family:var(--font) !important;
+  -webkit-tap-highlight-color:transparent;
+}
+.emp-shell input,
+.emp-shell select,
+.emp-shell textarea{
+  background:#fff !important;
+  color:#172033 !important;
+  border-color:#dce3ed !important;
+  box-shadow:0 1px 2px rgba(18,32,55,.04) !important;
+}
+.emp-shell input::placeholder,
+.emp-shell textarea::placeholder{color:#9aa6b7 !important}
+.emp-shell input:focus,
+.emp-shell select:focus,
+.emp-shell textarea:focus{
+  border-color:#7da5f8 !important;
+  box-shadow:0 0 0 4px rgba(37,99,235,.10) !important;
+  outline:none !important;
+}
+
+/* Convert the old dark inline palette to readable light surfaces/text. */
+.emp-shell [style*="color: rgb(255, 255, 255)"],
+.emp-shell [style*="color:#fff"],
+.emp-shell [style*="color: #fff"]{color:#172033 !important}
+.emp-shell [style*="color: rgba(255, 255, 255, 0.2)"],
+.emp-shell [style*="color: rgba(255, 255, 255, 0.25)"],
+.emp-shell [style*="color: rgba(255, 255, 255, 0.3)"],
+.emp-shell [style*="color: rgba(255, 255, 255, 0.35)"],
+.emp-shell [style*="color: rgba(255, 255, 255, 0.4)"],
+.emp-shell [style*="color: rgba(255, 255, 255, 0.45)"],
+.emp-shell [style*="color: rgba(255, 255, 255, 0.5)"],
+.emp-shell [style*="color: rgba(255, 255, 255, 0.6)"],
+.emp-shell [style*="color: rgba(255, 255, 255, 0.7)"]{color:#66758b !important}
+
+.emp-shell [style*="background: rgba(255, 255, 255, 0.02)"],
+.emp-shell [style*="background: rgba(255, 255, 255, 0.03)"],
+.emp-shell [style*="background: rgba(255, 255, 255, 0.04)"],
+.emp-shell [style*="background: rgba(255, 255, 255, 0.05)"],
+.emp-shell [style*="background: rgba(255, 255, 255, 0.06)"],
+.emp-shell [style*="background: rgba(255, 255, 255, 0.07)"],
+.emp-shell [style*="background: rgba(255,255,255,0.02)"],
+.emp-shell [style*="background: rgba(255,255,255,0.03)"],
+.emp-shell [style*="background: rgba(255,255,255,0.04)"],
+.emp-shell [style*="background: rgba(255,255,255,0.05)"],
+.emp-shell [style*="background: rgba(255,255,255,0.06)"],
+.emp-shell [style*="background: rgba(255,255,255,0.07)"]{
+  background:#fff !important;
+}
+.emp-shell [style*="border: 1px solid rgba(255, 255, 255"],
+.emp-shell [style*="border:1px solid rgba(255,255,255"],
+.emp-shell [style*="border:'1px solid rgba(255,255,255"]{
+  border-color:#e1e7ef !important;
+}
+
+/* Replace the old gold employee accent with the blue app identity. */
+.emp-shell [style*="#c19c56"],
+.emp-shell [style*="#e8c47a"]{
+  color:#2563eb !important;
+  border-color:#bfd2fb !important;
+}
+.emp-shell [style*="linear-gradient(135deg,#c19c56,#e8c47a)"]{
+  background:linear-gradient(135deg,#2563eb,#4f46e5) !important;
+  color:#fff !important;
+  border-color:transparent !important;
+  box-shadow:0 8px 18px rgba(37,99,235,.18) !important;
+}
+.emp-shell [style*="rgba(193,156,86"]{
+  background:rgba(37,99,235,.08) !important;
+  border-color:rgba(37,99,235,.18) !important;
+}
+.emp-shell [style*="rgba(193,156,86,0.1)"]{
+  background:rgba(37,99,235,.08) !important;
+  border-color:rgba(37,99,235,.18) !important;
+}
+.emp-shell [style*="rgba(193,156,86,0.12)"]{
+  background:rgba(37,99,235,.09) !important;
+  border-color:rgba(37,99,235,.2) !important;
+}
+.emp-shell [style*="rgba(193,156,86,0.15)"]{
+  background:rgba(37,99,235,.10) !important;
+  border-color:rgba(37,99,235,.2) !important;
+}
+
+/* Header */
+.emp-shell .emp-brand{color:#718096 !important}
+.emp-shell .emp-name{color:#172033 !important}
+.emp-shell [style*="font-family:monospace"]{font-variant-numeric:tabular-nums}
+.emp-shell [style*="background: rgba(6,13,24,0.97)"],
+.emp-shell [style*="background:'rgba(6,13,24,0.97)'"]{
+  background:rgba(255,255,255,.96) !important;
+  border-top-color:#e3e8f0 !important;
+  border-bottom-color:#e3e8f0 !important;
+  box-shadow:0 -6px 24px rgba(18,32,55,.06) !important;
+  backdrop-filter:blur(18px) !important;
+}
+.emp-shell [style*="background: rgba(13,31,53"],
+.emp-shell [style*="background:#0d1f35"]{
+  background:#fff !important;
+  border-color:#e1e7ef !important;
+  box-shadow:0 20px 50px rgba(18,32,55,.12) !important;
+}
+
+/* Common cards and sheets */
+.emp-shell [style*="borderRadius:18"],
+.emp-shell [style*="borderRadius:20"],
+.emp-shell [style*="borderRadius:22"]{
+  border-color:#e1e7ef !important;
+}
+.emp-shell [style*="boxShadow"]{box-shadow:0 8px 26px rgba(18,32,55,.06) !important}
+
+/* Keep semantic status colors, but give their surfaces more contrast. */
+.emp-shell [style*="#f87171"]{color:#d64545 !important}
+.emp-shell [style*="#fbbf24"]{color:#b77900 !important}
+.emp-shell [style*="#60a5fa"]{color:#2563eb !important}
+.emp-shell [style*="#4ade80"]{color:#15966b !important}
+
+/* Bottom navigation */
+.emp-shell > div:last-child{
+  color:#66758b;
+}
+@media(max-width:767px){
+  .emp-backdrop{padding:0 !important}
+  .emp-shell{width:100%;max-width:430px}
+}
+@media(min-width:768px){
+  .emp-shell{max-width:520px;margin:0 auto;min-height:100dvh;box-shadow:0 0 0 1px #e1e7ef,0 20px 70px rgba(18,32,55,.10) !important}
+}
