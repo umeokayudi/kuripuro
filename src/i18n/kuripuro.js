@@ -352,6 +352,7 @@ export const kuripuroEn = {
     tokyo: 'Tokyo',
     commandCenter: {
       greeting: 'Good evening',
+      summary: "Here's what's happening with your business today.",
       newJob: '+ New Job',
       newClient: '+ New Client',
       newInvoice: '+ Invoice',
@@ -399,6 +400,8 @@ export const kuripuroEn = {
       last30Days: 'Last 30 days',
       activeEmployees: '{count} active employees',
       currentTeam: 'Current team',
+      viewCashflow: 'View cashflow →',
+      customerRatings: '{count} customer ratings',
     },
   },
   feedback: {
@@ -1187,6 +1190,7 @@ export const kuripuroJa = {
     tokyo: '東京',
     commandCenter: {
       greeting: 'こんばんは',
+      summary: '本日のビジネス状況です。',
       newJob: '＋ 新規作業',
       newClient: '＋ 新規クライアント',
       newInvoice: '＋ 請求書',
@@ -1234,6 +1238,8 @@ export const kuripuroJa = {
       last30Days: '過去30日',
       activeEmployees: '稼働従業員 {count}人',
       currentTeam: '現在のチーム',
+      viewCashflow: 'キャッシュフローを見る →',
+      customerRatings: '顧客評価 {count}件',
     },
   },
   feedback: {
