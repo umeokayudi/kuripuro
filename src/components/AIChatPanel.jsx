@@ -3,7 +3,7 @@ import { apiPost } from '../lib/apiFetch'
 import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
 import { loadChatHistory, saveChatHistory } from '../lib/aiChatHistory'
-import { useLang } from '../hooks/useLang'
+import { useLang, fill } from '../hooks/useLang'
 
 function formatText(text) {
   if (!text) return null
@@ -181,7 +181,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
               {formatText(m.content)}
               {m.toolLog?.length > 0 && (
                 <details style={{ marginTop: 6 }}>
-                  <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {m.toolLog.length} consulta(s)</summary>
+                  <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {fill(ai.toolQueries || '{n} queries', { n: m.toolLog.length })}</summary>
                   {m.toolLog.map((t, j) => (
                     <div key={j} style={{ fontSize: 10, color: t.ok ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
                       {t.ok ? '✓' : '✗'} {t.name}
