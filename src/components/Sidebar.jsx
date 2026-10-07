@@ -81,7 +81,7 @@ export default function Sidebar() {
         ))}
             <div className="nav-group nav-group-ai">
           <NavLink to="/ai" end className={({ isActive }) => `nav-item nav-ai${isActive ? ' active' : ''}`}>
-            <Icons.sparkles /><span className="nav-label">{s.ai || 'AI'}</span>
+            <Icons.sparkle /><span className="nav-label">{s.ai || 'AI'}</span>
           </NavLink>
         </div>
       </nav>
