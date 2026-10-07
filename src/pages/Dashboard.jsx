@@ -6,6 +6,7 @@ import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySl
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
+import { jobDurationMin } from '../lib/jobReport'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 
@@ -170,6 +171,24 @@ export default function Dashboard() {
         <div className="dash-clock">
           {clock.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}
         </div>
+      </div>
+
+      <div className="card" style={{marginBottom:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+          <div><div className="finance-eyebrow">TEAM PERFORMANCE</div><h3 style={{margin:'2px 0 0'}}>Produtividade dos funcionários</h3><p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Jobs concluídos, valor produzido e tempo médio no período.</p></div>
+          <Link to="/employees" className="btn">Ver equipe →</Link>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Funcionário</th><th>Jobs</th><th>Valor</th><th>Tempo médio</th><th>Valor / hora</th><th>Score</th></tr></thead>
+          <tbody>{employees.map(emp => {
+            const rows = monthJobs.filter(j => j.employee_id === emp.id && j.status === 'completed')
+            const value = rows.reduce((sum,j)=>sum+Number(j.retro_value ?? j.value ?? 0),0)
+            const durations = rows.map(jobDurationMin).filter(v=>v != null && v > 0)
+            const avgMin = durations.length ? durations.reduce((a,b)=>a+b,0)/durations.length : null
+            const valuePerHour = avgMin ? value / (avgMin / 60) : 0
+            return <tr key={emp.id}><td style={{fontWeight:700}}>{emp.full_name}</td><td>{rows.length}</td><td style={{fontWeight:700}}>¥{value.toLocaleString()}</td><td>{avgMin ? Math.round(avgMin) + ' min' : '—'}</td><td style={{fontWeight:700,color:valuePerHour>0?'var(--green)':'var(--text3)'}}>{valuePerHour ? '¥' + Math.round(valuePerHour).toLocaleString() : '—'}</td><td><span className="badge badge-green">{emp.score ?? 100}</span></td></tr>
+          })}</tbody>
+        </table></div>
       </div>
 
       {staleCount > 0 && (
