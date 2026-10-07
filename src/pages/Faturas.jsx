@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
+import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAutomation'
 
 export default function Faturas() {
   const { t } = useLang()
@@ -15,6 +16,8 @@ export default function Faturas() {
   const [selected, setSelected] = useState(null)
   const [items, setItems] = useState([])
   const [form, setForm] = useState({ client_id:'', period_start:'', period_end:'', due_date:'', tax_rate:10, notes:'' })
+  const [autoPeriod, setAutoPeriod] = useState(new Date().toISOString().slice(0,7))
+  const [autoLoading, setAutoLoading] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -60,6 +63,103 @@ export default function Faturas() {
   const subtotal = items.reduce((s,it)=>s+Number(it.total||0),0)
   const tax = Math.round(subtotal * (form.tax_rate||10)/100)
   const total = subtotal + tax
+
+  const handleAutoBilling = async () => {
+    setAutoLoading(true)
+    try {
+      const { start, end } = monthBounds(autoPeriod)
+      const { data: contracts, error: contractsError } = await supabase
+        .from('service_contracts')
+        .select('*')
+        .eq('is_active', true)
+        .order('client_id')
+      if (contractsError) throw contractsError
+      if (!contracts?.length) return toast('Nenhum contrato ativo encontrado.')
+
+      const clientIds = [...new Set(contracts.map(c => c.client_id).filter(Boolean))]
+      const { data: existing } = await supabase.from('faturas')
+        .select('id,client_id,status,period_start,period_end')
+        .in('client_id', clientIds)
+        .eq('period_start', start)
+        .eq('period_end', end)
+        .neq('status', 'cancelled')
+
+      const existingKeys = new Set((existing || []).map(f => `${f.client_id}:${f.period_start}:${f.period_end}`))
+      let created = 0
+      let skipped = 0
+
+      for (const clientId of clientIds) {
+        if (existingKeys.has(`${clientId}:${start}:${end}`)) {
+          skipped++
+          continue
+        }
+
+        const client = clients.find(c => c.id === clientId)
+        if (!client) continue
+
+        const clientContracts = contracts.filter(c => c.client_id === clientId)
+        const { data: completedJobs } = await supabase.from('jobs')
+          .select('*')
+          .eq('client_id', clientId)
+          .gte('scheduled_date', start)
+          .lte('scheduled_date', end)
+          .eq('status', 'completed')
+
+        const lines = clientContracts
+          .map(contract => buildContractLine(contract, completedJobs || []))
+          .filter(Boolean)
+
+        if (!lines.length) continue
+
+        const totalAfterDiscount = lines.reduce((sum, line) => sum + Number(line.total || 0), 0)
+        const taxRate = Number(clientContracts[0]?.tax_rate ?? 10)
+        const includesTax = clientContracts.every(c => c.price_includes_tax !== false)
+        const tax = calculateTax(totalAfterDiscount, taxRate, includesTax)
+        const subtotal = includesTax ? totalAfterDiscount - tax : totalAfterDiscount
+        const dueDate = new Date()
+        dueDate.setDate(dueDate.getDate() + 30)
+
+        const { data: fatura, error } = await supabase.from('faturas').insert({
+          client_id: clientId,
+          client_name: client.company_name,
+          period_start: start,
+          period_end: end,
+          issue_date: new Date().toISOString().slice(0,10),
+          due_date: dueDate.toISOString().slice(0,10),
+          subtotal,
+          tax_amount: tax,
+          total: totalAfterDiscount,
+          tax_rate: taxRate,
+          status: 'draft',
+          notes: 'Gerada automaticamente a partir dos contratos e serviços concluídos.'
+        }).select().single()
+
+        if (error) throw error
+
+        const itemPayload = lines.map(line => ({
+          fatura_id: fatura.id,
+          contract_id: line.contract_id,
+          description: line.description + (line.discount_percent > 0 ? ` — desconto ${line.discount_percent}%` : ''),
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+          total: line.total,
+          discount_percent: line.discount_percent,
+          discount_amount: line.discount_amount,
+          job_ids: line.job_ids.join(',')
+        }))
+        const { error: itemsError } = await supabase.from('fatura_items').insert(itemPayload)
+        if (itemsError) throw itemsError
+        created++
+      }
+
+      toast.success(`Faturamento automático: ${created} fatura(s) criada(s), ${skipped} já existente(s).`)
+      await load()
+    } catch (error) {
+      toast.error(error.message || 'Falha ao gerar faturamento automático.')
+    } finally {
+      setAutoLoading(false)
+    }
+  }
 
   const handleCreate = async () => {
     const client = clients.find(c=>c.id===form.client_id)
@@ -160,6 +260,20 @@ export default function Faturas() {
 
       {tab==='list'&&(
         <div>
+          <div className="card" style={{marginBottom:14}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+              <div>
+                <div className="card-title" style={{marginBottom:3}}>⚡ Faturamento automático</div>
+                <div style={{fontSize:12,color:'var(--text3)'}}>Contrato → serviços concluídos → desconto → imposto → fatura</div>
+              </div>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <input type="month" value={autoPeriod} onChange={e=>setAutoPeriod(e.target.value)} />
+                <button className="btn btn-primary" onClick={handleAutoBilling} disabled={autoLoading}>
+                  {autoLoading ? 'Gerando...' : 'Gerar faturas'}
+                </button>
+              </div>
+            </div>
+          </div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {faturas.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No faturas yet.</div></div>}
           {faturas.map(f=>(
