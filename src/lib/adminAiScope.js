@@ -55,7 +55,9 @@ checkins (in/out), clients (operations clients), client_users (store logins — 
 client_messages, client_complaints, client_compliments, client_ratings, client_requests,
 service_contracts (monthly/visit prices, training), service_reports,
 evaluations, complaints (staff), messages (admin↔employee), badges,
-salary_payments (pay, advances, deductions), payroll, salary_periods, salary_statements, salary_complaints,
+salary_payments (MONEY MOVEMENT only: payment_type advance | salary | deduction | bonus | transport; status scheduled|paid),
+payroll (CLOSE SHEET only: hours, base, deductions, net_total; status pending=closed unpaid, paid=salary already paid). Close ≠ payment.
+salary_periods/salary_statements may be missing — use payroll + salary_payments.
 transport_claims, equipment_requests,
 cashflow, ryoshu (receipts), faturas + fatura_items (invoices),
 sales_leads (approaches/follow-up; interest is INTERNAL; site_name is restaurant/store), mitsumori + mitsumori_items (quotes),

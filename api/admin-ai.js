@@ -5,6 +5,7 @@ import { API_BUILD } from './_gemini.js'
 import { runGeminiToolLoop } from './_tool-loop.js'
 import { requireAdminSecret } from './_auth.js'
 import { ADMIN_AI_TABLE_GUIDE, ADMIN_AI_TABLES, scrubAiRow } from '../src/lib/adminAiScope.js'
+import { closePayrollMonth, payClosedPayroll } from '../src/lib/payrollClose.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
@@ -27,6 +28,66 @@ async function sbFetch(path, options = {}) {
   try { data = JSON.parse(text) } catch { data = text }
   if (!resp.ok) throw new Error(typeof data === 'string' ? data : JSON.stringify(data))
   return { data, headers: resp.headers }
+}
+
+function restFilter(k, op, v) {
+  return `${k}=${op}.${encodeURIComponent(String(v))}`
+}
+
+function makeRestSb() {
+  const from = (table) => {
+    const filters = []
+    let selectCols = '*'
+    let limitN = null
+    const runGet = async () => {
+      const qs = [`select=${encodeURIComponent(selectCols)}`, ...filters]
+      if (limitN) qs.push(`limit=${limitN}`)
+      try {
+        const { data } = await sbFetch(`${table}?${qs.join('&')}`)
+        const rows = Array.isArray(data) ? data : (data ? [data] : [])
+        return { data: rows, error: null }
+      } catch (e) {
+        return { data: null, error: { message: e.message, code: /PGRST205/.test(e.message) ? 'PGRST205' : undefined } }
+      }
+    }
+    const self = {
+      select(cols = '*') { selectCols = cols; return self },
+      eq(k, v) { filters.push(restFilter(k, 'eq', v)); return self },
+      gte(k, v) { filters.push(restFilter(k, 'gte', v)); return self },
+      lte(k, v) { filters.push(restFilter(k, 'lte', v)); return self },
+      limit(n) { limitN = n; return self },
+      then(resolve, reject) { return runGet().then(resolve, reject) },
+      async insert(row) {
+        try {
+          const { data } = await sbFetch(table, { method: 'POST', body: JSON.stringify(Array.isArray(row) ? row : [row]) })
+          return { data, error: null }
+        } catch (e) { return { data: null, error: { message: e.message } } }
+      },
+      update(row) {
+        return {
+          async eq(k, v) {
+            try {
+              const { data } = await sbFetch(`${table}?${restFilter(k, 'eq', v)}`, {
+                method: 'PATCH',
+                body: JSON.stringify(row),
+              })
+              return { data, error: null }
+            } catch (e) { return { data: null, error: { message: e.message } } }
+          },
+        }
+      },
+      async upsert(row) {
+        try {
+          await sbFetch(table, { method: 'POST', body: JSON.stringify(Array.isArray(row) ? row : [row]) })
+          return { error: null }
+        } catch (e) {
+          return { error: { message: e.message, code: 'PGRST205' } }
+        }
+      },
+    }
+    return self
+  }
+  return { from }
 }
 
 function checkTable(table) {
@@ -98,6 +159,46 @@ const TOOLS = [{
           confirmed: { type: 'BOOLEAN', description: 'true só depois do admin confirmar os dados' },
         },
         required: ['employee_id', 'amount', 'payment_date', 'confirmed'],
+      },
+    },
+    {
+      name: 'close_payroll',
+      description: 'FECHAMENTO apenas: recalcula a folha em payroll (horas, base, adiantamentos, líquido). NÃO cria pagamento de salário. Confirme o período YYYY-MM.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          period: { type: 'STRING', description: 'YYYY-MM' },
+          employee_id: { type: 'STRING', description: 'Opcional: um funcionário' },
+          confirmed: { type: 'BOOLEAN' },
+        },
+        required: ['period', 'confirmed'],
+      },
+    },
+    {
+      name: 'pay_salary',
+      description: 'PAGAMENTO de salário: cria salary_payments payment_type=salary a partir do fechamento (payroll pending) e marca payroll paid. NÃO recalcula a folha. Confirme.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          period: { type: 'STRING', description: 'YYYY-MM' },
+          employee_id: { type: 'STRING', description: 'Opcional: um funcionário' },
+          confirmed: { type: 'BOOLEAN' },
+        },
+        required: ['period', 'confirmed'],
+      },
+    },
+    {
+      name: 'adjust_pay_record',
+      description: 'Corrige um registro. table=payroll (fechamento) ou salary_payments (adiantamento/pagamento). Confirme. Se alterar um advance, o fechamento pending é recalculado.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          table: { type: 'STRING', description: 'payroll ou salary_payments' },
+          id: { type: 'STRING' },
+          changes: { type: 'OBJECT', description: 'Campos a alterar (amount, payment_date, period, net_total, deductions, status, description…)' },
+          confirmed: { type: 'BOOLEAN' },
+        },
+        required: ['table', 'id', 'changes', 'confirmed'],
       },
     },
     {
@@ -205,7 +306,51 @@ async function executeTool(name, args) {
       is_deduction: false,
     }
     const { data } = await sbFetch('salary_payments', { method: 'POST', body: JSON.stringify([row]) })
-    return { inserted: true, row: scrubAiRow(data) }
+    try {
+      await closePayrollMonth(makeRestSb(), period, { employeeId: args.employee_id })
+    } catch { /* advance is saved even if close refresh fails */ }
+    return { inserted: true, close_refreshed: true, row: scrubAiRow(data) }
+  }
+  if (name === 'close_payroll') {
+    const period = String(args.period || '').slice(0, 7)
+    if (!/^\d{4}-\d{2}$/.test(period)) throw new Error('close_payroll exige period YYYY-MM')
+    if (!args.confirmed) {
+      return { needs_confirmation: true, preview: { action: 'close_only', period, employee_id: args.employee_id || null, note: 'Não paga salário.' } }
+    }
+    const result = await closePayrollMonth(makeRestSb(), period, { employeeId: args.employee_id || undefined })
+    return {
+      closed: true,
+      paid: false,
+      period: result.period,
+      staff: result.closed.length,
+      skipped_paid: result.skippedPaid.length,
+      net_totals: result.closed.map(c => ({ name: c.payroll.employee_name, net: c.payroll.net_total, advances: c.advances.total })),
+    }
+  }
+  if (name === 'pay_salary') {
+    const period = String(args.period || '').slice(0, 7)
+    if (!/^\d{4}-\d{2}$/.test(period)) throw new Error('pay_salary exige period YYYY-MM')
+    if (!args.confirmed) {
+      return { needs_confirmation: true, preview: { action: 'pay_salary', period, employee_id: args.employee_id || null, note: 'Cria salary_payments. Não fecha a folha.' } }
+    }
+    const result = await payClosedPayroll(makeRestSb(), period, { employeeId: args.employee_id || undefined })
+    return { paid: true, closed: false, ...result }
+  }
+  if (name === 'adjust_pay_record') {
+    const table = args.table
+    if (table !== 'payroll' && table !== 'salary_payments') throw new Error('adjust_pay_record só em payroll ou salary_payments')
+    if (!args.confirmed) {
+      return { needs_confirmation: true, preview: { table, id: args.id, changes: args.changes } }
+    }
+    if (!args.id || !args.changes || typeof args.changes !== 'object') throw new Error('adjust_pay_record exige id e changes')
+    const { data: before } = await sbFetch(`${table}?select=*&id=eq.${encodeURIComponent(args.id)}&limit=1`)
+    const { data } = await sbFetch(`${table}?id=eq.${encodeURIComponent(args.id)}`, { method: 'PATCH', body: JSON.stringify(args.changes) })
+    const row = Array.isArray(before) ? before[0] : before
+    if (table === 'salary_payments' && (row?.payment_type === 'advance' || args.changes.payment_type === 'advance') && row?.employee_id) {
+      const period = args.changes.period || row.period
+      try { await closePayrollMonth(makeRestSb(), period, { employeeId: row.employee_id }) } catch { /* keep the edit */ }
+    }
+    return { updated: true, table, row: scrubAiRow(data) }
   }
   if (name === 'insert_data') {
     checkTable(args.table)
@@ -246,12 +391,17 @@ Regras:
 - Jobs: status assigned / in_progress / completed / cancelled. Datas YYYY-MM-DD (Tóquio).
 - Faturas: faturas + fatura_items. Status draft/sent/paid/cancelled.
 - Comercial: sales_leads, mitsumori, mitsumori_items, sales_touchpoints. interest é INTERNO (não vai no PDF da 見積書).
-- Folha: salary_payments (adiantamentos e salário), payroll (fechamento). salary_periods/salary_statements podem não existir — use payroll.
-- Adiantamento: NUNCA grave na primeira mensagem. 1) query employees pelo nome, 2) mostre employee_name, amount, payment_date (YYYY-MM-DD Tóquio) e period (YYYY-MM), 3) espere o admin confirmar, 4) record_salary_advance com confirmed=true. Não use insert_data para adiantamento. Se faltar data ou valor, pergunte. period = mês da payment_date. Evite duplicar o mesmo employee_id+data+valor.
-- Fechamento de salário: o admin fecha em Payroll Close; a IA não inventa totais. Se pedir holerite, cite cada adiantamento com data e valor.
+- Folha — DUAS COISAS SEPARADAS:
+  1) FECHAMENTO = tabela payroll (cálculo: horas, base, adiantamentos, líquido). status pending = fechado sem pagar. NÃO é pagamento.
+  2) PAGAMENTO DE SALÁRIO = salary_payments com payment_type=salary. Só depois do fechamento, com pay_salary.
+  3) ADIANTAMENTO = salary_payments payment_type=advance. Entra na hora e já atualiza o fechamento pending. Não cria pagamento de salário.
+- Leitura: para líquido do mês use payroll.net_total. Para dinheiro já dado use salary_payments (advance). Nunca some payroll.net_total + salary payment como se fossem dois salários.
+- Adiantamento: confirme nome/valor/data/período, depois record_salary_advance confirmed=true. Não use insert_data para adiantamento.
+- Fechamento: close_payroll (não paga). Pagamento: pay_salary (não recalcula). Correção: adjust_pay_record.
+- Holerite: cite cada adiantamento com data e valor.
 - Nunca mostre senhas ou password_hash. Pode falar de salário, contratos, interesse do cliente, reclamações.
 - Para CRIAR jobs: busque employee_id em employees; insert_data em jobs com title, employee_id, employee_name, scheduled_date, scheduled_time, status "assigned", address.
-- Mudanças (insert/update/delete): se o pedido for claro, execute; se ambíguo, confirme. Adiantamento sempre confirma.
+- Mudanças (insert/update/delete): se o pedido for claro, execute; se ambíguo, confirme. Folha sempre confirma.
 - Seja direto. Cite as tabelas que usou. No final, resuma.`
 
 export default async function handler(req, res) {

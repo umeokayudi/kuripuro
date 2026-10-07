@@ -188,8 +188,8 @@ function testVersionLock() {
   const api = readFileSync(new URL('../api/_gemini.js', import.meta.url), 'utf8')
   const match = api.match(/export const API_BUILD = '([^']+)'/)
   assert(match?.[1] === APP_BUILD, `API_BUILD ${match?.[1]} vs ${APP_BUILD}`)
-  assert(APP_VERSION === 'v60', APP_VERSION)
-  assert(APP_BUILD.endsWith('-v60'), APP_BUILD)
+  assert(APP_VERSION === 'v61', APP_VERSION)
+  assert(APP_BUILD.endsWith('-v61'), APP_BUILD)
 }
 
 function testMonthlyAndDiscounts() {

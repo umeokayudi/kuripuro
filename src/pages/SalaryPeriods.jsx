@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
-import { closePayrollMonth, periodsFromPayroll } from '../lib/payrollClose'
+import { closePayrollMonth, payClosedPayroll, periodsFromPayroll, previousPeriod } from '../lib/payrollClose'
+import { tokyoToday } from '../lib/dates'
 import { useLang, fill } from '../hooks/useLang'
 
 export default function SalaryPeriods() {
@@ -13,21 +14,43 @@ export default function SalaryPeriods() {
   const [selectedPeriod, setSelectedPeriod] = useState('')
   const [loading, setLoading] = useState(true)
   const [closing, setClosing] = useState(false)
+  const [paying, setPaying] = useState(false)
   const [schemaOk, setSchemaOk] = useState(true)
 
-  useEffect(() => { loadPeriods() }, [])
+  const currentPeriod = tokyoToday().slice(0, 7)
+  const prevPeriod = previousPeriod(currentPeriod)
+
+  useEffect(() => { boot() }, [])
 
   useEffect(() => { if (selectedPeriod) loadStatements(selectedPeriod) }, [selectedPeriod])
 
-  const loadPeriods = async () => {
+  const boot = async () => {
+    try {
+      const result = await closePayrollMonth(supabase, prevPeriod)
+      if (result.closed.length) {
+        toast.success(fill(p.autoClosed, { period: fmtPeriod(prevPeriod), n: result.closed.length }))
+      }
+    } catch (e) {
+      if (e.message?.includes('PGRST205') || /schema cache|does not exist/i.test(e.message || '')) {
+        setSchemaOk(false)
+        setLoading(false)
+        return
+      }
+    }
+    await loadPeriods(prevPeriod)
+  }
+
+  const loadPeriods = async (prefer) => {
     const { data, error } = await supabase.from('payroll').select('*').order('period', { ascending: false })
     if (error?.code === 'PGRST205') { setSchemaOk(false); setLoading(false); return }
     if (error) { toast.error(error.message); setLoading(false); return }
     setSchemaOk(true)
     const list = periodsFromPayroll(data)
     setPeriods(list)
-    if (list.length && !selectedPeriod) setSelectedPeriod(list[0].period)
+    const next = prefer || selectedPeriod || list[0]?.period || prevPeriod
+    setSelectedPeriod(next)
     setLoading(false)
+    if (next) await loadStatements(next)
   }
 
   const loadStatements = async (period) => {
@@ -36,41 +59,36 @@ export default function SalaryPeriods() {
     setStatements(data || [])
   }
 
-  const closeMonth = async (period) => {
-    const { confirmDeadline, payDate } = getPeriodDates(period)
-    if (!window.confirm(fill(p.closeConfirm, { period: fmtPeriod(period), deadline: confirmDeadline, payDate }))) return
+  const recalcClose = async (period) => {
     setClosing(true)
     try {
-      const result = await closePayrollMonth(supabase, period, {
-        salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(period) }),
-      })
+      const result = await closePayrollMonth(supabase, period)
       toast.success(fill(p.closed, { period: fmtPeriod(result.period) }))
-      setSelectedPeriod(period)
-      await loadPeriods()
-      await loadStatements(period)
+      await loadPeriods(period)
     } catch (e) {
       toast.error(e.message)
     }
     setClosing(false)
   }
 
-  const finalizeStatement = async (id) => {
-    const { error } = await supabase.from('payroll').update({
-      status: 'paid',
-      paid_at: new Date().toISOString(),
-    }).eq('id', id)
-    if (error) return toast.error(error.message)
-    toast.success(p.finalized)
-    loadStatements(selectedPeriod)
+  const payPeriod = async (period, employeeId) => {
+    const { payDate } = getPeriodDates(period)
+    if (!window.confirm(fill(p.payConfirm, { period: fmtPeriod(period), payDate }))) return
+    setPaying(true)
+    try {
+      const result = await payClosedPayroll(supabase, period, {
+        employeeId,
+        salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(period) }),
+      })
+      toast.success(fill(p.paidToast, { n: result.paid.length, period: fmtPeriod(period) }))
+      await loadPeriods(period)
+    } catch (e) {
+      toast.error(e.message)
+    }
+    setPaying(false)
   }
 
-  const currentPeriod = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 7)
-  const prevPeriod = (() => {
-    const [y, m] = currentPeriod.split('-').map(Number)
-    const pm = m === 1 ? 12 : m - 1
-    const py = m === 1 ? y - 1 : y
-    return `${py}-${String(pm).padStart(2, '0')}`
-  })()
+  const unpaid = statements.filter(s => s.status !== 'paid')
 
   return (
     <div>
@@ -85,11 +103,15 @@ export default function SalaryPeriods() {
       )}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button className="btn btn-primary" disabled={closing} onClick={() => closeMonth(prevPeriod)}>
-          {closing ? p.closing : `🔒 ${fill(p.closePrev, { period: fmtPeriod(prevPeriod) })}`}
+        <button className="btn" disabled={closing || paying} onClick={() => recalcClose(prevPeriod)}>
+          {closing ? p.closing : fill(p.recalc, { period: fmtPeriod(prevPeriod) })}
         </button>
-        <button className="btn" onClick={() => closeMonth(currentPeriod)} disabled={closing}>
-          {fill(p.closeCurrent, { period: fmtPeriod(currentPeriod) })}
+        <button className="btn" disabled={closing || paying} onClick={() => recalcClose(currentPeriod)}>
+          {fill(p.recalc, { period: fmtPeriod(currentPeriod) })}
+        </button>
+        <button className="btn btn-primary" disabled={paying || closing || !selectedPeriod || unpaid.length === 0}
+          onClick={() => payPeriod(selectedPeriod)}>
+          {paying ? p.paying : fill(p.payPeriod, { period: fmtPeriod(selectedPeriod || prevPeriod) })}
         </button>
       </div>
 
@@ -100,7 +122,7 @@ export default function SalaryPeriods() {
           {periods.map(row => (
             <button key={row.period} className={`tab-pill${selectedPeriod === row.period ? ' active' : ''}`}
               onClick={() => setSelectedPeriod(row.period)}>
-              {fmtPeriod(row.period)} ({row.status})
+              {fmtPeriod(row.period)} ({row.status === 'paid' ? p.paidLabel : p.closedLabel})
             </button>
           ))}
         </div>
@@ -122,11 +144,13 @@ export default function SalaryPeriods() {
                   {p.base} ¥{Number(s.base_salary).toLocaleString()} · {p.deductions} -¥{Number(s.deductions).toLocaleString()} · {p.net} <b>¥{Number(s.net_total).toLocaleString()}</b>
                 </div>
                 <div style={{ fontSize: 11, marginTop: 2 }}>
-                  <span className={`badge ${s.status === 'paid' ? 'badge-green' : 'badge-amber'}`}>{s.status}</span>
+                  <span className={`badge ${s.status === 'paid' ? 'badge-green' : 'badge-amber'}`}>
+                    {s.status === 'paid' ? p.paidLabel : p.closedLabel}
+                  </span>
                 </div>
               </div>
               {s.status !== 'paid' && (
-                <button className="btn btn-sm btn-primary" onClick={() => finalizeStatement(s.id)}>{p.finalize}</button>
+                <button className="btn btn-sm btn-primary" disabled={paying} onClick={() => payPeriod(selectedPeriod, s.employee_id)}>{p.payOne}</button>
               )}
             </div>
           ))}

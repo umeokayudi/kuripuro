@@ -7,8 +7,14 @@ import {
   payslipAdvanceLines,
   payslipNetPay,
 } from '../src/lib/salaryCalc.js'
-import { buildCloseRow, periodsFromPayroll } from '../src/lib/payrollClose.js'
-import { getPeriodDates } from '../src/lib/salaryPeriod.js'
+import {
+  buildCloseRow,
+  buildSalaryPayment,
+  periodsFromPayroll,
+  previousPeriod,
+  closePayrollMonth,
+  payClosedPayroll,
+} from '../src/lib/payrollClose.js'
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg)
@@ -61,14 +67,17 @@ function testCloseDeductsAdvances() {
     { payment_type: 'advance', period: '2026-09', payment_date: '2026-09-08', amount: 20000 },
     { is_deduction: true, payment_type: 'deduction', period: '2026-09', amount: 1000, description: 'uniform' },
   ]
-  const dates = getPeriodDates('2026-09')
-  const built = buildCloseRow(emp, jobs, pays, '2026-09', { payDate: dates.payDate, salaryDesc: 'Salary Sep 2026' })
+  const built = buildCloseRow(emp, jobs, pays, '2026-09')
+  assert(built.salaryPayment === undefined, 'close is not a payment')
+  assert(built.payroll.status === 'pending', 'closed unpaid')
   assert(built.advances.lines.length === 1, 'one advance')
   assert(built.advances.lines[0].date === '2026-09-08', 'advance date on close')
   assert(built.payroll.deductions === 21000, `deds ${built.payroll.deductions}`)
   assert(built.payroll.net_total === Math.max(0, built.calc.total - 21000), 'net')
-  assert(built.salaryPayment.payment_type === 'salary', 'salary row')
-  assert(built.salaryPayment.payment_date === '2026-10-15', built.salaryPayment.payment_date)
+  const pay = buildSalaryPayment(built.payroll, { payDate: '2026-10-15', salaryDesc: 'Salary Sep 2026' })
+  assert(pay.payment_type === 'salary', 'salary row is separate')
+  assert(pay.amount === built.payroll.net_total, 'pay uses closed net')
+  assert(pay.payment_date === '2026-10-15', pay.payment_date)
 }
 
 function testPayslipNet() {
@@ -84,24 +93,102 @@ function testPeriodsFromPayroll() {
     { period: '2026-08', status: 'paid' },
   ])
   assert(list[0].period === '2026-09', 'newest first')
+  assert(list[0].status === 'closed', `sep ${list[0].status}`)
+  assert(list[1].status === 'paid', 'aug paid')
+  assert(previousPeriod('2026-10') === '2026-09', 'prev oct')
+}
+
+function memorySb(store) {
+  const writes = []
+  const from = (table) => {
+    const filters = {}
+    let limitN = null
+    const self = {
+      select() { return self },
+      eq(k, v) { filters[k] = v; return self },
+      gte(k, v) { filters[k + '__gte'] = v; return self },
+      lte(k, v) { filters[k + '__lte'] = v; return self },
+      limit(n) { limitN = n; return self },
+      then(resolve) {
+        let rows = store[table] || []
+        rows = rows.filter(row => {
+          for (const [k, v] of Object.entries(filters)) {
+            if (k.endsWith('__gte')) { if (String(row[k.slice(0, -5)]) < v) return false }
+            else if (k.endsWith('__lte')) { if (String(row[k.slice(0, -5)]) > v) return false }
+            else if (String(row[k]) !== String(v)) return false
+          }
+          return true
+        })
+        if (limitN) rows = rows.slice(0, limitN)
+        return resolve({ data: rows, error: null })
+      },
+      async insert(row) {
+        writes.push({ table, op: 'insert', row })
+        const rec = { id: `${table}-${(store[table] || []).length + 1}`, ...row }
+        store[table] = [...(store[table] || []), rec]
+        return { data: rec, error: null }
+      },
+      update(row) {
+        return {
+          async eq(k, v) {
+            writes.push({ table, op: 'update', row, k, v })
+            store[table] = (store[table] || []).map(r => String(r[k]) === String(v) ? { ...r, ...row } : r)
+            return { error: null }
+          },
+        }
+      },
+      async upsert(row) {
+        writes.push({ table, op: 'upsert', row })
+        return { error: null }
+      },
+    }
+    return self
+  }
+  return { from, writes, store }
+}
+
+async function testCloseVsPayMemory() {
+  const emp = { id: 'e1', full_name: 'Aoki', salary_type: 'per_job', job_bonus_rate: 100, is_active: true }
+  const sb = memorySb({
+    employees: [emp],
+    jobs: [{ employee_id: 'e1', status: 'completed', scheduled_date: '2026-09-10', value: 50000, retro_value: 50000 }],
+    salary_payments: [{ employee_id: 'e1', period: '2026-09', payment_type: 'advance', payment_date: '2026-09-08', amount: 10000 }],
+    payroll: [],
+  })
+  const closed = await closePayrollMonth(sb, '2026-09')
+  assert(closed.wrotePayments === false, 'close flag')
+  assert(closed.closed.length === 1, 'one close')
+  assert(closed.closed[0].payroll.net_total === 40000, `net ${closed.closed[0].payroll.net_total}`)
+  assert(!sb.writes.some(w => w.table === 'salary_payments'), 'close did not write salary_payments')
+  assert(sb.store.payroll.length === 1, 'payroll written')
+
+  const paid = await payClosedPayroll(sb, '2026-09', { salaryDesc: 'Salary Sep 2026' })
+  assert(paid.wroteClose === false, 'pay does not close')
+  assert(paid.paid.length === 1, 'one salary payment')
+  assert(sb.store.salary_payments.some(r => r.payment_type === 'salary' && r.amount === 40000), 'salary payment created')
+  assert(sb.store.payroll[0].status === 'paid', 'payroll marked paid')
 }
 
 function testSourceGuards() {
   const close = readFileSync(new URL('../src/pages/SalaryPeriods.jsx', import.meta.url), 'utf8')
   assert(close.includes('closePayrollMonth'), 'uses close helper')
+  assert(close.includes('payClosedPayroll'), 'pay is separate in UI')
   assert(!close.includes("period + '-31'"), 'no fake day 31 in close UI')
   const lib = readFileSync(new URL('../src/lib/payrollClose.js', import.meta.url), 'utf8')
-  assert(lib.includes('monthLastDate'), 'close uses last real day')
-  assert(lib.includes("'payroll'"), 'writes payroll')
+  const closeFn = lib.split('export async function closePayrollMonth')[1].split('export async function refreshEmployeeClose')[0]
+  assert(!closeFn.includes('salary_payments'), 'closePayrollMonth does not write salary_payments')
+  assert(lib.includes('export async function payClosedPayroll'), 'pay helper exists')
   const pdf = readFileSync(new URL('../src/lib/generatePDF.js', import.meta.url), 'utf8')
   assert(pdf.includes('payslipAdvanceLines'), 'payslip lists advances')
   assert(!pdf.includes('Jun (\\d+)'), 'no jun/jul regex')
   const ai = readFileSync(new URL('../api/admin-ai.js', import.meta.url), 'utf8')
   assert(ai.includes('record_salary_advance'), 'AI advance tool')
-  assert(ai.includes('needs_confirmation'), 'AI confirms first')
+  assert(ai.includes("name: 'close_payroll'"), 'AI close tool')
+  assert(ai.includes("name: 'pay_salary'"), 'AI pay tool')
+  assert(ai.includes("name: 'adjust_pay_record'"), 'AI adjust tool')
   const salary = readFileSync(new URL('../src/pages/Salary.jsx', import.meta.url), 'utf8')
   assert(salary.includes('payment_date'), 'salary UI stores date')
-  assert(salary.includes('monthLastDate'), 'salary jobs use real month end')
+  assert(salary.includes('refreshEmployeeClose'), 'advance refreshes close')
 }
 
 async function main() {
@@ -113,11 +200,13 @@ async function main() {
   testAdvanceLines()
   console.log('✅ payslip advance dates')
   testCloseDeductsAdvances()
-  console.log('✅ close deducts advances')
+  console.log('✅ close deducts advances, no payment')
   testPayslipNet()
   console.log('✅ payslip net')
   testPeriodsFromPayroll()
   console.log('✅ payroll periods')
+  await testCloseVsPayMemory()
+  console.log('✅ close vs pay memory')
   testSourceGuards()
   console.log('✅ source guards')
   console.log('\n✅ All payroll close tests passed')

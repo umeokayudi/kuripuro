@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 import { monthLastDate } from '../lib/salaryCalc'
+import { refreshEmployeeClose } from '../lib/payrollClose'
 
 export default function Salary() {
   const [employees, setEmployees] = useState([])
@@ -57,6 +58,7 @@ export default function Salary() {
     toast.success('Advance registered')
     setNewAdv({ amount:'', desc:'', date: tokyoToday() })
     loadAdvances()
+    try { await refreshEmployeeClose(supabase, selected, period) } catch { /* close is independent of the advance row */ }
   }
 
   const calcSalary = () => {
