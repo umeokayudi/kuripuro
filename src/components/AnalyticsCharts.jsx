@@ -160,15 +160,42 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
     }
   ].filter(Boolean)
 
+  const completedToday = todayJobs.filter(j => j.status === 'completed').length
+  const assignedToday = todayJobs.filter(j => j.status === 'assigned').length
+  const todayProgress = todayJobs.length ? Math.round((completedToday / todayJobs.length) * 100) : 0
+  const profitTone = financial.profit >= 0 ? 'positive' : 'negative'
+  const topClient = [...clients]
+    .map(c => ({ name: c.company_name || 'Client', profit: Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0) }))
+    .sort((a,b) => b.profit - a.profit)[0]
+
   return (
     <section className="executive-section">
       <div className="section-heading-row">
         <div>
           <div className="eyebrow">EXECUTIVE OVERVIEW</div>
-          <h3>Performance at a glance</h3>
-          <p>Decisions first. Operational details below.</p>
+          <h3>O que está acontecendo agora</h3>
+          <p>Uma visão rápida para decidir onde agir primeiro.</p>
         </div>
-        <div className="executive-period"><span>Monthly contracts</span><strong>{fmtYen(financial.revenue)}</strong></div>
+        <div className="executive-period"><span>Base mensal dos contratos</span><strong>{fmtYen(financial.revenue)}</strong></div>
+      </div>
+
+      <div className="executive-pulse">
+        <div className="pulse-card pulse-primary">
+          <span className="pulse-icon">¥</span>
+          <div><small>Lucro estimado</small><strong>{fmtYen(financial.profit)}</strong><em>{financial.margin.toFixed(1)}% de margem</em></div>
+        </div>
+        <div className="pulse-card">
+          <span className="pulse-icon">✓</span>
+          <div><small>Hoje concluído</small><strong>{completedToday}/{todayJobs.length}</strong><em>{todayProgress}% da agenda</em></div>
+        </div>
+        <div className="pulse-card">
+          <span className="pulse-icon">!</span>
+          <div><small>Precisa de atenção</small><strong>{staleCount + atRisk.length + assignedToday}</strong><em>{assignedToday} aguardando início</em></div>
+        </div>
+        <div className="pulse-card">
+          <span className="pulse-icon">↗</span>
+          <div><small>Cliente mais rentável</small><strong className="pulse-client">{topClient?.name || '—'}</strong><em>{topClient ? fmtYen(topClient.profit) : 'Sem dados'}</em></div>
+        </div>
       </div>
 
       <div className="executive-grid executive-grid-main">
