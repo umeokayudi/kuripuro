@@ -70,9 +70,6 @@ export default function Dashboard() {
   const cost = clients.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
   const profit = revenue - cost
 
- [...clients].sort((a, b) =>
-    (Number(b.monthly_revenue || 0) - Number(b.monthly_cost || 0)) - (Number(a.monthly_revenue || 0) - Number(a.monthly_cost || 0))
-  )
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
