@@ -29,10 +29,10 @@ export default function Cashflow() {
 
   const load = async () => {
     setLoading(true)
-    const [{ data, error }, { data: invoiceData }, { data: salaryData }, { data: transportData }] = await Promise.all([
+    const [{ data, error }, { data: invoiceData }, { data: salaryData }, { data: transportData }, { data: clientData }, { data: jobData }] = await Promise.all([
       supabase.from('cashflow').select('*').order('entry_date', { ascending:false }).limit(500),
-      supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').order('issue_date', { ascending:false }).limit(500),
-      supabase.from('salary_payments').select('id,employee_name,amount,payment_date,status,payment_type,is_deduction').order('payment_date', { ascending:false }).limit(1000),
+      supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status,paid_at').order('issue_date', { ascending:false }).limit(500),
+      supabase.from('salary_payments').select('id,employee_id,employee_name,amount,payment_date,status,payment_type,is_deduction').order('payment_date', { ascending:false }).limit(1000),
       supabase.from('transport_claims').select('id,employee_id,employee_name,job_id,amount,claim_date,status').order('claim_date', { ascending:false }).limit(1000),
     ])
     if (error) return toast.error(error.message)
