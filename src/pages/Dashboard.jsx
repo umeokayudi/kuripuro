@@ -172,6 +172,36 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <section className="dash-command" aria-label="Dashboard focus">
+        <div className="dash-command-main">
+          <div className="dash-command-eyebrow">KURIPURO HQ</div>
+          <div className="dash-command-title">{d.todayJobs}</div>
+          <div className="dash-command-sub">
+            {todayJobs.length} {d.todayJobs.toLowerCase()} · {employees.length} {d.activeEmployees.toLowerCase()}
+          </div>
+        </div>
+        <div className="dash-command-stats">
+          <div className="dash-command-stat">
+            <span className="dash-command-dot green" />
+            <b>{todayJobs.filter(j => j.status === 'completed').length}</b>
+            <span>{t.status.completed || 'Completed'}</span>
+          </div>
+          <div className="dash-command-stat">
+            <span className="dash-command-dot amber" />
+            <b>{todayJobs.filter(j => j.status === 'in_progress').length}</b>
+            <span>{t.status.in_progress || 'In progress'}</span>
+          </div>
+          <div className={staleCount > 0 ? 'dash-command-stat danger' : 'dash-command-stat'}>
+            <span className="dash-command-dot red" />
+            <b>{staleCount}</b>
+            <span>{d.staleJobs}</span>
+          </div>
+        </div>
+        <Link className="dash-command-action" to="/jobs">
+          {d.todayJobs} <span>→</span>
+        </Link>
+      </section>
+
       {staleCount > 0 && (
         <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ {fill(d.staleJobs, { count: staleCount })}</span>
@@ -179,7 +209,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="dash-metrics">
+      <div className="dash-metrics dash-metrics-v92">
         {[
           [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
           [d.netProfit, fmt(profit), 'var(--green)'],
@@ -193,7 +223,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <ExecutiveDashboard
+      <div className="dash-executive-v92"><ExecutiveDashboard
         clients={clients}
         monthJobs={monthJobs}
         todayJobs={todayJobs}
@@ -202,8 +232,9 @@ export default function Dashboard() {
         atRisk={atRisk}
         deepProgress={deepProgress}
       />
+      </div>
 
-      <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
+      <div className="card dash-satisfaction-v92" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{d.satisfactionTitle}</div>
