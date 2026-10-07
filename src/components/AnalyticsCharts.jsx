@@ -268,6 +268,8 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
 
 
 export function ReportsAnalytics({ reports = [] }) {
+  const { t } = useLang()
+  const d = t.executive || {}
   const byDay = useMemo(() => {
     const map = {}
     reports.forEach(r => {
