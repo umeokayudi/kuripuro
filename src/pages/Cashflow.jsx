@@ -15,6 +15,8 @@ function normalizeEntry(row) {
 export default function Cashflow() {
   const [entries, setEntries] = useState([])
   const [invoices, setInvoices] = useState([])
+  const [salaryPayments, setSalaryPayments] = useState([])
+  const [transportClaims, setTransportClaims] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('overview')
   const [form, setForm] = useState({ type:'income', category:'Client Payment', amount:'', description:'', date:new Date().toISOString().split('T')[0] })
@@ -27,13 +29,17 @@ export default function Cashflow() {
 
   const load = async () => {
     setLoading(true)
-    const [{ data, error }, { data: invoiceData }] = await Promise.all([
+    const [{ data, error }, { data: invoiceData }, { data: salaryData }, { data: transportData }] = await Promise.all([
       supabase.from('cashflow').select('*').order('entry_date', { ascending:false }).limit(500),
       supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').order('issue_date', { ascending:false }).limit(500),
+      supabase.from('salary_payments').select('id,employee_name,amount,payment_date,status,payment_type,is_deduction').order('payment_date', { ascending:false }).limit(1000),
+      supabase.from('transport_claims').select('id,employee_id,employee_name,job_id,amount,claim_date,status').order('claim_date', { ascending:false }).limit(1000),
     ])
     if (error) return toast.error(error.message)
     setEntries((data || []).map(normalizeEntry))
     setInvoices(invoiceData || [])
+    setSalaryPayments(salaryData || [])
+    setTransportClaims(transportData || [])
     setLoading(false)
   }
 
@@ -68,7 +74,21 @@ export default function Cashflow() {
   const receivable = invoices.filter(f=>f.status === 'sent' || f.status === 'draft').reduce((s,f)=>s+Number(f.total||0),0)
   const today = new Date().toISOString().slice(0,10)
   const overdue = invoices.filter(f=>(f.status === 'sent' || f.status === 'draft') && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
-  const projected = income + receivable - expense
+  const paidSalary = salaryPayments
+    .filter(p => p.status === 'paid' && !p.is_deduction && p.payment_date?.startsWith(month))
+    .reduce((s,p)=>s+Number(p.amount||0),0)
+  const paidTransport = transportClaims
+    .filter(p => ['paid','approved','reimbursed'].includes(p.status) && p.claim_date?.startsWith(month))
+    .reduce((s,p)=>s+Number(p.amount||0),0)
+  const manualSalary = thisMonth.filter(e=>e.type==='expense' && e.category==='Salary').reduce((s,e)=>s+Number(e.amount||0),0)
+  const manualTransport = thisMonth.filter(e=>e.type==='expense' && e.category==='Transport').reduce((s,e)=>s+Number(e.amount||0),0)
+  const salaryCost = Math.max(paidSalary, manualSalary)
+  const transportCost = Math.max(paidTransport, manualTransport)
+  const otherExpense = Math.max(0, expense - manualSalary - manualTransport)
+  const realCosts = salaryCost + transportCost + otherExpense
+  const realProfit = income - realCosts
+  const realMargin = income > 0 ? (realProfit / income) * 100 : 0
+  const projected = income + receivable - realCosts
 
   return (
     <div>
@@ -102,12 +122,17 @@ export default function Cashflow() {
               </div>
             ))}
           </div>
+          <div className="finance-kpis" style={{marginTop:12}}>
+            <div className="finance-kpi"><span>Lucro real</span><strong style={{color:realProfit>=0?'var(--green)':'var(--red)'}}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
+            <div className="finance-kpi"><span>Margem real</span><strong style={{color:realMargin>=0?'var(--green)':'var(--red)'}}>{realMargin.toFixed(1)}%</strong></div>
+          </div>
           <div className="finance-summary-grid">
             <div className="card finance-focus-card">
               <div className="card-title">Situação do mês</div>
               <div className="finance-big-row"><span>Entradas registradas</span><strong className="finance-positive">¥{income.toLocaleString()}</strong></div>
               <div className="finance-big-row"><span>Despesas registradas</span><strong className="finance-negative">¥{expense.toLocaleString()}</strong></div>
-              <div className="finance-big-row finance-total"><span>Saldo de caixa</span><strong>¥{Math.abs(balance).toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>Custos reais</span><strong className="finance-negative">¥{realCosts.toLocaleString()}</strong></div>
+              <div className="finance-big-row finance-total"><span>Lucro real</span><strong className={realProfit>=0?'finance-positive':'finance-negative'}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
             </div>
             <div className="card finance-focus-card">
               <div className="card-title">Cobranças</div>
@@ -115,6 +140,13 @@ export default function Cashflow() {
               <div className="finance-big-row"><span>Em aberto</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
               <div className="finance-big-row finance-total"><span>Vencido</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
             </div>
+          </div>
+          <div className="card" style={{marginBottom:14}}>
+            <div className="card-title">Onde o dinheiro está indo</div>
+            <div className="finance-big-row"><span>Salários pagos</span><strong>¥{salaryCost.toLocaleString()}</strong></div>
+            <div className="finance-big-row"><span>Transporte</span><strong>¥{transportCost.toLocaleString()}</strong></div>
+            <div className="finance-big-row"><span>Outras despesas</span><strong>¥{otherExpense.toLocaleString()}</strong></div>
+            <div className="finance-big-row finance-total"><span>Total de custos reais</span><strong>¥{realCosts.toLocaleString()}</strong></div>
           </div>
           <div className="card">
             <div className="card-title">Movimentações do mês</div>
