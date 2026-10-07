@@ -1,3 +1,4 @@
+import { ReportsAnalytics } from '../components/AnalyticsCharts'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { jobToServiceReport, fmtDuration, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../lib/jobReport'
@@ -188,6 +189,8 @@ export default function Reports() {
           <div style={{ fontSize: 28, fontWeight: 700 }}>{Object.keys(stats.byEmp).length}</div>
         </div>
       </div>
+
+      <ReportsAnalytics reports={filtered} />
 
       {aiAnalysis && (
         <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #c19c56' }}>
