@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
+import { usePeriod } from '../hooks/usePeriod'
+import { tokyoToday } from '../lib/dates'
+import { sumInvoices, growthPct, previousEqualRange } from '../lib/period'
+import RevenueGrowth from '../components/RevenueGrowth'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import { billingPeriodForDate, isMonthEndBillingDay } from '../lib/invoice'
 import toast from 'react-hot-toast'
-
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 
 export default function Dashboard() {
   const { lang, t } = useLang()
@@ -28,7 +30,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
   const [lastUpdate, setLastUpdate] = useState(null)
+  const [invoices, setInvoices] = useState([])
   const [invoiceAlert, setInvoiceAlert] = useState(null)
+
+  const { start, end } = usePeriod()
 
   const load = async () => {
     const today = tokyoToday()
@@ -42,7 +47,7 @@ export default function Dashboard() {
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
-      supabase.from('faturas').select('id,client_id,period_start,status'),
+      supabase.from('faturas').select('id,client_id,period_start,issue_date,status,total').neq('status', 'cancelled').limit(4000),
     ])
     setClients(c.data || [])
     setEmployees(e.data || [])
@@ -51,6 +56,7 @@ export default function Dashboard() {
     setStaleCount(stale.count || 0)
     setMonthJobs(mj.data || [])
     setClientRatings(cr.data || [])
+    setInvoices(inv.error ? [] : (inv.data || []))
     if (isMonthEndBillingDay(today)) {
       const period = billingPeriodForDate(today)
       let dismissed = false
@@ -89,9 +95,18 @@ export default function Dashboard() {
   }
 
   const fmt = n => '¥' + Number(n || 0).toLocaleString()
-  const revenue = clients.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0)
-  const cost = clients.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
-  const profit = revenue - cost
+  const contractRun = clients.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0)
+  const billed = sumInvoices(invoices, start, end, ['sent', 'paid'])
+  const received = sumInvoices(invoices, start, end, ['paid'])
+  const prevRange = previousEqualRange({ start, end })
+  const billedPrev = sumInvoices(invoices, prevRange.start, prevRange.end, ['sent', 'paid'])
+  const receivedPrev = sumInvoices(invoices, prevRange.start, prevRange.end, ['paid'])
+  const billedDelta = growthPct(billed, billedPrev)
+  const receivedDelta = growthPct(received, receivedPrev)
+  const p = t.period
+
+  const growthClass = n => (n > 0 ? 'growth-up' : n < 0 ? 'growth-down' : '')
+  const growthLabel = n => `${n > 0 ? '+' : ''}${n}%`
 
   const byEmp = {}
   todayJobs.forEach(j => {
@@ -221,17 +236,25 @@ export default function Dashboard() {
 
       <div className="dash-metrics">
         {[
-          [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
-          [d.netProfit, fmt(profit), 'var(--green)'],
-          [d.activeEmployees, employees.length, 'var(--text)'],
+          [p.billed, fmt(billed), 'var(--text)'],
+          [p.received, fmt(received), 'var(--green)'],
+          [p.contractRun, fmt(contractRun), 'var(--text)'],
           [d.todayJobs, todayJobs.length, 'var(--text)'],
         ].map(([l, v, c]) => (
           <div key={l} className="metric-card">
             <div className="metric-label">{l}</div>
             <div className="metric-value" style={{ color: c }}>{v}</div>
+            {l === p.billed && (
+              <div className={growthClass(billedDelta)} style={{ fontSize: 12, marginTop: 4 }}>{p.vsPrev} {growthLabel(billedDelta)}</div>
+            )}
+            {l === p.received && (
+              <div className={growthClass(receivedDelta)} style={{ fontSize: 12, marginTop: 4 }}>{p.vsPrev} {growthLabel(receivedDelta)}</div>
+            )}
           </div>
         ))}
       </div>
+
+      <RevenueGrowth invoices={invoices} fmt={fmt} />
 
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>

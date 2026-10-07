@@ -168,7 +168,7 @@ export const translations = {
       tax: 'Consumption Tax (10%)',
       total: 'Total',
       receiptLabel: '領　収　書',
-      companyAddress: '〒 160-0023 東京都新宿区西新宿',
+      companyAddress: '〒204-0012 東京都清瀬市中清戸4-907-17',
       regNumber: 'Reg. No.: T1234567890123',
     },
     common: {
@@ -354,7 +354,7 @@ export const translations = {
       tax: '消費税（10%）',
       total: '合計',
       receiptLabel: '領　収　書',
-      companyAddress: '〒 160-0023 東京都新宿区西新宿',
+      companyAddress: '〒204-0012 東京都清瀬市中清戸4-907-17',
       regNumber: '登録番号：T1234567890123',
     },
     common: {

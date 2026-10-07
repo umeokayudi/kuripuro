@@ -1,6 +1,7 @@
 import { escapeHtml } from './escapeHtml'
 import { addDays, invoiceTotals, lineTotal, yen } from './invoice'
-import { QUOTE_ISSUER } from './quoteIssuer'
+import { localizePrintText, formatAddressForLang, printPartyHtml, printDatesHtml, printIssuerHtml, wrapPrintHtml } from './printDoc'
+import { printIssuer } from './quoteIssuer'
 
 export const LEAD_SOURCES = ['visit', 'phone', 'referral', 'web', 'walkin', 'other']
 export const LEAD_STAGES = ['approach', 'followup', 'won', 'lost']
@@ -8,7 +9,66 @@ export const QUOTE_STATUSES = ['draft', 'sent', 'accepted', 'declined', 'expired
 
 export function isSalesSchemaMissing(error) {
   const msg = String(error?.message || '')
-  return error?.code === 'PGRST205' || msg.includes('sales_leads') || msg.includes('mitsumori')
+  return error?.code === 'PGRST205' || msg.includes('sales_leads') || msg.includes('mitsumori') || msg.includes('sales_touchpoints')
+}
+
+export function isCrmSchemaMissing(error) {
+  const msg = String(error?.message || '').toLowerCase()
+  return msg.includes('sales_touchpoints')
+    || msg.includes('site_name')
+    || (msg.includes('interest') && (msg.includes('column') || msg.includes('schema cache')))
+}
+
+export function dropSiteNameKeepNote(payload) {
+  if (!payload || typeof payload !== 'object') return payload
+  const { site_name, ...rest } = payload
+  return { ...rest, notes: embedRestaurantNote(rest.notes, site_name) }
+}
+
+export function stripCrmExtras(payload) {
+  if (!payload || typeof payload !== 'object') return payload
+  const rest = { ...payload }
+  delete rest.interest
+  return rest
+}
+
+const SITE_TAG_RE = /(?:【店舗】|【店名】|(?:店舗名|店名|店舗|現場名|現場|レストラン名|レストラン|Restaurant|Store name|Store)\s*[:：]?\s*)/i
+const SITE_NOTE_RE = new RegExp(`(?:^|\\n)\\s*${SITE_TAG_RE.source}([^\\n]+)`, 'i')
+const SITE_LINE_RE = new RegExp(`^(?:${SITE_TAG_RE.source})[^\\n]*\\n?`, 'i')
+
+export function embedRestaurantNote(notes, siteName) {
+  const site = String(siteName || '').replace(/\u3000/g, ' ').trim()
+  const body = String(notes || '').replace(SITE_LINE_RE, '')
+  if (!site) return body
+  return `【店舗】${site}\n${body}`
+}
+
+export function restaurantFromNotes(notes) {
+  const m = String(notes || '').match(SITE_NOTE_RE)
+  return m ? String(m[1] || '').replace(/\u3000/g, ' ').trim() : ''
+}
+
+export function notesForPrint(notes) {
+  return String(notes || '').replace(SITE_LINE_RE, '').trim()
+}
+
+export function quoteRestaurantName(quote) {
+  const first = (...vals) => {
+    for (const v of vals) {
+      const s = String(v || '').replace(/\u3000/g, ' ').trim()
+      if (s) return s
+    }
+    return ''
+  }
+  return first(
+    quote?.site_name,
+    restaurantFromNotes(quote?.notes),
+    quote?.location_name,
+    quote?.store_name,
+    quote?.restaurant_name,
+    quote?.restaurant,
+    quote?.place,
+  )
 }
 
 export function normalizeCompanyKey(name) {
@@ -25,6 +85,7 @@ export function emptyLead(today, stage = 'approach') {
   return {
     company_name: '',
     company_kana: '',
+    site_name: '',
     address: '',
     phone: '',
     email: '',
@@ -47,12 +108,16 @@ export function emptyLead(today, stage = 'approach') {
     expected_start: '',
     competitor: '',
     notes: '',
+    interest: '',
     stage,
   }
 }
 
 export function leadFromRow(row, today) {
-  return { ...emptyLead(today, row.stage || 'approach'), ...row, locations_count: row.locations_count ?? '', expected_monthly: row.expected_monthly ?? '' }
+  const merged = { ...emptyLead(today, row.stage || 'approach'), ...row, locations_count: row.locations_count ?? '', expected_monthly: row.expected_monthly ?? '' }
+  if (!String(merged.site_name || '').trim()) merged.site_name = restaurantFromNotes(row.notes)
+  merged.notes = notesForPrint(row.notes)
+  return merged
 }
 
 export function mergeLeadFromQuote(existing, form, today) {
@@ -61,6 +126,7 @@ export function mergeLeadFromQuote(existing, form, today) {
   return {
     company_name: String(form.company_name || '').trim(),
     company_kana: form.company_kana || '',
+    site_name: form.site_name || '',
     address: form.address || '',
     phone: form.phone || '',
     email: form.email || '',
@@ -82,7 +148,8 @@ export function mergeLeadFromQuote(existing, form, today) {
     expected_monthly: form.expected_monthly === '' || form.expected_monthly == null ? (existing?.expected_monthly ?? null) : Number(form.expected_monthly),
     expected_start: form.expected_start || existing?.expected_start || null,
     competitor: form.competitor || existing?.competitor || '',
-    notes: form.notes || existing?.notes || '',
+    notes: embedRestaurantNote(form.notes, form.site_name),
+    interest: form.interest || existing?.interest || '',
     stage: keepWon ? 'won' : 'followup',
     updated_at: new Date().toISOString(),
   }
@@ -92,6 +159,7 @@ export function leadWritePayload(form, today, stage) {
   return {
     company_name: String(form.company_name || '').trim(),
     company_kana: form.company_kana || '',
+    site_name: form.site_name || '',
     address: form.address || '',
     phone: form.phone || '',
     email: form.email || '',
@@ -113,7 +181,8 @@ export function leadWritePayload(form, today, stage) {
     expected_monthly: form.expected_monthly === '' || form.expected_monthly == null ? null : Number(form.expected_monthly),
     expected_start: form.expected_start || null,
     competitor: form.competitor || '',
-    notes: form.notes || '',
+    notes: embedRestaurantNote(form.notes, form.site_name),
+    interest: form.interest || '',
     stage: stage || form.stage || 'approach',
     updated_at: new Date().toISOString(),
   }
@@ -136,6 +205,38 @@ export function quoteTotals(items, taxRate) {
   return invoiceTotals(items, taxRate)
 }
 
+export function quoteWritePayload(form, leadId, totals, extra = {}) {
+  return {
+    lead_id: leadId || null,
+    company_name: String(form.company_name || '').trim(),
+    company_kana: form.company_kana || '',
+    site_name: form.site_name || '',
+    address: form.address || '',
+    phone: form.phone || '',
+    email: form.email || '',
+    contact_name: form.contact_name || '',
+    contact_title: form.contact_title || '',
+    contact_phone: form.contact_phone || '',
+    contact_email: form.contact_email || '',
+    first_contact_date: form.first_contact_date || null,
+    needs: form.needs || '',
+    still_needed: form.still_needed || '',
+    source: form.source || '',
+    notes: embedRestaurantNote(form.notes, form.site_name),
+    interest: form.interest || '',
+    valid_until: form.valid_until || null,
+    site_visit_date: form.site_visit_date || null,
+    expected_start: form.expected_start || null,
+    frequency: form.frequency || '',
+    hours_per_visit: form.hours_per_visit === '' || form.hours_per_visit == null ? null : Number(form.hours_per_visit),
+    tax_rate: parseInt(form.tax_rate, 10) || 10,
+    subtotal: totals.subtotal,
+    tax_amount: totals.taxAmount,
+    total: totals.total,
+    ...extra,
+  }
+}
+
 export function emptyQuoteItem() {
   return { description: '', quantity: 1, unit_price: 0, total: 0 }
 }
@@ -154,80 +255,127 @@ export function defaultValidUntil(issueDate) {
   return addDays(issueDate, 30)
 }
 
-export function buildMitsumoriPrintHtml(quote, items, issuer = {}) {
-  const company = escapeHtml(quote.company_name)
-  const contact = escapeHtml([quote.contact_title, quote.contact_name].filter(Boolean).join(' '))
-  const number = escapeHtml(quote.quote_number || quote.id?.slice?.(0, 8) || '')
-  const issuerCompany = escapeHtml(issuer.company || QUOTE_ISSUER.company)
-  const issuerPerson = escapeHtml(issuer.name || QUOTE_ISSUER.name)
-  const issuerEmail = escapeHtml(issuer.email || QUOTE_ISSUER.email)
-  const issuerPhone = escapeHtml(issuer.phone || QUOTE_ISSUER.phone)
+export function isQuoteEditable(status) {
+  return !status || status === 'draft' || status === 'pending'
+}
+
+export function emptyTouchpoint(today) {
+  return { event_type: 'reply', happened_at: today || '', channel: 'phone', said_by: '', body: '' }
+}
+
+export const TOUCH_CHANNELS = ['phone', 'email', 'visit', 'line', 'other']
+export const TOUCH_TYPES = ['reply', 'call', 'note', 'sent']
+
+export const QUOTE_PRINT_COPY = {
+  ja: {
+    htmlLang: 'ja',
+    docTitle: '見積書',
+    honorific: '御中',
+    store: '店舗',
+    company: '会社',
+    contact: 'ご担当',
+    issueDate: '発行日',
+    validUntil: '有効期限',
+    rep: '代表',
+    address: '住所',
+    reg: '登録番号',
+    desc: '内容',
+    qty: '数量',
+    unit: '単価',
+    amount: '金額',
+    subtotal: '小計',
+    tax: '消費税',
+    total: '合計（税込）',
+    notes: '備考',
+    issuer: '発行者',
+    email: 'メール',
+    phone: '電話',
+    accepted: '成約',
+    colon: '：',
+    thanks: 'この度はお見積りをご依頼いただき、誠にありがとうございます。内容をご確認のうえ、ご返答をお待ちしております。',
+    titleTracking: '0.45em',
+  },
+  en: {
+    htmlLang: 'en',
+    docTitle: 'QUOTATION',
+    honorific: '',
+    store: 'Store',
+    company: 'Company',
+    contact: 'Contact',
+    issueDate: 'Issue date',
+    validUntil: 'Valid until',
+    rep: 'Rep.',
+    address: 'Address',
+    reg: 'Reg. No.',
+    desc: 'Description',
+    qty: 'Qty',
+    unit: 'Unit price',
+    amount: 'Amount',
+    subtotal: 'Subtotal',
+    tax: 'Consumption tax',
+    total: 'Total (incl. tax)',
+    notes: 'Notes',
+    issuer: 'Issuer',
+    email: 'Email',
+    phone: 'Phone',
+    accepted: 'Won',
+    colon: ': ',
+    thanks: 'Thank you for requesting this quotation. Please review the details — we look forward to your reply.',
+    titleTracking: '0.12em',
+  },
+}
+
+export function quotePrintCopy(lang) {
+  return QUOTE_PRINT_COPY[lang === 'en' ? 'en' : 'ja']
+}
+
+export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') {
+  const L = quotePrintCopy(lang)
+  const loc = printIssuer(issuer, lang)
+  const restaurant = localizePrintText(quoteRestaurantName(quote), lang)
+  const company = localizePrintText(String(quote.company_name || '').trim(), lang)
+  const printTitle = escapeHtml(restaurant || company)
+  const contact = localizePrintText([quote.contact_title, quote.contact_name].filter(Boolean).join(' '), lang)
+  const number = quote.quote_number || quote.id?.slice?.(0, 8) || ''
+  const printNotes = localizePrintText(notesForPrint(quote.notes), lang)
+  const clientAddress = formatAddressForLang(quote.address || '', lang)
+  const extra = [
+    quote.frequency ? localizePrintText(quote.frequency, lang) : '',
+    quote.hours_per_visit ? `${quote.hours_per_visit}${lang === 'en' ? ' h' : '時間'}` : '',
+  ].filter(Boolean).join(lang === 'en' ? ' · ' : '　')
+  const extraHtml = extra ? `<div class="party-meta">${escapeHtml(extra)}</div>` : ''
   const rows = (items || []).map(it => `
       <tr>
-        <td>${escapeHtml(it.description || '')}</td>
+        <td>${escapeHtml(localizePrintText(it.description || '', lang))}</td>
         <td class="num">${escapeHtml(String(it.quantity ?? ''))}</td>
         <td class="num">${yen(it.unit_price)}</td>
         <td class="num">${yen(it.total)}</td>
       </tr>`).join('')
-  const accepted = quote.status === 'accepted'
-
-  return `<!DOCTYPE html>
-<html lang="ja"><head><meta charset="utf-8"><title>見積書 ${number} - ${company}</title>
-<style>
-  @page { size: A4; margin: 16mm; }
-  body{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;color:#152033;max-width:720px;margin:0 auto;padding:12px}
-  h1{text-align:center;font-size:26px;letter-spacing:0.4em;margin:0 0 4px}
-  .sub{text-align:center;color:#667;font-size:12px;margin-bottom:22px}
-  .meta{display:flex;justify-content:space-between;gap:24px;margin-bottom:18px;font-size:13px}
-  .bill-to{font-size:16px;font-weight:700}
-  table{width:100%;border-collapse:collapse;margin:16px 0}
-  th{background:#0c1c30;color:#fff;padding:8px 10px;text-align:left;font-size:12px;font-weight:600}
-  td{padding:8px 10px;border-bottom:1px solid #e6ebf2;font-size:13px}
-  .num{text-align:right;white-space:nowrap}
-  .totals{width:280px;margin-left:auto}
-  .totals td{border:none;padding:5px 8px}
-  .total-row td{border-top:2px solid #152033;font-weight:700;font-size:15px}
-  .footer{margin-top:28px;font-size:12px;color:#556;line-height:1.6}
-  .stamp{position:absolute;right:40px;top:48px;border:3px solid #0f6e56;color:#0f6e56;padding:6px 14px;font-weight:800;transform:rotate(-12deg);font-size:18px}
-  .wrap{position:relative}
-</style></head>
-<body>
-  <div class="wrap">
-    ${accepted ? '<div class="stamp">成約</div>' : ''}
-    <h1>見積書</h1>
-    <div class="sub">${issuerCompany}</div>
-    <div class="meta">
-      <div>
-        <div class="bill-to">${company} 御中</div>
-        ${contact ? `<div>ご担当: ${contact}</div>` : ''}
-        ${quote.address ? `<div>${escapeHtml(quote.address)}</div>` : ''}
-        ${quote.needs ? `<div>ご要望: ${escapeHtml(quote.needs)}</div>` : ''}
-      </div>
-      <div style="text-align:right">
-        <div>見積番号: ${number}</div>
-        <div>発行日: ${escapeHtml(quote.issue_date || '')}</div>
-        <div>有効期限: ${escapeHtml(quote.valid_until || '—')}</div>
-        ${quote.first_contact_date ? `<div>初回接触: ${escapeHtml(quote.first_contact_date)}</div>` : ''}
-      </div>
-    </div>
-    <table>
-      <thead><tr><th>内容</th><th class="num">数量</th><th class="num">単価</th><th class="num">金額</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4">—</td></tr>'}</tbody>
-    </table>
-    <table class="totals">
-      <tr><td>小計</td><td class="num">${yen(quote.subtotal)}</td></tr>
-      <tr><td>消費税 (${escapeHtml(String(quote.tax_rate ?? 10))}%)</td><td class="num">${yen(quote.tax_amount)}</td></tr>
-      <tr class="total-row"><td>合計金額（税込）</td><td class="num">${yen(quote.total)}</td></tr>
-    </table>
-    ${quote.notes ? `<p style="margin-top:18px;font-size:13px;color:#556">備考: ${escapeHtml(quote.notes)}</p>` : ''}
-    <div class="footer">
-      <div>${issuerCompany}</div>
-      <div>${issuerPerson}</div>
-      <div>メール: ${issuerEmail}</div>
-      <div>電話: ${issuerPhone}</div>
-    </div>
-  </div>
-</body></html>`
+  const totalsHtml = `<table class="totals">
+      <tr><td>${L.subtotal}</td><td class="num">${yen(quote.subtotal)}</td></tr>
+      <tr><td>${L.tax} (${escapeHtml(String(quote.tax_rate ?? 10))}%)</td><td class="num">${yen(quote.tax_amount)}</td></tr>
+      <tr class="total-row"><td>${L.total}</td><td class="num">${yen(quote.total)}</td></tr>
+    </table>`
+  const notesHtml = printNotes
+    ? `<p class="muted" style="margin-top:16px">${escapeHtml(L.notes)}${L.colon}${escapeHtml(printNotes)}</p>`
+    : ''
+  return wrapPrintHtml({
+    L,
+    number,
+    printTitle,
+    stamp: quote.status === 'accepted' ? L.accepted : '',
+    partyHtml: printPartyHtml(L, { restaurant, company, contact, address: clientAddress, extra: extraHtml }),
+    datesHtml: printDatesHtml([
+      [L.issueDate, escapeHtml(quote.issue_date || '')],
+      [L.validUntil, escapeHtml(quote.valid_until || '—')],
+    ]),
+    columnHead: `<th>${L.desc}</th><th class="num">${L.qty}</th><th class="num">${L.unit}</th><th class="num">${L.amount}</th>`,
+    rows,
+    totalsHtml,
+    notesHtml,
+    thanks: L.thanks,
+    issuerHtml: printIssuerHtml(L, loc),
+  })
 }
 
 export { lineTotal, yen }

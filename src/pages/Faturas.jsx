@@ -4,7 +4,11 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriodKeepOpen } from '../lib/period'
 import { APP_VERSION } from '../lib/appVersion'
+import { QUOTE_ISSUER } from '../lib/quoteIssuer'
+import { openPrintHtml } from '../lib/openPrintHtml'
 import {
   addDays,
   billingPeriodForDate,
@@ -65,6 +69,7 @@ export default function Faturas() {
     [inv.monthlyLine, inv.monthlyFallback, inv.discountLine, inv.discountDaysLine]
   )
   const today = tokyoToday()
+  const { start, end } = usePeriod()
   const monthEnd = isMonthEndBillingDay(today)
   const defaultPeriod = billingPeriodForDate(today)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -321,25 +326,25 @@ export default function Faturas() {
     load()
   }
 
-  const issuer = {
-    company: 'KuriPuro by JBM',
-    address: t.ryoshu?.companyAddress || '',
-    regNumber: t.ryoshu?.regNumber || '',
-    bank: inv.bankNote,
-    version: APP_VERSION,
-  }
-
-  const openPrint = async (f, autoPrint) => {
+  const openPrint = async (f, autoPrint, lang = 'ja') => {
     const { data: printItems, error } = await supabase.from('fatura_items').select('*').eq('fatura_id', f.id)
     if (error) return toast.error(error.message)
-    const w = window.open('', '_blank')
-    if (!w) return toast.error(inv.popupBlocked)
-    w.document.write(buildInvoicePrintHtml({ ...f, invoice_number: displayNumber(f) }, printItems || [], issuer))
-    w.document.close()
-    if (autoPrint) {
-      w.focus()
-      w.print()
-    }
+    const client = clients.find(c => c.id === f.client_id)
+    const locNames = [...new Set(
+      contracts.filter(c => c.client_id === f.client_id).map(c => c.location_name).filter(Boolean)
+    )]
+    const opened = openPrintHtml(buildInvoicePrintHtml(
+      { ...f, invoice_number: displayNumber(f) },
+      printItems || [],
+      { bank: inv.bankNote },
+      lang,
+      {
+        address: client?.address || f.address || '',
+        contact: client?.contact_name || f.contact_name || '',
+        locations: locNames,
+      },
+    ), { autoPrint })
+    if (!opened.ok) toast.error(inv.popupBlocked)
   }
 
   const openAuto = () => {
@@ -422,10 +427,10 @@ export default function Faturas() {
     load()
   }
 
-  const visible = faturas.filter(f => statusFilter === 'all' || f.status === statusFilter)
-  const month = today.slice(0, 7)
-  const outstanding = faturas.filter(f => f.status === 'sent').reduce((s, f) => s + Number(f.total || 0), 0)
-  const paidMonth = faturas.filter(f => f.status === 'paid' && String(f.issue_date || '').startsWith(month)).reduce((s, f) => s + Number(f.total || 0), 0)
+  const periodRows = filterByPeriodKeepOpen(faturas, start, end, ['issue_date', 'period_start', 'created_at'], f => f.status === 'draft')
+  const visible = periodRows.filter(f => statusFilter === 'all' || f.status === statusFilter)
+  const outstanding = periodRows.filter(f => f.status === 'sent').reduce((s, f) => s + Number(f.total || 0), 0)
+  const paidMonth = periodRows.filter(f => f.status === 'paid').reduce((s, f) => s + Number(f.total || 0), 0)
   const drafts = faturas.filter(f => f.status === 'draft')
   const periodDrafts = drafts.filter(f => f.period_start === defaultPeriod.start)
   const billedIds = new Set(
@@ -465,7 +470,7 @@ export default function Faturas() {
       )}
 
       <div className="tab-pills">
-        <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => { setTab('list'); setSearchParams({}) }}>{fill(inv.list, { n: faturas.length })}</button>
+        <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => { setTab('list'); setSearchParams({}) }}>{fill(inv.list, { n: periodRows.length })}</button>
         <button type="button" className={`tab-pill${tab === 'auto' ? ' active' : ''}`} onClick={openAuto}>{inv.auto}</button>
         <button type="button" className={`tab-pill${tab === 'new' ? ' active' : ''}`} onClick={() => setTab('new')}>{inv.new}</button>
       </div>
@@ -514,8 +519,8 @@ export default function Faturas() {
                 {(f.status === 'draft' || f.status === 'pending') && (
                   <button type="button" className="btn btn-sm btn-primary" onClick={() => handleEditDraft(f)}>{inv.editDraft}</button>
                 )}
-                <button type="button" className="btn btn-sm" onClick={() => openPrint(f, false)}>{inv.view}</button>
-                <button type="button" className="btn btn-sm" onClick={() => openPrint(f, true)}>{inv.print}</button>
+                <button type="button" className="btn btn-sm" onClick={() => openPrint(f, false, 'ja')}>{inv.printJa}</button>
+                <button type="button" className="btn btn-sm" onClick={() => openPrint(f, false, 'en')}>{inv.printEn}</button>
                 {(f.status === 'draft' || f.status === 'pending') && (
                   <button type="button" className="btn btn-sm btn-primary" onClick={() => handleStatusChange(f, 'sent')}>{inv.markSent}</button>
                 )}
@@ -665,6 +670,13 @@ export default function Faturas() {
               </div>
               <div className="form-group" style={{ gridColumn: '1/-1' }}><label>{inv.notes}</label><input value={form.notes} onChange={e => upd('notes', e.target.value)} /></div>
             </div>
+            <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.65 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '0.08em', marginBottom: 4 }}>{t.sales.issuer}</div>
+              <div style={{ fontWeight: 700 }}>{QUOTE_ISSUER.company}</div>
+              <div>{t.sales.issuerTitle}：{QUOTE_ISSUER.name}</div>
+              <div>{t.sales.issuerAddress}：{QUOTE_ISSUER.address}</div>
+              <div>{t.sales.issuerReg}：{QUOTE_ISSUER.regNumber}</div>
+            </div>
           </div>
 
           <div className="card" style={{ marginBottom: 14 }}>
@@ -717,8 +729,14 @@ export default function Faturas() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" disabled={saving} onClick={handleCreate}>{saving ? t.app.loading : (form.id ? inv.editDraft : inv.create)}</button>
+            {form.id && (
+              <>
+                <button type="button" className="btn" onClick={() => openPrint(faturas.find(x => x.id === form.id) || { ...form, invoice_number: displayNumber(form) }, false, 'ja')}>{inv.printJa}</button>
+                <button type="button" className="btn" onClick={() => openPrint(faturas.find(x => x.id === form.id) || { ...form, invoice_number: displayNumber(form) }, false, 'en')}>{inv.printEn}</button>
+              </>
+            )}
             <button type="button" className="btn" onClick={() => { setTab('list'); setForm(emptyForm(today)); setItems([]) }}>{inv.cancel}</button>
           </div>
         </div>

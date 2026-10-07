@@ -104,23 +104,92 @@ function testPrint() {
       status: 'paid',
     },
     [{ description: 'Daily <b>', quantity: 1, unit_price: 10000, total: 10000 }],
-    { company: 'KuriPuro by JBM', version: APP_VERSION }
+    { company: 'クリプロ', bank: 'Please transfer separately' }
   )
   assert(html.includes('請求書'), 'title')
   assert(html.includes('KP-202610-001'), 'number')
   assert(html.includes('入金済'), 'paid stamp')
   assert(!html.includes('<script>x</script>'), 'escaped name')
   assert(html.includes('&lt;script&gt;'), 'escaped')
-  assert(html.includes(APP_VERSION), 'version in print')
+  assert(html.includes('issuer-card'), 'issuer card')
+  assert(html.includes('issuer-brand'), 'single issuer brand')
+  assert(html.includes('rule'), 'gold rule')
+  assert((html.split('〒204-0012').length - 1) === 1, 'address once')
+  assert((html.split('梅岡アレサンドレユウジ').length - 1) === 1, 'name once')
+  assert((html.split('クリプロ').length - 1) === 1, 'company once')
+  assert(!html.includes('brand-name'), 'no header brand duplicate')
+  assert(html.includes('クリプロ'), 'issuer company')
+  assert(html.includes('梅岡アレサンドレユウジ'), 'issuer name')
+  assert(html.includes('代表'), 'daihyo')
+  assert(html.includes('住所'), 'address labeled')
+  assert(html.includes('〒204-0012 東京都清瀬市中清戸4-907-17'), 'kiyose')
+  assert(html.includes('登録番号'), 'touroku')
+  assert(html.includes('T1234567890123'), 'reg')
+  assert(html.includes('umeokagroup@gmail.com'), 'email')
+  assert(html.includes('070-9073-2909'), 'phone')
+  assert(html.includes('ご請求申し上げます'), 'thanks')
+  assert(html.includes('width=device-width'), 'mobile viewport')
+  assert(html.includes('font-size:34px'), 'phone title size')
+  assert(html.includes('@page { size: A4'), 'A4 page')
+  assert(html.includes('@media screen and (max-width: 720px)'), 'screen mobile scale')
+  assert(html.includes('@media print'), 'print keeps A4')
+  assert(html.includes('lines-wrap'), 'table wrap')
+  assert(!html.includes('電子発行'), 'no e-issue line')
+  assert(!html.includes('KuriPuro by JBM'), 'no old brand')
+  assert(html.includes('備考：a &amp; b'), 'notes colon')
+  assert(html.includes('Please transfer separately'), 'bank')
   assert(cashflowDescription('KP-202610-001', 'Kodama').includes('請求書 KP-202610-001'), 'cashflow desc')
+
+  const en = buildInvoicePrintHtml({
+    client_name: 'Kodama',
+    invoice_number: 'KP-202610-002',
+    issue_date: '2026-10-06',
+    period_start: '2026-09-01',
+    period_end: '2026-09-30',
+    due_date: '2026-11-05',
+    tax_rate: 10,
+    subtotal: 0,
+    tax_amount: 0,
+    total: 0,
+    status: 'sent',
+  }, [], {}, 'en')
+  assert(en.includes('<h1>INVOICE</h1>'), 'en title')
+  assert(!en.includes('<h1>請求書</h1>'), 'no ja h1 on en')
+  assert(!en.includes('御中'), 'no honorific en')
+  assert(en.includes('Billing period'), 'period en')
+  assert(en.includes('Due date'), 'due en')
+  assert(en.includes('Thank you for your continued business'), 'thanks en')
+  assert(en.includes('Rep.'), 'rep en')
+  assert(en.includes('Alexandre Yuji Umeoka'), 'en name')
+  assert(en.includes('Nakakiyoto'), 'en address')
+  assert(en.includes('KuriPuro'), 'en company')
+  assert(en.includes('rep-name'), 'name on own line')
+  assert((en.split('Alexandre Yuji Umeoka').length - 1) === 1, 'en name once')
+  assert((en.split('Nakakiyoto').length - 1) === 1, 'en address once')
+  assert((en.split('KuriPuro').length - 1) === 1, 'en company once')
+  const withShop = buildInvoicePrintHtml({
+    client_name: 'On The Planet',
+    site_name: 'Kodama Kinshicho',
+    invoice_number: 'KP-202610-003',
+    issue_date: '2026-10-06',
+    period_start: '2026-09-01',
+    period_end: '2026-09-30',
+    due_date: '2026-11-05',
+    tax_rate: 10,
+    subtotal: 0,
+    tax_amount: 0,
+    total: 0,
+  }, [{ description: 'Kodama Kinshicho — Daily cleaning (monthly)', quantity: 1, unit_price: 0, total: 0, location_name: 'Kodama Kinshicho' }])
+  assert(withShop.includes('Kodama Kinshicho 御中'), 'invoice restaurant 御中')
+  assert(withShop.includes('On The Planet'), 'invoice legal company')
 }
 
 function testVersionLock() {
   const api = readFileSync(new URL('../api/_gemini.js', import.meta.url), 'utf8')
   const match = api.match(/export const API_BUILD = '([^']+)'/)
   assert(match?.[1] === APP_BUILD, `API_BUILD ${match?.[1]} vs ${APP_BUILD}`)
-  assert(APP_VERSION === 'v39', APP_VERSION)
-  assert(APP_BUILD.endsWith('-v39'), APP_BUILD)
+  assert(APP_VERSION === 'v61', APP_VERSION)
+  assert(APP_BUILD.endsWith('-v61'), APP_BUILD)
 }
 
 function testMonthlyAndDiscounts() {
@@ -167,6 +236,12 @@ function testI18n() {
   const enD = Object.keys(kuripuroEn.dashboard).sort()
   const jaD = Object.keys(kuripuroJa.dashboard).sort()
   assert(enD.join() === jaD.join(), `dashboard keys ${enD.filter(k => !jaD.includes(k))} / ${jaD.filter(k => !enD.includes(k))}`)
+  const enR = Object.keys(kuripuroEn.reports).sort()
+  const jaR = Object.keys(kuripuroJa.reports).sort()
+  assert(enR.join() === jaR.join(), `reports keys ${enR.filter(k => !jaR.includes(k))} / ${jaR.filter(k => !enR.includes(k))}`)
+  const enP = Object.keys(kuripuroEn.period).sort()
+  const jaP = Object.keys(kuripuroJa.period).sort()
+  assert(enP.join() === jaP.join(), `period keys ${enP.filter(k => !jaP.includes(k))} / ${jaP.filter(k => !enP.includes(k))}`)
 }
 
 function main() {

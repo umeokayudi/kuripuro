@@ -5,6 +5,7 @@ const steps = [
   ['npm run lint', 'lint'],
   ['npm run build', 'build'],
   ['npm run test:salary-calc', 'salary-calc'],
+  ['npm run test:payroll-close', 'payroll-close'],
   ['npm run test:safety-net', 'safety-net'],
   ['npm run test:deep-clean', 'deep-clean'],
   ['npm run test:portal-auth', 'portal-auth'],
@@ -13,7 +14,10 @@ const steps = [
   ['npm run test:job-overdue', 'job-overdue'],
   ['npm run test:employee-pay', 'employee-pay'],
   ['npm run test:invoice', 'invoice'],
+  ['npm run test:period', 'period'],
+  ['npm run test:report-analytics', 'report-analytics'],
   ['npm run test:sales', 'sales'],
+  ['npm run test:salesperson', 'salesperson'],
   ['npm run test:admin-layout', 'admin-layout'],
 ]
 

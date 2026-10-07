@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriod } from '../lib/period'
 import toast from 'react-hot-toast'
 
 export default function Payments() {
@@ -12,6 +14,7 @@ export default function Payments() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({ employee_id:'', employee_name:'', amount:'', payment_date:'', description:'', payment_type:'salary', is_deduction:false, status:'scheduled' })
 
+  const { start, end } = usePeriod()
   const TYPES = ['salary','advance','bonus','transport','deduction','other']
 
   useEffect(() => { load() }, [])
@@ -71,7 +74,8 @@ export default function Payments() {
 
   const fmt = n => '¥'+Number(n||0).toLocaleString()
   const today = new Date().toISOString().split('T')[0]
-  const filteredPayments = selected ? payments.filter(p=>p.employee_id===selected) : payments
+  const scoped = filterByPeriod(payments, start, end, ['payment_date'])
+  const filteredPayments = selected ? scoped.filter(p=>p.employee_id===selected) : scoped
   const pending = filteredPayments.filter(p=>p.status!=='paid'&&!p.is_deduction)
   const totalPending = pending.reduce((s,p)=>s+Number(p.amount||0),0)
 
@@ -94,7 +98,7 @@ export default function Payments() {
 
       {/* Summary */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:16}}>
-        {[['Pending',fmt(totalPending),'var(--amber)'],['Paid this month',fmt(filteredPayments.filter(p=>p.status==='paid'&&p.payment_date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,p)=>s+Number(p.amount||0),0)),'var(--green)'],['Total entries',filteredPayments.length,'var(--blue)']].map(([l,v,c])=>(
+        {[['Pending',fmt(totalPending),'var(--amber)'],['Paid this month',fmt(filteredPayments.filter(p=>p.status==='paid').reduce((s,p)=>s+Number(p.amount||0),0)),'var(--green)'],['Total entries',filteredPayments.length,'var(--blue)']].map(([l,v,c])=>(
           <div key={l} className="card" style={{textAlign:'center',padding:14}}>
             <div style={{fontSize:20,fontWeight:700,color:c,marginBottom:3}}>{v}</div>
             <div style={{fontSize:11,color:'var(--text3)'}}>{l}</div>

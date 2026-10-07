@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { tokyoToday } from '../lib/dates'
+import { monthLastDate } from '../lib/salaryCalc'
+import { refreshEmployeeClose } from '../lib/payrollClose'
 
 export default function Salary() {
   const [employees, setEmployees] = useState([])
   const [selected, setSelected] = useState(null)
-  const [period, setPeriod] = useState(new Date().toISOString().slice(0,7))
+  const [period, setPeriod] = useState(tokyoToday().slice(0, 7))
   const [jobs, setJobs] = useState([])
   const [advances, setAdvances] = useState([])
-  const [newAdv, setNewAdv] = useState({ amount:'', desc:'' })
+  const [newAdv, setNewAdv] = useState({ amount:'', desc:'', date: tokyoToday() })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadEmployees() }, [])
@@ -25,7 +28,7 @@ export default function Salary() {
       .eq('employee_id', selected.id)
       .eq('status', 'completed')
       .gte('scheduled_date', period + '-01')
-      .lte('scheduled_date', period + '-31')
+      .lte('scheduled_date', monthLastDate(period))
     setJobs(data || [])
   }
 
@@ -47,12 +50,15 @@ export default function Salary() {
       amount: parseFloat(newAdv.amount),
       description: newAdv.desc || 'Advance payment',
       payment_type: 'advance',
+      payment_date: newAdv.date || tokyoToday(),
       status: 'scheduled',
+      is_deduction: false,
       })
     if (error) return toast.error(error.message)
     toast.success('Advance registered')
-    setNewAdv({ amount:'', desc:'' })
+    setNewAdv({ amount:'', desc:'', date: tokyoToday() })
     loadAdvances()
+    try { await refreshEmployeeClose(supabase, selected, period) } catch { /* close is independent of the advance row */ }
   }
 
   const calcSalary = () => {
@@ -196,13 +202,14 @@ export default function Salary() {
                 <div key={a.id} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
                   <div>
                     <div style={{ fontWeight:500 }}>{a.description}</div>
-                    <div style={{ fontSize:11, color:'var(--text3)' }}>{a.created_at?.slice(0,10)}</div>
+                    <div style={{ fontSize:11, color:'var(--text3)' }}>{a.payment_date || a.created_at?.slice(0,10)}</div>
                   </div>
                   <span style={{ color:'var(--red)', fontWeight:500 }}>-¥{Number(a.amount).toLocaleString()}</span>
                 </div>
               ))}
               <div style={{ display:'flex', gap:8, marginTop:12 }}>
                 <input type="number" value={newAdv.amount} onChange={e=>setNewAdv(a=>({...a,amount:e.target.value}))} placeholder="Amount ¥" style={{ width:120 }} className="form-group" />
+                <input type="date" value={newAdv.date} onChange={e=>setNewAdv(a=>({...a,date:e.target.value}))} style={{ width:150 }} />
                 <input value={newAdv.desc} onChange={e=>setNewAdv(a=>({...a,desc:e.target.value}))} placeholder="Description" style={{ flex:1 }} />
                 <button className="btn btn-primary" onClick={addAdvance}>+ Add</button>
               </div>

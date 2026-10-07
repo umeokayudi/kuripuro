@@ -3,21 +3,24 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { fmtPeriod } from '../lib/salaryPeriod'
 import { useLang } from '../hooks/useLang'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriodKeepOpen } from '../lib/period'
 
 export default function SalaryComplaints() {
   const { t } = useLang()
   const s = t.salaryIssues
+  const { start, end } = usePeriod()
   const [complaints, setComplaints] = useState([])
   const [filter, setFilter] = useState('pending')
   const [notes, setNotes] = useState({})
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [start, end])
 
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('salary_complaints').select('*').order('created_at', { ascending: false })
-    setComplaints(data || [])
+    setComplaints(filterByPeriodKeepOpen(data || [], start, end, ['created_at'], c => c.status === 'pending'))
     setLoading(false)
   }
 

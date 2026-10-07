@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { findClientUserForLogin, clientUserToSession } from '../lib/clientCredentials'
+import { hashSalespersonSecret, salespersonSession } from '../lib/salesperson'
 
 const AuthContext = createContext()
 
@@ -43,6 +44,22 @@ export function AuthProvider({ children }) {
       setUser(u)
       localStorage.setItem('kp_user', JSON.stringify(u))
       return { success: true }
+    }
+
+    const { data: seller } = await supabase
+      .from('salespeople')
+      .select('id, full_name, email, phone, is_active, password_hash')
+      .eq('email', em)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (seller?.password_hash) {
+      const hashed = await hashSalespersonSecret(em, pw)
+      if (hashed === seller.password_hash) {
+        const u = salespersonSession(seller)
+        setUser(u)
+        localStorage.setItem('kp_user', JSON.stringify(u))
+        return { success: true }
+      }
     }
 
     const clientUser = await findClientUserForLogin(supabase, email, pw)

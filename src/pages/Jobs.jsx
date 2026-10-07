@@ -6,6 +6,7 @@ import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
 } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
+import { usePeriod } from '../hooks/usePeriod'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -444,6 +445,7 @@ function DayScheduleView({ onClose }) {
 
 export default function Jobs() {
   const { lang, t } = useLang()
+  const { start, end } = usePeriod()
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
@@ -465,12 +467,12 @@ export default function Jobs() {
     location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic'
   })
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [start, end])
 
   const loadAll = async () => {
     setLoading(true)
     const [j, e, c, l] = await Promise.all([
-      supabase.from('jobs').select('*').order('scheduled_date', { ascending: false }),
+      supabase.from('jobs').select('*').gte('scheduled_date', start).lte('scheduled_date', end).order('scheduled_date', { ascending: false }).limit(3000),
       supabase.from('employees').select('id,full_name,salary_type,hourly_rate,fixed_salary').eq('is_active', true),
       supabase.from('clients').select('id,company_name').eq('is_active', true),
       supabase.from('locations').select('*').eq('is_active', true).order('name'),

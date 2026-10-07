@@ -1,25 +1,28 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
-import { useLang } from '../hooks/useLang'
+import { useLang, fill } from '../hooks/useLang'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 import { yen } from '../lib/invoice'
+import { usePeriod } from '../hooks/usePeriod'
+import { openPrintHtml } from '../lib/openPrintHtml'
 
 export default function Ryoshu() {
   const { t, lang } = useLang()
+  const { start, end } = usePeriod()
   const [receipts, setReceipts] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date: tokyoToday(), tax_rate:10 })
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [start, end])
 
   const load = async () => {
     setLoading(true)
     const [r, c] = await Promise.all([
-      supabase.from('ryoshu').select('*').order('issue_date', { ascending:false }).limit(50),
+      supabase.from('ryoshu').select('*').gte('issue_date', start).lte('issue_date', end).order('issue_date', { ascending:false }).limit(500),
       supabase.from('clients').select('id,company_name').eq('is_active',true).order('company_name'),
     ])
     setReceipts(r.data||[]); setClients(c.data||[])
@@ -60,17 +63,27 @@ export default function Ryoshu() {
   }
 
   const handlePrint = (r) => {
-    const w = window.open('', '_blank')
     const clientName = escapeHtml(r.client_name)
     const issueDate = escapeHtml(r.issue_date)
     const description = escapeHtml(r.description || 'サービス代として')
-    w.document.write(`
-      <html><head><title>領収書</title>
-      <style>body{font-family:sans-serif;padding:40px;max-width:400px;margin:0 auto}
+    openPrintHtml(`
+      <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>領収書</title>
+      <style>
+      @page { size: A4; margin: 16mm; }
+      html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+      body{font-family:sans-serif;padding:40px;max-width:400px;margin:0 auto}
       h1{text-align:center;font-size:24px;margin-bottom:30px}
-      .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}
+      .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #eee}
+      .row span:last-child{text-align:right;overflow-wrap:anywhere}
       .total{font-size:20px;font-weight:bold;color:#0F6E56}
       .stamp{border:3px solid red;color:red;padding:4px 12px;display:inline-block;transform:rotate(-15deg);font-size:18px;font-weight:bold;margin-top:20px}
+      @media screen and (max-width: 720px) {
+        body{max-width:100%;width:100%;padding:20px 16px calc(28px + env(safe-area-inset-bottom, 0px))}
+        h1{font-size:28px}
+        .row{font-size:16px}
+        .total{font-size:22px}
+      }
+      @media print { body{max-width:none;margin:0;padding:0} }
       </style></head>
       <body>
         <h1>領収書</h1>
@@ -84,18 +97,16 @@ export default function Ryoshu() {
         <div style="margin-top:40px;text-align:right"><p>KuriPuro by JBM</p></div>
       </body></html>
     `)
-    w.document.close()
-    w.print()
   }
 
-  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(tokyoToday().slice(0,7))).reduce((s,r)=>s+Number(r.total_amount||0),0)
+  const totalPeriod = receipts.reduce((s,r)=>s+Number(r.total_amount||0),0)
 
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <div>
           <h2 className="page-head" style={{margin:0,fontSize:22}}>{t.sidebar.ryoshu}</h2>
-          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{lang==='ja'?'今月合計':'This month'}: <strong>¥{totalMonth.toLocaleString()}</strong></div>
+          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{fill(t.period.showing, { start, end })}: <strong>¥{totalPeriod.toLocaleString()}</strong></div>
         </div>
         <button className="btn btn-primary" onClick={()=>setShowForm(!showForm)}>+ {lang==='ja'?'新規作成':'New receipt'}</button>
       </div>

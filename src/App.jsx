@@ -10,6 +10,8 @@ import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
 import { APP_VERSION } from './lib/appVersion'
+import { PeriodProvider } from './hooks/usePeriod'
+import PeriodFilter from './components/PeriodFilter'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -39,6 +41,8 @@ const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
+const SalespersonPortal = lazy(() => import('./pages/SalespersonPortal'))
+const SalesTeam = lazy(() => import('./pages/SalesTeam'))
 
 function PortalLoading() {
   return (
@@ -91,6 +95,7 @@ const PAGE_KEYS = {
   '/salary-complaints': 'salaryIssues',
   '/equipment-requests': 'equipmentRequests',
   '/ai': 'ai',
+  '/sales-team': 'salesTeam',
 }
 
 function pageTitle(pathname, sidebar) {
@@ -140,6 +145,13 @@ function AppContent() {
       </Suspense>
     </PortalErrorBoundary>
   )
+  if (user.role === 'salesperson') return (
+    <PortalErrorBoundary label="Salesperson portal">
+      <Suspense fallback={<PortalLoading />}>
+        <SalespersonPortal />
+      </Suspense>
+    </PortalErrorBoundary>
+  )
 
   return (
     <div className={`app-shell${mobile ? ' app-shell-mobile' : ''}`}>
@@ -150,7 +162,7 @@ function AppContent() {
         onClose={() => setMenuOpen(false)}
         onUseDesktop={() => { setView('desktop'); setMenuOpen(false) }}
       />
-      <AIFloatingWidget mode="admin" lift={mobile} />
+      {location.pathname !== '/ai' && <AIFloatingWidget mode="admin" lift={mobile} />}
       <div className="main">
         <header className="topbar">
           {mobile && (
@@ -167,14 +179,19 @@ function AppContent() {
               </button>
             )}
             {mobile && (
-              <button type="button" className="btn btn-sm" onClick={() => setView('desktop')}>{t.sidebar.desktopView}</button>
+              <button type="button" className="btn btn-sm admin-desktop-toggle" onClick={() => setView('desktop')}>{t.sidebar.desktopView}</button>
             )}
             {!mobile && pref === 'desktop' && width <= 900 && (
-              <button type="button" className="btn btn-sm" onClick={() => setView('auto')}>{t.sidebar.mobileView}</button>
-            )}
-          </div>
+              <button type="button" className="btn btn-sm" onClick={() => setView('auto')}>{t.sidebar.mobileView}            </button>
+          )}
+        </div>
         </header>
-        <main className="page-content">
+        {!['/ai', '/live', '/adminchat', '/reports'].includes(location.pathname) && (
+          <div className="period-strip">
+            <PeriodFilter />
+          </div>
+        )}
+        <main className={`page-content${location.pathname === '/ai' ? ' page-content-ai' : ''}`}>
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
@@ -203,6 +220,7 @@ function AppContent() {
               <Route path="/salary-complaints" element={<SalaryComplaints />} />
               <Route path="/equipment-requests" element={<EquipmentRequests />} />
               <Route path="/ai" element={<AdminAI />} />
+              <Route path="/sales-team" element={<SalesTeam />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Suspense>
@@ -218,8 +236,10 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <LangProvider>
-          <AppContent />
-          <Toaster position="top-center" toastOptions={{ style:{ fontSize:13 } }} />
+          <PeriodProvider>
+            <AppContent />
+            <Toaster position="top-center" toastOptions={{ style:{ fontSize:13 } }} />
+          </PeriodProvider>
         </LangProvider>
       </AuthProvider>
     </BrowserRouter>

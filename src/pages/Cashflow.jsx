@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { usePeriod } from '../hooks/usePeriod'
 
 /** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
 function normalizeEntry(row) {
@@ -21,11 +22,13 @@ export default function Cashflow() {
   const INCOME_CATS = ['Client Payment','Spot Job','Bonus','Other Income']
   const EXPENSE_CATS = ['Salary','Supplies','Transport','Equipment','Tax','Other Expense']
 
-  useEffect(() => { load() }, [])
+  const { start, end } = usePeriod()
+
+  useEffect(() => { load() }, [start, end])
 
   const load = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('cashflow').select('*').order('entry_date', { ascending:false }).limit(100)
+    const { data, error } = await supabase.from('cashflow').select('*').gte('entry_date', start).lte('entry_date', end).order('entry_date', { ascending:false }).limit(2000)
     if (error) return toast.error(error.message)
     setEntries((data || []).map(normalizeEntry))
     setLoading(false)
@@ -53,8 +56,7 @@ export default function Cashflow() {
     toast('Entry removed.'); load()
   }
 
-  const month = new Date().toISOString().slice(0,7)
-  const thisMonth = entries.filter(e=>e.date?.startsWith(month))
+  const thisMonth = entries
   const income = thisMonth.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount||0),0)
   const expense = thisMonth.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount||0),0)
   const balance = income - expense
@@ -69,11 +71,11 @@ export default function Cashflow() {
 
       {tab==='overview'&&(
         <div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:16}}>
+          <div className="cf-kpis">
             {[['💴 Income',income,'var(--green)'],['💸 Expenses',expense,'var(--red)'],['💰 Balance',balance,balance>=0?'var(--green)':'var(--red)']].map(([l,v,c])=>(
-              <div key={l} className="card" style={{textAlign:'center',padding:'18px'}}>
-                <div style={{fontSize:12,color:'var(--text3)',marginBottom:6}}>{l}</div>
-                <div style={{fontSize:24,fontWeight:700,color:c}}>¥{Number(Math.abs(v)).toLocaleString()}</div>
+              <div key={l} className="card cf-kpi">
+                <div className="cf-kpi-label">{l}</div>
+                <div className="cf-kpi-val" style={{color:c}}>¥{Number(Math.abs(v)).toLocaleString()}</div>
               </div>
             ))}
           </div>
@@ -81,13 +83,13 @@ export default function Cashflow() {
             <div className="card-title">This Month</div>
             {thisMonth.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No entries this month.</div>}
             {thisMonth.slice(0,15).map(e=>(
-              <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:500}}>{e.description}</div>
-                  <div style={{fontSize:11,color:'var(--text3)'}}>{e.date} · {e.category}</div>
+              <div key={e.id} className="cf-row">
+                <div className="cf-row-text">
+                  <div className="cf-row-desc">{e.description}</div>
+                  <div className="cf-row-meta">{e.date} · {e.category}</div>
                 </div>
-                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                  <span style={{fontSize:14,fontWeight:600,color:e.type==='income'?'var(--green)':'var(--red)'}}>{e.type==='income'?'+':'-'}¥{Number(e.amount||0).toLocaleString()}</span>
+                <div className="cf-row-amt">
+                  <span style={{color:e.type==='income'?'var(--green)':'var(--red)'}}>{e.type==='income'?'+':'-'}¥{Number(e.amount||0).toLocaleString()}</span>
                   <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(e.id)}>✕</button>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import AIChatPanel from './AIChatPanel'
+import { useLang } from '../hooks/useLang'
 
 const BTN = 56
 const PANEL_W = 380
@@ -15,6 +16,8 @@ function loadPos() {
 }
 
 export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeName, dark = false, lift = false }) {
+  const { t } = useLang()
+  const title = t.ai?.widgetTitle || 'KuriPuro AI'
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(loadPos)
   const drag = useRef({ active: false, moved: false, sx: 0, sy: 0, sl: 0, st: 0 })
@@ -22,7 +25,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
 
   const clamp = (x, y) => ({
     x: Math.max(8, Math.min(window.innerWidth - BTN - 8, x)),
-    y: Math.max(8, Math.min(window.innerHeight - BTN - 8, y)),
+    y: Math.max(8, Math.min((window.visualViewport?.height || window.innerHeight) - BTN - 8, y)),
   })
 
   const getBtnPos = useCallback(() => {
@@ -45,11 +48,11 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
       left,
       top: Math.max(12, Math.min(window.innerHeight - PANEL_H - 12, top)),
       zIndex: 998,
-      width: PANEL_W,
+      width: `min(${PANEL_W}px, calc(100vw - 24px))`,
       maxWidth: 'calc(100vw - 24px)',
       height: PANEL_H,
-      maxHeight: 'calc(100vh - 24px)',
-      background: dark ? '#0d1f35' : 'var(--bg, #f4f6f9)',
+      maxHeight: 'calc(100dvh - 24px)',
+      background: dark ? '#0d1f35' : '#f7f8fb',
       borderRadius: 20,
       boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
       border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)',
@@ -129,7 +132,7 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
           letterSpacing: open ? 0 : 0.5,
           fontFamily: 'inherit',
         }}
-        title={mode === 'employee' ? 'Assistente IA — arraste para mover' : 'Assistente Admin IA — arraste para mover'}
+        title={title}
       >
         {open ? '✕' : 'AI'}
       </button>

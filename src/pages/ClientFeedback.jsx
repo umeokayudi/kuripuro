@@ -6,17 +6,20 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriod, filterByPeriodKeepOpen } from '../lib/period'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
 export default function ClientFeedback() {
   const { t } = useLang()
   const f = t.feedback
+  const { start, end } = usePeriod()
   const [tab, setTab] = useState('ratings')
-  const [ratings, setRatings] = useState([])
-  const [complaints, setComplaints] = useState([])
-  const [compliments, setCompliments] = useState([])
-  const [requests, setRequests] = useState([])
+  const [ratingsAll, setRatings] = useState([])
+  const [complaintsAll, setComplaints] = useState([])
+  const [complimentsAll, setCompliments] = useState([])
+  const [requestsAll, setRequests] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [responseDraft, setResponseDraft] = useState({})
@@ -25,10 +28,10 @@ export default function ClientFeedback() {
 
   const load = async () => {
     const [r, cp, cm, rq, cl] = await Promise.all([
-      supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(100),
-      supabase.from('client_complaints').select('*').order('created_at', { ascending: false }).limit(100),
-      supabase.from('client_compliments').select('*').order('created_at', { ascending: false }).limit(100),
-      supabase.from('client_requests').select('*').order('created_at', { ascending: false }).limit(100),
+      supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('client_complaints').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('client_compliments').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('client_requests').select('*').order('created_at', { ascending: false }).limit(500),
       supabase.from('clients').select('id, company_name'),
     ])
     const ratingsData = r.data || []
@@ -98,6 +101,11 @@ export default function ClientFeedback() {
     toast.success(f.saved)
     load()
   }
+
+  const ratings = filterByPeriod(ratingsAll, start, end, ['created_at'])
+  const complaints = filterByPeriodKeepOpen(complaintsAll, start, end, ['created_at'], c => c.status !== 'resolved')
+  const compliments = filterByPeriod(complimentsAll, start, end, ['created_at'])
+  const requests = filterByPeriodKeepOpen(requestsAll, start, end, ['created_at'], r => r.status === 'pending')
 
   const openComplaints = complaints.filter(c => c.status !== 'resolved').length
   const openRequests = requests.filter(r => r.status === 'pending').length

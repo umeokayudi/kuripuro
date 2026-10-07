@@ -1029,7 +1029,7 @@ export default function EmployeePortal() {
 
   return (
     <div className="emp-backdrop">
-    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
+    <div className="emp-shell">
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
@@ -1102,7 +1102,7 @@ export default function EmployeePortal() {
       )}
 
       {/* HEADER */}
-      <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
+      <div className="emp-header">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
             <div className="emp-brand">KuriPuro by JBM · {APP_VERSION}</div>
@@ -1453,14 +1453,17 @@ export default function EmployeePortal() {
             {/* PDF buttons */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
               <button onClick={async()=>{
-                const month = new Date().toISOString().slice(0,7)
+                const month = tokyoToday().slice(0, 7)
+                const { data: allAdv } = await supabase.from('salary_payments').select('*')
+                  .eq('employee_id', user.id).eq('payment_type', 'advance').limit(200)
                 const { generatePayslipJP, generatePayslip } = await import('../lib/generatePDF')
+                const slipAdvances = allAdv || advances
                 if (lang==='ja') {
-                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
+                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, slipAdvances)
                   doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('給与明細ダウンロード完了!')
                 } else {
-                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, advances)
+                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, slipAdvances)
                   doc.save('payslip_'+user.name.replace(' ','_')+'_'+month+'.pdf')
                   toast.success('Payslip downloaded!')
                 }
@@ -1513,7 +1516,7 @@ export default function EmployeePortal() {
               return (<>
                 {received.length>0&&<div style={{marginBottom:14}}>
                   <span style={S.label}>{e.advancesReceived}</span>
-                  {received.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ {e.received}</span></div>)}
+                  {received.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{parseAdvDate(a) || '—'} · {a.description}</div></div><span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ {e.received}</span></div>)}
                   <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>{e.totalReceived}</span>
                     <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
@@ -1521,7 +1524,7 @@ export default function EmployeePortal() {
                 </div>}
                 {pending.length>0&&<div style={{marginBottom:14}}>
                   <span style={S.label}>{e.advancesPending}</span>
-                  {pending.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>{e.pendingAdv}</span></div>)}
+                  {pending.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{parseAdvDate(a) || '—'} · {a.description}</div></div><span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>{e.pendingAdv}</span></div>)}
                 </div>}
               </>)
             })()}
@@ -1690,7 +1693,7 @@ export default function EmployeePortal() {
       </div>
 
       {/* BOTTOM TAB BAR */}
-      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <div className="emp-bottom-nav">
         {bottomTabs.map(t=>(
           <button key={t.key} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
             <div style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>

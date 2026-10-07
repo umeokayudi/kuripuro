@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
+import { usePeriod } from '../hooks/usePeriod'
+import { filterByPeriodKeepOpen } from '../lib/period'
 
 const CATEGORY_LABELS = {
   tools: { en: 'Tools', ja: '工具' },
@@ -14,17 +16,18 @@ const CATEGORY_LABELS = {
 
 export default function EquipmentRequests() {
   const { lang, t } = useLang()
+  const { start, end } = usePeriod()
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [note, setNote] = useState({})
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [start, end])
 
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('equipment_requests').select('*').order('created_at', { ascending: false })
-    setRequests(data || [])
+    setRequests(filterByPeriodKeepOpen(data || [], start, end, ['created_at'], r => r.status === 'pending'))
     setLoading(false)
   }
 
