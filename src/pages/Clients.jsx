@@ -7,6 +7,8 @@ import toast from 'react-hot-toast'
 
 export default function Clients() {
   const [tab, setTab] = useState('list')
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientStatus, setClientStatus] = useState('all')
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
@@ -236,6 +238,18 @@ export default function Clients() {
   const totalRevenue = clients.reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
   const totalCost = clients.reduce((s,c)=>s+Number(c.monthly_cost||0),0)
   const totalProfit = totalRevenue - totalCost
+  const activeClients = clients.filter(c => c.is_active).length
+  const atRiskClients = clients.filter(c => {
+    const revenue = Number(c.monthly_revenue || 0)
+    const cost = Number(c.monthly_cost || 0)
+    return revenue > 0 && ((revenue - cost) / revenue * 100) < 50
+  }).length
+  const visibleClients = clients.filter(c => {
+    if (clientStatus === 'active' && !c.is_active) return false
+    if (clientStatus === 'inactive' && c.is_active) return false
+    const q = clientSearch.trim().toLowerCase()
+    return !q || [c.company_name, c.contact_name, c.email, c.phone, c.service_type].some(v => String(v || '').toLowerCase().includes(q))
+  })
 
   return (
     <div>
@@ -249,8 +263,29 @@ export default function Clients() {
       {/* LIST */}
       {tab==='list'&&(
         <div>
+          <section className="clients-command-v92">
+            <div>
+              <div className="clients-eyebrow">CLIENT HQ</div>
+              <div className="clients-command-title">Customer portfolio</div>
+              <div className="clients-command-sub">Revenue, profitability and account status at a glance.</div>
+            </div>
+            <div className="clients-command-kpis">
+              <div><b>{clients.length}</b><span>Total</span></div>
+              <div><b>{activeClients}</b><span>Active</span></div>
+              <div className={atRiskClients ? 'risk' : ''}><b>{atRiskClients}</b><span>At risk</span></div>
+            </div>
+          </section>
+          <div className="clients-toolbar-v92">
+            <div className="clients-search-v92"><span>⌕</span><input value={clientSearch} onChange={e=>setClientSearch(e.target.value)} placeholder="Search company, contact, email..." /><button type="button" onClick={()=>setClientSearch('')} hidden={!clientSearch}>×</button></div>
+            <select value={clientStatus} onChange={e=>setClientStatus(e.target.value)} aria-label="Client status">
+              <option value="all">All clients</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          <div className="clients-result-count">{visibleClients.length} client{visibleClients.length === 1 ? '' : 's'}</div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {clients.map(c=>{
+          {visibleClients.map(c=>{
             const profit = Number(c.monthly_revenue||0) - Number(c.monthly_cost||0)
             const margin = c.monthly_revenue ? Math.round(profit/c.monthly_revenue*100) : 0
             return (
