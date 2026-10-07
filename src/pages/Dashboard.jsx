@@ -6,6 +6,7 @@ import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySl
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
+import { jobDurationMin } from '../lib/jobReport'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 
@@ -172,12 +173,118 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className="card" style={{marginBottom:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+          <div><div className="finance-eyebrow">TEAM PERFORMANCE</div><h3 style={{margin:'2px 0 0'}}>Produtividade dos funcionários</h3><p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Jobs concluídos, valor produzido e tempo médio no período.</p></div>
+          <Link to="/employees" className="btn">Ver equipe →</Link>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Funcionário</th><th>Jobs</th><th>Valor</th><th>Tempo médio</th><th>Valor / hora</th><th>Score</th></tr></thead>
+          <tbody>{employees.map(emp => {
+            const assigned = monthJobs.filter(j => j.employee_id === emp.id && j.status !== 'cancelled')
+            const rows = assigned.filter(j => j.status === 'completed')
+            const value = rows.reduce((sum,j)=>sum+Number(j.retro_value ?? j.value ?? 0),0)
+            const durations = rows.map(jobDurationMin).filter(v=>v != null && v > 0)
+            const avgMin = durations.length ? durations.reduce((a,b)=>a+b,0)/durations.length : null
+            const valuePerHour = avgMin ? value / (avgMin / 60) : 0
+            const completion = assigned.length ? (rows.length / assigned.length) * 100 : 0
+            return { emp, rows, value, avgMin, valuePerHour, completion }
+          }).sort((a,b)=>b.valuePerHour-a.valuePerHour).map(({emp,rows,value,avgMin,valuePerHour,completion}) => {
+            const todayCount = todayJobs.filter(j=>j.employee_id===emp.id && j.status!=='cancelled').length
+            const label = rows.length===0 ? 'Sem dados' : completion >= 90 && valuePerHour > 0 ? 'Excelente' : completion >= 75 ? 'Normal' : 'Atenção'
+            const tone = label==='Excelente' ? 'badge-green' : label==='Atenção' ? 'badge-red' : 'badge-blue'
+            return <tr key={emp.id}>
+              <td style={{fontWeight:700}}>{emp.full_name}<div style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>{todayCount} job(s) hoje</div></td>
+              <td>{rows.length} <span style={{fontSize:11,color:'var(--text3)'}}>{completion ? '/ '+Math.round(completion)+'%' : ''}</span></td>
+              <td style={{fontWeight:700}}>¥{value.toLocaleString()}</td>
+              <td>{avgMin ? Math.round(avgMin) + ' min' : '—'}</td>
+              <td style={{fontWeight:700,color:valuePerHour>0?'var(--green)':'var(--text3)'}}>{valuePerHour ? '¥' + Math.round(valuePerHour).toLocaleString() : '—'}</td>
+              <td><span className="badge badge-green">{emp.score ?? 100}</span> <span className={`badge ${tone}`}>{label}</span></td>
+            </tr>
+          })}</tbody>        </table></div>
+      </div>
+
       {staleCount > 0 && (
         <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ {fill(d.staleJobs, { count: staleCount })}</span>
           <button onClick={cancelStaleJobs} className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', flexShrink: 0 }}>{d.cancelStale}</button>
         </div>
       )}
+
+      {(() => {
+        const clientRisks = clients.map(client => {
+          const jobs = monthJobs.filter(j => j.client_id === client.id && j.status !== 'cancelled')
+          const pending = jobs.filter(j => j.status !== 'completed').length
+          const completed = jobs.filter(j => j.status === 'completed').length
+          const revenue = Number(client.monthly_revenue || 0)
+          const cost = Number(client.monthly_cost || 0)
+          const margin = revenue > 0 ? ((revenue - cost) / revenue) * 100 : 0
+          const riskScore = (pending * 10) + (margin < 15 ? 25 : margin < 25 ? 10 : 0)
+          return { client, pending, completed, margin, riskScore }
+        }).filter(x => x.riskScore >= 20).sort((a,b) => b.riskScore-a.riskScore).slice(0,5)
+        const delayed = monthJobs.filter(j => j.status === 'assigned' && j.scheduled_date < tokyoToday()).length
+        if (!clientRisks.length && !delayed) return null
+        return <div className="card attention-card" style={{marginBottom:16}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+            <div>
+              <div className="finance-eyebrow">PRIORITY CENTER</div>
+              <h3 style={{margin:'2px 0 0'}}>O que precisa da sua atenção</h3>
+              <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Problemas detectados automaticamente e ação recomendada.</p>
+            </div>
+            <Link to="/jobs" className="btn">Ver operação →</Link>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:10}}>
+            {delayed > 0 && <Link to="/jobs" style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
+              <div style={{fontSize:12,fontWeight:700,color:'#EF9F27'}}>SERVIÇOS ATRASADOS</div>
+              <div style={{fontSize:25,fontWeight:800,marginTop:5}}>{delayed}</div>
+              <div style={{fontSize:12,color:'var(--text3)',marginTop:5}}>Abrir operação e resolver os atrasos →</div>
+            </Link>}
+            {clientRisks.map(({client,pending,margin}) => <Link key={client.id} to="/clients" style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
+              <div style={{fontSize:12,fontWeight:700,color:'var(--red)'}}>CLIENTE EM RISCO</div>
+              <div style={{fontSize:16,fontWeight:800,marginTop:5}}>{client.name || client.client_name || 'Cliente'}</div>
+              <div style={{fontSize:12,color:'var(--text3)',marginTop:5}}>{pending} pendente(s) · margem {Math.round(margin)}%</div>
+              <div style={{fontSize:12,fontWeight:700,color:'var(--text2)',marginTop:7}}>Abrir clientes →</div>
+            </Link>)}
+          </div>
+        </div>        </div>
+      })()}
+
+      {(() => {
+        const operationalTotal = todayJobs.filter(j => j.status !== 'cancelled').length
+        const operationalCompleted = todayJobs.filter(j => j.status === 'completed').length
+        const operationalPending = todayJobs.filter(j => !['completed','cancelled'].includes(j.status)).length
+        const operationalUnassigned = todayJobs.filter(j => !j.employee_id && j.status !== 'cancelled').length
+        const operationalDelayed = todayJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled' && j.scheduled_time && j.scheduled_time < clock.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })).length
+        const completionRate = operationalTotal ? (operationalCompleted / operationalTotal) * 100 : 0
+        const health = operationalTotal === 0 ? 'Sem operação' : completionRate >= 90 && operationalUnassigned === 0 && operationalDelayed === 0 ? 'Excelente' : completionRate >= 70 && operationalDelayed <= 1 ? 'Normal' : 'Atenção'
+        const healthColor = health === 'Excelente' ? 'var(--green)' : health === 'Atenção' ? 'var(--red)' : 'var(--gold)'
+        return (
+          <div className="card" style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+              <div>
+                <div className="finance-eyebrow">OPERATIONAL HEALTH</div>
+                <h3 style={{margin:'2px 0 0'}}>Saúde da operação hoje</h3>
+                <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Leitura rápida da execução dos serviços de hoje.</p>
+              </div>
+              <strong style={{color:healthColor,fontSize:14}}>{health}</strong>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>
+              {[
+                ['Execução', Math.round(completionRate)+'%', healthColor],
+                ['Concluídos', operationalCompleted, 'var(--green)'],
+                ['Pendentes', operationalPending, operationalPending ? 'var(--gold)' : 'var(--green)'],
+                ['Sem funcionário', operationalUnassigned, operationalUnassigned ? 'var(--red)' : 'var(--green)'],
+                ['Em atraso', operationalDelayed, operationalDelayed ? 'var(--red)' : 'var(--green)']
+              ].map(([label,value,color]) => (
+                <div key={label} style={{padding:'13px 14px',borderRadius:11,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em'}}>{label}</div>
+                  <div style={{fontSize:23,fontWeight:800,color,marginTop:4}}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       <div className="dash-metrics">
         {[
@@ -202,6 +309,134 @@ export default function Dashboard() {
         atRisk={atRisk}
         deepProgress={deepProgress}
       />
+
+      {(() => {
+        const unassigned = todayJobs.filter(j => !j.employee_id && j.status !== 'cancelled')
+        const overdue = todayJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled' && j.scheduled_time && j.scheduled_time < clock.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }))
+        const activeToday = todayJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled')
+        const workload = employees.map(emp => ({
+          emp,
+          count: activeToday.filter(j => j.employee_id === emp.id).length
+        })).filter(x => x.count > 0).sort((a,b) => b.count-a.count)
+        const avgLoad = workload.length ? activeToday.length / workload.length : 0
+        const overloaded = workload.filter(x => x.count >= Math.max(3, Math.ceil(avgLoad * 1.5)))
+        const attention = [
+          unassigned.length && { title: 'Jobs sem funcionário', value: unassigned.length, detail: 'Precisam de atribuição hoje.', tone: 'attention' },
+          overdue.length && { title: 'Jobs em risco de atraso', value: overdue.length, detail: 'O horário previsto já passou.', tone: 'warning' },
+          overloaded.length && { title: 'Possível sobrecarga', value: overloaded.length, detail: overloaded.map(x => x.emp.full_name).join(', '), tone: 'warning' }
+        ].filter(Boolean)
+        if (!attention.length) return null
+        return (
+          <div className="card attention-card" style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+              <div>
+                <div className="finance-eyebrow">OPERATION ALERTS</div>
+                <h3 style={{margin:'2px 0 0'}}>O que precisa da sua atenção</h3>
+                <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Problemas operacionais detectados automaticamente hoje.</p>
+              </div>
+              <Link to="/jobs" className="btn">Abrir operação →</Link>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}}>
+              {attention.map((item,i) => (
+                <div key={i} style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:item.tone==='attention'?'var(--red)':'#EF9F27'}}>{item.title}</div>
+                  <div style={{fontSize:25,fontWeight:800,marginTop:5}}>{item.value}</div>
+                  <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>{item.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      {(() => {
+        const delayedByClient = {}
+        monthJobs.filter(j => j.status === 'assigned' && j.scheduled_date < tokyoToday()).forEach(j => {
+          delayedByClient[j.client_id] = (delayedByClient[j.client_id] || 0) + 1
+        })
+        const qualityRisks = clients.map(client => {
+          const rating = satisfactionByClient.find(x => x.client?.id === client.id)
+          const avg = rating?.avg ?? null
+          const ratingsCount = rating?.count || 0
+          const delayed = delayedByClient[client.id] || 0
+          const pending = monthJobs.filter(j => j.client_id === client.id && !['completed','cancelled'].includes(j.status)).length
+          const score = (avg != null && avg < 3.5 ? 40 : avg != null && avg < 4 ? 20 : 0) + (delayed * 15) + Math.min(pending * 5, 20)
+          return { client, avg, ratingsCount, delayed, pending, score }
+        }).filter(x => x.score >= 20).sort((a,b) => b.score - a.score).slice(0, 6)
+        if (!qualityRisks.length) return null
+        return (
+          <div className="card attention-card" style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+              <div>
+                <div className="finance-eyebrow">SERVICE QUALITY</div>
+                <h3 style={{margin:'2px 0 0'}}>Clientes que precisam de atenção</h3>
+                <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Cruza avaliações, atrasos e pendências para detectar risco de qualidade.</p>
+              </div>
+              <Link to="/client-feedback" className="btn">Ver avaliações →</Link>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:10}}>
+              {qualityRisks.map(({client,avg,ratingsCount,delayed,pending}) => (
+                <Link key={client.id} to="/client-feedback" style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
+                  <div style={{fontSize:11,fontWeight:800,color:'var(--red)',letterSpacing:'.04em'}}>RISCO DE QUALIDADE</div>
+                  <div style={{fontSize:16,fontWeight:800,marginTop:5}}>{client.company_name || client.name || 'Cliente'}</div>
+                  <div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:12,color:'var(--text3)',marginTop:7}}>
+                    {avg != null && <span>★ {avg.toFixed(1)} ({ratingsCount})</span>}
+                    {delayed > 0 && <span>{delayed} atraso(s)</span>}
+                    {pending > 0 && <span>{pending} pendência(s)</span>}
+                  </div>
+                  <div style={{fontSize:12,fontWeight:700,color:'var(--text2)',marginTop:8}}>Investigar →</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      {(() => {
+        const employeeQuality = employees.map(emp => {
+          const empJobs = monthJobs.filter(j => j.employee_id === emp.id && j.status !== 'cancelled')
+          const completed = empJobs.filter(j => j.status === 'completed')
+          const durations = completed.map(jobDurationMin).filter(v => v != null && v > 0)
+          const avgMin = durations.length ? durations.reduce((a,b)=>a+b,0) / durations.length : null
+          const value = completed.reduce((s,j)=>s + Number(j.retro_value ?? j.value ?? 0), 0)
+          const valuePerHour = avgMin ? value / (avgMin / 60) : 0
+          const completion = empJobs.length ? (completed.length / empJobs.length) * 100 : 0
+          const qualityRatings = clientRatings.filter(r => r.employee_id === emp.id && r.created_at && r.created_at.startsWith(progressMonth))
+          const rating = qualityRatings.length ? avgStars(qualityRatings) : null
+          const risk = (completion < 70 ? 25 : 0) + (avgMin != null && avgMin > 120 ? 20 : 0) + (rating != null && rating < 3.5 ? 30 : 0) + (valuePerHour > 0 && valuePerHour < 2500 ? 15 : 0)
+          return { emp, completed: completed.length, avgMin, value, valuePerHour, completion, rating, risk }
+        }).filter(x => x.completed > 0).sort((a,b) => b.risk - a.risk).slice(0, 6)
+        const flagged = employeeQuality.filter(x => x.risk >= 25)
+        if (!flagged.length) return null
+        return (
+          <div className="card attention-card" style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+              <div>
+                <div className="finance-eyebrow">TEAM QUALITY & PRODUCTIVITY</div>
+                <h3 style={{margin:'2px 0 0'}}>Funcionários que precisam de atenção</h3>
+                <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Cruza produtividade, duração, conclusão e avaliações quando disponíveis.</p>
+              </div>
+              <Link to="/employees" className="btn">Ver equipe →</Link>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:10}}>
+              {flagged.map(({emp,completed,avgMin,valuePerHour,completion,rating,risk}) => (
+                <Link key={emp.id} to={`/employees/${emp.id}`} style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
+                  <div style={{fontSize:11,fontWeight:800,color:'var(--red)',letterSpacing:'.04em'}}>ATENÇÃO · {risk >= 50 ? 'ALTA' : 'MÉDIA'}</div>
+                  <div style={{fontSize:16,fontWeight:800,marginTop:5}}>{emp.full_name}</div>
+                  <div style={{display:'flex',gap:10,flexWrap:'wrap',fontSize:12,color:'var(--text3)',marginTop:7}}>
+                    <span>{completed} concluídos</span>
+                    <span>{completion.toFixed(0)}% execução</span>
+                    {avgMin != null && <span>{Math.round(avgMin)} min médio</span>}
+                    {rating != null && <span>★ {rating.toFixed(1)}</span>}
+                  </div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:7}}>¥{Math.round(valuePerHour).toLocaleString()}/h produzido</div>
+                  <div style={{fontSize:12,fontWeight:700,color:'var(--text2)',marginTop:8}}>Abrir funcionário →</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
