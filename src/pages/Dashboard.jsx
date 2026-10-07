@@ -327,20 +327,6 @@ export default function Dashboard() {
           )}
         </article>
 
-        <article className="dashboard-v2-card dashboard-v2-secondary-note">
-          <div className="dashboard-v2-card-head">
-            <div><h2>{d.dashboardRuleTitle}</h2><p>{d.dashboardRuleSubtitle}</p></div>
-          </div>
-          <div className="dashboard-v2-rule">
-            <span>01</span><div><strong>{d.ruleAttention}</strong><small>{d.ruleAttentionHint}</small></div>
-          </div>
-          <div className="dashboard-v2-rule">
-            <span>02</span><div><strong>{d.ruleOperations}</strong><small>{d.ruleOperationsHint}</small></div>
-          </div>
-          <div className="dashboard-v2-rule">
-            <span>03</span><div><strong>{d.ruleMoney}</strong><small>{d.ruleMoneyHint}</small></div>
-          </div>
-        </article>
       </section>
 
       {staleCount > 0 && (
