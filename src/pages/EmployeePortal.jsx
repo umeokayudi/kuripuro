@@ -1028,7 +1028,7 @@ export default function EmployeePortal() {
 
   return (
     <div className="emp-backdrop">
-    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
+    <div className="emp-shell emp-shell-v92" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
@@ -1101,7 +1101,7 @@ export default function EmployeePortal() {
       )}
 
       {/* HEADER */}
-      <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
+      <div className="emp-header-v92">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
             <div className="emp-brand">KuriPuro by JBM · v33</div>
@@ -1162,11 +1162,31 @@ export default function EmployeePortal() {
       )}
 
       {/* CONTENT */}
-      <div style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+      <div className="emp-content-v92" style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
 
         {/* HOME */}
         {tab==='home'&&(
           <div>
+            <section className="emp-command-v92">
+              <div className="emp-command-top">
+                <div>
+                  <div className="emp-command-eyebrow">{e.todayShift}</div>
+                  <div className="emp-command-title">{todayJobs.length} {e.locations}</div>
+                </div>
+                <div className="emp-command-score">
+                  <b>{empScore}</b><span>{e.score}</span>
+                </div>
+              </div>
+              <div className="emp-command-grid">
+                <div><span>✓</span><b>{todayJobs.filter(j=>j.status==='completed').length}</b><small>{e.statusCompleted || 'Done'}</small></div>
+                <div><span>●</span><b>{todayJobs.filter(j=>j.status==='in_progress').length}</b><small>{e.statusProgress || 'Active'}</small></div>
+                <div><span>○</span><b>{todayPendingJobs.length}</b><small>{e.statusAssigned || 'Pending'}</small></div>
+              </div>
+              <div className="emp-command-progress">
+                <div style={{width:(todayJobs.length ? Math.min(100,(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length)*100) : 0)+'%'}} />
+              </div>
+            </section>
+
             {/* Active job banner */}
             {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:isStaleActiveJob(activeJob,today,elapsed)?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${isStaleActiveJob(activeJob,today,elapsed)?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>

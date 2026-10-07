@@ -1372,3 +1372,101 @@ tbody tr:hover { background:#f7faff; }
   .ops-search { flex-basis:100%; }
   .ops-filter-bar select { flex:1; min-width:0; }
 }
+
+
+/* Employee Portal 9.2 — mobile-first work app */
+.emp-shell-v92 {
+  background:#f4f7fb !important;
+  color:#172033;
+  box-shadow:0 0 50px rgba(15,23,42,.08);
+}
+.emp-header-v92 {
+  position:sticky;
+  top:0;
+  z-index:50;
+  padding:14px 16px 12px;
+  background:rgba(255,255,255,.94);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid #e5eaf1;
+}
+.emp-header-v92 .emp-brand { color:#2563eb !important; letter-spacing:.08em; }
+.emp-header-v92 .emp-name { color:#142033 !important; }
+.emp-header-v92 > div:first-child > div:last-child { color:#8390a2 !important; }
+.emp-header-v92 button:not(.emp-bottom-btn) {
+  background:#f5f7fa !important;
+  border-color:#e2e8f0 !important;
+}
+.emp-content-v92 {
+  background:#f4f7fb;
+}
+.emp-command-v92 {
+  margin:0 0 12px;
+  padding:16px;
+  border:1px solid #e0e7ef;
+  border-radius:20px;
+  background:linear-gradient(145deg,#ffffff,#f8fbff);
+  box-shadow:0 8px 26px rgba(15,23,42,.055);
+}
+.emp-command-top {
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:14px;
+}
+.emp-command-eyebrow {
+  font-size:9px;
+  font-weight:800;
+  color:#2563eb;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+.emp-command-title {
+  margin-top:3px;
+  font-size:25px;
+  line-height:1;
+  font-weight:800;
+  letter-spacing:-.04em;
+  color:#142033;
+}
+.emp-command-score {
+  min-width:50px;
+  padding:7px 9px;
+  border-radius:12px;
+  text-align:center;
+  background:#eff6ff;
+  border:1px solid #dbeafe;
+}
+.emp-command-score b { display:block; color:#2563eb; font-size:18px; line-height:1; }
+.emp-command-score span { display:block; margin-top:2px; color:#7b8ba1; font-size:8px; text-transform:uppercase; }
+.emp-command-grid {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:7px;
+}
+.emp-command-grid > div {
+  padding:9px 8px;
+  border-radius:12px;
+  background:#f5f7fa;
+  border:1px solid #e7ebf1;
+}
+.emp-command-grid span { display:block; font-size:10px; color:#8290a3; }
+.emp-command-grid b { display:block; margin-top:2px; font-size:17px; color:#172033; }
+.emp-command-grid small { display:block; margin-top:1px; color:#8b98a9; font-size:8px; }
+.emp-command-progress {
+  height:6px;
+  margin-top:11px;
+  border-radius:99px;
+  overflow:hidden;
+  background:#e8edf3;
+}
+.emp-command-progress > div {
+  height:100%;
+  border-radius:99px;
+  background:linear-gradient(90deg,#2563eb,#4f8df7);
+  transition:width .35s ease;
+}
+@media (min-width:431px) {
+  .emp-shell-v92 { min-height:100vh; }
+}
