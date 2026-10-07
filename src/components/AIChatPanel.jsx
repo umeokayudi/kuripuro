@@ -132,19 +132,19 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
           <div className="ai-avatar">✦</div>
           <div>
             <div className="ai-chat-title">{mode === 'employee' ? ai.employeeTitle : 'Kuripuro AI'}</div>
-            {!compact && <div className="ai-chat-subtitle">Seu centro de comando inteligente</div>}
+            {!compact && <div className="ai-chat-subtitle">{ai.commandCenter?.title || ai.adminTitle}</div>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).length > 0 && (
-            <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title="AI voice"
+            <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title={ai.voiceTitle}
               style={{ fontSize: 11, padding: '5px 8px', borderRadius: 8, border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit', maxWidth: 130 }}>
               {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).map(v => (
                 <option key={v.name} value={v.name}>{v.name.split(' ')[0]}</option>
               ))}
             </select>
           )}
-          <button onClick={() => setVoiceReplies(v => !v)} title="Ler respostas em voz alta"
+          <button onClick={() => setVoiceReplies(v => !v)} title={ai.readAloud}
             style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: voiceReplies ? '#c19c56' : dark ? 'rgba(255,255,255,0.06)' : '#fff', color: voiceReplies ? '#0a1929' : dark ? '#fff' : 'var(--text)', borderRadius: 10, padding: '5px 9px', cursor: 'pointer', fontSize: 12 }}>
             {voiceReplies ? '🔊' : '🔇'}
           </button>
@@ -197,7 +197,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 10, borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`, padding: compact ? 12 : '12px 0 0' }}>
-        <button onClick={startVoiceInput} title="Falar"
+        <button onClick={startVoiceInput} title={ai.speak}
           style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: recording ? 'rgba(248,113,113,0.2)' : dark ? 'rgba(255,255,255,0.06)' : '#fff', borderRadius: 12, width: 40, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 16 }}>
           {recording ? '🔴' : '🎤'}
         </button>
