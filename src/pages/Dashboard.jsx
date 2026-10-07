@@ -349,6 +349,49 @@ export default function Dashboard() {
         )
       })()}
 
+      {(() => {
+        const delayedByClient = {}
+        monthJobs.filter(j => j.status === 'assigned' && j.scheduled_date < tokyoToday()).forEach(j => {
+          delayedByClient[j.client_id] = (delayedByClient[j.client_id] || 0) + 1
+        })
+        const qualityRisks = clients.map(client => {
+          const rating = satisfactionByClient.find(x => x.client?.id === client.id)
+          const avg = rating?.avg ?? null
+          const ratingsCount = rating?.count || 0
+          const delayed = delayedByClient[client.id] || 0
+          const pending = monthJobs.filter(j => j.client_id === client.id && !['completed','cancelled'].includes(j.status)).length
+          const score = (avg != null && avg < 3.5 ? 40 : avg != null && avg < 4 ? 20 : 0) + (delayed * 15) + Math.min(pending * 5, 20)
+          return { client, avg, ratingsCount, delayed, pending, score }
+        }).filter(x => x.score >= 20).sort((a,b) => b.score - a.score).slice(0, 6)
+        if (!qualityRisks.length) return null
+        return (
+          <div className="card attention-card" style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+              <div>
+                <div className="finance-eyebrow">SERVICE QUALITY</div>
+                <h3 style={{margin:'2px 0 0'}}>Clientes que precisam de atenção</h3>
+                <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Cruza avaliações, atrasos e pendências para detectar risco de qualidade.</p>
+              </div>
+              <Link to="/client-feedback" className="btn">Ver avaliações →</Link>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:10}}>
+              {qualityRisks.map(({client,avg,ratingsCount,delayed,pending}) => (
+                <Link key={client.id} to="/client-feedback" style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
+                  <div style={{fontSize:11,fontWeight:800,color:'var(--red)',letterSpacing:'.04em'}}>RISCO DE QUALIDADE</div>
+                  <div style={{fontSize:16,fontWeight:800,marginTop:5}}>{client.company_name || client.name || 'Cliente'}</div>
+                  <div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:12,color:'var(--text3)',marginTop:7}}>
+                    {avg != null && <span>★ {avg.toFixed(1)} ({ratingsCount})</span>}
+                    {delayed > 0 && <span>{delayed} atraso(s)</span>}
+                    {pending > 0 && <span>{pending} pendência(s)</span>}
+                  </div>
+                  <div style={{fontSize:12,fontWeight:700,color:'var(--text2)',marginTop:8}}>Investigar →</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
           <div>
