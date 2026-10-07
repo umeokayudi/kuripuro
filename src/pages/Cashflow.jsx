@@ -1,4 +1,20 @@
-import { useState, useEffect } from 'react'
+import { use          {collectionPriority.length > 0 && (
+            <div className="card" style={{marginBottom:14}}>
+              <div className="finance-eyebrow">COLLECTION PRIORITY</div>
+              <h3 style={{margin:'2px 0 0'}}>Quem precisa ser cobrado</h3>
+              <p style={{margin:'4px 0 12px',fontSize:12,color:'var(--text3)'}}>Ranking dos maiores valores vencidos por cliente.</p>
+              <div className="table-wrap"><table>
+                <thead><tr><th>Cliente</th><th>Faturas</th><th>Mais antiga</th><th>Vencido</th></tr></thead>
+                <tbody>{collectionPriority.map((x,i)=><tr key={x.client_id || x.client_name}>
+                  <td style={{fontWeight:700}}>{i+1}. {x.client_name}</td>
+                  <td>{x.invoices}</td>
+                  <td>{x.oldest ? new Date(x.oldest+'T12:00:00').toLocaleDateString('ja-JP') : '—'}</td>
+                  <td style={{fontWeight:800,color:'var(--red)'}}>¥{x.amount.toLocaleString()}</td>
+                </tr>)}</tbody>
+              </table></div>
+            </div>
+          )}
+State, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -90,6 +106,52 @@ export default function Cashflow() {
   const realMargin = income > 0 ? (realProfit / income) * 100 : 0
   const projected = income + receivable - realCosts
 
+  const overdueByClient = invoices
+    .filter(f => (f.status === 'sent' || f.status === 'draft') && f.due_date && f.due_date < today)
+    .reduce((map, f) => {
+      const key = f.client_id || f.client_name || 'unknown'
+      if (!map[key]) map[key] = { client_id: f.client_id, client_name: f.client_name || 'Cliente', amount: 0, invoices: 0, oldest: f.due_date }
+      map[key].amount += Number(f.total || 0)
+      map[key].invoices += 1
+      if (f.due_date < map[key].oldest) map[key].oldest = f.due_date
+      return map
+    }, {})
+  const collectionPriority = Object.values(overdueByClient).sort((a,b) => b.amount-a.amount).slice(0,5)
+
+  const financeAlerts = [
+    overdue > 0 ? { title: 'Cobrança vencida', value: overdue, detail: 'Existem valores vencidos que precisam de cobrança.', tone: 'red' } : null,
+    realMargin < 15 && income > 0 ? { title: 'Margem baixa', value: realMargin, detail: 'A margem real está abaixo de 15%.', tone: 'amber' } : null,
+    projected < 0 ? { title: 'Risco de caixa', value: projected, detail: 'A projeção dos próximos recebimentos e custos é negativa.', tone: 'red' } : null,
+    receivable > income && receivable > 0 ? { title: 'Muito dinheiro a receber', value: receivable, detail: 'Contas em aberto superam o recebido no período.', tone: 'amber' } : null,
+  ].filter(Boolean)
+
+  // Previsão de caixa: compromissos já registrados para os próximos 30 dias.
+  const forecastStart = new Date()
+  const forecastEnd = new Date(forecastStart)
+  forecastEnd.setDate(forecastEnd.getDate() + 30)
+  const inNext30 = (value) => {
+    if (!value) return false
+    const d = new Date(value)
+    return d >= forecastStart && d <= forecastEnd
+  }
+  const upcomingSalary = salaryPayments
+    .filter(p => p.status === 'scheduled' && !p.is_deduction && inNext30(p.payment_date))
+    .reduce((s,p)=>s+Number(p.amount||0),0)
+  const upcomingTransport = transportClaims
+    .filter(p => p.status === 'scheduled' && inNext30(p.claim_date))
+    .reduce((s,p)=>s+Number(p.amount||0),0)
+  const upcomingInvoices = invoices
+    .filter(f => (f.status === 'sent' || f.status === 'draft') && inNext30(f.due_date))
+    .reduce((s,f)=>s+Number(f.total||0),0)
+  const upcomingCosts = upcomingSalary + upcomingTransport
+  const cashNow = entries.reduce((sum,e)=>sum+(e.type==='income'?1:-1)*Number(e.amount||0),0)
+  const forecast30 = cashNow + upcomingInvoices - upcomingCosts
+  const upcomingItems = [
+    {label:'Recebimentos previstos',value:upcomingInvoices,type:'income'},
+    {label:'Salários programados',value:upcomingSalary,type:'expense'},
+    {label:'Transporte programado',value:upcomingTransport,type:'expense'},
+  ].filter(x=>x.value > 0)
+
   return (
     <div>
       <div className="tab-pills">
@@ -108,6 +170,24 @@ export default function Cashflow() {
             </div>
             <input type="month" value={period} onChange={e=>setPeriod(e.target.value)} />
           </div>
+          {financeAlerts.length > 0 && (
+            <div className="card attention-card" style={{marginBottom:14}}>
+              <div className="finance-eyebrow">FINANCIAL ATTENTION</div>
+              <h3 style={{margin:'2px 0 0'}}>O que precisa da sua atenção</h3>
+              <p style={{margin:'4px 0 12px',fontSize:12,color:'var(--text3)'}}>Alertas financeiros calculados automaticamente.</p>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}}>
+                {financeAlerts.map((a,i) => (
+                  <div key={i} style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:a.tone==='red'?'var(--red)':'#EF9F27'}}>{a.title}</div>
+                    <div style={{fontSize:24,fontWeight:800,marginTop:5}}>
+                      {a.title==='Margem baixa' ? a.value.toFixed(1)+'%' : '¥'+Math.abs(Number(a.value)).toLocaleString()}
+                    </div>
+                    <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>{a.detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="finance-kpis">
             {[
               ['Faturado', issued, 'var(--navy)'],
@@ -140,6 +220,24 @@ export default function Cashflow() {
               <div className="finance-big-row"><span>Em aberto</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
               <div className="finance-big-row finance-total"><span>Vencido</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
             </div>
+          </div>
+          <div className="card" style={{marginBottom:14}}>
+            <div className="card-title">Previsão de caixa · próximos 30 dias</div>
+            <div style={{fontSize:11,color:'var(--text3)',marginBottom:12}}>Usa apenas recebimentos com vencimento e custos já programados.</div>
+            <div className="finance-big-row"><span>Caixa registrado até agora</span><strong>¥{cashNow.toLocaleString()}</strong></div>
+            {upcomingItems.map(item=>(
+              <div className="finance-big-row" key={item.label}>
+                <span>{item.label}</span>
+                <strong className={item.type==='income'?'finance-positive':'finance-negative'}>{item.type==='income'?'+':'-'}¥{item.value.toLocaleString()}</strong>
+              </div>
+            ))}
+            <div className="finance-big-row finance-total"><span>Caixa projetado em 30 dias</span><strong className={forecast30>=0?'finance-positive':'finance-negative'}>¥{Math.abs(forecast30).toLocaleString()}</strong></div>
+          </div>
+          <div className="card" style={{marginBottom:14}}>
+            <div className="card-title">Contas a pagar programadas</div>
+            <div className="finance-big-row"><span>Salários</span><strong>¥{upcomingSalary.toLocaleString()}</strong></div>
+            <div className="finance-big-row"><span>Transporte</span><strong>¥{upcomingTransport.toLocaleString()}</strong></div>
+            <div className="finance-big-row finance-total"><span>Total próximos 30 dias</span><strong className="finance-negative">¥{upcomingCosts.toLocaleString()}</strong></div>
           </div>
           <div className="card" style={{marginBottom:14}}>
             <div className="card-title">Onde o dinheiro está indo</div>
