@@ -1,12 +1,15 @@
 import React, { useMemo } from 'react'
+import { useLang } from '../hooks/useLang'
 
 const fmtYen = n => '¥' + Math.round(Number(n || 0)).toLocaleString('ja-JP')
 
-function EmptyChart({ label = 'No data' }) {
-  return <div className="chart-empty">{label}</div>
+function EmptyChart({ label }) {
+  const { t } = useLang()
+  return <div className="chart-empty">{label || t.executive?.noData || 'No data'}</div>
 }
 
 export function LineChart({ data = [], height = 180, valueFormatter = v => String(v), lineLabel = '' }) {
+  const { t } = useLang()
   const values = data.map(d => Number(d.value || 0))
   const max = Math.max(...values, 1)
   const min = Math.min(...values, 0)
@@ -28,7 +31,7 @@ export function LineChart({ data = [], height = 180, valueFormatter = v => Strin
 
   return (
     <div className="chart-line-wrap">
-      <svg viewBox={'0 0 ' + width + ' ' + height} preserveAspectRatio="none" className="chart-svg" role="img" aria-label={lineLabel || 'Line chart'}>
+      <svg viewBox={'0 0 ' + width + ' ' + height} preserveAspectRatio="none" className="chart-svg" role="img" aria-label={lineLabel || t.executive?.lineChart || 'Line chart'}>
         <line x1={padX} x2={width - padX} y1={height - padY} y2={height - padY} className="chart-axis" />
         <path d={area} className="chart-area" />
         <path d={path} className="chart-line" />
@@ -72,6 +75,7 @@ export function BarChart({ data = [], valueFormatter = v => String(v), colorClas
 }
 
 export function DonutChart({ data = [], centerLabel = '', centerValue = '' }) {
+  const { t } = useLang()
   const total = data.reduce((s, d) => s + Number(d.value || 0), 0)
   const radius = 48
   const circumference = 2 * Math.PI * radius
@@ -80,7 +84,7 @@ export function DonutChart({ data = [], centerLabel = '', centerValue = '' }) {
   return (
     <div className="chart-donut-wrap">
       <div className="chart-donut">
-        <svg viewBox="0 0 120 120" className="chart-donut-svg" aria-label="Donut chart">
+        <svg viewBox="0 0 120 120" className="chart-donut-svg" aria-label={t.executive?.donutChart || 'Donut chart'}>
           <circle cx="60" cy="60" r={radius} className="donut-track" />
           {data.map((d, i) => {
             const len = (Number(d.value || 0) / total) * circumference
@@ -114,6 +118,8 @@ export function DonutChart({ data = [], centerLabel = '', centerValue = '' }) {
 }
 
 export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [], employees = [], staleCount = 0, atRisk = [], deepProgress }) {
+  const { t } = useLang()
+  const d = t.executive || {}
   const financial = useMemo(() => {
     const revenue = clients.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0)
     const cost = clients.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
@@ -134,7 +140,7 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
   const serviceTypes = useMemo(() => {
     const map = {}
     monthJobs.forEach(j => {
-      const name = j.service_type || j.service_name || j.type || 'Other'
+      const name = j.service_type || j.service_name || j.type || d.other
       map[name] = (map[name] || 0) + 1
     })
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value }))
@@ -143,20 +149,20 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
   const employeeLoad = useMemo(() => {
     const map = {}
     monthJobs.forEach(j => {
-      const name = j.employee_name || 'Unassigned'
+      const name = j.employee_name || d.unassigned
       map[name] = (map[name] || 0) + 1
     })
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value]) => ({ label, value }))
   }, [monthJobs])
 
   const attention = [
-    staleCount > 0 && { level: 'warning', title: 'Stale jobs', value: staleCount, text: 'Jobs need operational attention.' },
-    atRisk.length > 0 && { level: 'danger', title: 'At-risk clients', value: atRisk.length, text: 'Recent satisfaction is below target.' },
+    staleCount > 0 && { level: 'warning', title: d.staleJobs, value: staleCount, text: d.jobsNeedAttention },
+    atRisk.length > 0 && { level: 'danger', title: d.atRiskClients, value: atRisk.length, text: d.recentSatisfactionBelowTarget },
     deepProgress && deepProgress.totals && deepProgress.totals.expected > deepProgress.totals.completed && {
-      level: 'info', title: 'Deep-clean progress', value: (deepProgress.totals.pct || 0) + '%', text: 'Monthly scheduled work remains.'
+      level: 'info', title: d.deepCleanProgress, value: (deepProgress.totals.pct || 0) + '%', text: d.monthlyScheduledWorkRemains
     },
     todayJobs.filter(j => j.status === 'assigned').length > 0 && {
-      level: 'neutral', title: 'Assigned today', value: todayJobs.filter(j => j.status === 'assigned').length, text: 'Jobs are waiting to start.'
+      level: 'neutral', title: d.assignedToday, value: todayJobs.filter(j => j.status === 'assigned').length, text: d.jobsWaitingToStart
     }
   ].filter(Boolean)
 
@@ -165,74 +171,74 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
   const todayProgress = todayJobs.length ? Math.round((completedToday / todayJobs.length) * 100) : 0
   const profitTone = financial.profit >= 0 ? 'positive' : 'negative'
   const topClient = [...clients]
-    .map(c => ({ name: c.company_name || 'Client', profit: Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0) }))
+    .map(c => ({ name: c.company_name || d.client, profit: Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0) }))
     .sort((a,b) => b.profit - a.profit)[0]
 
   return (
     <section className="executive-section">
       <div className="section-heading-row">
         <div>
-          <div className="eyebrow">EXECUTIVE OVERVIEW</div>
-          <h3>O que está acontecendo agora</h3>
-          <p>Uma visão rápida para decidir onde agir primeiro.</p>
+          <div className="eyebrow">{d.overview}</div>
+          <h3>{d.now}</h3>
+          <p>{d.quickDecision}</p>
         </div>
-        <div className="executive-period"><span>Base mensal dos contratos</span><strong>{fmtYen(financial.revenue)}</strong></div>
+        <div className="executive-period"><span>{d.monthlyContractBase}</span><strong>{fmtYen(financial.revenue)}</strong></div>
       </div>
 
       <div className="executive-pulse">
         <div className="pulse-card pulse-primary">
           <span className="pulse-icon">¥</span>
-          <div><small>Lucro estimado</small><strong>{fmtYen(financial.profit)}</strong><em>{financial.margin.toFixed(1)}% de margem</em></div>
+          <div><small>{d.estimatedProfit}</small><strong>{fmtYen(financial.profit)}</strong><em>{d.margin.replace('{value}', financial.margin.toFixed(1))}</em></div>
         </div>
         <div className="pulse-card">
           <span className="pulse-icon">✓</span>
-          <div><small>Hoje concluído</small><strong>{completedToday}/{todayJobs.length}</strong><em>{todayProgress}% da agenda</em></div>
+          <div><small>{d.todayCompleted}</small><strong>{completedToday}/{todayJobs.length}</strong><em>{d.agendaProgress.replace('{value}', todayProgress)}</em></div>
         </div>
         <div className="pulse-card">
           <span className="pulse-icon">!</span>
-          <div><small>Precisa de atenção</small><strong>{staleCount + atRisk.length + assignedToday}</strong><em>{assignedToday} aguardando início</em></div>
+          <div><small>{d.needsAttention}</small><strong>{staleCount + atRisk.length + assignedToday}</strong><em>{d.waitingStart.replace('{value}', assignedToday)}</em></div>
         </div>
         <div className="pulse-card">
           <span className="pulse-icon">↗</span>
-          <div><small>Cliente mais rentável</small><strong className="pulse-client">{topClient?.name || '—'}</strong><em>{topClient ? fmtYen(topClient.profit) : 'Sem dados'}</em></div>
+          <div><small>{d.topClient}</small><strong className="pulse-client">{topClient?.name || '—'}</strong><em>{topClient ? fmtYen(topClient.profit) : d.noData}</em></div>
         </div>
       </div>
 
       <div className="executive-grid executive-grid-main">
         <div className="card executive-card executive-wide">
           <div className="chart-card-head">
-            <div><div className="card-title">Service volume</div><div className="chart-subtitle">Work activity over the current month</div></div>
-            <span className="chart-kpi">{monthJobs.length} jobs</span>
+            <div><div className="card-title">{d.serviceVolume}</div><div className="chart-subtitle">{d.serviceVolumeSubtitle}</div></div>
+            <span className="chart-kpi">{monthJobs.length} {d.jobs}</span>
           </div>
-          <LineChart data={trend} lineLabel="Latest day" />
+          <LineChart data={trend} lineLabel={d.latestDay} />
         </div>
 
         <div className="card executive-card">
-          <div className="chart-card-head"><div><div className="card-title">Financial snapshot</div><div className="chart-subtitle">Current client contract base</div></div></div>
+          <div className="chart-card-head"><div><div className="card-title">{d.financialSnapshot}</div><div className="chart-subtitle">{d.currentContractBase}</div></div></div>
           <div className="financial-stack">
-            <div><span>Revenue</span><strong>{fmtYen(financial.revenue)}</strong></div>
-            <div><span>Estimated cost</span><strong>{fmtYen(financial.cost)}</strong></div>
-            <div className="financial-profit"><span>Profit</span><strong>{fmtYen(financial.profit)}</strong></div>
-            <div><span>Margin</span><strong>{financial.margin.toFixed(1)}%</strong></div>
+            <div><span>{d.revenue}</span><strong>{fmtYen(financial.revenue)}</strong></div>
+            <div><span>{d.estimatedCost}</span><strong>{fmtYen(financial.cost)}</strong></div>
+            <div className="financial-profit"><span>{d.profit}</span><strong>{fmtYen(financial.profit)}</strong></div>
+            <div><span>{d.marginLabel}</span><strong>{financial.margin.toFixed(1)}%</strong></div>
           </div>
         </div>
       </div>
 
       <div className="executive-grid">
         <div className="card executive-card">
-          <div className="chart-card-head"><div><div className="card-title">Service mix</div><div className="chart-subtitle">Top service categories</div></div></div>
-          <DonutChart data={serviceTypes} centerLabel="jobs" centerValue={monthJobs.length} />
+          <div className="chart-card-head"><div><div className="card-title">{d.serviceMix}</div><div className="chart-subtitle">{d.topServiceCategories}</div></div></div>
+          <DonutChart data={serviceTypes} centerLabel={d.jobs} centerValue={monthJobs.length} />
         </div>
 
         <div className="card executive-card">
-          <div className="chart-card-head"><div><div className="card-title">Team workload</div><div className="chart-subtitle">Jobs by employee</div></div><span className="chart-kpi">{employees.length} people</span></div>
-          <BarChart data={employeeLoad} valueFormatter={v => v + ' jobs'} />
+          <div className="chart-card-head"><div><div className="card-title">{d.teamWorkload}</div><div className="chart-subtitle">{d.jobsByEmployee}</div></div><span className="chart-kpi">{employees.length} {d.people}</span></div>
+          <BarChart data={employeeLoad} valueFormatter={v => v + ' ' + d.jobs} />
         </div>
 
         <div className="card executive-card">
-          <div className="chart-card-head"><div><div className="card-title">Attention</div><div className="chart-subtitle">Things worth checking now</div></div></div>
+          <div className="chart-card-head"><div><div className="card-title">{d.attention}</div><div className="chart-subtitle">{d.thingsWorthChecking}</div></div></div>
           {attention.length === 0 ? (
-            <div className="executive-ok"><span>✓</span><div><strong>Everything looks on track</strong><p>No major operational alerts detected.</p></div></div>
+            <div className="executive-ok"><span>✓</span><div><strong>{d.everythingOnTrack}</strong><p>{d.noMajorAlerts}</p></div></div>
           ) : (
             <div className="attention-list">
               {attention.map((item, i) => (
@@ -247,7 +253,7 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
       </div>
 
       <div className="card executive-card client-profit-card">
-        <div className="chart-card-head"><div><div className="card-title">Client profitability</div><div className="chart-subtitle">Highest contribution based on current client master values</div></div></div>
+        <div className="chart-card-head"><div><div className="card-title">{d.clientProfitability}</div><div className="chart-subtitle">{d.highestContribution}</div></div></div>
         <BarChart
           data={[...clients].map(c => ({
             label: c.company_name || 'Client',
@@ -283,7 +289,7 @@ export function ReportsAnalytics({ reports = [] }) {
   const byType = useMemo(() => {
     const map = {}
     reports.forEach(r => {
-      const name = r.report_type === 'retroativo' ? 'Retroactive' : 'Live'
+      const name = r.report_type === 'retroativo' ? d.retroactive : d.live
       map[name] = (map[name] || 0) + 1
     })
     return Object.entries(map).map(([label, value]) => ({ label, value }))
@@ -293,18 +299,18 @@ export function ReportsAnalytics({ reports = [] }) {
     <div className="reports-visual-grid">
       <div className="card executive-card reports-chart-wide">
         <div className="chart-card-head">
-          <div><div className="card-title">Service activity</div><div className="chart-subtitle">Reports completed by day</div></div>
-          <span className="chart-kpi">{reports.length} reports</span>
+          <div><div className="card-title">{d.serviceReports}</div><div className="chart-subtitle">{d.serviceReportsSubtitle}</div></div>
+          <span className="chart-kpi">{reports.length} {d.reports}</span>
         </div>
-        <LineChart data={byDay} lineLabel="Latest day" />
+        <LineChart data={byDay} lineLabel={d.latestDay} />
       </div>
       <div className="card executive-card">
-        <div className="chart-card-head"><div><div className="card-title">Report type</div><div className="chart-subtitle">Live vs retroactive</div></div></div>
-        <DonutChart data={byType} centerLabel="reports" centerValue={reports.length} />
+        <div className="chart-card-head"><div><div className="card-title">{d.reportType}</div><div className="chart-subtitle">{d.liveVsRetroactive}</div></div></div>
+        <DonutChart data={byType} centerLabel={d.reports} centerValue={reports.length} />
       </div>
       <div className="card executive-card reports-chart-wide">
-        <div className="chart-card-head"><div><div className="card-title">Productivity</div><div className="chart-subtitle">Reports by employee</div></div></div>
-        <BarChart data={byEmployee} valueFormatter={v => v + ' reports'} />
+        <div className="chart-card-head"><div><div className="card-title">{d.productivity}</div><div className="chart-subtitle">{d.reportsByEmployee}</div></div></div>
+        <BarChart data={byEmployee} valueFormatter={v => v + ' ' + d.reports} />
       </div>
     </div>
   )
