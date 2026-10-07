@@ -855,3 +855,78 @@ body { background: var(--hq-bg); }
   .emp-backdrop { padding:0 !important; }
   .emp-shell { width:100%; }
 }
+
+
+/* Employee portal 2026 navigation */
+.emp-bottom-nav {
+  position:fixed;
+  bottom:0;
+  left:50%;
+  transform:translateX(-50%);
+  width:100%;
+  max-width:520px;
+  display:flex;
+  z-index:50;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border-top:1px solid #e7ebf2;
+  box-shadow:0 -10px 30px rgba(20,35,60,.08);
+}
+.emp-bottom-btn {
+  flex:1;
+  min-height:52px !important;
+  padding:7px 4px !important;
+  border:none !important;
+  background:transparent !important;
+  color:#8a98ab !important;
+  cursor:pointer;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  position:relative;
+  border-radius:14px !important;
+  box-shadow:none !important;
+}
+.emp-bottom-btn.active {
+  color:#2563eb !important;
+  background:rgba(37,99,235,.08) !important;
+}
+.emp-bottom-icon {
+  font-size:18px;
+  line-height:1;
+  font-weight:800;
+}
+.emp-bottom-label {
+  font-size:9px;
+  line-height:1;
+  font-weight:700;
+  letter-spacing:.01em;
+}
+.emp-bottom-active {
+  position:absolute;
+  bottom:2px;
+  width:18px;
+  height:3px;
+  border-radius:999px;
+  background:#2563eb;
+}
+.emp-more-icon {
+  display:flex;
+  gap:3px;
+  height:18px;
+  align-items:center;
+}
+.emp-more-icon span {
+  width:4px;
+  height:4px;
+  border-radius:50%;
+  background:#8a98ab;
+}
+.emp-bottom-btn.active .emp-more-icon span { background:#2563eb; }
+@media (min-width:768px){
+  .emp-bottom-nav { max-width:520px; border:1px solid #e7ebf2; border-bottom:none; border-radius:18px 18px 0 0; }
+}
