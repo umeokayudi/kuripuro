@@ -1,4 +1,20 @@
-import { useState, useEffect } from 'react'
+import { use          {collectionPriority.length > 0 && (
+            <div className="card" style={{marginBottom:14}}>
+              <div className="finance-eyebrow">COLLECTION PRIORITY</div>
+              <h3 style={{margin:'2px 0 0'}}>Quem precisa ser cobrado</h3>
+              <p style={{margin:'4px 0 12px',fontSize:12,color:'var(--text3)'}}>Ranking dos maiores valores vencidos por cliente.</p>
+              <div className="table-wrap"><table>
+                <thead><tr><th>Cliente</th><th>Faturas</th><th>Mais antiga</th><th>Vencido</th></tr></thead>
+                <tbody>{collectionPriority.map((x,i)=><tr key={x.client_id || x.client_name}>
+                  <td style={{fontWeight:700}}>{i+1}. {x.client_name}</td>
+                  <td>{x.invoices}</td>
+                  <td>{x.oldest ? new Date(x.oldest+'T12:00:00').toLocaleDateString('ja-JP') : '—'}</td>
+                  <td style={{fontWeight:800,color:'var(--red)'}}>¥{x.amount.toLocaleString()}</td>
+                </tr>)}</tbody>
+              </table></div>
+            </div>
+          )}
+State, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -89,6 +105,18 @@ export default function Cashflow() {
   const realProfit = income - realCosts
   const realMargin = income > 0 ? (realProfit / income) * 100 : 0
   const projected = income + receivable - realCosts
+
+  const overdueByClient = invoices
+    .filter(f => (f.status === 'sent' || f.status === 'draft') && f.due_date && f.due_date < today)
+    .reduce((map, f) => {
+      const key = f.client_id || f.client_name || 'unknown'
+      if (!map[key]) map[key] = { client_id: f.client_id, client_name: f.client_name || 'Cliente', amount: 0, invoices: 0, oldest: f.due_date }
+      map[key].amount += Number(f.total || 0)
+      map[key].invoices += 1
+      if (f.due_date < map[key].oldest) map[key].oldest = f.due_date
+      return map
+    }, {})
+  const collectionPriority = Object.values(overdueByClient).sort((a,b) => b.amount-a.amount).slice(0,5)
 
   const financeAlerts = [
     overdue > 0 ? { title: 'Cobrança vencida', value: overdue, detail: 'Existem valores vencidos que precisam de cobrança.', tone: 'red' } : null,
