@@ -229,23 +229,24 @@ export default function Dashboard() {
             <div>
               <div className="finance-eyebrow">PRIORITY CENTER</div>
               <h3 style={{margin:'2px 0 0'}}>O que precisa da sua atenção</h3>
-              <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>O Kuripuro encontrou riscos operacionais que merecem ação.</p>
+              <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Problemas detectados automaticamente e ação recomendada.</p>
             </div>
             <Link to="/jobs" className="btn">Ver operação →</Link>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:10}}>
-            {delayed > 0 && <div style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+            {delayed > 0 && <Link to="/jobs" style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
               <div style={{fontSize:12,fontWeight:700,color:'#EF9F27'}}>SERVIÇOS ATRASADOS</div>
               <div style={{fontSize:25,fontWeight:800,marginTop:5}}>{delayed}</div>
-              <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>Jobs atribuídos de datas anteriores.</div>
-            </div>}
-            {clientRisks.map(({client,pending,margin}) => <div key={client.id} style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+              <div style={{fontSize:12,color:'var(--text3)',marginTop:5}}>Abrir operação e resolver os atrasos →</div>
+            </Link>}
+            {clientRisks.map(({client,pending,margin}) => <Link key={client.id} to="/clients" style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)',textDecoration:'none',color:'inherit'}}>
               <div style={{fontSize:12,fontWeight:700,color:'var(--red)'}}>CLIENTE EM RISCO</div>
               <div style={{fontSize:16,fontWeight:800,marginTop:5}}>{client.name || client.client_name || 'Cliente'}</div>
               <div style={{fontSize:12,color:'var(--text3)',marginTop:5}}>{pending} pendente(s) · margem {Math.round(margin)}%</div>
-            </div>)}
+              <div style={{fontSize:12,fontWeight:700,color:'var(--text2)',marginTop:7}}>Abrir clientes →</div>
+            </Link>)}
           </div>
-        </div>
+        </div>        </div>
       })()}
 
       <div className="dash-metrics">
