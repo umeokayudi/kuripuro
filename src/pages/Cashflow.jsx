@@ -90,6 +90,13 @@ export default function Cashflow() {
   const realMargin = income > 0 ? (realProfit / income) * 100 : 0
   const projected = income + receivable - realCosts
 
+  const financeAlerts = [
+    overdue > 0 ? { title: 'Cobrança vencida', value: overdue, detail: 'Existem valores vencidos que precisam de cobrança.', tone: 'red' } : null,
+    realMargin < 15 && income > 0 ? { title: 'Margem baixa', value: realMargin, detail: 'A margem real está abaixo de 15%.', tone: 'amber' } : null,
+    projected < 0 ? { title: 'Risco de caixa', value: projected, detail: 'A projeção dos próximos recebimentos e custos é negativa.', tone: 'red' } : null,
+    receivable > income && receivable > 0 ? { title: 'Muito dinheiro a receber', value: receivable, detail: 'Contas em aberto superam o recebido no período.', tone: 'amber' } : null,
+  ].filter(Boolean)
+
   // Previsão de caixa: compromissos já registrados para os próximos 30 dias.
   const forecastStart = new Date()
   const forecastEnd = new Date(forecastStart)
@@ -135,6 +142,24 @@ export default function Cashflow() {
             </div>
             <input type="month" value={period} onChange={e=>setPeriod(e.target.value)} />
           </div>
+          {financeAlerts.length > 0 && (
+            <div className="card attention-card" style={{marginBottom:14}}>
+              <div className="finance-eyebrow">FINANCIAL ATTENTION</div>
+              <h3 style={{margin:'2px 0 0'}}>O que precisa da sua atenção</h3>
+              <p style={{margin:'4px 0 12px',fontSize:12,color:'var(--text3)'}}>Alertas financeiros calculados automaticamente.</p>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}}>
+                {financeAlerts.map((a,i) => (
+                  <div key={i} style={{padding:'14px 16px',borderRadius:12,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:a.tone==='red'?'var(--red)':'#EF9F27'}}>{a.title}</div>
+                    <div style={{fontSize:24,fontWeight:800,marginTop:5}}>
+                      {a.title==='Margem baixa' ? a.value.toFixed(1)+'%' : '¥'+Math.abs(Number(a.value)).toLocaleString()}
+                    </div>
+                    <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>{a.detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="finance-kpis">
             {[
               ['Faturado', issued, 'var(--navy)'],
