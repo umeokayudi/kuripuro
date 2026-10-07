@@ -1113,3 +1113,59 @@
   .cp-stats { gap:8px; }
   .cp-stat { padding:11px 8px; }
 }
+
+
+/* Client Portal 9.2 — executive customer home */
+.cp-client-command {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  margin-bottom:10px;
+  padding:16px 18px;
+  border:1px solid #e2e8f0;
+  border-radius:18px;
+  background:linear-gradient(135deg,#fff,#f8fbff);
+  box-shadow:0 8px 26px rgba(20,35,60,.05);
+}
+.cp-client-eyebrow {
+  font-size:9px;
+  font-weight:800;
+  color:#2563eb;
+  text-transform:uppercase;
+  letter-spacing:.13em;
+}
+.cp-client-command-title {
+  margin-top:4px;
+  font-size:25px;
+  line-height:1;
+  font-weight:800;
+  letter-spacing:-.04em;
+  color:#172033;
+}
+.cp-client-command-meta {
+  margin-top:4px;
+  font-size:11px;
+  color:#8390a2;
+}
+.cp-client-command-score {
+  min-width:58px;
+  padding:8px 10px;
+  border-radius:13px;
+  text-align:center;
+  background:#eff6ff;
+  border:1px solid #dbeafe;
+}
+.cp-client-command-score b {
+  display:block;
+  font-size:20px;
+  line-height:1;
+  color:#2563eb;
+}
+.cp-client-command-score span {
+  display:block;
+  margin-top:3px;
+  font-size:8px;
+  color:#718096;
+  text-transform:uppercase;
+}
