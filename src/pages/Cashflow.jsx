@@ -34,6 +34,8 @@ export default function Cashflow() {
       supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status,paid_at').order('issue_date', { ascending:false }).limit(500),
       supabase.from('salary_payments').select('id,employee_id,employee_name,amount,payment_date,status,payment_type,is_deduction').order('payment_date', { ascending:false }).limit(1000),
       supabase.from('transport_claims').select('id,employee_id,employee_name,job_id,amount,claim_date,status').order('claim_date', { ascending:false }).limit(1000),
+      supabase.from('clients').select('id,name,monthly_revenue,monthly_cost,monthly_cost_estimate').order('name').limit(500),
+      supabase.from('jobs').select('id,client_id,employee_id,scheduled_date,status,value,spot_value').gte('scheduled_date', `${month}-01`).lte('scheduled_date', `${month}-31`).limit(5000),
     ])
     if (error) return toast.error(error.message)
     setEntries((data || []).map(normalizeEntry))
@@ -89,6 +91,33 @@ export default function Cashflow() {
   const realProfit = income - realCosts
   const realMargin = income > 0 ? (realProfit / income) * 100 : 0
   const projected = income + receivable - realCosts
+  const clientRows = (clientData || []).map(client => {
+    const clientInvoices = invoices.filter(f => f.client_id === client.id && f.status !== 'cancelled')
+    const revenue = clientInvoices
+      .filter(f => f.paid_at && f.paid_at.startsWith(month))
+      .reduce((s,f) => s + Number(f.total || 0), 0)
+    const clientJobs = (jobData || []).filter(j => j.client_id === client.id && j.status !== 'cancelled')
+    const completedJobs = clientJobs.filter(j => ['completed','done','finished'].includes(String(j.status || '').toLowerCase()))
+    const jobValue = completedJobs.reduce((s,j) => s + Number(j.value ?? j.spot_value ?? 0), 0)
+    const employeeJobCounts = {}
+    completedJobs.forEach(j => {
+      if (j.employee_id) employeeJobCounts[j.employee_id] = (employeeJobCounts[j.employee_id] || 0) + 1
+    })
+    const totalEmployeeJobs = Object.values(employeeJobCounts).reduce((s,v) => s + v, 0)
+    const salaryAllocated = totalEmployeeJobs > 0
+      ? paidSalary * (totalEmployeeJobs / Math.max(1, (jobData || []).filter(j => j.employee_id && ['completed','done','finished'].includes(String(j.status || '').toLowerCase())).length))
+      : 0
+    const transport = transportClaims
+      .filter(t => t.job_id && clientJobs.some(j => j.id === t.job_id) && ['paid','approved','reimbursed'].includes(t.status) && t.claim_date?.startsWith(month))
+      .reduce((s,t) => s + Number(t.amount || 0), 0)
+    const directCost = salaryAllocated + transport
+    const profit = revenue - directCost
+    const margin = revenue > 0 ? (profit / revenue) * 100 : null
+    const pendingJobs = clientJobs.filter(j => !['completed','done','finished','cancelled'].includes(String(j.status || '').toLowerCase())).length
+    const risk = revenue <= 0 ? 'Sem receita' : margin < 0 ? 'Dá prejuízo' : margin < 15 ? 'Atenção' : margin < 30 ? 'Normal' : 'Bom'
+    return { ...client, revenue, directCost, profit, margin, pendingJobs, completedJobs: completedJobs.length, jobValue, risk }
+  }).filter(c => c.revenue > 0 || c.completedJobs > 0).sort((a,b) => b.profit - a.profit)
+
 
   return (
     <div>
@@ -147,6 +176,25 @@ export default function Cashflow() {
             <div className="finance-big-row"><span>Transporte</span><strong>¥{transportCost.toLocaleString()}</strong></div>
             <div className="finance-big-row"><span>Outras despesas</span><strong>¥{otherExpense.toLocaleString()}</strong></div>
             <div className="finance-big-row finance-total"><span>Total de custos reais</span><strong>¥{realCosts.toLocaleString()}</strong></div>
+          </div>
+          <div className="card" style={{marginBottom:14}}>
+            <div className="card-title">Rentabilidade por cliente</div>
+            <div style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>
+              Receita recebida no mês menos salário alocado proporcionalmente aos jobs e transporte. Use como indicador gerencial, não como contabilidade fiscal.
+            </div>
+            {clientRows.length === 0 && <div style={{color:'var(--text3)',fontSize:13}}>Nenhum cliente com receita recebida ou job concluído neste período.</div>}
+            {clientRows.slice(0,15).map(client => (
+              <div key={client.id} style={{display:'grid',gridTemplateColumns:'minmax(150px,1.6fr) repeat(4,minmax(90px,1fr))',gap:10,alignItems:'center',padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
+                <div>
+                  <div style={{fontWeight:650,fontSize:13}}>{client.name}</div>
+                  <div style={{fontSize:11,color:'var(--text3)'}}>{client.completedJobs} jobs concluídos · {client.pendingJobs} pendentes</div>
+                </div>
+                <div><div style={{fontSize:10,color:'var(--text3)'}}>RECEITA</div><strong>¥{client.revenue.toLocaleString()}</strong></div>
+                <div><div style={{fontSize:10,color:'var(--text3)'}}>CUSTO</div><strong>¥{Math.round(client.directCost).toLocaleString()}</strong></div>
+                <div><div style={{fontSize:10,color:'var(--text3)'}}>LUCRO</div><strong style={{color:client.profit>=0?'var(--green)':'var(--red)'}}>¥{Math.round(client.profit).toLocaleString()}</strong></div>
+                <div><div style={{fontSize:10,color:'var(--text3)'}}>MARGEM</div><strong style={{color:client.margin === null ? 'var(--text3)' : client.margin < 15 ? 'var(--red)' : client.margin < 30 ? 'var(--gold)' : 'var(--green)'}}>{client.margin === null ? '—' : client.margin.toFixed(1)+'%'}</strong><div style={{fontSize:10,color:client.risk==='Dá prejuízo'?'var(--red)':client.risk==='Atenção'?'var(--gold)':'var(--text3)'}}>{client.risk}</div></div>
+              </div>
+            ))}
           </div>
           <div className="card">
             <div className="card-title">Movimentações do mês</div>
