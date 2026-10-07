@@ -88,7 +88,7 @@ export default function Cashflow() {
           <div className="finance-kpis">
             {[
               ['Faturado', issued, 'var(--navy)'],
-              ['Recebido', receivedByInvoice + income, 'var(--green)'],
+              ['Recebido', income, 'var(--green)'],
               ['A receber', receivable, 'var(--hq-blue)'],
               ['Vencido', overdue, 'var(--red)'],
               ['Despesas', expense, 'var(--red)'],
