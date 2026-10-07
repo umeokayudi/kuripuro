@@ -1470,3 +1470,35 @@ tbody tr:hover { background:#f7faff; }
 @media (min-width:431px) {
   .emp-shell-v92 { min-height:100vh; }
 }
+
+
+/* Clients / CRM 9.2 */
+.clients-command-v92 {
+  display:flex; align-items:center; justify-content:space-between; gap:18px;
+  padding:20px; margin-bottom:12px; border:1px solid #dfe7f1; border-radius:18px;
+  background:linear-gradient(120deg,#fff,#f8fbff); box-shadow:0 8px 28px rgba(15,23,42,.05);
+}
+.clients-eyebrow { font-size:10px; font-weight:800; letter-spacing:.14em; color:#2563eb; }
+.clients-command-title { margin-top:4px; font-size:22px; font-weight:800; letter-spacing:-.035em; color:#142033; }
+.clients-command-sub { margin-top:3px; font-size:12px; color:#7a8aa0; }
+.clients-command-kpis { display:flex; gap:8px; }
+.clients-command-kpis > div { min-width:72px; padding:9px 12px; border:1px solid #e4e9f0; border-radius:12px; background:#fff; text-align:center; }
+.clients-command-kpis b { display:block; font-size:19px; color:#172033; line-height:1; }
+.clients-command-kpis span { display:block; margin-top:4px; font-size:9px; color:#8491a3; text-transform:uppercase; }
+.clients-command-kpis .risk { border-color:#fecaca; background:#fffafa; }
+.clients-command-kpis .risk b { color:#b42318; }
+.clients-toolbar-v92 { display:flex; gap:8px; padding:10px; margin-bottom:7px; border:1px solid #e2e8f0; border-radius:13px; background:#f8fafc; }
+.clients-search-v92 { flex:1; display:flex; align-items:center; gap:8px; height:38px; padding:0 10px; border:1px solid #d9e2ec; border-radius:9px; background:#fff; }
+.clients-search-v92 span { color:#8190a4; font-size:18px; }
+.clients-search-v92 input { flex:1; min-width:0; border:0!important; outline:0!important; background:transparent!important; box-shadow:none!important; padding:0!important; font-size:12px; }
+.clients-search-v92 button { border:0; background:none; color:#8290a3; font-size:18px; cursor:pointer; }
+.clients-toolbar-v92 select { height:38px; border:1px solid #d9e2ec; border-radius:9px; background:#fff; padding:0 10px; font-size:12px; font-weight:600; color:#344054; }
+.clients-result-count { margin:0 0 10px 3px; font-size:11px; color:#8491a3; }
+@media(max-width:650px){
+  .clients-command-v92 { flex-direction:column; align-items:stretch; padding:16px; }
+  .clients-command-kpis { width:100%; }
+  .clients-command-kpis > div { flex:1; }
+  .clients-toolbar-v92 { flex-wrap:wrap; }
+  .clients-search-v92 { flex-basis:100%; }
+  .clients-toolbar-v92 select { flex:1; }
+}
