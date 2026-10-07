@@ -64,7 +64,9 @@ export default function Sidebar() {
     <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`}>
       <div className="sidebar-logo">
         <div className="brand">KuriPuro</div>
+        <div className="brand-mark">KP</div>
         <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
+        <button type="button" className="sidebar-collapse" onClick={() => setCollapsed(v => !v)} aria-label="Toggle navigation" title="Toggle navigation">‹</button>
       </div>
       <nav className="sidebar-nav">
         {groups.map(group => (
