@@ -232,3 +232,53 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
     </section>
   )
 }
+
+
+export function ReportsAnalytics({ reports = [] }) {
+  const byDay = useMemo(() => {
+    const map = {}
+    reports.forEach(r => {
+      const d = r.report_date || ''
+      if (d) map[d] = (map[d] || 0) + 1
+    })
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).slice(-14).map(([label, value]) => ({ label: label.slice(5), value }))
+  }, [reports])
+
+  const byEmployee = useMemo(() => {
+    const map = {}
+    reports.forEach(r => {
+      const name = r.employee_name || 'Unassigned'
+      map[name] = (map[name] || 0) + 1
+    })
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }))
+  }, [reports])
+
+  const byType = useMemo(() => {
+    const map = {}
+    reports.forEach(r => {
+      const name = r.report_type === 'retroativo' ? 'Retroactive' : 'Live'
+      map[name] = (map[name] || 0) + 1
+    })
+    return Object.entries(map).map(([label, value]) => ({ label, value }))
+  }, [reports])
+
+  return (
+    <div className="reports-visual-grid">
+      <div className="card executive-card reports-chart-wide">
+        <div className="chart-card-head">
+          <div><div className="card-title">Service activity</div><div className="chart-subtitle">Reports completed by day</div></div>
+          <span className="chart-kpi">{reports.length} reports</span>
+        </div>
+        <LineChart data={byDay} lineLabel="Latest day" />
+      </div>
+      <div className="card executive-card">
+        <div className="chart-card-head"><div><div className="card-title">Report type</div><div className="chart-subtitle">Live vs retroactive</div></div></div>
+        <DonutChart data={byType} centerLabel="reports" centerValue={reports.length} />
+      </div>
+      <div className="card executive-card reports-chart-wide">
+        <div className="chart-card-head"><div><div className="card-title">Productivity</div><div className="chart-subtitle">Reports by employee</div></div></div>
+        <BarChart data={byEmployee} valueFormatter={v => v + ' reports'} />
+      </div>
+    </div>
+  )
+}
