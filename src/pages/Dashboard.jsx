@@ -184,20 +184,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="dash-metrics">
-        {[
-          [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
-          [d.netProfit, fmt(profit), 'var(--green)'],
-          [d.activeEmployees, employees.length, 'var(--text)'],
-          [d.todayJobs, todayJobs.length, 'var(--text)'],
-        ].map(([l, v, c]) => (
-          <div key={l} className="metric-card">
-            <div className="metric-label">{l}</div>
-            <div className="metric-value" style={{ color: c }}>{v}</div>
-          </div>
-        ))}
-      </div>
-
       <ExecutiveDashboard
         clients={clients}
         monthJobs={monthJobs}
