@@ -12,7 +12,7 @@ export default function ServiceContracts() {
   const [selectedClient, setSelectedClient] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
+  const [form, setForm] = useState({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, discount_percent:0, tax_rate:10, price_includes_tax:true, billing_day:10, billing_notes:'', hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
 
   useEffect(() => { loadClients() }, [])
   useEffect(() => { if (selectedClient) loadContracts(selectedClient) }, [selectedClient])
@@ -45,7 +45,7 @@ export default function ServiceContracts() {
     if (!form.location_name||!selectedClient) return toast.error('Fill required fields')
     const visits = calcVisits(form.days_of_week)
     const revenue = form.billing_type==='fixed_monthly' ? parseFloat(form.fixed_monthly||0) : visits * parseFloat(form.price_per_visit||0)
-    const payload = { client_id:selectedClient, ...form, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, monthly_revenue:revenue }
+    const payload = { client_id:selectedClient, ...form, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, monthly_revenue:revenue }
 
     if (editing) {
       const { error } = await supabase.from('service_contracts').update(payload).eq('id',editing)
@@ -69,7 +69,7 @@ export default function ServiceContracts() {
 
   const handleEdit = (c) => {
     setEditing(c.id)
-    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', service_type:c.service_type||'Basic Cleaning', price_per_visit:c.price_per_visit||0, hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'' })
+    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', service_type:c.service_type||'Basic Cleaning', billing_type:c.billing_type||'per_visit', price_per_visit:c.price_per_visit||0, fixed_monthly:c.fixed_monthly||0, discount_percent:c.discount_percent||0, tax_rate:c.tax_rate??10, price_includes_tax:c.price_includes_tax!==false, billing_day:c.billing_day||10, billing_notes:c.billing_notes||'', hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'' })
     setShowForm(true)
   }
 
@@ -141,6 +141,11 @@ export default function ServiceContracts() {
                 {(form.billing_type||'per_visit')==='per_visit'&&<div className="form-group"><label>Price per Visit (¥)</label><input type="number" value={form.price_per_visit} onChange={e=>upd('price_per_visit',e.target.value)} /></div>}
                 {form.billing_type==='fixed_monthly'&&<div className="form-group"><label>Fixed Monthly (¥)</label><input type="number" value={form.fixed_monthly||0} onChange={e=>upd('fixed_monthly',e.target.value)} /></div>}
                 <div className="form-group"><label>Hours per Visit</label><input type="number" step="0.5" value={form.hours_per_visit} onChange={e=>upd('hours_per_visit',e.target.value)} /></div>
+                <div className="form-group"><label>Discount (%)</label><input type="number" min="0" max="100" step="0.1" value={form.discount_percent||0} onChange={e=>upd('discount_percent',e.target.value)} /></div>
+                <div className="form-group"><label>Tax (%)</label><select value={form.tax_rate??10} onChange={e=>upd('tax_rate',e.target.value)}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select></div>
+                <div className="form-group"><label>Price includes tax?</label><select value={String(form.price_includes_tax !== false)} onChange={e=>upd('price_includes_tax',e.target.value==='true')}><option value="true">Yes</option><option value="false">No</option></select></div>
+                <div className="form-group"><label>Billing day</label><input type="number" min="1" max="28" value={form.billing_day||10} onChange={e=>upd('billing_day',e.target.value)} /></div>
+                <div className="form-group" style={{gridColumn:'1/-1'}}><label>Billing notes</label><input value={form.billing_notes||''} onChange={e=>upd('billing_notes',e.target.value)} placeholder="Ex.: desconto acordado com o cliente" /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address / Maps URL</label><input value={form.location_address} onChange={e=>upd('location_address',e.target.value)} placeholder="https://maps.app.goo.gl/..." /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}>
                   <label>Days of Week</label>
