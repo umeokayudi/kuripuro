@@ -120,11 +120,6 @@ export function DonutChart({ data = [], centerLabel = '', centerValue = '' }) {
 export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [], employees = [], staleCount = 0, atRisk = [], deepProgress }) {
   const { t } = useLang()
   const d = t.executive || {}
-  const financial = useMemo(() => {
-    const revenue = clients.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0)
-    const cost = clients.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
-    return { revenue, cost, profit: revenue - cost, margin: revenue ? ((revenue - cost) / revenue) * 100 : 0 }
-  }, [clients])
 
   const trend = useMemo(() => {
     const byDay = {}
@@ -165,14 +160,7 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
       level: 'neutral', title: d.assignedToday, value: todayJobs.filter(j => j.status === 'assigned').length, text: d.jobsWaitingToStart
     }
   ].filter(Boolean)
-
-  const completedToday = todayJobs.filter(j => j.status === 'completed').length
   const assignedToday = todayJobs.filter(j => j.status === 'assigned').length
-  const todayProgress = todayJobs.length ? Math.round((completedToday / todayJobs.length) * 100) : 0
-  const profitTone = financial.profit >= 0 ? 'positive' : 'negative'
-  const topClient = [...clients]
-    .map(c => ({ name: c.company_name || d.client, profit: Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0) }))
-    .sort((a,b) => b.profit - a.profit)[0]
 
   return (
     <section className="executive-section">
@@ -182,11 +170,35 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
           <h3>{d.now}</h3>
           <p>{d.quickDecision}</p>
         </div>
-        <div className="executive-period"><span>{d.monthlyContractBase}</span><strong>{fmtYen(financial.revenue)}</strong></div>
+        <div className="executive-period"><span>{d.jobs}</span><strong>{monthJobs.length}</strong></div>
+      </div>
+
+      <div className="executive-grid executive-grid-main">
+        <div className="card executive-card executive-wide">
+          <div className="chart-card-head">
+            <div><div className="card-title">{d.serviceVolume}</div><div className="chart-subtitle">{d.serviceVolumeSubtitle}</div></div>
+            <span className="chart-kpi">{monthJobs.length} {d.jobs}</span>
+          </div>
+          <LineChart data={trend} lineLabel={d.latestDay} />
+        </div>
+        <div className="card executive-card">
+          <div className="chart-card-head"><div><div className="card-title">{d.attention}</div><div className="chart-subtitle">{d.thingsWorthChecking}</div></div></div>
+          {attention.length === 0 ? (
+            <div className="executive-ok"><span>✓</span><div><strong>{d.everythingOnTrack}</strong><p>{d.noMajorAlerts}</p></div></div>
+          ) : (
+            <div className="attention-list">
+              {attention.map((item, i) => (
+                <div className={'attention-item attention-' + item.level} key={i}>
+                  <div className="attention-value">{item.value}</div>
+                  <div><strong>{item.title}</strong><p>{item.text}</p></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="executive-grid">
-        <div className="card executive-card">
           <div className="chart-card-head"><div><div className="card-title">{d.serviceMix}</div><div className="chart-subtitle">{d.topServiceCategories}</div></div></div>
           <DonutChart data={serviceTypes} centerLabel={d.jobs} centerValue={monthJobs.length} />
         </div>
