@@ -249,6 +249,43 @@ export default function Dashboard() {
         </div>        </div>
       })()}
 
+      {(() => {
+        const operationalTotal = todayJobs.filter(j => j.status !== 'cancelled').length
+        const operationalCompleted = todayJobs.filter(j => j.status === 'completed').length
+        const operationalPending = todayJobs.filter(j => !['completed','cancelled'].includes(j.status)).length
+        const operationalUnassigned = todayJobs.filter(j => !j.employee_id && j.status !== 'cancelled').length
+        const operationalDelayed = todayJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled' && j.scheduled_time && j.scheduled_time < clock.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })).length
+        const completionRate = operationalTotal ? (operationalCompleted / operationalTotal) * 100 : 0
+        const health = operationalTotal === 0 ? 'Sem operação' : completionRate >= 90 && operationalUnassigned === 0 && operationalDelayed === 0 ? 'Excelente' : completionRate >= 70 && operationalDelayed <= 1 ? 'Normal' : 'Atenção'
+        const healthColor = health === 'Excelente' ? 'var(--green)' : health === 'Atenção' ? 'var(--red)' : 'var(--gold)'
+        return (
+          <div className="card" style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}>
+              <div>
+                <div className="finance-eyebrow">OPERATIONAL HEALTH</div>
+                <h3 style={{margin:'2px 0 0'}}>Saúde da operação hoje</h3>
+                <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text3)'}}>Leitura rápida da execução dos serviços de hoje.</p>
+              </div>
+              <strong style={{color:healthColor,fontSize:14}}>{health}</strong>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>
+              {[
+                ['Execução', Math.round(completionRate)+'%', healthColor],
+                ['Concluídos', operationalCompleted, 'var(--green)'],
+                ['Pendentes', operationalPending, operationalPending ? 'var(--gold)' : 'var(--green)'],
+                ['Sem funcionário', operationalUnassigned, operationalUnassigned ? 'var(--red)' : 'var(--green)'],
+                ['Em atraso', operationalDelayed, operationalDelayed ? 'var(--red)' : 'var(--green)']
+              ].map(([label,value,color]) => (
+                <div key={label} style={{padding:'13px 14px',borderRadius:11,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em'}}>{label}</div>
+                  <div style={{fontSize:23,fontWeight:800,color,marginTop:4}}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="dash-metrics">
         {[
           [d.monthlyRevenue, fmt(revenue), 'var(--text)'],
