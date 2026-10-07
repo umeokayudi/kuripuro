@@ -351,6 +351,7 @@ export const kuripuroEn = {
     noTodayJobs: 'No jobs scheduled for today.',
     tokyo: 'Tokyo',
     commandCenter: {
+      label: 'COMMAND CENTER · Tokyo',
       greeting: 'Good evening',
       summary: "Here's what's happening with your business today.",
       newJob: '+ New Job',
@@ -1189,6 +1190,7 @@ export const kuripuroJa = {
     noTodayJobs: '本日の作業はありません。',
     tokyo: '東京',
     commandCenter: {
+      label: 'コマンドセンター · 東京',
       greeting: 'こんばんは',
       summary: '本日のビジネス状況です。',
       newJob: '＋ 新規作業',
