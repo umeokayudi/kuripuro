@@ -8,6 +8,8 @@ const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 export default function Employees() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('list')
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const [employeeStatus, setEmployeeStatus] = useState('all')
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [workDays, setWorkDays] = useState([])
@@ -124,6 +126,15 @@ export default function Employees() {
   }
 
   const scoreColor = s => s>=90?'var(--green)':s>=70?'#EF9F27':'var(--red)'
+  const activeEmployees = employees.filter(e => e.is_active).length
+  const avgScore = employees.length ? Math.round(employees.reduce((sum,e)=>sum + Number(e.score || 100), 0) / employees.length) : 0
+  const attentionEmployees = employees.filter(e => Number(e.score || 100) < 70).length
+  const visibleEmployees = employees.filter(e => {
+    if (employeeStatus === 'active' && !e.is_active) return false
+    if (employeeStatus === 'inactive' && e.is_active) return false
+    const q = employeeSearch.trim().toLowerCase()
+    return !q || [e.full_name, e.email, e.phone, e.contract_type, e.salary_type].some(v => String(v || '').toLowerCase().includes(q))
+  })
 
   return (
     <div>
@@ -136,7 +147,7 @@ export default function Employees() {
       {tab==='list' && (
         <div>
           {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {employees.map(e=>{
+          {visibleEmployees.map(e=>{
             const days = (() => { try { return e.work_days ? JSON.parse(e.work_days) : [] } catch { return [] } })()
             return (
             <div key={e.id} className="card" style={{marginBottom:12}}>
