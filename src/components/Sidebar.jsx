@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useState } from 'react'
 import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
@@ -57,9 +58,10 @@ export default function Sidebar() {
   const { t } = useLang()
   const { logout } = useAuth()
   const s = t.sidebar
+  const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`}>
       <div className="sidebar-logo">
         <div className="brand">KuriPuro</div>
         <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
@@ -70,7 +72,7 @@ export default function Sidebar() {
             <div className="nav-group-label">{s[group.key]}</div>
             {group.items.map(({ to, key, icon: Icon }) => (
               <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-                <Icon />{s[key]}
+                <Icon /><span className="nav-label">{s[key]}</span>
               </NavLink>
             ))}
           </div>
