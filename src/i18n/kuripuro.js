@@ -188,7 +188,6 @@ export const kuripuroEn = {
     voiceChrome: 'Voice recognition needs Chrome.',
     voiceTitle: 'AI voice',
     readAloud: 'Read replies aloud',
-    speak: 'Speak',
     commandCenter: {
       title: 'Your command center',
       subtitle: 'Ask, analyze or ask AI to execute. It works with your Kuripuro data.',
@@ -1047,7 +1046,6 @@ export const kuripuroJa = {
     voiceChrome: '音声認識は Chrome が必要です。',
     voiceTitle: 'AI音声',
     readAloud: '回答を音声で読み上げる',
-    speak: '話す',
     commandCenter: {
       title: 'あなたのコマンドセンター',
       subtitle: '質問、分析、実行依頼をしてください。Kuripuroのデータを使って対応します。',
