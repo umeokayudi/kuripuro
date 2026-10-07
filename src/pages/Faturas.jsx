@@ -18,6 +18,9 @@ export default function Faturas() {
   const [form, setForm] = useState({ client_id:'', period_start:'', period_end:'', due_date:'', tax_rate:10, notes:'' })
   const [autoPeriod, setAutoPeriod] = useState(new Date().toISOString().slice(0,7))
   const [autoLoading, setAutoLoading] = useState(false)
+  const [paymentInvoice, setPaymentInvoice] = useState(null)
+  const [paymentForm, setPaymentForm] = useState({ date:new Date().toISOString().slice(0,10), method:'bank_transfer', reference:'' })
+  const [paymentLoading, setPaymentLoading] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -192,8 +195,64 @@ export default function Faturas() {
   }
 
   const handleStatusChange = async (id, status) => {
+    if (status === 'paid') {
+      const invoice = faturas.find(f => f.id === id)
+      if (invoice) return setPaymentInvoice(invoice)
+    }
     await supabase.from('faturas').update({ status }).eq('id', id)
     toast.success(`Status: ${status}`); load()
+  }
+
+  const handleMarkPaid = async () => {
+    if (!paymentInvoice) return
+    if (!paymentForm.date) return toast.error('Informe a data do recebimento.')
+    setPaymentLoading(true)
+    try {
+      if (paymentInvoice.cashflow_id) {
+        const { error } = await supabase.from('faturas').update({
+          status:'paid',
+          paid_at: new Date(`${paymentForm.date}T12:00:00`).toISOString(),
+          payment_method: paymentForm.method,
+          payment_reference: paymentForm.reference || null
+        }).eq('id', paymentInvoice.id)
+        if (error) throw error
+        toast.success('Fatura atualizada como recebida.')
+        setPaymentInvoice(null)
+        await load()
+        return
+      }
+
+      const { data: cashEntry, error: cashError } = await supabase.from('cashflow').insert({
+        entry_type:'income',
+        category:'Client Payment',
+        amount:Number(paymentInvoice.total || 0),
+        description:`Pagamento — ${paymentInvoice.client_name} — Fatura ${paymentInvoice.id.slice(0,8)}`,
+        entry_date:paymentForm.date
+      }).select('id').single()
+      if (cashError) throw cashError
+
+      const { error: invoiceError } = await supabase.from('faturas').update({
+        status:'paid',
+        paid_at:new Date(`${paymentForm.date}T12:00:00`).toISOString(),
+        payment_method:paymentForm.method,
+        payment_reference:paymentForm.reference || null,
+        cashflow_id:cashEntry.id
+      }).eq('id', paymentInvoice.id)
+
+      if (invoiceError) {
+        await supabase.from('cashflow').delete().eq('id', cashEntry.id)
+        throw invoiceError
+      }
+
+      toast.success('Pagamento registrado e lançado no caixa.')
+      setPaymentInvoice(null)
+      setPaymentForm({ date:new Date().toISOString().slice(0,10), method:'bank_transfer', reference:'' })
+      await load()
+    } catch (error) {
+      toast.error(error.message || 'Não foi possível registrar o pagamento.')
+    } finally {
+      setPaymentLoading(false)
+    }
   }
 
   const handlePrint = async (f) => {
@@ -250,6 +309,11 @@ export default function Faturas() {
   }
 
   const statusBadge = s => ({draft:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
+  const today = new Date().toISOString().slice(0,10)
+  const openInvoices = faturas.filter(f => f.status === 'sent' || f.status === 'draft')
+  const receivableTotal = openInvoices.reduce((sum, f) => sum + Number(f.total || 0), 0)
+  const overdueInvoices = openInvoices.filter(f => f.due_date && f.due_date < today)
+  const overdueTotal = overdueInvoices.reduce((sum, f) => sum + Number(f.total || 0), 0)
 
   return (
     <div>
@@ -275,6 +339,12 @@ export default function Faturas() {
             </div>
           </div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
+          <div className="finance-kpis" style={{marginBottom:14}}>
+            <div className="finance-kpi"><span>A receber</span><strong className="finance-blue">¥{receivableTotal.toLocaleString()}</strong></div>
+            <div className="finance-kpi"><span>Vencido</span><strong className="finance-negative">¥{overdueTotal.toLocaleString()}</strong></div>
+            <div className="finance-kpi"><span>Em aberto</span><strong>{openInvoices.length}</strong></div>
+            <div className="finance-kpi"><span>Vencidas</span><strong className="finance-negative">{overdueInvoices.length}</strong></div>
+          </div>
           {faturas.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No faturas yet.</div></div>}
           {faturas.map(f=>(
             <div key={f.id} className="card" style={{marginBottom:12}}>
@@ -283,6 +353,8 @@ export default function Faturas() {
                   <div style={{fontWeight:700,fontSize:15}}>{f.client_name}</div>
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{f.period_start} 〜 {f.period_end}</div>
                   <div style={{fontSize:12,color:'var(--text3)'}}>発行: {f.issue_date} · 期限: {f.due_date||'—'}</div>
+                  {f.status==='paid' && <div style={{fontSize:11,color:'var(--green)',marginTop:3}}>Recebido: {f.paid_at ? new Date(f.paid_at).toLocaleDateString('ja-JP') : '—'} · {f.payment_method==='bank_transfer'?'Transferência':f.payment_method==='card'?'Cartão':f.payment_method==='cash'?'Dinheiro':'Outro'}</div>}
+                  {(f.status==='sent'||f.status==='draft') && f.due_date && f.due_date < today && <div style={{fontSize:11,color:'var(--red)',fontWeight:700,marginTop:3}}>⚠️ VENCIDA</div>}
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:18,fontWeight:700,color:'var(--green)'}}>¥{Number(f.total||0).toLocaleString()}</div>
@@ -292,12 +364,37 @@ export default function Faturas() {
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                 <button className="btn btn-sm" onClick={()=>handlePrint(f)}>🖨️ Print</button>
                 {f.status==='draft'&&<button className="btn btn-sm btn-primary" onClick={()=>handleStatusChange(f.id,'sent')}>📤 Mark Sent</button>}
-                {f.status==='sent'&&<button className="btn btn-sm" style={{background:'var(--green)',color:'#fff'}} onClick={()=>handleStatusChange(f.id,'paid')}>✅ Mark Paid</button>}
+                {f.status==='sent'&&<button className="btn btn-sm" style={{background:'var(--green)',color:'#fff'}} onClick={()=>handleStatusChange(f.id,'paid')}>✅ Registrar recebimento</button>}
                 {f.status!=='cancelled'&&<button className="btn btn-sm btn-danger" onClick={()=>handleStatusChange(f.id,'cancelled')}>Cancel</button>}
                 <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(f.id)}>🗑 Delete</button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {paymentInvoice&&(
+        <div className="modal-overlay" onClick={()=>!paymentLoading&&setPaymentInvoice(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:520}}>
+            <div className="card-title">Registrar recebimento</div>
+            <div style={{fontSize:13,color:'var(--text3)',marginBottom:16}}>{paymentInvoice.client_name} · ¥{Number(paymentInvoice.total||0).toLocaleString()}</div>
+            <div className="grid-2">
+              <div className="form-group"><label>Data do recebimento</label><input type="date" value={paymentForm.date} onChange={e=>setPaymentForm(p=>({...p,date:e.target.value}))} /></div>
+              <div className="form-group"><label>Forma de pagamento</label>
+                <select value={paymentForm.method} onChange={e=>setPaymentForm(p=>({...p,method:e.target.value}))}>
+                  <option value="bank_transfer">Transferência bancária</option>
+                  <option value="card">Cartão</option>
+                  <option value="cash">Dinheiro</option>
+                  <option value="other">Outro</option>
+                </select>
+              </div>
+              <div className="form-group" style={{gridColumn:'1/-1'}}><label>Referência / observação</label><input value={paymentForm.reference} onChange={e=>setPaymentForm(p=>({...p,reference:e.target.value}))} placeholder="Comprovante, referência bancária..." /></div>
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:16}}>
+              <button className="btn" onClick={()=>setPaymentInvoice(null)} disabled={paymentLoading}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleMarkPaid} disabled={paymentLoading}>{paymentLoading?'Registrando...':'Confirmar recebimento'}</button>
+            </div>
+          </div>
         </div>
       )}
 
