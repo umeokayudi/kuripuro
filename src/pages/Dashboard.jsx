@@ -201,7 +201,7 @@ export default function Dashboard() {
           <div className="dashboard-v2-priority-list">
             {staleCount > 0 && <div className="dashboard-v2-priority-row is-warning"><span>!</span><div><strong>{fill(d.staleJobs, { count: staleCount })}</strong><small>{d.staleJobsHint}</small></div><Link to="/jobs">{d.open}</Link></div>}
             {assignedToday > 0 && <div className="dashboard-v2-priority-row"><span>→</span><div><strong>{fill(d.assignedToday, { count: assignedToday })}</strong><small>{d.assignedTodayHint}</small></div><Link to="/jobs">{d.open}</Link></div>}
-            {atRisk.length > 0 && <div className="dashboard-v2-priority-row is-danger"><span>!</span><div><strong>{fill(d.atRiskClients, { count: atRisk.length })}</strong><small>{d.atRiskHint}</small></div><Link to="/client-feedback">{d.open}</Link></div>}
+            {atRisk.length > 0 && <div className="dashboard-v2-priority-row is-danger"><span>!</span><div><strong>{fill(d.atRiskCountLabel, { count: atRisk.length })}</strong><small>{d.atRiskHint}</small></div><Link to="/client-feedback">{d.open}</Link></div>}
             {!attentionCount && <div className="dashboard-v2-empty-inline"><span>✓</span><div><strong>{d.everythingOnTrack}</strong><small>{d.noMajorAlerts}</small></div></div>}
           </div>
         </article>
