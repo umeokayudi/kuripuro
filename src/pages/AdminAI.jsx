@@ -45,7 +45,7 @@ export default function AdminAI() {
         </aside>
 
         <main className="ai-command-chat">
-          <AIChatPanel key={chatKey} mode="admin" suggestions={SUGGESTIONS} />
+          <AIChatPanel key={chatKey} newChatId={chatKey} mode="admin" suggestions={SUGGESTIONS} />
         </main>
       </div>
     </div>
