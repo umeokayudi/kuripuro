@@ -126,7 +126,7 @@ function AppContent() {
   return (
     <div className="app-shell">
       <Sidebar />
-      <AIFloatingWidget mode="admin" />
+
       <div className="main">
         <header className="topbar">
           <span className="topbar-title">{title}</span>
