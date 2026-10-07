@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useLang } from '../hooks/useLang'
 import { loadVoices, pickDefaultVoice, speakText, stopSpeaking, unlockSpeech, getSavedVoiceName, saveVoiceName } from '../lib/voice'
 
 const SILENCE_MS = 1400
 
 export default function AICallMode({ onClose, sendToAI }) {
+  const { lang, t } = useLang()
+  const ai = t.ai || {}
+  const copy = ai.callMode || {}
   const [status, setStatus] = useState('connecting')
   const [transcript, setTranscript] = useState('')
   const [log, setLog] = useState([])
@@ -78,13 +82,13 @@ export default function AICallMode({ onClose, sendToAI }) {
 
     try {
       const reply = await sendToAIRef.current(text)
-      const replyText = (reply || 'Não consegui responder agora.').slice(0, 800)
+      const replyText = (reply || copy.noResponse).slice(0, 800)
       setLog(l => [...l, { role: 'assistant', text: replyText }])
       await speak(replyText)
     } catch (e) {
       const errMsg = e?.message || 'erro desconhecido'
-      setLog(l => [...l, { role: 'system', text: `Erro: ${errMsg}` }])
-      await speak('Desculpa, tive um erro. Pode repetir?')
+      setLog(l => [...l, { role: 'system', text: `${copy.errorPrefix}: ${errMsg}` }])
+      await speak(copy.retry)
     }
 
     busyRef.current = false
@@ -110,7 +114,7 @@ export default function AICallMode({ onClose, sendToAI }) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) {
       setStatus('idle')
-      setLog(l => [...l, { role: 'system', text: 'Reconhecimento de voz não suportado. Use Chrome ou Safari.' }])
+      setLog(l => [...l, { role: 'system', text: copy.voiceUnsupported }])
       return
     }
 
@@ -119,7 +123,7 @@ export default function AICallMode({ onClose, sendToAI }) {
     transcriptRef.current = ''
 
     const recognition = new SR()
-    recognition.lang = 'pt-BR'
+    recognition.lang = lang === 'ja' ? 'ja-JP' : 'en-US'
     recognition.continuous = true
     recognition.interimResults = true
     recognition.maxAlternatives = 1
@@ -150,7 +154,7 @@ export default function AICallMode({ onClose, sendToAI }) {
         }
         return
       }
-      setLog(l => [...l, { role: 'system', text: `Erro de voz: ${e.error}` }])
+      setLog(l => [...l, { role: 'system', text: `${copy.voiceError}: ${e.error}` }])
       if (activeRef.current && !busyRef.current) {
         setTimeout(() => startListeningRef.current?.(), 800)
       }
@@ -174,7 +178,7 @@ export default function AICallMode({ onClose, sendToAI }) {
     try {
       recognition.start()
     } catch (e) {
-      setLog(l => [...l, { role: 'system', text: `Microfone: ${e.message}` }])
+      setLog(l => [...l, { role: 'system', text: `${copy.microphone}: ${e.message}` }])
       setStatus('idle')
     }
   }
@@ -184,7 +188,7 @@ export default function AICallMode({ onClose, sendToAI }) {
     unlockSpeech()
 
     ;(async () => {
-      await speak('Oi! Pode falar, estou ouvindo.')
+      await speak(copy.greeting)
       startListeningRef.current?.()
     })()
 
@@ -208,11 +212,11 @@ export default function AICallMode({ onClose, sendToAI }) {
   }
 
   const statusLabel = {
-    connecting: 'Conectando...',
-    listening: 'Ouvindo... fale e pause',
-    thinking: 'Pensando...',
-    speaking: 'Falando...',
-    idle: 'Pronto',
+    connecting: copy.connecting,
+    listening: copy.listening,
+    thinking: copy.thinking,
+    speaking: copy.speaking,
+    idle: copy.idle,
   }[status]
 
   const pulseColor = {
@@ -223,7 +227,8 @@ export default function AICallMode({ onClose, sendToAI }) {
     idle: '#94a3b8',
   }[status]
 
-  const ptVoices = voices.filter(v => v.lang?.startsWith('pt'))
+  const languagePrefix = lang === 'ja' ? 'ja' : 'en'
+  const languageVoices = voices.filter(v => v.lang?.startsWith(languagePrefix))
 
   return (
     <div style={{
@@ -233,15 +238,15 @@ export default function AICallMode({ onClose, sendToAI }) {
       color: '#fff', padding: 24,
     }}>
       <div style={{ fontSize: 13, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.5, marginBottom: 8 }}>
-        Ligação com o Assistente
+        {copy.title}
       </div>
 
-      {ptVoices.length > 0 && (
+      {languageVoices.length > 0 && (
         <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, opacity: 0.6 }}>Voz:</span>
+          <span style={{ fontSize: 11, opacity: 0.6 }}>{copy.voice}:</span>
           <select value={voiceName} onChange={e => setVoiceName(e.target.value)}
             style={{ fontSize: 12, padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.3)', color: '#fff', maxWidth: 220 }}>
-            {ptVoices.map(v => (
+            {languageVoices.map(v => (
               <option key={v.name} value={v.name}>{v.name}</option>
             ))}
           </select>
@@ -287,7 +292,7 @@ export default function AICallMode({ onClose, sendToAI }) {
             textAlign: l.role === 'user' ? 'right' : 'left',
             color: l.role === 'system' ? '#f87171' : '#fff',
           }}>
-            <span style={{ opacity: 0.5 }}>{l.role === 'user' ? 'Você: ' : l.role === 'assistant' ? 'IA: ' : ''}</span>
+            <span style={{ opacity: 0.5 }}>{l.role === 'user' ? `${copy.you}: ` : l.role === 'assistant' ? `${copy.ai}: ` : ''}</span>
             {l.text}
           </div>
         ))}
@@ -297,7 +302,7 @@ export default function AICallMode({ onClose, sendToAI }) {
         width: 60, height: 60, borderRadius: '50%', border: 'none',
         background: '#ef4444', color: '#fff', fontSize: 24, cursor: 'pointer',
         boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
-      }} title="Encerrar ligação">📞</button>
+      }} title={copy.endCall}>📞</button>
     </div>
   )
 }
