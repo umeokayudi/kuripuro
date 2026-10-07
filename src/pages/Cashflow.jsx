@@ -90,6 +90,33 @@ export default function Cashflow() {
   const realMargin = income > 0 ? (realProfit / income) * 100 : 0
   const projected = income + receivable - realCosts
 
+  // Previsão de caixa: compromissos já registrados para os próximos 30 dias.
+  const forecastStart = new Date()
+  const forecastEnd = new Date(forecastStart)
+  forecastEnd.setDate(forecastEnd.getDate() + 30)
+  const inNext30 = (value) => {
+    if (!value) return false
+    const d = new Date(value)
+    return d >= forecastStart && d <= forecastEnd
+  }
+  const upcomingSalary = salaryPayments
+    .filter(p => p.status === 'scheduled' && !p.is_deduction && inNext30(p.payment_date))
+    .reduce((s,p)=>s+Number(p.amount||0),0)
+  const upcomingTransport = transportClaims
+    .filter(p => p.status === 'scheduled' && inNext30(p.claim_date))
+    .reduce((s,p)=>s+Number(p.amount||0),0)
+  const upcomingInvoices = invoices
+    .filter(f => (f.status === 'sent' || f.status === 'draft') && inNext30(f.due_date))
+    .reduce((s,f)=>s+Number(f.total||0),0)
+  const upcomingCosts = upcomingSalary + upcomingTransport
+  const cashNow = entries.reduce((sum,e)=>sum+(e.type==='income'?1:-1)*Number(e.amount||0),0)
+  const forecast30 = cashNow + upcomingInvoices - upcomingCosts
+  const upcomingItems = [
+    {label:'Recebimentos previstos',value:upcomingInvoices,type:'income'},
+    {label:'Salários programados',value:upcomingSalary,type:'expense'},
+    {label:'Transporte programado',value:upcomingTransport,type:'expense'},
+  ].filter(x=>x.value > 0)
+
   return (
     <div>
       <div className="tab-pills">
@@ -140,6 +167,24 @@ export default function Cashflow() {
               <div className="finance-big-row"><span>Em aberto</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
               <div className="finance-big-row finance-total"><span>Vencido</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
             </div>
+          </div>
+          <div className="card" style={{marginBottom:14}}>
+            <div className="card-title">Previsão de caixa · próximos 30 dias</div>
+            <div style={{fontSize:11,color:'var(--text3)',marginBottom:12}}>Usa apenas recebimentos com vencimento e custos já programados.</div>
+            <div className="finance-big-row"><span>Caixa registrado até agora</span><strong>¥{cashNow.toLocaleString()}</strong></div>
+            {upcomingItems.map(item=>(
+              <div className="finance-big-row" key={item.label}>
+                <span>{item.label}</span>
+                <strong className={item.type==='income'?'finance-positive':'finance-negative'}>{item.type==='income'?'+':'-'}¥{item.value.toLocaleString()}</strong>
+              </div>
+            ))}
+            <div className="finance-big-row finance-total"><span>Caixa projetado em 30 dias</span><strong className={forecast30>=0?'finance-positive':'finance-negative'}>¥{Math.abs(forecast30).toLocaleString()}</strong></div>
+          </div>
+          <div className="card" style={{marginBottom:14}}>
+            <div className="card-title">Contas a pagar programadas</div>
+            <div className="finance-big-row"><span>Salários</span><strong>¥{upcomingSalary.toLocaleString()}</strong></div>
+            <div className="finance-big-row"><span>Transporte</span><strong>¥{upcomingTransport.toLocaleString()}</strong></div>
+            <div className="finance-big-row finance-total"><span>Total próximos 30 dias</span><strong className="finance-negative">¥{upcomingCosts.toLocaleString()}</strong></div>
           </div>
           <div className="card" style={{marginBottom:14}}>
             <div className="card-title">Onde o dinheiro está indo</div>
