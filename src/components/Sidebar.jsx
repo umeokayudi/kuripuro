@@ -52,6 +52,10 @@ const groups = [
       { to: '/cashflow', key: 'cashflow', icon: Icons.chart },
     ],
   },
+  {
+    key: 'navSales',
+    items: [{ to: '/mitsumori', key: 'mitsumori', icon: Icons.file }],
+  },
 ]
 
 export default function Sidebar({ mobileOpen = false, onMobileClose }) {

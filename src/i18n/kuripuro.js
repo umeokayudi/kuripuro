@@ -31,6 +31,8 @@ export const kuripuroEn = {
     navPeople: 'People',
     navPayroll: 'Payroll',
     navClients: 'Clients',
+    mitsumori: 'Mitsumori / Quotes',
+    navSales: 'Sales',
     navBilling: 'Billing',
   },
   app: {
@@ -818,6 +820,8 @@ export const kuripuroJa = {
     navPeople: 'スタッフ',
     navPayroll: '給与',
     navClients: 'クライアント',
+    mitsumori: '見積書',
+    navSales: '営業',
     navBilling: '請求',
   },
   app: {

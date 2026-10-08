@@ -24,6 +24,7 @@ const Evaluations = lazy(() => import('./pages/Evaluations'))
 const ServiceContracts = lazy(() => import('./pages/ServiceContracts'))
 const ScheduleGenerator = lazy(() => import('./pages/ScheduleGenerator'))
 const Faturas = lazy(() => import('./pages/Faturas'))
+const Mitsumori = lazy(() => import('./pages/Mitsumori'))
 const AdminChat = lazy(() => import('./pages/AdminChat'))
 const TransportClaims = lazy(() => import('./pages/TransportClaims'))
 const LiveTracking = lazy(() => import('./pages/LiveTracking'))
@@ -75,6 +76,7 @@ const PAGE_KEYS = {
   '/schedule': 'schedule',
   '/contracts': 'contracts',
   '/faturas': 'faturas',
+  '/mitsumori': 'mitsumori',
   '/payments': 'payments',
   '/adminchat': 'chat',
   '/live': 'liveTrack',
@@ -226,6 +228,7 @@ function AppContent() {
               <Route path="/schedule" element={<ScheduleGenerator />} />
               <Route path="/contracts" element={<ServiceContracts />} />
               <Route path="/faturas" element={<Faturas />} />
+              <Route path="/mitsumori" element={<Mitsumori />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/adminchat" element={<AdminChat />} />
               <Route path="/live" element={<LiveTracking />} />
