@@ -58,22 +58,23 @@ export default async function handler(req, res) {
 
   if (!requireAdminSecret(req, res)) return
 
-  const { messages, employeeId, employeeName } = req.body || {}
+  const { messages, employeeId, employeeName, language = 'en' } = req.body || {}
   if (!messages?.length || !employeeId) {
     return res.status(400).json({ error: 'messages and employeeId are required' })
   }
 
-  const systemInstruction = `Você é o assistente pessoal do funcionário ${employeeName || 'do KuriPuro'}.
-Você pode CONSULTAR apenas os dados deste funcionário (id: ${employeeId}) via query_my_data.
-Tabelas disponíveis: ${EMPLOYEE_TABLES.join(', ')}.
+  const responseLanguage = language === 'ja' ? 'Japanese' : language === 'pt' ? 'Portuguese' : 'English'
+  const systemInstruction = `You are the personal assistant for KuriPuro employee ${employeeName || ''}.
+You may query only this employee's records (id: ${employeeId}) using query_my_data.
+Available tables: ${EMPLOYEE_TABLES.join(', ')}.
 
-Regras:
-- Responda em português, de forma clara e amigável.
-- NUNCA invente dados — busque com query_my_data antes de responder.
-- NÃO pode alterar, apagar ou criar registros.
-- NÃO revele dados de outros funcionários, clientes ou informações administrativas.
-- Pode ajudar com: agenda de jobs, salário/descontos, transporte, mensagens, badges, horários.
-- Seja conciso — respostas curtas funcionam melhor em voz.`
+Rules:
+- Respond clearly and kindly in ${responseLanguage}.
+- Never invent data; query with query_my_data before answering about the employee's records.
+- Do not create, update, or delete records.
+- Do not reveal information about other employees, clients, or administrative data.
+- Help with this employee's schedule, salary and deductions, transport claims, messages, badges, and hours.
+- Keep answers concise, especially for voice conversations.`
 
   try {
     const contents = messages.map(m => ({

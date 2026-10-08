@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
+import { LineChart } from '../components/AnalyticsCharts'
 import toast from 'react-hot-toast'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
@@ -21,6 +22,16 @@ export default function Dashboard() {
   const [evals, setEvals] = useState([])
   const [monthJobs, setMonthJobs] = useState([])
   const [clientRatings, setClientRatings] = useState([])
+  const [trendJobs, setTrendJobs] = useState([])
+  const [trendCashflow, setTrendCashflow] = useState([])
+  const [trendMonth, setTrendMonth] = useState(currentYearMonth())
+  const [metricPeriod, setMetricPeriod] = useState('month')
+  const [metricDay, setMetricDay] = useState(tokyoToday())
+  const [editMetrics, setEditMetrics] = useState(false)
+  const [visibleMetrics, setVisibleMetrics] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('kuripuro-dashboard-metrics')) || ['revenue', 'clients'] }
+    catch { return ['revenue', 'clients'] }
+  })
   const [progressMonth, setProgressMonth] = useState(currentYearMonth())
   const [detailLoc, setDetailLoc] = useState(null)
   const [detailTuesday, setDetailTuesday] = useState(null)
@@ -32,7 +43,13 @@ export default function Dashboard() {
     const today = tokyoToday()
     const monthStart = progressMonth + '-01'
     const monthEnd = progressMonth + '-31'
-    const [c, e, j, ev, stale, mj, cr] = await Promise.all([
+    const [trendYear, trendMonthNum] = trendMonth.split('-').map(Number)
+    const metricYear = Number(metricDay.slice(0, 4))
+    const startYear = Math.min(trendYear, metricYear)
+    const endYear = Math.max(trendYear, metricYear)
+    const trendStart = new Date(Date.UTC(startYear, 0, 1)).toISOString().slice(0, 10)
+    const trendEnd = new Date(Date.UTC(endYear + 1, 0, 1)).toISOString().slice(0, 10)
+    const [c, e, j, ev, stale, mj, cr, tj, tc] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
@@ -40,6 +57,8 @@ export default function Dashboard() {
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('jobs').select('id,scheduled_date,status').gte('scheduled_date', trendStart).lt('scheduled_date', trendEnd).neq('status', 'cancelled'),
+      supabase.from('cashflow').select('entry_type,amount,entry_date').gte('entry_date', trendStart).lt('entry_date', trendEnd),
     ])
     setClients(c.data || [])
     setEmployees(e.data || [])
@@ -48,6 +67,8 @@ export default function Dashboard() {
     setStaleCount(stale.count || 0)
     setMonthJobs(mj.data || [])
     setClientRatings(cr.data || [])
+    setTrendJobs(tj.data || [])
+    setTrendCashflow(tc.data || [])
     setLastUpdate(new Date())
     setLoading(false)
   }
@@ -57,7 +78,7 @@ export default function Dashboard() {
     const tick = setInterval(() => setClock(new Date()), 1000)
     const refresh = setInterval(load, 15000)
     return () => { clearInterval(tick); clearInterval(refresh) }
-  }, [progressMonth])
+  }, [progressMonth, trendMonth, metricDay])
 
   const cancelStaleJobs = async () => {
     const today = tokyoToday()
@@ -88,6 +109,51 @@ export default function Dashboard() {
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
+  const selectedYear = Number(trendMonth.slice(0, 4))
+  const todayYear = Number(tokyoToday().slice(0, 4))
+  const trendMonthNumber = Number(trendMonth.slice(5, 7))
+  const trendData = Array.from({ length: selectedYear === todayYear ? trendMonthNumber : 12 }, (_, index) => {
+    const [year, month] = trendMonth.split('-').map(Number)
+    const date = new Date(Date.UTC(year, index, 1))
+    const key = date.toISOString().slice(0, 7)
+    const monthJobs = trendJobs.filter(job => job.scheduled_date?.startsWith(key))
+    const money = trendCashflow.filter(entry => entry.entry_date?.startsWith(key))
+    return {
+      key,
+      label: date.toLocaleDateString(dateLocale, { month: 'short', timeZone: 'UTC' }),
+      jobs: monthJobs.filter(job => job.status === 'completed').length,
+      income: money.filter(entry => entry.entry_type === 'income').reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+      expenses: money.filter(entry => entry.entry_type === 'expense').reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+    }
+  })
+  const currentTrend = trendData.find(row => row.key === trendMonth) || trendData[trendData.length - 1]
+  const previousMonthDate = new Date(Date.UTC(Number(trendMonth.slice(0, 4)), Number(trendMonth.slice(5, 7)) - 2, 1))
+  const previousMonthKey = previousMonthDate.toISOString().slice(0, 7)
+  const todayDate = tokyoToday()
+  const currentMonthIsSelected = trendMonth === todayDate.slice(0, 7)
+  const comparisonDay = currentMonthIsSelected ? Number(todayDate.slice(8, 10)) : 31
+  const previousTrendJobs = trendJobs.filter(job => job.scheduled_date?.startsWith(previousMonthKey) && Number(job.scheduled_date.slice(8, 10)) <= comparisonDay && job.status === 'completed').length
+  const currentTrendJobs = trendJobs.filter(job => job.scheduled_date?.startsWith(trendMonth) && (!currentMonthIsSelected || Number(job.scheduled_date.slice(8, 10)) <= comparisonDay) && job.status === 'completed').length
+  const jobGrowth = previousTrendJobs ? Math.round(((currentTrendJobs - previousTrendJobs) / previousTrendJobs) * 100) : null
+  const moneyTrend = trendData.map(row => ({ label: row.label, value: row.income - row.expenses }))
+  const periodStart = metricPeriod === 'day' ? metricDay : metricPeriod === 'year' ? `${trendMonth.slice(0, 4)}-01-01` : `${trendMonth}-01`
+  const periodEnd = metricPeriod === 'day' ? metricDay : metricPeriod === 'year' ? (selectedYear === todayYear ? todayDate : `${trendMonth.slice(0, 4)}-12-31`) : `${trendMonth}-31`
+  const periodJobs = trendJobs.filter(job => job.scheduled_date >= periodStart && job.scheduled_date <= periodEnd && job.status === 'completed').length
+  const periodCash = trendCashflow.filter(row => row.entry_date >= periodStart && row.entry_date <= periodEnd)
+  const periodNetCash = periodCash.reduce((sum, row) => sum + (row.entry_type === 'income' ? 1 : -1) * Number(row.amount || 0), 0)
+  const metricLabels = lang === 'ja'
+    ? { revenue: '月間契約売上（推定）', profit: '推定利益', clients: '稼働中の顧客', satisfaction: '顧客満足度', today: '本日の作業', completed: '完了した作業', cash: '記録済み純入金' }
+    : { revenue: 'Estimated contract revenue', profit: 'Estimated profit', clients: 'Active clients', satisfaction: 'Client satisfaction', today: "Today's jobs", completed: 'Completed jobs', cash: 'Recorded net cash' }
+  const availableMetrics = [
+    { id: 'revenue', value: fmt(revenue), note: lang === 'ja' ? '契約データに基づく推定' : 'Estimated from active client records' },
+    { id: 'profit', value: fmt(profit), note: lang === 'ja' ? '契約売上 − 推定コスト' : 'Contract revenue minus estimated costs' },
+    { id: 'clients', value: clients.length, note: lang === 'ja' ? '現在有効な顧客' : 'Currently active' },
+    { id: 'satisfaction', value: avgStars(ratingsInPeriod(clientRatings, 30)) != null ? `${avgStars(ratingsInPeriod(clientRatings, 30)).toFixed(1)} ★` : '—', note: lang === 'ja' ? '直近30日間' : 'Last 30 days' },
+    { id: 'today', value: todayJobs.length, note: lang === 'ja' ? '予定された作業' : 'Scheduled work' },
+    { id: 'completed', value: periodJobs, note: lang === 'ja' ? '選択した期間の完了作業' : `${metricPeriod} · completed only` },
+    { id: 'cash', value: fmt(periodNetCash), note: lang === 'ja' ? '記録済みの入出金' : `${metricPeriod} · recorded cashflow` },
+  ]
+  const updateVisibleMetrics = next => { setVisibleMetrics(next); localStorage.setItem('kuripuro-dashboard-metrics', JSON.stringify(next)) }
 
   const ratings30 = ratingsInPeriod(clientRatings, 30)
   const ratings7 = ratingsInPeriod(clientRatings, 7)
@@ -95,7 +161,6 @@ export default function Dashboard() {
   const atRisk = satisfactionByClient.filter(x => x.avg != null && x.avg < 3.5)
   const overallAvg = avgStars(ratings30)
   const weeklyAvg = avgStars(ratings7)
-  const monthlyAvg = overallAvg
   const levelColor = l => ({ excellent: 'var(--green)', good: '#60a5fa', warning: '#EF9F27', critical: 'var(--red)', none: 'var(--text3)' }[l] || 'var(--text3)')
 
   const closeDetail = () => { setDetailLoc(null); setDetailTuesday(null) }
@@ -160,11 +225,30 @@ export default function Dashboard() {
       <div className="dash-ref-head">
         <div><div className="dash-ref-eyebrow">KURIPURO</div><h1>{t.sidebar.dashboard}</h1><p>{new Date().toLocaleDateString(dateLocale, { dateStyle: 'full', timeZone: 'Asia/Tokyo' })}</p></div>
       </div>
-      <div className="dash-ref-kpis dash-kpis-compact">
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">{d.monthlyRevenue}</span><span className="dash-ref-kpi-icon">¥</span></div><div className="dash-ref-kpi-value">{fmt(revenue)}</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">{d.netProfit}</span><span className="dash-ref-kpi-icon">↗</span></div><div className="dash-ref-kpi-value">{fmt(profit)}</div><div className="dash-ref-kpi-meta positive">{revenue ? ((profit/revenue)*100).toFixed(1) : '0.0'}%</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">{d.todayJobsTitle}</span><span className="dash-ref-kpi-icon">✓</span></div><div className="dash-ref-kpi-value">{todayJobs.length}</div></div>
-      </div>
+      <section className="dash-custom-metrics">
+        <div className="dash-custom-head"><strong>{lang === 'ja' ? '注目指標' : 'Key metrics'}</strong><div className="dash-custom-controls">
+          <select aria-label={lang === 'ja' ? '集計期間' : 'Metric period'} value={metricPeriod} onChange={event => setMetricPeriod(event.target.value)}><option value="day">{lang === 'ja' ? '日別' : 'Day'}</option><option value="month">{lang === 'ja' ? '月別' : 'Month'}</option><option value="year">{lang === 'ja' ? '年別' : 'Year'}</option></select>
+          {metricPeriod === 'day' && <input aria-label={lang === 'ja' ? '対象日' : 'Metric date'} type="date" value={metricDay} onChange={event => setMetricDay(event.target.value)} />}
+          <button type="button" className="btn btn-sm" onClick={() => setEditMetrics(value => !value)}>{editMetrics ? (lang === 'ja' ? '完了' : 'Done') : (lang === 'ja' ? '編集' : 'Edit dashboard')}</button>
+        </div></div>
+        {editMetrics && <div className="dash-metric-picker">{availableMetrics.map(metric => <label key={metric.id}><input type="checkbox" checked={visibleMetrics.includes(metric.id)} onChange={event => updateVisibleMetrics(event.target.checked ? [...visibleMetrics, metric.id] : visibleMetrics.filter(id => id !== metric.id))}/><span>{metricLabels[metric.id]}</span></label>)}</div>}
+        <div className="dash-ref-kpis dash-kpis-compact">{availableMetrics.filter(metric => visibleMetrics.includes(metric.id)).map(metric => <div className="dash-ref-kpi" key={metric.id}><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">{metricLabels[metric.id]}</span><span className="dash-ref-kpi-icon">{['revenue','profit','cash'].includes(metric.id) ? '¥' : '•'}</span></div><div className="dash-ref-kpi-value">{metric.value}</div><div className="dash-ref-kpi-meta">{metric.note}</div></div>)}</div>
+      </section>
+
+      <section className="card dash-trend-card">
+        <div className="dash-trend-head">
+          <div><div className="dash-trend-eyebrow">{lang === 'ja' ? '月次推移' : 'MONTHLY TRENDS'}</div><h2>{lang === 'ja' ? '実績と成長' : 'Performance and growth'}</h2><p>{lang === 'ja' ? '記録済みの入出金と完了した作業のみを表示' : 'Recorded cash in/out and completed jobs only'}</p></div>
+          <label className="dash-trend-period"><span>{lang === 'ja' ? '表示する最終月' : 'Show through'}</span><input type="month" value={trendMonth} onChange={event => setTrendMonth(event.target.value)} /></label>
+        </div>
+        <div className="dash-trend-summary">
+          <div><span>{lang === 'ja' ? '選択月の完了作業' : 'Completed jobs · selected month'}</span><strong>{currentTrend.jobs}</strong>{jobGrowth !== null && <small className={jobGrowth >= 0 ? 'is-up' : 'is-down'}>{jobGrowth > 0 ? '+' : ''}{jobGrowth}% {lang === 'ja' ? (currentMonthIsSelected ? '前月同日比' : '前月比') : (currentMonthIsSelected ? 'vs same days last month' : 'vs last month')}</small>}</div>
+          <div><span>{lang === 'ja' ? '選択月の記録済み純入金' : 'Recorded net cash · selected month'}</span><strong>{fmt(currentTrend.income - currentTrend.expenses)}</strong><small>{lang === 'ja' ? '入出金記録ベース' : 'From cashflow entries'}</small></div>
+        </div>
+        <div className="dash-trend-charts">
+          <div><h3>{lang === 'ja' ? '完了した作業' : 'Completed jobs'}</h3><LineChart data={trendData.map(row => ({ label: row.label, value: row.jobs }))} lineLabel={lang === 'ja' ? '件数' : 'Jobs'} /></div>
+          <div><h3>{lang === 'ja' ? '記録済み純入金' : 'Recorded net cash'}</h3><LineChart data={moneyTrend} lineLabel="¥" valueFormatter={fmt} /></div>
+        </div>
+      </section>
 
       {staleCount > 0 && (
         <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -184,10 +268,9 @@ export default function Dashboard() {
 
         <div className="dash-sat">
           {[
-            [d.avgRating, overallAvg != null ? overallAvg.toFixed(1) + ' ★' : '—'],
-            [d.weeklyAvg, weeklyAvg != null ? weeklyAvg.toFixed(1) : '—'],
-            [d.monthlyAvg, monthlyAvg != null ? monthlyAvg.toFixed(1) : '—'],
-            [d.ratingsCount, ratings30.length],
+          [d.avgRating, overallAvg != null ? overallAvg.toFixed(1) + ' ★' : '—'],
+          [d.weeklyAvg, weeklyAvg != null ? weeklyAvg.toFixed(1) : '—'],
+          [d.ratingsCount, ratings30.length],
           ].map(([l, v]) => (
             <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: '#EF9F27' }}>{v}</div>

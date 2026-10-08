@@ -18,6 +18,27 @@ export function AuthProvider({ children }) {
     const em = email.trim().toLowerCase()
     const pw = password.trim()
 
+    // Commercial roles receive a server-signed HttpOnly session. The browser
+    // never gets a service key or a seller password hash.
+    try {
+      const response = await fetch('/api/sales-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email: em, password: pw }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (response.ok && result.user) {
+        setUser(result.user)
+        localStorage.setItem('kp_user', JSON.stringify(result.user))
+        return { success: true }
+      }
+      if (response.status === 429) return { success: false, error: result.error }
+    } catch {
+      // Vite's local dev server does not host Vercel API routes; keep the
+      // existing employee/client login available there.
+    }
+
     const { data: admin } = await supabase
       .from('admins')
       .select('*')
@@ -68,6 +89,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     setUser(null)
     localStorage.removeItem('kp_user')
+    fetch('/api/sales-session', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {})
   }
 
   return (
