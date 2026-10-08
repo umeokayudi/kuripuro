@@ -36,6 +36,9 @@ const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
+const SalespersonPortal = lazy(() => import('./pages/SalespersonPortal'))
+const SalesTeam = lazy(() => import('./pages/SalesTeam'))
+const Marketing = lazy(() => import('./pages/Marketing'))
 
 function PortalLoading() {
   return (
@@ -77,6 +80,8 @@ const PAGE_KEYS = {
   '/contracts': 'contracts',
   '/faturas': 'faturas',
   '/mitsumori': 'mitsumori',
+  '/sales-team': 'salesTeam',
+  '/marketing': 'marketing',
   '/payments': 'payments',
   '/adminchat': 'chat',
   '/live': 'liveTrack',
@@ -177,8 +182,12 @@ function AppContent() {
     <PortalErrorBoundary label="Employee portal">
       <Suspense fallback={<PortalLoading />}>
         <EmployeePortal />
-        <AIFloatingWidget mode="employee" employeeId={user.id} employeeName={user.name} dark />
       </Suspense>
+    </PortalErrorBoundary>
+  )
+  if (user.role === 'salesperson') return (
+    <PortalErrorBoundary label="Sales portal">
+      <Suspense fallback={<PortalLoading />}><SalespersonPortal /></Suspense>
     </PortalErrorBoundary>
   )
   if (user.role === 'client') return (
@@ -225,6 +234,7 @@ function AppContent() {
           <div className="topbar-right"><button type="button" className="ref-top-action" title={a.notifications}>♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
+          <div className="kp-build-stamp">KURIPURO · REBUILD COMERCIAL · 08 OUT 2026 · v1.0.0</div>
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
@@ -241,6 +251,8 @@ function AppContent() {
               <Route path="/contracts" element={<ServiceContracts />} />
               <Route path="/faturas" element={<Faturas />} />
               <Route path="/mitsumori" element={<Mitsumori />} />
+              <Route path="/sales-team" element={<SalesTeam />} />
+              <Route path="/marketing" element={<Marketing />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/adminchat" element={<AdminChat />} />
               <Route path="/live" element={<LiveTracking />} />
@@ -256,6 +268,7 @@ function AppContent() {
           </Suspense>
         </main>
       </div>
+      {location.pathname !== '/' && location.pathname !== '/ai' && <AIFloatingWidget mode="admin" />}
     </div>
   )
 }

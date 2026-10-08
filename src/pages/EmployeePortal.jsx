@@ -38,6 +38,7 @@ import {
 } from '../lib/cleaningType'
 import { tokyoToday, recentTokyoDates } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
+import AIChatPanel from '../components/AIChatPanel'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -926,6 +927,7 @@ export default function EmployeePortal() {
   const menuItems = [
     {key:'home',icon:'🏠',label:e.dashboard},
     {key:'shift',icon:'🗺',label:e.todayShift},
+    {key:'ai',icon:'✦',label:e.ai},
     {key:'spots',icon:'⚡',label:e.spotJobs,badge:spotJobs.length},
     {key:'history',icon:'📅',label:e.allJobs},
     {key:'salary',icon:'💴',label:e.salary},
@@ -940,7 +942,7 @@ export default function EmployeePortal() {
     {key:'home',label:e.home,icon:'○'},
     {key:'shift',label:e.shift,icon:'▶'},
     {key:'salary',label:e.salary,icon:'¥'},
-    {key:'chat',label:e.chat,icon:'✉',badge:unreadMsgs},
+    {key:'ai',label:e.ai,icon:'✦'},
   ]
 
   const scrollToActiveJob = () => {
@@ -1028,7 +1030,7 @@ export default function EmployeePortal() {
 
   return (
     <div className="emp-backdrop">
-    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
+    <div className="emp-shell" style={{width:'100%',minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
@@ -1101,10 +1103,10 @@ export default function EmployeePortal() {
       )}
 
       {/* HEADER */}
-      <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
+      <div className="emp-app-header" style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
-            <div className="emp-brand">KuriPuro by JBM · v33</div>
+            <div className="emp-brand"><span className="emp-kp-mark">KP</span><span>KURIPURO BY JBM</span></div>
             <div className="emp-name" style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
@@ -1162,11 +1164,20 @@ export default function EmployeePortal() {
       )}
 
       {/* CONTENT */}
-      <div style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+      <div className="emp-content" style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
 
         {/* HOME */}
         {tab==='home'&&(
-          <div>
+          <div className="emp-home">
+            <section className="emp-action-panel" aria-label={e.quickActions}>
+              <div className="emp-action-heading"><div><span>{e.workspace}</span><strong>{e.quickActions}</strong></div><span className="emp-action-live">{isOnline ? e.online : e.offline}</span></div>
+              <div className="emp-action-grid">
+                <button type="button" className="emp-action-tile emp-action-ai" onClick={()=>goToTab('ai')}><span>✦</span><strong>{e.ai}</strong><small>{e.aiHint}</small></button>
+                <button type="button" className="emp-action-tile" onClick={()=>goToTab('calendar')}><span>▦</span><strong>{e.calendar}</strong><small>{e.calendarHint}</small></button>
+                <button type="button" className="emp-action-tile" onClick={()=>goToTab('salary')}><span>¥</span><strong>{e.salary}</strong><small>{e.salaryHint}</small></button>
+                <button type="button" className="emp-action-tile" onClick={()=>goToTab('chat')}><span>✉</span><strong>{e.chat}</strong><small>{unreadMsgs ? fill(e.unreadMessages,{count:unreadMsgs}) : e.chatHint}</small></button>
+              </div>
+            </section>
             {/* Active job banner */}
             {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:isStaleActiveJob(activeJob,today,elapsed)?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${isStaleActiveJob(activeJob,today,elapsed)?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -1335,6 +1346,13 @@ export default function EmployeePortal() {
         {/* SHIFT */}
         {tab==='shift'&&(
           <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
+        )}
+
+        {tab==='ai'&&(
+          <section className="emp-ai-screen">
+            <div className="emp-ai-heading"><div className="emp-ai-orb">✦</div><div><span>{e.workspace}</span><h2>{e.ai}</h2><p>{e.aiHint}</p></div></div>
+            <div className="emp-ai-chat"><AIChatPanel compact mode="employee" employeeId={user.id} employeeName={user.name} /></div>
+          </section>
         )}
 
         {/* SPOTS */}
@@ -1689,21 +1707,21 @@ export default function EmployeePortal() {
       </div>
 
       {/* BOTTOM TAB BAR */}
-      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <nav aria-label={lang==='ja'?'メインナビゲーション':'Main navigation'} className="emp-bottom-nav" style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
         {bottomTabs.map(t=>(
-          <button key={t.key} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
-            <div style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>
-            <div style={{fontSize:9,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.25)',fontWeight:tab===t.key?600:400,transition:'color 0.15s'}}>{t.label}</div>
+          <button key={t.key} className={`emp-bottom-item${tab===t.key?' is-active':''}`} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
+            <div className="emp-bottom-icon" style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>
+            <div className="emp-bottom-label" style={{fontSize:9,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.25)',fontWeight:tab===t.key?600:400,transition:'color 0.15s'}}>{t.label}</div>
             {tab===t.key&&<div style={{position:'absolute',bottom:0,left:'50%',transform:'translateX(-50%)',width:20,height:2,background:'#c19c56',borderRadius:1}} />}
             {t.badge>0&&<div style={{position:'absolute',top:6,right:'calc(50% - 14px)',width:16,height:16,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff'}}>{t.badge}</div>}
           </button>
         ))}
         {/* More button */}
-        <button onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+        <button className="emp-bottom-item" onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
           <div style={{display:'flex',gap:2.5,marginBottom:1}}>{[0,1,2].map(i=><div key={i} style={{width:3.5,height:3.5,borderRadius:'50%',background:'rgba(255,255,255,0.3)'}} />)}</div>
           <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{e.more}</div>
         </button>
-      </div>
+      </nav>
     </div>
     </div>
   )

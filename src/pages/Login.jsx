@@ -25,8 +25,11 @@ export default function Login() {
     <div className="login-shell">
       <div className="login-card">
         <div className="login-lang-row"><LanguageToggle variant="dark" /></div>
-        <div className="login-mark">KuriPuro</div>
-        <div className="login-sub">by JBM</div>
+        <div className="login-brand-lockup">
+          <span className="login-kp-mark" aria-hidden="true">KP</span>
+          <span className="login-mark">KuriPuro</span>
+        </div>
+        <div className="login-sub">BY JBM · BUSINESS PORTAL</div>
         <div className="login-title">{a.signIn}</div>
         <div className="login-hint">{a.loginHint}</div>
         <form onSubmit={handleSubmit}>
@@ -40,6 +43,8 @@ export default function Login() {
             placeholder={a.loginPlaceholder}
             required
             autoComplete="username"
+            autoCapitalize="none"
+            spellCheck="false"
           />
           <label htmlFor="login-password">{a.password}</label>
           <input
@@ -57,6 +62,7 @@ export default function Login() {
             {loading ? a.loading : a.signIn}
           </button>
         </form>
+        <div className="login-version">KP · REBUILD COMERCIAL · 2026.10.08 · v1.0.0</div>
       </div>
     </div>
   )

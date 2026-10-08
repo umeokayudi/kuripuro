@@ -71,9 +71,15 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     const body = mode === 'employee'
       ? { messages: allMessages, employeeId, employeeName }
       : { messages: allMessages }
+    if (mode === 'employee') body.language = lang
     const resp = await apiPost(endpoint, body)
     let data
-    try { data = await resp.json() } catch { throw new Error(`Invalid response (${resp.status})`) }
+    try { data = await resp.json() } catch {
+      const unavailable = lang === 'ja'
+        ? 'AIサーバーに接続できません。Vercel Functions と GEMINI_API_KEY の設定を確認してください。'
+        : 'Não consegui conectar ao servidor de IA. Verifique as Vercel Functions e a configuração GEMINI_API_KEY.'
+      throw new Error(unavailable)
+    }
     if (!resp.ok || data.error) throw new Error(data.error || `Error ${resp.status}`)
     return data
   }

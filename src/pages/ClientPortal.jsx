@@ -546,7 +546,7 @@ export default function ClientPortal() {
               ))}
             </nav>
             <div className="cp-side-footer">
-              <div style={{ marginBottom: 10 }}><LanguageToggle variant="dark" /></div>
+              <div style={{ marginBottom: 10 }}><LanguageToggle variant="light" /></div>
               <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%' }}>
                 📱 {c.mobileView}
               </button>
@@ -574,7 +574,7 @@ export default function ClientPortal() {
                 </div>
               )}
               <div className="cp-header-actions">
-                <LanguageToggle variant="dark" />
+                <LanguageToggle variant="light" />
                 {!desktopMode && (
                   <button type="button" className="cp-view-toggle" onClick={toggleView}>
                     🖥 {c.desktopView}
