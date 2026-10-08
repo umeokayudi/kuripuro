@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } from '../lib/portalStores'
@@ -6,6 +7,8 @@ import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 
 export default function Clients() {
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
   const [tab, setTab] = useState('list')
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -24,6 +27,7 @@ export default function Clients() {
   const SERVICE_TYPES = ['Daily cleaning','Weekly cleaning','Night cleaning','Deep cleaning','Spot cleaning','Monthly cleaning']
 
   useEffect(() => { load() }, [])
+  useEffect(() => { if (searchId) setTab('list') }, [searchId])
   useEffect(() => { if (portalClientId) loadPortal(portalClientId) }, [portalClientId])
   useEffect(() => { if (tab === 'portal') checkPortalSchema() }, [tab])
 
@@ -250,7 +254,7 @@ export default function Clients() {
       {tab==='list'&&(
         <div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {clients.map(c=>{
+          {(searchId ? clients.filter(c => c.id === searchId) : clients).map(c=>{
             const profit = Number(c.monthly_revenue||0) - Number(c.monthly_cost||0)
             const margin = c.monthly_revenue ? Math.round(profit/c.monthly_revenue*100) : 0
             return (

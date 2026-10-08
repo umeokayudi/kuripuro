@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
@@ -6,6 +7,8 @@ import { useLang, fill } from '../hooks/useLang'
 import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAutomation'
 
 export default function Faturas() {
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
   const { t } = useLang()
   const inv = t.invoices
   const [faturas, setFaturas] = useState([])
@@ -276,7 +279,7 @@ export default function Faturas() {
           </div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {faturas.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No faturas yet.</div></div>}
-          {faturas.map(f=>(
+          {(searchId ? faturas.filter(f => f.id === searchId) : faturas).map(f=>(
             <div key={f.id} className="card" style={{marginBottom:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                 <div>

@@ -1,13 +1,18 @@
-/** Open 見積書 / 請求書 HTML at phone width. about:blank + document.write is shrunk by Chrome. */
+/** Show printable Mitsumori HTML in a full-window preview, without opening a stray tab. */
 
-export function isCompactPrintView() {
-  if (typeof window === 'undefined') return false
-  if (document.querySelector('.app-shell-mobile')) return true
-  return window.matchMedia?.('(max-width: 900px)')?.matches === true
-}
+let priorBodyOverflow = ''
+let previouslyFocused = null
+let onEscape = null
 
 function closeOverlay() {
-  document.getElementById('kp-print-overlay')?.remove()
+  const overlay = document.getElementById('kp-print-overlay')
+  if (!overlay) return
+  overlay.remove()
+  document.body.style.overflow = priorBodyOverflow
+  if (onEscape) window.removeEventListener('keydown', onEscape)
+  onEscape = null
+  previouslyFocused?.focus?.()
+  previouslyFocused = null
 }
 
 export function showPrintOverlay(html, { autoPrint = false } = {}) {
@@ -16,42 +21,34 @@ export function showPrintOverlay(html, { autoPrint = false } = {}) {
   const wrap = document.createElement('div')
   wrap.id = 'kp-print-overlay'
   wrap.className = 'kp-print-overlay'
-  wrap.innerHTML = `<div class="kp-print-overlay-bar">
+  wrap.setAttribute('role', 'dialog')
+  wrap.setAttribute('aria-modal', 'true')
+  wrap.setAttribute('aria-label', ja ? '見積書プレビュー' : 'Quote preview')
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;overflow:hidden;background:#e9edf3;padding:0;margin:0;'
+  wrap.innerHTML = `<div class="kp-print-overlay-bar" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex:0 0 auto;padding:calc(10px + env(safe-area-inset-top,0px)) max(14px,env(safe-area-inset-right,0px)) 10px max(14px,env(safe-area-inset-left,0px));background:#fff;border-bottom:1px solid #dce2ea;box-shadow:0 2px 8px rgba(18,32,55,.08)">
       <button type="button" class="btn btn-sm" data-kp-print-close>${ja ? '閉じる' : 'Close'}</button>
       <button type="button" class="btn btn-sm btn-primary" data-kp-print-go>${ja ? '印刷' : 'Print'}</button>
     </div>
     <iframe title="${ja ? '見積書' : 'Document'}" class="kp-print-frame"></iframe>`
+  previouslyFocused = document.activeElement
+  priorBodyOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
   document.body.appendChild(wrap)
   const iframe = wrap.querySelector('iframe')
+  iframe.style.cssText = 'display:block;flex:1 1 auto;width:min(900px,calc(100% - 32px));height:100%;min-height:0;margin:16px auto;border:0;border-radius:8px;background:#fff;box-shadow:0 8px 30px rgba(18,32,55,.16)'
   iframe.srcdoc = html
   wrap.querySelector('[data-kp-print-close]').onclick = closeOverlay
   wrap.querySelector('[data-kp-print-go]').onclick = () => iframe.contentWindow?.print()
+  onEscape = event => { if (event.key === 'Escape') closeOverlay() }
+  window.addEventListener('keydown', onEscape)
+  wrap.querySelector('[data-kp-print-close]').focus()
   if (autoPrint) {
     iframe.addEventListener('load', () => iframe.contentWindow?.print(), { once: true })
   }
   return { ok: true, mode: 'overlay' }
 }
 
-export function openPrintBlob(html, { autoPrint = false } = {}) {
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const w = window.open(url, '_blank')
-  if (!w) {
-    URL.revokeObjectURL(url)
-    return showPrintOverlay(html, { autoPrint })
-  }
-  if (autoPrint) {
-    const printWhenReady = () => { try { w.focus(); w.print() } catch {} }
-    w.addEventListener?.('load', printWhenReady)
-    setTimeout(printWhenReady, 600)
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 120000)
-  return { ok: true, mode: 'blob' }
-}
-
 export function openPrintHtml(html, opts = {}) {
   if (!html) return { ok: false }
-  if (isCompactPrintView()) return showPrintOverlay(html, opts)
-  return openPrintBlob(html, opts)
+  return showPrintOverlay(html, opts)
 }
-

@@ -272,7 +272,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') 
   const extraHtml = extra ? `<div class="party-meta">${escapeHtml(extra)}</div>` : ''
   const rows = (items || []).map(it => `
       <tr>
-        <td>${escapeHtml(localizePrintText(it.description || '', lang))}</td>
+        <td>${escapeHtml(it.description || '')}</td>
         <td class="num">${escapeHtml(String(it.quantity ?? ''))}</td>
         <td class="num">${yen(it.unit_price)}</td>
         <td class="num">${yen(it.total)}</td>

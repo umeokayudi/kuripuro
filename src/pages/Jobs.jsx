@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress } from '../lib/geocode'
 import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
@@ -443,6 +444,8 @@ function DayScheduleView({ onClose }) {
 }
 
 export default function Jobs() {
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
   const { lang, t } = useLang()
   const jt = t.jobs
   const st = t.status
@@ -466,6 +469,11 @@ export default function Jobs() {
   })
 
   useEffect(() => { loadAll() }, [])
+  useEffect(() => {
+    if (!searchId) return
+    const selected = jobs.find(job => job.id === searchId)
+    if (selected) setTab(selected.job_category === 'spot' ? 'spot' : 'list')
+  }, [searchId, jobs])
 
   const loadAll = async () => {
     setLoading(true)
@@ -562,8 +570,9 @@ export default function Jobs() {
     loadAll()
   }
 
-  const spotJobs = jobs.filter(j => j.job_category === 'spot')
-  const regularJobs = jobs.filter(j => j.job_category !== 'spot')
+  const matchingJobs = searchId ? jobs.filter(j => j.id === searchId) : jobs
+  const spotJobs = matchingJobs.filter(j => j.job_category === 'spot')
+  const regularJobs = matchingJobs.filter(j => j.job_category !== 'spot')
   const basicJobs = regularJobs.filter(j => getCleaningType(j) === 'basic')
   const deepJobs = regularJobs.filter(j => getCleaningType(j) === 'deep')
   const filteredJobs = cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs

@@ -101,6 +101,7 @@ function AppContent() {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [searchResults, setSearchResults] = React.useState([])
   const [searching, setSearching] = React.useState(false)
+  const [searchError, setSearchError] = React.useState(false)
   const location = useLocation()
   const navigate = useNavigate()
   const a = t.app
@@ -111,24 +112,33 @@ function AppContent() {
     if (q.length < 2) {
       setSearchResults([])
       setSearching(false)
+      setSearchError(false)
       return
     }
     let cancelled = false
     const timer = setTimeout(async () => {
       setSearching(true)
-      const pattern = '%' + q.replace(/[%_]/g, '') + '%'
-      const [clientsRes, jobsRes, invoicesRes] = await Promise.all([
-        supabase.from('clients').select('id,company_name,contact_name').or(`company_name.ilike.${pattern},contact_name.ilike.${pattern}`).limit(5),
-        supabase.from('jobs').select('id,title,client_name,scheduled_date,status').or(`title.ilike.${pattern},client_name.ilike.${pattern}`).order('scheduled_date', { ascending:false }).limit(5),
-        supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').or(`client_name.ilike.${pattern},status.ilike.${pattern}`).order('issue_date', { ascending:false }).limit(5),
+      setSearchError(false)
+      const safeQuery = q.replace(/[%,_()]/g, ' ').trim()
+      if (!safeQuery) { setSearchResults([]); setSearching(false); return }
+      const pattern = `%${safeQuery}%`
+      const [clientsRes, clientContactsRes, jobsRes, jobClientsRes, invoicesRes, invoiceStatusesRes] = await Promise.all([
+        supabase.from('clients').select('id,company_name,contact_name').ilike('company_name', pattern).limit(5),
+        supabase.from('clients').select('id,company_name,contact_name').ilike('contact_name', pattern).limit(5),
+        supabase.from('jobs').select('id,title,client_name,scheduled_date,status').ilike('title', pattern).order('scheduled_date', { ascending:false }).limit(5),
+        supabase.from('jobs').select('id,title,client_name,scheduled_date,status').ilike('client_name', pattern).order('scheduled_date', { ascending:false }).limit(5),
+        supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').ilike('client_name', pattern).order('issue_date', { ascending:false }).limit(5),
+        supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').ilike('status', pattern).order('issue_date', { ascending:false }).limit(5),
       ])
       if (cancelled) return
+      const unique = rows => [...new Map(rows.map(row => [row.id, row])).values()]
       const results = [
-        ...(clientsRes.data || []).map(x => ({ type:'client', title:x.company_name || x.contact_name || 'Client', meta:x.contact_name && x.company_name ? x.contact_name : '', to:'/clients', id:x.id })),
-        ...(jobsRes.data || []).map(x => ({ type:'job', title:x.title || x.client_name || 'Job', meta:[x.client_name, x.scheduled_date].filter(Boolean).join(' · '), to:'/jobs', id:x.id })),
-        ...(invoicesRes.data || []).map(x => ({ type:'invoice', title:x.client_name || 'Invoice', meta:[x.status, x.due_date].filter(Boolean).join(' · '), to:'/faturas', id:x.id })),
+        ...unique([...(clientsRes.data || []), ...(clientContactsRes.data || [])]).map(x => ({ type:'client', title:x.company_name || x.contact_name || 'Client', meta:x.contact_name && x.company_name ? x.contact_name : '', to:'/clients', id:x.id })),
+        ...unique([...(jobsRes.data || []), ...(jobClientsRes.data || [])]).map(x => ({ type:'job', title:x.title || x.client_name || 'Job', meta:[x.client_name, x.scheduled_date].filter(Boolean).join(' · '), to:'/jobs', id:x.id })),
+        ...unique([...(invoicesRes.data || []), ...(invoiceStatusesRes.data || [])]).map(x => ({ type:'invoice', title:x.client_name || 'Invoice', meta:[x.status, x.due_date].filter(Boolean).join(' · '), to:'/faturas', id:x.id })),
       ]
       setSearchResults(results)
+      setSearchError([clientsRes, jobsRes, invoicesRes, clientContactsRes, jobClientsRes, invoiceStatusesRes].every(result => result.error))
       setSearching(false)
     }, 220)
     return () => { cancelled = true; clearTimeout(timer) }
@@ -150,7 +160,7 @@ function AppContent() {
   const goSearchResult = result => {
     setSearchOpen(false)
     setSearch('')
-    navigate(result.to)
+    navigate(`${result.to}?search=${encodeURIComponent(result.id)}`)
   }
 
   if (loading) return (
@@ -194,10 +204,12 @@ function AppContent() {
               value={search}
               onChange={e => { setSearch(e.target.value); setSearchOpen(true) }}
               onFocus={() => setSearchOpen(true)}
+              onBlur={() => window.setTimeout(() => setSearchOpen(false), 150)}
               placeholder={a.searchPlaceholder}
               aria-label={a.searchPlaceholder}
             />
             {searching ? <span className="ref-search-loading">…</span> : <kbd>⌘K</kbd>}
+            {search && <button type="button" aria-label={a.clearSearch} className="ref-search-clear" onMouseDown={e => e.preventDefault()} onClick={() => { setSearch(''); setSearchResults([]); setSearchError(false); setSearchOpen(false) }}>×</button>}
             {searchOpen && search.trim().length >= 2 && (
               <div className="ref-search-results">
                 {searchResults.length ? searchResults.map((result, i) => (
@@ -206,7 +218,7 @@ function AppContent() {
                     <span className="ref-search-result-main"><strong>{result.title}</strong><small>{result.meta}</small></span>
                     <span>→</span>
                   </button>
-                )) : !searching ? <div className="ref-search-empty">{a.noSearchResults}</div> : null}
+                )) : !searching ? <div className="ref-search-empty">{searchError ? a.searchUnavailable : a.noSearchResults}</div> : null}
               </div>
             )}
           </div>
