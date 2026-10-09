@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { isHeicUrl, viewablePhotoUrl } from '../lib/photoUrl'
+import { useLang } from '../hooks/useLang'
 
 export default function StorageImage({ url, alt = 'foto', style, onClick }) {
+  const { lang } = useLang()
   const [src, setSrc] = useState(null)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -18,20 +20,14 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
 
   if (failed) {
     return (
-      <div style={{
-        ...style,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--surface2)',
-        borderRadius: 8,
-        padding: 12,
-        gap: 8,
-        minHeight: 120,
+      <div className="storage-image-failed" style={{
+        width: style?.width && Number(style.width) <= 100 ? 'min(100%, 220px)' : style?.width,
+        minWidth: style?.width && Number(style.width) <= 100 ? 180 : undefined,
+        height: 'auto', minHeight: 92, flexShrink: 0,
       }}>
-        <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center' }}>Não foi possível exibir a foto</div>
-        <a href={displayUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Abrir / baixar foto</a>
+        <span aria-hidden="true" className="storage-image-failed-icon">▧</span>
+        <div className="storage-image-failed-copy">{lang === 'ja' ? '写真をプレビューできません' : 'Photo preview unavailable'}</div>
+        <a href={displayUrl} target="_blank" rel="noreferrer" className="storage-image-failed-link">{lang === 'ja' ? '写真を開く ↗' : 'Open photo ↗'}</a>
       </div>
     )
   }

@@ -99,7 +99,7 @@ export default function EmployeePortal() {
   const [submittingComplaint, setSubmittingComplaint] = useState(false)
   const [submittingClaim, setSubmittingClaim] = useState(false)
   const [equipmentRequests, setEquipmentRequests] = useState([])
-  const [equipmentForm, setEquipmentForm] = useState({ category: 'supplies', item_name: '', quantity: '1', reason: '' })
+  const [equipmentForm, setEquipmentForm] = useState({ category: 'supplies', item_name: '', quantity: '1', reason: '', product_url: '' })
   const [equipmentPhoto, setEquipmentPhoto] = useState(null)
   const [equipmentPhotoPreview, setEquipmentPhotoPreview] = useState(null)
   const [submittingEquipment, setSubmittingEquipment] = useState(false)
@@ -850,6 +850,13 @@ export default function EmployeePortal() {
   const handleSubmitEquipment = async () => {
     if (!equipmentForm.item_name.trim()) return toast.error(e.equipmentItemRequired)
     if (!equipmentForm.reason.trim() || equipmentForm.reason.trim().length < 10) return toast.error(e.equipmentReasonRequired)
+    const productUrl = equipmentForm.product_url.trim()
+    if (productUrl) {
+      try {
+        const parsed = new URL(productUrl)
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid')
+      } catch { return toast.error(e.equipmentLinkInvalid) }
+    }
     setSubmittingEquipment(true)
     try {
       const id = Date.now()
@@ -863,13 +870,13 @@ export default function EmployeePortal() {
         category: equipmentForm.category,
         item_name: equipmentForm.item_name.trim(),
         quantity: qty,
-        reason: equipmentForm.reason.trim(),
+        reason: `${equipmentForm.reason.trim()}${productUrl ? `\n\n[Product link] ${productUrl}` : ''}`,
         photo_url: photoUrl,
         status: 'pending',
       })
       if (error) throw error
       toast.success(e.equipmentSubmitSuccess)
-      setEquipmentForm({ category: 'supplies', item_name: '', quantity: '1', reason: '' })
+      setEquipmentForm({ category: 'supplies', item_name: '', quantity: '1', reason: '', product_url: '' })
       setEquipmentPhoto(null)
       if (equipmentPhotoPreview) URL.revokeObjectURL(equipmentPhotoPreview)
       setEquipmentPhotoPreview(null)
@@ -1166,7 +1173,7 @@ export default function EmployeePortal() {
       )}
 
       {/* CONTENT */}
-      <div className="emp-content" style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+      <div className={`emp-content${tab==='ai'?' is-ai':''}`} style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
 
         {/* HOME */}
         {tab==='home'&&(
@@ -1359,7 +1366,6 @@ export default function EmployeePortal() {
 
         {tab==='ai'&&(
           <section className="emp-ai-screen">
-            <div className="emp-ai-heading"><div className="emp-ai-orb">✦</div><div><span>{e.workspace}</span><h2>{e.ai}</h2><p>{e.aiHint}</p></div></div>
             <div className="emp-ai-chat"><AIChatPanel compact mode="employee" employeeId={user.id} employeeName={user.name} /></div>
           </section>
         )}
@@ -1578,6 +1584,10 @@ export default function EmployeePortal() {
                 <span style={S.label}>{e.equipmentQuantity}</span>
                 <input type="number" min="1" value={equipmentForm.quantity} onChange={ev => setEquipmentForm(f => ({ ...f, quantity: ev.target.value }))} style={S.input} />
               </div>
+              <div style={{ marginBottom: 10 }}>
+                <span style={S.label}>{e.equipmentLink}</span>
+                <input type="url" inputMode="url" value={equipmentForm.product_url} onChange={ev => setEquipmentForm(f => ({ ...f, product_url: ev.target.value }))} placeholder={e.equipmentLinkPlaceholder} style={S.input} />
+              </div>
               <div style={{ marginBottom: 14 }}>
                 <span style={S.label}>{e.equipmentReason} *</span>
                 <textarea value={equipmentForm.reason} onChange={ev => setEquipmentForm(f => ({ ...f, reason: ev.target.value }))} placeholder={e.equipmentReasonPlaceholder} rows={4} style={{ ...S.input, resize: 'none' }} />
@@ -1611,7 +1621,7 @@ export default function EmployeePortal() {
                     {equipmentStatusLabel(r.status)}
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5, marginTop: 6 }}>{r.reason}</div>
+                {(() => { const match = r.reason.match(/\n\n\[Product link\] (https?:\/\/\S+)/); const reason = match ? r.reason.slice(0, match.index) : r.reason; return <><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5, marginTop: 6 }}>{reason}</div>{match&&<a href={match[1]} target="_blank" rel="noreferrer" className="emp-request-product-link">↗ {match[1]}</a>}</> })()}
                 {r.admin_note && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '6px 8px', marginTop: 8 }}>{e.equipmentAdminNote}: {r.admin_note}</div>}
               </div>
             ))}
@@ -1631,7 +1641,7 @@ export default function EmployeePortal() {
                 <span style={S.label}>Photos & Receipt</span>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                   {[{ref:claimPhotoRef,preview:claimPhotoPreview,label:'Photo',emoji:'📷'},{ref:claimReceiptRef,preview:claimReceiptPreview,label:'Receipt',emoji:'🧾'}].map(({ref,preview,label,emoji})=>(
-                    <div key={label} onClick={()=>ref.current.click()} style={{aspectRatio:'1',borderRadius:12,overflow:'hidden',cursor:'pointer',border:preview?'2px solid #4ade80':'2px dashed rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.02)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:5,color:'rgba(255,255,255,0.3)'}}>
+                    <div key={label} className={`emp-claim-upload${preview?' has-preview':''}`} onClick={()=>ref.current.click()} style={{aspectRatio:'1',borderRadius:12,overflow:'hidden',cursor:'pointer',border:preview?'2px solid #4ade80':'2px dashed rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.02)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:5,color:'rgba(255,255,255,0.3)'}}>
                       {preview?<img src={preview} style={{width:'100%',height:'100%',objectFit:'cover'}} />:<><span style={{fontSize:26}}>{emoji}</span><span style={{fontSize:10}}>{label}</span></>}
                     </div>
                   ))}
@@ -2072,15 +2082,15 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
   const selJobs = sel?(jobsByDate[sel]||[]):[]
   return (
     <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month-1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>‹</button>
-        <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{new Date(year,month).toLocaleString(lang==='ja'?'ja-JP':'en',{month:'long',year:'numeric'})}</div>
-        <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month+1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>›</button>
+      <div className="emp-calendar-toolbar">
+        <button aria-label={lang==='ja'?'前の月':'Previous month'} onClick={()=>setCm(m=>{const d=new Date(m.year,m.month-1);return{year:d.getFullYear(),month:d.getMonth()}})}>‹</button>
+        <div>{new Date(year,month).toLocaleString(lang==='ja'?'ja-JP':'en',{month:'long',year:'numeric'})}</div>
+        <button aria-label={lang==='ja'?'次の月':'Next month'} onClick={()=>setCm(m=>{const d=new Date(m.year,m.month+1);return{year:d.getFullYear(),month:d.getMonth()}})}>›</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:4}}>
-        {['S','M','T','W','T','F','S'].map((d,i)=><div key={i} style={{textAlign:'center',fontSize:9,color:'rgba(255,255,255,0.3)',fontWeight:600,padding:'4px 0'}}>{d}</div>)}
+        {(lang==='ja'?['日','月','火','水','木','金','土']:['S','M','T','W','T','F','S']).map((d,i)=><div className="emp-calendar-weekday" key={i}>{d}</div>)}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:16}}>
+      <div className="emp-calendar-grid">
         {Array(firstDay).fill(null).map((_,i)=><div key={'e'+i} />)}
         {Array(daysInMonth).fill(null).map((_,i)=>{
           const day=i+1
@@ -2090,17 +2100,17 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
           const isToday=dStr===today
           const isSel=dStr===sel
           return (
-            <div key={day} onClick={()=>dj.length>0&&setSel(isSel?null:dStr)} style={{aspectRatio:'1',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:dj.length>0?'pointer':'default',background:isSel?'rgba(193,156,86,0.2)':isToday?'rgba(96,165,250,0.15)':'rgba(255,255,255,0.03)',border:isSel?'1px solid #c19c56':isToday?'1px solid rgba(96,165,250,0.4)':'1px solid rgba(255,255,255,0.05)'}}>
-              <div style={{fontSize:13,fontWeight:isToday?700:400,color:isToday?'#60a5fa':'rgba(255,255,255,0.8)'}}>{day}</div>
+            <div className={`emp-calendar-day${isToday?' is-today':''}${isSel?' is-selected':''}${dj.length?' has-jobs':''}`} key={day} onClick={()=>dj.length>0&&setSel(isSel?null:dStr)}>
+              <div className="emp-calendar-day-number">{day}</div>
               {color&&<div style={{width:5,height:5,borderRadius:'50%',background:color,marginTop:2}} />}
               {dj.length>1&&<div style={{fontSize:7,color:'rgba(255,255,255,0.3)',marginTop:1}}>{dj.length}</div>}
             </div>
           )
         })}
       </div>
-      <div style={{display:'flex',gap:12,marginBottom:16,justifyContent:'center'}}>
+      <div className="emp-calendar-legend">
         {[['#4ade80', statusLabels?.completed || 'Done'],['#60a5fa', statusLabels?.assigned || 'Scheduled'],['#fbbf24', statusLabels?.in_progress || 'Active']].map(([c,l])=>(
-          <div key={l} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:8,height:8,borderRadius:'50%',background:c}} /><span style={{fontSize:10,color:'rgba(255,255,255,0.4)'}}>{l}</span></div>
+          <div key={l} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:8,height:8,borderRadius:'50%',background:c}} /><span>{l}</span></div>
         ))}
       </div>
       {sel&&(

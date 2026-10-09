@@ -1114,6 +1114,7 @@ body { background: var(--hq-bg); }
 .sales-tabs button { flex:0 0 auto; border:1px solid var(--border); color:var(--text2); background:var(--surface); padding:9px 14px; border-radius:999px; font:600 12px var(--font); cursor:pointer; }
 .sales-tabs button.active { color:#fff; background:var(--navy); border-color:var(--navy); }
 .sales-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:14px; }
+.sales-goals-section{margin-bottom:14px}.sales-period-filter{display:flex;align-items:center;gap:8px;color:#738096;font-size:10px;font-weight:700}.sales-period-filter select{min-width:130px;min-height:38px;padding:7px 10px;border:1px solid #e1e7f0;border-radius:10px;background:#fff;color:#263348}.sales-goals-note{margin:-5px 0 12px;font-size:10px}.sales-goals-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:10px}.sales-goal-card{min-width:0;padding:13px;border:1px solid #e6ebf3;border-radius:13px;background:#fbfcfe}.sales-goal-person{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}.sales-goal-person strong{color:#1d2c42;font-size:12px}.sales-goal-person span{color:#8491a4;text-align:right;font-size:9px}.sales-goal-row{display:grid;grid-template-columns:1fr 92px;gap:4px 10px;align-items:center;margin-top:9px}.sales-goal-meta{display:flex;justify-content:space-between;align-items:center;gap:8px;color:#718096;font-size:10px}.sales-goal-meta b{color:#26354c;font-size:11px}.sales-goal-track{height:5px;overflow:hidden;border-radius:99px;background:#e9edf4}.sales-goal-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#315cf5,#8061ef)}.sales-goal-row>label{grid-column:2;grid-row:1/3;display:grid;gap:3px;color:#8995a7;font-size:8px}.sales-goal-row input{width:100%;min-width:0;min-height:32px;padding:5px 7px;border:1px solid #e0e6ef;border-radius:8px;background:#fff;color:#253147;font-size:11px}
 .sales-metric { min-width:0; padding:14px 16px; border:1px solid var(--border); border-radius:13px; background:var(--surface); box-shadow:var(--shadow); }
 .sales-metric span { display:block; color:var(--text3); font-size:11px; line-height:1.35; }
 .sales-metric strong { display:block; margin-top:7px; color:var(--navy); font-size:clamp(18px,2.5vw,25px); line-height:1.15; overflow-wrap:anywhere; }
@@ -1173,6 +1174,9 @@ body { background: var(--hq-bg); }
   .sales-row { align-items:flex-start; }
   .sales-review-header { align-items:flex-start; }
   .sales-manager-mini-metrics { gap:8px 12px; }
+  .sales-goals-section .sales-section-head{align-items:stretch;flex-direction:column}
+  .sales-period-filter{justify-content:space-between;width:100%}
+  .sales-period-filter select{flex:1}
   .sales-rule-row { flex-wrap:wrap; }
   .sales-rule-row > span { width:100%; }
   .sales-rule-row select { flex:1; }
@@ -1467,6 +1471,53 @@ body { background: var(--hq-bg); }
   .emp-menu-panel{width:100%;max-width:none}
   .emp-menu-items{width:min(100%,980px);margin:0 auto}
   .emp-menu-head,.emp-menu-footer{padding-left:max(24px,calc((100vw - 980px)/2));padding-right:max(24px,calc((100vw - 980px)/2))}
+}
+
+/* Keep the employee workspace viewport fixed and let its content own scrolling. */
+.emp-backdrop{height:100dvh;min-height:100dvh;overflow:hidden}
+.emp-shell{height:100dvh;min-height:0!important;overflow:hidden;padding-bottom:0!important}
+.emp-app-header{flex:0 0 auto}
+.emp-content{flex:1 1 0!important;min-height:0!important;overflow-y:auto!important;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+.emp-content.is-ai{display:flex;flex-direction:column}
+.emp-content.is-ai .emp-ai-screen{flex:1 1 0;min-height:0!important;gap:0!important}
+.emp-ai-chat{flex:1 1 0;min-height:0!important;height:100%;overflow:hidden}
+.emp-ai-chat .ai-compose-row{
+  display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;grid-template-areas:"attachments attachments attachments" "voice input send";
+  align-items:stretch!important;gap:8px!important;padding:12px!important;margin-top:0!important;background:#fff
+}
+.emp-ai-chat .ai-compose-row .ai-attach-actions{grid-area:attachments;width:100%;justify-content:flex-start}
+.emp-ai-chat .ai-compose-row>button[title="Falar"],.emp-ai-chat .ai-compose-row>button[title="Falar"]{grid-area:voice;width:40px!important;height:44px!important;align-self:stretch!important}
+.emp-ai-chat .ai-compose-row textarea{grid-area:input;width:100%;min-width:0!important;min-height:78px;max-height:160px;align-self:stretch;resize:vertical!important}
+.emp-ai-chat .ai-compose-row>button:last-child{grid-area:send;min-width:72px;min-height:44px;align-self:stretch!important}
+.emp-ai-chat .ai-attachment-tray,.emp-ai-chat .ai-attachment-error{grid-column:1/-1}
+.emp-claim-upload{border:1px dashed #c5cfdf!important;background:#f9faff!important;color:#66758b!important;transition:border-color .15s,background .15s,box-shadow .15s}
+.emp-claim-upload:hover{border-color:#8ca5ed!important;background:#f1f5ff!important;box-shadow:0 4px 14px rgba(49,92,245,.08)}
+.emp-claim-upload.has-preview{border:2px solid #25a56a!important;background:#eef9f3!important}
+.emp-request-product-link{display:inline-flex;max-width:100%;margin:0 0 10px;padding:7px 10px;align-items:center;gap:6px;border:1px solid #d6e1ff;border-radius:9px;background:#f2f5ff;color:#315cf5;font-size:11px;font-weight:700;overflow-wrap:anywhere;text-decoration:none}
+.emp-request-product-link:hover{background:#e8efff;text-decoration:underline}
+.emp-calendar-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.emp-calendar-toolbar>div{color:#172033;font-size:16px;font-weight:750}
+.emp-calendar-toolbar button{width:38px;height:38px;border:1px solid #dfe6f0;border-radius:11px;background:#fff;color:#315cf5;font-size:20px;cursor:pointer;box-shadow:0 2px 7px rgba(24,39,75,.04)}
+.emp-calendar-weekday{padding:5px 0;text-align:center;color:#78869b;font-size:10px;font-weight:750}
+.emp-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-bottom:14px}
+.emp-calendar-day{aspect-ratio:1;max-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid #e4e9f1;border-radius:11px;background:#fff;cursor:default}
+.emp-calendar-day.has-jobs{cursor:pointer}
+.emp-calendar-day.has-jobs:hover{border-color:#b9c9fb;background:#f8faff}
+.emp-calendar-day.is-today{border-color:#b7ccff;background:#eef4ff}
+.emp-calendar-day.is-selected{border-color:#315cf5;background:#e8efff;box-shadow:0 0 0 2px rgba(49,92,245,.08)}
+.emp-calendar-day-number{color:#34435c;font-size:13px;font-weight:600}
+.emp-calendar-day.is-today .emp-calendar-day-number{color:#315cf5;font-weight:800}
+.emp-calendar-legend{display:flex;justify-content:center;gap:12px;margin-bottom:16px}
+.emp-calendar-legend span{color:#718096;font-size:10px}
+.storage-image-failed{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px;padding:10px 12px;border:1px solid #e0e6ef;border-radius:11px;background:#f7f9fc;color:#718096}
+.storage-image-failed-icon{width:25px;height:25px;display:grid;place-items:center;border:1px solid #dfe6f0;border-radius:8px;background:#fff;color:#8996aa;font-size:15px}
+.storage-image-failed-copy{font-size:10px;line-height:1.35}
+.storage-image-failed-link{display:inline-flex;align-items:center;justify-content:center;min-height:29px;padding:5px 9px;border:1px solid #d7e1fb;border-radius:8px;background:#fff;color:#315cf5;font-size:10px;font-weight:750;text-decoration:none;white-space:nowrap}
+.storage-image-failed-link:hover{background:#edf2ff}
+@media(max-width:600px){
+  .emp-ai-chat .ai-compose-row{grid-template-columns:40px minmax(0,1fr) auto;padding:10px!important;gap:7px!important}
+  .ai-attach-actions button{flex:1;min-width:0;height:42px;padding:3px 4px}
+  .emp-ai-chat .ai-compose-row textarea{min-height:74px;font-size:16px!important}
 }
 @media(max-width:720px){
   .main .card,.main .metric-card,.main .executive-card,.main .dash-ref-card,.main .dash-trend-card{border-radius:16px}
