@@ -7,6 +7,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
+import ServiceTimer from '../components/ServiceTimer'
+import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
@@ -397,22 +399,29 @@ export default function EmployeePortal() {
     }
   }
 
-  const checkGPS = async (job) => {
-    if (!job.gps_lat||!job.gps_lng) return true
-    setGpsStatus('📍 Checking...')
+  // Where the worker is when they start or finish. Never blocks the job:
+  // without GPS permission it just returns null.
+  const capturePosition = async () => {
     try {
       const pos = await getCurrentPosition()
-      const dist = distanceMeters(pos.lat,pos.lng,Number(job.gps_lat),Number(job.gps_lng))
-      if (dist>100) {
-        setGpsStatus(`⚠️ ${Math.round(dist)}m away`)
-        return { ok: true, dist: Math.round(dist), override: true }
-      }
-      setGpsStatus(`✅ ${Math.round(dist)}m`)
-      return { ok: true, dist: Math.round(dist), override: false }
-    } catch {
+      return { lat: pos.lat, lng: pos.lng, acc: pos.acc != null ? Math.round(pos.acc) : null }
+    } catch { return null }
+  }
+
+  const checkGPS = async (job) => {
+    setGpsStatus('📍 Checking...')
+    const pos = await capturePosition()
+    if (!pos) {
       setGpsStatus('⚠️ GPS unavailable')
-      return { ok: true, dist: null, override: true }
+      return { ok: true, dist: null, override: Boolean(job.gps_lat && job.gps_lng), pos: null }
     }
+    if (!job.gps_lat || !job.gps_lng) {
+      setGpsStatus(`✅ GPS${pos.acc ? ` ±${pos.acc}m` : ''}`)
+      return { ok: true, dist: null, override: false, pos }
+    }
+    const dist = Math.round(distanceMeters(pos.lat, pos.lng, Number(job.gps_lat), Number(job.gps_lng)))
+    setGpsStatus(dist > 100 ? `⚠️ ${dist}m away` : `✅ ${dist}m`)
+    return { ok: true, dist, override: dist > 100, pos }
   }
 
   const handleAcceptSpot = async (job) => {
@@ -693,8 +702,13 @@ export default function EmployeePortal() {
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
       const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
       if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
+      const gpsFields = {
+        start_lat: gpsResult.pos?.lat ?? null, start_lng: gpsResult.pos?.lng ?? null, start_accuracy: gpsResult.pos?.acc ?? null,
+        gps_start_distance: gpsResult.dist ?? null, gps_override: Boolean(gpsResult.override),
+      }
+      try { await supabase.from('jobs').update(gpsFields).eq('id', job.id) } catch (ex) { console.log('gps fields skipped', ex?.message) }
       setChecklist(initChecklistState(job))
-      setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!')
+      setActiveJob({ ...data, ...gpsFields }); setJobPhotos([]); toast.success('✅ Started!')
     } catch (err) {
       toast.error(err?.message || e.startError)
     } finally {
@@ -732,6 +746,8 @@ export default function EmployeePortal() {
       return
     }
     setSubmitting(true)
+    // Read the finish position while the photos upload
+    const endPositionPromise = capturePosition()
     try {
       let startPhotoUrl = job.photo_start_url
       const startPhotos = jobPhotos.filter(p => p.slot === 'start')
@@ -771,6 +787,15 @@ export default function EmployeePortal() {
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      try {
+        const endPos = await endPositionPromise
+        if (endPos) {
+          // Distance to the site when it has coordinates; otherwise to where the job was started.
+          const refLat = job.gps_lat ?? job.start_lat, refLng = job.gps_lng ?? job.start_lng
+          const endDist = refLat != null && refLng != null ? Math.round(distanceMeters(endPos.lat, endPos.lng, Number(refLat), Number(refLng))) : null
+          await supabase.from('jobs').update({ end_lat: endPos.lat, end_lng: endPos.lng, end_accuracy: endPos.acc, gps_end_distance: endDist }).eq('id', job.id)
+        }
+      } catch(ex){ console.log('gps end skipped', ex?.message) }
       try {
         await supabase.from('jobs').update({
           checklist_total: total || null, checklist_done: total ? done : null,
@@ -1333,6 +1358,44 @@ export default function EmployeePortal() {
               <div className="ex-ov tone-gray"><strong style={{color:scoreColor(empScore)}}>{empScore}</strong><span>{e.performance} · {empScore>=90?e.scoreExcellent:empScore>=70?e.scoreGood:e.scoreNeedsWork}</span></div>
             </div>
 
+            {/* My progress: evolution and averages from start/finish times and GPS */}
+            {(()=>{
+              const monthKey = today.slice(0,7)
+              const prevKey = new Date(Date.UTC(Number(monthKey.slice(0,4)), Number(monthKey.slice(5,7))-2, 1)).toISOString().slice(0,7)
+              const month = summarizeJobs(allJobs.filter(j=>j.scheduled_date?.startsWith(monthKey)))
+              const prev = summarizeJobs(allJobs.filter(j=>j.scheduled_date?.startsWith(prevKey)))
+              const weeks = weeklyEvolution(allJobs, today, 8)
+              const maxJobs = Math.max(1, ...weeks.map(w=>w.completed))
+              const avgDelta = month.avgMin!=null&&prev.avgMin!=null ? month.avgMin-prev.avgMin : null
+              const kpis = [
+                ['⏱', e.avgService, formatMinutes(month.avgMin), avgDelta!=null&&avgDelta!==0?`${avgDelta>0?'+':'−'}${formatMinutes(Math.abs(avgDelta))} ${e.vsLastMonth}`:null],
+                ['🕘', e.onTime, month.onTimePct!=null?`${month.onTimePct}%`:'—', month.avgDelayMin!=null?fill(e.avgDelay,{m:month.avgDelayMin}):null],
+                ['📍', e.gpsCheckins, month.gpsPct!=null?`${month.gpsPct}%`:'—', month.gpsAway?fill(e.gpsAwayCount,{n:month.gpsAway}):null],
+                ['✓', e.checklistRate, month.checklistPct!=null?`${month.checklistPct}%`:'—', null],
+              ]
+              return (
+                <section className="ex-evo">
+                  <div className="ex-evo-head"><strong>{e.myProgress}</strong><small>{e.last8Weeks}</small></div>
+                  <div className="ex-evo-kpis">
+                    {kpis.map(([icon,label,value,sub])=>(
+                      <div key={label} className="ex-evo-kpi"><span>{icon} {label}</span><strong>{value}</strong>{sub&&<small>{sub}</small>}</div>
+                    ))}
+                  </div>
+                  <div className="ex-evo-chart" role="img" aria-label={e.jobsPerWeek}>
+                    {weeks.map((w,i)=>(
+                      <div key={w.week} className={`ex-evo-col${i===weeks.length-1?' is-now':''}`} title={`${w.week}: ${w.completed} · ${formatMinutes(w.avgMin)}`}>
+                        <small className="ex-evo-val">{w.completed||''}</small>
+                        <i style={{height:`${Math.max(4,(w.completed/maxJobs)*100)}%`}} />
+                        <span>{Number(w.week.slice(8))}/{Number(w.week.slice(5,7))}</span>
+                        <em>{w.avgMin!=null?`${w.avgMin}m`:'—'}</em>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="ex-evo-legend"><span><i className="is-bar" />{e.jobsPerWeek}</span><span>{e.avgMinutesRow}</span></div>
+                </section>
+              )
+            })()}
+
             {/* Badges */}
             {badges.length>0&&<div className="ex-badges">
               <span>{e.badges}</span>
@@ -1814,10 +1877,11 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.replace(/ — .*/,'')}</div>
               <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:3}}>{activeJob.scheduled_date} · {labels.tapToFinish}</div>
             </div>
-            <div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
-              {isStaleActiveJob(activeJob, today, elapsed) ? formatShiftElapsed(elapsed, lang) : fmt(elapsed)}
-            </div>
+            {activeIsStale&&<div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
+              {formatShiftElapsed(elapsed, lang)}
+            </div>}
           </div>
+          {!activeIsStale&&<ServiceTimer job={activeJob} elapsed={elapsed} history={allJobs} labels={labels} lang={lang} />}
           {activeInstructions && (
             <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
               <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>

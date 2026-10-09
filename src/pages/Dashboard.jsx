@@ -7,6 +7,7 @@ import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '.
 import OverviewChart from '../components/OverviewChart'
 import DateRangeSheet, { presetRange, formatRangeLabel, tokyoToday } from '../components/DateRangeSheet'
 import { useAuth } from '../hooks/useAuth'
+import { summarizeJobs, summarizeByEmployee, formatMinutes, gpsCheck } from '../lib/workKpis'
 import toast from 'react-hot-toast'
 
 const METRICS_KEY = 'kuripuro-dashboard-metrics-v2'
@@ -59,7 +60,7 @@ export default function Dashboard() {
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
-      supabase.from('jobs').select('id,scheduled_date,status').gte('scheduled_date', trendStart).lt('scheduled_date', trendEnd).neq('status', 'cancelled'),
+      supabase.from('jobs').select('id,scheduled_date,scheduled_time,status,employee_id,employee_name,started_at,completed_at,gps_start_distance,start_lat,checklist_total,checklist_done,photo_ai_score').gte('scheduled_date', trendStart).lt('scheduled_date', trendEnd).neq('status', 'cancelled'),
       supabase.from('cashflow').select('entry_type,amount,entry_date').gte('entry_date', trendStart).lt('entry_date', trendEnd),
     ])
     setClients(c.data || [])
@@ -149,9 +150,19 @@ export default function Dashboard() {
     }
   })
 
+  const rangeJobs = trendJobs.filter(job => inRange(job.scheduled_date, range.from, range.to))
+  const team = summarizeJobs(rangeJobs)
+  const teamPrev = summarizeJobs(trendJobs.filter(job => inRange(job.scheduled_date, prevFrom, prevTo)))
+  const people = summarizeByEmployee(rangeJobs)
+  const liveJobs = todayJobs.filter(job => job.status === 'in_progress' && job.started_at)
+  const pctText = v => v == null ? '—' : `${v}%`
+
   const metricLabels = lang === 'ja'
     ? { completed: '完了した作業', cash: '記録済み純入金', income: '入金', expenses: '出金', clients: '稼働中の顧客', satisfaction: '顧客満足度', today: '本日の作業', revenue: '月間契約売上（推定）', profit: '推定利益' }
     : { completed: 'Completed jobs', cash: 'Net cash', income: 'Money in', expenses: 'Money out', clients: 'Active clients', satisfaction: 'Satisfaction', today: "Today's jobs", revenue: 'Contract revenue', profit: 'Estimated profit' }
+  Object.assign(metricLabels, lang === 'ja'
+    ? { avgService: '平均作業時間', hoursWorked: '実働時間', onTime: '時間どおり開始', gps: 'GPSチェックイン' }
+    : { avgService: 'Avg. service time', hoursWorked: 'Hours worked', onTime: 'On-time starts', gps: 'GPS check-ins' })
   const vsPrev = lang === 'ja' ? '前期間比' : 'vs previous period'
   const satisfaction30 = avgStars(ratingsInPeriod(clientRatings, 30))
   const availableMetrics = [
@@ -164,6 +175,10 @@ export default function Dashboard() {
     { id: 'today', tone: 'sky', value: todayJobs.length },
     { id: 'revenue', tone: 'navy', value: fmt(revenue), note: lang === 'ja' ? '契約データに基づく推定' : 'Estimated, per month' },
     { id: 'profit', tone: 'green', value: fmt(profit), note: lang === 'ja' ? '契約売上 − 推定コスト' : 'Estimated, per month' },
+    { id: 'avgService', tone: 'sky', value: formatMinutes(team.avgMin), delta: team.avgMin != null && teamPrev.avgMin ? growth(team.avgMin, teamPrev.avgMin) : null },
+    { id: 'hoursWorked', tone: 'navy', value: formatMinutes(team.totalMin), delta: growth(team.totalMin, teamPrev.totalMin) },
+    { id: 'onTime', tone: 'green', value: pctText(team.onTimePct) },
+    { id: 'gps', tone: 'teal', value: pctText(team.gpsPct) },
   ]
   const updateVisibleMetrics = next => { setVisibleMetrics(next); try { localStorage.setItem(METRICS_KEY, JSON.stringify(next)) } catch {} }
   const minutesAgo = lastUpdate ? Math.max(0, Math.floor((clock - lastUpdate) / 60000)) : null
@@ -277,6 +292,67 @@ export default function Dashboard() {
           <div><h2>{lang === 'ja' ? '実績の概要' : 'Performance overview'}</h2><p>{formatRangeLabel(range, lang)} · {lang === 'ja' ? (daily ? '日別' : '月別') : (daily ? 'by day' : 'by month')}</p></div>
         </div>
         <OverviewChart data={overviewData} cashLabel={metricLabels.cash} jobsLabel={metricLabels.completed} formatCash={fmt} emptyLabel={lang === 'ja' ? 'データなし' : 'No data'} />
+      </section>
+
+      <section className="card dx-team">
+        <div className="dx-overview-head">
+          <div><h2>{lang === 'ja' ? 'チームのパフォーマンス' : 'Team performance'}</h2><p>{formatRangeLabel(range, lang)} · {lang === 'ja' ? '開始・終了時刻とGPSから' : 'from start/finish times and GPS'}</p></div>
+          <Link to="/live" className="dx-link">{lang === 'ja' ? 'ライブ追跡 →' : 'Live tracking →'}</Link>
+        </div>
+        {liveJobs.length > 0 && (
+          <div className="dx-live">
+            {liveJobs.map(job => {
+              const secs = Math.max(0, Math.floor((clock - new Date(job.started_at)) / 1000))
+              const gps = gpsCheck(job)
+              return (
+                <div key={job.id} className="dx-live-item">
+                  <span className="dx-live-dot" />
+                  <div><strong>{job.employee_name || '—'}</strong><small>{(job.title || '').replace(/ — .*/, '')}{gps === 'away' ? (lang === 'ja' ? ' · ⚠ 現場外' : ' · ⚠ away from site') : gps ? ' · 📍' : ''}</small></div>
+                  <b>{String(Math.floor(secs / 3600)).padStart(2, '0')}:{String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</b>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <div className="dx-team-kpis">
+          {[
+            [metricLabels.avgService, formatMinutes(team.avgMin), teamPrev.avgMin != null && team.avgMin != null ? `${team.avgMin - teamPrev.avgMin > 0 ? '+' : team.avgMin - teamPrev.avgMin < 0 ? '−' : '±'}${formatMinutes(Math.abs(team.avgMin - teamPrev.avgMin))} ${vsPrev}` : null],
+            [metricLabels.hoursWorked, formatMinutes(team.totalMin), lang === 'ja' ? `計測 ${team.timed}件` : `${team.timed} timed jobs`],
+            [metricLabels.onTime, pctText(team.onTimePct), team.avgDelayMin != null ? (lang === 'ja' ? `平均開始 ${team.avgDelayMin}分` : `avg. start ${team.avgDelayMin > 0 ? '+' : ''}${team.avgDelayMin} min`) : null],
+            [metricLabels.gps, pctText(team.gpsPct), team.gpsAway ? (lang === 'ja' ? `現場外 ${team.gpsAway}件` : `${team.gpsAway} away from site`) : null],
+            [lang === 'ja' ? 'チェックリスト' : 'Checklist', pctText(team.checklistPct), null],
+          ].map(([label, value, sub]) => (
+            <div key={label} className="dx-team-kpi"><span>{label}</span><strong>{value}</strong>{sub && <small>{sub}</small>}</div>
+          ))}
+        </div>
+        {people.length === 0 ? <div className="ov-empty">{lang === 'ja' ? 'この期間の完了作業はありません' : 'No completed jobs in this period'}</div> : (
+          <div className="dx-table-wrap">
+            <table className="dx-table">
+              <thead><tr>
+                <th>{lang === 'ja' ? 'スタッフ' : 'Employee'}</th>
+                <th>{lang === 'ja' ? '件数' : 'Jobs'}</th>
+                <th>{lang === 'ja' ? '平均時間' : 'Avg. time'}</th>
+                <th>{lang === 'ja' ? '実働' : 'Hours'}</th>
+                <th>{lang === 'ja' ? '時間どおり' : 'On time'}</th>
+                <th>GPS</th>
+                <th>{lang === 'ja' ? 'チェック' : 'Checklist'}</th>
+              </tr></thead>
+              <tbody>
+                {people.map(p => (
+                  <tr key={p.id || p.name}>
+                    <td>{p.id ? <Link to={`/employees/${p.id}`}>{p.name}</Link> : p.name}</td>
+                    <td>{p.completed}</td>
+                    <td>{formatMinutes(p.avgMin)}</td>
+                    <td>{formatMinutes(p.totalMin)}</td>
+                    <td className={p.onTimePct != null && p.onTimePct < 80 ? 'is-bad' : ''}>{pctText(p.onTimePct)}</td>
+                    <td className={p.gpsAway ? 'is-bad' : ''}>{pctText(p.gpsPct)}{p.gpsAway ? ` · ⚠${p.gpsAway}` : ''}</td>
+                    <td>{pctText(p.checklistPct)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {staleCount > 0 && (
