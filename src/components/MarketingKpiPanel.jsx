@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { RANGE_KEYS, attributionCoverage, budgetPacing, channelPerformance, delta, marketingSeries, rangeFor } from '../lib/salesKpi'
 import { KpiTile, RangePills, TargetBar, TrendBars, num, pct, yen } from './SalesKpiParts'
 import { monthElapsedPercent } from '../lib/salesFollowup'
+import { mediaPerformance, platformLabel } from '../lib/salesInsights'
 
 const COPY = {
   en: {
@@ -14,6 +15,8 @@ const COPY = {
     pacing: 'Budget pacing', pacingSub: 'Budget used vs share of the campaign period gone. Marker = time elapsed.', overPace: 'spending ahead of time', noBudgets: 'No campaign with a budget.',
     goals: 'Monthly marketing targets', goalsSub: 'Saved for everyone. Progress uses tracked spend, leads and contracts.', month: 'Month', save: 'Save targets', done: 'Reached',
     goalKeys: { leads: 'Leads', won: 'Contracts', revenue: 'Revenue / month', spend: 'Spend cap', max_cpl: 'Max cost per lead' },
+    media: 'Paid media by platform', mediaSub: 'CPM = cost per 1,000 impressions · CPC = cost per click · CTR = clicks ÷ impressions · CPL = cost per lead · CPA = cost per signed contract · ROI on the first year of the contract.',
+    platform: 'Platform', impressions: 'Impressions', clicks: 'Clicks', cpm: 'CPM', cpc: 'CPC', ctr: 'CTR', cpa: 'CPA', clickToLead: 'Click → lead', leadToWin: 'Lead → contract', platformConv: 'Platform conv.', noMedia: 'Record spend with impressions and clicks to see platform KPIs.',
   },
   ja: {
     title: 'マーケティングKPI', sub: 'チャネル別の広告費・リード・契約です。各リードにチャネルかキャンペーンを設定してください。',
@@ -25,6 +28,8 @@ const COPY = {
     pacing: '予算消化', pacingSub: '予算消化率とキャンペーン期間の経過率。印＝経過率。', overPace: '予定より早く消化中', noBudgets: '予算付きのキャンペーンはありません。',
     goals: '月間マーケティング目標', goalsSub: '全員に共有されます。進捗は記録された広告費・リード・契約から計算します。', month: '月', save: '目標を保存', done: '達成',
     goalKeys: { leads: 'リード', won: '成約', revenue: '月額売上', spend: '広告費上限', max_cpl: 'リード単価上限' },
+    media: '媒体別の広告成果', mediaSub: 'CPM＝1,000表示あたり費用・CPC＝クリック単価・CTR＝クリック率・CPL＝リード単価・CPA＝契約1件あたり費用・ROIは契約初年度で計算。',
+    platform: '媒体', impressions: '表示回数', clicks: 'クリック', cpm: 'CPM', cpc: 'CPC', ctr: 'CTR', cpa: 'CPA', clickToLead: 'クリック→リード', leadToWin: 'リード→契約', platformConv: '媒体CV', noMedia: '表示回数とクリックを入力すると媒体別KPIが表示されます。',
   },
 }
 
@@ -58,6 +63,8 @@ export default function MarketingKpiPanel({ data, lang, today, onSaveGoal, busy 
       pacing: budgetPacing(data, today),
       coverage: attributionCoverage(data, range),
       month: marketingSeries(data, [goalMonth])[0],
+      media: mediaPerformance(data, range),
+      prevMedia: mediaPerformance(data, range.prev),
     }
   }, [data, rangeKey, today, goals, goalMonth])
 
@@ -83,6 +90,25 @@ export default function MarketingKpiPanel({ data, lang, today, onSaveGoal, busy 
       <KpiTile label={t.revenue} value={yen(cur.revenue)} delta={delta(cur.revenue, prev.revenue)} vsLabel={t.vsPrev} />
       <KpiTile label={t.roi} value={pct(cur.roi)} delta={cur.roi != null && prev.roi != null ? Math.round(cur.roi - prev.roi) : null} unit=" pt" vsLabel={t.vsPrev} />
       <KpiTile label={t.coverage} value={pct(view.coverage.rate)} hint={`${view.coverage.tagged}/${view.coverage.leads}`} />
+    </div>
+
+    <div className="card kpi-card kpi-wide">
+      <div className="card-title">{t.media} · {t.ranges[rangeKey]}</div><p className="sales-muted">{t.mediaSub}</p>
+      <div className="kpi-tiles kpi-tiles-compact">
+        {[['cpm', yen, true], ['cpc', yen, true], ['ctr', pct, false], ['cpl', yen, true], ['cpa', yen, true], ['leadToWin', pct, false], ['roi', pct, false]].map(([key, format, down]) => {
+          const a = view.media.total[key]; const b = view.prevMedia.total[key]
+          const isRate = ['ctr', 'leadToWin', 'roi'].includes(key)
+          return <KpiTile key={key} label={t[key]} value={key === 'ctr' && a != null ? `${num(a, 2)}%` : format(a)} delta={isRate ? (a != null && b != null ? Math.round(a - b) : null) : delta(a, b)} unit={isRate ? ' pt' : '%'} goodWhenDown={down} vsLabel={t.vsPrev} />
+        })}
+      </div>
+      {view.media.rows.length === 0 ? <p className="sales-muted">{t.noMedia}</p> : <div className="kpi-table-wrap"><table className="kpi-table">
+        <thead><tr><th>{t.platform}</th><th>{t.spend}</th><th>{t.impressions}</th><th>{t.clicks}</th><th>{t.cpm}</th><th>{t.cpc}</th><th>{t.ctr}</th><th>{t.metrics.leads}</th><th>{t.cpl}</th><th>{t.clickToLead}</th><th>{t.metrics.wins}</th><th>{t.cpa}</th><th>{t.leadToWin}</th><th>{t.platformConv}</th><th>{t.roi}</th></tr></thead>
+        <tbody>{[...view.media.rows, ...(view.media.rows.length > 1 ? [view.media.total] : [])].map(row => <tr key={row.platform} className={row.platform === 'total' ? 'kpi-total-row' : ''}>
+          <td><b>{platformLabel(row.platform, lang)}</b></td><td>{yen(row.spend)}</td><td>{num(row.impressions)}</td><td>{num(row.clicks)}</td><td>{yen(row.cpm)}</td><td>{yen(row.cpc)}</td><td>{row.ctr == null ? '—' : `${num(row.ctr, 2)}%`}</td>
+          <td>{row.leads}</td><td>{yen(row.cpl)}</td><td>{pct(row.clickToLead)}</td><td>{row.wins}</td><td>{yen(row.cpa)}</td><td>{pct(row.leadToWin)}</td><td>{num(row.platformConversions)}</td>
+          <td className={row.roi == null ? '' : row.roi >= 0 ? 'kpi-good' : 'kpi-bad'}>{row.roi == null ? '—' : `${row.roi >= 0 ? '▲' : '▼'} ${pct(Math.abs(row.roi))}`}</td>
+        </tr>)}</tbody>
+      </table></div>}
     </div>
 
     <div className="card kpi-card kpi-wide">

@@ -252,13 +252,21 @@ export default function Mitsumori() {
   }
 
   const handleStatus = async (row, status) => {
-    const { error } = await supabase.from('mitsumori').update({ status }).eq('id', row.id)
+    const patch = { status }
+    if (status === 'accepted' || status === 'declined') {
+      const reason = window.prompt(status === 'declined' ? s.declineReasonPrompt : s.acceptReasonPrompt, '')
+      if (reason === null) return
+      if (reason.trim()) patch.decision_reason = reason.trim().slice(0, 1000)
+    }
+    let { error } = await supabase.from('mitsumori').update(patch).eq('id', row.id)
+    // Older databases without the decision_reason column still get the status change.
+    if (error && patch.decision_reason && /decision_reason/.test(error.message || '')) ({ error } = await supabase.from('mitsumori').update({ status }).eq('id', row.id))
     if (error) return toast.error(error.message)
     if (status === 'accepted' && row.lead_id) {
       await supabase.from('sales_leads').update({ stage: 'won', last_contact_date: today, updated_at: new Date().toISOString() }).eq('id', row.lead_id)
     }
     if (status === 'declined' && row.lead_id) {
-      await supabase.from('sales_leads').update({ stage: 'lost', last_contact_date: today, updated_at: new Date().toISOString() }).eq('id', row.lead_id)
+      await supabase.from('sales_leads').update({ stage: 'lost', ...(patch.decision_reason ? { lost_reason: patch.decision_reason } : {}), last_contact_date: today, updated_at: new Date().toISOString() }).eq('id', row.lead_id)
     }
     toast.success(fill(s.statusChanged, { status: s.quoteStatuses?.[status] || status }))
     if (editingId === row.id) setEditingStatus(status)

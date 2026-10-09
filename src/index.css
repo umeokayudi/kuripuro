@@ -1822,3 +1822,72 @@ body { background: var(--hq-bg); }
 .emp-sheet button[style*="linear-gradient(135deg, rgb(96, 165, 250)"],.emp-sheet button[style*="linear-gradient(135deg, rgb(193, 156, 86)"]{background:#315cf5!important;color:#fff!important}
 .emp-sheet [style*="color: rgb(193, 156, 86)"],.emp-sheet [style*="color: rgb(232, 196, 122)"],.emp-sheet [style*="color: rgb(96, 165, 250)"]{color:#1f46ad!important}
 .emp-sheet [style*="background: rgba(193, 156, 86"],.emp-sheet [style*="background: rgba(96, 165, 250"]{background:#edf2ff!important;border-color:#b9cbfb!important}
+
+/* ===== Sales insights, media KPIs, inbox, routing, work day (v1.0.11) ===== */
+.kpi-tiles-compact{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:8px 0 4px}
+.kpi-tiles-compact .kpi-tile{box-shadow:none;background:var(--surface2);border-color:transparent;padding:12px 13px}
+.kpi-tiles-compact .kpi-tile-value{font-size:clamp(18px,2vw,22px)}
+.kpi-total-row td{font-weight:700;background:var(--surface2)}
+.kpi-board{display:grid;grid-template-columns:repeat(6,minmax(170px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch}
+.kpi-board-col{display:flex;flex-direction:column;gap:8px;min-width:0;padding:10px;border-radius:14px;background:var(--surface2);border-top:3px solid var(--kpi-muted)}
+.kpi-board-followup{border-top-color:#6b8fd6}.kpi-board-quote{border-top-color:var(--kpi-bar)}.kpi-board-negotiation{border-top-color:#7c4fd1}.kpi-board-won{border-top-color:var(--kpi-good)}.kpi-board-lost{border-top-color:var(--kpi-bad)}
+.kpi-board-head{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.kpi-board-head b{font-size:12.5px;color:var(--text)}
+.kpi-board-head span{font-size:12px;font-weight:800;color:var(--text2);background:var(--surface);border-radius:99px;padding:0 7px}
+.kpi-board-head small{margin-left:auto;font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums}
+.kpi-board-card{display:flex;flex-direction:column;gap:3px;padding:9px 10px;border-radius:11px;background:var(--surface);border:1px solid var(--border);min-width:0}
+.kpi-board-card strong{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpi-board-card small{font-size:11px;color:var(--text3);line-height:1.35}
+.kpi-board-card.overdue{border-color:#f3c2bd;box-shadow:inset 3px 0 0 #e5484d}
+.kpi-board-card .sales-chip{margin-top:2px;align-self:flex-start}
+.kpi-quote-text{display:block;font-size:11.5px;color:var(--text2);font-style:italic;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.kpi-board-empty{margin:0;font-size:11.5px;color:var(--text3)}
+.kpi-board-more{align-self:flex-start}
+.kpi-answers{display:flex;flex-direction:column;gap:10px}
+.kpi-answer .kpi-quote-text{margin:2px 0 0 4px}
+.kpi-ai-text{white-space:pre-wrap;line-height:1.55}
+.sales-chip-tag{background:#eef2f7;color:#334155}
+.sales-sentiment-positive.sales-chip-tag,.btn.sales-sentiment-positive.active{background:#e3f4ec;color:#0f7a52;border-color:#bfe5cd}
+.sales-sentiment-negative.sales-chip-tag,.btn.sales-sentiment-negative.active{background:#fde8e6;color:#b42318;border-color:#f3c2bd}
+.sales-sentiment-text-positive{color:#0f7a52!important}.sales-sentiment-text-negative{color:#b42318!important}
+.sales-tag-picker{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.sales-tag-picker .btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.sales-history-response{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0}
+.sales-history-response .sales-chip{margin:0}
+.sales-history-response q{font-size:12.5px;color:var(--text2);font-style:italic}
+.sales-inbox{margin-bottom:14px}
+.sales-inbox-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--border)}
+.sales-inbox-row>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
+.sales-inbox-row .sales-chip{margin:0;align-self:flex-start}
+.sales-inbox-row p{margin:0;font-size:12.5px;color:var(--text2);white-space:pre-wrap}
+.sales-inbox-alert{box-shadow:inset 3px 0 0 #e5484d;padding-left:10px}
+.sales-inbox-praise{box-shadow:inset 3px 0 0 #0f7a52;padding-left:10px}
+.sales-inbox-lead_assigned{box-shadow:inset 3px 0 0 #2f6fd6;padding-left:10px}
+.sales-compose{display:flex;flex-direction:column;gap:8px;margin:6px 0 12px;padding:12px;border-radius:12px;background:var(--surface2)}
+.sales-check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text2)}
+.sales-check input{width:auto}
+.sales-routing{margin-bottom:14px}
+.sales-routing-row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
+.sales-routing-row>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.sales-routing-row small{font-size:12px;color:var(--text2)}
+.sales-routing-row .sales-followup-actions select{width:auto;min-width:150px}
+.sales-ai-pick{color:#5b3fb0!important}
+.sales-hand-note{margin-top:4px;max-width:420px}
+.sales-day-board{margin-bottom:14px}
+.sales-day-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:8px}
+.sales-day-card{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface)}
+.sales-day-card .btn{align-self:flex-start}
+.sales-day-head{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.sales-day-head .sales-chip{margin:0}
+.sales-day-working{border-color:#bfd3f5;box-shadow:inset 3px 0 0 #2f6fd6}
+.sales-day-done{border-color:#bfe5cd;box-shadow:inset 3px 0 0 #0f7a52}
+.sales-day-idle .sales-chip{background:#fff1d6;color:#b54708}
+.sales-my-day{margin-bottom:14px}
+.sales-my-day.working{border-color:#bfd3f5;box-shadow:inset 4px 0 0 #2f6fd6}
+.sales-my-day.done{border-color:#bfe5cd;box-shadow:inset 4px 0 0 #0f7a52}
+.sales-my-day details summary,.sales-row details summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text2);margin-top:6px}
+.sales-day-end{display:flex;flex-direction:column;gap:8px}
+.sales-form-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sales-ai-result{white-space:pre-wrap}
+@media(max-width:1100px){.kpi-board{grid-template-columns:repeat(6,minmax(180px,220px))}}
+@media(max-width:720px){.sales-routing-row,.sales-inbox-row{flex-direction:column}.sales-routing-row .sales-followup-actions,.sales-inbox-row .sales-followup-actions{flex-direction:row;flex-wrap:wrap}.sales-form-grid-3{grid-template-columns:1fr 1fr}}

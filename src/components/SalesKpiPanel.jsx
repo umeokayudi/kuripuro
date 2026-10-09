@@ -3,6 +3,7 @@ import {
   RANGE_KEYS, closingStats, delta, followupHealth, funnel, goalAttainment, leaderboard, monthlySeries,
   periodTotals, pipeline, rangeFor, scopeData, sourceBreakdown,
 } from '../lib/salesKpi'
+import SalesInsightsPanel from './SalesInsightsPanel'
 import { FunnelBars, KpiTile, RangePills, RankBars, StackBar, TrendBars, num, pct, yen } from './SalesKpiParts'
 
 const COPY = {
@@ -24,6 +25,7 @@ const COPY = {
     sources: 'Where leads come from', winRateShort: 'won',
     efficiency: 'Field efficiency', hours: 'Hours worked', perHour: 'Approaches / hour', travel: 'Travel cost', travelPerWin: 'Travel per win', avgDeal: 'Avg. deal / month',
     ranking: 'Seller ranking', seller: 'Seller', inactive: 'inactive',
+    quotesSent: 'Quotes sent', quotesAccepted: 'Approved', acceptance: 'Approval', overdueShort: 'Late follow-ups', meetings: 'Meetings', openLeads2: 'Open clients', reportDays: 'Day reports', message: 'Message',
   },
   ja: {
     title: 'KPI・推移', sub: 'すべて記録された営業活動・連絡・見積・承認済み契約から計算しています。',
@@ -43,13 +45,14 @@ const COPY = {
     sources: 'リードの流入元', winRateShort: '成約',
     efficiency: '活動効率', hours: '稼働時間', perHour: '1時間あたり活動', travel: '交通費', travelPerWin: '成約あたり交通費', avgDeal: '平均月額',
     ranking: '営業ランキング', seller: '担当', inactive: '無効',
+    quotesSent: '見積送付', quotesAccepted: '承認', acceptance: '承認率', overdueShort: '期限超過', meetings: '面談', openLeads2: '進行中', reportDays: '日報', message: 'メッセージ',
   },
 }
 
 const METRIC_FORMAT = { revenue: yen, attainment: pct }
 const METRIC_GOAL = { revenue: 'revenue', leads: 'leads', contacts: 'contacts', approaches: 'approaches', quotes: 'quotes', wins: 'contracts' }
 
-export default function SalesKpiPanel({ data, lang, sellers = null, today, channels = [] }) {
+export default function SalesKpiPanel({ data, lang, sellers = null, today, channels = [], onMessage }) {
   const t = COPY[lang === 'ja' ? 'ja' : 'en']
   const [rangeKey, setRangeKey] = useState('6m')
   const [sellerId, setSellerId] = useState('')
@@ -66,7 +69,7 @@ export default function SalesKpiPanel({ data, lang, sellers = null, today, chann
     // The evolution chart always shows at least 6 months so the trend is visible.
     const chartRange = range.months.length >= 6 ? range : rangeFor('6m', today)
     return {
-      range, cur, prev,
+      range, cur, prev, scoped,
       attainment: goalAttainment(cur, sumGoals(goalsIn(range))),
       prevAttainment: goalAttainment(prev, sumGoals(goalsIn(range.prev))),
       series: monthlySeries(scoped, chartRange.months),
@@ -76,7 +79,7 @@ export default function SalesKpiPanel({ data, lang, sellers = null, today, chann
       health: followupHealth(scoped, today),
       pipe: pipeline(scoped),
       sources: sourceBreakdown(scoped, range, channels).slice(0, 8),
-      board: isAdmin ? leaderboard(data, sellers, range) : [],
+      board: isAdmin ? leaderboard(data, sellers, range, today) : [],
     }
   }, [data, rangeKey, sellerId, today, isAdmin, sellers, channels])
 
@@ -175,13 +178,16 @@ export default function SalesKpiPanel({ data, lang, sellers = null, today, chann
     {isAdmin && <div className="card kpi-card kpi-wide">
       <div className="card-title">{t.ranking} · {t.ranges[rangeKey]}</div>
       <div className="kpi-table-wrap"><table className="kpi-table">
-        <thead><tr><th>{t.seller}</th><th>{t.revenue}</th><th>{t.wins}</th><th>{t.winRate}</th><th>{t.leads}</th><th>{t.contacts}</th><th>{t.approaches}</th><th>{t.attainment}</th></tr></thead>
+        <thead><tr><th>{t.seller}</th><th>{t.approaches}</th><th>{t.contacts}</th><th>{t.meetings}</th><th>{t.quotesSent}</th><th>{t.quotesAccepted}</th><th>{t.acceptance}</th><th>{t.wins}</th><th>{t.winRate}</th><th>{t.revenue}</th><th>{t.openLeads2}</th><th>{t.overdueShort}</th><th>{t.reportDays}</th><th>{t.attainment}</th>{onMessage && <th />}</tr></thead>
         <tbody>{view.board.map(row => <tr key={row.id} className={sellerId === row.id ? 'selected' : ''} onClick={() => setSellerId(sellerId === row.id ? '' : row.id)}>
           <td><b>{row.name}</b>{!row.active && <small> · {t.inactive}</small>}</td>
-          <td>{yen(row.revenue)}</td><td>{row.wins}</td><td>{pct(row.winRate)}</td><td>{row.leads}</td><td>{row.contacts}</td><td>{row.approaches}</td>
+          <td>{row.approaches}</td><td>{row.contacts}</td><td>{row.meetings}</td><td>{row.quotesSent}</td><td>{row.quotesAccepted}</td><td>{pct(row.quoteAcceptance)}</td><td>{row.wins}</td><td>{pct(row.winRate)}</td><td>{yen(row.revenue)}</td><td>{row.openLeads}</td><td className={row.overdue ? 'kpi-bad' : ''}>{row.overdue}</td><td>{row.reportDays}</td>
           <td>{row.attainment == null ? <small className="sales-muted">{t.noGoal}</small> : <span className="kpi-inline-bar"><i style={{ width: `${row.attainment}%` }} /><b>{pct(row.attainment)}</b></span>}</td>
+          {onMessage && <td><button type="button" className="btn btn-sm" onClick={event => { event.stopPropagation(); onMessage(row) }}>{t.message}</button></td>}
         </tr>)}</tbody>
       </table></div>
     </div>}
+
+    <SalesInsightsPanel scoped={view.scoped} range={view.range} today={today} lang={lang} sellers={sellers || []} totals={cur} closing={closing} board={view.board} showSeller={isAdmin && !sellerId} />
   </section>
 }
