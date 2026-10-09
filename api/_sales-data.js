@@ -7,16 +7,22 @@ const LEAD_FIELDS = new Set([
   'decision_maker', 'expected_monthly', 'expected_start', 'competitor', 'notes', 'interest', 'stage', 'lost_reason', 'marketing_channel_id', 'marketing_campaign_id', 'business_card_object_path',
 ])
 
-function safeLead(input, today) {
+function safeLead(input) {
   const out = {}
   for (const [key, value] of Object.entries(input || {})) if (LEAD_FIELDS.has(key)) out[key] = value
   if (out.company_name != null) out.company_name = String(out.company_name).trim().slice(0, 200)
   if (out.marketing_channel_id === '') out.marketing_channel_id = null
   if (out.marketing_campaign_id === '') out.marketing_campaign_id = null
-  out.last_contact_date = today
+  for (const key of ['first_contact_date', 'last_contact_date', 'next_followup_date', 'expected_start']) {
+    if (out[key] === '') out[key] = null
+  }
   out.updated_at = new Date().toISOString()
   return out
 }
+
+const CONTACT_CHANNELS = new Set(['visit', 'phone', 'line', 'email', 'meeting', 'other'])
+const GOAL_FIELDS = ['approaches', 'contacts', 'leads', 'quotes', 'contracts', 'revenue']
+const isDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
 
 function num(v, min = 0) {
   const n = Number(v)
@@ -38,7 +44,7 @@ async function loadDashboard(db, user) {
   const isAdmin = user.role === 'admin'
   const id = user.id
   const scope = q => isAdmin ? q : q.eq('salesperson_id', id)
-  const [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, peopleRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes] = await Promise.all([
+  const [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, peopleRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes] = await Promise.all([
     scope(db.from('sales_leads').select('*').order('updated_at', { ascending: false }).limit(500)),
     scope(db.from('mitsumori').select('id,salesperson_id,lead_id,quote_number,status,total,created_at,company_name,valid_until').order('created_at', { ascending: false }).limit(500)),
     scope(db.from('sales_field_approaches').select('*').order('work_date', { ascending: false }).limit(1000)),
@@ -51,8 +57,10 @@ async function loadDashboard(db, user) {
     db.from('marketing_channels').select('id,name,channel_type,platform,is_active').eq('is_active', true).order('name'),
     db.from('marketing_campaigns').select('id,channel_id,name,objective,status').eq('status', 'active').order('created_at', { ascending: false }),
     isAdmin ? db.from('marketing_spend').select('*').order('spent_on', { ascending: false }).limit(1000) : Promise.resolve({ data: [] }),
+    scope(db.from('sales_touchpoints').select('id,lead_id,salesperson_id,event_type,happened_at,channel,said_by,body,next_followup_date,created_at').order('happened_at', { ascending: false }).limit(3000)),
+    scope(db.from('sales_goals').select('*').gte('period_month', `${Number(todayTokyo().slice(0, 4)) - 1}-01`).order('period_month', { ascending: false })),
   ])
-  const failed = [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes].find(r => r.error)
+  const failed = [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes].find(r => r.error)
   if (failed) throw failed.error
   const leads = leadsRes.data || []
   const quotes = quotesRes.data || []
@@ -94,7 +102,7 @@ async function loadDashboard(db, user) {
     const conversions = relatedLeads.filter(row => row.stage === 'won').length
     return { ...campaign, spend: campaignSpend, leads: relatedLeads.length, conversions, cost_per_lead: relatedLeads.length ? campaignSpend / relatedLeads.length : 0, customer_acquisition_cost: conversions ? campaignSpend / conversions : 0 }
   })
-  return { user, leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend } }
+  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [] }
 }
 
 async function getAction(db, user, action, query = {}) {
@@ -172,7 +180,7 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'save-lead') {
-    const payload = safeLead(body.lead, today)
+    const payload = safeLead(body.lead)
     if (!payload.company_name) return jsonError(res, 400, 'Informe a empresa/restaurante.')
     if (admin && body.salesperson_id) payload.salesperson_id = body.salesperson_id
     if (!admin) payload.salesperson_id = own
@@ -185,9 +193,55 @@ async function postAction(db, user, body, res) {
       if (!data) return jsonError(res, 404, 'Lead não encontrado nesta conta.')
       return { lead: data }
     }
+    if (!payload.first_contact_date) payload.first_contact_date = today
+    if (!payload.last_contact_date) payload.last_contact_date = payload.first_contact_date
     const { data, error } = await db.from('sales_leads').insert(payload).select().single()
     if (error) throw error
     return { lead: data }
+  }
+
+  if (action === 'log-contact') {
+    const input = body.contact || {}
+    const happenedAt = isDay(input.happened_at) ? input.happened_at : today
+    if (happenedAt > today) return jsonError(res, 400, 'A data do contato não pode ser no futuro.')
+    const channel = CONTACT_CHANNELS.has(input.channel) ? input.channel : 'other'
+    const next = input.next_followup_date ? String(input.next_followup_date) : null
+    if (next && (!isDay(next) || next < happenedAt)) return jsonError(res, 400, 'O próximo follow-up deve ser depois do contato.')
+    let leadQuery = db.from('sales_leads').select('id,salesperson_id,stage,last_contact_date,first_contact_date').eq('id', input.lead_id)
+    if (!admin) leadQuery = leadQuery.eq('salesperson_id', own)
+    const { data: lead, error: leadErr } = await leadQuery.maybeSingle()
+    if (leadErr) throw leadErr
+    if (!lead) return jsonError(res, 404, 'Lead não encontrado nesta conta.')
+    const { data: touchpoint, error } = await db.from('sales_touchpoints').insert({
+      lead_id: lead.id,
+      salesperson_id: admin ? (lead.salesperson_id || null) : own,
+      event_type: 'contact',
+      happened_at: happenedAt,
+      channel,
+      said_by: String(user.name || '').slice(0, 120),
+      body: String(input.body || '').slice(0, 3000),
+      next_followup_date: next,
+    }).select().single()
+    if (error) throw error
+    const patch = { next_followup_date: next, updated_at: new Date().toISOString() }
+    if (!lead.last_contact_date || happenedAt >= lead.last_contact_date) patch.last_contact_date = happenedAt
+    if (!lead.first_contact_date || happenedAt < lead.first_contact_date) patch.first_contact_date = happenedAt
+    if (lead.stage === 'approach') patch.stage = 'followup'
+    const { data: updated, error: updateErr } = await db.from('sales_leads').update(patch).eq('id', lead.id).select().single()
+    if (updateErr) throw updateErr
+    return { touchpoint, lead: updated }
+  }
+
+  if (action === 'save-goal') {
+    if (!admin) return jsonError(res, 403, 'Somente admin pode definir metas.')
+    const month = String(body.period_month || '')
+    if (!/^\d{4}-\d{2}$/.test(month)) return jsonError(res, 400, 'Mês inválido.')
+    if (!body.salesperson_id) return jsonError(res, 400, 'Escolha o vendedor.')
+    const row = { salesperson_id: body.salesperson_id, period_month: month, updated_by: own, updated_at: new Date().toISOString() }
+    for (const key of GOAL_FIELDS) row[key] = key === 'revenue' ? num(body.goal?.[key] || 0) : Math.round(num(body.goal?.[key] || 0))
+    const { data, error } = await db.from('sales_goals').upsert(row, { onConflict: 'salesperson_id,period_month' }).select().single()
+    if (error) throw error
+    return { goal: data }
   }
 
   if (action === 'assign-lead') {

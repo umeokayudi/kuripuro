@@ -1132,4 +1132,63 @@ body { background: var(--hq-bg); }
 .marketing-page>.sales-kicker{margin-bottom:4px}
 .sales-setup-note{background:#fffbeb;border-color:#f0d897;color:#77510d}
 .sales-portal input,.sales-portal select,.sales-portal textarea,.sales-admin-page input,.sales-admin-page select,.sales-admin-page textarea,.marketing-page input,.marketing-page select,.marketing-page textarea{min-height:40px;border-radius:10px}
-@media(max-width:760px){.sales-portal-head{align-items:flex-start;flex-direction:column;gap:14px;padding:17px!important;border-radius:16px!important}.sales-portal-head-actions{width:100%;flex-direction:row;align-items:center;justify-content:space-between}.sales-tabs{margin:0 -12px;padding:4px 12px 14px}.sales-tabs button{min-height:42px;padding:9px 13px}.sales-metric{border-radius:14px}.sales-action-row .btn{min-height:40px}}
+@media(max-width:760px){.sales-portal-head{align-items:flex-start;flex-direction:column;gap:14px;padding:17px!important;border-radius:16px!important}.sales-portal-head-actions{width:100%;flex-direction:row;align-items:center;justify-content:space-between}.sales-tabs{margin:0;padding:4px 0 14px}.sales-tabs button{min-height:42px;padding:9px 13px}.sales-metric{border-radius:14px}.sales-action-row .btn{min-height:40px}}
+
+/* Sales CRM: follow-up alerts, contact history, monthly goals */
+.sales-alert-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:12px 16px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+.sales-alert-banner>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sales-alert-banner strong{font-size:13px;color:var(--text)}
+.sales-alert-banner span{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--text2)}
+.sales-alert-banner b{font-weight:700}
+.sales-alert-banner.urgent{background:#fff3f2;border-color:#f3c2bd}
+.sales-alert-banner.warn{background:#fffaeb;border-color:#f0d897}
+.sales-alert-banner.ok{background:#f1fbf5;border-color:#bfe5cd}
+.sales-alert-overdue{color:#b42318}.sales-alert-today{color:#b54708}.sales-alert-stale{color:#93370d}.sales-alert-missing{color:#5d6b82}
+.sales-chip{display:inline-block;margin-top:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.6;background:#eef2f7;color:#4a5870}
+.sales-chip-overdue{background:#fde8e6;color:#b42318}
+.sales-chip-today{background:#fff1d6;color:#b54708}
+.sales-chip-soon{background:#e8efff;color:#2747b8}
+.sales-chip-stale{background:#fdf0e3;color:#93370d}
+.sales-chip-scheduled{background:#e9f7ef;color:#1d7a46}
+.sales-followup-overdue{box-shadow:inset 3px 0 0 #e5484d;padding-left:12px}
+.sales-followup-today{box-shadow:inset 3px 0 0 #f5a524;padding-left:12px}
+.sales-followup-stale{box-shadow:inset 3px 0 0 #d97706;padding-left:12px}
+.sales-followup-actions{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+.sales-filter-pills,.sales-quick-dates{display:flex;flex-wrap:wrap;gap:6px}
+.sales-filter-pills .btn.active,.sales-quick-dates .btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.sales-contact-form{margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface2)}
+.sales-quick-dates{margin:-4px 0 4px}
+.sales-lead-contacts{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.sales-history{margin-top:14px}
+.sales-history-row{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.sales-history-row:last-child{border-bottom:0}
+.sales-history-date{font-size:12px;font-weight:700;color:var(--text2)}
+.sales-history-row strong{display:block;font-size:13px}
+.sales-history-row p{margin:4px 0 0;font-size:13px;color:var(--text2);white-space:pre-wrap;overflow-wrap:anywhere}
+.sales-history-row small{color:var(--text3);font-size:11px}
+.sales-goal-bars{display:grid;gap:10px}
+.sales-goal-bars.compact{gap:8px}
+.sales-gbar-meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text2)}
+.sales-gbar-meta b{color:var(--text);font-size:12px}
+.sales-gbar-track{position:relative;height:8px;margin-top:4px;border-radius:99px;background:#e9edf4;overflow:visible}
+.sales-gbar-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#315cf5,#5b7cfa)}
+.sales-gbar-track.behind i{background:linear-gradient(90deg,#f5a524,#f7b955)}
+.sales-gbar-track.done i{background:linear-gradient(90deg,#1d9a55,#34c26f)}
+.sales-gbar-track em{position:absolute;top:-3px;width:2px;height:14px;background:#7b879a;border-radius:2px}
+.sales-goal-inputs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 10px}
+.sales-goal-inputs label{display:grid;gap:3px;font-size:11px;color:var(--text3)}
+.sales-goal-inputs input{width:100%;min-height:36px;padding:6px 8px;border:1px solid #e0e6ef;border-radius:8px;font-size:14px}
+.sales-alerts-section{margin-bottom:14px}
+.sales-period-row{margin:4px 0 10px}
+.sales-period-filter input[type=month]{min-height:38px;padding:6px 10px;border:1px solid #e1e7f0;border-radius:10px}
+@media (max-width:760px){
+  .sales-alert-banner{flex-direction:column;align-items:stretch}
+  .sales-followup{flex-direction:column;align-items:stretch}
+  .sales-followup-actions{flex-direction:row}
+  .sales-followup-actions .btn{flex:1;min-height:42px}
+  .sales-history-row{grid-template-columns:minmax(0,1fr)}
+  .sales-contact-form input,.sales-contact-form select,.sales-contact-form textarea{font-size:16px}
+}
+.sales-admin-page .sales-row > select{width:auto;flex:0 0 180px;max-width:45%}
+.sales-admin-page .sales-section-head > select{width:auto;max-width:240px}
+@media (max-width:760px){.sales-admin-page .sales-row{flex-direction:column;align-items:stretch}.sales-admin-page .sales-row > select{max-width:none;flex:none;width:100%}.sales-goal-inputs input{font-size:16px}}
