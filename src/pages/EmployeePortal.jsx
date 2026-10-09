@@ -41,6 +41,8 @@ import {
 import { tokyoToday, recentTokyoDates } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
+import AvailabilityPlanner, { PlanAlert } from '../components/AvailabilityPlanner'
+import { planningAlert } from '../lib/availability'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -110,6 +112,7 @@ export default function EmployeePortal() {
   const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
   const [empData, setEmpData] = useState(null)
+  const [weekPlans, setWeekPlans] = useState([])
   const [selectedJob, setSelectedJob] = useState(null)
   const [claimForm, setClaimForm] = useState({ job_id:'', amount:'', route:'', description:'' })
   const [claimPhoto, setClaimPhoto] = useState(null)
@@ -289,6 +292,12 @@ export default function EmployeePortal() {
     loadMessages()
     awardBadges(allVisible, bdg.data||[])
     loadStatement()
+    loadWeekPlans()
+  }
+
+  const loadWeekPlans = async () => {
+    const { data, error } = await supabase.from('employee_week_plans').select('week_start,submitted_at').eq('employee_id', user.id).gte('week_start', tokyoToday()).limit(30)
+    if (!error) setWeekPlans(data || [])
   }
 
   const loadStatement = async () => {
@@ -973,6 +982,7 @@ export default function EmployeePortal() {
     )
   }
 
+  const planAlert = planningAlert(weekPlans, today)
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
   const menuItems = [
     {key:'home',icon:'🏠',label:e.dashboard},
@@ -985,6 +995,7 @@ export default function EmployeePortal() {
     {key:'equipment',icon:'🧰',label:e.equipment},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
+    {key:'availability',icon:'🗓',label:e.availability,badge:planAlert?1:0},
     {key:'achievements',icon:'🏆',label:e.achievements},
   ]
 
@@ -998,10 +1009,13 @@ export default function EmployeePortal() {
   const quickActions = [
     !activeJob&&{icon:'✓',label:e.pastServiceButton,hint:e.pastServiceHint,run:()=>openPastService()},
     {icon:'＋',label:e.addService,hint:e.addServiceHint,run:openAddService},
+    {icon:'🗓',label:e.availability,hint:e.availabilityHint,run:()=>goToTab('availability')},
     {icon:'🚃',label:e.transport,hint:e.transportHint,run:()=>goToTab('transport')},
     {icon:'🧰',label:e.equipment,hint:e.equipmentHint,run:()=>goToTab('equipment')},
     {icon:'✉',label:e.chat,hint:e.chatHint,run:()=>goToTab('chat')},
   ].filter(Boolean)
+
+  const currentTabLabel = menuItems.find(m=>m.key===tab)?.label
 
   const scrollToActiveJob = () => {
     setTimeout(() => {
@@ -1150,8 +1164,6 @@ export default function EmployeePortal() {
         <div className="emp-header-top">
           <div className="emp-header-identity">
             <div className="emp-brand"><span className="emp-kp-mark">KP</span><span>KURIPURO BY JBM</span></div>
-            {tab!=='home'&&<div className="emp-name">{user.name.split(' ')[0]}</div>}
-            {tab!=='home'&&<div className="emp-header-date">{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>}
           </div>
           <div className="emp-header-actions">
             <div className={`emp-score-card ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}>
@@ -1169,18 +1181,22 @@ export default function EmployeePortal() {
             </button>
           </div>
         </div>
-        {tab!=='home'&&<div className="emp-clock-row" aria-label={clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}>
-          <span className="emp-clock-time">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
-          <span className="emp-clock-seconds">:{String(clock.getSeconds()).padStart(2,'0')}</span>
-        </div>}
+        {/* Same greeting header on every screen */}
+        <div className="ex-greet emp-hello">
+          <div>
+            <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
+            <p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}{tab!=='home'&&currentTabLabel?<b> · {currentTabLabel}</b>:null}</p>
+          </div>
+          <div><span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span></div>
+        </div>
         {!isOnline&&<div className="emp-offline-banner">
           ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div className={`emp-status-chip ${gpsStatus.includes('✅')?'is-good':gpsStatus.includes('🚫')?'is-bad':''}`}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
-          {tab!=='home'&&spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
-          {tab!=='home'&&unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#f87171',cursor:'pointer',fontWeight:600}}>💬 {unreadMsgs}</div>}
+          {planAlert&&tab!=='availability'&&<div onClick={()=>setTab('availability')} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
+          {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
         </div>
       </div>
 
@@ -1214,11 +1230,6 @@ export default function EmployeePortal() {
         {/* HOME */}
         {tab==='home'&&(
           <div className="emp-home ex-home">
-            {/* Greeting + live clock */}
-            <div className="ex-greet">
-              <div><h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
-              <span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
-            </div>
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
@@ -1266,6 +1277,8 @@ export default function EmployeePortal() {
                 {nextShiftJob&&<div className="emp-next-job"><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</span></div>}
               </div>
             )}
+
+            <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>goToTab('availability')} />
 
             {/* Summary cards (swipe sideways) */}
             <div className="ex-cards" role="list">
@@ -1763,6 +1776,10 @@ export default function EmployeePortal() {
         )}
 
         {/* ACHIEVEMENTS */}
+        {tab==='availability'&&(
+          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
+        )}
+
         {tab==='achievements'&&(
           <div>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:14}}>{fill(e.badgesEarned,{earned:badges.length,total:BADGE_DEFS.length})}</div>
