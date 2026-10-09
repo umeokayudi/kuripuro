@@ -3,7 +3,8 @@ import { apiPost } from '../lib/apiFetch'
 import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
 import { loadChatHistory, saveChatHistory } from '../lib/aiChatHistory'
-import { useLang } from '../hooks/useLang'
+import { useLang, fill } from '../hooks/useLang'
+import { useAuth } from '../hooks/useAuth'
 import { prepareImageForUpload } from '../lib/imageUpload'
 
 function formatText(text) {
@@ -33,11 +34,17 @@ const SendIcon = () => <svg {...svgProps} strokeWidth={2.4}><path d="M12 19V5" /
 const ImageIcon = () => <svg {...svgProps}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-9 9" /></svg>
 const CameraIcon = () => <svg {...svgProps}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
 const VideoIcon = () => <svg {...svgProps}><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3" /></svg>
+const CopyIcon = () => <svg {...svgProps} width={14} height={14}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
+const RefreshIcon = () => <svg {...svgProps} width={14} height={14}><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 4v5h-5" /></svg>
 const ClipIcon = () => <svg {...svgProps}><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" /></svg>
 
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0 }) {
   const { t, lang } = useLang()
+  const { user } = useAuth() || {}
   const ai = t.ai || {}
+  const firstName = (mode === 'employee' ? employeeName : user?.name || '').split(' ')[0]
+  const cards = (suggestions.length ? suggestions : (mode === 'employee' ? ai.employeeSuggestions : ai.adminSuggestions) || []).slice(0, compact ? 4 : 6)
+  const [copiedIndex, setCopiedIndex] = useState(null)
   const welcome = useMemo(() => (
     [{ role: 'assistant', content: (mode === 'employee' ? ai.employeeWelcome : ai.adminWelcome) || '' }]
   ), [mode, ai.employeeWelcome, ai.adminWelcome])
@@ -213,6 +220,33 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     }
   }
 
+  const regenerate = async () => {
+    if (loading) return
+    const current = messagesRef.current
+    const lastUser = current.map(m => m.role).lastIndexOf('user')
+    if (lastUser < 0) return
+    const request = current.slice(0, lastUser + 1)
+    retryRequestRef.current = request
+    setMessages(request)
+    setLoading(true)
+    try {
+      const data = await callAPI(request)
+      setMessages(m => [...m, { role: 'assistant', content: data.reply, toolLog: data.toolLog }])
+      if (voiceReplies) speakReply(data.reply)
+    } catch (error) {
+      setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${error.message}`, isError: true }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyMessage = async (text, index) => {
+    try { await navigator.clipboard.writeText(text); setCopiedIndex(index); setTimeout(() => setCopiedIndex(null), 1500) } catch {}
+  }
+
+  const lastAssistant = messages.map(m => m.role).lastIndexOf('assistant')
+  const isEmpty = messages.length <= 1 && !loading
+
   const userBubble = mode === 'employee'
     ? 'linear-gradient(135deg,#7651dc,#5a38bd)'
     : dark ? 'linear-gradient(135deg,#1a3a5c,#0f2540)' : 'var(--navy)'
@@ -224,74 +258,86 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     <div className={`ai-chat-panel${compact ? ' ai-chat-panel-compact' : ''}`}>
       <div className={`ai-chat-header${compact ? ' ai-chat-header-compact' : ''}${dark ? ' ai-chat-header-dark' : ''}`}>
         <div className="ai-chat-identity">
-          <div className="ai-avatar">✦</div>
+          <span className="ai-orb ai-orb-sm" aria-hidden="true" />
           <div>
             <div className="ai-chat-title">{mode === 'employee' ? ai.employeeTitle : 'Kuripuro AI'}</div>
-            {!compact && <div className="ai-chat-subtitle">Seu centro de comando inteligente</div>}
+            {!compact && <div className="ai-chat-subtitle">{ai.subtitle}</div>}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).length > 0 && (
-            <select value={voiceName} onChange={e => setVoiceName(e.target.value)} title="AI voice"
-              style={{ fontSize: 11, padding: '5px 8px', borderRadius: 8, border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit', maxWidth: 130 }}>
+        <div className="ai-chat-tools">
+          {!compact && voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).length > 0 && (
+            <select className="ai-voice-select" value={voiceName} onChange={e => setVoiceName(e.target.value)} title="AI voice">
               {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).map(v => (
                 <option key={v.name} value={v.name}>{v.name.split(' ')[0]}</option>
               ))}
             </select>
           )}
-          <button onClick={() => setVoiceReplies(v => !v)} title="Ler respostas em voz alta"
-            style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: voiceReplies ? '#c19c56' : dark ? 'rgba(255,255,255,0.06)' : '#fff', color: voiceReplies ? '#0a1929' : dark ? '#fff' : 'var(--text)', borderRadius: 10, padding: '5px 9px', cursor: 'pointer', fontSize: 12 }}>
+          <button type="button" className={`ai-tool-btn${voiceReplies ? ' is-on' : ''}`} onClick={() => setVoiceReplies(v => !v)} title={ai.readAloud} aria-label={ai.readAloud} aria-pressed={voiceReplies}>
             {voiceReplies ? '🔊' : '🔇'}
           </button>
-          <button onClick={() => setCallOpen(true)} title={ai.call}
-            style={{ border: 'none', background: 'linear-gradient(135deg,#4ade80,#22c55e)', color: '#0a1929', borderRadius: 10, padding: '5px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-            📞 {ai.call}
+          <button type="button" className="ai-voice-btn" onClick={() => setCallOpen(true)} title={ai.call}>
+            <span className="ai-orb ai-orb-xs" aria-hidden="true" />{ai.voiceMode}
           </button>
         </div>
       </div>
 
       {callOpen && <AICallMode onClose={() => setCallOpen(false)} sendToAI={sendFromCall} />}
 
-      {!compact && messages.length <= 1 && suggestions.length > 0 && (
-        <div className="ai-suggestions">
-          {suggestions.map((suggestion, i) => (
-            <button type="button" key={i} onClick={() => pickSuggestion(suggestion.prompt)} className="ai-suggestion">
-              <span className="ai-suggestion-icon">{suggestion.icon || '✦'}</span>
-              <span><strong>{suggestion.title}</strong><small>{suggestion.prompt}</small></span>
-            </button>
-          ))}
+      {isEmpty ? (
+        <div className="ai-hero">
+          <span className="ai-orb ai-orb-lg" aria-hidden="true" />
+          <p className="ai-hero-hi">{firstName ? fill(ai.hello, { name: firstName }) : ai.helloNoName}</p>
+          <h2>{ai.howHelp}</h2>
+          <p className="ai-hero-sub">{mode === 'employee' ? ai.heroSubEmployee : ai.heroSubAdmin}</p>
+          {cards.length > 0 && (
+            <div className="ai-cards">
+              {cards.map((card, i) => (
+                <button type="button" key={i} className="ai-card" onClick={() => pickSuggestion(card.prompt)}>
+                  <strong><span className="ai-card-icon">{card.icon || '✦'}</span>{card.title}</strong>
+                  <small>{card.hint || card.prompt}</small>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
-
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: compact ? '0 12px' : '0 4px 0 0' }}>
+      ) : (
+      <div className="ai-thread" style={{ padding: compact ? '0 12px' : '0 4px 0 0' }}>
         {messages.map((m, i) => (
-          <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%' }}>
-            <div style={{
-              background: m.role === 'user' ? userBubble : botBubble,
-              color: m.role === 'user' ? '#fff' : botColor,
-              borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-              padding: '10px 14px', fontSize: 13.5, lineHeight: 1.5,
-              border: m.role === 'user' ? 'none' : botBorder,
-            }}>
-              {formatText(m.content)}
-              {m.attachments?.length > 0 && <div className="ai-attachment-list">{m.attachments.map((file, j) => <span key={j}>📎 {file.name}</span>)}</div>}
-              {m.isError && i === messages.length - 1 && <button type="button" className="ai-retry-button" onClick={retryLastRequest} disabled={loading}>{lang === 'ja' ? '↻ 再試行' : '↻ Tentar novamente'}</button>}
-              {m.toolLog?.length > 0 && (
-                <details style={{ marginTop: 6 }}>
-                  <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {m.toolLog.length} consulta(s)</summary>
-                  {m.toolLog.map((t, j) => (
-                    <div key={j} style={{ fontSize: 10, color: t.ok ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
-                      {t.ok ? '✓' : '✗'} {t.name}
-                    </div>
-                  ))}
-                </details>
+          <div key={i} className={`ai-msg ${m.role === 'user' ? 'is-user' : 'is-bot'}`}>
+            {m.role !== 'user' && <span className="ai-orb ai-orb-xs ai-msg-avatar" aria-hidden="true" />}
+            <div className="ai-msg-body">
+              <div className="ai-bubble" style={{
+                background: m.role === 'user' ? userBubble : botBubble,
+                color: m.role === 'user' ? '#fff' : botColor,
+                border: m.role === 'user' ? 'none' : botBorder,
+              }}>
+                {formatText(m.content)}
+                {m.attachments?.length > 0 && <div className="ai-attachment-list">{m.attachments.map((file, j) => <span key={j}>📎 {file.name}</span>)}</div>}
+                {m.isError && i === messages.length - 1 && <button type="button" className="ai-retry-button" onClick={retryLastRequest} disabled={loading}>{lang === 'ja' ? '↻ 再試行' : '↻ Tentar novamente'}</button>}
+                {m.toolLog?.length > 0 && (
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {fill(ai.toolQueries || '{n}', { n: m.toolLog.length })}</summary>
+                    {m.toolLog.map((t, j) => (
+                      <div key={j} style={{ fontSize: 10, color: t.ok ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
+                        {t.ok ? '✓' : '✗'} {t.name}
+                      </div>
+                    ))}
+                  </details>
+                )}
+              </div>
+              {m.role === 'assistant' && i > 0 && !m.isError && (
+                <div className="ai-msg-actions">
+                  {i === lastAssistant && <button type="button" onClick={regenerate} disabled={loading}><RefreshIcon />{ai.regenerate}</button>}
+                  <button type="button" onClick={() => copyMessage(m.content, i)}><CopyIcon />{copiedIndex === i ? ai.copied : ai.copy}</button>
+                </div>
               )}
             </div>
           </div>
         ))}
-        {loading && <div style={{ alignSelf: 'flex-start', fontSize: 12, opacity: 0.5, padding: '8px 12px' }}>{ai.thinking}</div>}
+        {loading && <div className="ai-msg is-bot"><span className="ai-orb ai-orb-xs ai-msg-avatar is-thinking" aria-hidden="true" /><div className="ai-typing" aria-label={ai.thinking}><i /><i /><i /></div></div>}
         <div ref={bottomRef} />
       </div>
+      )}
 
       <>
         <input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={e => { addSelectedFiles(e.target.files); e.target.value = '' }} />

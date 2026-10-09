@@ -62,6 +62,7 @@ export default function EmployeePortal() {
   const e = tr.employee
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [quickOpen, setQuickOpen] = useState(false)
   const [jobs, setJobs] = useState([])
   const [allJobs, setAllJobs] = useState([])
   const [spotJobs, setSpotJobs] = useState([])
@@ -946,11 +947,19 @@ export default function EmployeePortal() {
   ]
 
   const bottomTabs = [
-    {key:'home',label:e.home,icon:'○'},
+    {key:'home',label:e.home,icon:'⌂'},
     {key:'shift',label:e.shift,icon:'▶'},
+    {key:'quick'},
     {key:'salary',label:e.salary,icon:'¥'},
     {key:'ai',label:e.ai,icon:'✦'},
   ]
+  const quickActions = [
+    !activeJob&&{icon:'✓',label:e.pastServiceButton,hint:e.pastServiceHint,run:()=>openPastService()},
+    {icon:'＋',label:e.addService,hint:e.addServiceHint,run:openAddService},
+    {icon:'🚃',label:e.transport,hint:e.transportHint,run:()=>goToTab('transport')},
+    {icon:'🧰',label:e.equipment,hint:e.equipmentHint,run:()=>goToTab('equipment')},
+    {icon:'✉',label:e.chat,hint:e.chatHint,run:()=>goToTab('chat')},
+  ].filter(Boolean)
 
   const scrollToActiveJob = () => {
     setTimeout(() => {
@@ -1114,8 +1123,8 @@ export default function EmployeePortal() {
         <div className="emp-header-top">
           <div className="emp-header-identity">
             <div className="emp-brand"><span className="emp-kp-mark">KP</span><span>KURIPURO BY JBM</span></div>
-            <div className="emp-name">{user.name.split(' ')[0]}</div>
-            <div className="emp-header-date">{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
+            {tab!=='home'&&<div className="emp-name">{user.name.split(' ')[0]}</div>}
+            {tab!=='home'&&<div className="emp-header-date">{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>}
           </div>
           <div className="emp-header-actions">
             <div className={`emp-score-card ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}>
@@ -1133,18 +1142,18 @@ export default function EmployeePortal() {
             </button>
           </div>
         </div>
-        <div className="emp-clock-row" aria-label={clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}>
+        {tab!=='home'&&<div className="emp-clock-row" aria-label={clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}>
           <span className="emp-clock-time">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
           <span className="emp-clock-seconds">:{String(clock.getSeconds()).padStart(2,'0')}</span>
-        </div>
+        </div>}
         {!isOnline&&<div className="emp-offline-banner">
           ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div className={`emp-status-chip ${gpsStatus.includes('✅')?'is-good':gpsStatus.includes('🚫')?'is-bad':''}`}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
-          {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
-          {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#f87171',cursor:'pointer',fontWeight:600}}>💬 {unreadMsgs}</div>}
+          {tab!=='home'&&spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
+          {tab!=='home'&&unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#f87171',cursor:'pointer',fontWeight:600}}>💬 {unreadMsgs}</div>}
         </div>
       </div>
 
@@ -1177,182 +1186,166 @@ export default function EmployeePortal() {
 
         {/* HOME */}
         {tab==='home'&&(
-          <div className="emp-home">
-            <section className="emp-action-panel" aria-label={e.quickActions}>
-              <div className="emp-action-heading"><div><span>{e.workspace}</span><strong>{e.quickActions}</strong></div><span className="emp-action-live">{isOnline ? e.online : e.offline}</span></div>
-              <div className="emp-action-grid">
-                <button type="button" className="emp-action-tile emp-action-ai" onClick={()=>goToTab('ai')}><span>✦</span><strong>{e.ai}</strong><small>{e.aiHint}</small></button>
-                <button type="button" className="emp-action-tile" onClick={()=>goToTab('calendar')}><span>▦</span><strong>{e.calendar}</strong><small>{e.calendarHint}</small></button>
-                <button type="button" className="emp-action-tile" onClick={()=>goToTab('salary')}><span>¥</span><strong>{e.salary}</strong><small>{e.salaryHint}</small></button>
-                <button type="button" className="emp-action-tile" onClick={()=>goToTab('chat')}><span>✉</span><strong>{e.chat}</strong><small>{unreadMsgs ? fill(e.unreadMessages,{count:unreadMsgs}) : e.chatHint}</small></button>
-              </div>
-            </section>
-            {/* Active job banner */}
-            {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:isStaleActiveJob(activeJob,today,elapsed)?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${isStaleActiveJob(activeJob,today,elapsed)?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div>
-                  <div style={{fontSize:10,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:3}}>
-                    ● {isStaleActiveJob(activeJob,today,elapsed)?e.staleShiftTitle:e.activeShiftTitle}
-                  </div>
-                  <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.split(' —')[0]}</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>
-                    {activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:''}{e.tapToFinish}
-                  </div>
-                </div>
-                <div style={{fontSize:isStaleActiveJob(activeJob,today,elapsed)?14:28,fontWeight:700,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontFamily:'monospace',textAlign:'right',maxWidth:120}}>
-                  {isStaleActiveJob(activeJob,today,elapsed)?formatShiftElapsed(elapsed,lang):fmt(elapsed)}
-                </div>
-              </div>
-            </div>}
+          <div className="emp-home ex-home">
+            {/* Greeting + live clock */}
+            <div className="ex-greet">
+              <div><h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
+              <span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
+            </div>
 
-            {!activeJob&&(
-              <button
-                type="button"
-                onClick={()=>openPastService()}
-                className="emp-past-service-button"
-                style={{width:'100%',padding:'14px 16px',marginBottom:12,borderRadius:16,border:'1px solid rgba(193,156,86,0.35)',background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(232,196,122,0.08))',color:'#e8c47a',fontSize:14,fontWeight:800,cursor:'pointer',textAlign:'left'}}
-              >
-                ✓ {e.pastServiceButton}
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',fontWeight:500,marginTop:4}}>{e.pastServiceHint}</div>
-              </button>
-            )}
-
-            {/* Today shift — pendente */}
-            {todayPendingJobs.length>0&&!activeJob&&(
-              <div className="emp-today-shift-card" onClick={()=>setTab('shift')}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 {e.todayShift.toUpperCase()}</div>
-                  {(()=>{
-                    const nj=todayPendingJobs.find(j=>j.status==='assigned')
-                    if(!nj) return null
-                    const nd=new Date(nj.scheduled_date+'T'+(nj.scheduled_time||'00:30')+':00')
-                    const diffMs=nd-new Date()
-                    if(diffMs<0) return null
-                    const diffH=Math.floor(diffMs/3600000)
-                    const diffM=Math.floor((diffMs%3600000)/60000)
-                    return <div style={{fontSize:11,color:'#60a5fa',fontWeight:600}}>⏰ {diffH>0?diffH+'h ':''}{diffM}m {e.toStart}</div>
-                  })()}
-                </div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} {e.locations}</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}</div>
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginBottom:12}}>⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
-                <div style={{height:5,background:'rgba(255,255,255,0.1)',borderRadius:3,overflow:'hidden',marginBottom:10}}>
-                  <div style={{height:'100%',width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%',background:'linear-gradient(90deg,#c19c56,#e8c47a)',borderRadius:3,transition:'width 0.4s'}} />
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div style={{display:'flex',gap:4}}>
-                    {todayJobs.slice(0,8).map((j,i)=><div key={i} style={{width:8,height:8,borderRadius:'50%',background:j.status==='completed'?'#4ade80':j.status==='in_progress'?'#fbbf24':'rgba(255,255,255,0.2)'}} />)}
-                    {todayJobs.length>8&&<span style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginLeft:2}}>+{todayJobs.length-8}</span>}
-                  </div>
-                  <div style={{fontSize:13,fontWeight:600,color:'#c19c56'}}>{e.startArrow}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Turno de hoje concluído */}
-            {todayAllDone&&!activeJob&&(
-              <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:'1px solid rgba(74,222,128,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
-                <div style={{fontSize:10,color:'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:8}}>✅ {e.todayShiftDone}</div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} {e.locations}</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{e.tapToReview}</div>
-                {nextShiftJob&&nextShiftJob.scheduled_date>today&&(
-                  <div style={{fontSize:11,color:'#60a5fa',marginTop:4}}>{fill(e.nextShift,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
-                )}
-              </div>
-            )}
-
-            {/* Countdown to next upcoming job */}
-            {todayJobs.length===0&&nextShiftJob&&!activeJob&&(()=>{
-              const nextDate = new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')
-              const diffMs = nextDate - new Date()
-              const diffH = Math.floor(diffMs/3600000)
-              const diffM = Math.floor((diffMs%3600000)/60000)
-              if (diffMs < 0) return null
+            {/* Check-in card with the map of the next location */}
+            {(()=>{
+              const mapJob = activeJob || todayPendingJobs[0] || null
+              if (!mapJob) return null
+              const place = (mapJob.title||'').split(' —')[0]
+              const query = mapJob.address && !/^https?:\/\//i.test(mapJob.address.trim()) ? mapJob.address : `${mapJob.client_name||place} Tokyo`
+              const stale = activeJob && isStaleActiveJob(activeJob,today,elapsed)
               return (
-                <div style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12}}>
-                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>⏰ {e.nextShiftLabel.toUpperCase()}</div>
-                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>{fill(e.timeAway,{time:diffH>0?`${diffH}h ${diffM}m`:`${diffM}m`})}</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>{nextShiftJob.title.split(' —')[0]} · {nextShiftJob.scheduled_date} {nextShiftJob.scheduled_time}</div>
-                </div>
+                <section className={`ex-checkin${activeJob?' is-active':''}${stale?' is-stale':''}`}>
+                  <div className="ex-map">
+                    <iframe title={place} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=15&output=embed`} />
+                    <button type="button" className="ex-checkin-btn" onClick={()=>goToTab('shift')}>
+                      <span className="ex-checkin-icon" aria-hidden="true">{activeJob?'■':'⌖'}</span>{activeJob?e.checkOut:e.checkIn}
+                    </button>
+                  </div>
+                  <button type="button" className="ex-checkin-info" onClick={()=>goToTab('shift')}>
+                    <div>
+                      <small>{activeJob?(stale?e.staleShiftTitle:e.activeShiftTitle):e.nextLocation}</small>
+                      <strong>{place}</strong>
+                      <span>{activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${mapJob.scheduled_time||'—'} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
+                    </div>
+                    {activeJob?<b className="ex-timer">{stale?formatShiftElapsed(elapsed,lang):fmt(elapsed)}</b>:(()=>{
+                      const nd=new Date(mapJob.scheduled_date+'T'+(mapJob.scheduled_time||'00:30')+':00')
+                      const diffMs=nd-new Date()
+                      if(diffMs<0) return <b className="ex-go">›</b>
+                      const diffH=Math.floor(diffMs/3600000), diffM=Math.floor((diffMs%3600000)/60000)
+                      return <b className="ex-countdown">{diffH>0?diffH+'h ':''}{diffM}m<small>{e.toStart}</small></b>
+                    })()}
+                  </button>
+                </section>
               )
             })()}
 
-            {/* No jobs today */}
+            {/* No shift today */}
             {todayJobs.length===0&&!activeJob&&(
               <div className="emp-no-shift-card">
                 <div className="emp-empty-icon">☀</div>
                 <div className="emp-empty-kicker">{e.todayShift}</div>
                 <div className="emp-empty-title">{e.noShiftToday}</div>
-                {nextShiftJob&&<div className="emp-empty-description">{fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>}
+                {nextShiftJob&&(()=>{
+                  const diffMs=new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')-new Date()
+                  return <div className="emp-empty-description">{diffMs>0&&diffMs<48*3600000?fill(e.timeAway,{time:Math.floor(diffMs/3600000)>0?`${Math.floor(diffMs/3600000)}h ${Math.floor((diffMs%3600000)/60000)}m`:`${Math.floor((diffMs%3600000)/60000)}m`}):fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
+                })()}
                 {nextShiftJob&&<div className="emp-next-job"><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</span></div>}
-                <button type="button" onClick={()=>setTab('calendar')} className="emp-outline-button">{e.calendar} ›</button>
               </div>
             )}
 
-            {/* Unread messages banner */}
-            
-            {/* Next payment */}
-            {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
-              <div onClick={()=>setTab('salary')} style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div>
-                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>💴 {e.nextPayment.toUpperCase()}</div>
-                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>¥{Number(payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0].amount).toLocaleString()}</div>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0].payment_date}</div>
-                </div>
-                <div style={{fontSize:14,color:'#60a5fa'}}>›</div>
-              </div>
-            )}
-
-            {/* Stats */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
-              {[['📋',salaryData?.jobs||0,e.statJobs],['⏱',(salaryData?.hours||0)+'h',e.statHours],['💴','¥'+(salaryData?.total||0).toLocaleString(),e.statEarned]].map(([icon,v,l])=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 8px',textAlign:'center'}}>
-                  <div style={{fontSize:18,marginBottom:3}}>{icon}</div>
-                  <div style={{fontSize:14,fontWeight:700,color:'#fff'}}>{v}</div>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:1,textTransform:'uppercase',letterSpacing:0.5}}>{l}</div>
-                </div>
-              ))}
+            {/* Summary cards (swipe sideways) */}
+            <div className="ex-cards" role="list">
+              {todayJobs.length>0&&(
+                <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('shift')}>
+                  <div className="ex-card-head"><strong>{todayAllDone?e.todayShiftDone:e.todayShift}</strong><span className="ex-card-icon">▶</span></div>
+                  <div className="ex-card-big">{todayJobs.length} <small>{e.locations}</small></div>
+                  <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
+                  <div className="ex-progress"><i className="is-green" style={{width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%'}} /><i style={{width:(todayJobs.filter(j=>j.status==='in_progress').length/todayJobs.length*100)+'%'}} /></div>
+                  <span className="ex-pill">{todayAllDone?e.tapToReview:e.startArrow}</span>
+                </button>
+              )}
+              <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('salary')}>
+                <div className="ex-card-head"><strong>{e.workedHours}</strong><span className="ex-card-icon">⏱</span></div>
+                <div className="ex-card-big">{salaryData?.hours||0}h <small>{e.thisMonth}</small></div>
+                <div className="ex-card-sub">{salaryData?.jobs||0} {e.statJobs.toLowerCase()} · ¥{(salaryData?.total||0).toLocaleString()}</div>
+                {salaryData&&salaryData.fixedMax>0?(
+                  <div className="ex-progress"><i className="is-green" style={{width:Math.min((salaryData.base/salaryData.fixedMax)*100,100)+'%'}} /></div>
+                ):<div className="ex-progress"><i style={{width:Math.min(((salaryData?.workedDays||0)/26)*100,100)+'%'}} /></div>}
+                <span className="ex-pill">{e.viewSalary}</span>
+              </button>
+              {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(()=>{
+                const next=payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0]
+                return (
+                  <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('salary')}>
+                    <div className="ex-card-head"><strong>{e.nextPayment}</strong><span className="ex-card-icon">¥</span></div>
+                    <div className="ex-card-big">¥{Number(next.amount).toLocaleString()}</div>
+                    <div className="ex-card-sub">{next.payment_date}</div>
+                    <span className="ex-pill">{e.viewSalary}</span>
+                  </button>
+                )
+              })()}
             </div>
             {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&!(empData.salary_type==='fixed'&&Number(empData.fixed_salary||0)===0)&&(
-              <div style={{background:'rgba(251,191,36,0.08)',border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,padding:'10px 12px',marginBottom:12,fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>
-                ⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}
-              </div>
+              <div className="ex-warning">⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}</div>
             )}
 
-            {/* Salary ring progress */}
-            {salaryData&&salaryData.fixedMax>0&&(
-              <div style={S.card}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{e.monthlySalary}</span>
-                  <span style={{fontSize:14,fontWeight:800,color:'#c19c56'}}>¥{salaryData.base.toLocaleString()} <span style={{fontSize:10,color:'rgba(255,255,255,0.2)'}}>/ ¥{salaryData.fixedMax.toLocaleString()}</span></span>
+            {/* Pending requests + notifications */}
+            {(()=>{
+              const pendingClaims=claims.filter(c=>c.status==='pending').length
+              const pendingEquipment=equipmentRequests.filter(r=>['pending','requested'].includes(r.status)).length
+              const notifications=unreadMsgs+spotJobs.length
+              return (
+                <div className="ex-duo">
+                  <button type="button" className="ex-tile" onClick={()=>goToTab(pendingClaims||!pendingEquipment?'transport':'equipment')}>
+                    <span>{e.pendingRequests}</span>
+                    <strong>{pendingClaims+pendingEquipment}</strong>
+                    <small>{fill(e.pendingBreakdown,{transport:pendingClaims,equipment:pendingEquipment})}</small>
+                  </button>
+                  <button type="button" className="ex-tile is-blue" onClick={()=>goToTab(spotJobs.length&&!unreadMsgs?'spots':'chat')}>
+                    <span>{e.notifications}</span>
+                    <b aria-hidden="true">🔔</b>
+                    <small>{fill(e.unreadCount,{n:notifications})}</small>
+                  </button>
                 </div>
-                <div style={{height:6,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
-                  <div style={{height:'100%',width:Math.min((salaryData.base/salaryData.fixedMax)*100,100)+'%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',transition:'width 0.6s'}} />
-                </div>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{fill(e.daysProjected,{days:salaryData.workedDays,rate:salaryData.dailyRate.toLocaleString(),projected:(salaryData.projected||0).toLocaleString()})}</div>
-              </div>
-            )}
+              )
+            })()}
 
-            {/* Score */}
-            <div style={S.card}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{e.performance}</span><span style={{fontSize:15,fontWeight:800,color:scoreColor(empScore)}}>{empScore}/100</span></div>
-              <div style={{height:5,background:'rgba(255,255,255,0.06)',borderRadius:3,overflow:'hidden'}}><div style={{height:'100%',width:empScore+'%',borderRadius:3,background:scoreColor(empScore)}} /></div>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',marginTop:4}}>{empScore>=90?`🌟 ${e.scoreExcellent}`:empScore>=70?`👍 ${e.scoreGood}`:`⚠️ ${e.scoreNeedsWork}`}</div>
+            {/* Quick actions */}
+            <div className="ex-section-title">{e.quickActionTitle}</div>
+            <div className="ex-chips">
+              {!activeJob&&<button type="button" className="ex-chip is-gold" onClick={()=>openPastService()}><i>✓</i>{e.pastServiceButton}</button>}
+              <button type="button" className="ex-chip" onClick={openAddService}><i>＋</i>{e.addService}</button>
+              <button type="button" className="ex-chip" onClick={()=>goToTab('transport')}><i>🚃</i>{e.transport}</button>
+              <button type="button" className="ex-chip" onClick={()=>goToTab('equipment')}><i>🧰</i>{e.equipment}</button>
+            </div>
+
+            {/* Quick access */}
+            <div className="ex-section-title">{e.quickAccess}</div>
+            <div className="ex-access">
+              {[
+                ['shift','▶',e.shift,'blue'],
+                ['calendar','▦',e.calendar,'amber'],
+                ['salary','¥',e.salary,'green'],
+                ['ai','✦',e.ai,'purple'],
+                ['chat','✉',e.chat,'pink',unreadMsgs],
+                ['history','☰',e.allJobs,'teal'],
+              ].map(([key,icon,label,tone,badge])=>(
+                <button type="button" key={key} className={`ex-access-item tone-${tone}`} onClick={()=>goToTab(key)}>
+                  <span className="ex-access-icon">{icon}{badge>0&&<em>{badge}</em>}</span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Overview */}
+            <div className="ex-section-title">{e.overview}</div>
+            <div className="ex-overview">
+              <div className="ex-ov tone-blue"><strong>{salaryData?.jobs||0}</strong><span>{e.statJobs}</span></div>
+              <div className="ex-ov tone-purple"><strong>{salaryData?.hours||0}h</strong><span>{e.statHours}</span></div>
+              <div className="ex-ov tone-peach"><strong>¥{(salaryData?.total||0).toLocaleString()}</strong><span>{e.statEarned}</span></div>
+              <div className="ex-ov tone-gray"><strong style={{color:scoreColor(empScore)}}>{empScore}</strong><span>{e.performance} · {empScore>=90?e.scoreExcellent:empScore>=70?e.scoreGood:e.scoreNeedsWork}</span></div>
             </div>
 
             {/* Badges */}
-            {badges.length>0&&<div style={S.card}>
-              <span style={S.label}>{e.badges}</span>
-              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                {badges.map(b=>{ const def=BADGE_DEFS.find(d=>d.key===b.badge_key); return <span key={b.id} style={{fontSize:24}} title={e[`badge_${def?.key}`]||def?.name}>{def?.icon||'🏅'}</span> })}
-              </div>
+            {badges.length>0&&<div className="ex-badges">
+              <span>{e.badges}</span>
+              <div>{badges.map(b=>{ const def=BADGE_DEFS.find(d=>d.key===b.badge_key); return <span key={b.id} title={e[`badge_${def?.key}`]||def?.name}>{def?.icon||'🏅'}</span> })}</div>
             </div>}
 
             {/* Spot jobs */}
-            {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.07)',border:'1px solid rgba(193,156,86,0.15)',borderRadius:18,padding:'14px 16px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div><div style={{fontSize:13,fontWeight:700,color:'#c19c56'}}>⚡ {fill(spotJobs.length>1?e.spotCountPlural:e.spotCount,{n:spotJobs.length})}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{e.tapToRespond}</div></div>
-              <div style={{fontSize:22,color:'#c19c56'}}>›</div>
-            </div>}
+            {spotJobs.length>0&&<button type="button" className="ex-spot" onClick={()=>setTab('spots')}>
+              <div><strong>⚡ {fill(spotJobs.length>1?e.spotCountPlural:e.spotCount,{n:spotJobs.length})}</strong><small>{e.tapToRespond}</small></div>
+              <span>›</span>
+            </button>}
+
+            <button type="button" className="ex-primary" onClick={()=>goToTab('calendar')}>{e.viewSchedule}</button>
           </div>
         )}
 
@@ -1725,9 +1718,25 @@ export default function EmployeePortal() {
         )}
       </div>
 
+      {quickOpen&&(
+        <div className="ex-quick-overlay" onClick={()=>setQuickOpen(false)}>
+          <section className="ex-quick-sheet" role="dialog" aria-modal="true" aria-label={e.quickActionTitle} onClick={ev=>ev.stopPropagation()}>
+            <div className="ex-quick-grip" />
+            <strong>{e.quickActionTitle}</strong>
+            {quickActions.map(a=>(
+              <button type="button" key={a.label} className="ex-quick-item" onClick={()=>{setQuickOpen(false);a.run()}}>
+                <span>{a.icon}</span><div><b>{a.label}</b><small>{a.hint}</small></div>
+              </button>
+            ))}
+          </section>
+        </div>
+      )}
+
       {/* BOTTOM TAB BAR */}
       <nav aria-label={lang==='ja'?'メインナビゲーション':'Main navigation'} className="emp-bottom-nav" style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
-        {bottomTabs.map(t=>(
+        {bottomTabs.map(t=>t.key==='quick'?(
+          <div key="quick" className="ex-fab-slot"><button type="button" className={`ex-fab${quickOpen?' is-open':''}`} aria-label={e.quickActionTitle} aria-expanded={quickOpen} onClick={()=>setQuickOpen(v=>!v)}>＋</button></div>
+        ):(
           <button key={t.key} className={`emp-bottom-item${tab===t.key?' is-active':''}`} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
             <div className="emp-bottom-icon" style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>
             <div className="emp-bottom-label" style={{fontSize:9,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.25)',fontWeight:tab===t.key?600:400,transition:'color 0.15s'}}>{t.label}</div>
@@ -1735,11 +1744,6 @@ export default function EmployeePortal() {
             {t.badge>0&&<div style={{position:'absolute',top:6,right:'calc(50% - 14px)',width:16,height:16,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff'}}>{t.badge}</div>}
           </button>
         ))}
-        {/* More button */}
-        <button className="emp-bottom-item" onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-          <div className="emp-bottom-icon" style={{fontSize:18,fontWeight:700,lineHeight:1}}>⋯</div>
-          <div className="emp-bottom-label" style={{fontSize:9}}>{e.more}</div>
-        </button>
       </nav>
     </div>
     </div>
