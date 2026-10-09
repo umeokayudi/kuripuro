@@ -23,6 +23,25 @@ function formatText(text) {
   })
 }
 
+const MAX_INPUT_HEIGHT = 168
+const MAX_INPUT_HEIGHT_COMPACT = 120
+
+function MicIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" />
+    </svg>
+  )
+}
+
+function SendIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 19V5" /><path d="M5 12l7-7 7 7" />
+    </svg>
+  )
+}
+
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0 }) {
   const { t, lang } = useLang()
   const ai = t.ai || {}
@@ -42,6 +61,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const [voiceName, setVoiceName] = useState(getSavedVoiceName())
   const voiceRef = useRef(null)
   const bottomRef = useRef(null)
+  const inputRef = useRef(null)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
@@ -58,7 +78,17 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     if (v) { voiceRef.current = v; saveVoiceName(v.name) }
   }, [voiceName, voices])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
+
+  // Grow the input with its content up to a max height, then scroll inside it
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    const max = compact ? MAX_INPUT_HEIGHT_COMPACT : MAX_INPUT_HEIGHT
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, max) + 'px'
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
+  }, [input, compact])
 
   useEffect(() => {
     saveChatHistory(mode, employeeId, messages)
@@ -102,6 +132,22 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     recognition.start()
   }
 
+  const onInputKeyDown = (e) => {
+    // Japanese IME uses Enter to confirm conversion: never send in the middle of it
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
+  const pickSuggestion = (prompt) => {
+    setInput(prompt)
+    requestAnimationFrame(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(prompt.length, prompt.length)
+    })
+  }
+
   const send = async () => {
     if (!input.trim() || loading) return
     const userMsg = { role: 'user', content: input.trim() }
@@ -118,6 +164,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${e.message}` }])
     }
     setLoading(false)
+    if (window.matchMedia?.('(pointer: fine)').matches) inputRef.current?.focus()
   }
 
   const userBubble = dark ? 'linear-gradient(135deg,#1a3a5c,#0f2540)' : 'var(--navy)'
@@ -126,8 +173,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const botBorder = dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : 'calc(100vh - 140px)' }}>
-      <div className={`ai-chat-header${compact ? ' ai-chat-header-compact' : ''}`}>
+    <div className={`ai-chat-panel${compact ? ' ai-chat-panel-compact' : ''}`}>
+      <div className={`ai-chat-header${compact ? ' ai-chat-header-compact' : ''}${dark ? ' ai-chat-header-dark' : ''}`}>
         <div className="ai-chat-identity">
           <div className="ai-avatar">✦</div>
           <div>
@@ -160,7 +207,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       {!compact && messages.length <= 1 && suggestions.length > 0 && (
         <div className="ai-suggestions">
           {suggestions.map((suggestion, i) => (
-            <button type="button" key={i} onClick={() => setInput(suggestion.prompt)} className="ai-suggestion">
+            <button type="button" key={i} onClick={() => pickSuggestion(suggestion.prompt)} className="ai-suggestion">
               <span className="ai-suggestion-icon">{suggestion.icon || '✦'}</span>
               <span><strong>{suggestion.title}</strong><small>{suggestion.prompt}</small></span>
             </button>
@@ -168,7 +215,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: compact ? '0 12px' : '0 4px 0 0' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, padding: compact ? '0 12px' : '4px 4px 0 0' }}>
         {messages.map((m, i) => (
           <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%' }}>
             <div style={{
@@ -196,21 +243,28 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
         <div ref={bottomRef} />
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 10, borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`, padding: compact ? 12 : '12px 0 0' }}>
-        <button onClick={startVoiceInput} title="Falar"
-          style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: recording ? 'rgba(248,113,113,0.2)' : dark ? 'rgba(255,255,255,0.06)' : '#fff', borderRadius: 12, width: 40, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 16 }}>
-          {recording ? '🔴' : '🎤'}
-        </button>
-        <textarea value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={mode === 'employee' ? ai.placeholderEmployee : ai.placeholderAdmin}
-          rows={compact ? 1 : 2}
-          style={{ flex: 1, resize: 'none', borderRadius: 12, border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'var(--border)'}`, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit' }}
-        />
-        <button onClick={send} disabled={loading}
-          style={{ alignSelf: 'flex-end', padding: '10px 16px', borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
-          {ai.send}
-        </button>
+      <div className={`ai-composer-wrap${dark ? ' ai-composer-dark' : ''}${compact ? ' ai-composer-compact' : ''}`}>
+        <div className={`ai-composer${recording ? ' is-recording' : ''}`} onClick={() => inputRef.current?.focus()}>
+          <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={onInputKeyDown}
+            placeholder={recording ? (ai.listening || 'Ouvindo…') : (mode === 'employee' ? ai.placeholderEmployee : ai.placeholderAdmin)}
+            rows={1}
+            aria-label={mode === 'employee' ? ai.placeholderEmployee : ai.placeholderAdmin}
+          />
+          <div className="ai-composer-actions">
+            <button type="button" className={`ai-composer-mic${recording ? ' is-on' : ''}`}
+              onClick={e => { e.stopPropagation(); startVoiceInput() }}
+              title={recording ? 'Ouvindo…' : 'Falar'} aria-label="Falar">
+              {recording ? <span className="ai-rec-dot" /> : <MicIcon />}
+            </button>
+            <button type="button" className="ai-composer-send"
+              onClick={e => { e.stopPropagation(); send() }}
+              disabled={loading || !input.trim()} title={ai.send} aria-label={ai.send}>
+              {loading ? <span className="ai-send-spinner" /> : <SendIcon />}
+            </button>
+          </div>
+        </div>
+        {!compact && <div className="ai-composer-hint">Enter para enviar · Shift + Enter para nova linha</div>}
       </div>
     </div>
   )
