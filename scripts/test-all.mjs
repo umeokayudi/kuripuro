@@ -7,6 +7,7 @@ const steps = [
   ['npm run test:salary-calc', 'salary-calc'],
   ['npm run test:sales-followup', 'sales-followup'],
   ['npm run test:work-kpis', 'work-kpis'],
+  ['npm run test:client-care', 'client-care'],
   ['npm run test:sales-kpi', 'sales-kpi'],
   ['npm run test:sales-insights', 'sales-insights'],
   ['npm run test:mitsumori', 'mitsumori'],
