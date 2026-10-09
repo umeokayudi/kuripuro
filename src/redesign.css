@@ -339,3 +339,12 @@
 .dx-table td.is-bad{color:#c44545;font-weight:700}
 @media(max-width:1100px){.dx-team-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:720px){.dx-team{padding:16px 14px}.dx-team-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ───────── Every popup: centered on screen, scrolls inside when tall ───────── */
+.emp-sheet-backdrop,.ex-quick-overlay,.cp-overlay,.cp-shell.cp-desktop .cp-overlay,.drs-overlay{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;padding:max(16px,env(safe-area-inset-top,0px)) 14px max(16px,env(safe-area-inset-bottom,0px))!important;overflow:hidden!important}
+.emp-sheet,.ex-quick-sheet,.cp-sheet,.cp-shell.cp-desktop .cp-sheet,.drs-sheet{width:100%!important;max-width:520px!important;max-height:calc(100dvh - 32px)!important;overflow-y:auto!important;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border-radius:22px!important;flex:0 1 auto;margin:0!important;animation:kpPopIn .18s ease-out}
+.drs-sheet{max-width:380px!important}
+.ex-quick-sheet{padding-bottom:18px}
+.ex-quick-grip,.cp-sheet-handle{display:none!important}
+@keyframes kpPopIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.drs-foot{position:sticky;bottom:0;z-index:1;background:#fff}
