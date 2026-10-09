@@ -4,13 +4,26 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
+import { useAuth } from '../hooks/useAuth'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 import toast from 'react-hot-toast'
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 
+function greeting(lang, name) {
+  const hour = Number(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Tokyo' })) % 24
+  const first = (name || '').trim().split(/\s+/)[0]
+  if (lang === 'ja') {
+    const g = hour < 11 ? 'おはようございます' : hour < 18 ? 'こんにちは' : 'こんばんは'
+    return first ? `${g}、${first}さん` : g
+  }
+  const g = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  return first ? `${g}, ${first}` : g
+}
+
 export default function Dashboard() {
   const { lang, t } = useLang()
+  const { user } = useAuth()
   const d = t.dashboard
   const slotLabels = { ...d, status: t.status }
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
@@ -158,7 +171,7 @@ export default function Dashboard() {
   return (
     <div>
       <DetailModal />
-      <div className="dash-ref-head"><div><div className="dash-ref-eyebrow">COMMAND CENTER · TOKYO</div><h1>Good evening, Alexandre 👋</h1><p>Here's what's happening with your business today.</p></div><div className="dash-ref-actions"><Link to="/jobs" className="btn dash-ref-primary">＋ New Job</Link><Link to="/clients" className="btn">＋ New Client</Link><Link to="/faturas" className="btn">＋ Invoice</Link></div></div>
+      <div className="dash-ref-head"><div><div className="dash-ref-eyebrow">COMMAND CENTER · TOKYO</div><h1>{greeting(lang, user?.name)} 👋</h1><p>Here's what's happening with your business today.</p></div><div className="dash-ref-actions"><Link to="/jobs" className="btn dash-ref-primary">＋ New Job</Link><Link to="/clients" className="btn">＋ New Client</Link><Link to="/faturas" className="btn">＋ Invoice</Link></div></div>
       <div className="dash-ref-kpis">
         <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Contract Base</span><span className="dash-ref-kpi-icon">¥</span></div><div className="dash-ref-kpi-value">{fmt(revenue)}</div><div className="dash-ref-kpi-meta positive">Current contract base</div></div>
         <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Profit</span><span className="dash-ref-kpi-icon">↗</span></div><div className="dash-ref-kpi-value">{fmt(profit)}</div><div className="dash-ref-kpi-meta positive">{revenue ? ((profit/revenue)*100).toFixed(1) : '0.0'}% margin</div></div>
