@@ -9,6 +9,7 @@ import {
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
+import { ManagerCard, BillingView, BillingAlerts, StoresView, QuoteForm, RequestCard, MaintenanceList, maintenanceAlertsFor, itemLabel } from '../components/ClientCare'
 import { summarizeCleaningMonth, deepSummaryFromPlan, weeklyCompleted, shiftMonth } from '../lib/clientProgress'
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
@@ -72,6 +73,12 @@ export default function ClientPortal() {
   const [compliments, setCompliments] = useState([])
   const [ratings, setRatings] = useState([])
   const [requests, setRequests] = useState([])
+  const [invoices, setInvoices] = useState([])
+  const [clientRow, setClientRow] = useState(null)
+  const [profiles, setProfiles] = useState([])
+  const [maintRecords, setMaintRecords] = useState([])
+  const [quoteDefaults, setQuoteDefaults] = useState({})
+  const [moreOpen, setMoreOpen] = useState(false)
   const [feedbackTab, setFeedbackTab] = useState('complaints')
   const [newMsg, setNewMsg] = useState('')
   const [selectedVisit, setSelectedVisit] = useState(null)
@@ -85,7 +92,6 @@ export default function ClientPortal() {
   const loadedOnceRef = useRef(false)
 
   const [complaintForm, setComplaintForm] = useState({ job_id: '', category: 'quality', description: '' })
-  const [requestForm, setRequestForm] = useState({ location_name: '', description: '', preferred_date: '' })
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showComplimentForm, setShowComplimentForm] = useState(false)
   const [showRequestForm, setShowRequestForm] = useState(false)
@@ -141,6 +147,17 @@ export default function ClientPortal() {
         toast.error(firstErr)
       }
 
+      // Billing, account manager and store data: optional, so a missing table never blocks the portal.
+      const [invRes, cliRes, profRes, maintRes] = await Promise.all([
+        supabase.from('faturas').select('*').eq('client_id', user.client_id).in('status', ['sent', 'paid', 'overdue']).order('issue_date', { ascending: false }).limit(60),
+        supabase.from('clients').select('id,company_name,manager_name,manager_email,manager_phone,manager_line_url,manager_photo_url').eq('id', user.client_id).maybeSingle(),
+        supabase.from('location_profiles').select('*').eq('client_id', user.client_id),
+        supabase.from('location_maintenance').select('*').eq('client_id', user.client_id),
+      ])
+      setInvoices(invRes.data || [])
+      setClientRow(cliRes.data || null)
+      setProfiles(filterByLocation(profRes.data, user.location_name))
+      setMaintRecords(filterByLocation(maintRes.data, user.location_name))
       setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
       setContracts(contractsRes.data || [])
       setMessages(filterByLocation(msgsRes.data, user.location_name))
@@ -395,19 +412,36 @@ export default function ClientPortal() {
     setCredForm({ currentPassword: '', newEmail: '', newPassword: '' })
   }
 
-  const submitRequest = async () => {
-    if (!requestForm.description.trim()) return toast.error(c.requestDesc)
+  const submitRequest = async (form, categoryLabel) => {
+    if (!form.description.trim() && !(form.kind === 'quote' && form.category)) return toast.error(c.requestDesc)
+    const isQuote = form.kind === 'quote'
     const { error } = await supabase.from('client_requests').insert({
       client_id: user.client_id, client_user_id: user.id,
-      location_name: requestForm.location_name || user.location_name || null,
-      description: requestForm.description.trim(), preferred_date: requestForm.preferred_date || null,
+      location_name: form.location_name || user.location_name || null,
+      description: form.description.trim() || categoryLabel, preferred_date: form.preferred_date || null,
       status: 'pending', ticket_number: `KP-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+      request_type: isQuote ? 'quote' : 'service',
+      category: isQuote ? (categoryLabel || null) : null,
+      quote_status: isQuote ? 'requested' : null,
     })
     if (error) return toast.error(error.message)
-    toast.success(c.requestSent)
-    setRequestForm({ location_name: user.location_name || '', description: '', preferred_date: '' })
+    toast.success(isQuote ? c.quoteSent : c.requestSent)
+    setQuoteDefaults({})
     setShowRequestForm(false)
     loadAll({ silent: true })
+  }
+
+  const decideQuote = async (rq, decision) => {
+    const { error } = await supabase.from('client_requests').update({ quote_status: decision, decided_at: new Date().toISOString() }).eq('id', rq.id)
+    if (error) return toast.error(error.message)
+    toast.success(decision === 'accepted' ? c.quoteAcceptedToast : c.quoteDeclinedToast)
+    loadAll({ silent: true })
+  }
+
+  const openQuote = (location, key) => {
+    setQuoteDefaults({ kind: 'quote', category: key, location_name: location || '', description: `${itemLabel(key, lang)} — ${location || ''}`.trim() })
+    setShowRequestForm(true)
+    setTab('requests')
   }
 
   const applyVisitPreset = (preset) => {
@@ -431,6 +465,10 @@ export default function ClientPortal() {
   const complaintCat = (k) => ({ quality: c.catQuality, missed: c.catMissed, damage: c.catDamage, late: c.catLate, other: c.catOther }[k] || k)
   const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
+  const billingOverdue = invoices.filter(inv => !(inv.status === 'paid' || inv.paid_at) && inv.due_date && inv.due_date < today).length
+  const storeNames = [...new Set([...locations, ...profiles.map(p => p.location_name)])].filter(Boolean)
+  const maintAlerts = maintenanceAlertsFor({ locations: storeNames, jobs, records: maintRecords, today })
+  const maintOverdue = maintAlerts.filter(a => a.state === 'overdue').length
   const monthKey = today.slice(0, 7)
   const monthDoneCount = completed.filter(j => j.scheduled_date?.startsWith(monthKey)).length
   const hour = Number(clock.toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Tokyo' }))
@@ -442,12 +480,16 @@ export default function ClientPortal() {
 
   const navItems = [
     { key: 'home', icon: <NavIcon name="home" />, label: c.home },
-    { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits },
+    { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
+    { key: 'stores', icon: <NavIcon name="store" />, label: c.storesTab, badge: maintOverdue },
+    { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab },
     { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
+    { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits },
     { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
-    { key: 'requests', icon: <NavIcon name="requests" />, label: c.requests },
     { key: 'settings', icon: <NavIcon name="settings" />, label: c.settings },
   ]
+  const bottomKeys = ['home', 'billing', 'stores', 'requests', 'chat']
+  const moreItems = navItems.filter(n => !bottomKeys.includes(n.key))
 
   const avgRating = ratings.length
     ? (ratings.reduce((s, r) => s + r.stars, 0) / ratings.length).toFixed(1)
@@ -594,6 +636,9 @@ export default function ClientPortal() {
                 )}
               </div>
             </div>
+            {tab !== 'home' && !desktopMode && (
+              <div className="cpx-hello is-tab"><h1>{navItems.find(n => n.key === tab)?.label}</h1></div>
+            )}
             {tab === 'home' && (
               <div className="cpx-hello">
                 <small>{greeting}{lang === 'ja' ? '' : ','}</small>
@@ -631,6 +676,16 @@ export default function ClientPortal() {
               <div className="cp-loading">{c.loading}</div>
             ) : tab === 'home' && (
               <>
+                <BillingAlerts invoices={invoices} today={today} labels={c} lang={lang} onOpen={() => setTab('billing')} />
+                {maintAlerts.length > 0 && (
+                  <button type="button" className={`cpx-alert ${maintOverdue ? 'is-warn' : 'is-info'}`} onClick={() => setTab('stores')}>
+                    <b>🛠</b>
+                    <span>
+                      <strong>{fill(c.maintAlert, { count: maintAlerts.length })}</strong>
+                      <small>{maintAlerts.slice(0, 3).map(a => `${lang === 'ja' ? a.ja : a.en} · ${a.location}`).join(' / ')}</small>
+                    </span>
+                  </button>
+                )}
                 <CleaningProgressCard
                   basic={basicSummary}
                   deep={deepSummary}
@@ -642,6 +697,7 @@ export default function ClientPortal() {
                   onNext={() => setDeepProgressMonth(m => shiftMonth(m, 1))}
                   canNext={deepProgressMonth < currentYearMonth()}
                 />
+                <ManagerCard client={clientRow} labels={c} compact />
                 <div className="cp-section-title cpx-section">{c.today} <small>{today}</small></div>
                 <div className="cp-visit-grid">
                   {todayJobs.length === 0
@@ -788,6 +844,14 @@ export default function ClientPortal() {
               </>
             )}
 
+            {!loading && tab === 'billing' && (
+              <BillingView invoices={invoices} today={today} labels={c} lang={lang} clientName={clientRow?.company_name || user.client_name} />
+            )}
+            {!loading && tab === 'stores' && (
+              <StoresView clientId={user.client_id} locations={storeNames} jobs={jobs} profiles={profiles} records={maintRecords}
+                today={today} labels={c} lang={lang} userName={user.contact_name || user.name} onChanged={() => loadAll({ silent: true })} onQuote={openQuote} />
+            )}
+            {!loading && tab === 'chat' && <ManagerCard client={clientRow} labels={c} />}
             {!loading && tab === 'chat' && (
               <div className="cp-chat">
                 <div className="cp-chat-msgs">
@@ -906,42 +970,19 @@ export default function ClientPortal() {
             )}
 
             {!loading && tab === 'requests' && (
-              <>
-                <button type="button" className="cp-btn cp-btn-blue" style={{ marginBottom: 16 }} onClick={() => setShowRequestForm(!showRequestForm)}>📝 {c.newRequest}</button>
-                {showRequestForm && (
-                  <div className="cp-card" style={{ marginBottom: 16 }}>
-                    {locations.length > 1 && (
-                      <div className="cp-field">
-                        <span className="cp-label">{c.requestLocation}</span>
-                        <select className="cp-select" value={requestForm.location_name} onChange={e => setRequestForm(f => ({ ...f, location_name: e.target.value }))}>
-                          <option value="">{c.allLocations}</option>
-                          {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                        </select>
-                      </div>
-                    )}
-                    <div className="cp-field">
-                      <span className="cp-label">{c.requestDesc}</span>
-                      <textarea className="cp-textarea" value={requestForm.description} onChange={e => setRequestForm(f => ({ ...f, description: e.target.value }))} rows={4} />
-                    </div>
-                    <div className="cp-field">
-                      <span className="cp-label">{c.requestDate}</span>
-                      <input type="date" className="cp-input" value={requestForm.preferred_date} onChange={e => setRequestForm(f => ({ ...f, preferred_date: e.target.value }))} />
-                    </div>
-                    <button type="button" className="cp-btn cp-btn-gold" onClick={submitRequest}>{c.submitRequest}</button>
-                  </div>
+              <div className="cpx-stack">
+                {!showRequestForm && (
+                  <button type="button" className="cp-btn cp-btn-blue" onClick={() => { setQuoteDefaults({}); setShowRequestForm(true) }}>+ {c.newQuoteOrRequest}</button>
                 )}
-                <div className="cp-section-title">{c.requestHistory}</div>
+                {showRequestForm && (
+                  <QuoteForm locations={storeNames} defaults={quoteDefaults} labels={c} lang={lang}
+                    onSubmit={submitRequest} onCancel={() => { setShowRequestForm(false); setQuoteDefaults({}) }} />
+                )}
+                <div className="cp-section-title cpx-section">{c.requestHistory}</div>
                 {requests.length === 0 ? <PortalEmpty icon="📝" text={c.noRequests} /> : requests.map(rq => (
-                  <div key={rq.id} className="cp-card">
-                    <div className="cp-card-top">
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{rq.ticket_number || `#${rq.id.slice(0, 8)}`}</span>
-                      <span className={`cp-badge ${rq.status === 'completed' ? 'done' : 'progress'}`}>{rq.status === 'completed' ? c.statusDone : c.statusPending}</span>
-                    </div>
-                    <div className="cp-card-date" style={{ margin: '8px 0' }}>{rq.location_name || c.allLocations}</div>
-                    <div style={{ fontSize: 14, lineHeight: 1.5 }}>{rq.description}</div>
-                  </div>
+                  <RequestCard key={rq.id} rq={rq} labels={c} lang={lang} onDecide={decideQuote} />
                 ))}
-              </>
+              </div>
             )}
 
             {!loading && tab === 'settings' && (
@@ -986,17 +1027,36 @@ export default function ClientPortal() {
           </main>
 
           {!desktopMode && (
+            <>
             <nav className="cp-bottom-nav">
               <div className="cp-nav-pill">
-                {navItems.map(n => (
+                {navItems.filter(n => bottomKeys.includes(n.key)).map(n => (
                   <button key={n.key} type="button" className={`cp-nav-btn${tab === n.key ? ' active' : ''}`} onClick={() => setTab(n.key)}>
                     <span className="cp-nav-icon">{n.icon}</span>
                     {n.badge > 0 && <span className="cp-nav-badge">{n.badge}</span>}
                     <span className="cp-nav-label">{n.label}</span>
                   </button>
                 ))}
+                <button type="button" className={`cp-nav-btn${moreItems.some(n => n.key === tab) ? ' active' : ''}`} onClick={() => setMoreOpen(true)}>
+                  <span className="cp-nav-icon"><NavIcon name="more" /></span>
+                  <span className="cp-nav-label">{c.moreTab}</span>
+                </button>
               </div>
             </nav>
+            {moreOpen && (
+              <div className="cp-overlay" onClick={() => setMoreOpen(false)}>
+                <div className="cp-sheet cpx-more" onClick={e => e.stopPropagation()}>
+                  <strong>{c.moreTab}</strong>
+                  {moreItems.map(n => (
+                    <button key={n.key} type="button" onClick={() => { setTab(n.key); setMoreOpen(false) }}>
+                      <span>{n.icon}</span>{n.label}{n.badge > 0 && <b>{n.badge}</b>}
+                    </button>
+                  ))}
+                  <button type="button" onClick={logout} className="is-logout"><span><NavIcon name="logout" /></span>{c.logout}</button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </div>
       </div>
@@ -1062,6 +1122,9 @@ const ICON_PATHS = {
   logout: 'M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3',
   pin: 'M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
   calendar: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4',
+  billing: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3',
+  store: 'M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
 }
 
 function NavIcon({ name }) {

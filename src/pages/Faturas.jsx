@@ -196,7 +196,8 @@ export default function Faturas() {
   }
 
   const handleStatusChange = async (id, status) => {
-    await supabase.from('faturas').update({ status }).eq('id', id)
+    // paid_at drives the client's thank-you message and receipt date
+    await supabase.from('faturas').update({ status, paid_at: status === 'paid' ? new Date().toISOString() : null }).eq('id', id)
     toast.success(`Status: ${status}`); load()
   }
 

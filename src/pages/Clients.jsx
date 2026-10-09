@@ -5,6 +5,7 @@ import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } from '../lib/portalStores'
 import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
+import ClientCareAdmin from '../components/ClientCareAdmin'
 
 export default function Clients() {
   const [searchParams] = useSearchParams()
@@ -248,7 +249,10 @@ export default function Clients() {
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>{editing?'✏️ Edit':'+ Register'}</button>
         <button className={`tab-pill${tab==='services'?' active':''}`} onClick={()=>setTab('services')}>Services</button>
         <button className={`tab-pill${tab==='portal'?' active':''}`} onClick={()=>setTab('portal')}>🔐 Portal</button>
+        <button className={`tab-pill${tab==='care'?' active':''}`} onClick={()=>setTab('care')}>🤝 Manager &amp; stores</button>
       </div>
+
+      {tab==='care'&&<ClientCareAdmin clients={clients} onClientsChanged={load} />}
 
       {/* LIST */}
       {tab==='list'&&(
