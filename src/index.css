@@ -1686,3 +1686,28 @@ body { background: var(--hq-bg); }
 .storage-image-failed-compact:hover{background:#edf2ff;border-color:#c9d6fb}
 /* collapsed sidebar really collapses (a later .sidebar{width:224px} kept it wide and it covered the page) */
 @media(min-width:721px){.sidebar.sidebar-collapsed{width:82px}}
+/* collapsed sidebar mark: same KP tile as the mobile header and the portals */
+.sidebar-collapsed .brand-mark{display:grid!important;place-items:center;width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1d3a63,#315cf5);color:#fff;font-family:var(--font);font-size:14px;font-weight:800;letter-spacing:-.02em;box-shadow:0 6px 16px rgba(49,92,245,.28)}
+.sidebar-collapsed .sidebar-collapse{right:2px!important;top:3px!important}
+/* Employee bottom sheets (add service, completed report, signature, etc.): light theme like the rest of the portal */
+.emp-sheet-backdrop{background:rgba(15,23,42,.42)!important;backdrop-filter:blur(3px)}
+.emp-sheet{background:#fff!important;color:#172033;box-shadow:0 -12px 40px rgba(15,23,42,.18);border:1px solid #e3e9f2}
+@media(min-width:721px){.emp-sheet-backdrop{align-items:center!important}.emp-sheet{max-width:560px!important;margin:0 auto;border-radius:22px!important}}
+.emp-sheet [style*="color: rgb(255, 255, 255)"],.emp-sheet [style*="color: #fff"]{color:#172033!important}
+.emp-sheet [style*="color: rgba(255, 255, 255"]{color:#5f6b7d!important}
+.emp-sheet input,.emp-sheet textarea,.emp-sheet select{background:#f7f9fc!important;border:1px solid #d7e0ef!important;color:#172033!important}
+.emp-sheet input::placeholder,.emp-sheet textarea::placeholder{color:#8a96a8}
+.emp-sheet [style*="background: rgba(255, 255, 255, 0.0"],.emp-sheet [style*="background: rgba(255, 255, 255, 0.1)"]{background:#f4f7fb!important}
+.emp-sheet [style*="border: 1px solid rgba(255, 255, 255"]{border-color:#dfe6f0!important}
+/* checklist rows: visible checkbox, green when done */
+.emp-sheet [style*="1.5px solid rgba(255, 255, 255"]{border:1.5px solid #9fb0c7!important;background:#fff!important}
+.emp-sheet [style*="background: rgba(74, 222, 128, 0.1)"]{background:#ecfdf3!important;border-color:#86efac!important}
+.emp-sheet [style*="background: rgb(74, 222, 128)"]{background:#16a34a!important;color:#fff!important}
+.emp-sheet [style*="color: rgb(74, 222, 128)"]{color:#15803d!important}
+.emp-sheet [style*="color: rgb(248, 113, 113)"]{color:#b91c1c!important}
+.emp-sheet [style*="color: rgb(251, 191, 36)"]{color:#a16207!important}
+/* primary actions stay blue; disabled ones read as disabled, not invisible */
+.emp-sheet button[disabled]{background:#e8edf5!important;color:#7a8799!important;border:1px solid #d7e0ef!important}
+.emp-sheet button[style*="linear-gradient(135deg, rgb(96, 165, 250)"],.emp-sheet button[style*="linear-gradient(135deg, rgb(193, 156, 86)"]{background:#315cf5!important;color:#fff!important}
+.emp-sheet [style*="color: rgb(193, 156, 86)"],.emp-sheet [style*="color: rgb(232, 196, 122)"],.emp-sheet [style*="color: rgb(96, 165, 250)"]{color:#1f46ad!important}
+.emp-sheet [style*="background: rgba(193, 156, 86"],.emp-sheet [style*="background: rgba(96, 165, 250"]{background:#edf2ff!important;border-color:#b9cbfb!important}
