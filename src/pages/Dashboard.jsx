@@ -252,7 +252,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <DetailModal />
+      {DetailModal()}
       {rangeOpen && <DateRangeSheet lang={lang} value={range} onClose={() => setRangeOpen(false)} onSave={next => { setRange(next); setRangeOpen(false) }} />}
       <header className="dx-hero">
         <div className="dx-hero-copy">

@@ -58,6 +58,23 @@ const BADGE_DEFS = [
   { key:'perfect_week', name:'Perfect Week', icon:'🔥', desc:'5 jobs in one week' },
 ]
 
+// Lives outside EmployeePortal so the clock tick does not remount it (and reset scroll).
+function JobPhoto({ url, label }) {
+  const [failed, setFailed] = useState(false)
+  const displayUrl = viewablePhotoUrl(url)
+  if (!url) return null
+  return (
+    <div>
+      <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
+      {failed ? (
+        <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
+      ) : (
+        <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
+      )}
+    </div>
+  )
+}
+
 export default function EmployeePortal() {
   const { user, logout } = useAuth()
   const { lang, t: tr } = useLang()
@@ -1002,22 +1019,6 @@ export default function EmployeePortal() {
     if (tab === 'shift' && activeJob) scrollToActiveJob()
   }, [tab, activeJob?.id])
 
-  const JobPhoto = ({ url, label }) => {
-    const [failed, setFailed] = useState(false)
-    const displayUrl = viewablePhotoUrl(url)
-    if (!url) return null
-    return (
-      <div>
-        <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
-        {failed ? (
-          <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
-        ) : (
-          <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
-        )}
-      </div>
-    )
-  }
-
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (job.checklist_template||'').split('\n').filter(Boolean)
@@ -1076,7 +1077,8 @@ export default function EmployeePortal() {
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
 
-      {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
+      {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
+      {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
       {showSignature&&<SignatureModal
         jobTitle={signatureJob?.title||activeJob?.title||''}
         labels={e}
