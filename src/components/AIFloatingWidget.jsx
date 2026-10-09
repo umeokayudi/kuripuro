@@ -5,6 +5,9 @@ const BTN = 56
 const PANEL_W = 380
 const PANEL_H = 520
 const STORAGE_KEY = 'kp_ai_widget_pos'
+// Employee portal has a bottom tab bar and, on the Chat tab, a message box above it:
+// start the button above both so it doesn't cover "More" or the send button
+const BOTTOM_NAV_GAP = 150
 
 function loadPos() {
   try {
@@ -28,10 +31,10 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
   const getBtnPos = useCallback(() => {
     if (pos) return pos
     return {
-      x: window.innerWidth - BTN - 24,
-      y: window.innerHeight - BTN - 24,
+      x: window.innerWidth - BTN - 16,
+      y: window.innerHeight - BTN - (mode === 'employee' ? BOTTOM_NAV_GAP : 24),
     }
-  }, [pos])
+  }, [pos, mode])
 
   const panelStyle = () => {
     const { x, y } = getBtnPos()
@@ -86,8 +89,8 @@ export default function AIFloatingWidget({ mode = 'admin', employeeId, employeeN
   const onPointerDown = (e) => {
     e.preventDefault()
     const rect = btnRef.current?.getBoundingClientRect()
-    const sl = pos?.x ?? rect?.left ?? window.innerWidth - BTN - 24
-    const st = pos?.y ?? rect?.top ?? window.innerHeight - BTN - 24
+    const sl = pos?.x ?? rect?.left ?? window.innerWidth - BTN - 16
+    const st = pos?.y ?? rect?.top ?? window.innerHeight - BTN - (mode === 'employee' ? BOTTOM_NAV_GAP : 24)
     drag.current = { active: true, moved: false, sx: e.clientX, sy: e.clientY, sl, st }
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)

@@ -198,8 +198,21 @@
 .cp-header-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.cp-header-mobile-only {
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .cp-header-actions {
+    flex-shrink: 1;
+    max-width: 58%;
+  }
 }
 
 .cp-view-toggle {

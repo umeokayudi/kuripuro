@@ -50,7 +50,7 @@ function Clock() {
   React.useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   return (
-    <span style={{ fontSize:13, fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', color:'var(--text2)' }}>
+    <span className="ref-clock" style={{ fontSize:13, fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', color:'var(--text2)' }}>
       {now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
       <span style={{ marginLeft:8, fontSize:12, color:'var(--text3)' }}>
         {now.toLocaleDateString(dateLocale, { weekday:'short', day:'2-digit', month:'short' })}
@@ -208,7 +208,7 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div className="topbar-right"><button type="button" className="ref-top-action" title={a.notifications}>♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <div className="topbar-right"><button type="button" className="ref-top-action ref-top-notify" title={a.notifications}>♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>

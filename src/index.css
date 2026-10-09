@@ -764,6 +764,12 @@ body { background: var(--hq-bg); }
   .ai-suggestions { grid-template-columns:1fr; }
 }
 
+/* Admin topbar on phones: keep search, avatar and logout only so the bar fits the screen */
+@media (max-width: 720px) {
+  .topbar .topbar-right { width:auto !important; flex:0 0 auto; gap:6px; }
+  .topbar-right .ref-clock, .topbar-right .ref-top-notify { display:none; }
+}
+
 /* AI chat panel + composer (admin page and employee floating widget) */
 .ai-chat-panel { display:flex; flex-direction:column; height:calc(100vh - 140px); min-height:0; }
 .ai-chat-panel-compact { height:100%; }
@@ -960,10 +966,14 @@ body { background: var(--hq-bg); }
 }
 
 /* Header */
+.emp-shell .kp-lang-dark{background:#eef2f7;border-color:#e1e7ef}
+.emp-shell .kp-lang-dark .kp-lang-btn{color:#66758b}
+.emp-shell [style*="background: rgba(255, 255, 255, 0.5)"]{background:#66758b !important}
 .emp-shell .emp-brand{color:#718096 !important}
 .emp-shell .emp-name{color:#172033 !important}
 .emp-shell [style*="font-family:monospace"]{font-variant-numeric:tabular-nums}
 .emp-shell [style*="background: rgba(6,13,24,0.97)"],
+.emp-shell [style*="background: rgba(6, 13, 24, 0.97)"],
 .emp-shell [style*="background:'rgba(6,13,24,0.97)'"]{
   background:rgba(255,255,255,.96) !important;
   border-top-color:#e3e8f0 !important;
