@@ -348,13 +348,13 @@ export default function Dashboard() {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {deepProgress.tuesdaySummary.map(({ date, expected, done }) => {
                 const ok = done >= expected
-                const shortDate = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })
+                const shortDate = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })
                 return (
                   <button key={date} type="button" onClick={() => { setDetailTuesday(date); setDetailLoc(null) }}
                     style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.1)', border: `1px solid ${ok ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.25)'}`, fontSize: 12, textAlign: 'left' }}>
-                    <div style={{ fontWeight: 700 }}>{fill(d.tuesdayShort, { date: shortDate })}</div>
-                    <div style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 600 }}>{fill(d.doneOf, { done, expected })}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{d.clickTuesday}</div>
+                    <div style={{ fontWeight: 700 }}>{shortDate}</div>
+                    <div style={{ color: ok ? '#15803d' : '#a16207', fontWeight: 600 }}>{fill(d.doneOf, { done, expected })}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{d.clickTuesday}</div>
                   </button>
                 )
               })}

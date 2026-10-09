@@ -1077,3 +1077,13 @@
 @media(max-width:899px){.cp-shell.cp-desktop .cp-sidebar{width:210px;padding:18px 12px}.cp-shell.cp-desktop .cp-content{padding:20px 18px 28px}}
 @media(max-width:720px){.cp-header{padding:12px 14px 10px;padding-top:max(12px,env(safe-area-inset-top))}.cp-header-row{align-items:center;gap:10px}.cp-header-title{font-size:17px}.cp-header-actions{gap:6px}.cp-header-actions .kp-lang-btn{min-width:36px;padding:5px 7px}.cp-view-toggle,.cp-logout{padding:7px 9px;min-height:38px;font-size:10px}.cp-stats{gap:7px;margin-top:12px}.cp-stat{padding:11px 7px;border-radius:13px}.cp-stat-val{font-size:20px}.cp-stat-lbl{font-size:8px}.cp-content{padding:14px 13px calc(var(--cp-nav-h) + 24px + env(safe-area-inset-bottom))}.cp-section-title{margin-bottom:10px}.cp-visit-grid{gap:10px}.cp-card{padding:14px;border-radius:15px}.cp-nav-pill{padding:5px;gap:3px}.cp-nav-btn{min-width:0;padding:7px 3px;min-height:54px}.cp-nav-label{font-size:9px}.cp-shell.cp-mobile .cp-main{box-shadow:0 0 0 1px #e6ebf2,0 8px 32px rgba(22,38,66,.06)}}
 @media(max-width:380px){.cp-header-actions .cp-view-toggle{font-size:0;padding:8px}.cp-header-actions .cp-view-toggle::first-letter{font-size:14px}.cp-header-actions .cp-logout{padding:7px;font-size:9px}.cp-nav-label{font-size:8px}}
+
+/* v1.0.4: on phones the company name gets the full row, buttons go below it */
+@media(max-width:720px){
+  .cp-header-row{flex-wrap:wrap;align-items:flex-start}
+  .cp-header-row>div:first-child{flex:1 1 100%;min-width:0}
+  .cp-header-actions{width:100%;justify-content:flex-end;flex-wrap:wrap}
+  .cp-stat-lbl{font-size:11px}
+  .cp-nav-label{font-size:10.5px}
+}
+@media(max-width:380px){.cp-nav-label{font-size:10px}}
