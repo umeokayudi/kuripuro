@@ -18,6 +18,17 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
 
   if (!url) return null
 
+  if (failed && style?.width && Number(style.width) <= 100) {
+    const label = lang === 'ja' ? '写真を開く' : 'Open photo'
+    return (
+      <a href={displayUrl} target="_blank" rel="noreferrer" className="storage-image-failed-compact"
+        title={label} aria-label={label}
+        style={{ width: Number(style.width), height: Number(style.width) }}>
+        <span aria-hidden="true">▧</span><small>↗</small>
+      </a>
+    )
+  }
+
   if (failed) {
     return (
       <div className="storage-image-failed" style={{
