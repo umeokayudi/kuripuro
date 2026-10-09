@@ -774,8 +774,6 @@ body { background: var(--hq-bg); }
 .ai-suggestion strong { display:block; color:var(--navy); font-size:10px; }
 .ai-suggestion small { display:block; color:var(--hq-muted); font-size:9px; line-height:1.35; margin-top:2px; }
 .ai-command-chat .ai-chat-header + .ai-suggestions { flex:0 0 auto; }
-.ai-command-chat textarea { min-height:46px; box-shadow:0 1px 2px rgba(15,30,50,.02); }
-.ai-command-chat textarea:focus { border-color:#a9c5ee !important; box-shadow:0 0 0 3px rgba(47,111,237,.08); outline:0; }
 .ai-command-chat .ai-chat-header ~ div { scrollbar-width:thin; }
 @media (max-width: 900px) {
   .ai-command-layout { grid-template-columns:1fr; }
@@ -1523,3 +1521,102 @@ body { background: var(--hq-bg); }
   .main .card,.main .metric-card,.main .executive-card,.main .dash-ref-card,.main .dash-trend-card{border-radius:16px}
   .main .page-content{padding-inline:12px}
 }
+
+
+/* AI chat panel + composer (admin page, admin popover and employee AI tab).
+   Textarea gets its own full-width row so attachments, mic and send never squeeze it. */
+.ai-chat-panel { display:flex; flex-direction:column; height:calc(100vh - 140px); min-height:0; }
+.ai-chat-panel-compact { height:100%; }
+.ai-command-chat { display:flex; flex-direction:column; }
+.ai-command-chat .ai-chat-panel { height:calc(100vh - 250px); height:calc(100dvh - 250px); min-height:460px; }
+.ai-chat-header-dark .ai-chat-title { color:#fff; }
+.ai-chat-header-dark .ai-chat-subtitle { color:rgba(255,255,255,.55); }
+.ai-composer-wrap { flex:0 0 auto; padding-top:12px; margin-top:8px; border-top:1px solid #eef1f4; }
+.ai-composer-compact { padding:10px 12px 12px; }
+.ai-composer-dark { border-top-color:rgba(255,255,255,.08); }
+.ai-composer { display:flex; flex-direction:column; gap:4px; padding:10px 8px 8px 14px; background:#fff; border:1px solid #dfe5ee; border-radius:18px; box-shadow:0 1px 3px rgba(15,30,50,.05); cursor:text; transition:border-color .15s ease, box-shadow .15s ease; }
+.ai-composer:focus-within { border-color:#a9c5ee; box-shadow:0 0 0 3px rgba(47,111,237,.1); }
+.ai-composer.is-recording { border-color:#f87171; box-shadow:0 0 0 3px rgba(248,113,113,.15); }
+.ai-composer textarea, .emp-shell .ai-composer textarea { display:block; width:100%; min-width:0; min-height:24px; margin:0; padding:2px 6px 2px 0 !important; border:0 !important; border-radius:0 !important; outline:0 !important; background:transparent !important; box-shadow:none !important; resize:none !important; font:inherit; font-size:15px !important; line-height:1.5; color:#172033 !important; -webkit-text-fill-color:#172033; overflow-y:hidden; }
+.ai-composer textarea::placeholder, .emp-shell .ai-composer textarea::placeholder { color:#8a96a8 !important; -webkit-text-fill-color:#8a96a8; }
+.ai-composer-toolbar { display:flex; align-items:center; justify-content:space-between; gap:8px; cursor:default; }
+.ai-composer-attach, .ai-composer-actions { display:flex; align-items:center; gap:2px; }
+.ai-composer-actions { gap:6px; }
+.ai-composer-attach button, .ai-composer-mic, .ai-composer-send { width:36px; height:36px; min-width:36px; display:grid; place-items:center; padding:0 !important; border:0 !important; border-radius:50% !important; background:transparent; color:#7b8798; cursor:pointer; box-shadow:none !important; transition:background .15s ease, color .15s ease, transform .1s ease; }
+.ai-composer-attach button:hover, .ai-composer-mic:hover { background:rgba(15,30,50,.06); color:#172033; }
+.ai-composer-mic.is-on { background:rgba(248,113,113,.15); }
+.ai-composer-send { width:38px; height:38px; background:#315cf5 !important; color:#fff !important; }
+.ai-composer-send:hover:not(:disabled) { background:#244bd6 !important; }
+.ai-composer-send:active:not(:disabled) { transform:scale(.94); }
+.ai-composer-send:disabled { background:#e9edf3 !important; color:#a3adbb !important; cursor:default; }
+.emp-shell .ai-composer-send { background:#6846d5 !important; }
+.emp-shell .ai-composer-send:disabled { background:#e9edf3 !important; }
+.ai-rec-dot { width:12px; height:12px; border-radius:50%; background:#ef4444; animation:ai-pulse 1s ease-in-out infinite; }
+.ai-send-spinner { width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; animation:ai-spin .7s linear infinite; }
+@keyframes ai-pulse { 50% { opacity:.35; } }
+@keyframes ai-spin { to { transform:rotate(360deg); } }
+.ai-composer-hint { margin-top:6px; padding-left:14px; font-size:11px; color:#8a96a8; }
+.ai-composer-dark .ai-composer { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.14); box-shadow:none; }
+.ai-composer-dark .ai-composer textarea { color:#fff !important; -webkit-text-fill-color:#fff; }
+.ai-composer-dark .ai-composer textarea::placeholder { color:rgba(255,255,255,.45) !important; -webkit-text-fill-color:rgba(255,255,255,.45); }
+.ai-composer-dark .ai-composer-attach button, .ai-composer-dark .ai-composer-mic { color:rgba(255,255,255,.65); }
+/* Employee AI tab: chat fills the space above the bottom nav and the composer stays visible */
+.emp-ai-chat .ai-chat-panel { height:100%; }
+.emp-ai-chat .ai-composer-wrap { padding:8px 10px 10px; margin-top:4px; }
+@media (max-width: 900px) {
+  .ai-command-chat .ai-chat-panel { height:calc(100dvh - 230px); min-height:420px; }
+  .ai-command-chat .ai-suggestions { display:flex; overflow-x:auto; gap:8px; margin:12px -14px 8px; padding:0 14px 4px; scroll-snap-type:x mandatory; scrollbar-width:none; }
+  .ai-command-chat .ai-suggestions::-webkit-scrollbar { display:none; }
+  .ai-command-chat .ai-suggestion { flex:0 0 220px; scroll-snap-align:start; }
+  .ai-composer-hint { display:none; }
+}
+/* 16px on touch screens stops iOS from zooming in when the input is focused */
+@media (pointer: coarse) {
+  .ai-composer textarea, .emp-shell .ai-composer textarea { font-size:16px !important; }
+}
+/* The bottom nav is fixed (~73px): keep every tab's last content, and the AI composer, above it.
+   A later mobile rule had reduced this padding to 24px, hiding content under the nav. */
+.emp-content{padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))!important}
+@media(max-width:760px){.sales-tabs{margin:0!important;padding:4px 0 14px!important;max-width:100%}.sales-portal{overflow-x:clip}}
+.kp-version-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:#fff4d6;border:1px solid #f0c24b;color:#7a4b00;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;line-height:1.2;white-space:nowrap}
+.kp-version-badge::before{content:"";width:7px;height:7px;border-radius:50%;background:#e59a00}
+.login-version{font-size:11px}
+
+/* v1.0.4 design fixes (auditoria 2026-10-09) */
+:root{--text3:#64748b;--ref-muted:#5f6b7d}
+/* contrast: grey supporting text and small dashboard/sidebar labels */
+.nav-item{font-size:13px!important}
+.nav-group-label,.sidebar .nav-group-label{font-size:10.5px!important;color:rgba(255,255,255,.7)!important}
+.sidebar-logo .sub{font-size:10px!important;opacity:.75!important}
+.dash-ref-eyebrow,.dash-ref-kpi-label,.dash-ref-kpi-meta,.dash-ref-card-sub,.dash-ref-link,.ref-user-role,.ref-search-type{font-size:11px}
+.dash-ref-head p,.dash-ref-card-title,.ref-user-name,.ref-topbar-search,.dash-ref-actions .btn{font-size:12px!important}
+.dash-ref-kpi-label{color:#5f6b7d}
+.dash-ref-kpi-meta.positive{color:#15803d}
+.dash-ref-kpi-meta.danger{color:#b91c1c}
+/* cards inside grids: no stacked margin (was 14px misalignment) */
+.grid-2>.card,.grid-3>.card,.grid-4>.card,[style*="display: grid"]>.card,[style*="display:grid"]>.card{margin-top:0}
+/* grid columns may shrink; selects never push forms past the screen */
+.grid-2>*,.grid-3>*,.grid-4>*,.page-content [style*="display: grid"]>*{min-width:0}
+.form-group{min-width:0}
+.form-group select,.form-group input,.form-group textarea{max-width:100%;min-width:0}
+/* sales team pipeline: assignment select had 100% width and crushed the lead name */
+.sales-admin-page .sales-row>select{width:220px;flex:0 0 220px}
+@media(max-width:720px){
+  .kp-stack-mobile{grid-template-columns:minmax(0,1fr)!important}
+  .kp-two-mobile{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .sales-admin-page .sales-row{flex-wrap:wrap}
+  .sales-admin-page .sales-row>select{flex:1 1 100%;width:100%}
+  .sales-portal{padding:12px 14px 28px}
+  /* hidden mobile sidebar no longer leaks its shadow onto the left edge */
+  .sidebar{box-shadow:none}
+  .sidebar.sidebar-mobile-open{box-shadow:16px 0 40px rgba(5,15,28,.28)}
+}
+/* floating AI button: room at the end of pages, icon-only on phones */
+.page-content{padding-bottom:84px}
+@media(max-width:600px){
+  .kp-ai-trigger{width:52px;height:52px;padding:0!important;justify-content:center;border-radius:50%}
+  .kp-ai-trigger-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .kp-ai-trigger-icon{font-size:20px}
+}
+.sales-admin-page .sales-section-head>select{width:auto;min-width:180px;max-width:260px;flex:0 0 auto}
+.dash-split>.card,.finance-summary-grid>.card,.sales-grid-two>.card,.sales-admin-grid>.card{margin-top:0}

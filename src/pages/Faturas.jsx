@@ -9,7 +9,8 @@ import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAuto
 export default function Faturas() {
   const [searchParams] = useSearchParams()
   const searchId = searchParams.get('search')
-  const { t } = useLang()
+  const { t, lang } = useLang()
+  const ja = lang === 'ja'
   const inv = t.invoices
   const [faturas, setFaturas] = useState([])
   const [clients, setClients] = useState([])
@@ -252,7 +253,7 @@ export default function Faturas() {
     w.print()
   }
 
-  const statusBadge = s => ({draft:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
+  const statusBadge = s => ({draft:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red',overdue:'badge-red'}[s]||'badge-navy')
 
   return (
     <div>
@@ -266,13 +267,13 @@ export default function Faturas() {
           <div className="card" style={{marginBottom:14}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
               <div>
-                <div className="card-title" style={{marginBottom:3}}>⚡ Faturamento automático</div>
-                <div style={{fontSize:12,color:'var(--text3)'}}>Contrato → serviços concluídos → desconto → imposto → fatura</div>
+                <div className="card-title" style={{marginBottom:3}}>⚡ {ja ? '自動請求' : 'Automatic billing'}</div>
+                <div style={{fontSize:12,color:'var(--text3)'}}>{ja ? '契約 → 完了した作業 → 割引 → 税 → 請求書' : 'Contract → completed jobs → discount → tax → invoice'}</div>
               </div>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
                 <input type="month" value={autoPeriod} onChange={e=>setAutoPeriod(e.target.value)} />
                 <button className="btn btn-primary" onClick={handleAutoBilling} disabled={autoLoading}>
-                  {autoLoading ? 'Gerando...' : 'Gerar faturas'}
+                  {autoLoading ? (ja ? '作成中...' : 'Generating...') : (ja ? '請求書を作成' : 'Generate invoices')}
                 </button>
               </div>
             </div>
@@ -285,7 +286,7 @@ export default function Faturas() {
                 <div>
                   <div style={{fontWeight:700,fontSize:15}}>{f.client_name}</div>
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{f.period_start} 〜 {f.period_end}</div>
-                  <div style={{fontSize:12,color:'var(--text3)'}}>発行: {f.issue_date} · 期限: {f.due_date||'—'}</div>
+                  <div style={{fontSize:12,color:'var(--text3)'}}>{ja ? '発行' : 'Issued'}: {f.issue_date} · {ja ? '期限' : 'Due'}: {f.due_date||'—'}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:18,fontWeight:700,color:'var(--green)'}}>¥{Number(f.total||0).toLocaleString()}</div>
@@ -353,7 +354,7 @@ export default function Faturas() {
           </div>
 
           <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-primary" onClick={handleCreate}>✅ Create Fatura</button>
+            <button className="btn btn-primary" onClick={handleCreate}>✅ {ja ? '請求書を作成' : 'Create invoice'}</button>
             <button className="btn" onClick={()=>setTab('list')}>Cancel</button>
           </div>
         </div>

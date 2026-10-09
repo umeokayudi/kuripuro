@@ -1737,8 +1737,8 @@ export default function EmployeePortal() {
         ))}
         {/* More button */}
         <button className="emp-bottom-item" onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-          <div style={{display:'flex',gap:2.5,marginBottom:1}}>{[0,1,2].map(i=><div key={i} style={{width:3.5,height:3.5,borderRadius:'50%',background:'rgba(255,255,255,0.3)'}} />)}</div>
-          <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{e.more}</div>
+          <div className="emp-bottom-icon" style={{fontSize:18,fontWeight:700,lineHeight:1}}>⋯</div>
+          <div className="emp-bottom-label" style={{fontSize:9}}>{e.more}</div>
         </button>
       </nav>
     </div>
