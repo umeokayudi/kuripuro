@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { APP_BUILD_LABEL } from '../version'
 import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
@@ -63,7 +62,6 @@ export default function Login() {
             {loading ? a.loading : a.signIn}
           </button>
         </form>
-        <div className="login-version"><span className="kp-version-badge">{APP_BUILD_LABEL}</span></div>
       </div>
     </div>
   )

@@ -4,13 +4,20 @@ import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
-import { LineChart } from '../components/AnalyticsCharts'
+import OverviewChart from '../components/OverviewChart'
+import DateRangeSheet, { presetRange, formatRangeLabel, tokyoToday } from '../components/DateRangeSheet'
+import { useAuth } from '../hooks/useAuth'
+import { summarizeJobs, summarizeByEmployee, formatMinutes, gpsCheck } from '../lib/workKpis'
 import toast from 'react-hot-toast'
 
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+const METRICS_KEY = 'kuripuro-dashboard-metrics-v2'
+const DEFAULT_METRICS = ['completed', 'cash', 'income', 'expenses', 'clients', 'satisfaction']
+const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
+const daysBetween = (from, to) => Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5) + 1
 
 export default function Dashboard() {
   const { lang, t } = useLang()
+  const { user } = useAuth() || {}
   const d = t.dashboard
   const slotLabels = { ...d, status: t.status }
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
@@ -24,13 +31,12 @@ export default function Dashboard() {
   const [clientRatings, setClientRatings] = useState([])
   const [trendJobs, setTrendJobs] = useState([])
   const [trendCashflow, setTrendCashflow] = useState([])
-  const [trendMonth, setTrendMonth] = useState(currentYearMonth())
-  const [metricPeriod, setMetricPeriod] = useState('month')
-  const [metricDay, setMetricDay] = useState(tokyoToday())
+  const [range, setRange] = useState(() => ({ ...presetRange('month'), preset: 'month' }))
+  const [rangeOpen, setRangeOpen] = useState(false)
   const [editMetrics, setEditMetrics] = useState(false)
   const [visibleMetrics, setVisibleMetrics] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('kuripuro-dashboard-metrics')) || ['revenue', 'clients'] }
-    catch { return ['revenue', 'clients'] }
+    try { return JSON.parse(localStorage.getItem(METRICS_KEY)) || DEFAULT_METRICS }
+    catch { return DEFAULT_METRICS }
   })
   const [progressMonth, setProgressMonth] = useState(currentYearMonth())
   const [detailLoc, setDetailLoc] = useState(null)
@@ -43,12 +49,9 @@ export default function Dashboard() {
     const today = tokyoToday()
     const monthStart = progressMonth + '-01'
     const monthEnd = progressMonth + '-31'
-    const [trendYear, trendMonthNum] = trendMonth.split('-').map(Number)
-    const metricYear = Number(metricDay.slice(0, 4))
-    const startYear = Math.min(trendYear, metricYear)
-    const endYear = Math.max(trendYear, metricYear)
-    const trendStart = new Date(Date.UTC(startYear, 0, 1)).toISOString().slice(0, 10)
-    const trendEnd = new Date(Date.UTC(endYear + 1, 0, 1)).toISOString().slice(0, 10)
+    // Selected range plus the same number of days before it, for the comparison.
+    const trendStart = addDays(range.from, -daysBetween(range.from, range.to))
+    const trendEnd = addDays(range.to, 1)
     const [c, e, j, ev, stale, mj, cr, tj, tc] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
@@ -57,7 +60,7 @@ export default function Dashboard() {
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
-      supabase.from('jobs').select('id,scheduled_date,status').gte('scheduled_date', trendStart).lt('scheduled_date', trendEnd).neq('status', 'cancelled'),
+      supabase.from('jobs').select('id,scheduled_date,scheduled_time,status,employee_id,employee_name,started_at,completed_at,gps_start_distance,start_lat,checklist_total,checklist_done,photo_ai_score').gte('scheduled_date', trendStart).lt('scheduled_date', trendEnd).neq('status', 'cancelled'),
       supabase.from('cashflow').select('entry_type,amount,entry_date').gte('entry_date', trendStart).lt('entry_date', trendEnd),
     ])
     setClients(c.data || [])
@@ -78,7 +81,7 @@ export default function Dashboard() {
     const tick = setInterval(() => setClock(new Date()), 1000)
     const refresh = setInterval(load, 15000)
     return () => { clearInterval(tick); clearInterval(refresh) }
-  }, [progressMonth, trendMonth, metricDay])
+  }, [progressMonth, range.from, range.to])
 
   const cancelStaleJobs = async () => {
     const today = tokyoToday()
@@ -109,51 +112,79 @@ export default function Dashboard() {
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
-  const selectedYear = Number(trendMonth.slice(0, 4))
-  const todayYear = Number(tokyoToday().slice(0, 4))
-  const trendMonthNumber = Number(trendMonth.slice(5, 7))
-  const trendData = Array.from({ length: selectedYear === todayYear ? trendMonthNumber : 12 }, (_, index) => {
-    const [year, month] = trendMonth.split('-').map(Number)
-    const date = new Date(Date.UTC(year, index, 1))
-    const key = date.toISOString().slice(0, 7)
-    const monthJobs = trendJobs.filter(job => job.scheduled_date?.startsWith(key))
-    const money = trendCashflow.filter(entry => entry.entry_date?.startsWith(key))
+  const rangeDays = daysBetween(range.from, range.to)
+  const prevFrom = addDays(range.from, -rangeDays)
+  const prevTo = addDays(range.from, -1)
+  const inRange = (iso, from, to) => iso && iso >= from && iso <= to
+  const completedIn = (from, to) => trendJobs.filter(job => job.status === 'completed' && inRange(job.scheduled_date, from, to)).length
+  const cashIn = (from, to, type) => trendCashflow.filter(row => row.entry_type === type && inRange(row.entry_date, from, to))
+    .reduce((sum, row) => sum + Number(row.amount || 0), 0)
+  const periodJobs = completedIn(range.from, range.to)
+  const prevJobs = completedIn(prevFrom, prevTo)
+  const periodIncome = cashIn(range.from, range.to, 'income')
+  const periodExpenses = cashIn(range.from, range.to, 'expense')
+  const periodNetCash = periodIncome - periodExpenses
+  const prevNetCash = cashIn(prevFrom, prevTo, 'income') - cashIn(prevFrom, prevTo, 'expense')
+  const growth = (now, before) => before ? Math.round(((now - before) / Math.abs(before)) * 100) : null
+
+  // Daily columns up to ~2 months, monthly columns beyond that.
+  const daily = rangeDays <= 62
+  const bucketKeys = []
+  if (daily) for (let i = 0; i < rangeDays; i++) bucketKeys.push(addDays(range.from, i))
+  else for (let key = range.from.slice(0, 7); key <= range.to.slice(0, 7);) {
+    bucketKeys.push(key)
+    const [y, m] = key.split('-').map(Number)
+    key = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7)
+  }
+  const overviewData = bucketKeys.map(key => {
+    const from = daily ? key : (key + '-01' < range.from ? range.from : key + '-01')
+    const to = daily ? key : (addDays(new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)), 1)).toISOString().slice(0, 10), -1))
+    const end = to > range.to ? range.to : to
+    const date = new Date((daily ? key : key + '-01') + 'T12:00:00Z')
     return {
       key,
-      label: date.toLocaleDateString(dateLocale, { month: 'short', timeZone: 'UTC' }),
-      jobs: monthJobs.filter(job => job.status === 'completed').length,
-      income: money.filter(entry => entry.entry_type === 'income').reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
-      expenses: money.filter(entry => entry.entry_type === 'expense').reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+      label: daily ? String(date.getUTCDate()) : date.toLocaleDateString(dateLocale, { month: 'short', timeZone: 'UTC' }),
+      title: date.toLocaleDateString(dateLocale, daily ? { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' } : { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+      jobs: completedIn(from, end),
+      cash: cashIn(from, end, 'income') - cashIn(from, end, 'expense'),
     }
   })
-  const currentTrend = trendData.find(row => row.key === trendMonth) || trendData[trendData.length - 1]
-  const previousMonthDate = new Date(Date.UTC(Number(trendMonth.slice(0, 4)), Number(trendMonth.slice(5, 7)) - 2, 1))
-  const previousMonthKey = previousMonthDate.toISOString().slice(0, 7)
-  const todayDate = tokyoToday()
-  const currentMonthIsSelected = trendMonth === todayDate.slice(0, 7)
-  const comparisonDay = currentMonthIsSelected ? Number(todayDate.slice(8, 10)) : 31
-  const previousTrendJobs = trendJobs.filter(job => job.scheduled_date?.startsWith(previousMonthKey) && Number(job.scheduled_date.slice(8, 10)) <= comparisonDay && job.status === 'completed').length
-  const currentTrendJobs = trendJobs.filter(job => job.scheduled_date?.startsWith(trendMonth) && (!currentMonthIsSelected || Number(job.scheduled_date.slice(8, 10)) <= comparisonDay) && job.status === 'completed').length
-  const jobGrowth = previousTrendJobs ? Math.round(((currentTrendJobs - previousTrendJobs) / previousTrendJobs) * 100) : null
-  const moneyTrend = trendData.map(row => ({ label: row.label, value: row.income - row.expenses }))
-  const periodStart = metricPeriod === 'day' ? metricDay : metricPeriod === 'year' ? `${trendMonth.slice(0, 4)}-01-01` : `${trendMonth}-01`
-  const periodEnd = metricPeriod === 'day' ? metricDay : metricPeriod === 'year' ? (selectedYear === todayYear ? todayDate : `${trendMonth.slice(0, 4)}-12-31`) : `${trendMonth}-31`
-  const periodJobs = trendJobs.filter(job => job.scheduled_date >= periodStart && job.scheduled_date <= periodEnd && job.status === 'completed').length
-  const periodCash = trendCashflow.filter(row => row.entry_date >= periodStart && row.entry_date <= periodEnd)
-  const periodNetCash = periodCash.reduce((sum, row) => sum + (row.entry_type === 'income' ? 1 : -1) * Number(row.amount || 0), 0)
+
+  const rangeJobs = trendJobs.filter(job => inRange(job.scheduled_date, range.from, range.to))
+  const team = summarizeJobs(rangeJobs)
+  const teamPrev = summarizeJobs(trendJobs.filter(job => inRange(job.scheduled_date, prevFrom, prevTo)))
+  const people = summarizeByEmployee(rangeJobs)
+  const liveJobs = todayJobs.filter(job => job.status === 'in_progress' && job.started_at)
+  const pctText = v => v == null ? '—' : `${v}%`
+
   const metricLabels = lang === 'ja'
-    ? { revenue: '月間契約売上（推定）', profit: '推定利益', clients: '稼働中の顧客', satisfaction: '顧客満足度', today: '本日の作業', completed: '完了した作業', cash: '記録済み純入金' }
-    : { revenue: 'Estimated contract revenue', profit: 'Estimated profit', clients: 'Active clients', satisfaction: 'Client satisfaction', today: "Today's jobs", completed: 'Completed jobs', cash: 'Recorded net cash' }
+    ? { completed: '完了した作業', cash: '記録済み純入金', income: '入金', expenses: '出金', clients: '稼働中の顧客', satisfaction: '顧客満足度', today: '本日の作業', revenue: '月間契約売上（推定）', profit: '推定利益' }
+    : { completed: 'Completed jobs', cash: 'Net cash', income: 'Money in', expenses: 'Money out', clients: 'Active clients', satisfaction: 'Satisfaction', today: "Today's jobs", revenue: 'Contract revenue', profit: 'Estimated profit' }
+  Object.assign(metricLabels, lang === 'ja'
+    ? { avgService: '平均作業時間', hoursWorked: '実働時間', onTime: '時間どおり開始', gps: 'GPSチェックイン' }
+    : { avgService: 'Avg. service time', hoursWorked: 'Hours worked', onTime: 'On-time starts', gps: 'GPS check-ins' })
+  const vsPrev = lang === 'ja' ? '前期間比' : 'vs previous period'
+  const satisfaction30 = avgStars(ratingsInPeriod(clientRatings, 30))
   const availableMetrics = [
-    { id: 'revenue', value: fmt(revenue), note: lang === 'ja' ? '契約データに基づく推定' : 'Estimated from active client records' },
-    { id: 'profit', value: fmt(profit), note: lang === 'ja' ? '契約売上 − 推定コスト' : 'Contract revenue minus estimated costs' },
-    { id: 'clients', value: clients.length, note: lang === 'ja' ? '現在有効な顧客' : 'Currently active' },
-    { id: 'satisfaction', value: avgStars(ratingsInPeriod(clientRatings, 30)) != null ? `${avgStars(ratingsInPeriod(clientRatings, 30)).toFixed(1)} ★` : '—', note: lang === 'ja' ? '直近30日間' : 'Last 30 days' },
-    { id: 'today', value: todayJobs.length, note: lang === 'ja' ? '予定された作業' : 'Scheduled work' },
-    { id: 'completed', value: periodJobs, note: lang === 'ja' ? '選択した期間の完了作業' : `${metricPeriod} · completed only` },
-    { id: 'cash', value: fmt(periodNetCash), note: lang === 'ja' ? '記録済みの入出金' : `${metricPeriod} · recorded cashflow` },
+    { id: 'completed', tone: 'green', value: periodJobs, delta: growth(periodJobs, prevJobs) },
+    { id: 'cash', tone: 'blue', value: fmt(periodNetCash), delta: growth(periodNetCash, prevNetCash) },
+    { id: 'income', tone: 'purple', value: fmt(periodIncome) },
+    { id: 'expenses', tone: 'orange', value: fmt(periodExpenses) },
+    { id: 'clients', tone: 'teal', value: clients.length },
+    { id: 'satisfaction', tone: 'amber', value: satisfaction30 != null ? `${satisfaction30.toFixed(1)} ★` : '—', note: lang === 'ja' ? '直近30日間' : 'Last 30 days' },
+    { id: 'today', tone: 'sky', value: todayJobs.length },
+    { id: 'revenue', tone: 'navy', value: fmt(revenue), note: lang === 'ja' ? '契約データに基づく推定' : 'Estimated, per month' },
+    { id: 'profit', tone: 'green', value: fmt(profit), note: lang === 'ja' ? '契約売上 − 推定コスト' : 'Estimated, per month' },
+    { id: 'avgService', tone: 'sky', value: formatMinutes(team.avgMin), delta: team.avgMin != null && teamPrev.avgMin ? growth(team.avgMin, teamPrev.avgMin) : null },
+    { id: 'hoursWorked', tone: 'navy', value: formatMinutes(team.totalMin), delta: growth(team.totalMin, teamPrev.totalMin) },
+    { id: 'onTime', tone: 'green', value: pctText(team.onTimePct) },
+    { id: 'gps', tone: 'teal', value: pctText(team.gpsPct) },
   ]
-  const updateVisibleMetrics = next => { setVisibleMetrics(next); localStorage.setItem('kuripuro-dashboard-metrics', JSON.stringify(next)) }
+  const updateVisibleMetrics = next => { setVisibleMetrics(next); try { localStorage.setItem(METRICS_KEY, JSON.stringify(next)) } catch {} }
+  const minutesAgo = lastUpdate ? Math.max(0, Math.floor((clock - lastUpdate) / 60000)) : null
+  const updatedLabel = minutesAgo == null ? '' : lang === 'ja'
+    ? (minutesAgo === 0 ? 'たった今更新' : `${minutesAgo}分前に更新`)
+    : (minutesAgo === 0 ? 'Updated just now' : `Updated ${minutesAgo} min ago`)
 
   const ratings30 = ratingsInPeriod(clientRatings, 30)
   const ratings7 = ratingsInPeriod(clientRatings, 7)
@@ -221,33 +252,107 @@ export default function Dashboard() {
 
   return (
     <div>
-      <DetailModal />
-      <div className="dash-ref-head">
-        <div><div className="dash-ref-eyebrow">KURIPURO</div><h1>{t.sidebar.dashboard}</h1><p>{new Date().toLocaleDateString(dateLocale, { dateStyle: 'full', timeZone: 'Asia/Tokyo' })}</p></div>
-      </div>
-      <section className="dash-custom-metrics">
-        <div className="dash-custom-head"><strong>{lang === 'ja' ? '注目指標' : 'Key metrics'}</strong><div className="dash-custom-controls">
-          <select aria-label={lang === 'ja' ? '集計期間' : 'Metric period'} value={metricPeriod} onChange={event => setMetricPeriod(event.target.value)}><option value="day">{lang === 'ja' ? '日別' : 'Day'}</option><option value="month">{lang === 'ja' ? '月別' : 'Month'}</option><option value="year">{lang === 'ja' ? '年別' : 'Year'}</option></select>
-          {metricPeriod === 'day' && <input aria-label={lang === 'ja' ? '対象日' : 'Metric date'} type="date" value={metricDay} onChange={event => setMetricDay(event.target.value)} />}
-          <button type="button" className="btn btn-sm" onClick={() => setEditMetrics(value => !value)}>{editMetrics ? (lang === 'ja' ? '完了' : 'Done') : (lang === 'ja' ? '編集' : 'Edit dashboard')}</button>
-        </div></div>
+      {DetailModal()}
+      {rangeOpen && <DateRangeSheet lang={lang} value={range} onClose={() => setRangeOpen(false)} onSave={next => { setRange(next); setRangeOpen(false) }} />}
+      <header className="dx-hero">
+        <div className="dx-hero-copy">
+          <span className="dx-eyebrow">{new Date().toLocaleDateString(dateLocale, { dateStyle: 'full', timeZone: 'Asia/Tokyo' })}</span>
+          <h1>{lang === 'ja' ? <>ダッシュボードへ<br />ようこそ</> : <>Welcome to your<br />Dashboard</>}{user?.name ? <span className="dx-hero-name">{lang === 'ja' ? `${user.name}さん` : `, ${user.name.split(' ')[0]}`}</span> : null}</h1>
+        </div>
+        <div className="dx-hero-controls">
+          <button type="button" className="dx-range" onClick={() => setRangeOpen(true)} aria-haspopup="dialog">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+            <span>{formatRangeLabel(range, lang)}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div className="dx-updated">{updatedLabel}{updatedLabel && ' · '}<button type="button" onClick={load}>{lang === 'ja' ? '更新' : 'Refresh'}</button></div>
+        </div>
+      </header>
+
+      <section className="dx-kpis-wrap" aria-label={lang === 'ja' ? '注目指標' : 'Key metrics'}>
+        <div className="dx-kpis">
+          {availableMetrics.filter(metric => visibleMetrics.includes(metric.id)).map(metric => (
+            <div className={`dx-kpi tone-${metric.tone}`} key={metric.id}>
+              <span className="dx-kpi-label">{metricLabels[metric.id]}</span>
+              <strong className="dx-kpi-value">{metric.value}</strong>
+              {metric.delta != null
+                ? <small className={`dx-kpi-delta ${metric.delta >= 0 ? 'is-up' : 'is-down'}`}>{metric.delta > 0 ? '▲ +' : metric.delta < 0 ? '▼ ' : ''}{metric.delta}% <em>{vsPrev}</em></small>
+                : metric.note ? <small className="dx-kpi-note">{metric.note}</small> : null}
+            </div>
+          ))}
+        </div>
+        <div className="dx-kpi-edit">
+          <button type="button" onClick={() => setEditMetrics(value => !value)}>{editMetrics ? (lang === 'ja' ? '完了' : 'Done') : (lang === 'ja' ? '表示する指標を編集' : 'Edit tiles')}</button>
+        </div>
         {editMetrics && <div className="dash-metric-picker">{availableMetrics.map(metric => <label key={metric.id}><input type="checkbox" checked={visibleMetrics.includes(metric.id)} onChange={event => updateVisibleMetrics(event.target.checked ? [...visibleMetrics, metric.id] : visibleMetrics.filter(id => id !== metric.id))}/><span>{metricLabels[metric.id]}</span></label>)}</div>}
-        <div className="dash-ref-kpis dash-kpis-compact">{availableMetrics.filter(metric => visibleMetrics.includes(metric.id)).map(metric => <div className="dash-ref-kpi" key={metric.id}><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">{metricLabels[metric.id]}</span><span className="dash-ref-kpi-icon">{['revenue','profit','cash'].includes(metric.id) ? '¥' : '•'}</span></div><div className="dash-ref-kpi-value">{metric.value}</div><div className="dash-ref-kpi-meta">{metric.note}</div></div>)}</div>
       </section>
 
-      <section className="card dash-trend-card">
-        <div className="dash-trend-head">
-          <div><div className="dash-trend-eyebrow">{lang === 'ja' ? '月次推移' : 'MONTHLY TRENDS'}</div><h2>{lang === 'ja' ? '実績と成長' : 'Performance and growth'}</h2><p>{lang === 'ja' ? '記録済みの入出金と完了した作業のみを表示' : 'Recorded cash in/out and completed jobs only'}</p></div>
-          <label className="dash-trend-period"><span>{lang === 'ja' ? '表示する最終月' : 'Show through'}</span><input type="month" value={trendMonth} onChange={event => setTrendMonth(event.target.value)} /></label>
+      <section className="card dx-overview">
+        <div className="dx-overview-head">
+          <div><h2>{lang === 'ja' ? '実績の概要' : 'Performance overview'}</h2><p>{formatRangeLabel(range, lang)} · {lang === 'ja' ? (daily ? '日別' : '月別') : (daily ? 'by day' : 'by month')}</p></div>
         </div>
-        <div className="dash-trend-summary">
-          <div><span>{lang === 'ja' ? '選択月の完了作業' : 'Completed jobs · selected month'}</span><strong>{currentTrend.jobs}</strong>{jobGrowth !== null && <small className={jobGrowth >= 0 ? 'is-up' : 'is-down'}>{jobGrowth > 0 ? '+' : ''}{jobGrowth}% {lang === 'ja' ? (currentMonthIsSelected ? '前月同日比' : '前月比') : (currentMonthIsSelected ? 'vs same days last month' : 'vs last month')}</small>}</div>
-          <div><span>{lang === 'ja' ? '選択月の記録済み純入金' : 'Recorded net cash · selected month'}</span><strong>{fmt(currentTrend.income - currentTrend.expenses)}</strong><small>{lang === 'ja' ? '入出金記録ベース' : 'From cashflow entries'}</small></div>
+        <OverviewChart data={overviewData} cashLabel={metricLabels.cash} jobsLabel={metricLabels.completed} formatCash={fmt} emptyLabel={lang === 'ja' ? 'データなし' : 'No data'} />
+      </section>
+
+      <section className="card dx-team">
+        <div className="dx-overview-head">
+          <div><h2>{lang === 'ja' ? 'チームのパフォーマンス' : 'Team performance'}</h2><p>{formatRangeLabel(range, lang)} · {lang === 'ja' ? '開始・終了時刻とGPSから' : 'from start/finish times and GPS'}</p></div>
+          <Link to="/live" className="dx-link">{lang === 'ja' ? 'ライブ追跡 →' : 'Live tracking →'}</Link>
         </div>
-        <div className="dash-trend-charts">
-          <div><h3>{lang === 'ja' ? '完了した作業' : 'Completed jobs'}</h3><LineChart data={trendData.map(row => ({ label: row.label, value: row.jobs }))} lineLabel={lang === 'ja' ? '件数' : 'Jobs'} /></div>
-          <div><h3>{lang === 'ja' ? '記録済み純入金' : 'Recorded net cash'}</h3><LineChart data={moneyTrend} lineLabel="¥" valueFormatter={fmt} /></div>
+        {liveJobs.length > 0 && (
+          <div className="dx-live">
+            {liveJobs.map(job => {
+              const secs = Math.max(0, Math.floor((clock - new Date(job.started_at)) / 1000))
+              const gps = gpsCheck(job)
+              return (
+                <div key={job.id} className="dx-live-item">
+                  <span className="dx-live-dot" />
+                  <div><strong>{job.employee_name || '—'}</strong><small>{(job.title || '').replace(/ — .*/, '')}{gps === 'away' ? (lang === 'ja' ? ' · ⚠ 現場外' : ' · ⚠ away from site') : gps ? ' · 📍' : ''}</small></div>
+                  <b>{String(Math.floor(secs / 3600)).padStart(2, '0')}:{String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</b>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <div className="dx-team-kpis">
+          {[
+            [metricLabels.avgService, formatMinutes(team.avgMin), teamPrev.avgMin != null && team.avgMin != null ? `${team.avgMin - teamPrev.avgMin > 0 ? '+' : team.avgMin - teamPrev.avgMin < 0 ? '−' : '±'}${formatMinutes(Math.abs(team.avgMin - teamPrev.avgMin))} ${vsPrev}` : null],
+            [metricLabels.hoursWorked, formatMinutes(team.totalMin), lang === 'ja' ? `計測 ${team.timed}件` : `${team.timed} timed jobs`],
+            [metricLabels.onTime, pctText(team.onTimePct), team.avgDelayMin != null ? (lang === 'ja' ? `平均開始 ${team.avgDelayMin}分` : `avg. start ${team.avgDelayMin > 0 ? '+' : ''}${team.avgDelayMin} min`) : null],
+            [metricLabels.gps, pctText(team.gpsPct), team.gpsAway ? (lang === 'ja' ? `現場外 ${team.gpsAway}件` : `${team.gpsAway} away from site`) : null],
+            [lang === 'ja' ? 'チェックリスト' : 'Checklist', pctText(team.checklistPct), null],
+          ].map(([label, value, sub]) => (
+            <div key={label} className="dx-team-kpi"><span>{label}</span><strong>{value}</strong>{sub && <small>{sub}</small>}</div>
+          ))}
         </div>
+        {people.length === 0 ? <div className="ov-empty">{lang === 'ja' ? 'この期間の完了作業はありません' : 'No completed jobs in this period'}</div> : (
+          <div className="dx-table-wrap">
+            <table className="dx-table">
+              <thead><tr>
+                <th>{lang === 'ja' ? 'スタッフ' : 'Employee'}</th>
+                <th>{lang === 'ja' ? '件数' : 'Jobs'}</th>
+                <th>{lang === 'ja' ? '平均時間' : 'Avg. time'}</th>
+                <th>{lang === 'ja' ? '実働' : 'Hours'}</th>
+                <th>{lang === 'ja' ? '時間どおり' : 'On time'}</th>
+                <th>GPS</th>
+                <th>{lang === 'ja' ? 'チェック' : 'Checklist'}</th>
+              </tr></thead>
+              <tbody>
+                {people.map(p => (
+                  <tr key={p.id || p.name}>
+                    <td>{p.id ? <Link to={`/employees/${p.id}`}>{p.name}</Link> : p.name}</td>
+                    <td>{p.completed}</td>
+                    <td>{formatMinutes(p.avgMin)}</td>
+                    <td>{formatMinutes(p.totalMin)}</td>
+                    <td className={p.onTimePct != null && p.onTimePct < 80 ? 'is-bad' : ''}>{pctText(p.onTimePct)}</td>
+                    <td className={p.gpsAway ? 'is-bad' : ''}>{pctText(p.gpsPct)}{p.gpsAway ? ` · ⚠${p.gpsAway}` : ''}</td>
+                    <td>{pctText(p.checklistPct)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {staleCount > 0 && (

@@ -16,6 +16,10 @@
     "fix:checklists": "node scripts/fix-checklists.mjs",
     "test": "node scripts/test-all.mjs",
     "test:employee-ai": "node scripts/test-employee-ai.mjs",
+    "test:sales-followup": "node scripts/test-sales-followup.mjs",
+    "test:work-kpis": "node scripts/test-work-kpis.mjs",
+    "test:sales-kpi": "node scripts/test-sales-kpi.mjs",
+    "test:sales-insights": "node scripts/test-sales-insights.mjs",
     "test:safety-net": "npx vite-node scripts/test-safety-net.mjs",
     "test:portal-auth": "npx vite-node scripts/test-portal-auth.mjs",
     "test:mitsumori": "node scripts/test-mitsumori.mjs",
@@ -30,13 +34,16 @@
     "deploy": "bash scripts/deploy.sh",
     "deploy:ci": "bash scripts/ci-deploy.sh",
     "setup:deploy-secrets": "bash scripts/setup-deploy-secrets.sh",
-    "verify:production": "node scripts/verify-production.mjs"
+    "verify:production": "node scripts/verify-production.mjs",
+    "test:client-care": "npx vite-node scripts/test-client-care.mjs",
+    "test:availability": "npx vite-node scripts/test-availability.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "heic2any": "^0.0.4",
     "jspdf": "^4.2.1",
     "postgres": "^3.4.9",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1",

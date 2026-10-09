@@ -8,7 +8,7 @@ export const mitsumoriEn = {
   missingCompany:'Enter the company name',missingSite:'Enter the restaurant / store name',missingContact:'Enter the person in charge',addItem:'Add at least one line item',
   updated:'Quote updated',created:'Quote saved and lead linked.',statusChanged:'Status: {status}',quoteStatuses:{draft:'Draft',sent:'Sent',accepted:'Accepted',declined:'Declined',expired:'Expired'},
   deleteQuoteConfirm:'Delete this quote?',deleted:'Deleted.',popupBlocked:'Allow pop-ups to view the quote.',quoteList:'Quotes ({n})',quoteNew:'+ New quote',filterAll:'All',emptyQuotes:'No quotes yet.',
-  firstContactDate:'First contact',validUntil:'Valid until',needsLabel:'Needs',edit:'Edit',printJa:'Print Japanese',printEn:'Print English',markSent:'Mark sent',markAccepted:'Accepted',markDeclined:'Declined',delete:'Delete',
+  firstContactDate:'First contact',validUntil:'Valid until',needsLabel:'Needs',edit:'Edit',printJa:'Print Japanese',printEn:'Print English',markSent:'Mark sent',markAccepted:'Accepted',markDeclined:'Declined',declineReasonPrompt:'Why was it declined? (price, timing, competitor…) — helps the AI find patterns',acceptReasonPrompt:'What made the client accept? (optional)',delete:'Delete',
   quoteTitleEdit:'Edit quote',quoteTitle:'New quote',lockedAfterSend:'Quote fields lock after sending.',prefillLead:'Load from existing leads',stages:{approach:'Approach',followup:'Follow-up',won:'Won',lost:'Lost'},
   frequency:'Proposed frequency',hours:'Hours / visit',siteVisit:'Site visit',issuer:'Issuer (printed)',issuerTitle:'Representative',issuerAddress:'Business address',issuerReg:'Registration number',
   items:'Line items',addLine:'+ Add item',description:'Description',subtotal:'Subtotal',tax:'Tax',total:'Total',saveQuote:'Save changes',createQuote:'Create quote',cancel:'Cancel'
@@ -23,7 +23,7 @@ export const mitsumoriJa = {
   missingCompany:'会社名を入力してください',missingSite:'店舗名を入力してください',missingContact:'担当者名を入力してください',addItem:'明細を1件以上追加してください',
   updated:'見積書を更新しました',created:'見積書を保存し、リードと連携しました。',statusChanged:'ステータス：{status}',quoteStatuses:{draft:'下書き',sent:'送付済み',accepted:'受注',declined:'失注',expired:'期限切れ'},
   deleteQuoteConfirm:'この見積書を削除しますか？',deleted:'削除しました。',popupBlocked:'見積書を表示するにはポップアップを許可してください。',quoteList:'見積書一覧（{n}）',quoteNew:'+ 新しい見積書',filterAll:'すべて',emptyQuotes:'見積書はありません。',
-  validUntil:'有効期限',edit:'編集',printJa:'日本語で印刷',printEn:'英語で印刷',markSent:'送付済みにする',markAccepted:'受注',markDeclined:'失注',delete:'削除',
+  validUntil:'有効期限',edit:'編集',printJa:'日本語で印刷',printEn:'英語で印刷',markSent:'送付済みにする',markAccepted:'受注',markDeclined:'失注',declineReasonPrompt:'失注の理由は？（価格・時期・競合など）AI分析に使います',acceptReasonPrompt:'受注の決め手は？（任意）',delete:'削除',
   quoteTitleEdit:'見積書を編集',quoteTitle:'新しい見積書',lockedAfterSend:'送付後は見積項目を編集できません。',prefillLead:'既存リードから入力',stages:{approach:'アプローチ',followup:'フォローアップ',won:'受注',lost:'失注'},
   frequency:'提案頻度',hours:'訪問あたりの時間',siteVisit:'現地確認日',issuer:'発行者情報',issuerTitle:'代表者',issuerAddress:'住所',issuerReg:'登録番号',
   items:'明細',addLine:'+ 明細を追加',description:'内容',subtotal:'小計',tax:'消費税',total:'合計',saveQuote:'変更を保存',createQuote:'見積書を作成',cancel:'キャンセル'

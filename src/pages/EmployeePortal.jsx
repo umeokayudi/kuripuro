@@ -7,6 +7,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
+import ServiceTimer from '../components/ServiceTimer'
+import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
@@ -39,6 +41,8 @@ import {
 import { tokyoToday, recentTokyoDates } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
+import AvailabilityPlanner, { PlanAlert } from '../components/AvailabilityPlanner'
+import { planningAlert } from '../lib/availability'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -56,12 +60,30 @@ const BADGE_DEFS = [
   { key:'perfect_week', name:'Perfect Week', icon:'🔥', desc:'5 jobs in one week' },
 ]
 
+// Lives outside EmployeePortal so the clock tick does not remount it (and reset scroll).
+function JobPhoto({ url, label }) {
+  const [failed, setFailed] = useState(false)
+  const displayUrl = viewablePhotoUrl(url)
+  if (!url) return null
+  return (
+    <div>
+      <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
+      {failed ? (
+        <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
+      ) : (
+        <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
+      )}
+    </div>
+  )
+}
+
 export default function EmployeePortal() {
   const { user, logout } = useAuth()
   const { lang, t: tr } = useLang()
   const e = tr.employee
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [quickOpen, setQuickOpen] = useState(false)
   const [jobs, setJobs] = useState([])
   const [allJobs, setAllJobs] = useState([])
   const [spotJobs, setSpotJobs] = useState([])
@@ -90,6 +112,7 @@ export default function EmployeePortal() {
   const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
   const [empData, setEmpData] = useState(null)
+  const [weekPlans, setWeekPlans] = useState([])
   const [selectedJob, setSelectedJob] = useState(null)
   const [claimForm, setClaimForm] = useState({ job_id:'', amount:'', route:'', description:'' })
   const [claimPhoto, setClaimPhoto] = useState(null)
@@ -269,6 +292,12 @@ export default function EmployeePortal() {
     loadMessages()
     awardBadges(allVisible, bdg.data||[])
     loadStatement()
+    loadWeekPlans()
+  }
+
+  const loadWeekPlans = async () => {
+    const { data, error } = await supabase.from('employee_week_plans').select('week_start,submitted_at').eq('employee_id', user.id).gte('week_start', tokyoToday()).limit(30)
+    if (!error) setWeekPlans(data || [])
   }
 
   const loadStatement = async () => {
@@ -396,22 +425,29 @@ export default function EmployeePortal() {
     }
   }
 
-  const checkGPS = async (job) => {
-    if (!job.gps_lat||!job.gps_lng) return true
-    setGpsStatus('📍 Checking...')
+  // Where the worker is when they start or finish. Never blocks the job:
+  // without GPS permission it just returns null.
+  const capturePosition = async () => {
     try {
       const pos = await getCurrentPosition()
-      const dist = distanceMeters(pos.lat,pos.lng,Number(job.gps_lat),Number(job.gps_lng))
-      if (dist>100) {
-        setGpsStatus(`⚠️ ${Math.round(dist)}m away`)
-        return { ok: true, dist: Math.round(dist), override: true }
-      }
-      setGpsStatus(`✅ ${Math.round(dist)}m`)
-      return { ok: true, dist: Math.round(dist), override: false }
-    } catch {
+      return { lat: pos.lat, lng: pos.lng, acc: pos.acc != null ? Math.round(pos.acc) : null }
+    } catch { return null }
+  }
+
+  const checkGPS = async (job) => {
+    setGpsStatus('📍 Checking...')
+    const pos = await capturePosition()
+    if (!pos) {
       setGpsStatus('⚠️ GPS unavailable')
-      return { ok: true, dist: null, override: true }
+      return { ok: true, dist: null, override: Boolean(job.gps_lat && job.gps_lng), pos: null }
     }
+    if (!job.gps_lat || !job.gps_lng) {
+      setGpsStatus(`✅ GPS${pos.acc ? ` ±${pos.acc}m` : ''}`)
+      return { ok: true, dist: null, override: false, pos }
+    }
+    const dist = Math.round(distanceMeters(pos.lat, pos.lng, Number(job.gps_lat), Number(job.gps_lng)))
+    setGpsStatus(dist > 100 ? `⚠️ ${dist}m away` : `✅ ${dist}m`)
+    return { ok: true, dist, override: dist > 100, pos }
   }
 
   const handleAcceptSpot = async (job) => {
@@ -692,8 +728,13 @@ export default function EmployeePortal() {
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
       const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
       if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
+      const gpsFields = {
+        start_lat: gpsResult.pos?.lat ?? null, start_lng: gpsResult.pos?.lng ?? null, start_accuracy: gpsResult.pos?.acc ?? null,
+        gps_start_distance: gpsResult.dist ?? null, gps_override: Boolean(gpsResult.override),
+      }
+      try { await supabase.from('jobs').update(gpsFields).eq('id', job.id) } catch (ex) { console.log('gps fields skipped', ex?.message) }
       setChecklist(initChecklistState(job))
-      setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!')
+      setActiveJob({ ...data, ...gpsFields }); setJobPhotos([]); toast.success('✅ Started!')
     } catch (err) {
       toast.error(err?.message || e.startError)
     } finally {
@@ -731,6 +772,8 @@ export default function EmployeePortal() {
       return
     }
     setSubmitting(true)
+    // Read the finish position while the photos upload
+    const endPositionPromise = capturePosition()
     try {
       let startPhotoUrl = job.photo_start_url
       const startPhotos = jobPhotos.filter(p => p.slot === 'start')
@@ -770,6 +813,15 @@ export default function EmployeePortal() {
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      try {
+        const endPos = await endPositionPromise
+        if (endPos) {
+          // Distance to the site when it has coordinates; otherwise to where the job was started.
+          const refLat = job.gps_lat ?? job.start_lat, refLng = job.gps_lng ?? job.start_lng
+          const endDist = refLat != null && refLng != null ? Math.round(distanceMeters(endPos.lat, endPos.lng, Number(refLat), Number(refLng))) : null
+          await supabase.from('jobs').update({ end_lat: endPos.lat, end_lng: endPos.lng, end_accuracy: endPos.acc, gps_end_distance: endDist }).eq('id', job.id)
+        }
+      } catch(ex){ console.log('gps end skipped', ex?.message) }
       try {
         await supabase.from('jobs').update({
           checklist_total: total || null, checklist_done: total ? done : null,
@@ -930,6 +982,7 @@ export default function EmployeePortal() {
     )
   }
 
+  const planAlert = planningAlert(weekPlans, today)
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
   const menuItems = [
     {key:'home',icon:'🏠',label:e.dashboard},
@@ -942,15 +995,27 @@ export default function EmployeePortal() {
     {key:'equipment',icon:'🧰',label:e.equipment},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
+    {key:'availability',icon:'🗓',label:e.availability,badge:planAlert?1:0},
     {key:'achievements',icon:'🏆',label:e.achievements},
   ]
 
   const bottomTabs = [
-    {key:'home',label:e.home,icon:'○'},
+    {key:'home',label:e.home,icon:'⌂'},
     {key:'shift',label:e.shift,icon:'▶'},
+    {key:'quick'},
     {key:'salary',label:e.salary,icon:'¥'},
     {key:'ai',label:e.ai,icon:'✦'},
   ]
+  const quickActions = [
+    !activeJob&&{icon:'✓',label:e.pastServiceButton,hint:e.pastServiceHint,run:()=>openPastService()},
+    {icon:'＋',label:e.addService,hint:e.addServiceHint,run:openAddService},
+    {icon:'🗓',label:e.availability,hint:e.availabilityHint,run:()=>goToTab('availability')},
+    {icon:'🚃',label:e.transport,hint:e.transportHint,run:()=>goToTab('transport')},
+    {icon:'🧰',label:e.equipment,hint:e.equipmentHint,run:()=>goToTab('equipment')},
+    {icon:'✉',label:e.chat,hint:e.chatHint,run:()=>goToTab('chat')},
+  ].filter(Boolean)
+
+  const currentTabLabel = menuItems.find(m=>m.key===tab)?.label
 
   const scrollToActiveJob = () => {
     setTimeout(() => {
@@ -967,22 +1032,6 @@ export default function EmployeePortal() {
   useEffect(() => {
     if (tab === 'shift' && activeJob) scrollToActiveJob()
   }, [tab, activeJob?.id])
-
-  const JobPhoto = ({ url, label }) => {
-    const [failed, setFailed] = useState(false)
-    const displayUrl = viewablePhotoUrl(url)
-    if (!url) return null
-    return (
-      <div>
-        <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
-        {failed ? (
-          <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
-        ) : (
-          <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
-        )}
-      </div>
-    )
-  }
 
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
@@ -1042,7 +1091,8 @@ export default function EmployeePortal() {
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
 
-      {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
+      {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
+      {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
       {showSignature&&<SignatureModal
         jobTitle={signatureJob?.title||activeJob?.title||''}
         labels={e}
@@ -1114,8 +1164,6 @@ export default function EmployeePortal() {
         <div className="emp-header-top">
           <div className="emp-header-identity">
             <div className="emp-brand"><span className="emp-kp-mark">KP</span><span>KURIPURO BY JBM</span></div>
-            <div className="emp-name">{user.name.split(' ')[0]}</div>
-            <div className="emp-header-date">{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
           <div className="emp-header-actions">
             <div className={`emp-score-card ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}>
@@ -1133,9 +1181,13 @@ export default function EmployeePortal() {
             </button>
           </div>
         </div>
-        <div className="emp-clock-row" aria-label={clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}>
-          <span className="emp-clock-time">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
-          <span className="emp-clock-seconds">:{String(clock.getSeconds()).padStart(2,'0')}</span>
+        {/* Same greeting header on every screen */}
+        <div className="ex-greet emp-hello">
+          <div>
+            <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
+            <p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}{tab!=='home'&&currentTabLabel?<b> · {currentTabLabel}</b>:null}</p>
+          </div>
+          <div><span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span></div>
         </div>
         {!isOnline&&<div className="emp-offline-banner">
           ⚠️ {e.offline}
@@ -1143,8 +1195,8 @@ export default function EmployeePortal() {
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div className={`emp-status-chip ${gpsStatus.includes('✅')?'is-good':gpsStatus.includes('🚫')?'is-bad':''}`}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
+          {planAlert&&tab!=='availability'&&<div onClick={()=>setTab('availability')} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
-          {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#f87171',cursor:'pointer',fontWeight:600}}>💬 {unreadMsgs}</div>}
         </div>
       </div>
 
@@ -1177,182 +1229,201 @@ export default function EmployeePortal() {
 
         {/* HOME */}
         {tab==='home'&&(
-          <div className="emp-home">
-            <section className="emp-action-panel" aria-label={e.quickActions}>
-              <div className="emp-action-heading"><div><span>{e.workspace}</span><strong>{e.quickActions}</strong></div><span className="emp-action-live">{isOnline ? e.online : e.offline}</span></div>
-              <div className="emp-action-grid">
-                <button type="button" className="emp-action-tile emp-action-ai" onClick={()=>goToTab('ai')}><span>✦</span><strong>{e.ai}</strong><small>{e.aiHint}</small></button>
-                <button type="button" className="emp-action-tile" onClick={()=>goToTab('calendar')}><span>▦</span><strong>{e.calendar}</strong><small>{e.calendarHint}</small></button>
-                <button type="button" className="emp-action-tile" onClick={()=>goToTab('salary')}><span>¥</span><strong>{e.salary}</strong><small>{e.salaryHint}</small></button>
-                <button type="button" className="emp-action-tile" onClick={()=>goToTab('chat')}><span>✉</span><strong>{e.chat}</strong><small>{unreadMsgs ? fill(e.unreadMessages,{count:unreadMsgs}) : e.chatHint}</small></button>
-              </div>
-            </section>
-            {/* Active job banner */}
-            {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:isStaleActiveJob(activeJob,today,elapsed)?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${isStaleActiveJob(activeJob,today,elapsed)?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div>
-                  <div style={{fontSize:10,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:3}}>
-                    ● {isStaleActiveJob(activeJob,today,elapsed)?e.staleShiftTitle:e.activeShiftTitle}
-                  </div>
-                  <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.split(' —')[0]}</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>
-                    {activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:''}{e.tapToFinish}
-                  </div>
-                </div>
-                <div style={{fontSize:isStaleActiveJob(activeJob,today,elapsed)?14:28,fontWeight:700,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontFamily:'monospace',textAlign:'right',maxWidth:120}}>
-                  {isStaleActiveJob(activeJob,today,elapsed)?formatShiftElapsed(elapsed,lang):fmt(elapsed)}
-                </div>
-              </div>
-            </div>}
+          <div className="emp-home ex-home">
 
-            {!activeJob&&(
-              <button
-                type="button"
-                onClick={()=>openPastService()}
-                className="emp-past-service-button"
-                style={{width:'100%',padding:'14px 16px',marginBottom:12,borderRadius:16,border:'1px solid rgba(193,156,86,0.35)',background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(232,196,122,0.08))',color:'#e8c47a',fontSize:14,fontWeight:800,cursor:'pointer',textAlign:'left'}}
-              >
-                ✓ {e.pastServiceButton}
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',fontWeight:500,marginTop:4}}>{e.pastServiceHint}</div>
-              </button>
-            )}
-
-            {/* Today shift — pendente */}
-            {todayPendingJobs.length>0&&!activeJob&&(
-              <div className="emp-today-shift-card" onClick={()=>setTab('shift')}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 {e.todayShift.toUpperCase()}</div>
-                  {(()=>{
-                    const nj=todayPendingJobs.find(j=>j.status==='assigned')
-                    if(!nj) return null
-                    const nd=new Date(nj.scheduled_date+'T'+(nj.scheduled_time||'00:30')+':00')
-                    const diffMs=nd-new Date()
-                    if(diffMs<0) return null
-                    const diffH=Math.floor(diffMs/3600000)
-                    const diffM=Math.floor((diffMs%3600000)/60000)
-                    return <div style={{fontSize:11,color:'#60a5fa',fontWeight:600}}>⏰ {diffH>0?diffH+'h ':''}{diffM}m {e.toStart}</div>
-                  })()}
-                </div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} {e.locations}</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}</div>
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginBottom:12}}>⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
-                <div style={{height:5,background:'rgba(255,255,255,0.1)',borderRadius:3,overflow:'hidden',marginBottom:10}}>
-                  <div style={{height:'100%',width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%',background:'linear-gradient(90deg,#c19c56,#e8c47a)',borderRadius:3,transition:'width 0.4s'}} />
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div style={{display:'flex',gap:4}}>
-                    {todayJobs.slice(0,8).map((j,i)=><div key={i} style={{width:8,height:8,borderRadius:'50%',background:j.status==='completed'?'#4ade80':j.status==='in_progress'?'#fbbf24':'rgba(255,255,255,0.2)'}} />)}
-                    {todayJobs.length>8&&<span style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginLeft:2}}>+{todayJobs.length-8}</span>}
-                  </div>
-                  <div style={{fontSize:13,fontWeight:600,color:'#c19c56'}}>{e.startArrow}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Turno de hoje concluído */}
-            {todayAllDone&&!activeJob&&(
-              <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:'1px solid rgba(74,222,128,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
-                <div style={{fontSize:10,color:'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:8}}>✅ {e.todayShiftDone}</div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} {e.locations}</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{e.tapToReview}</div>
-                {nextShiftJob&&nextShiftJob.scheduled_date>today&&(
-                  <div style={{fontSize:11,color:'#60a5fa',marginTop:4}}>{fill(e.nextShift,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
-                )}
-              </div>
-            )}
-
-            {/* Countdown to next upcoming job */}
-            {todayJobs.length===0&&nextShiftJob&&!activeJob&&(()=>{
-              const nextDate = new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')
-              const diffMs = nextDate - new Date()
-              const diffH = Math.floor(diffMs/3600000)
-              const diffM = Math.floor((diffMs%3600000)/60000)
-              if (diffMs < 0) return null
+            {/* Check-in card with the map of the next location */}
+            {(()=>{
+              const mapJob = activeJob || todayPendingJobs[0] || null
+              if (!mapJob) return null
+              const place = (mapJob.title||'').split(' —')[0]
+              const query = mapJob.address && !/^https?:\/\//i.test(mapJob.address.trim()) ? mapJob.address : `${mapJob.client_name||place} Tokyo`
+              const stale = activeJob && isStaleActiveJob(activeJob,today,elapsed)
               return (
-                <div style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12}}>
-                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>⏰ {e.nextShiftLabel.toUpperCase()}</div>
-                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>{fill(e.timeAway,{time:diffH>0?`${diffH}h ${diffM}m`:`${diffM}m`})}</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>{nextShiftJob.title.split(' —')[0]} · {nextShiftJob.scheduled_date} {nextShiftJob.scheduled_time}</div>
-                </div>
+                <section className={`ex-checkin${activeJob?' is-active':''}${stale?' is-stale':''}`}>
+                  <div className="ex-map">
+                    <iframe title={place} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=15&output=embed`} />
+                    <button type="button" className="ex-checkin-btn" onClick={()=>goToTab('shift')}>
+                      <span className="ex-checkin-icon" aria-hidden="true">{activeJob?'■':'⌖'}</span>{activeJob?e.checkOut:e.checkIn}
+                    </button>
+                  </div>
+                  <button type="button" className="ex-checkin-info" onClick={()=>goToTab('shift')}>
+                    <div>
+                      <small>{activeJob?(stale?e.staleShiftTitle:e.activeShiftTitle):e.nextLocation}</small>
+                      <strong>{place}</strong>
+                      <span>{activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${mapJob.scheduled_time||'—'} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
+                    </div>
+                    {activeJob?<b className="ex-timer">{stale?formatShiftElapsed(elapsed,lang):fmt(elapsed)}</b>:(()=>{
+                      const nd=new Date(mapJob.scheduled_date+'T'+(mapJob.scheduled_time||'00:30')+':00')
+                      const diffMs=nd-new Date()
+                      if(diffMs<0) return <b className="ex-go">›</b>
+                      const diffH=Math.floor(diffMs/3600000), diffM=Math.floor((diffMs%3600000)/60000)
+                      return <b className="ex-countdown">{diffH>0?diffH+'h ':''}{diffM}m<small>{e.toStart}</small></b>
+                    })()}
+                  </button>
+                </section>
               )
             })()}
 
-            {/* No jobs today */}
+            {/* No shift today */}
             {todayJobs.length===0&&!activeJob&&(
               <div className="emp-no-shift-card">
                 <div className="emp-empty-icon">☀</div>
                 <div className="emp-empty-kicker">{e.todayShift}</div>
                 <div className="emp-empty-title">{e.noShiftToday}</div>
-                {nextShiftJob&&<div className="emp-empty-description">{fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>}
+                {nextShiftJob&&(()=>{
+                  const diffMs=new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')-new Date()
+                  return <div className="emp-empty-description">{diffMs>0&&diffMs<48*3600000?fill(e.timeAway,{time:Math.floor(diffMs/3600000)>0?`${Math.floor(diffMs/3600000)}h ${Math.floor((diffMs%3600000)/60000)}m`:`${Math.floor((diffMs%3600000)/60000)}m`}):fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
+                })()}
                 {nextShiftJob&&<div className="emp-next-job"><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</span></div>}
-                <button type="button" onClick={()=>setTab('calendar')} className="emp-outline-button">{e.calendar} ›</button>
               </div>
             )}
 
-            {/* Unread messages banner */}
-            
-            {/* Next payment */}
-            {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
-              <div onClick={()=>setTab('salary')} style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div>
-                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>💴 {e.nextPayment.toUpperCase()}</div>
-                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>¥{Number(payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0].amount).toLocaleString()}</div>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0].payment_date}</div>
-                </div>
-                <div style={{fontSize:14,color:'#60a5fa'}}>›</div>
-              </div>
-            )}
+            <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>goToTab('availability')} />
 
-            {/* Stats */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
-              {[['📋',salaryData?.jobs||0,e.statJobs],['⏱',(salaryData?.hours||0)+'h',e.statHours],['💴','¥'+(salaryData?.total||0).toLocaleString(),e.statEarned]].map(([icon,v,l])=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 8px',textAlign:'center'}}>
-                  <div style={{fontSize:18,marginBottom:3}}>{icon}</div>
-                  <div style={{fontSize:14,fontWeight:700,color:'#fff'}}>{v}</div>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:1,textTransform:'uppercase',letterSpacing:0.5}}>{l}</div>
-                </div>
-              ))}
+            {/* Summary cards (swipe sideways) */}
+            <div className="ex-cards" role="list">
+              {todayJobs.length>0&&(
+                <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('shift')}>
+                  <div className="ex-card-head"><strong>{todayAllDone?e.todayShiftDone:e.todayShift}</strong><span className="ex-card-icon">▶</span></div>
+                  <div className="ex-card-big">{todayJobs.length} <small>{e.locations}</small></div>
+                  <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
+                  <div className="ex-progress"><i className="is-green" style={{width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%'}} /><i style={{width:(todayJobs.filter(j=>j.status==='in_progress').length/todayJobs.length*100)+'%'}} /></div>
+                  <span className="ex-pill">{todayAllDone?e.tapToReview:e.startArrow}</span>
+                </button>
+              )}
+              <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('salary')}>
+                <div className="ex-card-head"><strong>{e.workedHours}</strong><span className="ex-card-icon">⏱</span></div>
+                <div className="ex-card-big">{salaryData?.hours||0}h <small>{e.thisMonth}</small></div>
+                <div className="ex-card-sub">{salaryData?.jobs||0} {e.statJobs.toLowerCase()} · ¥{(salaryData?.total||0).toLocaleString()}</div>
+                {salaryData&&salaryData.fixedMax>0?(
+                  <div className="ex-progress"><i className="is-green" style={{width:Math.min((salaryData.base/salaryData.fixedMax)*100,100)+'%'}} /></div>
+                ):<div className="ex-progress"><i style={{width:Math.min(((salaryData?.workedDays||0)/26)*100,100)+'%'}} /></div>}
+                <span className="ex-pill">{e.viewSalary}</span>
+              </button>
+              {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(()=>{
+                const next=payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0]
+                return (
+                  <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('salary')}>
+                    <div className="ex-card-head"><strong>{e.nextPayment}</strong><span className="ex-card-icon">¥</span></div>
+                    <div className="ex-card-big">¥{Number(next.amount).toLocaleString()}</div>
+                    <div className="ex-card-sub">{next.payment_date}</div>
+                    <span className="ex-pill">{e.viewSalary}</span>
+                  </button>
+                )
+              })()}
             </div>
             {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&!(empData.salary_type==='fixed'&&Number(empData.fixed_salary||0)===0)&&(
-              <div style={{background:'rgba(251,191,36,0.08)',border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,padding:'10px 12px',marginBottom:12,fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>
-                ⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}
-              </div>
+              <div className="ex-warning">⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}</div>
             )}
 
-            {/* Salary ring progress */}
-            {salaryData&&salaryData.fixedMax>0&&(
-              <div style={S.card}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{e.monthlySalary}</span>
-                  <span style={{fontSize:14,fontWeight:800,color:'#c19c56'}}>¥{salaryData.base.toLocaleString()} <span style={{fontSize:10,color:'rgba(255,255,255,0.2)'}}>/ ¥{salaryData.fixedMax.toLocaleString()}</span></span>
+            {/* Pending requests + notifications */}
+            {(()=>{
+              const pendingClaims=claims.filter(c=>c.status==='pending').length
+              const pendingEquipment=equipmentRequests.filter(r=>['pending','requested'].includes(r.status)).length
+              const notifications=unreadMsgs+spotJobs.length
+              return (
+                <div className="ex-duo">
+                  <button type="button" className="ex-tile" onClick={()=>goToTab(pendingClaims||!pendingEquipment?'transport':'equipment')}>
+                    <span>{e.pendingRequests}</span>
+                    <strong>{pendingClaims+pendingEquipment}</strong>
+                    <small>{fill(e.pendingBreakdown,{transport:pendingClaims,equipment:pendingEquipment})}</small>
+                  </button>
+                  <button type="button" className="ex-tile is-blue" onClick={()=>goToTab(spotJobs.length&&!unreadMsgs?'spots':'chat')}>
+                    <span>{e.notifications}</span>
+                    <b aria-hidden="true">🔔</b>
+                    <small>{fill(e.unreadCount,{n:notifications})}</small>
+                  </button>
                 </div>
-                <div style={{height:6,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
-                  <div style={{height:'100%',width:Math.min((salaryData.base/salaryData.fixedMax)*100,100)+'%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',transition:'width 0.6s'}} />
-                </div>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{fill(e.daysProjected,{days:salaryData.workedDays,rate:salaryData.dailyRate.toLocaleString(),projected:(salaryData.projected||0).toLocaleString()})}</div>
-              </div>
-            )}
+              )
+            })()}
 
-            {/* Score */}
-            <div style={S.card}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{e.performance}</span><span style={{fontSize:15,fontWeight:800,color:scoreColor(empScore)}}>{empScore}/100</span></div>
-              <div style={{height:5,background:'rgba(255,255,255,0.06)',borderRadius:3,overflow:'hidden'}}><div style={{height:'100%',width:empScore+'%',borderRadius:3,background:scoreColor(empScore)}} /></div>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',marginTop:4}}>{empScore>=90?`🌟 ${e.scoreExcellent}`:empScore>=70?`👍 ${e.scoreGood}`:`⚠️ ${e.scoreNeedsWork}`}</div>
+            {/* Quick actions */}
+            <div className="ex-section-title">{e.quickActionTitle}</div>
+            <div className="ex-chips">
+              {!activeJob&&<button type="button" className="ex-chip is-gold" onClick={()=>openPastService()}><i>✓</i>{e.pastServiceButton}</button>}
+              <button type="button" className="ex-chip" onClick={openAddService}><i>＋</i>{e.addService}</button>
+              <button type="button" className="ex-chip" onClick={()=>goToTab('transport')}><i>🚃</i>{e.transport}</button>
+              <button type="button" className="ex-chip" onClick={()=>goToTab('equipment')}><i>🧰</i>{e.equipment}</button>
             </div>
 
+            {/* Quick access */}
+            <div className="ex-section-title">{e.quickAccess}</div>
+            <div className="ex-access">
+              {[
+                ['shift','▶',e.shift,'blue'],
+                ['calendar','▦',e.calendar,'amber'],
+                ['salary','¥',e.salary,'green'],
+                ['ai','✦',e.ai,'purple'],
+                ['chat','✉',e.chat,'pink',unreadMsgs],
+                ['history','☰',e.allJobs,'teal'],
+              ].map(([key,icon,label,tone,badge])=>(
+                <button type="button" key={key} className={`ex-access-item tone-${tone}`} onClick={()=>goToTab(key)}>
+                  <span className="ex-access-icon">{icon}{badge>0&&<em>{badge}</em>}</span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Overview */}
+            <div className="ex-section-title">{e.overview}</div>
+            <div className="ex-overview">
+              <div className="ex-ov tone-blue"><strong>{salaryData?.jobs||0}</strong><span>{e.statJobs}</span></div>
+              <div className="ex-ov tone-purple"><strong>{salaryData?.hours||0}h</strong><span>{e.statHours}</span></div>
+              <div className="ex-ov tone-peach"><strong>¥{(salaryData?.total||0).toLocaleString()}</strong><span>{e.statEarned}</span></div>
+              <div className="ex-ov tone-gray"><strong style={{color:scoreColor(empScore)}}>{empScore}</strong><span>{e.performance} · {empScore>=90?e.scoreExcellent:empScore>=70?e.scoreGood:e.scoreNeedsWork}</span></div>
+            </div>
+
+            {/* My progress: evolution and averages from start/finish times and GPS */}
+            {(()=>{
+              const monthKey = today.slice(0,7)
+              const prevKey = new Date(Date.UTC(Number(monthKey.slice(0,4)), Number(monthKey.slice(5,7))-2, 1)).toISOString().slice(0,7)
+              const month = summarizeJobs(allJobs.filter(j=>j.scheduled_date?.startsWith(monthKey)))
+              const prev = summarizeJobs(allJobs.filter(j=>j.scheduled_date?.startsWith(prevKey)))
+              const weeks = weeklyEvolution(allJobs, today, 8)
+              const maxJobs = Math.max(1, ...weeks.map(w=>w.completed))
+              const avgDelta = month.avgMin!=null&&prev.avgMin!=null ? month.avgMin-prev.avgMin : null
+              const kpis = [
+                ['⏱', e.avgService, formatMinutes(month.avgMin), avgDelta!=null&&avgDelta!==0?`${avgDelta>0?'+':'−'}${formatMinutes(Math.abs(avgDelta))} ${e.vsLastMonth}`:null],
+                ['🕘', e.onTime, month.onTimePct!=null?`${month.onTimePct}%`:'—', month.avgDelayMin!=null?fill(e.avgDelay,{m:month.avgDelayMin}):null],
+                ['📍', e.gpsCheckins, month.gpsPct!=null?`${month.gpsPct}%`:'—', month.gpsAway?fill(e.gpsAwayCount,{n:month.gpsAway}):null],
+                ['✓', e.checklistRate, month.checklistPct!=null?`${month.checklistPct}%`:'—', null],
+              ]
+              return (
+                <section className="ex-evo">
+                  <div className="ex-evo-head"><strong>{e.myProgress}</strong><small>{e.last8Weeks}</small></div>
+                  <div className="ex-evo-kpis">
+                    {kpis.map(([icon,label,value,sub])=>(
+                      <div key={label} className="ex-evo-kpi"><span>{icon} {label}</span><strong>{value}</strong>{sub&&<small>{sub}</small>}</div>
+                    ))}
+                  </div>
+                  <div className="ex-evo-chart" role="img" aria-label={e.jobsPerWeek}>
+                    {weeks.map((w,i)=>(
+                      <div key={w.week} className={`ex-evo-col${i===weeks.length-1?' is-now':''}`} title={`${w.week}: ${w.completed} · ${formatMinutes(w.avgMin)}`}>
+                        <small className="ex-evo-val">{w.completed||''}</small>
+                        <i style={{height:`${Math.max(4,(w.completed/maxJobs)*100)}%`}} />
+                        <span>{Number(w.week.slice(8))}/{Number(w.week.slice(5,7))}</span>
+                        <em>{w.avgMin!=null?`${w.avgMin}m`:'—'}</em>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="ex-evo-legend"><span><i className="is-bar" />{e.jobsPerWeek}</span><span>{e.avgMinutesRow}</span></div>
+                </section>
+              )
+            })()}
+
             {/* Badges */}
-            {badges.length>0&&<div style={S.card}>
-              <span style={S.label}>{e.badges}</span>
-              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                {badges.map(b=>{ const def=BADGE_DEFS.find(d=>d.key===b.badge_key); return <span key={b.id} style={{fontSize:24}} title={e[`badge_${def?.key}`]||def?.name}>{def?.icon||'🏅'}</span> })}
-              </div>
+            {badges.length>0&&<div className="ex-badges">
+              <span>{e.badges}</span>
+              <div>{badges.map(b=>{ const def=BADGE_DEFS.find(d=>d.key===b.badge_key); return <span key={b.id} title={e[`badge_${def?.key}`]||def?.name}>{def?.icon||'🏅'}</span> })}</div>
             </div>}
 
             {/* Spot jobs */}
-            {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.07)',border:'1px solid rgba(193,156,86,0.15)',borderRadius:18,padding:'14px 16px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div><div style={{fontSize:13,fontWeight:700,color:'#c19c56'}}>⚡ {fill(spotJobs.length>1?e.spotCountPlural:e.spotCount,{n:spotJobs.length})}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{e.tapToRespond}</div></div>
-              <div style={{fontSize:22,color:'#c19c56'}}>›</div>
-            </div>}
+            {spotJobs.length>0&&<button type="button" className="ex-spot" onClick={()=>setTab('spots')}>
+              <div><strong>⚡ {fill(spotJobs.length>1?e.spotCountPlural:e.spotCount,{n:spotJobs.length})}</strong><small>{e.tapToRespond}</small></div>
+              <span>›</span>
+            </button>}
+
+            <button type="button" className="ex-primary" onClick={()=>goToTab('calendar')}>{e.viewSchedule}</button>
           </div>
         )}
 
@@ -1705,6 +1776,10 @@ export default function EmployeePortal() {
         )}
 
         {/* ACHIEVEMENTS */}
+        {tab==='availability'&&(
+          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
+        )}
+
         {tab==='achievements'&&(
           <div>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:14}}>{fill(e.badgesEarned,{earned:badges.length,total:BADGE_DEFS.length})}</div>
@@ -1725,9 +1800,25 @@ export default function EmployeePortal() {
         )}
       </div>
 
+      {quickOpen&&(
+        <div className="ex-quick-overlay" onClick={()=>setQuickOpen(false)}>
+          <section className="ex-quick-sheet" role="dialog" aria-modal="true" aria-label={e.quickActionTitle} onClick={ev=>ev.stopPropagation()}>
+            <div className="ex-quick-grip" />
+            <strong>{e.quickActionTitle}</strong>
+            {quickActions.map(a=>(
+              <button type="button" key={a.label} className="ex-quick-item" onClick={()=>{setQuickOpen(false);a.run()}}>
+                <span>{a.icon}</span><div><b>{a.label}</b><small>{a.hint}</small></div>
+              </button>
+            ))}
+          </section>
+        </div>
+      )}
+
       {/* BOTTOM TAB BAR */}
       <nav aria-label={lang==='ja'?'メインナビゲーション':'Main navigation'} className="emp-bottom-nav" style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
-        {bottomTabs.map(t=>(
+        {bottomTabs.map(t=>t.key==='quick'?(
+          <div key="quick" className="ex-fab-slot"><button type="button" className={`ex-fab${quickOpen?' is-open':''}`} aria-label={e.quickActionTitle} aria-expanded={quickOpen} onClick={()=>setQuickOpen(v=>!v)}>＋</button></div>
+        ):(
           <button key={t.key} className={`emp-bottom-item${tab===t.key?' is-active':''}`} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
             <div className="emp-bottom-icon" style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>
             <div className="emp-bottom-label" style={{fontSize:9,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.25)',fontWeight:tab===t.key?600:400,transition:'color 0.15s'}}>{t.label}</div>
@@ -1735,11 +1826,6 @@ export default function EmployeePortal() {
             {t.badge>0&&<div style={{position:'absolute',top:6,right:'calc(50% - 14px)',width:16,height:16,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff'}}>{t.badge}</div>}
           </button>
         ))}
-        {/* More button */}
-        <button className="emp-bottom-item" onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-          <div className="emp-bottom-icon" style={{fontSize:18,fontWeight:700,lineHeight:1}}>⋯</div>
-          <div className="emp-bottom-label" style={{fontSize:9}}>{e.more}</div>
-        </button>
       </nav>
     </div>
     </div>
@@ -1810,10 +1896,11 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.replace(/ — .*/,'')}</div>
               <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:3}}>{activeJob.scheduled_date} · {labels.tapToFinish}</div>
             </div>
-            <div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
-              {isStaleActiveJob(activeJob, today, elapsed) ? formatShiftElapsed(elapsed, lang) : fmt(elapsed)}
-            </div>
+            {activeIsStale&&<div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
+              {formatShiftElapsed(elapsed, lang)}
+            </div>}
           </div>
+          {!activeIsStale&&<ServiceTimer job={activeJob} elapsed={elapsed} history={allJobs} labels={labels} lang={lang} />}
           {activeInstructions && (
             <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
               <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>

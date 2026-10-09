@@ -10,14 +10,33 @@ import {
 
 const attempts = new Map()
 
+function clientKey(req) {
+  return String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim()
+}
+
+// Only failed attempts count, so a shared office Wi-Fi with many correct logins is never blocked.
 function limited(req) {
-  const key = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0]
+  const entry = attempts.get(clientKey(req))
+  if (!entry) return false
+  if (entry.reset <= Date.now()) { attempts.delete(clientKey(req)); return false }
+  return entry.count >= 12
+}
+
+function recordFailure(req) {
+  const key = clientKey(req)
   const now = Date.now()
-  const old = attempts.get(key) || { count: 0, reset: now + 15 * 60_000 }
-  if (old.reset <= now) { old.count = 0; old.reset = now + 15 * 60_000 }
-  old.count += 1
-  attempts.set(key, old)
-  return old.count > 12
+  const entry = attempts.get(key)
+  if (!entry || entry.reset <= now) attempts.set(key, { count: 1, reset: now + 15 * 60_000 })
+  else entry.count += 1
+}
+
+async function isOtherAccount(db, email) {
+  if (!email.includes('@')) return true // client store logins use the store name
+  const [emp, client] = await Promise.all([
+    db.from('employees').select('id').eq('email', email).limit(1).maybeSingle(),
+    db.from('client_users').select('id').eq('email', email).limit(1).maybeSingle(),
+  ])
+  return Boolean(emp.data || client.data)
 }
 
 export default async function handler(req, res) {
@@ -53,6 +72,9 @@ export default async function handler(req, res) {
       .select('id,full_name,email,password_hash,phone,is_active')
       .eq('email', email).eq('is_active', true).maybeSingle()
     if (!seller || !verifySalesPassword(password, seller.password_hash, email)) {
+      // Employee and client logins also pass here first; only count a failure
+      // when no other account type matches, which the browser checks next.
+      if (!(await isOtherAccount(db, email))) recordFailure(req)
       return res.status(401).json({ error: 'E-mail ou senha inválidos.' })
     }
 

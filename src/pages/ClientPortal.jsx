@@ -9,6 +9,8 @@ import {
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
+import { ManagerCard, BillingView, BillingAlerts, StoresView, QuoteForm, RequestCard, MaintenanceList, maintenanceAlertsFor, itemLabel } from '../components/ClientCare'
+import { summarizeCleaningMonth, deepSummaryFromPlan, weeklyCompleted, shiftMonth } from '../lib/clientProgress'
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
@@ -71,6 +73,12 @@ export default function ClientPortal() {
   const [compliments, setCompliments] = useState([])
   const [ratings, setRatings] = useState([])
   const [requests, setRequests] = useState([])
+  const [invoices, setInvoices] = useState([])
+  const [clientRow, setClientRow] = useState(null)
+  const [profiles, setProfiles] = useState([])
+  const [maintRecords, setMaintRecords] = useState([])
+  const [quoteDefaults, setQuoteDefaults] = useState({})
+  const [moreOpen, setMoreOpen] = useState(false)
   const [feedbackTab, setFeedbackTab] = useState('complaints')
   const [newMsg, setNewMsg] = useState('')
   const [selectedVisit, setSelectedVisit] = useState(null)
@@ -84,7 +92,6 @@ export default function ClientPortal() {
   const loadedOnceRef = useRef(false)
 
   const [complaintForm, setComplaintForm] = useState({ job_id: '', category: 'quality', description: '' })
-  const [requestForm, setRequestForm] = useState({ location_name: '', description: '', preferred_date: '' })
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showComplimentForm, setShowComplimentForm] = useState(false)
   const [showRequestForm, setShowRequestForm] = useState(false)
@@ -140,6 +147,17 @@ export default function ClientPortal() {
         toast.error(firstErr)
       }
 
+      // Billing, account manager and store data: optional, so a missing table never blocks the portal.
+      const [invRes, cliRes, profRes, maintRes] = await Promise.all([
+        supabase.from('faturas').select('*').eq('client_id', user.client_id).in('status', ['sent', 'paid', 'overdue']).order('issue_date', { ascending: false }).limit(60),
+        supabase.from('clients').select('id,company_name,manager_name,manager_email,manager_phone,manager_line_url,manager_photo_url').eq('id', user.client_id).maybeSingle(),
+        supabase.from('location_profiles').select('*').eq('client_id', user.client_id),
+        supabase.from('location_maintenance').select('*').eq('client_id', user.client_id),
+      ])
+      setInvoices(invRes.data || [])
+      setClientRow(cliRes.data || null)
+      setProfiles(filterByLocation(profRes.data, user.location_name))
+      setMaintRecords(filterByLocation(maintRes.data, user.location_name))
       setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
       setContracts(contractsRes.data || [])
       setMessages(filterByLocation(msgsRes.data, user.location_name))
@@ -394,19 +412,36 @@ export default function ClientPortal() {
     setCredForm({ currentPassword: '', newEmail: '', newPassword: '' })
   }
 
-  const submitRequest = async () => {
-    if (!requestForm.description.trim()) return toast.error(c.requestDesc)
+  const submitRequest = async (form, categoryLabel) => {
+    if (!form.description.trim() && !(form.kind === 'quote' && form.category)) return toast.error(c.requestDesc)
+    const isQuote = form.kind === 'quote'
     const { error } = await supabase.from('client_requests').insert({
       client_id: user.client_id, client_user_id: user.id,
-      location_name: requestForm.location_name || user.location_name || null,
-      description: requestForm.description.trim(), preferred_date: requestForm.preferred_date || null,
+      location_name: form.location_name || user.location_name || null,
+      description: form.description.trim() || categoryLabel, preferred_date: form.preferred_date || null,
       status: 'pending', ticket_number: `KP-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+      request_type: isQuote ? 'quote' : 'service',
+      category: isQuote ? (categoryLabel || null) : null,
+      quote_status: isQuote ? 'requested' : null,
     })
     if (error) return toast.error(error.message)
-    toast.success(c.requestSent)
-    setRequestForm({ location_name: user.location_name || '', description: '', preferred_date: '' })
+    toast.success(isQuote ? c.quoteSent : c.requestSent)
+    setQuoteDefaults({})
     setShowRequestForm(false)
     loadAll({ silent: true })
+  }
+
+  const decideQuote = async (rq, decision) => {
+    const { error } = await supabase.from('client_requests').update({ quote_status: decision, decided_at: new Date().toISOString() }).eq('id', rq.id)
+    if (error) return toast.error(error.message)
+    toast.success(decision === 'accepted' ? c.quoteAcceptedToast : c.quoteDeclinedToast)
+    loadAll({ silent: true })
+  }
+
+  const openQuote = (location, key) => {
+    setQuoteDefaults({ kind: 'quote', category: key, location_name: location || '', description: `${itemLabel(key, lang)} — ${location || ''}`.trim() })
+    setShowRequestForm(true)
+    setTab('requests')
   }
 
   const applyVisitPreset = (preset) => {
@@ -430,14 +465,31 @@ export default function ClientPortal() {
   const complaintCat = (k) => ({ quality: c.catQuality, missed: c.catMissed, damage: c.catDamage, late: c.catLate, other: c.catOther }[k] || k)
   const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
+  const billingOverdue = invoices.filter(inv => !(inv.status === 'paid' || inv.paid_at) && inv.due_date && inv.due_date < today).length
+  const storeNames = [...new Set([...locations, ...profiles.map(p => p.location_name)])].filter(Boolean)
+  const maintAlerts = maintenanceAlertsFor({ locations: storeNames, jobs, records: maintRecords, today })
+  const maintOverdue = maintAlerts.filter(a => a.state === 'overdue').length
+  const monthKey = today.slice(0, 7)
+  const monthDoneCount = completed.filter(j => j.scheduled_date?.startsWith(monthKey)).length
+  const hour = Number(clock.toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Tokyo' }))
+  const greeting = hour < 12 ? c.greetMorning : hour < 18 ? c.greetAfternoon : c.greetEvening
+  const basicSummary = summarizeCleaningMonth(jobs, deepProgressMonth, today, false)
+  const deepSummary = (isOtpClient && deepProgress?.scope !== 'none' && deepSummaryFromPlan(deepProgress))
+    || summarizeCleaningMonth(jobs, deepProgressMonth, today, true)
+  const weeklyDone = weeklyCompleted(jobs, deepProgressMonth)
+
   const navItems = [
-    { key: 'home', icon: '🏠', label: c.home },
-    { key: 'visits', icon: '📋', label: c.visits },
-    { key: 'chat', icon: '💬', label: c.chat, badge: unreadMsgs },
-    { key: 'complaints', icon: '⚠️', label: c.complaints },
-    { key: 'requests', icon: '📝', label: c.requests },
-    { key: 'settings', icon: '⚙️', label: c.settings },
+    { key: 'home', icon: <NavIcon name="home" />, label: c.home },
+    { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
+    { key: 'stores', icon: <NavIcon name="store" />, label: c.storesTab, badge: maintOverdue },
+    { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab },
+    { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
+    { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits },
+    { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
+    { key: 'settings', icon: <NavIcon name="settings" />, label: c.settings },
   ]
+  const bottomKeys = ['home', 'billing', 'stores', 'requests', 'chat']
+  const moreItems = navItems.filter(n => !bottomKeys.includes(n.key))
 
   const avgRating = ratings.length
     ? (ratings.reduce((s, r) => s + r.stars, 0) / ratings.length).toFixed(1)
@@ -556,16 +608,13 @@ export default function ClientPortal() {
         )}
 
         <div className="cp-main">
-          <header className="cp-header">
+          <header className={`cp-header cpx-header${tab === 'home' ? ' is-home' : ''}`}>
             <div className="cp-header-row">
-              <div className="cp-header-mobile-only">
-                <div className="cp-brand-tag">KuriPuro · {c.portal}</div>
-                <div className="cp-header-title">{user.client_name || user.name}</div>
-                <div className="cp-header-meta">
-                  {user.location_name || c.allLocations} · {clock.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Tokyo' })}
-                </div>
+              <div className="cp-header-mobile-only cpx-brand">
+                <span className="cpx-kp">KP</span>
+                <span>KuriPuro · {c.portal}</span>
               </div>
-              {desktopMode && (
+              {desktopMode && tab !== 'home' && (
                 <div>
                   <div className="cp-header-title">{navItems.find(n => n.key === tab)?.label || c.home}</div>
                   <div className="cp-header-meta">
@@ -576,28 +625,47 @@ export default function ClientPortal() {
               <div className="cp-header-actions">
                 <LanguageToggle variant="light" />
                 {!desktopMode && (
-                  <button type="button" className="cp-view-toggle" onClick={toggleView}>
-                    🖥 {c.desktopView}
+                  <button type="button" className="cpx-icon-btn" onClick={toggleView} title={c.desktopView} aria-label={c.desktopView}>
+                    <NavIcon name="desktop" />
                   </button>
                 )}
                 {!desktopMode && (
-                  <button type="button" className="cp-logout" onClick={logout}>{c.logout}</button>
+                  <button type="button" className="cpx-icon-btn is-logout" onClick={logout} title={c.logout} aria-label={c.logout}>
+                    <NavIcon name="logout" />
+                  </button>
                 )}
               </div>
             </div>
+            {tab !== 'home' && !desktopMode && (
+              <div className="cpx-hello is-tab"><h1>{navItems.find(n => n.key === tab)?.label}</h1></div>
+            )}
+            {tab === 'home' && (
+              <div className="cpx-hello">
+                <small>{greeting}{lang === 'ja' ? '' : ','}</small>
+                <h1>{user.client_name || user.name}</h1>
+                <div className="cpx-hello-meta">
+                  <span className="cpx-chip"><NavIcon name="pin" />{user.location_name || c.allLocations}</span>
+                  <span className="cpx-chip"><NavIcon name="calendar" />{clock.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Tokyo' })}</span>
+                </div>
+              </div>
+            )}
             {tab === 'home' && !loading && (
-              <div className="cp-stats">
-                <div className="cp-stat">
-                  <div className="cp-stat-val">{completed.length}</div>
-                  <div className="cp-stat-lbl">{c.visits}</div>
+              <div className="cpx-kpis">
+                <div className="cpx-kpi" style={{ '--tone': '#3b62f0' }}>
+                  <span>{c.statVisits}</span>
+                  <strong>{completed.length}</strong>
                 </div>
-                <div className="cp-stat">
-                  <div className="cp-stat-val">{avgRating}</div>
-                  <div className="cp-stat-lbl">★ {lang === 'ja' ? '評価' : 'Rating'}</div>
+                <div className="cpx-kpi" style={{ '--tone': '#f59e0b' }}>
+                  <span>{c.statRating}</span>
+                  <strong>{avgRating}{avgRating !== '—' && <em>★</em>}</strong>
                 </div>
-                <div className="cp-stat">
-                  <div className="cp-stat-val">{todayJobs.length}</div>
-                  <div className="cp-stat-lbl">{c.today}</div>
+                <div className="cpx-kpi" style={{ '--tone': '#16a34a' }}>
+                  <span>{c.statToday}</span>
+                  <strong>{todayJobs.length}</strong>
+                </div>
+                <div className="cpx-kpi" style={{ '--tone': '#0ea5a4' }}>
+                  <span>{c.statMonth}</span>
+                  <strong>{monthDoneCount}</strong>
                 </div>
               </div>
             )}
@@ -608,16 +676,29 @@ export default function ClientPortal() {
               <div className="cp-loading">{c.loading}</div>
             ) : tab === 'home' && (
               <>
-                {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
-                  <DeepCleanProgressCard
-                    progress={deepProgress}
-                    labels={c}
-                    monthLabel={deepProgressMonthLabel}
-                    progressMonth={deepProgressMonth}
-                    onMonthChange={setDeepProgressMonth}
-                  />
+                <BillingAlerts invoices={invoices} today={today} labels={c} lang={lang} onOpen={() => setTab('billing')} />
+                {maintAlerts.length > 0 && (
+                  <button type="button" className={`cpx-alert ${maintOverdue ? 'is-warn' : 'is-info'}`} onClick={() => setTab('stores')}>
+                    <b>🛠</b>
+                    <span>
+                      <strong>{fill(c.maintAlert, { count: maintAlerts.length })}</strong>
+                      <small>{maintAlerts.slice(0, 3).map(a => `${lang === 'ja' ? a.ja : a.en} · ${a.location}`).join(' / ')}</small>
+                    </span>
+                  </button>
                 )}
-                <div className="cp-section-title"><span>📅</span> {c.today} — {today}</div>
+                <CleaningProgressCard
+                  basic={basicSummary}
+                  deep={deepSummary}
+                  weeks={weeklyDone}
+                  labels={c}
+                  scopeLabel={deepProgress?.scope === 'location' ? deepProgress.location : (user.location_name || c.allLocations)}
+                  monthLabel={deepProgressMonthLabel}
+                  onPrev={() => setDeepProgressMonth(m => shiftMonth(m, -1))}
+                  onNext={() => setDeepProgressMonth(m => shiftMonth(m, 1))}
+                  canNext={deepProgressMonth < currentYearMonth()}
+                />
+                <ManagerCard client={clientRow} labels={c} compact />
+                <div className="cp-section-title cpx-section">{c.today} <small>{today}</small></div>
                 <div className="cp-visit-grid">
                   {todayJobs.length === 0
                     ? <PortalEmpty icon="✨" text={c.noVisitsToday} />
@@ -638,7 +719,7 @@ export default function ClientPortal() {
                 </div>
                 {upcoming.length > 0 && (
                   <>
-                    <div className="cp-section-title" style={{ marginTop: 24 }}><span>🗓</span> {c.upcoming}</div>
+                    <div className="cp-section-title cpx-section" style={{ marginTop: 24 }}>{c.upcoming}</div>
                     <div className="cp-visit-grid">
                       {upcoming.map(j => (
                         <VisitCard
@@ -763,6 +844,14 @@ export default function ClientPortal() {
               </>
             )}
 
+            {!loading && tab === 'billing' && (
+              <BillingView invoices={invoices} today={today} labels={c} lang={lang} clientName={clientRow?.company_name || user.client_name} />
+            )}
+            {!loading && tab === 'stores' && (
+              <StoresView clientId={user.client_id} locations={storeNames} jobs={jobs} profiles={profiles} records={maintRecords}
+                today={today} labels={c} lang={lang} userName={user.contact_name || user.name} onChanged={() => loadAll({ silent: true })} onQuote={openQuote} />
+            )}
+            {!loading && tab === 'chat' && <ManagerCard client={clientRow} labels={c} />}
             {!loading && tab === 'chat' && (
               <div className="cp-chat">
                 <div className="cp-chat-msgs">
@@ -881,42 +970,19 @@ export default function ClientPortal() {
             )}
 
             {!loading && tab === 'requests' && (
-              <>
-                <button type="button" className="cp-btn cp-btn-blue" style={{ marginBottom: 16 }} onClick={() => setShowRequestForm(!showRequestForm)}>📝 {c.newRequest}</button>
-                {showRequestForm && (
-                  <div className="cp-card" style={{ marginBottom: 16 }}>
-                    {locations.length > 1 && (
-                      <div className="cp-field">
-                        <span className="cp-label">{c.requestLocation}</span>
-                        <select className="cp-select" value={requestForm.location_name} onChange={e => setRequestForm(f => ({ ...f, location_name: e.target.value }))}>
-                          <option value="">{c.allLocations}</option>
-                          {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                        </select>
-                      </div>
-                    )}
-                    <div className="cp-field">
-                      <span className="cp-label">{c.requestDesc}</span>
-                      <textarea className="cp-textarea" value={requestForm.description} onChange={e => setRequestForm(f => ({ ...f, description: e.target.value }))} rows={4} />
-                    </div>
-                    <div className="cp-field">
-                      <span className="cp-label">{c.requestDate}</span>
-                      <input type="date" className="cp-input" value={requestForm.preferred_date} onChange={e => setRequestForm(f => ({ ...f, preferred_date: e.target.value }))} />
-                    </div>
-                    <button type="button" className="cp-btn cp-btn-gold" onClick={submitRequest}>{c.submitRequest}</button>
-                  </div>
+              <div className="cpx-stack">
+                {!showRequestForm && (
+                  <button type="button" className="cp-btn cp-btn-blue" onClick={() => { setQuoteDefaults({}); setShowRequestForm(true) }}>+ {c.newQuoteOrRequest}</button>
                 )}
-                <div className="cp-section-title">{c.requestHistory}</div>
+                {showRequestForm && (
+                  <QuoteForm locations={storeNames} defaults={quoteDefaults} labels={c} lang={lang}
+                    onSubmit={submitRequest} onCancel={() => { setShowRequestForm(false); setQuoteDefaults({}) }} />
+                )}
+                <div className="cp-section-title cpx-section">{c.requestHistory}</div>
                 {requests.length === 0 ? <PortalEmpty icon="📝" text={c.noRequests} /> : requests.map(rq => (
-                  <div key={rq.id} className="cp-card">
-                    <div className="cp-card-top">
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{rq.ticket_number || `#${rq.id.slice(0, 8)}`}</span>
-                      <span className={`cp-badge ${rq.status === 'completed' ? 'done' : 'progress'}`}>{rq.status === 'completed' ? c.statusDone : c.statusPending}</span>
-                    </div>
-                    <div className="cp-card-date" style={{ margin: '8px 0' }}>{rq.location_name || c.allLocations}</div>
-                    <div style={{ fontSize: 14, lineHeight: 1.5 }}>{rq.description}</div>
-                  </div>
+                  <RequestCard key={rq.id} rq={rq} labels={c} lang={lang} onDecide={decideQuote} />
                 ))}
-              </>
+              </div>
             )}
 
             {!loading && tab === 'settings' && (
@@ -961,17 +1027,36 @@ export default function ClientPortal() {
           </main>
 
           {!desktopMode && (
+            <>
             <nav className="cp-bottom-nav">
               <div className="cp-nav-pill">
-                {navItems.map(n => (
+                {navItems.filter(n => bottomKeys.includes(n.key)).map(n => (
                   <button key={n.key} type="button" className={`cp-nav-btn${tab === n.key ? ' active' : ''}`} onClick={() => setTab(n.key)}>
                     <span className="cp-nav-icon">{n.icon}</span>
                     {n.badge > 0 && <span className="cp-nav-badge">{n.badge}</span>}
                     <span className="cp-nav-label">{n.label}</span>
                   </button>
                 ))}
+                <button type="button" className={`cp-nav-btn${moreItems.some(n => n.key === tab) ? ' active' : ''}`} onClick={() => setMoreOpen(true)}>
+                  <span className="cp-nav-icon"><NavIcon name="more" /></span>
+                  <span className="cp-nav-label">{c.moreTab}</span>
+                </button>
               </div>
             </nav>
+            {moreOpen && (
+              <div className="cp-overlay" onClick={() => setMoreOpen(false)}>
+                <div className="cp-sheet cpx-more" onClick={e => e.stopPropagation()}>
+                  <strong>{c.moreTab}</strong>
+                  {moreItems.map(n => (
+                    <button key={n.key} type="button" onClick={() => { setTab(n.key); setMoreOpen(false) }}>
+                      <span>{n.icon}</span>{n.label}{n.badge > 0 && <b>{n.badge}</b>}
+                    </button>
+                  ))}
+                  <button type="button" onClick={logout} className="is-logout"><span><NavIcon name="logout" /></span>{c.logout}</button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </div>
       </div>
@@ -1026,76 +1111,97 @@ function FeedbackPhotoField({
   )
 }
 
-function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, onMonthChange }) {
-  const { totals, scope, location } = progress
-  const donePct = totals.donePct ?? totals.pct ?? 0
-  const notDonePct = totals.notDonePct ?? Math.max(0, 100 - donePct)
-  const missing = Math.max(0, totals.expected - totals.scheduled)
-  const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
+const ICON_PATHS = {
+  home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
+  visits: 'M8 4h8M8 4a2 2 0 0 0-2 2v0H5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1v0a2 2 0 0 0-2-2M8 12l2.5 2.5L16 9',
+  chat: 'M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z',
+  complaints: 'M12 3l9.5 17h-19zM12 10v4M12 17.5v.5',
+  requests: 'M5 4h10l4 4v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 12h8M8 16h5',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4z',
+  desktop: 'M3 5h18v11H3zM8 20h8M12 16v4',
+  logout: 'M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3',
+  pin: 'M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  calendar: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4',
+  billing: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3',
+  store: 'M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+}
 
+function NavIcon({ name }) {
   return (
-    <div className="cp-deep-progress">
-      <div className="cp-deep-progress-head">
+    <svg className="cpx-ico" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  )
+}
+
+function ProgressRow({ title, summary, labels, tone }) {
+  const { total, done, scheduled, missed, notScheduled, pct } = summary
+  const seg = n => `${total ? (n / total) * 100 : 0}%`
+  return (
+    <div className="cpx-prog-row" style={{ '--tone': tone }}>
+      <div className="cpx-prog-top">
         <div>
-          <div className="cp-deep-progress-title">✨ {labels.deepCleanProgress}</div>
-          <div className="cp-deep-progress-sub">
-            {scopeLabel} · {fill(labels.deepCleanProgressHint, { month: monthLabel, expected: totals.expected })}
-          </div>
+          <strong>{title}</strong>
+          <small>{total ? fill(labels.progressDoneOf, { done, total }) : labels.noCleaningMonth}</small>
         </div>
-        <input
-          type="month"
-          className="cp-deep-month"
-          value={progressMonth}
-          onChange={e => onMonthChange(e.target.value)}
-          aria-label={labels.deepCleanProgress}
-        />
+        <b>{Math.min(100, pct)}%</b>
       </div>
-
-      <div className="cp-deep-progress-body">
-        <div
-          className="cp-deep-donut"
-          style={{ background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(248, 113, 113, 0.9) ${donePct}% 100%)` }}
-          role="img"
-          aria-label={`${donePct}% ${labels.deepCleanDone}, ${notDonePct}% ${labels.deepCleanNotDone}`}
-        >
-          <div className="cp-deep-donut-hole">
-            <div className="cp-deep-donut-pct">{donePct}%</div>
-            <div className="cp-deep-donut-lbl">{labels.deepCleanDone}</div>
-          </div>
+      <div className="cpx-prog-bar" role="img" aria-label={`${title}: ${done}/${total}`}>
+        <i className="is-done" style={{ width: seg(done) }} />
+        <i className="is-sched" style={{ width: seg(scheduled) }} />
+        <i className="is-missed" style={{ width: seg(missed) }} />
+        <i className="is-none" style={{ width: seg(notScheduled) }} />
+      </div>
+      {total > 0 && (
+        <div className="cpx-prog-legend">
+          <span><i className="is-done" />{labels.segDone} {done}</span>
+          {scheduled > 0 && <span><i className="is-sched" />{labels.segScheduled} {scheduled}</span>}
+          {missed > 0 && <span><i className="is-missed" />{labels.segMissed} {missed}</span>}
+          {notScheduled > 0 && <span><i className="is-none" />{labels.segNotScheduled} {notScheduled}</span>}
         </div>
-
-        <div className="cp-deep-legend">
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
-            <span className="cp-deep-legend-val">{totals.completed} ({donePct}%)</span>
-          </div>
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot not-done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
-            <span className="cp-deep-legend-val">{totals.notDone} ({notDonePct}%)</span>
-          </div>
-          {totals.pending > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot pending" />
-              <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
-              <span className="cp-deep-legend-val">{totals.pending}</span>
-            </div>
-          )}
-          {missing > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot missing" />
-              <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
-              <span className="cp-deep-legend-val">{missing}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="cp-deep-bar">
-        <div className="cp-deep-bar-fill" style={{ width: `${donePct}%` }} />
-      </div>
+      )}
     </div>
+  )
+}
+
+function CleaningProgressCard({ basic, deep, weeks, labels, scopeLabel, monthLabel, onPrev, onNext, canNext }) {
+  const max = Math.max(1, ...weeks.map(w => w.basic + w.deep))
+  const showDeep = deep.total > 0
+  return (
+    <section className="cpx-progress">
+      <header className="cpx-prog-head">
+        <div>
+          <h2>{labels.progressTitle}</h2>
+          <small>{scopeLabel}</small>
+        </div>
+        <div className="cpx-month">
+          <button type="button" onClick={onPrev} aria-label={labels.prevMonth}>‹</button>
+          <span>{monthLabel}</span>
+          <button type="button" onClick={onNext} disabled={!canNext} aria-label={labels.nextMonth}>›</button>
+        </div>
+      </header>
+      <ProgressRow title={labels.basicCleaningLbl} summary={basic} labels={labels} tone="#3b62f0" />
+      {showDeep && <ProgressRow title={labels.deepCleaningLbl} summary={deep} labels={labels} tone="#0c1c30" />}
+      <div className="cpx-weeks">
+        <div className="cpx-weeks-head">
+          <span>{labels.weeklyTitle}</span>
+          <span className="cpx-weeks-key"><i className="is-basic" />{labels.basicCleaningLbl}{showDeep && <><i className="is-deep" />{labels.deepCleaningLbl}</>}</span>
+        </div>
+        <div className="cpx-weeks-plot">
+          {weeks.map(w => (
+            <div key={w.from} className="cpx-week" title={`${fill(labels.weekDays, w)} · ${w.basic + w.deep}`}>
+              <b>{w.basic + w.deep || ''}</b>
+              <div className="cpx-week-bar">
+                <i className="is-deep" style={{ height: `${(w.deep / max) * 100}%` }} />
+                <i className="is-basic" style={{ height: `${(w.basic / max) * 100}%` }} />
+              </div>
+              <small>{fill(labels.weekDays, w)}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   )
 }
 

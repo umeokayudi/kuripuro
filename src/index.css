@@ -1259,7 +1259,7 @@ body { background: var(--hq-bg); }
 .marketing-page>.sales-kicker{margin-bottom:4px}
 .sales-setup-note{background:#fffbeb;border-color:#f0d897;color:#77510d}
 .sales-portal input,.sales-portal select,.sales-portal textarea,.sales-admin-page input,.sales-admin-page select,.sales-admin-page textarea,.marketing-page input,.marketing-page select,.marketing-page textarea{min-height:40px;border-radius:10px}
-@media(max-width:760px){.sales-portal-head{align-items:flex-start;flex-direction:column;gap:14px;padding:17px!important;border-radius:16px!important}.sales-portal-head-actions{width:100%;flex-direction:row;align-items:center;justify-content:space-between}.sales-tabs{margin:0 -12px;padding:4px 12px 14px}.sales-tabs button{min-height:42px;padding:9px 13px}.sales-metric{border-radius:14px}.sales-action-row .btn{min-height:40px}}
+@media(max-width:760px){.sales-portal-head{align-items:flex-start;flex-direction:column;gap:14px;padding:17px!important;border-radius:16px!important}.sales-portal-head-actions{width:100%;flex-direction:row;align-items:center;justify-content:space-between}.sales-tabs{margin:0;padding:4px 0 14px}.sales-tabs button{min-height:42px;padding:9px 13px}.sales-metric{border-radius:14px}.sales-action-row .btn{min-height:40px}}
 @media(max-width:767px){
   .emp-shell{width:100%!important;max-width:520px!important;flex-basis:100%}
   .emp-app-header{padding:11px 14px 10px!important}
@@ -1521,6 +1521,64 @@ body { background: var(--hq-bg); }
   .main .card,.main .metric-card,.main .executive-card,.main .dash-ref-card,.main .dash-trend-card{border-radius:16px}
   .main .page-content{padding-inline:12px}
 }
+/* Sales CRM: follow-up alerts, contact history, monthly goals */
+.sales-alert-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:12px 16px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+.sales-alert-banner>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sales-alert-banner strong{font-size:13px;color:var(--text)}
+.sales-alert-banner span{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--text2)}
+.sales-alert-banner b{font-weight:700}
+.sales-alert-banner.urgent{background:#fff3f2;border-color:#f3c2bd}
+.sales-alert-banner.warn{background:#fffaeb;border-color:#f0d897}
+.sales-alert-banner.ok{background:#f1fbf5;border-color:#bfe5cd}
+.sales-alert-overdue{color:#b42318}.sales-alert-today{color:#b54708}.sales-alert-stale{color:#93370d}.sales-alert-missing{color:#5d6b82}
+.sales-chip{display:inline-block;margin-top:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.6;background:#eef2f7;color:#4a5870}
+.sales-chip-overdue{background:#fde8e6;color:#b42318}
+.sales-chip-today{background:#fff1d6;color:#b54708}
+.sales-chip-soon{background:#e8efff;color:#2747b8}
+.sales-chip-stale{background:#fdf0e3;color:#93370d}
+.sales-chip-scheduled{background:#e9f7ef;color:#1d7a46}
+.sales-followup-overdue{box-shadow:inset 3px 0 0 #e5484d;padding-left:12px}
+.sales-followup-today{box-shadow:inset 3px 0 0 #f5a524;padding-left:12px}
+.sales-followup-stale{box-shadow:inset 3px 0 0 #d97706;padding-left:12px}
+.sales-followup-actions{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+.sales-filter-pills,.sales-quick-dates{display:flex;flex-wrap:wrap;gap:6px}
+.sales-filter-pills .btn.active,.sales-quick-dates .btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.sales-contact-form{margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface2)}
+.sales-quick-dates{margin:-4px 0 4px}
+.sales-lead-contacts{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.sales-history{margin-top:14px}
+.sales-history-row{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.sales-history-row:last-child{border-bottom:0}
+.sales-history-date{font-size:12px;font-weight:700;color:var(--text2)}
+.sales-history-row strong{display:block;font-size:13px}
+.sales-history-row p{margin:4px 0 0;font-size:13px;color:var(--text2);white-space:pre-wrap;overflow-wrap:anywhere}
+.sales-history-row small{color:var(--text3);font-size:11px}
+.sales-goal-bars{display:grid;gap:10px}
+.sales-goal-bars.compact{gap:8px}
+.sales-gbar-meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text2)}
+.sales-gbar-meta b{color:var(--text);font-size:12px}
+.sales-gbar-track{position:relative;height:8px;margin-top:4px;border-radius:99px;background:#e9edf4;overflow:visible}
+.sales-gbar-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#315cf5,#5b7cfa)}
+.sales-gbar-track.behind i{background:linear-gradient(90deg,#f5a524,#f7b955)}
+.sales-gbar-track.done i{background:linear-gradient(90deg,#1d9a55,#34c26f)}
+.sales-gbar-track em{position:absolute;top:-3px;width:2px;height:14px;background:#7b879a;border-radius:2px}
+.sales-goal-inputs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 10px}
+.sales-goal-inputs label{display:grid;gap:3px;font-size:11px;color:var(--text3)}
+.sales-goal-inputs input{width:100%;min-height:36px;padding:6px 8px;border:1px solid #e0e6ef;border-radius:8px;font-size:14px}
+.sales-alerts-section{margin-bottom:14px}
+.sales-period-row{margin:4px 0 10px}
+.sales-period-filter input[type=month]{min-height:38px;padding:6px 10px;border:1px solid #e1e7f0;border-radius:10px}
+@media (max-width:760px){
+  .sales-alert-banner{flex-direction:column;align-items:stretch}
+  .sales-followup{flex-direction:column;align-items:stretch}
+  .sales-followup-actions{flex-direction:row}
+  .sales-followup-actions .btn{flex:1;min-height:42px}
+  .sales-history-row{grid-template-columns:minmax(0,1fr)}
+  .sales-contact-form input,.sales-contact-form select,.sales-contact-form textarea{font-size:16px}
+}
+.sales-admin-page .sales-row > select{width:auto;flex:0 0 180px;max-width:45%}
+.sales-admin-page .sales-section-head > select{width:auto;max-width:240px}
+@media (max-width:760px){.sales-admin-page .sales-row{flex-direction:column;align-items:stretch}.sales-admin-page .sales-row > select{max-width:none;flex:none;width:100%}.sales-goal-inputs input{font-size:16px}}
 
 
 /* AI chat panel + composer (admin page, admin popover and employee AI tab).
@@ -1628,6 +1686,117 @@ body { background: var(--hq-bg); }
 .storage-image-failed-compact:hover{background:#edf2ff;border-color:#c9d6fb}
 /* collapsed sidebar really collapses (a later .sidebar{width:224px} kept it wide and it covered the page) */
 @media(min-width:721px){.sidebar.sidebar-collapsed{width:82px}}
+
+/* ===== Sales & marketing KPI panels (v1.0.6) ===== */
+.kpi-panel{--kpi-bar:#2f6fd6;--kpi-bar-soft:#dce8fb;--kpi-good:#0f7a52;--kpi-bad:#b42323;--kpi-warn:#a8640a;--kpi-muted:#a5b2c4;display:flex;flex-direction:column;gap:14px;margin-bottom:18px;min-width:0}
+.kpi-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.kpi-head .card-title{font-size:20px;font-weight:800;color:var(--text)}
+.kpi-head p{margin:4px 0 0;max-width:620px}
+.kpi-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.kpi-controls select{width:auto;min-width:160px;height:38px;border-radius:10px}
+.kpi-pills{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--border);border-radius:12px;background:var(--surface2);flex-wrap:wrap}
+.kpi-pills button{border:0;background:transparent;color:var(--text2);font:600 12.5px var(--font);padding:7px 11px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.kpi-pills button:hover{color:var(--text)}
+.kpi-pills button.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(15,30,50,.12)}
+.kpi-pills-sm button{padding:5px 9px;font-size:12px}
+.kpi-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.kpi-tile{display:flex;flex-direction:column;gap:6px;min-width:0;padding:14px 15px;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 5px 18px rgba(22,40,73,.045)}
+.kpi-tile-label{font-size:11.5px;font-weight:600;color:var(--text2);line-height:1.3}
+.kpi-tile-value{font-size:clamp(20px,2.4vw,27px);font-weight:800;color:var(--text);line-height:1.1;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kpi-tile-foot{display:flex;align-items:center;gap:8px;min-height:18px;flex-wrap:wrap}
+.kpi-tile-foot small{color:var(--text3);font-size:11px}
+.kpi-delta{font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:99px;font-variant-numeric:tabular-nums}
+.kpi-delta.good{color:var(--kpi-good);background:#e3f4ec}
+.kpi-delta.bad{color:var(--kpi-bad);background:#fbe9e9}
+.kpi-delta.flat{color:var(--text3);background:var(--surface2)}
+.kpi-card{min-width:0;margin:0}
+.kpi-card .card-title{margin-bottom:2px}
+.kpi-card>.sales-muted{margin:0 0 12px;font-size:12px}
+.kpi-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.kpi-card-head .sales-muted{margin:2px 0 0;font-size:12px}
+.kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.kpi-sub-title{margin:14px 0 8px;font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.kpi-empty{margin:4px 0;color:var(--text3);font-size:12.5px}
+.kpi-trend-caption{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-height:26px;margin-bottom:6px}
+.kpi-trend-caption b{font-size:12px;color:var(--text2);font-weight:700}
+.kpi-trend-caption span{font-size:20px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
+.kpi-trend-caption small{font-size:12px;color:var(--text2)}
+.kpi-trend-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.kpi-trend svg{display:block;min-width:280px}
+.kpi-axis{stroke:var(--border);stroke-width:1}
+.kpi-hit{fill:transparent;cursor:pointer}
+.kpi-bar{fill:var(--kpi-bar-soft);transition:fill .15s}
+.kpi-bar-group.active .kpi-bar,.kpi-bar-group:hover .kpi-bar{fill:var(--kpi-bar)}
+.kpi-bar-group:focus{outline:none}
+.kpi-bar-group:focus-visible .kpi-hit{stroke:var(--kpi-bar);stroke-width:1.5}
+.kpi-goal-tick{stroke:var(--text);stroke-width:2;stroke-dasharray:4 3;stroke-linecap:round}
+.kpi-x-label{font-size:10.5px;fill:var(--text3);font-family:var(--font)}
+.kpi-bar-group.active .kpi-x-label{fill:var(--text);font-weight:700}
+.kpi-legend{display:flex;gap:14px;margin-top:6px;font-size:11.5px;color:var(--text2)}
+.kpi-legend span{display:inline-flex;align-items:center;gap:6px}
+.kpi-swatch{display:inline-block;width:12px;height:10px;border-radius:3px}
+.kpi-swatch.bar{background:var(--kpi-bar)}
+.kpi-swatch.goal{height:0;border-top:2px dashed var(--text);border-radius:0}
+.kpi-funnel{display:flex;flex-direction:column;gap:9px}
+.kpi-funnel-row{display:grid;grid-template-columns:86px minmax(0,1fr) 44px;align-items:center;gap:4px 10px}
+.kpi-funnel-label{font-size:12px;color:var(--text2);font-weight:600}
+.kpi-funnel-track,.kpi-rank-track{height:12px;border-radius:99px;background:var(--surface2);overflow:hidden}
+.kpi-funnel-track i,.kpi-rank-track i{display:block;height:100%;border-radius:99px;background:var(--kpi-bar)}
+.kpi-funnel-value{font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+.kpi-funnel-conv{grid-column:2/4;font-size:11px;color:var(--text3);margin-top:-5px}
+.kpi-funnel-conv:empty{display:none}
+.kpi-foot-stat{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text2)}
+.kpi-foot-stat b{font-size:20px;color:var(--text)}
+.kpi-rank{display:flex;flex-direction:column;gap:9px}
+.kpi-rank-row{display:grid;grid-template-columns:minmax(70px,110px) minmax(0,1fr) auto;align-items:center;gap:3px 10px}
+.kpi-rank-label{font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpi-rank-row b{font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+.kpi-rank-row small{grid-column:2/4;font-size:11px;color:var(--text3);margin-top:-4px}
+.kpi-mini-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0 4px}
+.kpi-mini-stats span{display:flex;flex-direction:column;gap:3px;padding:10px 11px;border-radius:12px;background:var(--surface2);font-size:11px;color:var(--text2);line-height:1.3;min-width:0}
+.kpi-mini-stats b{font-size:16px;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kpi-stack-bar{display:flex;gap:2px;height:14px;border-radius:99px;overflow:hidden;background:var(--surface2)}
+.kpi-stack-bar i{display:block;height:100%}
+.kpi-stack-good{background:var(--kpi-good)}.kpi-stack-bad{background:var(--kpi-bad)}.kpi-stack-warn{background:#d98a1c}.kpi-stack-muted{background:var(--kpi-muted)}
+.kpi-stack-empty{background:var(--surface2)}
+.kpi-stack-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12px;color:var(--text2)}
+.kpi-stack-legend span{display:inline-flex;align-items:center;gap:6px}
+.kpi-stack-legend b{color:var(--text)}
+.kpi-dot{display:inline-block;width:9px;height:9px;border-radius:50%}
+.kpi-table-wrap{overflow-x:auto;margin:6px -4px 0;-webkit-overflow-scrolling:touch}
+.kpi-table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.kpi-table th{text-align:left;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;padding:8px;border-bottom:1px solid var(--border);white-space:nowrap}
+.kpi-table td{padding:10px 8px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text)}
+.kpi-table tbody tr{cursor:pointer}
+.kpi-table tbody tr:hover,.kpi-table tbody tr.selected{background:var(--surface2)}
+.kpi-table tbody tr:last-child td{border-bottom:0}
+.kpi-good{color:var(--kpi-good)!important;font-weight:700}.kpi-bad{color:var(--kpi-bad)!important;font-weight:700}
+.kpi-inline-bar{display:inline-flex;align-items:center;gap:8px;min-width:120px}
+.kpi-inline-bar i{display:block;height:8px;border-radius:99px;background:var(--kpi-bar);max-width:70px}
+.kpi-target{margin:10px 0 12px}
+.kpi-target-meta{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--text2)}
+.kpi-target-meta b{color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpi-target-meta small{color:var(--text3);font-weight:500}
+.kpi-target-track{position:relative;height:10px;margin-top:6px;border-radius:99px;background:var(--surface2)}
+.kpi-target-track i{display:block;height:100%;border-radius:99px;background:var(--kpi-bar)}
+.kpi-target-track i.good{background:var(--kpi-good)}.kpi-target-track i.bad{background:var(--kpi-bad)}.kpi-target-track i.warn{background:#d98a1c}
+.kpi-target-track em{position:absolute;top:-3px;width:2px;height:16px;margin-left:-1px;background:var(--text);border-radius:2px}
+.kpi-target-foot{display:block;margin-top:4px;font-size:11px;color:var(--text3)}
+.kpi-target-foot.good{color:var(--kpi-good)}.kpi-target-foot.bad{color:var(--kpi-bad)}.kpi-target-foot.warn{color:var(--kpi-warn)}
+.kpi-goal-inputs{margin:12px 0}
+.kpi-wide{grid-column:1/-1}
+.kpi-grid.kpi-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){
+  .kpi-tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .kpi-tile{padding:12px;border-radius:14px}
+  .kpi-grid,.kpi-grid.kpi-grid-2{grid-template-columns:minmax(0,1fr)}
+  .kpi-head{align-items:stretch}
+  .kpi-controls{width:100%}
+  .kpi-controls select{width:100%}
+  .kpi-pills{display:flex;overflow-x:auto;flex-wrap:nowrap;max-width:100%}
+  .kpi-card-head .kpi-pills{width:100%}
+}
 /* collapsed sidebar mark: same KP tile as the mobile header and the portals */
 .sidebar-collapsed .brand-mark{display:grid!important;place-items:center;width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1d3a63,#315cf5);color:#fff;font-family:var(--font);font-size:14px;font-weight:800;letter-spacing:-.02em;box-shadow:0 6px 16px rgba(49,92,245,.28)}
 .sidebar-collapsed .sidebar-collapse{right:2px!important;top:3px!important}
@@ -1653,3 +1822,72 @@ body { background: var(--hq-bg); }
 .emp-sheet button[style*="linear-gradient(135deg, rgb(96, 165, 250)"],.emp-sheet button[style*="linear-gradient(135deg, rgb(193, 156, 86)"]{background:#315cf5!important;color:#fff!important}
 .emp-sheet [style*="color: rgb(193, 156, 86)"],.emp-sheet [style*="color: rgb(232, 196, 122)"],.emp-sheet [style*="color: rgb(96, 165, 250)"]{color:#1f46ad!important}
 .emp-sheet [style*="background: rgba(193, 156, 86"],.emp-sheet [style*="background: rgba(96, 165, 250"]{background:#edf2ff!important;border-color:#b9cbfb!important}
+
+/* ===== Sales insights, media KPIs, inbox, routing, work day (v1.0.11) ===== */
+.kpi-tiles-compact{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:8px 0 4px}
+.kpi-tiles-compact .kpi-tile{box-shadow:none;background:var(--surface2);border-color:transparent;padding:12px 13px}
+.kpi-tiles-compact .kpi-tile-value{font-size:clamp(18px,2vw,22px)}
+.kpi-total-row td{font-weight:700;background:var(--surface2)}
+.kpi-board{display:grid;grid-template-columns:repeat(6,minmax(170px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch}
+.kpi-board-col{display:flex;flex-direction:column;gap:8px;min-width:0;padding:10px;border-radius:14px;background:var(--surface2);border-top:3px solid var(--kpi-muted)}
+.kpi-board-followup{border-top-color:#6b8fd6}.kpi-board-quote{border-top-color:var(--kpi-bar)}.kpi-board-negotiation{border-top-color:#7c4fd1}.kpi-board-won{border-top-color:var(--kpi-good)}.kpi-board-lost{border-top-color:var(--kpi-bad)}
+.kpi-board-head{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.kpi-board-head b{font-size:12.5px;color:var(--text)}
+.kpi-board-head span{font-size:12px;font-weight:800;color:var(--text2);background:var(--surface);border-radius:99px;padding:0 7px}
+.kpi-board-head small{margin-left:auto;font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums}
+.kpi-board-card{display:flex;flex-direction:column;gap:3px;padding:9px 10px;border-radius:11px;background:var(--surface);border:1px solid var(--border);min-width:0}
+.kpi-board-card strong{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpi-board-card small{font-size:11px;color:var(--text3);line-height:1.35}
+.kpi-board-card.overdue{border-color:#f3c2bd;box-shadow:inset 3px 0 0 #e5484d}
+.kpi-board-card .sales-chip{margin-top:2px;align-self:flex-start}
+.kpi-quote-text{display:block;font-size:11.5px;color:var(--text2);font-style:italic;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.kpi-board-empty{margin:0;font-size:11.5px;color:var(--text3)}
+.kpi-board-more{align-self:flex-start}
+.kpi-answers{display:flex;flex-direction:column;gap:10px}
+.kpi-answer .kpi-quote-text{margin:2px 0 0 4px}
+.kpi-ai-text{white-space:pre-wrap;line-height:1.55}
+.sales-chip-tag{background:#eef2f7;color:#334155}
+.sales-sentiment-positive.sales-chip-tag,.btn.sales-sentiment-positive.active{background:#e3f4ec;color:#0f7a52;border-color:#bfe5cd}
+.sales-sentiment-negative.sales-chip-tag,.btn.sales-sentiment-negative.active{background:#fde8e6;color:#b42318;border-color:#f3c2bd}
+.sales-sentiment-text-positive{color:#0f7a52!important}.sales-sentiment-text-negative{color:#b42318!important}
+.sales-tag-picker{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.sales-tag-picker .btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.sales-history-response{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0}
+.sales-history-response .sales-chip{margin:0}
+.sales-history-response q{font-size:12.5px;color:var(--text2);font-style:italic}
+.sales-inbox{margin-bottom:14px}
+.sales-inbox-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--border)}
+.sales-inbox-row>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
+.sales-inbox-row .sales-chip{margin:0;align-self:flex-start}
+.sales-inbox-row p{margin:0;font-size:12.5px;color:var(--text2);white-space:pre-wrap}
+.sales-inbox-alert{box-shadow:inset 3px 0 0 #e5484d;padding-left:10px}
+.sales-inbox-praise{box-shadow:inset 3px 0 0 #0f7a52;padding-left:10px}
+.sales-inbox-lead_assigned{box-shadow:inset 3px 0 0 #2f6fd6;padding-left:10px}
+.sales-compose{display:flex;flex-direction:column;gap:8px;margin:6px 0 12px;padding:12px;border-radius:12px;background:var(--surface2)}
+.sales-check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text2)}
+.sales-check input{width:auto}
+.sales-routing{margin-bottom:14px}
+.sales-routing-row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
+.sales-routing-row>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.sales-routing-row small{font-size:12px;color:var(--text2)}
+.sales-routing-row .sales-followup-actions select{width:auto;min-width:150px}
+.sales-ai-pick{color:#5b3fb0!important}
+.sales-hand-note{margin-top:4px;max-width:420px}
+.sales-day-board{margin-bottom:14px}
+.sales-day-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:8px}
+.sales-day-card{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface)}
+.sales-day-card .btn{align-self:flex-start}
+.sales-day-head{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.sales-day-head .sales-chip{margin:0}
+.sales-day-working{border-color:#bfd3f5;box-shadow:inset 3px 0 0 #2f6fd6}
+.sales-day-done{border-color:#bfe5cd;box-shadow:inset 3px 0 0 #0f7a52}
+.sales-day-idle .sales-chip{background:#fff1d6;color:#b54708}
+.sales-my-day{margin-bottom:14px}
+.sales-my-day.working{border-color:#bfd3f5;box-shadow:inset 4px 0 0 #2f6fd6}
+.sales-my-day.done{border-color:#bfe5cd;box-shadow:inset 4px 0 0 #0f7a52}
+.sales-my-day details summary,.sales-row details summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text2);margin-top:6px}
+.sales-day-end{display:flex;flex-direction:column;gap:8px}
+.sales-form-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sales-ai-result{white-space:pre-wrap}
+@media(max-width:1100px){.kpi-board{grid-template-columns:repeat(6,minmax(180px,220px))}}
+@media(max-width:720px){.sales-routing-row,.sales-inbox-row{flex-direction:column}.sales-routing-row .sales-followup-actions,.sales-inbox-row .sales-followup-actions{flex-direction:row;flex-wrap:wrap}.sales-form-grid-3{grid-template-columns:1fr 1fr}}

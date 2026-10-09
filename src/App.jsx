@@ -1,5 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { APP_BUILD_LABEL } from './version'
+import { APP_VERSION, APP_BUILD_LABEL } from './version'
+
+// Version stays known to the system only (not shown on screen).
+if (typeof window !== 'undefined') {
+  window.__KP_VERSION__ = APP_VERSION
+  document.documentElement.dataset.appVersion = APP_VERSION
+  console.info(`[Kuripuro] ${APP_BUILD_LABEL}`)
+}
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { LangProvider, useLang } from './hooks/useLang'
@@ -235,7 +242,6 @@ function AppContent() {
           <div className="topbar-right"><button type="button" className="ref-top-action" title={a.notifications}>♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
-          <div className="kp-build-stamp"><span className="kp-version-badge">{APP_BUILD_LABEL}</span></div>
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
             <Routes>
               <Route path="/" element={<Dashboard />} />

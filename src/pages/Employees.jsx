@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import AvailabilityAdmin from '../components/AvailabilityAdmin'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -10,6 +11,7 @@ export default function Employees() {
   const [tab, setTab] = useState('list')
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
+  const [pendingAvail, setPendingAvail] = useState(0)
   const [workDays, setWorkDays] = useState([])
   const [form, setForm] = useState({
     full_name:'', email:'', password:'', phone:'', address:'',
@@ -34,6 +36,10 @@ export default function Employees() {
   ]
 
   useEffect(() => { loadEmployees() }, [])
+  useEffect(() => {
+    supabase.from('employee_availability').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+      .then(({ count }) => setPendingAvail(count || 0))
+  }, [])
 
   const loadEmployees = async () => {
     setLoading(true)
@@ -131,6 +137,7 @@ export default function Employees() {
         <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>List ({employees.length})</button>
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>+ Add Employee</button>
         <button className={`tab-pill${tab==='complaints'?' active':''}`} onClick={()=>setTab('complaints')}>Complaints</button>
+        <button className={`tab-pill${tab==='availability'?' active':''}`} onClick={()=>setTab('availability')}>🗓 Availability{pendingAvail>0?` (${pendingAvail})`:''}</button>
       </div>
 
       {tab==='list' && (
@@ -276,6 +283,8 @@ export default function Employees() {
           <button className="btn btn-primary" style={{marginTop:8}} onClick={handleAdd}>✅ Register Employee</button>
         </div>
       )}
+
+      {tab==='availability' && <AvailabilityAdmin employees={employees} onPendingCount={setPendingAvail} />}
 
       {tab==='complaints' && (
         <div className="card">
