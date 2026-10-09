@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth'
 import { salesGet, salesPost } from '../lib/salesApi'
 import { FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
 import { GOAL_KEYS, alertCounts, followupQueue, goalFor, monthResults } from '../lib/salesFollowup'
+import SalesKpiPanel from '../components/SalesKpiPanel'
 
 const TXT = {
   en: { title:'Sales performance', create:'Create seller login', name:'Name', email:'Email', password:'Temporary password (10+ characters)', phone:'Phone', add:'Create access', team:'Team', approaches:'Approaches', leads:'Leads', quotes:'Quotes', average:'Avg. quote', conversion:'Approach→won', contracts:'Active contracts', newContracts:'New contracts', commission:'Commission', followups:'Follow-ups', due:'Due', pipeline:'Pipeline', assign:'Assign seller', none:'Unassigned', review:'Contract approvals', approve:'Approve', changes:'Request changes', reject:'Reject', note:'Review note', openPdf:'Signed PDF', active:'Active', inactive:'Inactive', commissionRule:'Commission default', percent:'Percent', fixed:'Fixed', value:'Value', saveRule:'Save rule', reports:'Field reports', travel:'Travel', hours:'Hours', noRows:'No records yet.', loading:'Loading…', goals:'Monthly goals', goalsHint:'Set each seller\'s goals for the month. Sellers see them in their portal; progress uses real records.', goalMonth:'Month', saveGoals:'Save goals', alerts:'Follow-up alerts', alertsHint:'Open clients that are overdue, due today or without contact for 14+ days.', seller:'Seller', allClear:'No client needs attention right now.', contacts:'Contacts', newLeads:'New leads', period:'Period', today:'Today', month:'This month', year:'This year', all:'All time', target:'Target', progress:'Progress', savedHere:'Targets are saved in this browser.', revenue:'Monthly contract value' },
@@ -103,6 +104,7 @@ export default function SalesTeam() {
     {error && <div className="card sales-setup-note"><strong>{lang === 'ja' ? '営業データを読み込めません' : 'Sales data could not be loaded'}</strong><p>{error}</p><button type="button" className="btn btn-sm" onClick={logout}>{lang === 'ja' ? 'もう一度ログイン' : 'Sign in again'}</button></div>}
     {!data && !error && <div className="card">{t.loading}</div>}
     {data && <>
+      <SalesKpiPanel data={data} lang={lang} sellers={sellers} today={data.today || today} channels={data.marketing?.channels || []} />
       <section className="card sales-alerts-section">
         <div className="sales-section-head"><div><div className="card-title">{t.alerts} ({counts.needsAction})</div><p className="sales-muted">{t.alertsHint}</p></div></div>
         {alertRows.length === 0 && <p className="sales-muted">{t.allClear}</p>}
@@ -122,15 +124,11 @@ export default function SalesTeam() {
           </article>
         })}</div>
       </section>
-      <div className="sales-section-head sales-period-row"><div className="card-title">{t.progress}</div><label className="sales-period-filter"><span>{t.period}</span><select value={period} onChange={e=>setPeriod(e.target.value)}>{periodOptions.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label></div>
-      <div className="sales-metrics sales-admin-top-metrics">
-        {[[t.leads, leads.filter(x=>inPeriod(x.first_contact_date||x.created_at)).length], [t.approaches, (data.approaches || []).filter(x=>inPeriod(x.work_date)).length], [t.quotes, (data.quotes || []).filter(x=>inPeriod(x.created_at)).length], [t.newContracts, (data.contracts || []).filter(x=>inPeriod(x.created_at)&&['active','approved'].includes(x.status)).length], [t.followups, leads.filter(x=>x.next_followup_date && x.next_followup_date <= today && !['won','lost'].includes(x.stage)).length]].map(([label,value])=><div className="sales-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
-      </div>
       <div className="sales-admin-grid">
         <form className="card" onSubmit={createSeller}><div className="card-title">{t.create}</div><div className="sales-form-grid">
           {['full_name','email','password','phone'].map(key=><label className="form-group" key={key}><span>{t[key === "full_name" ? "name" : key]}</span><input type={key==='password'?'password':key==='email'?'email':'text'} autoComplete="off" value={form[key]} onChange={e=>setForm(v=>({...v,[key]:e.target.value}))}/></label>)}
         </div><button className="btn btn-primary" disabled={busy}>{t.add}</button></form>
-        <section className="card"><div className="card-title">{t.team}</div>{sellers.map(person=>{
+        <section className="card"><div className="sales-section-head"><div className="card-title">{t.team}</div><label className="sales-period-filter"><span>{t.period}</span><select value={period} onChange={e=>setPeriod(e.target.value)}>{periodOptions.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label></div>{sellers.map(person=>{
           const m = metrics.find(x=>x.salesperson_id===person.id) || {}
           const pm = metricsFor(person.id)
           const rule = data.commissionRules?.find(x=>x.salesperson_id===person.id)
