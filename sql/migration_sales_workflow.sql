@@ -154,8 +154,8 @@ revoke all on public.marketing_campaigns from anon, authenticated;
 revoke all on public.marketing_spend from anon, authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('sales-private', 'sales-private', false, 15728640, array['application/pdf','image/jpeg','image/png','image/webp','audio/webm','audio/mp4','audio/mpeg','audio/wav'])
-on conflict (id) do update set public = false, file_size_limit = 15728640,
+values ('sales-private', 'sales-private', false, 20971520, array['application/pdf','image/jpeg','image/png','image/webp','audio/webm','audio/mp4','audio/mpeg','audio/wav'])
+on conflict (id) do update set public = false, file_size_limit = 20971520,
   allowed_mime_types = array['application/pdf','image/jpeg','image/png','image/webp','audio/webm','audio/mp4','audio/mpeg','audio/wav'];
 
 -- The private bucket deliberately has no anon/authenticated policies. The API
