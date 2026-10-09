@@ -24,6 +24,17 @@ function formatText(text) {
   })
 }
 
+const MAX_INPUT_HEIGHT = 168
+const MAX_INPUT_HEIGHT_COMPACT = 120
+
+const svgProps = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
+const MicIcon = () => <svg {...svgProps}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /></svg>
+const SendIcon = () => <svg {...svgProps} strokeWidth={2.4}><path d="M12 19V5" /><path d="M5 12l7-7 7 7" /></svg>
+const ImageIcon = () => <svg {...svgProps}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-9 9" /></svg>
+const CameraIcon = () => <svg {...svgProps}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+const VideoIcon = () => <svg {...svgProps}><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3" /></svg>
+const ClipIcon = () => <svg {...svgProps}><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" /></svg>
+
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0 }) {
   const { t, lang } = useLang()
   const ai = t.ai || {}
@@ -50,6 +61,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const retryRequestRef = useRef(null)
   const voiceRef = useRef(null)
   const bottomRef = useRef(null)
+  const inputRef = useRef(null)
   const messagesRef = useRef(messages)
   messagesRef.current = messages
 
@@ -66,7 +78,17 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     if (v) { voiceRef.current = v; saveVoiceName(v.name) }
   }, [voiceName, voices])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
+
+  // Grow the input with its content up to a max height, then scroll inside it
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    const max = compact ? MAX_INPUT_HEIGHT_COMPACT : MAX_INPUT_HEIGHT
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, max) + 'px'
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
+  }, [input, compact])
 
   useEffect(() => {
     saveChatHistory(mode, employeeId, messages.map(message => { const stored = { ...message }; delete stored.attachmentsData; return stored }))
@@ -131,6 +153,22 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     recognition.start()
   }
 
+  const onInputKeyDown = (e) => {
+    // Japanese IME uses Enter to confirm conversion: never send in the middle of it
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
+  const pickSuggestion = (prompt) => {
+    setInput(prompt)
+    requestAnimationFrame(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(prompt.length, prompt.length)
+    })
+  }
+
   const send = async () => {
     if ((!input.trim() && !attachments.length) || loading) return
     const labels = attachments.map(file => file.name)
@@ -155,6 +193,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${e.message}`, isError: true }])
     }
     setLoading(false)
+    if (window.matchMedia?.('(pointer: fine)').matches) inputRef.current?.focus()
   }
 
   const retryLastRequest = async () => {
@@ -182,8 +221,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const botBorder = dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: compact ? '100%' : 'calc(100vh - 140px)' }}>
-      <div className={`ai-chat-header${compact ? ' ai-chat-header-compact' : ''}`}>
+    <div className={`ai-chat-panel${compact ? ' ai-chat-panel-compact' : ''}`}>
+      <div className={`ai-chat-header${compact ? ' ai-chat-header-compact' : ''}${dark ? ' ai-chat-header-dark' : ''}`}>
         <div className="ai-chat-identity">
           <div className="ai-avatar">✦</div>
           <div>
@@ -216,7 +255,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       {!compact && messages.length <= 1 && suggestions.length > 0 && (
         <div className="ai-suggestions">
           {suggestions.map((suggestion, i) => (
-            <button type="button" key={i} onClick={() => setInput(suggestion.prompt)} className="ai-suggestion">
+            <button type="button" key={i} onClick={() => pickSuggestion(suggestion.prompt)} className="ai-suggestion">
               <span className="ai-suggestion-icon">{suggestion.icon || '✦'}</span>
               <span><strong>{suggestion.title}</strong><small>{suggestion.prompt}</small></span>
             </button>
@@ -266,27 +305,34 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
         <span className="ai-attachment-file-meta"><b>{file.name}</b><small>{file.type.split('/')[0].toUpperCase()} · {(file.size / 1024).toFixed(0)} KB</small></span>
         <button type="button" aria-label={lang === 'ja' ? '添付ファイルを削除' : 'Remover anexo'} onClick={() => setAttachments(items => items.filter((_, index) => index !== i))}>×</button>
       </div>)}</div>}
-      <div className="ai-compose-row" style={{ display: 'flex', gap: 8, marginTop: 10, borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`, padding: compact ? 12 : '12px 0 0' }}>
-        <div className="ai-attach-actions">
-          <button type="button" title={lang === 'ja' ? '写真' : 'Foto'} aria-label={lang === 'ja' ? '写真を追加' : 'Adicionar foto'} onClick={() => imageInputRef.current?.click()}><span>▧</span><small>{lang === 'ja' ? '写真' : 'Foto'}</small></button>
-          <button type="button" title={lang === 'ja' ? 'カメラ' : 'Câmera'} aria-label={lang === 'ja' ? 'カメラを開く' : 'Abrir câmera'} onClick={() => cameraInputRef.current?.click()}><span>◎</span><small>{lang === 'ja' ? '撮影' : 'Câmera'}</small></button>
-          <button type="button" title={lang === 'ja' ? '動画' : 'Vídeo'} aria-label={lang === 'ja' ? '動画を追加' : 'Adicionar vídeo'} onClick={() => videoInputRef.current?.click()}><span>▷</span><small>{lang === 'ja' ? '動画' : 'Vídeo'}</small></button>
-          <button type="button" title={lang === 'ja' ? 'ファイル' : 'Arquivo'} aria-label={lang === 'ja' ? 'ファイルを追加' : 'Adicionar arquivo'} onClick={() => fileInputRef.current?.click()}><span>＋</span><small>{lang === 'ja' ? 'ファイル' : 'Arquivo'}</small></button>
+      <div className={`ai-composer-wrap${dark ? ' ai-composer-dark' : ''}${compact ? ' ai-composer-compact' : ''}`}>
+        <div className={`ai-composer${recording ? ' is-recording' : ''}`} onClick={() => inputRef.current?.focus()}>
+          <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={onInputKeyDown}
+            placeholder={mode === 'employee' ? ai.placeholderEmployee : ai.placeholderAdmin}
+            aria-label={mode === 'employee' ? ai.placeholderEmployee : ai.placeholderAdmin}
+            rows={1}
+          />
+          <div className="ai-composer-toolbar" onClick={e => e.stopPropagation()}>
+            <div className="ai-composer-attach">
+              <button type="button" title={lang === 'ja' ? '写真' : 'Foto'} aria-label={lang === 'ja' ? '写真を追加' : 'Adicionar foto'} onClick={() => imageInputRef.current?.click()}><ImageIcon /></button>
+              <button type="button" title={lang === 'ja' ? 'カメラ' : 'Câmera'} aria-label={lang === 'ja' ? 'カメラを開く' : 'Abrir câmera'} onClick={() => cameraInputRef.current?.click()}><CameraIcon /></button>
+              <button type="button" title={lang === 'ja' ? '動画' : 'Vídeo'} aria-label={lang === 'ja' ? '動画を追加' : 'Adicionar vídeo'} onClick={() => videoInputRef.current?.click()}><VideoIcon /></button>
+              <button type="button" title={lang === 'ja' ? 'ファイル' : 'Arquivo'} aria-label={lang === 'ja' ? 'ファイルを追加' : 'Adicionar arquivo'} onClick={() => fileInputRef.current?.click()}><ClipIcon /></button>
+            </div>
+            <div className="ai-composer-actions">
+              <button type="button" className={`ai-composer-mic${recording ? ' is-on' : ''}`} onClick={startVoiceInput}
+                title={lang === 'ja' ? '話す' : 'Falar'} aria-label={lang === 'ja' ? '話す' : 'Falar'}>
+                {recording ? <span className="ai-rec-dot" /> : <MicIcon />}
+              </button>
+              <button type="button" className="ai-composer-send" onClick={send}
+                disabled={loading || (!input.trim() && !attachments.length)} title={ai.send} aria-label={ai.send}>
+                {loading ? <span className="ai-send-spinner" /> : <SendIcon />}
+              </button>
+            </div>
+          </div>
         </div>
-        <button onClick={startVoiceInput} title="Falar"
-          style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: recording ? 'rgba(248,113,113,0.2)' : dark ? 'rgba(255,255,255,0.06)' : '#fff', borderRadius: 12, width: 40, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 16 }}>
-          {recording ? '🔴' : '🎤'}
-        </button>
-        <textarea value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={mode === 'employee' ? ai.placeholderEmployee : ai.placeholderAdmin}
-          rows={compact ? 1 : 2}
-          style={{ flex: 1, resize: 'none', borderRadius: 12, border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'var(--border)'}`, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit' }}
-        />
-        <button onClick={send} disabled={loading || (!input.trim() && !attachments.length)}
-          style={{ alignSelf: 'flex-end', padding: '10px 16px', borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
-          {ai.send}
-        </button>
+        {!compact && <div className="ai-composer-hint">{lang === 'ja' ? 'Enterで送信 · Shift + Enterで改行' : 'Enter para enviar · Shift + Enter para nova linha'}</div>}
       </div>
     </div>
   )
