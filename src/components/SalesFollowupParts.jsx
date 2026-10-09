@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  CONTACT_CHANNELS, GOAL_KEYS, addDaysIso, contactsForLead, daysBetween, goalProgress, monthElapsedPercent,
+  CONTACT_CHANNELS, GOAL_KEYS, RESPONSE_TAGS, SENTIMENTS, addDaysIso, contactsForLead, daysBetween, goalProgress, monthElapsedPercent,
 } from '../lib/salesFollowup'
 
 export const FOLLOWUP_COPY = {
@@ -16,10 +16,13 @@ export const FOLLOWUP_COPY = {
     allClear: 'All clients are on track.',
     seeAll: 'See follow-ups',
     lastContact: 'Last contact', firstContact: 'First contact', never: 'never', daysAgo: d => (d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'} ago`),
-    logContact: 'Log contact', contactDate: 'Contact date', channel: 'How', note: 'What was said', nextFollowup: 'Next follow-up',
+    logContact: 'Log contact', contactDate: 'Contact date', channel: 'How', nextFollowup: 'Next follow-up',
     noNext: 'No next follow-up', saveContact: 'Save contact', cancel: 'Cancel', saved: 'Contact saved',
     history: 'Contact history', noHistory: 'No contacts logged yet.',
     channels: { visit: 'Visit', phone: 'Phone', line: 'LINE', email: 'Email', meeting: 'Meeting', other: 'Other' },
+    note: 'What happened', clientResponse: 'What the client answered', responseTag: 'Type of answer', sentiment: 'Mood',
+    responseTags: { interested: 'Interested', asked_quote: 'Asked for a quote', price_high: 'Price too high', has_vendor: 'Already has a vendor', timing: 'Not now / timing', need_approval: 'Needs boss approval', no_need: 'No need', no_answer: 'No answer / absent', other: 'Other' },
+    sentiments: { positive: 'Positive', neutral: 'Neutral', negative: 'Negative' },
     quick: [['+3d', 3], ['+1w', 7], ['+2w', 14], ['+1m', 30]],
     goals: 'Goals', goalsMonth: 'Goals this month', noGoals: 'Your manager has not set goals for this month yet.',
     pace: p => `${p}% of the month has passed`, done: 'Reached',
@@ -37,10 +40,13 @@ export const FOLLOWUP_COPY = {
     allClear: 'すべての顧客が予定どおりです。',
     seeAll: 'フォローアップを見る',
     lastContact: '最終連絡', firstContact: '初回連絡', never: 'なし', daysAgo: d => (d === 0 ? '本日' : `${d}日前`),
-    logContact: '連絡を記録', contactDate: '連絡日', channel: '方法', note: '内容', nextFollowup: '次回連絡日',
+    logContact: '連絡を記録', contactDate: '連絡日', channel: '方法', nextFollowup: '次回連絡日',
     noNext: '次回連絡なし', saveContact: '連絡を保存', cancel: 'キャンセル', saved: '連絡を保存しました',
     history: '連絡履歴', noHistory: '連絡記録はまだありません。',
     channels: { visit: '訪問', phone: '電話', line: 'LINE', email: 'メール', meeting: '面談', other: 'その他' },
+    note: '何があったか', clientResponse: 'お客様の返答', responseTag: '返答の種類', sentiment: '温度感',
+    responseTags: { interested: '前向き', asked_quote: '見積依頼', price_high: '価格が高い', has_vendor: '既存業者あり', timing: '時期が合わない', need_approval: '上司の承認待ち', no_need: '必要なし', no_answer: '不在・返答なし', other: 'その他' },
+    sentiments: { positive: '良い', neutral: '普通', negative: '悪い' },
     quick: [['+3日', 3], ['+1週', 7], ['+2週', 14], ['+1月', 30]],
     goals: '目標', goalsMonth: '今月の目標', noGoals: '今月の目標はまだ設定されていません。',
     pace: p => `今月は${p}%経過`, done: '達成',
@@ -82,7 +88,7 @@ export function AlertBanner({ counts, f, onOpen }) {
 }
 
 export function ContactLogForm({ lead, today, f, onSave, onCancel, busy }) {
-  const [form, setForm] = useState({ happened_at: today, channel: 'visit', body: '', next_followup_date: addDaysIso(today, 7) })
+  const [form, setForm] = useState({ happened_at: today, channel: 'visit', body: '', client_response: '', response_tag: '', sentiment: '', next_followup_date: addDaysIso(today, 7) })
   const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
   const submit = event => {
     event.preventDefault()
@@ -94,7 +100,10 @@ export function ContactLogForm({ lead, today, f, onSave, onCancel, busy }) {
         <label className="form-group"><span>{f.contactDate}</span><input type="date" max={today} required value={form.happened_at} onChange={e => set('happened_at', e.target.value)} /></label>
         <label className="form-group"><span>{f.channel}</span><select value={form.channel} onChange={e => set('channel', e.target.value)}>{CONTACT_CHANNELS.map(key => <option key={key} value={key}>{f.channels[key]}</option>)}</select></label>
       </div>
-      <label className="form-group"><span>{f.note}</span><textarea rows="3" value={form.body} onChange={e => set('body', e.target.value)} /></label>
+      <label className="form-group"><span>{f.note}</span><textarea rows="2" value={form.body} onChange={e => set('body', e.target.value)} /></label>
+      <label className="form-group"><span>{f.clientResponse}</span><textarea rows="2" value={form.client_response} onChange={e => set('client_response', e.target.value)} /></label>
+      <div className="form-group"><span>{f.responseTag}</span><div className="sales-tag-picker">{RESPONSE_TAGS.map(key => <button type="button" key={key} aria-pressed={form.response_tag === key} className={`btn btn-sm${form.response_tag === key ? ' active' : ''}`} onClick={() => set('response_tag', form.response_tag === key ? '' : key)}>{f.responseTags[key]}</button>)}</div></div>
+      <div className="form-group"><span>{f.sentiment}</span><div className="sales-tag-picker">{SENTIMENTS.map(key => <button type="button" key={key} aria-pressed={form.sentiment === key} className={`btn btn-sm sales-sentiment-${key}${form.sentiment === key ? ' active' : ''}`} onClick={() => set('sentiment', form.sentiment === key ? '' : key)}>{f.sentiments[key]}</button>)}</div></div>
       <label className="form-group"><span>{f.nextFollowup}</span><input type="date" min={form.happened_at} value={form.next_followup_date} onChange={e => set('next_followup_date', e.target.value)} /></label>
       <div className="sales-quick-dates">
         {f.quick.map(([label, n]) => <button type="button" key={label} className={`btn btn-sm${form.next_followup_date === addDaysIso(form.happened_at, n) ? ' active' : ''}`} onClick={() => set('next_followup_date', addDaysIso(form.happened_at, n))}>{label}</button>)}
@@ -120,6 +129,7 @@ export function ContactHistory({ leadId, touchpoints, f }) {
           <div>
             <strong>{f.channels[row.channel] || row.channel || '—'}{row.said_by ? ` · ${row.said_by}` : ''}</strong>
             {row.body && <p>{row.body}</p>}
+            {(row.client_response || row.response_tag) && <p className="sales-history-response">{row.response_tag && <span className={`sales-chip sales-chip-tag${row.sentiment ? ` sales-sentiment-${row.sentiment}` : ''}`}>{f.responseTags[row.response_tag] || row.response_tag}</span>}{row.client_response && <q>{row.client_response}</q>}</p>}
             {row.next_followup_date && <small>{f.nextFollowup}: {row.next_followup_date}</small>}
           </div>
         </div>

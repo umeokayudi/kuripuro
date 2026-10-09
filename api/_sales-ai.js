@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     const { task, base64, object_path: objectPath, text = '', language = 'en' } = req.body || {}
     const mimeType = normalizeMime(req.body?.mime_type)
     const filePart = mime => (objectPath ? storedPart(user, objectPath, mime) : inlinePart(base64, mime))
-    if (!['business-card', 'voice-note', 'meeting-summary', 'funnel-review'].includes(task)) return res.status(400).json({ error: 'Tarefa de IA inválida.' })
+    if (!['business-card', 'voice-note', 'meeting-summary', 'funnel-review', 'sales-insights', 'route-lead'].includes(task)) return res.status(400).json({ error: 'Tarefa de IA inválida.' })
     const lang = language === 'ja' ? 'Japanese' : language === 'pt' ? 'Portuguese' : 'English'
     let parts
     let json = true
@@ -56,6 +56,25 @@ ${text.slice(0, 45_000)}` }]
         if (!String(mimeType || '').match(/^audio\/(webm|mp4|mpeg|wav)$/)) return res.status(400).json({ error: 'Formato de áudio não compatível.' })
         parts = [await filePart(mimeType), { text: `Transcribe and summarize this sales meeting recording. Return JSON only with keys transcript, summary, decisions, objections, open_questions, next_step, followup_date (YYYY-MM-DD or empty), risks. Write summary and next_step in ${lang}. Do not invent commitments; mark unclear details as uncertain.` }]
       }
+    } else if (task === 'sales-insights') {
+      json = false
+      const scope = user.role === 'admin' ? 'the whole sales team (manager view). Include a short coaching note per seller.' : 'one salesperson (their own data). Coach them directly.'
+      parts = [{ text: `You analyse KuriPuro's B2B cleaning-services sales data for ${scope}
+Answer in ${lang}, in short sections with bullets:
+1. Why deals are lost or stall (use lost/decline reasons, client answers, days to answer).
+2. Price: which quote size and which item prices get approved vs declined; average price per item that sells best.
+3. Region: where it converts best and worst.
+4. Timing: days to close, days to answer a quote, best weekday for contacts.
+5. Most common client answers and a suggested reply script for the top 3 objections.
+6. Next actions (max 5), concrete.
+Rules: only claim what the numbers support; when a sample is small (under 5) say so; never invent clients, amounts or names; numbers are JPY.
+DATA (JSON):
+${text.slice(0, 45_000)}` }]
+    } else if (task === 'route-lead') {
+      if (user.role !== 'admin') return res.status(403).json({ error: 'Somente admin.' })
+      parts = [{ text: `Pick which salesperson should approach this new lead, using only the data given (each seller's win rate by region and source, open workload, overdue follow-ups, recent activity). Prefer proven results in the same region/source, then lower workload and fewer overdue follow-ups. Return JSON only: {"salesperson_id":"","reason":"one or two sentences in ${lang}","confidence":"low|medium|high"}. If data is too thin, still pick the best option and set confidence low.
+DATA (JSON):
+${text.slice(0, 30_000)}` }]
     } else {
       json = false
       parts = [{ text: `You are an assistant reviewing KuriPuro's sales funnel for the signed-in user. Give specific suggestions for next actions, missed follow-ups, conversion ratios, and quote/contract progress. Do not claim a trend unless supported by the supplied data. Mark recommendations as suggestions for a human to review. Answer in ${lang}.
@@ -65,7 +84,7 @@ ${text.slice(0, 45_000)}` }]
 
     const result = await geminiGenerate({
       contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: task === 'funnel-review' ? 1200 : 1600, ...(json ? { responseMimeType: 'application/json' } : {}) },
+      generationConfig: { temperature: 0.2, maxOutputTokens: task === 'sales-insights' ? 2200 : task === 'funnel-review' ? 1200 : 1600, ...(json ? { responseMimeType: 'application/json' } : {}) },
     })
     const answer = json ? parseJsonCandidate(result) : (result?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '')
     return res.status(200).json({ task, answer })

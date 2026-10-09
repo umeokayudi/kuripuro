@@ -5,8 +5,9 @@ import { useLang } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 import { prepareImageForUpload } from '../lib/imageUpload'
 import { AlertBanner, ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
-import { alertCounts, followupQueue, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
+import { RESPONSE_TAGS, alertCounts, followupQueue, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
 import SalesKpiPanel from '../components/SalesKpiPanel'
+import SalesInbox from '../components/SalesInbox'
 
 const COPY = {
   en: {
@@ -14,7 +15,7 @@ const COPY = {
     today: 'Today', month: 'This month', approachesN: 'Approaches', leadsN: 'Leads', quotes: 'Quotes', active: 'Active contracts', hours: 'Hours this month', hoursSpent: 'Hours on approach',
     conversion: 'Approach → won', ticket: 'Average quote', commission: 'Commission accrued', due: 'Follow-ups due',
     addLead: 'New lead', scanCard: 'Scan business card', analyze: 'Read with AI', confirm: 'Review these details, correct them, then save the lead.',
-    company: 'Company / restaurant', site: 'Location', contact: 'Contact person', role: 'Title', phone: 'Phone', email: 'Email', address: 'Address',
+    company: 'Company / restaurant', site: 'Location', contact: 'Contact person', role: 'Title', phone: 'Phone', email: 'Email', address: 'Address', region: 'Region / prefecture (auto from address)',
     followupDate: 'Next follow-up', followupNote: 'Follow-up plan', source: 'Source', save: 'Save lead', approachLog: 'Log approach', place: 'Meeting / visit location',
     date: 'Date', travel: 'Travel cost (¥)', duration: 'Meeting length (minutes)', notes: 'Notes / voice description',
     audio: 'Record or choose audio', transcribe: 'Transcribe and summarize with AI', transcript: 'Meeting transcript', summary: 'AI summary', nextStep: 'Suggested next step',
@@ -32,13 +33,17 @@ const COPY = {
     stages: { approach: 'Approach', followup: 'Follow-up', quote: 'Quote', negotiation: 'Negotiation', won: 'Won', lost: 'Lost' },
     statuses: { draft: 'Draft', pending_review: 'Waiting for review', approved: 'Approved', changes_requested: 'Changes requested', active: 'Active', rejected: 'Not approved' },
     tooBig: mb => `File is larger than ${mb} MB.`,
+    myDay: 'My work day', startDay: 'Start day', endDay: 'End day & send report', dayNotStarted: 'Start your day when you begin field work. When you end it, a report is written automatically for the manager.',
+    dayStarted: t => `Working since ${t}`, dayEnded: (a, b) => `Day closed ${a}–${b}`, dayNote: 'Anything to add for the manager? (optional)', dayTravel: 'Travel cost today (¥)', endConfirm: 'End the day now and send the report?', writing: 'Writing report…', dayReport: 'Day report', reopen: 'Restart day',
+    outcome: 'What happened', outcomes: { talked: 'Talked, no next step yet', meeting_scheduled: 'Meeting scheduled', quote_sent: 'Quote sent', negotiating: 'Negotiating', closed: 'Closed / signed', no_interest: 'Not interested', absent: 'Nobody / absent' },
+    clientSaid: 'What the client answered', answerType: 'Type of answer',
   },
   ja: {
     title: '営業ワークスペース', overview: '概要', leads: 'リード', followups: 'フォローアップ', approaches: '活動レポート', contracts: '契約',
     today: '本日', month: '今月', approachesN: '営業活動', leadsN: 'リード', quotes: '見積', active: '有効契約', hours: '今月の時間', hoursSpent: '営業活動時間',
     conversion: '成約率', ticket: '見積平均額', commission: '獲得コミッション', due: '対応期限',
     addLead: '新規リード', scanCard: '名刺を撮影', analyze: 'AIで読み取る', confirm: '内容を確認して修正し、保存してください。',
-    company: '会社・店舗', site: '店舗名', contact: '担当者', role: '役職', phone: '電話', email: 'メール', address: '住所',
+    company: '会社・店舗', site: '店舗名', contact: '担当者', role: '役職', phone: '電話', email: 'メール', address: '住所', region: '地域・都道府県（住所から自動）',
     followupDate: '次回連絡日', followupNote: 'フォロー内容', source: '流入元', save: 'リードを保存', approachLog: '営業活動を記録', place: '訪問・面談場所',
     date: '日付', travel: '交通費 (¥)', duration: '面談時間 (分)', notes: 'メモ・音声説明',
     audio: '音声を録音または選択', transcribe: 'AIで文字起こし・要約', transcript: '面談文字起こし', summary: 'AI要約', nextStep: '次の提案',
@@ -56,6 +61,10 @@ const COPY = {
     stages: { approach: 'アプローチ', followup: 'フォロー中', quote: '見積', negotiation: '交渉中', won: '成約', lost: '失注' },
     statuses: { draft: '下書き', pending_review: '確認待ち', approved: '承認済み', changes_requested: '修正依頼', active: '有効', rejected: '未承認' },
     tooBig: mb => `${mb}MBを超えるファイルは送信できません。`,
+    myDay: '本日の稼働', startDay: '業務開始', endDay: '業務終了・日報送信', dayNotStarted: '外回りを始めるときに開始してください。終了すると管理者向けの日報が自動で作成されます。',
+    dayStarted: t => `${t}から稼働中`, dayEnded: (a, b) => `${a}–${b} 終了`, dayNote: '管理者への補足（任意）', dayTravel: '本日の交通費 (¥)', endConfirm: '本日の業務を終了して日報を送信しますか？', writing: '日報を作成中…', dayReport: '日報', reopen: '再開',
+    outcome: '結果', outcomes: { talked: '話せた（次の予定なし）', meeting_scheduled: '面談を設定', quote_sent: '見積を送付', negotiating: '交渉中', closed: '成約・署名', no_interest: '興味なし', absent: '不在' },
+    clientSaid: 'お客様の返答', answerType: '返答の種類',
   },
 }
 
@@ -71,8 +80,8 @@ async function callApi(url, body) {
   return result
 }
 
-const blankLead = () => ({ company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', address: '', source: 'visit', first_contact_date: todayJapan(), next_followup_date: '', notes: '', marketing_channel_id:'', marketing_campaign_id:'', business_card_object_path:'' })
-const blankApproach = () => ({ lead_id: '', work_date: todayJapan(), place: '', company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', notes: '', followup_note: '', followup_date: '', outcome: '', travel_cost: 0, duration_minutes: 0, hours_spent: 0, meeting_transcript: '', meeting_summary: '', ai_next_step: '', followup_status: 'open' })
+const blankLead = () => ({ company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', address: '', region: '', source: 'visit', first_contact_date: todayJapan(), next_followup_date: '', notes: '', marketing_channel_id:'', marketing_campaign_id:'', business_card_object_path:'' })
+const blankApproach = () => ({ lead_id: '', work_date: todayJapan(), place: '', company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', notes: '', followup_note: '', followup_date: '', outcome: '', travel_cost: 0, duration_minutes: 0, hours_spent: 0, meeting_transcript: '', meeting_summary: '', ai_next_step: '', followup_status: 'open', client_response: '', response_tag: '' })
 
 export default function SalespersonPortal() {
   const { user, logout } = useAuth()
@@ -124,6 +133,10 @@ export default function SalespersonPortal() {
   const myGoal = goalFor(data?.goals, user.id, month)
   const myResults = useMemo(() => monthResults(data, user.id, month), [data, user.id, month])
   const [contactLeadId, setContactLeadId] = useState('')
+  const [dayNote, setDayNote] = useState('')
+  const [dayTravel, setDayTravel] = useState('')
+  const [dayBusy, setDayBusy] = useState(false)
+  const todayRow = (data?.reports || []).find(item => item.work_date === today) || null
   const [followFilter, setFollowFilter] = useState('action')
   const followups = useMemo(() => queue.filter(row => ['overdue', 'today', 'soon'].includes(row.info.status)).map(row => row.lead), [queue])
   const openContract = useMemo(() => leads.find(row => row.id === contract.lead_id), [leads, contract.lead_id])
@@ -231,9 +244,10 @@ export default function SalespersonPortal() {
       const linked = leads.find(row => row.id === approach.lead_id)
         || leads.find(row => same(row.site_name, approach.site_name))
         || leads.find(row => same(row.company_name, approach.company_name) && (!approach.site_name || same(row.site_name, approach.site_name)))
-      const body = { ...approach, lead_id: linked?.id || null, meishi_photo_url: '' }
+      const { client_response: clientResponse, response_tag: responseTag, ...approachFields } = approach
+      const body = { ...approachFields, lead_id: linked?.id || null, meishi_photo_url: '' }
       await post({ action: 'save-approach', approach: body })
-      if (linked) await post({ action: 'log-contact', contact: { lead_id: linked.id, happened_at: approach.work_date, channel: 'visit', body: approach.meeting_summary || approach.notes || '', next_followup_date: approach.followup_date || '' } })
+      if (linked) await post({ action: 'log-contact', contact: { lead_id: linked.id, happened_at: approach.work_date, channel: 'visit', body: [approach.outcome && c.outcomes[approach.outcome], approach.meeting_summary || approach.notes || ''].filter(Boolean).join(' · '), client_response: clientResponse, response_tag: responseTag, next_followup_date: approach.followup_date || '' } })
       toast.success(c.saveApproach)
       setApproach(blankApproach()); setTab('overview')
     } catch (error) { toast.error(error.message) }
@@ -248,6 +262,29 @@ export default function SalespersonPortal() {
       toast.success(c.reportSaved)
     } catch (error) { toast.error(error.message) }
     finally { setSaving(false) }
+  }
+
+  const where = () => new Promise(resolve => {
+    if (!navigator.geolocation) return resolve('')
+    navigator.geolocation.getCurrentPosition(pos => resolve(`${pos.coords.latitude.toFixed(5)},${pos.coords.longitude.toFixed(5)}`), () => resolve(''), { timeout: 8000, maximumAge: 60000 })
+  })
+
+  const startDay = async () => {
+    setDayBusy(true)
+    try { await post({ action: 'start-day', location: await where() }); toast.success(c.startDay) }
+    catch (error) { toast.error(error.message) }
+    finally { setDayBusy(false) }
+  }
+
+  const endDay = async () => {
+    if (!window.confirm(c.endConfirm)) return
+    setDayBusy(true)
+    try {
+      await post({ action: 'end-day', note: dayNote, travel_cost: dayTravel === '' ? undefined : Number(dayTravel), location: await where(), language: lang === 'ja' ? 'ja' : 'pt' })
+      setDayNote(''); setDayTravel('')
+      toast.success(c.reportSaved)
+    } catch (error) { toast.error(error.message) }
+    finally { setDayBusy(false) }
   }
 
   // The server hands back a one-time Storage URL; the file goes straight to
@@ -328,6 +365,19 @@ export default function SalespersonPortal() {
 
       {data && <AlertBanner counts={counts} f={f} onOpen={tab === 'followups' ? null : () => { setFollowFilter('action'); setTab('followups') }} />}
       {loading ? <div className="card">{c.loading}</div> : !data ? <div className="card">{c.unavailable}</div> : <>
+        {(tab === 'overview' || tab === 'approaches') && <section className={`card sales-my-day${todayRow?.closed_at ? ' done' : todayRow?.started_at ? ' working' : ''}`}>
+          <div className="sales-section-head"><div><div className="card-title">{c.myDay} · {today}</div>
+            <p className="sales-muted">{!todayRow?.started_at ? c.dayNotStarted : todayRow.closed_at ? c.dayEnded(todayRow.started_at, todayRow.ended_at) : c.dayStarted(todayRow.started_at)}</p></div>
+            {!todayRow?.started_at && <button type="button" className="btn btn-primary" disabled={dayBusy} onClick={startDay}>{c.startDay}</button>}
+            {todayRow?.closed_at && <button type="button" className="btn btn-sm" disabled={dayBusy} onClick={startDay}>{c.reopen}</button>}
+          </div>
+          {todayRow?.started_at && !todayRow.closed_at && <div className="sales-day-end">
+            <div className="sales-form-grid"><label className="form-group"><span>{c.dayNote}</span><input value={dayNote} onChange={e => setDayNote(e.target.value)} /></label><label className="form-group"><span>{c.dayTravel}</span><input type="number" min="0" value={dayTravel} onChange={e => setDayTravel(e.target.value)} /></label></div>
+            <button type="button" className="btn btn-primary" disabled={dayBusy} onClick={endDay}>{dayBusy ? c.writing : c.endDay}</button>
+          </div>}
+          {todayRow?.ai_report && <details><summary>{c.dayReport}</summary><div className="sales-ai-result">{todayRow.ai_report}</div></details>}
+        </section>}
+        {tab === 'overview' && <SalesInbox lang={lang} notifications={data.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) editLead(row) }} />}
         {tab === 'overview' && <>
           <div className="sales-metrics">
             {[[c.leadsN, metrics.leads || 0], [c.approachesN, metrics.approaches || 0], [c.quotes, metrics.quotes || 0], [c.active, metrics.active_contracts || 0], [c.conversion, `${Number(metrics.conversion_rate || 0).toFixed(1)}%`], [c.ticket, yen(metrics.quote_average)], [c.commission, yen(metrics.commission_pending)], [c.hours, `${Number(metrics.hours_this_month || 0).toFixed(1)}h`], [c.due, metrics.followups_due || 0]].map(([label, value]) => <div className="sales-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
@@ -342,7 +392,7 @@ export default function SalespersonPortal() {
 
         {tab === 'leads' && <div className="card"><div className="sales-section-head"><div><div className="card-title">{leadId ? c.open : c.addLead}</div><p className="sales-muted">{c.confirm}</p></div><div><input ref={cardRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => runCardAI(e.target.files?.[0])}/><button className="btn" type="button" disabled={busyAi} onClick={() => cardRef.current?.click()}>{busyAi ? c.saving : c.scanCard}</button></div></div>
           <form onSubmit={saveLead}><div className="sales-form-grid">
-            {Field({ label: c.company, field: "company_name" })}{Field({ label: c.site, field: "site_name" })}{Field({ label: c.contact, field: "contact_name" })}{Field({ label: c.role, field: "contact_title" })}{Field({ label: c.phone, field: "contact_phone" })}{Field({ label: c.email, field: "contact_email" })}{Field({ label: c.address, field: "address" })}{Field({ label: f.firstContact, field: "first_contact_date", type: "date" })}{Field({ label: f.lastContact, field: "last_contact_date", type: "date" })}{Field({ label: c.followupDate, field: "next_followup_date", type: "date" })}{Field({ label: c.followupNote, field: "notes" })}
+            {Field({ label: c.company, field: "company_name" })}{Field({ label: c.site, field: "site_name" })}{Field({ label: c.contact, field: "contact_name" })}{Field({ label: c.role, field: "contact_title" })}{Field({ label: c.phone, field: "contact_phone" })}{Field({ label: c.email, field: "contact_email" })}{Field({ label: c.address, field: "address" })}{Field({ label: c.region, field: "region" })}{Field({ label: f.firstContact, field: "first_contact_date", type: "date" })}{Field({ label: f.lastContact, field: "last_contact_date", type: "date" })}{Field({ label: c.followupDate, field: "next_followup_date", type: "date" })}{Field({ label: c.followupNote, field: "notes" })}
             <label className="form-group"><span>{c.source}</span><select value={lead.marketing_channel_id || ''} onChange={e=>setLead(v=>({...v,marketing_channel_id:e.target.value,marketing_campaign_id:''}))}><option value="">{c.source}</option>{data.marketing?.channels?.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
             <label className="form-group"><span>{c.campaign}</span><select value={lead.marketing_campaign_id || ''} onChange={e=>setLead(v=>({...v,marketing_campaign_id:e.target.value}))}><option value="">—</option>{data.marketing?.campaigns?.filter(row=>!lead.marketing_channel_id || row.channel_id===lead.marketing_channel_id).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
           </div><button disabled={saving} className="btn btn-primary" type="submit">{saving ? c.saving : c.save}</button></form>
@@ -356,13 +406,17 @@ export default function SalespersonPortal() {
 
         {tab === 'approaches' && <div className="sales-grid-two sales-reports-grid"><form className="card" onSubmit={saveApproach}><div className="card-title">{c.approachLog}</div><div className="sales-form-grid">
           <label className="form-group"><span>{c.linkedLead}</span><select value={approach.lead_id} onChange={e => { const picked = leads.find(row => row.id === e.target.value); setApproach(v => ({ ...v, lead_id: e.target.value, company_name: picked?.company_name || v.company_name, site_name: picked?.site_name || v.site_name, contact_name: picked?.contact_name || v.contact_name })) }}><option value="">{c.none}</option>{leads.filter(row => !["won", "lost"].includes(row.stage)).map(row => <option key={row.id} value={row.id}>{row.site_name || row.company_name}</option>)}</select></label>{Field({ label: c.place, field: "place", value: approach.place, onChange: e => setApproach(v => ({ ...v, place: e.target.value })) })}{Field({ label: c.company, field: "company_name", value: approach.company_name, onChange: e => setApproach(v => ({ ...v, company_name: e.target.value })) })}{Field({ label: c.site, field: "site_name", value: approach.site_name, onChange: e => setApproach(v => ({ ...v, site_name: e.target.value })) })}{Field({ label: c.contact, field: "contact_name", value: approach.contact_name, onChange: e => setApproach(v => ({ ...v, contact_name: e.target.value })) })}{Field({ label: c.date, field: "work_date", type: "date", value: approach.work_date, onChange: e => setApproach(v => ({ ...v, work_date: e.target.value })) })}{Field({ label: c.duration, field: "duration_minutes", type: "number", value: approach.duration_minutes, onChange: e => setApproach(v => ({ ...v, duration_minutes: e.target.value })) })}{Field({ label: c.travel, field: "travel_cost", type: "number", value: approach.travel_cost, onChange: e => setApproach(v => ({ ...v, travel_cost: e.target.value })) })}{Field({ label: c.followupDate, field: "followup_date", type: "date", value: approach.followup_date, onChange: e => setApproach(v => ({ ...v, followup_date: e.target.value })) })}
-          </div><label className="form-group"><span>{c.notes}</span><textarea rows="4" value={approach.notes} onChange={e => setApproach(v => ({ ...v, notes: e.target.value }))}/></label>
+          </div>
+          <div className="form-group"><span>{c.outcome}</span><div className="sales-tag-picker">{Object.entries(c.outcomes).map(([key, label]) => <button type="button" key={key} aria-pressed={approach.outcome === key} className={`btn btn-sm${approach.outcome === key ? ' active' : ''}`} onClick={() => setApproach(v => ({ ...v, outcome: v.outcome === key ? '' : key }))}>{label}</button>)}</div></div>
+          <label className="form-group"><span>{c.clientSaid}</span><textarea rows="2" value={approach.client_response} onChange={e => setApproach(v => ({ ...v, client_response: e.target.value }))}/></label>
+          <div className="form-group"><span>{c.answerType}</span><div className="sales-tag-picker">{RESPONSE_TAGS.map(key => <button type="button" key={key} aria-pressed={approach.response_tag === key} className={`btn btn-sm${approach.response_tag === key ? ' active' : ''}`} onClick={() => setApproach(v => ({ ...v, response_tag: v.response_tag === key ? '' : key }))}>{f.responseTags[key]}</button>)}</div></div>
+          <label className="form-group"><span>{c.notes}</span><textarea rows="4" value={approach.notes} onChange={e => setApproach(v => ({ ...v, notes: e.target.value }))}/></label>
           <label className="form-group"><span>{c.hoursSpent}</span><input type="number" min="0" step="0.25" value={approach.hours_spent} onChange={e=>setApproach(v=>({...v,hours_spent:e.target.value}))}/></label>
           <div className="sales-action-row"><input ref={audioRef} hidden type="file" accept="audio/*" onChange={async e => { const file=e.target.files?.[0]; if(file) await transcribeAudio(file); e.target.value='' }}/><button type="button" className="btn" onClick={() => audioRef.current?.click()}>{c.audio}</button><button type="button" className="btn" disabled={busyAi || recording} onClick={startVoice}>{c.record}</button>{recording && <button type="button" className="btn btn-danger" onClick={stopVoice}>{c.recording}</button>}</div>
           <label className="form-group"><span>{c.transcript}</span><textarea rows="5" value={approach.meeting_transcript} onChange={e => setApproach(v => ({ ...v, meeting_transcript: e.target.value }))}/></label><button type="button" className="btn" disabled={busyAi} onClick={analyzeTranscript}>{busyAi ? c.saving : c.transcribe}</button>
           {approach.meeting_summary && <div className="sales-ai-result"><strong>{c.summary}</strong><p>{approach.meeting_summary}</p><strong>{c.nextStep}</strong><p>{approach.ai_next_step}</p></div>}
           <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? c.saving : c.saveApproach}</button>
-        </form><div><form className="card" onSubmit={saveDailyReport}><div className="card-title">{c.month} · {c.hours}</div><div className="sales-form-grid">{Field({ label: c.date, field: "work_date", type: "date", value: dailyReport.work_date, onChange: e=>setDailyReport(v=>({...v,work_date:e.target.value})) })}{Field({ label: c.hours, field: "hours_worked", type: "number", value: dailyReport.hours_worked, onChange: e=>setDailyReport(v=>({...v,hours_worked:e.target.value})) })}{Field({ label: c.travel, field: "travel_cost", type: "number", value: dailyReport.travel_cost, onChange: e=>setDailyReport(v=>({...v,travel_cost:e.target.value})) })}</div><label className="form-group"><span>{c.notes}</span><textarea rows="3" value={dailyReport.summary} onChange={e=>setDailyReport(v=>({...v,summary:e.target.value}))}/></label><button className="btn btn-primary" disabled={saving}>{saving?c.saving:c.saveApproach}</button></form><div className="card"><div className="card-title">{c.month}</div>{(data.reports || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.work_date}</strong><small>{row.hours_worked}h · {yen(row.travel_cost)} · {row.summary}</small></div></div>)}{(data.approaches || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name || row.place}</strong><small>{row.work_date} · {row.hours_spent || 0}h · {row.duration_minutes || 0} min · {yen(row.travel_cost)}</small>{row.meeting_summary && <p>{row.meeting_summary}</p>}</div></div>)}</div></div></div>}
+        </form><div><form className="card" onSubmit={saveDailyReport}><div className="card-title">{c.month} · {c.hours}</div><div className="sales-form-grid">{Field({ label: c.date, field: "work_date", type: "date", value: dailyReport.work_date, onChange: e=>setDailyReport(v=>({...v,work_date:e.target.value})) })}{Field({ label: c.hours, field: "hours_worked", type: "number", value: dailyReport.hours_worked, onChange: e=>setDailyReport(v=>({...v,hours_worked:e.target.value})) })}{Field({ label: c.travel, field: "travel_cost", type: "number", value: dailyReport.travel_cost, onChange: e=>setDailyReport(v=>({...v,travel_cost:e.target.value})) })}</div><label className="form-group"><span>{c.notes}</span><textarea rows="3" value={dailyReport.summary} onChange={e=>setDailyReport(v=>({...v,summary:e.target.value}))}/></label><button className="btn btn-primary" disabled={saving}>{saving?c.saving:c.saveApproach}</button></form><div className="card"><div className="card-title">{c.month}</div>{(data.reports || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.work_date}</strong><small>{row.hours_worked}h · {yen(row.travel_cost)} · {row.summary}</small></div></div>)}{(data.approaches || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name || row.place}</strong><small>{row.work_date}{row.outcome ? ` · ${c.outcomes[row.outcome] || row.outcome}` : ''} · {row.hours_spent || 0}h · {row.duration_minutes || 0} min · {yen(row.travel_cost)}</small>{row.meeting_summary && <p>{row.meeting_summary}</p>}</div></div>)}</div></div></div>}
 
         {tab === 'followups' && <div className="card"><div className="sales-section-head"><div className="card-title">{c.followups}</div><div className="sales-filter-pills">{[['action', `${f.alertTitle} (${counts.needsAction})`], ['all', `${c.leadsN} (${queue.length})`]].map(([key, label]) => <button type="button" key={key} className={`btn btn-sm${followFilter === key ? ' active' : ''}`} onClick={() => setFollowFilter(key)}>{label}</button>)}</div></div>
           {queue.filter(row => followFilter === 'all' || ['overdue', 'today', 'stale', 'soon', 'missing'].includes(row.info.status)).map(({ lead: row, info }) => <div className={`sales-followup sales-followup-${info.status}`} key={row.id}>

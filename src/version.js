@@ -1,2 +1,2 @@
-export const APP_VERSION = 'v1.0.9'
-export const APP_BUILD_LABEL = `REBUILD · ${APP_VERSION} · CRM + KPIs VENDAS E MARKETING · 09 OUT 2026`
+export const APP_VERSION = 'v1.0.11'
+export const APP_BUILD_LABEL = `REBUILD · ${APP_VERSION} · CRM + FUNIL + IA DE VENDAS + MÍDIA · 09 OUT 2026`

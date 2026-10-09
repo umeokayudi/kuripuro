@@ -3,6 +3,7 @@
 // pages, the seller portal and scripts/test-sales-kpi.mjs.
 
 import { followupQueue } from './salesFollowup.js'
+import { sellerScorecard } from './salesInsights.js'
 
 export const OPEN_STAGES = ['approach', 'followup', 'quote', 'negotiation']
 export const STAGE_ORDER = ['approach', 'followup', 'quote', 'negotiation', 'won']
@@ -212,13 +213,13 @@ export function sourceBreakdown(scoped, range, channels = []) {
 }
 
 /** Seller ranking for the window. */
-export function leaderboard(data, sellers, range) {
+export function leaderboard(data, sellers, range, today) {
   return (sellers || []).map(person => {
     const scoped = scopeData(data, person.id)
     const totals = periodTotals(scoped, range)
     const goals = scoped.goals.filter(row => row.period_month >= range.from && row.period_month <= range.to)
     const goal = goals.length ? Object.fromEntries(['approaches', 'contacts', 'leads', 'quotes', 'contracts', 'revenue'].map(key => [key, sum(goals, row => row[key])])) : null
-    return { id: person.id, name: person.full_name, active: person.is_active !== false, ...totals, attainment: goalAttainment(totals, goal) }
+    return { id: person.id, name: person.full_name, active: person.is_active !== false, ...totals, ...sellerScorecard(scoped, range, today || `${range.to}-28`), attainment: goalAttainment(totals, goal) }
   }).sort((a, b) => b.revenue - a.revenue || b.wonValue - a.wonValue || b.wins - a.wins || b.contacts - a.contacts)
 }
 

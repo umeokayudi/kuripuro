@@ -2,6 +2,9 @@
 // Pure functions so the seller portal, the admin page and tests share one rule set.
 
 export const CONTACT_CHANNELS = ['visit', 'phone', 'line', 'email', 'meeting', 'other']
+// What the client answered, grouped so the most common answers can be counted and coached on.
+export const RESPONSE_TAGS = ['interested', 'asked_quote', 'price_high', 'has_vendor', 'timing', 'need_approval', 'no_need', 'no_answer', 'other']
+export const SENTIMENTS = ['positive', 'neutral', 'negative']
 export const GOAL_KEYS = ['approaches', 'contacts', 'leads', 'quotes', 'contracts', 'revenue']
 export const STALE_AFTER_DAYS = 14
 export const SOON_WITHIN_DAYS = 3
