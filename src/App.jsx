@@ -24,6 +24,7 @@ const Evaluations = lazy(() => import('./pages/Evaluations'))
 const ServiceContracts = lazy(() => import('./pages/ServiceContracts'))
 const ScheduleGenerator = lazy(() => import('./pages/ScheduleGenerator'))
 const Faturas = lazy(() => import('./pages/Faturas'))
+const Mitsumori = lazy(() => import('./pages/Mitsumori'))
 const AdminChat = lazy(() => import('./pages/AdminChat'))
 const TransportClaims = lazy(() => import('./pages/TransportClaims'))
 const LiveTracking = lazy(() => import('./pages/LiveTracking'))
@@ -35,6 +36,9 @@ const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
+const SalespersonPortal = lazy(() => import('./pages/SalespersonPortal'))
+const SalesTeam = lazy(() => import('./pages/SalesTeam'))
+const Marketing = lazy(() => import('./pages/Marketing'))
 
 function PortalLoading() {
   return (
@@ -75,6 +79,9 @@ const PAGE_KEYS = {
   '/schedule': 'schedule',
   '/contracts': 'contracts',
   '/faturas': 'faturas',
+  '/mitsumori': 'mitsumori',
+  '/sales-team': 'salesTeam',
+  '/marketing': 'marketing',
   '/payments': 'payments',
   '/adminchat': 'chat',
   '/live': 'liveTrack',
@@ -169,6 +176,11 @@ function AppContent() {
       </Suspense>
     </PortalErrorBoundary>
   )
+  if (user.role === 'salesperson') return (
+    <PortalErrorBoundary label="Sales portal">
+      <Suspense fallback={<PortalLoading />}><SalespersonPortal /></Suspense>
+    </PortalErrorBoundary>
+  )
   if (user.role === 'client') return (
     <PortalErrorBoundary label="Client portal">
       <Suspense fallback={<PortalLoading />}>
@@ -226,6 +238,9 @@ function AppContent() {
               <Route path="/schedule" element={<ScheduleGenerator />} />
               <Route path="/contracts" element={<ServiceContracts />} />
               <Route path="/faturas" element={<Faturas />} />
+              <Route path="/mitsumori" element={<Mitsumori />} />
+              <Route path="/sales-team" element={<SalesTeam />} />
+              <Route path="/marketing" element={<Marketing />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/adminchat" element={<AdminChat />} />
               <Route path="/live" element={<LiveTracking />} />
