@@ -61,8 +61,12 @@ from public.mitsumori q
 left join public.sales_leads l on l.id = q.lead_id
 left join public.salespeople s on s.id = q.salesperson_id;
 
--- Run in the SQL Editor (the MCP cannot confirm revokes): keeps the view server-only.
--- revoke all on public.sales_ai_dataset from anon, authenticated;
+-- Keep it out of the public API: the app reads it only server-side (service role).
+create schema if not exists analytics;
+alter view if exists public.sales_ai_dataset set schema analytics;
+
+-- Touchpoints are read and written only by /api/sales-data (service role bypasses RLS).
+alter policy allow_all_sales_touchpoints on public.sales_touchpoints using (false) with check (false);
 
 -- Seller work day: start/end, where, and the automatic end-of-day report.
 alter table public.sales_day_reports add column if not exists ai_report text;
