@@ -47,7 +47,7 @@ async function loadDashboard(db, user) {
   const isAdmin = user.role === 'admin'
   const id = user.id
   const scope = q => isAdmin ? q : q.eq('salesperson_id', id)
-  const [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, peopleRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes] = await Promise.all([
+  const [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, peopleRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes, marketingGoalsRes] = await Promise.all([
     scope(db.from('sales_leads').select('*').order('updated_at', { ascending: false }).limit(500)),
     scope(db.from('mitsumori').select('id,salesperson_id,lead_id,quote_number,status,total,created_at,company_name,valid_until').order('created_at', { ascending: false }).limit(500)),
     scope(db.from('sales_field_approaches').select('*').order('work_date', { ascending: false }).limit(1000)),
@@ -62,8 +62,9 @@ async function loadDashboard(db, user) {
     isAdmin ? db.from('marketing_spend').select('*').order('spent_on', { ascending: false }).limit(1000) : Promise.resolve({ data: [] }),
     scope(db.from('sales_touchpoints').select('id,lead_id,salesperson_id,event_type,happened_at,channel,said_by,body,next_followup_date,created_at').order('happened_at', { ascending: false }).limit(3000)),
     scope(db.from('sales_goals').select('*').gte('period_month', `${Number(todayTokyo().slice(0, 4)) - 1}-01`).order('period_month', { ascending: false })),
+    isAdmin ? db.from('marketing_goals').select('*').gte('period_month', `${Number(todayTokyo().slice(0, 4)) - 1}-01`).order('period_month', { ascending: false }) : Promise.resolve({ data: [] }),
   ])
-  const failed = [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes].find(r => r.error)
+  const failed = [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes, marketingGoalsRes].find(r => r.error)
   if (failed) throw failed.error
   const leads = leadsRes.data || []
   const quotes = quotesRes.data || []
@@ -105,7 +106,7 @@ async function loadDashboard(db, user) {
     const conversions = relatedLeads.filter(row => row.stage === 'won').length
     return { ...campaign, spend: campaignSpend, leads: relatedLeads.length, conversions, cost_per_lead: relatedLeads.length ? campaignSpend / relatedLeads.length : 0, customer_acquisition_cost: conversions ? campaignSpend / conversions : 0 }
   })
-  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [] }
+  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [] }
 }
 
 async function getAction(db, user, action, query = {}) {
@@ -243,6 +244,19 @@ async function postAction(db, user, body, res) {
     const row = { salesperson_id: body.salesperson_id, period_month: month, updated_by: own, updated_at: new Date().toISOString() }
     for (const key of GOAL_FIELDS) row[key] = key === 'revenue' ? num(body.goal?.[key] || 0) : Math.round(num(body.goal?.[key] || 0))
     const { data, error } = await db.from('sales_goals').upsert(row, { onConflict: 'salesperson_id,period_month' }).select().single()
+    if (error) throw error
+    return { goal: data }
+  }
+
+  if (action === 'save-marketing-goal') {
+    if (!admin) return jsonError(res, 403, 'Somente admin pode definir metas de marketing.')
+    const month = String(body.period_month || '')
+    if (!/^\d{4}-\d{2}$/.test(month)) return jsonError(res, 400, 'Mês inválido.')
+    const goal = body.goal || {}
+    const row = { period_month: month, updated_by: own, updated_at: new Date().toISOString() }
+    for (const key of ['leads', 'won']) row[key] = Math.max(0, Math.round(num(goal[key] || 0)))
+    for (const key of ['spend', 'max_cpl', 'revenue']) row[key] = Math.max(0, num(goal[key] || 0))
+    const { data, error } = await db.from('marketing_goals').upsert(row, { onConflict: 'period_month' }).select().single()
     if (error) throw error
     return { goal: data }
   }

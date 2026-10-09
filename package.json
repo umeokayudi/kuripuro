@@ -17,6 +17,7 @@
     "test": "node scripts/test-all.mjs",
     "test:employee-ai": "node scripts/test-employee-ai.mjs",
     "test:sales-followup": "node scripts/test-sales-followup.mjs",
+    "test:sales-kpi": "node scripts/test-sales-kpi.mjs",
     "test:safety-net": "npx vite-node scripts/test-safety-net.mjs",
     "test:portal-auth": "npx vite-node scripts/test-portal-auth.mjs",
     "test:mitsumori": "node scripts/test-mitsumori.mjs",

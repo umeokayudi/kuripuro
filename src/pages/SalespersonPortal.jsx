@@ -6,6 +6,7 @@ import LanguageToggle from '../components/LanguageToggle'
 import { prepareImageForUpload } from '../lib/imageUpload'
 import { AlertBanner, ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
 import { alertCounts, followupQueue, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
+import SalesKpiPanel from '../components/SalesKpiPanel'
 
 const COPY = {
   en: {
@@ -314,7 +315,7 @@ export default function SalespersonPortal() {
     } catch (error) { toast.error(error.message) }
   }
 
-  const nav = [['overview', c.overview], ['leads', c.leads], ['followups', counts.needsAction ? `${c.followups} (${counts.needsAction})` : c.followups], ['goals', f.goals], ['approaches', c.approaches], ['contracts', c.contracts]]
+  const nav = [['overview', c.overview], ['leads', c.leads], ['followups', counts.needsAction ? `${c.followups} (${counts.needsAction})` : c.followups], ['goals', f.goals], ['kpi', lang === 'ja' ? 'KPI・推移' : 'My KPIs'], ['approaches', c.approaches], ['contracts', c.contracts]]
   const Field = ({ label, field, value = lead[field], onChange = e => setLead(prev => ({ ...prev, [field]: e.target.value })), type = 'text' }) => <label className="form-group"><span>{label}</span><input type={type} value={value ?? ''} onChange={onChange} /></label>
 
   return (
@@ -373,6 +374,7 @@ export default function SalespersonPortal() {
           {queue.length === 0 && <p className="sales-muted">{c.noFollowups}</p>}
         </div>}
 
+        {tab === 'kpi' && <SalesKpiPanel data={data} lang={lang} today={today} channels={data.marketing?.channels || []} />}
         {tab === 'goals' && <div className="card"><div className="card-title">{f.goalsMonth} · {month}</div><GoalBars goal={myGoal} actual={myResults} today={today} f={f} /></div>}
 
         {tab === 'contracts' && <><div className="card"><div className="card-title">{c.prepare}</div><form onSubmit={submitContract}><div className="sales-form-grid">
