@@ -104,7 +104,7 @@ export default function ServiceContracts() {
       {selectedClient&&(
         <>
           {/* Summary */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
+          <div className="kp-two-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
             {[['Locations',contracts.length],['Visits/mo',totalVisits],['Hours/mo',totalMonthlyHours.toFixed(0)+'h'],['Revenue/mo','¥'+totalMonthlyRevenue.toLocaleString()]].map(([l,v])=>(
               <div key={l} className="card" style={{padding:'12px 14px',textAlign:'center'}}>
                 <div style={{fontSize:20,fontWeight:700,color:'var(--green)'}}>{v}</div>

@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { useLang } from '../hooks/useLang'
+
+const CF_TEXT = {
+  en: { overview:'Overview', addEntry:'+ Add Entry', history:'History', title:'Financial overview', subtitle:'Real cash + invoicing + amounts still to come in.', invoiced:'Invoiced', received:'Received', receivable:'Receivable', overdue:'Overdue', expenses:'Expenses', projection:'Projection', realProfit:'Real profit', realMargin:'Real margin', monthStatus:'This month', recordedIncome:'Recorded income', recordedExpenses:'Recorded expenses', realCosts:'Real costs', billing:'Billing', issuedInvoices:'Invoices issued', open:'Open', whereMoneyGoes:'Where the money goes', salariesPaid:'Salaries paid', transport:'Transport', otherExpenses:'Other expenses', totalRealCosts:'Total real costs', monthMovements:'This month\'s movements', income:'💴 Income', expense:'💸 Expenses', balance:'💰 Balance', thisMonth:'This Month', noEntries:'No entries this month.' },
+  ja: { overview:'概要', addEntry:'+ 記帳', history:'履歴', title:'財務の概要', subtitle:'実際の現金 + 請求 + これから入る金額。', invoiced:'請求額', received:'入金済み', receivable:'未入金', overdue:'期限超過', expenses:'経費', projection:'見込み', realProfit:'実利益', realMargin:'実利益率', monthStatus:'今月の状況', recordedIncome:'記録済み収入', recordedExpenses:'記録済み経費', realCosts:'実コスト', billing:'請求', issuedInvoices:'発行済み請求書', open:'未回収', whereMoneyGoes:'お金の使い道', salariesPaid:'支払済み給与', transport:'交通費', otherExpenses:'その他の経費', totalRealCosts:'実コスト合計', monthMovements:'今月の入出金', income:'💴 収入', expense:'💸 支出', balance:'💰 残高', thisMonth:'今月', noEntries:'今月の記録はありません。' },
+}
 
 /** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
 function normalizeEntry(row) {
@@ -13,6 +19,8 @@ function normalizeEntry(row) {
 }
 
 export default function Cashflow() {
+  const { lang } = useLang()
+  const L = CF_TEXT[lang] || CF_TEXT.en
   const [entries, setEntries] = useState([])
   const [invoices, setInvoices] = useState([])
   const [salaryPayments, setSalaryPayments] = useState([])
@@ -93,9 +101,9 @@ export default function Cashflow() {
   return (
     <div>
       <div className="tab-pills">
-        <button className={`tab-pill${tab==='overview'?' active':''}`} onClick={()=>setTab('overview')}>Overview</button>
-        <button className={`tab-pill${tab==='add'?' active':''}`} onClick={()=>setTab('add')}>+ Add Entry</button>
-        <button className={`tab-pill${tab==='history'?' active':''}`} onClick={()=>setTab('history')}>History</button>
+        <button className={`tab-pill${tab==='overview'?' active':''}`} onClick={()=>setTab('overview')}>{L.overview}</button>
+        <button className={`tab-pill${tab==='add'?' active':''}`} onClick={()=>setTab('add')}>{L.addEntry}</button>
+        <button className={`tab-pill${tab==='history'?' active':''}`} onClick={()=>setTab('history')}>{L.history}</button>
       </div>
 
       {tab==='overview'&&(
@@ -103,19 +111,19 @@ export default function Cashflow() {
           <div className="finance-toolbar">
             <div>
               <div className="finance-eyebrow">FINANCE HQ</div>
-              <h3>Visão financeira</h3>
-              <p>Caixa real + faturamento + valores que ainda precisam entrar.</p>
+              <h3>{L.title}</h3>
+              <p>{L.subtitle}</p>
             </div>
             <input type="month" value={period} onChange={e=>setPeriod(e.target.value)} />
           </div>
           <div className="finance-kpis">
             {[
-              ['Faturado', issued, 'var(--navy)'],
-              ['Recebido', income, 'var(--green)'],
-              ['A receber', receivable, 'var(--hq-blue)'],
-              ['Vencido', overdue, 'var(--red)'],
-              ['Despesas', expense, 'var(--red)'],
-              ['Projeção', projected, projected >= 0 ? 'var(--green)' : 'var(--red)'],
+              [L.invoiced, issued, 'var(--navy)'],
+              [L.received, income, 'var(--green)'],
+              [L.receivable, receivable, 'var(--hq-blue)'],
+              [L.overdue, overdue, 'var(--red)'],
+              [L.expenses, expense, 'var(--red)'],
+              [L.projection, projected, projected >= 0 ? 'var(--green)' : 'var(--red)'],
             ].map(([label,value,color]) => (
               <div className="finance-kpi" key={label}>
                 <span>{label}</span><strong style={{color}}>¥{Math.abs(value).toLocaleString()}</strong>
@@ -123,35 +131,35 @@ export default function Cashflow() {
             ))}
           </div>
           <div className="finance-kpis" style={{marginTop:12}}>
-            <div className="finance-kpi"><span>Lucro real</span><strong style={{color:realProfit>=0?'var(--green)':'var(--red)'}}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
-            <div className="finance-kpi"><span>Margem real</span><strong style={{color:realMargin>=0?'var(--green)':'var(--red)'}}>{realMargin.toFixed(1)}%</strong></div>
+            <div className="finance-kpi"><span>{L.realProfit}</span><strong style={{color:realProfit>=0?'var(--green)':'var(--red)'}}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
+            <div className="finance-kpi"><span>{L.realMargin}</span><strong style={{color:realMargin>=0?'var(--green)':'var(--red)'}}>{realMargin.toFixed(1)}%</strong></div>
           </div>
           <div className="finance-summary-grid">
             <div className="card finance-focus-card">
-              <div className="card-title">Situação do mês</div>
-              <div className="finance-big-row"><span>Entradas registradas</span><strong className="finance-positive">¥{income.toLocaleString()}</strong></div>
-              <div className="finance-big-row"><span>Despesas registradas</span><strong className="finance-negative">¥{expense.toLocaleString()}</strong></div>
-              <div className="finance-big-row"><span>Custos reais</span><strong className="finance-negative">¥{realCosts.toLocaleString()}</strong></div>
-              <div className="finance-big-row finance-total"><span>Lucro real</span><strong className={realProfit>=0?'finance-positive':'finance-negative'}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
+              <div className="card-title">{L.monthStatus}</div>
+              <div className="finance-big-row"><span>{L.recordedIncome}</span><strong className="finance-positive">¥{income.toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>{L.recordedExpenses}</span><strong className="finance-negative">¥{expense.toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>{L.realCosts}</span><strong className="finance-negative">¥{realCosts.toLocaleString()}</strong></div>
+              <div className="finance-big-row finance-total"><span>{L.realProfit}</span><strong className={realProfit>=0?'finance-positive':'finance-negative'}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
             </div>
             <div className="card finance-focus-card">
-              <div className="card-title">Cobranças</div>
-              <div className="finance-big-row"><span>Faturas emitidas</span><strong>¥{issued.toLocaleString()}</strong></div>
-              <div className="finance-big-row"><span>Em aberto</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
-              <div className="finance-big-row finance-total"><span>Vencido</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
+              <div className="card-title">{L.billing}</div>
+              <div className="finance-big-row"><span>{L.issuedInvoices}</span><strong>¥{issued.toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>{L.open}</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
+              <div className="finance-big-row finance-total"><span>{L.overdue}</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
             </div>
           </div>
           <div className="card" style={{marginBottom:14}}>
-            <div className="card-title">Onde o dinheiro está indo</div>
-            <div className="finance-big-row"><span>Salários pagos</span><strong>¥{salaryCost.toLocaleString()}</strong></div>
-            <div className="finance-big-row"><span>Transporte</span><strong>¥{transportCost.toLocaleString()}</strong></div>
-            <div className="finance-big-row"><span>Outras despesas</span><strong>¥{otherExpense.toLocaleString()}</strong></div>
-            <div className="finance-big-row finance-total"><span>Total de custos reais</span><strong>¥{realCosts.toLocaleString()}</strong></div>
+            <div className="card-title">{L.whereMoneyGoes}</div>
+            <div className="finance-big-row"><span>{L.salariesPaid}</span><strong>¥{salaryCost.toLocaleString()}</strong></div>
+            <div className="finance-big-row"><span>{L.transport}</span><strong>¥{transportCost.toLocaleString()}</strong></div>
+            <div className="finance-big-row"><span>{L.otherExpenses}</span><strong>¥{otherExpense.toLocaleString()}</strong></div>
+            <div className="finance-big-row finance-total"><span>{L.totalRealCosts}</span><strong>¥{realCosts.toLocaleString()}</strong></div>
           </div>
           <div className="card">
-            <div className="card-title">Movimentações do mês</div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:16}}>
-            {[['💴 Income',income,'var(--green)'],['💸 Expenses',expense,'var(--red)'],['💰 Balance',balance,balance>=0?'var(--green)':'var(--red)']].map(([l,v,c])=>(
+            <div className="card-title">{L.monthMovements}</div>
+          <div className="kp-stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:16}}>
+            {[[L.income,income,'var(--green)'],[L.expense,expense,'var(--red)'],[L.balance,balance,balance>=0?'var(--green)':'var(--red)']].map(([l,v,c])=>(
               <div key={l} className="card" style={{textAlign:'center',padding:'18px'}}>
                 <div style={{fontSize:12,color:'var(--text3)',marginBottom:6}}>{l}</div>
                 <div style={{fontSize:24,fontWeight:700,color:c}}>¥{Number(Math.abs(v)).toLocaleString()}</div>
@@ -159,8 +167,8 @@ export default function Cashflow() {
             ))}
           </div>
           <div className="card">
-            <div className="card-title">This Month</div>
-            {thisMonth.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No entries this month.</div>}
+            <div className="card-title">{L.thisMonth}</div>
+            {thisMonth.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>{L.noEntries}</div>}
             {thisMonth.slice(0,15).map(e=>(
               <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
                 <div>

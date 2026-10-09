@@ -143,8 +143,8 @@ export default function Ryoshu() {
             </div>
           </div>
           <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-sm btn-primary" onClick={()=>handlePrint(r)}>🖨️ 印刷</button>
-            <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(r.id)}>🗑 削除</button>
+            <button className="btn btn-sm btn-primary" onClick={()=>handlePrint(r)}>🖨️ {lang === 'ja' ? '印刷' : 'Print'}</button>
+            <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(r.id)}>🗑 {lang === 'ja' ? '削除' : 'Delete'}</button>
           </div>
         </div>
       ))}

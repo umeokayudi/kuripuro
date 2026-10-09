@@ -1581,3 +1581,42 @@ body { background: var(--hq-bg); }
 .kp-version-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:#fff4d6;border:1px solid #f0c24b;color:#7a4b00;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;line-height:1.2;white-space:nowrap}
 .kp-version-badge::before{content:"";width:7px;height:7px;border-radius:50%;background:#e59a00}
 .login-version{font-size:11px}
+
+/* v1.0.4 design fixes (auditoria 2026-10-09) */
+:root{--text3:#64748b;--ref-muted:#5f6b7d}
+/* contrast: grey supporting text and small dashboard/sidebar labels */
+.nav-item{font-size:13px!important}
+.nav-group-label,.sidebar .nav-group-label{font-size:10.5px!important;color:rgba(255,255,255,.7)!important}
+.sidebar-logo .sub{font-size:10px!important;opacity:.75!important}
+.dash-ref-eyebrow,.dash-ref-kpi-label,.dash-ref-kpi-meta,.dash-ref-card-sub,.dash-ref-link,.ref-user-role,.ref-search-type{font-size:11px}
+.dash-ref-head p,.dash-ref-card-title,.ref-user-name,.ref-topbar-search,.dash-ref-actions .btn{font-size:12px!important}
+.dash-ref-kpi-label{color:#5f6b7d}
+.dash-ref-kpi-meta.positive{color:#15803d}
+.dash-ref-kpi-meta.danger{color:#b91c1c}
+/* cards inside grids: no stacked margin (was 14px misalignment) */
+.grid-2>.card,.grid-3>.card,.grid-4>.card,[style*="display: grid"]>.card,[style*="display:grid"]>.card{margin-top:0}
+/* grid columns may shrink; selects never push forms past the screen */
+.grid-2>*,.grid-3>*,.grid-4>*,.page-content [style*="display: grid"]>*{min-width:0}
+.form-group{min-width:0}
+.form-group select,.form-group input,.form-group textarea{max-width:100%;min-width:0}
+/* sales team pipeline: assignment select had 100% width and crushed the lead name */
+.sales-admin-page .sales-row>select{width:220px;flex:0 0 220px}
+@media(max-width:720px){
+  .kp-stack-mobile{grid-template-columns:minmax(0,1fr)!important}
+  .kp-two-mobile{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .sales-admin-page .sales-row{flex-wrap:wrap}
+  .sales-admin-page .sales-row>select{flex:1 1 100%;width:100%}
+  .sales-portal{padding:12px 14px 28px}
+  /* hidden mobile sidebar no longer leaks its shadow onto the left edge */
+  .sidebar{box-shadow:none}
+  .sidebar.sidebar-mobile-open{box-shadow:16px 0 40px rgba(5,15,28,.28)}
+}
+/* floating AI button: room at the end of pages, icon-only on phones */
+.page-content{padding-bottom:84px}
+@media(max-width:600px){
+  .kp-ai-trigger{width:52px;height:52px;padding:0!important;justify-content:center;border-radius:50%}
+  .kp-ai-trigger-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .kp-ai-trigger-icon{font-size:20px}
+}
+.sales-admin-page .sales-section-head>select{width:auto;min-width:180px;max-width:260px;flex:0 0 auto}
+.dash-split>.card,.finance-summary-grid>.card,.sales-grid-two>.card,.sales-admin-grid>.card{margin-top:0}
