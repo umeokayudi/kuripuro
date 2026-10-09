@@ -1620,3 +1620,11 @@ body { background: var(--hq-bg); }
 }
 .sales-admin-page .sales-section-head>select{width:auto;min-width:180px;max-width:260px;flex:0 0 auto}
 .dash-split>.card,.finance-summary-grid>.card,.sales-grid-two>.card,.sales-admin-grid>.card{margin-top:0}
+/* v1.0.5: the page never scrolls sideways on desktop; wide tables stay inside their card */
+.main{min-width:0}
+.page-content{min-width:0;max-width:100%}
+.storage-image-failed-compact{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex-shrink:0;border:1px solid #dfe6f0;border-radius:8px;background:#f7f9fc;color:#8996aa;font-size:15px;line-height:1;text-decoration:none}
+.storage-image-failed-compact small{font-size:11px;font-weight:800;color:#315cf5}
+.storage-image-failed-compact:hover{background:#edf2ff;border-color:#c9d6fb}
+/* collapsed sidebar really collapses (a later .sidebar{width:224px} kept it wide and it covered the page) */
+@media(min-width:721px){.sidebar.sidebar-collapsed{width:82px}}
