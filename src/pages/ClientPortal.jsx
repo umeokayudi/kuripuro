@@ -9,6 +9,7 @@ import {
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
+import { summarizeCleaningMonth, deepSummaryFromPlan, weeklyCompleted, shiftMonth } from '../lib/clientProgress'
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
@@ -430,13 +431,22 @@ export default function ClientPortal() {
   const complaintCat = (k) => ({ quality: c.catQuality, missed: c.catMissed, damage: c.catDamage, late: c.catLate, other: c.catOther }[k] || k)
   const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
+  const monthKey = today.slice(0, 7)
+  const monthDoneCount = completed.filter(j => j.scheduled_date?.startsWith(monthKey)).length
+  const hour = Number(clock.toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Tokyo' }))
+  const greeting = hour < 12 ? c.greetMorning : hour < 18 ? c.greetAfternoon : c.greetEvening
+  const basicSummary = summarizeCleaningMonth(jobs, deepProgressMonth, today, false)
+  const deepSummary = (isOtpClient && deepProgress?.scope !== 'none' && deepSummaryFromPlan(deepProgress))
+    || summarizeCleaningMonth(jobs, deepProgressMonth, today, true)
+  const weeklyDone = weeklyCompleted(jobs, deepProgressMonth)
+
   const navItems = [
-    { key: 'home', icon: '🏠', label: c.home },
-    { key: 'visits', icon: '📋', label: c.visits },
-    { key: 'chat', icon: '💬', label: c.chat, badge: unreadMsgs },
-    { key: 'complaints', icon: '⚠️', label: c.complaints },
-    { key: 'requests', icon: '📝', label: c.requests },
-    { key: 'settings', icon: '⚙️', label: c.settings },
+    { key: 'home', icon: <NavIcon name="home" />, label: c.home },
+    { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits },
+    { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
+    { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
+    { key: 'requests', icon: <NavIcon name="requests" />, label: c.requests },
+    { key: 'settings', icon: <NavIcon name="settings" />, label: c.settings },
   ]
 
   const avgRating = ratings.length
@@ -556,16 +566,13 @@ export default function ClientPortal() {
         )}
 
         <div className="cp-main">
-          <header className="cp-header">
+          <header className={`cp-header cpx-header${tab === 'home' ? ' is-home' : ''}`}>
             <div className="cp-header-row">
-              <div className="cp-header-mobile-only">
-                <div className="cp-brand-tag">KuriPuro · {c.portal}</div>
-                <div className="cp-header-title">{user.client_name || user.name}</div>
-                <div className="cp-header-meta">
-                  {user.location_name || c.allLocations} · {clock.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Tokyo' })}
-                </div>
+              <div className="cp-header-mobile-only cpx-brand">
+                <span className="cpx-kp">KP</span>
+                <span>KuriPuro · {c.portal}</span>
               </div>
-              {desktopMode && (
+              {desktopMode && tab !== 'home' && (
                 <div>
                   <div className="cp-header-title">{navItems.find(n => n.key === tab)?.label || c.home}</div>
                   <div className="cp-header-meta">
@@ -576,28 +583,44 @@ export default function ClientPortal() {
               <div className="cp-header-actions">
                 <LanguageToggle variant="light" />
                 {!desktopMode && (
-                  <button type="button" className="cp-view-toggle" onClick={toggleView}>
-                    🖥 {c.desktopView}
+                  <button type="button" className="cpx-icon-btn" onClick={toggleView} title={c.desktopView} aria-label={c.desktopView}>
+                    <NavIcon name="desktop" />
                   </button>
                 )}
                 {!desktopMode && (
-                  <button type="button" className="cp-logout" onClick={logout}>{c.logout}</button>
+                  <button type="button" className="cpx-icon-btn is-logout" onClick={logout} title={c.logout} aria-label={c.logout}>
+                    <NavIcon name="logout" />
+                  </button>
                 )}
               </div>
             </div>
+            {tab === 'home' && (
+              <div className="cpx-hello">
+                <small>{greeting}{lang === 'ja' ? '' : ','}</small>
+                <h1>{user.client_name || user.name}</h1>
+                <div className="cpx-hello-meta">
+                  <span className="cpx-chip"><NavIcon name="pin" />{user.location_name || c.allLocations}</span>
+                  <span className="cpx-chip"><NavIcon name="calendar" />{clock.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Tokyo' })}</span>
+                </div>
+              </div>
+            )}
             {tab === 'home' && !loading && (
-              <div className="cp-stats">
-                <div className="cp-stat">
-                  <div className="cp-stat-val">{completed.length}</div>
-                  <div className="cp-stat-lbl">{c.visits}</div>
+              <div className="cpx-kpis">
+                <div className="cpx-kpi" style={{ '--tone': '#3b62f0' }}>
+                  <span>{c.statVisits}</span>
+                  <strong>{completed.length}</strong>
                 </div>
-                <div className="cp-stat">
-                  <div className="cp-stat-val">{avgRating}</div>
-                  <div className="cp-stat-lbl">★ {lang === 'ja' ? '評価' : 'Rating'}</div>
+                <div className="cpx-kpi" style={{ '--tone': '#f59e0b' }}>
+                  <span>{c.statRating}</span>
+                  <strong>{avgRating}{avgRating !== '—' && <em>★</em>}</strong>
                 </div>
-                <div className="cp-stat">
-                  <div className="cp-stat-val">{todayJobs.length}</div>
-                  <div className="cp-stat-lbl">{c.today}</div>
+                <div className="cpx-kpi" style={{ '--tone': '#16a34a' }}>
+                  <span>{c.statToday}</span>
+                  <strong>{todayJobs.length}</strong>
+                </div>
+                <div className="cpx-kpi" style={{ '--tone': '#0ea5a4' }}>
+                  <span>{c.statMonth}</span>
+                  <strong>{monthDoneCount}</strong>
                 </div>
               </div>
             )}
@@ -608,16 +631,18 @@ export default function ClientPortal() {
               <div className="cp-loading">{c.loading}</div>
             ) : tab === 'home' && (
               <>
-                {isOtpClient && deepProgress?.scope !== 'none' && deepProgress.totals.expected > 0 && (
-                  <DeepCleanProgressCard
-                    progress={deepProgress}
-                    labels={c}
-                    monthLabel={deepProgressMonthLabel}
-                    progressMonth={deepProgressMonth}
-                    onMonthChange={setDeepProgressMonth}
-                  />
-                )}
-                <div className="cp-section-title"><span>📅</span> {c.today} — {today}</div>
+                <CleaningProgressCard
+                  basic={basicSummary}
+                  deep={deepSummary}
+                  weeks={weeklyDone}
+                  labels={c}
+                  scopeLabel={deepProgress?.scope === 'location' ? deepProgress.location : (user.location_name || c.allLocations)}
+                  monthLabel={deepProgressMonthLabel}
+                  onPrev={() => setDeepProgressMonth(m => shiftMonth(m, -1))}
+                  onNext={() => setDeepProgressMonth(m => shiftMonth(m, 1))}
+                  canNext={deepProgressMonth < currentYearMonth()}
+                />
+                <div className="cp-section-title cpx-section">{c.today} <small>{today}</small></div>
                 <div className="cp-visit-grid">
                   {todayJobs.length === 0
                     ? <PortalEmpty icon="✨" text={c.noVisitsToday} />
@@ -638,7 +663,7 @@ export default function ClientPortal() {
                 </div>
                 {upcoming.length > 0 && (
                   <>
-                    <div className="cp-section-title" style={{ marginTop: 24 }}><span>🗓</span> {c.upcoming}</div>
+                    <div className="cp-section-title cpx-section" style={{ marginTop: 24 }}>{c.upcoming}</div>
                     <div className="cp-visit-grid">
                       {upcoming.map(j => (
                         <VisitCard
@@ -1026,76 +1051,94 @@ function FeedbackPhotoField({
   )
 }
 
-function DeepCleanProgressCard({ progress, labels, monthLabel, progressMonth, onMonthChange }) {
-  const { totals, scope, location } = progress
-  const donePct = totals.donePct ?? totals.pct ?? 0
-  const notDonePct = totals.notDonePct ?? Math.max(0, 100 - donePct)
-  const missing = Math.max(0, totals.expected - totals.scheduled)
-  const scopeLabel = scope === 'location' ? location : labels.deepCleanAllStores
+const ICON_PATHS = {
+  home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
+  visits: 'M8 4h8M8 4a2 2 0 0 0-2 2v0H5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1v0a2 2 0 0 0-2-2M8 12l2.5 2.5L16 9',
+  chat: 'M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z',
+  complaints: 'M12 3l9.5 17h-19zM12 10v4M12 17.5v.5',
+  requests: 'M5 4h10l4 4v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 12h8M8 16h5',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4z',
+  desktop: 'M3 5h18v11H3zM8 20h8M12 16v4',
+  logout: 'M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3',
+  pin: 'M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  calendar: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4',
+}
 
+function NavIcon({ name }) {
   return (
-    <div className="cp-deep-progress">
-      <div className="cp-deep-progress-head">
+    <svg className="cpx-ico" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  )
+}
+
+function ProgressRow({ title, summary, labels, tone }) {
+  const { total, done, scheduled, missed, notScheduled, pct } = summary
+  const seg = n => `${total ? (n / total) * 100 : 0}%`
+  return (
+    <div className="cpx-prog-row" style={{ '--tone': tone }}>
+      <div className="cpx-prog-top">
         <div>
-          <div className="cp-deep-progress-title">✨ {labels.deepCleanProgress}</div>
-          <div className="cp-deep-progress-sub">
-            {scopeLabel} · {fill(labels.deepCleanProgressHint, { month: monthLabel, expected: totals.expected })}
-          </div>
+          <strong>{title}</strong>
+          <small>{total ? fill(labels.progressDoneOf, { done, total }) : labels.noCleaningMonth}</small>
         </div>
-        <input
-          type="month"
-          className="cp-deep-month"
-          value={progressMonth}
-          onChange={e => onMonthChange(e.target.value)}
-          aria-label={labels.deepCleanProgress}
-        />
+        <b>{Math.min(100, pct)}%</b>
       </div>
-
-      <div className="cp-deep-progress-body">
-        <div
-          className="cp-deep-donut"
-          style={{ background: `conic-gradient(#4ade80 0% ${donePct}%, rgba(248, 113, 113, 0.9) ${donePct}% 100%)` }}
-          role="img"
-          aria-label={`${donePct}% ${labels.deepCleanDone}, ${notDonePct}% ${labels.deepCleanNotDone}`}
-        >
-          <div className="cp-deep-donut-hole">
-            <div className="cp-deep-donut-pct">{donePct}%</div>
-            <div className="cp-deep-donut-lbl">{labels.deepCleanDone}</div>
-          </div>
+      <div className="cpx-prog-bar" role="img" aria-label={`${title}: ${done}/${total}`}>
+        <i className="is-done" style={{ width: seg(done) }} />
+        <i className="is-sched" style={{ width: seg(scheduled) }} />
+        <i className="is-missed" style={{ width: seg(missed) }} />
+        <i className="is-none" style={{ width: seg(notScheduled) }} />
+      </div>
+      {total > 0 && (
+        <div className="cpx-prog-legend">
+          <span><i className="is-done" />{labels.segDone} {done}</span>
+          {scheduled > 0 && <span><i className="is-sched" />{labels.segScheduled} {scheduled}</span>}
+          {missed > 0 && <span><i className="is-missed" />{labels.segMissed} {missed}</span>}
+          {notScheduled > 0 && <span><i className="is-none" />{labels.segNotScheduled} {notScheduled}</span>}
         </div>
-
-        <div className="cp-deep-legend">
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanDone}</span>
-            <span className="cp-deep-legend-val">{totals.completed} ({donePct}%)</span>
-          </div>
-          <div className="cp-deep-legend-row">
-            <span className="cp-deep-dot not-done" />
-            <span className="cp-deep-legend-label">{labels.deepCleanNotDone}</span>
-            <span className="cp-deep-legend-val">{totals.notDone} ({notDonePct}%)</span>
-          </div>
-          {totals.pending > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot pending" />
-              <span className="cp-deep-legend-label">{labels.deepCleanPending}</span>
-              <span className="cp-deep-legend-val">{totals.pending}</span>
-            </div>
-          )}
-          {missing > 0 && (
-            <div className="cp-deep-legend-row muted">
-              <span className="cp-deep-dot missing" />
-              <span className="cp-deep-legend-label">{labels.deepCleanMissing}</span>
-              <span className="cp-deep-legend-val">{missing}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="cp-deep-bar">
-        <div className="cp-deep-bar-fill" style={{ width: `${donePct}%` }} />
-      </div>
+      )}
     </div>
+  )
+}
+
+function CleaningProgressCard({ basic, deep, weeks, labels, scopeLabel, monthLabel, onPrev, onNext, canNext }) {
+  const max = Math.max(1, ...weeks.map(w => w.basic + w.deep))
+  const showDeep = deep.total > 0
+  return (
+    <section className="cpx-progress">
+      <header className="cpx-prog-head">
+        <div>
+          <h2>{labels.progressTitle}</h2>
+          <small>{scopeLabel}</small>
+        </div>
+        <div className="cpx-month">
+          <button type="button" onClick={onPrev} aria-label={labels.prevMonth}>‹</button>
+          <span>{monthLabel}</span>
+          <button type="button" onClick={onNext} disabled={!canNext} aria-label={labels.nextMonth}>›</button>
+        </div>
+      </header>
+      <ProgressRow title={labels.basicCleaningLbl} summary={basic} labels={labels} tone="#3b62f0" />
+      {showDeep && <ProgressRow title={labels.deepCleaningLbl} summary={deep} labels={labels} tone="#0c1c30" />}
+      <div className="cpx-weeks">
+        <div className="cpx-weeks-head">
+          <span>{labels.weeklyTitle}</span>
+          <span className="cpx-weeks-key"><i className="is-basic" />{labels.basicCleaningLbl}{showDeep && <><i className="is-deep" />{labels.deepCleaningLbl}</>}</span>
+        </div>
+        <div className="cpx-weeks-plot">
+          {weeks.map(w => (
+            <div key={w.from} className="cpx-week" title={`${fill(labels.weekDays, w)} · ${w.basic + w.deep}`}>
+              <b>{w.basic + w.deep || ''}</b>
+              <div className="cpx-week-bar">
+                <i className="is-deep" style={{ height: `${(w.deep / max) * 100}%` }} />
+                <i className="is-basic" style={{ height: `${(w.basic / max) * 100}%` }} />
+              </div>
+              <small>{fill(labels.weekDays, w)}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   )
 }
 
