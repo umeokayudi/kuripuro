@@ -11,7 +11,8 @@ let cachedModels = null
 
 function rankModel(name) {
   let s = 0
-  if (/gemini-3\.7/.test(name)) s += 100
+  if (/gemini-3\.8/.test(name)) s += 110
+  else if (/gemini-3\.7/.test(name)) s += 100
   else if (/gemini-3\.6/.test(name)) s += 90
   else if (/gemini-3\.5/.test(name)) s += 80
   else if (/gemini-2\.5/.test(name)) s += 70
@@ -24,15 +25,24 @@ function rankModel(name) {
 }
 
 async function fetchAvailableModels(key) {
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${key}&pageSize=200`
-  )
-  if (!resp.ok) return []
-  const data = await resp.json()
-  return (data.models || [])
-    .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-    .map(m => m.name.replace(/^models\//, ''))
-    .sort((a, b) => rankModel(b) - rankModel(a))
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const resp = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',
+      { headers: { 'x-goog-api-key': key }, signal: controller.signal }
+    )
+    if (!resp.ok) return []
+    const data = await resp.json()
+    return (data.models || [])
+      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+      .map(m => m.name.replace(/^models\//, ''))
+      .sort((a, b) => rankModel(b) - rankModel(a))
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 async function resolveModels(key) {
@@ -40,17 +50,30 @@ async function resolveModels(key) {
   const available = await fetchAvailableModels(key)
   const preferred = PREFERRED.filter(m => available.includes(m))
   cachedModels = preferred.length ? preferred : available.slice(0, 8)
-  if (!cachedModels.length) cachedModels = PREFERRED
+  if (!cachedModels.length) cachedModels = ['gemini-2.5-flash']
   return cachedModels
 }
 
 async function callModel(key, model, body) {
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
-  )
-  const text = await resp.text()
-  return { ok: resp.ok, text, retryable: !resp.ok && (text.includes('NOT_FOUND') || text.includes('"code":404')) }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 25000)
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }
+    )
+    const text = await resp.text()
+    return { ok: resp.ok, text, retryable: !resp.ok && (text.includes('NOT_FOUND') || text.includes('"code":404')) }
+  } catch (error) {
+    return { ok: false, text: error.name === 'AbortError' ? 'Tempo limite da IA excedido. Tente novamente.' : 'Não foi possível conectar à IA.', retryable: false }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function geminiGenerate(body) {
@@ -77,4 +100,4 @@ export async function geminiGenerate(body) {
   throw new Error(`Gemini API error: ${lastErr}`)
 }
 
-export const API_BUILD = '2026-09-12-v33'
+export const API_BUILD = '2026-10-09-v1.0.2'

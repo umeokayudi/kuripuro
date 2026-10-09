@@ -62,7 +62,7 @@ export default function Login() {
             {loading ? a.loading : a.signIn}
           </button>
         </form>
-        <div className="login-version">KP · REBUILD COMERCIAL · 2026.10.09 · v1.0.1</div>
+        <div className="login-version">KP · REBUILD COMERCIAL · 2026.10.09 · v1.0.2</div>
       </div>
     </div>
   )

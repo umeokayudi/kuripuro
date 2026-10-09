@@ -15,6 +15,7 @@
     "fix:maps": "node scripts/fix-maps-urls.mjs",
     "fix:checklists": "node scripts/fix-checklists.mjs",
     "test": "node scripts/test-all.mjs",
+    "test:employee-ai": "node scripts/test-employee-ai.mjs",
     "test:safety-net": "npx vite-node scripts/test-safety-net.mjs",
     "test:portal-auth": "npx vite-node scripts/test-portal-auth.mjs",
     "test:mitsumori": "node scripts/test-mitsumori.mjs",

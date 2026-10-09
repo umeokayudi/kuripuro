@@ -1103,38 +1103,38 @@ export default function EmployeePortal() {
       )}
 
       {/* HEADER */}
-      <div className="emp-app-header" style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-          <div>
+      <div className="emp-app-header">
+        <div className="emp-header-top">
+          <div className="emp-header-identity">
             <div className="emp-brand"><span className="emp-kp-mark">KP</span><span>KURIPURO BY JBM</span></div>
-            <div className="emp-name" style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
+            <div className="emp-name">{user.name.split(' ')[0]}</div>
+            <div className="emp-header-date">{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div style={{background:`rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.1)`,border:`1px solid rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.2)`,borderRadius:14,padding:'7px 12px',textAlign:'center'}}>
-              <div style={{fontSize:20,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
-              <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>{e.score}</div>
+          <div className="emp-header-actions">
+            <div className={`emp-score-card ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}>
+              <div className="emp-score-value">{empScore}</div>
+              <div className="emp-score-label">{e.score}</div>
             </div>
             <LanguageToggle variant="dark" compact />
-            <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+            <button aria-label={e.chat} onClick={()=>setTab('chat')} className="emp-header-icon-button">
               🔔
-              {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
+              {unreadMsgs>0&&<div className="emp-header-notification-count">{unreadMsgs}</div>}
             </button>
-            <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,position:'relative'}}>
-              {[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
-              {spotJobs.length>0&&<div style={{position:'absolute',top:4,right:4,width:8,height:8,borderRadius:'50%',background:'#c19c56',border:'2px solid #060d18'}} />}
+            <button aria-label={menuOpen ? e.close : e.more} aria-expanded={menuOpen} onClick={()=>setMenuOpen(!menuOpen)} className="emp-header-menu-button">
+              <span></span><span></span><span></span>
+              {spotJobs.length>0&&<i />}
             </button>
           </div>
         </div>
-        <div style={{marginTop:10,display:'flex',alignItems:'baseline',gap:4}}>
-          <span style={{fontSize:44,fontWeight:700,color:'#fff',fontFamily:'monospace',letterSpacing:-3,lineHeight:1}}>{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
-          <span style={{fontSize:20,color:'rgba(255,255,255,0.2)',fontFamily:'monospace'}}>{String(clock.getSeconds()).padStart(2,'0')}</span>
+        <div className="emp-clock-row" aria-label={clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}>
+          <span className="emp-clock-time">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
+          <span className="emp-clock-seconds">:{String(clock.getSeconds()).padStart(2,'0')}</span>
         </div>
-        {!isOnline&&<div style={{background:'rgba(248,113,113,0.15)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:8,padding:'6px 12px',fontSize:11,color:'#f87171',fontWeight:600,marginTop:8,textAlign:'center'}}>
+        {!isOnline&&<div className="emp-offline-banner">
           ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
-          {gpsStatus&&<div style={{background:gpsStatus.includes('✅')?'rgba(74,222,128,0.1)':gpsStatus.includes('🚫')?'rgba(248,113,113,0.1)':'rgba(255,255,255,0.06)',borderRadius:20,padding:'4px 10px',fontSize:10,color:gpsStatus.includes('✅')?'#4ade80':gpsStatus.includes('🚫')?'#f87171':'rgba(255,255,255,0.4)',fontWeight:500,border:'1px solid rgba(255,255,255,0.08)'}}>{gpsStatus}</div>}
+          {gpsStatus&&<div className={`emp-status-chip ${gpsStatus.includes('✅')?'is-good':gpsStatus.includes('🚫')?'is-bad':''}`}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
           {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#f87171',cursor:'pointer',fontWeight:600}}>💬 {unreadMsgs}</div>}
@@ -1143,23 +1143,25 @@ export default function EmployeePortal() {
 
       {/* 3-dot dropdown */}
       {menuOpen&&(
-        <div style={{position:'fixed',inset:0,zIndex:100}} onClick={()=>setMenuOpen(false)}>
-          <div style={{position:'absolute',top:136,right:12,background:'#0d1f35',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,overflow:'hidden',minWidth:200,boxShadow:'0 28px 80px rgba(0,0,0,0.7)'}} onClick={e=>e.stopPropagation()}>
+        <div className="emp-menu-overlay" onClick={()=>setMenuOpen(false)}>
+          <section className="emp-menu-panel" role="dialog" aria-modal="true" aria-label={e.more} onClick={e=>e.stopPropagation()}>
+            <div className="emp-menu-head"><div><span className="emp-menu-kicker">KURIPURO BY JBM</span><h2>{e.more}</h2></div><button aria-label={e.close} className="emp-menu-close" onClick={()=>setMenuOpen(false)}>×</button></div>
+            <div className="emp-menu-items">
             {menuItems.map(item=>(
-              <button key={item.key} onClick={()=>{setTab(item.key);setMenuOpen(false)}} style={{width:'100%',padding:'14px 18px',border:'none',background:tab===item.key?'rgba(193,156,86,0.1)':'none',color:tab===item.key?'#c19c56':'rgba(255,255,255,0.7)',fontSize:14,fontWeight:tab===item.key?600:400,cursor:'pointer',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid rgba(255,255,255,0.04)',textAlign:'left'}}>
-                <span style={{fontSize:18}}>{item.icon}</span>
-                <div style={{flex:1}}>
+              <button key={item.key} onClick={()=>{setTab(item.key);setMenuOpen(false)}} className={`emp-menu-item${tab===item.key?' is-active':''}`}>
+                <span className="emp-menu-item-icon">{item.icon}</span>
+                <div className="emp-menu-item-copy">
                   <div>{item.label}</div>
-                  {item.preview&&<div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:120}}>{item.preview}</div>}
+                  {item.preview&&<div>{item.preview}</div>}
                 </div>
-                {item.badge>0&&<span style={{background:item.key==='chat'?'#f87171':'#c19c56',color:'#0a1929',borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:800}}>{item.badge}</span>}
+                {item.badge>0&&<span className={`emp-menu-badge${item.key==='chat'?' is-alert':''}`}>{item.badge}</span>}
               </button>
             ))}
-            <div style={{height:1,background:'rgba(255,255,255,0.05)'}} />
-            <button onClick={logout} style={{width:'100%',padding:'14px 18px',border:'none',background:'none',color:'#f87171',fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',gap:12,textAlign:'left'}}>
+            </div>
+            <div className="emp-menu-footer"><button onClick={logout} className="emp-menu-logout">
               <span style={{fontSize:18}}>🚪</span> {e.logout}
-            </button>
-          </div>
+            </button></div>
+          </section>
         </div>
       )}
 
@@ -1200,6 +1202,7 @@ export default function EmployeePortal() {
               <button
                 type="button"
                 onClick={()=>openPastService()}
+                className="emp-past-service-button"
                 style={{width:'100%',padding:'14px 16px',marginBottom:12,borderRadius:16,border:'1px solid rgba(193,156,86,0.35)',background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(232,196,122,0.08))',color:'#e8c47a',fontSize:14,fontWeight:800,cursor:'pointer',textAlign:'left'}}
               >
                 ✓ {e.pastServiceButton}
@@ -1209,7 +1212,7 @@ export default function EmployeePortal() {
 
             {/* Today shift — pendente */}
             {todayPendingJobs.length>0&&!activeJob&&(
-              <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
+              <div className="emp-today-shift-card" onClick={()=>setTab('shift')}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                   <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 {e.todayShift.toUpperCase()}</div>
                   {(()=>{
@@ -1269,10 +1272,13 @@ export default function EmployeePortal() {
 
             {/* No jobs today */}
             {todayJobs.length===0&&!activeJob&&(
-              <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:18,padding:'24px 20px',textAlign:'center',marginBottom:14}}>
-                <div style={{fontSize:36,marginBottom:8}}>☀️</div>
-                <div style={{fontSize:15,fontWeight:600,color:'rgba(255,255,255,0.6)'}}>{e.noShiftToday}</div>
-                {nextShiftJob&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>{fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>}
+              <div className="emp-no-shift-card">
+                <div className="emp-empty-icon">☀</div>
+                <div className="emp-empty-kicker">{e.todayShift}</div>
+                <div className="emp-empty-title">{e.noShiftToday}</div>
+                {nextShiftJob&&<div className="emp-empty-description">{fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>}
+                {nextShiftJob&&<div className="emp-next-job"><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</span></div>}
+                <button type="button" onClick={()=>setTab('calendar')} className="emp-outline-button">{e.calendar} ›</button>
               </div>
             )}
 
@@ -1345,7 +1351,10 @@ export default function EmployeePortal() {
 
         {/* SHIFT */}
         {tab==='shift'&&(
+          <section className="emp-shift-screen">
+            <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
           <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
+          </section>
         )}
 
         {tab==='ai'&&(
@@ -1846,6 +1855,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         <button
           type="button"
           onClick={()=>onOpenPastService()}
+          className="emp-outline-button"
           style={{width:'100%',padding:'14px 16px',marginBottom:10,borderRadius:14,border:'1px solid rgba(193,156,86,0.35)',background:'linear-gradient(135deg,rgba(193,156,86,0.18),rgba(232,196,122,0.1))',color:'#e8c47a',fontSize:14,fontWeight:800,cursor:'pointer'}}
         >
           ✓ {labels?.pastServiceButton || 'Already did this'}
@@ -1855,12 +1865,13 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         <button
           type="button"
           onClick={onOpenAddService}
+          className="emp-add-service-button"
           style={{width:'100%',padding:'14px 16px',marginBottom:14,borderRadius:14,border:'1px dashed rgba(96,165,250,0.35)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:14,fontWeight:700,cursor:'pointer'}}
         >
           + {labels?.addService || 'Add service'}
         </button>
       )}
-      <div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'14px 16px',marginBottom:14}}>
+      {total>0&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'14px 16px',marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
           <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{(labels?.locationsProgress || '{done}/{total} locations').replace('{done}', done).replace('{total}', total)}</div>
           <div style={{fontSize:12,color:done===total&&total>0?'#4ade80':'rgba(255,255,255,0.4)'}}>{done===total&&total>0?`✅ ${labels?.allDone || 'All done!'}`:(labels?.remaining || '{n} remaining').replace('{n}', total-done)}</div>
@@ -1868,9 +1879,14 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         <div style={{height:4,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden'}}>
           <div style={{height:'100%',width:total>0?(done/total*100)+'%':'0%',background:'linear-gradient(90deg,#60a5fa,#4ade80)',borderRadius:2,transition:'width 0.4s'}} />
         </div>
-      </div>
+      </div>}
 
-      {!activeJob && total===0&&<div style={{textAlign:'center',padding:40,color:'rgba(255,255,255,0.3)',fontSize:14}}>{labels?.noJobsToday || 'No jobs today'}</div>}
+      {!activeJob && total===0&&<div className="emp-shift-empty">
+        <div className="emp-empty-icon">☀</div>
+        <div className="emp-empty-kicker">{labels?.todayShift || 'Today'}</div>
+        <h2>{labels?.noShiftToday || labels?.noJobsToday || 'No shifts today'}</h2>
+        <p>{labels?.noJobsToday || 'No jobs today'}</p>
+      </div>}
 
       {todayQueue.map((job,idx)=>{
         const isActive = false

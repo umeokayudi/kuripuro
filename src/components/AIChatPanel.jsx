@@ -4,6 +4,7 @@ import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
 import { loadChatHistory, saveChatHistory } from '../lib/aiChatHistory'
 import { useLang } from '../hooks/useLang'
+import { prepareImageForUpload } from '../lib/imageUpload'
 
 function formatText(text) {
   if (!text) return null
@@ -40,6 +41,13 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const [recording, setRecording] = useState(false)
   const [voices, setVoices] = useState([])
   const [voiceName, setVoiceName] = useState(getSavedVoiceName())
+  const [attachments, setAttachments] = useState([])
+  const [attachmentError, setAttachmentError] = useState('')
+  const imageInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const videoInputRef = useRef(null)
+  const retryRequestRef = useRef(null)
   const voiceRef = useRef(null)
   const bottomRef = useRef(null)
   const messagesRef = useRef(messages)
@@ -61,7 +69,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   useEffect(() => {
-    saveChatHistory(mode, employeeId, messages)
+    saveChatHistory(mode, employeeId, messages.map(message => { const stored = { ...message }; delete stored.attachmentsData; return stored }))
   }, [messages, mode, employeeId])
 
   const speakReply = (text) => speakText(text, { voice: voiceRef.current })
@@ -72,7 +80,19 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       ? { messages: allMessages, employeeId, employeeName }
       : { messages: allMessages }
     if (mode === 'employee') body.language = lang
-    const resp = await apiPost(endpoint, body)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 35000)
+    let resp
+    try {
+      resp = await apiPost(endpoint, body, { signal: controller.signal })
+    } catch (error) {
+      const timeout = error.name === 'AbortError'
+      throw new Error(timeout
+        ? (lang === 'ja' ? 'AIの応答に時間がかかっています。もう一度お試しください。' : 'A IA demorou demais para responder. Tente novamente.')
+        : (lang === 'ja' ? 'AIに接続できませんでした。接続を確認して再試行してください。' : 'Não consegui conectar à IA. Confira a conexão e tente novamente.'))
+    } finally {
+      clearTimeout(timer)
+    }
     let data
     try { data = await resp.json() } catch {
       const unavailable = lang === 'ja'
@@ -81,6 +101,9 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       throw new Error(unavailable)
     }
     if (!resp.ok || data.error) throw new Error(data.error || `Error ${resp.status}`)
+    if (typeof data.reply !== 'string' || !data.reply.trim()) {
+      throw new Error(lang === 'ja' ? 'AIから回答がありませんでした。もう一度お試しください。' : 'A IA não retornou uma resposta. Tente novamente.')
+    }
     return data
   }
 
@@ -88,7 +111,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     const userMsg = { role: 'user', content: text }
     const history = messagesRef.current.slice(-6)
     const newMessages = [...history, userMsg]
-    setMessages(m => [...m, userMsg])
+    setMessages(m => [...m, { ...userMsg, attachmentsData: undefined }])
     const data = await callAPI(newMessages)
     const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
     setMessages(m => [...m, replyMsg])
@@ -109,11 +132,19 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   }
 
   const send = async () => {
-    if (!input.trim() || loading) return
-    const userMsg = { role: 'user', content: input.trim() }
+    if ((!input.trim() && !attachments.length) || loading) return
+    const labels = attachments.map(file => file.name)
+    const userMsg = {
+      role: 'user',
+      content: [input.trim(), ...(labels.length ? [`Anexos: ${labels.join(', ')}`] : [])].filter(Boolean).join('\n'),
+      attachments: attachments.map(({ name, type }) => ({ name, type })),
+      attachmentsData: attachments,
+    }
     const newMessages = [...messages, userMsg]
-    setMessages(newMessages)
+    setMessages(m => [...m, userMsg])
+    retryRequestRef.current = newMessages
     setInput('')
+    setAttachments([])
     setLoading(true)
     try {
       const data = await callAPI(newMessages)
@@ -121,12 +152,31 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       setMessages(m => [...m, replyMsg])
       if (voiceReplies) speakReply(data.reply)
     } catch (e) {
-      setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${e.message}` }])
+      setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${e.message}`, isError: true }])
     }
     setLoading(false)
   }
 
-  const userBubble = dark ? 'linear-gradient(135deg,#1a3a5c,#0f2540)' : 'var(--navy)'
+  const retryLastRequest = async () => {
+    const lastRequest = retryRequestRef.current
+    if (!lastRequest || loading) return
+    setMessages(current => current.slice(0, -1))
+    setLoading(true)
+    try {
+      const data = await callAPI(lastRequest)
+      const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
+      setMessages(current => [...current, replyMsg])
+      if (voiceReplies) speakReply(data.reply)
+    } catch (error) {
+      setMessages(current => [...current, { role: 'assistant', content: `⚠️ ${error.message}`, isError: true }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const userBubble = mode === 'employee'
+    ? 'linear-gradient(135deg,#7651dc,#5a38bd)'
+    : dark ? 'linear-gradient(135deg,#1a3a5c,#0f2540)' : 'var(--navy)'
   const botBubble = dark ? 'rgba(255,255,255,0.07)' : '#fff'
   const botColor = dark ? '#fff' : 'var(--text)'
   const botBorder = dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)'
@@ -185,6 +235,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
               border: m.role === 'user' ? 'none' : botBorder,
             }}>
               {formatText(m.content)}
+              {m.attachments?.length > 0 && <div className="ai-attachment-list">{m.attachments.map((file, j) => <span key={j}>📎 {file.name}</span>)}</div>}
+              {m.isError && i === messages.length - 1 && <button type="button" className="ai-retry-button" onClick={retryLastRequest} disabled={loading}>{lang === 'ja' ? '↻ 再試行' : '↻ Tentar novamente'}</button>}
               {m.toolLog?.length > 0 && (
                 <details style={{ marginTop: 6 }}>
                   <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {m.toolLog.length} consulta(s)</summary>
@@ -202,7 +254,25 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
         <div ref={bottomRef} />
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 10, borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`, padding: compact ? 12 : '12px 0 0' }}>
+      <>
+        <input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={e => { addSelectedFiles(e.target.files); e.target.value = '' }} />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { addSelectedFiles(e.target.files); e.target.value = '' }} />
+        <input ref={videoInputRef} type="file" accept="video/*" hidden onChange={e => { addSelectedFiles(e.target.files); e.target.value = '' }} />
+        <input ref={fileInputRef} type="file" accept="application/pdf,text/plain,text/csv,.txt,.md,.csv" multiple hidden onChange={e => { addSelectedFiles(e.target.files); e.target.value = '' }} />
+      </>
+      {attachmentError && <div className="ai-attachment-error">{attachmentError}</div>}
+      {attachments.length > 0 && <div className="ai-attachment-tray">{attachments.map((file, i) => <div className="ai-attachment-card" key={i}>
+        {file.type.startsWith('image/') ? <img src={file.dataUrl} alt={file.name} /> : file.type.startsWith('video/') ? <video src={file.dataUrl} muted playsInline /> : <span className="ai-attachment-file-icon">PDF</span>}
+        <span className="ai-attachment-file-meta"><b>{file.name}</b><small>{file.type.split('/')[0].toUpperCase()} · {(file.size / 1024).toFixed(0)} KB</small></span>
+        <button type="button" aria-label={lang === 'ja' ? '添付ファイルを削除' : 'Remover anexo'} onClick={() => setAttachments(items => items.filter((_, index) => index !== i))}>×</button>
+      </div>)}</div>}
+      <div className="ai-compose-row" style={{ display: 'flex', gap: 8, marginTop: 10, borderTop: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`, padding: compact ? 12 : '12px 0 0' }}>
+        <div className="ai-attach-actions">
+          <button type="button" title={lang === 'ja' ? '写真' : 'Foto'} aria-label={lang === 'ja' ? '写真を追加' : 'Adicionar foto'} onClick={() => imageInputRef.current?.click()}><span>▧</span><small>{lang === 'ja' ? '写真' : 'Foto'}</small></button>
+          <button type="button" title={lang === 'ja' ? 'カメラ' : 'Câmera'} aria-label={lang === 'ja' ? 'カメラを開く' : 'Abrir câmera'} onClick={() => cameraInputRef.current?.click()}><span>◎</span><small>{lang === 'ja' ? '撮影' : 'Câmera'}</small></button>
+          <button type="button" title={lang === 'ja' ? '動画' : 'Vídeo'} aria-label={lang === 'ja' ? '動画を追加' : 'Adicionar vídeo'} onClick={() => videoInputRef.current?.click()}><span>▷</span><small>{lang === 'ja' ? '動画' : 'Vídeo'}</small></button>
+          <button type="button" title={lang === 'ja' ? 'ファイル' : 'Arquivo'} aria-label={lang === 'ja' ? 'ファイルを追加' : 'Adicionar arquivo'} onClick={() => fileInputRef.current?.click()}><span>＋</span><small>{lang === 'ja' ? 'ファイル' : 'Arquivo'}</small></button>
+        </div>
         <button onClick={startVoiceInput} title="Falar"
           style={{ border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : 'var(--border)'}`, background: recording ? 'rgba(248,113,113,0.2)' : dark ? 'rgba(255,255,255,0.06)' : '#fff', borderRadius: 12, width: 40, alignSelf: 'flex-end', cursor: 'pointer', fontSize: 16 }}>
           {recording ? '🔴' : '🎤'}
@@ -213,11 +283,38 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
           rows={compact ? 1 : 2}
           style={{ flex: 1, resize: 'none', borderRadius: 12, border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : 'var(--border)'}`, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', background: dark ? 'rgba(255,255,255,0.06)' : '#fff', color: dark ? '#fff' : 'inherit' }}
         />
-        <button onClick={send} disabled={loading}
+        <button onClick={send} disabled={loading || (!input.trim() && !attachments.length)}
           style={{ alignSelf: 'flex-end', padding: '10px 16px', borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
           {ai.send}
         </button>
       </div>
     </div>
   )
+
+  async function addSelectedFiles(fileList) {
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+    setAttachmentError('')
+    const allowed = files.filter(file => /^(image\/|video\/|application\/pdf|text\/(plain|csv))/i.test(file.type) || /\.(txt|md|csv)$/i.test(file.name))
+    if (allowed.length !== files.length) setAttachmentError(lang === 'ja' ? '写真、動画、PDF、TXT、CSVファイルを選択してください。' : 'Escolha fotos, vídeos, PDF, TXT ou CSV.')
+    const existingBytes = attachments.reduce((sum, file) => sum + file.size, 0)
+    const chosen = allowed.slice(0, Math.max(0, 3 - attachments.length))
+    const next = []
+    let total = existingBytes
+    let rejectedForSize = false
+    for (const sourceFile of chosen) {
+      if (sourceFile.size > 8_000_000) { rejectedForSize = true; continue }
+      const file = sourceFile.type.startsWith('image/') ? await prepareImageForUpload(sourceFile) : sourceFile
+      if (file.size > 1_500_000 || total + file.size > 2_500_000) { rejectedForSize = true; continue }
+      total += file.size
+      next.push(new Promise(resolve => {
+        const reader = new FileReader()
+        reader.onload = () => resolve({ name: sourceFile.name, type: file.type || 'application/octet-stream', size: file.size, dataUrl: reader.result })
+        reader.onerror = () => resolve(null)
+        reader.readAsDataURL(file)
+      }))
+    }
+    if (files.length + attachments.length > 3 || rejectedForSize) setAttachmentError(lang === 'ja' ? '最大3件、合計2.5MBまで添付できます。写真は自動で圧縮します。' : 'Anexe até 3 arquivos, somando no máximo 2,5 MB. Fotos são compactadas automaticamente.')
+    Promise.all(next).then(results => setAttachments(items => [...items, ...results.filter(Boolean)].slice(0, 3)))
+  }
 }

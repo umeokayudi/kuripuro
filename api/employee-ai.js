@@ -63,6 +63,31 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'messages and employeeId are required' })
   }
 
+  let attachmentBytes = 0
+  const validatedMessages = []
+  for (const message of messages) {
+    if (!Array.isArray(message.attachmentsData) || !message.attachmentsData.length) {
+      validatedMessages.push(message)
+      continue
+    }
+    if (message.attachmentsData.length > 3) {
+      return res.status(400).json({ error: 'Anexe no máximo 3 arquivos por mensagem.' })
+    }
+    const safeFiles = []
+    for (const file of message.attachmentsData) {
+      const match = String(file.dataUrl || '').match(/^data:([^;]+);base64,([A-Za-z0-9+/]+=*)$/)
+      if (!match || !/^(image\/(jpeg|png|webp|gif)|video\/(mp4|mpeg|mov|quicktime|avi|x-flv|mpg|webm|wmv|3gpp)|application\/pdf|text\/(plain|csv))$/i.test(match[1])) {
+        return res.status(415).json({ error: 'Formato não suportado. Use imagem, vídeo, PDF, TXT ou CSV.' })
+      }
+      attachmentBytes += match[2].length
+      if (attachmentBytes > 3_700_000) {
+        return res.status(413).json({ error: 'Os anexos ultrapassam o limite. Reduza os arquivos e tente novamente.' })
+      }
+      safeFiles.push({ inlineData: { mimeType: match[1], data: match[2] } })
+    }
+    validatedMessages.push({ ...message, validatedAttachments: safeFiles })
+  }
+
   const responseLanguage = language === 'ja' ? 'Japanese' : language === 'pt' ? 'Portuguese' : 'English'
   const systemInstruction = `You are the personal assistant for KuriPuro employee ${employeeName || ''}.
 You may query only this employee's records (id: ${employeeId}) using query_my_data.
@@ -77,10 +102,11 @@ Rules:
 - Keep answers concise, especially for voice conversations.`
 
   try {
-    const contents = messages.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }))
+    const contents = validatedMessages.map(m => {
+      const parts = [{ text: m.content || '' }]
+      parts.push(...(m.validatedAttachments || []))
+      return { role: m.role === 'assistant' ? 'model' : 'user', parts }
+    })
 
     const { reply, toolLog } = await runGeminiToolLoop({
       contents,
