@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
+import { useAuth } from '../hooks/useAuth'
 import { salesGet, salesPost } from '../lib/salesApi'
 import { tokyoToday } from '../lib/dates'
 
@@ -13,6 +14,7 @@ const TYPES = ['paid_ads', 'organic_social', 'referral', 'website', 'event', 'ou
 
 export default function Marketing() {
   const { lang } = useLang()
+  const { logout } = useAuth()
   const t = COPY[lang === 'ja' ? 'ja' : 'en']
   const [data, setData] = useState(null)
   const [channel, setChannel] = useState({ name:'', channel_type:'paid_ads', platform:'' })
@@ -30,7 +32,7 @@ export default function Marketing() {
   const load = useCallback(async () => {
     try {
       const result = await salesGet('/api/sales-data?action=dashboard', lang)
-      setData(result.marketing || { channels:[], campaigns:[], spend:[] })
+      setData({ channels:[], campaigns:[], spend:[], ...(result.marketing || {}), leads: result.leads || [] })
       setError('')
     } catch (e) { setError(e.message) }
   }, [lang])
@@ -41,7 +43,7 @@ export default function Marketing() {
       await salesPost('/api/sales-data', body, lang)
       reset()
       await load()
-      toast.success('Saved')
+      toast.success(lang === 'ja' ? '保存しました' : 'Saved')
     } catch (e) { toast.error(e.message) }
   }
 
@@ -73,7 +75,7 @@ export default function Marketing() {
 
   return <div className="marketing-page">
     <div className="sales-kicker">KURIPURO · GROWTH</div><h1>{t.title}</h1>
-    {error && <div className="card sales-setup-note">{error}<p>Configure the commercial server session and apply the sales migration before using marketing tools.</p></div>}
+    {error && <div className="card sales-setup-note"><p>{error}</p><button type="button" className="btn btn-sm" onClick={logout}>{lang === 'ja' ? 'もう一度ログイン' : 'Sign in again'}</button></div>}
     {data && <>
       <div className="sales-metrics">
         {[[t.spend,yen(totalSpend)],[t.leads,totalLeads],[t.won,totalWon],[t.cpl,totalLeads?yen(totalSpend/totalLeads):'—'],[t.cac,totalWon?yen(totalSpend/totalWon):'—'],[t.budget||'Budget',yen(totalBudget)]].map(([label,value])=><div className="sales-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}

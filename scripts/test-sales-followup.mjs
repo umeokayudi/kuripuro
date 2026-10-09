@@ -45,3 +45,15 @@ const data = {
 assert.deepEqual(monthResults(data, 's1', '2026-10'), { approaches: 1, contacts: 1, leads: 1, quotes: 1, contracts: 1, revenue: 80000 })
 
 console.log('✅ sales follow-up and goals rules OK')
+
+const { normalizeMime, ownsSalesObject } = await import('../api/_salesSession.js')
+assert.equal(normalizeMime('audio/webm;codecs=opus'), 'audio/webm')
+assert.equal(normalizeMime('audio/x-m4a'), 'audio/mp4')
+assert.equal(normalizeMime('IMAGE/JPG'), 'image/jpeg')
+const seller = { id: 'u1', role: 'salesperson' }
+assert.equal(ownsSalesObject(seller, 'cards/u1/a.jpg'), true)
+assert.equal(ownsSalesObject(seller, 'cards/u2/a.jpg'), false)
+assert.equal(ownsSalesObject(seller, 'cards/u1/../u2/a.jpg'), false)
+assert.equal(ownsSalesObject(seller, 'contracts/u1/a.pdf', ['cards', 'meetings']), false)
+assert.equal(ownsSalesObject({ id: 'a', role: 'admin' }, 'meetings/u9/x.webm'), true)
+console.log('✅ sales file rules OK')

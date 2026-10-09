@@ -75,6 +75,40 @@ export function requireSalesSession(req, res, roles = ['admin', 'salesperson']) 
   return user
 }
 
+/** Like requireSalesSession, but also refuses sellers deactivated after they signed in. */
+export async function requireActiveSalesSession(req, res, roles = ['admin', 'salesperson']) {
+  const user = requireSalesSession(req, res, roles)
+  if (!user || user.role !== 'salesperson') return user
+  const { data, error } = await salesDb().from('salespeople').select('is_active').eq('id', user.id).maybeSingle()
+  if (error || !data?.is_active) {
+    clearSalesSessionCookie(res)
+    res.status(401).json({ error: 'Sessão comercial inválida ou expirada.' })
+    return null
+  }
+  return user
+}
+
+/** Browsers report the same file with different MIME spellings (codecs, x- prefixes). */
+export function normalizeMime(value) {
+  const base = String(value || '').toLowerCase().split(';')[0].trim()
+  const aliases = {
+    'audio/x-m4a': 'audio/mp4', 'audio/m4a': 'audio/mp4', 'audio/aac': 'audio/mp4', 'audio/x-aac': 'audio/mp4',
+    'audio/x-wav': 'audio/wav', 'audio/wave': 'audio/wav', 'audio/mp3': 'audio/mpeg', 'image/jpg': 'image/jpeg',
+  }
+  return aliases[base] || base
+}
+
+export const SALES_BUCKET = 'sales-private'
+
+/** True when a private sales object belongs to this user (admins can read all). */
+export function ownsSalesObject(user, path, prefixes = ['cards', 'meetings', 'contracts']) {
+  const clean = String(path || '')
+  if (clean.includes('..') || clean.startsWith('/')) return false
+  const [prefix, owner] = clean.split('/')
+  if (!prefixes.includes(prefix)) return false
+  return user.role === 'admin' || owner === user.id
+}
+
 export function hashSalesPassword(password) {
   const salt = randomBytes(16).toString('hex')
   const hash = scryptSync(String(password), salt, 64).toString('hex')

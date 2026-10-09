@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
+import { prepareImageForUpload } from '../lib/imageUpload'
 import { AlertBanner, ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
 import { alertCounts, followupQueue, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
 
@@ -25,6 +26,11 @@ const COPY = {
     noLeads: 'No leads yet.', noFollowups: 'No follow-ups due.', noContracts: 'No contracts yet.', recording: 'Recording… tap to stop', record: 'Record voice note',
     searchAi: 'Review my funnel', saving: 'Saving…', status: 'Status', companyRequired: 'Enter a company or restaurant name.',
     audioPermission: 'Allow microphone access to record a note.', submitted: 'Sent to admin for review.',
+    leadSaved: 'Lead saved', reportSaved: 'Report saved', loading: 'Loading…', unavailable: 'Sales data is unavailable right now. Try again in a moment.', sessionExpired: 'Your session expired. Please sign in again.',
+    monthlyFixed: 'Monthly fixed', perVisit: 'Per visit', campaign: 'Campaign', perMonth: '/ month', pdfOnly: 'Choose a PDF file.', linkedLead: 'Lead (optional)', none: '—',
+    stages: { approach: 'Approach', followup: 'Follow-up', quote: 'Quote', negotiation: 'Negotiation', won: 'Won', lost: 'Lost' },
+    statuses: { draft: 'Draft', pending_review: 'Waiting for review', approved: 'Approved', changes_requested: 'Changes requested', active: 'Active', rejected: 'Not approved' },
+    tooBig: mb => `File is larger than ${mb} MB.`,
   },
   ja: {
     title: '営業ワークスペース', overview: '概要', leads: 'リード', followups: 'フォローアップ', approaches: '活動レポート', contracts: '契約',
@@ -44,17 +50,18 @@ const COPY = {
     noLeads: 'リードはありません。', noFollowups: '期限の近いフォローアップはありません。', noContracts: '契約はありません。', recording: '録音中… タップで停止', record: '音声メモを録音',
     searchAi: '営業状況を分析', saving: '保存中…', status: 'ステータス', companyRequired: '会社名または店舗名を入力してください。',
     audioPermission: '音声メモを録音するにはマイクを許可してください。', submitted: '管理者へ承認を申請しました。',
+    leadSaved: 'リードを保存しました', reportSaved: 'レポートを保存しました', loading: '読み込み中…', unavailable: '営業データを読み込めません。少し待ってから再度お試しください。', sessionExpired: 'セッションの有効期限が切れました。もう一度ログインしてください。',
+    monthlyFixed: '月額固定', perVisit: '訪問ごと', campaign: 'キャンペーン', perMonth: '/ 月', pdfOnly: 'PDFファイルを選択してください。', linkedLead: 'リード（任意）', none: '—',
+    stages: { approach: 'アプローチ', followup: 'フォロー中', quote: '見積', negotiation: '交渉中', won: '成約', lost: '失注' },
+    statuses: { draft: '下書き', pending_review: '確認待ち', approved: '承認済み', changes_requested: '修正依頼', active: '有効', rejected: '未承認' },
+    tooBig: mb => `${mb}MBを超えるファイルは送信できません。`,
   },
 }
 
 const todayJapan = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())
 const yen = value => `¥${Math.round(Number(value || 0)).toLocaleString()}`
-const fileAsBase64 = file => new Promise((resolve, reject) => {
-  const reader = new FileReader()
-  reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '')
-  reader.onerror = reject
-  reader.readAsDataURL(file)
-})
+const baseMime = type => String(type || '').toLowerCase().split(';')[0].trim()
+const MAX_MB = { 'business-card': 8, contract: 15, 'meeting-audio': 18 }
 
 async function callApi(url, body) {
   const response = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -64,7 +71,7 @@ async function callApi(url, body) {
 }
 
 const blankLead = () => ({ company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', address: '', source: 'visit', first_contact_date: todayJapan(), next_followup_date: '', notes: '', marketing_channel_id:'', marketing_campaign_id:'', business_card_object_path:'' })
-const blankApproach = () => ({ work_date: todayJapan(), place: '', company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', notes: '', followup_note: '', followup_date: '', outcome: '', travel_cost: 0, duration_minutes: 0, hours_spent: 0, meeting_transcript: '', meeting_summary: '', ai_next_step: '', followup_status: 'open' })
+const blankApproach = () => ({ lead_id: '', work_date: todayJapan(), place: '', company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', notes: '', followup_note: '', followup_date: '', outcome: '', travel_cost: 0, duration_minutes: 0, hours_spent: 0, meeting_transcript: '', meeting_summary: '', ai_next_step: '', followup_status: 'open' })
 
 export default function SalespersonPortal() {
   const { user, logout } = useAuth()
@@ -92,11 +99,12 @@ export default function SalespersonPortal() {
     try {
       const response = await fetch('/api/sales-data?action=dashboard', { credentials: 'same-origin', cache: 'no-store' })
       const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.error || 'Could not load sales data')
+      if (response.status === 401) { toast.error(c.sessionExpired); logout(); return }
+      if (!response.ok) throw new Error(result.error || c.unavailable)
       setData(result)
     } catch (error) { toast.error(error.message) }
     finally { setLoading(false) }
-  }, [])
+  }, [c.sessionExpired, c.unavailable, logout])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -133,9 +141,9 @@ export default function SalespersonPortal() {
     if (!file) return
     setBusyAi(true)
     try {
-      const base64 = await fileAsBase64(file)
-      const { answer } = await callApi('/api/sales-ai', { task: 'business-card', base64, mime_type: file.type, language: lang })
-      const upload = await uploadFile(file, 'business-card')
+      const photo = await prepareImageForUpload(file)
+      const upload = await uploadFile(photo, 'business-card')
+      const { answer } = await callApi('/api/sales-ai', { task: 'business-card', object_path: upload.path, mime_type: upload.mime_type, language: lang })
       setLead(prev => ({ ...prev, company_name:answer?.company_name || prev.company_name, site_name:answer?.site_name || prev.site_name, contact_name:answer?.contact_name || prev.contact_name, contact_title:answer?.contact_title || prev.contact_title, contact_phone:answer?.phone || prev.contact_phone, contact_email:answer?.email || prev.contact_email, address:answer?.address || prev.address, business_card_object_path:upload.path, first_contact_date: answer?.date || prev.first_contact_date }))
       setTab('leads')
       toast.success(c.confirm)
@@ -149,7 +157,7 @@ export default function SalespersonPortal() {
     setSaving(true)
     try {
       await post({ action: 'save-lead', id: leadId || undefined, lead })
-      toast.success(c.save)
+      toast.success(c.leadSaved)
       setLead(blankLead()); setLeadId('')
       setTab('overview')
     } catch (error) { toast.error(error.message) }
@@ -183,11 +191,10 @@ export default function SalespersonPortal() {
   const transcribeAudio = async blob => {
     setBusyAi(true)
     try {
-      const mime = blob.type || 'audio/webm'
-      const file = new File([blob], `meeting.${mime.includes('mp4') ? 'm4a' : 'webm'}`, { type: mime })
-      const base64 = await fileAsBase64(file)
+      const mime = baseMime(blob.type) || 'audio/webm'
+      const file = new File([blob], `meeting.${mime.includes('mp4') || mime.includes('m4a') ? 'm4a' : 'webm'}`, { type: mime })
       const storedAudio = await uploadFile(file, 'meeting-audio')
-      const { answer } = await callApi('/api/sales-ai', { task: 'voice-note', base64, mime_type: mime, language: lang })
+      const { answer } = await callApi('/api/sales-ai', { task: 'voice-note', object_path: storedAudio.path, mime_type: storedAudio.mime_type, language: lang })
       setApproach(prev => ({ ...prev, audio_object_path:storedAudio.path, notes: [prev.notes, answer?.transcript].filter(Boolean).join('\n\n'), meeting_transcript: answer?.transcript || prev.meeting_transcript, meeting_summary: answer?.summary || '', ai_next_step: answer?.next_step || '', followup_date: answer?.followup_date || prev.followup_date }))
       toast.success(c.transcribe)
     } catch (error) { toast.error(error.message) }
@@ -219,8 +226,11 @@ export default function SalespersonPortal() {
     if (!approach.place.trim()) return toast.error(c.place)
     setSaving(true)
     try {
-      const linked = leads.find(row => row.company_name === approach.company_name || row.site_name === approach.site_name)
-      const body = { ...approach, lead_id: linked?.id || leadId || null, salesperson_id: user.id, meishi_photo_url:lead.business_card_object_path || '' }
+      const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase() && String(a || '').trim() !== ''
+      const linked = leads.find(row => row.id === approach.lead_id)
+        || leads.find(row => same(row.site_name, approach.site_name))
+        || leads.find(row => same(row.company_name, approach.company_name) && (!approach.site_name || same(row.site_name, approach.site_name)))
+      const body = { ...approach, lead_id: linked?.id || null, meishi_photo_url: '' }
       await post({ action: 'save-approach', approach: body })
       if (linked) await post({ action: 'log-contact', contact: { lead_id: linked.id, happened_at: approach.work_date, channel: 'visit', body: approach.meeting_summary || approach.notes || '', next_followup_date: approach.followup_date || '' } })
       toast.success(c.saveApproach)
@@ -234,20 +244,26 @@ export default function SalespersonPortal() {
     setSaving(true)
     try {
       await post({ action:'save-report', report:dailyReport })
-      toast.success(c.saveApproach)
+      toast.success(c.reportSaved)
     } catch (error) { toast.error(error.message) }
     finally { setSaving(false) }
   }
 
+  // The server hands back a one-time Storage URL; the file goes straight to
+  // Storage, so big photos, PDFs and recordings skip the 4.5 MB function limit.
   const uploadFile = async (file, purpose) => {
-    if (!file) return
-    const base64 = await fileAsBase64(file)
-    return callApi('/api/sales-files', { purpose, data: base64, mime_type: file.type })
+    if (!file) throw new Error(c.pdfOnly)
+    if (file.size > MAX_MB[purpose] * 1024 * 1024) throw new Error(c.tooBig(MAX_MB[purpose]))
+    const mime = baseMime(file.type)
+    const slot = await callApi('/api/sales-files', { purpose, mime_type: mime, size: file.size })
+    const put = await fetch(slot.upload_url, { method: 'PUT', headers: { 'Content-Type': slot.mime_type, 'x-upsert': 'false' }, body: file })
+    if (!put.ok) throw new Error(c.unavailable)
+    return { path: slot.path, mime_type: slot.mime_type }
   }
 
   const uploadContractPdf = async file => {
     if (!file) return
-    if (file.type !== 'application/pdf') return toast.error('PDF only')
+    if (baseMime(file.type) !== 'application/pdf') return toast.error(c.pdfOnly)
     setSaving(true)
     try {
       const result = await uploadFile(file, 'contract')
@@ -310,7 +326,7 @@ export default function SalespersonPortal() {
       <nav className="sales-tabs">{nav.map(([key, label]) => <button type="button" className={tab === key ? 'active' : ''} onClick={() => setTab(key)} key={key}>{label}</button>)}</nav>
 
       {data && <AlertBanner counts={counts} f={f} onOpen={tab === 'followups' ? null : () => { setFollowFilter('action'); setTab('followups') }} />}
-      {loading ? <div className="card">Loading…</div> : !data ? <div className="card">Sales data is unavailable. Sign in again or check the server setup.</div> : <>
+      {loading ? <div className="card">{c.loading}</div> : !data ? <div className="card">{c.unavailable}</div> : <>
         {tab === 'overview' && <>
           <div className="sales-metrics">
             {[[c.leadsN, metrics.leads || 0], [c.approachesN, metrics.approaches || 0], [c.quotes, metrics.quotes || 0], [c.active, metrics.active_contracts || 0], [c.conversion, `${Number(metrics.conversion_rate || 0).toFixed(1)}%`], [c.ticket, yen(metrics.quote_average)], [c.commission, yen(metrics.commission_pending)], [c.hours, `${Number(metrics.hours_this_month || 0).toFixed(1)}h`], [c.due, metrics.followups_due || 0]].map(([label, value]) => <div className="sales-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
@@ -320,25 +336,25 @@ export default function SalespersonPortal() {
             <div className="card"><div className="sales-section-head"><div className="card-title">{f.goalsMonth}</div><button className="btn btn-sm" onClick={() => setTab('goals')}>{c.open}</button></div><GoalBars goal={myGoal} actual={myResults} today={today} f={f} compact /></div>
             <div className="card"><div className="card-title">{c.aiReview}</div><p className="sales-muted">{c.aiHint}</p><button className="btn btn-primary" disabled={busyAi} onClick={runFunnelAI}>{busyAi ? c.saving : c.searchAi}</button>{aiResult && <div className="sales-ai-result">{aiResult}</div>}</div>
           </div>
-          <div className="card"><div className="sales-section-head"><div className="card-title">{c.leads}</div><button className="btn btn-primary" onClick={() => { setLead(blankLead()); setLeadId(''); setTab('leads') }}>{c.addLead}</button></div>{leads.slice(0, 10).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{row.contact_name} · {row.stage}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={today} /><FollowupChip info={statusOf.get(row.id)} f={f} /></div><button className="btn btn-sm" onClick={() => editLead(row)}>{c.open}</button></div>)}{leads.length === 0 && <p className="sales-muted">{c.noLeads}</p>}</div>
+          <div className="card"><div className="sales-section-head"><div className="card-title">{c.leads}</div><button className="btn btn-primary" onClick={() => { setLead(blankLead()); setLeadId(''); setTab('leads') }}>{c.addLead}</button></div>{leads.slice(0, 10).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{row.contact_name} · {c.stages[row.stage] || row.stage}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={today} /><FollowupChip info={statusOf.get(row.id)} f={f} /></div><button className="btn btn-sm" onClick={() => editLead(row)}>{c.open}</button></div>)}{leads.length === 0 && <p className="sales-muted">{c.noLeads}</p>}</div>
         </>}
 
         {tab === 'leads' && <div className="card"><div className="sales-section-head"><div><div className="card-title">{leadId ? c.open : c.addLead}</div><p className="sales-muted">{c.confirm}</p></div><div><input ref={cardRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => runCardAI(e.target.files?.[0])}/><button className="btn" type="button" disabled={busyAi} onClick={() => cardRef.current?.click()}>{busyAi ? c.saving : c.scanCard}</button></div></div>
           <form onSubmit={saveLead}><div className="sales-form-grid">
             {Field({ label: c.company, field: "company_name" })}{Field({ label: c.site, field: "site_name" })}{Field({ label: c.contact, field: "contact_name" })}{Field({ label: c.role, field: "contact_title" })}{Field({ label: c.phone, field: "contact_phone" })}{Field({ label: c.email, field: "contact_email" })}{Field({ label: c.address, field: "address" })}{Field({ label: f.firstContact, field: "first_contact_date", type: "date" })}{Field({ label: f.lastContact, field: "last_contact_date", type: "date" })}{Field({ label: c.followupDate, field: "next_followup_date", type: "date" })}{Field({ label: c.followupNote, field: "notes" })}
             <label className="form-group"><span>{c.source}</span><select value={lead.marketing_channel_id || ''} onChange={e=>setLead(v=>({...v,marketing_channel_id:e.target.value,marketing_campaign_id:''}))}><option value="">{c.source}</option>{data.marketing?.channels?.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
-            <label className="form-group"><span>Campaign</span><select value={lead.marketing_campaign_id || ''} onChange={e=>setLead(v=>({...v,marketing_campaign_id:e.target.value}))}><option value="">—</option>{data.marketing?.campaigns?.filter(row=>!lead.marketing_channel_id || row.channel_id===lead.marketing_channel_id).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+            <label className="form-group"><span>{c.campaign}</span><select value={lead.marketing_campaign_id || ''} onChange={e=>setLead(v=>({...v,marketing_campaign_id:e.target.value}))}><option value="">—</option>{data.marketing?.campaigns?.filter(row=>!lead.marketing_channel_id || row.channel_id===lead.marketing_channel_id).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
           </div><button disabled={saving} className="btn btn-primary" type="submit">{saving ? c.saving : c.save}</button></form>
           {leadId && <div className="sales-lead-contacts">
             <div className="sales-section-head"><div><FollowupChip info={statusOf.get(leadId)} f={f} /></div>{contactLeadId !== leadId && <button type="button" className="btn btn-primary btn-sm" onClick={() => setContactLeadId(leadId)}>{f.logContact}</button>}</div>
             {contactLeadId === leadId && <ContactLogForm key={leadId} lead={{ id: leadId }} today={today} f={f} busy={saving} onSave={logContact} onCancel={() => setContactLeadId('')} />}
             <ContactHistory leadId={leadId} touchpoints={touchpoints} f={f} />
           </div>}
-          <div className="sales-list-divider">{leads.map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{row.contact_name} · {row.stage}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={today} /></div><button className="btn btn-sm" onClick={() => editLead(row)}>{c.open}</button></div>)}</div>
+          <div className="sales-list-divider">{leads.map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{row.contact_name} · {c.stages[row.stage] || row.stage}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={today} /></div><button className="btn btn-sm" onClick={() => editLead(row)}>{c.open}</button></div>)}</div>
         </div>}
 
         {tab === 'approaches' && <div className="sales-grid-two sales-reports-grid"><form className="card" onSubmit={saveApproach}><div className="card-title">{c.approachLog}</div><div className="sales-form-grid">
-          {Field({ label: c.place, field: "place", value: approach.place, onChange: e => setApproach(v => ({ ...v, place: e.target.value })) })}{Field({ label: c.company, field: "company_name", value: approach.company_name, onChange: e => setApproach(v => ({ ...v, company_name: e.target.value })) })}{Field({ label: c.site, field: "site_name", value: approach.site_name, onChange: e => setApproach(v => ({ ...v, site_name: e.target.value })) })}{Field({ label: c.contact, field: "contact_name", value: approach.contact_name, onChange: e => setApproach(v => ({ ...v, contact_name: e.target.value })) })}{Field({ label: c.date, field: "work_date", type: "date", value: approach.work_date, onChange: e => setApproach(v => ({ ...v, work_date: e.target.value })) })}{Field({ label: c.duration, field: "duration_minutes", type: "number", value: approach.duration_minutes, onChange: e => setApproach(v => ({ ...v, duration_minutes: e.target.value })) })}{Field({ label: c.travel, field: "travel_cost", type: "number", value: approach.travel_cost, onChange: e => setApproach(v => ({ ...v, travel_cost: e.target.value })) })}{Field({ label: c.followupDate, field: "followup_date", type: "date", value: approach.followup_date, onChange: e => setApproach(v => ({ ...v, followup_date: e.target.value })) })}
+          <label className="form-group"><span>{c.linkedLead}</span><select value={approach.lead_id} onChange={e => { const picked = leads.find(row => row.id === e.target.value); setApproach(v => ({ ...v, lead_id: e.target.value, company_name: picked?.company_name || v.company_name, site_name: picked?.site_name || v.site_name, contact_name: picked?.contact_name || v.contact_name })) }}><option value="">{c.none}</option>{leads.filter(row => !["won", "lost"].includes(row.stage)).map(row => <option key={row.id} value={row.id}>{row.site_name || row.company_name}</option>)}</select></label>{Field({ label: c.place, field: "place", value: approach.place, onChange: e => setApproach(v => ({ ...v, place: e.target.value })) })}{Field({ label: c.company, field: "company_name", value: approach.company_name, onChange: e => setApproach(v => ({ ...v, company_name: e.target.value })) })}{Field({ label: c.site, field: "site_name", value: approach.site_name, onChange: e => setApproach(v => ({ ...v, site_name: e.target.value })) })}{Field({ label: c.contact, field: "contact_name", value: approach.contact_name, onChange: e => setApproach(v => ({ ...v, contact_name: e.target.value })) })}{Field({ label: c.date, field: "work_date", type: "date", value: approach.work_date, onChange: e => setApproach(v => ({ ...v, work_date: e.target.value })) })}{Field({ label: c.duration, field: "duration_minutes", type: "number", value: approach.duration_minutes, onChange: e => setApproach(v => ({ ...v, duration_minutes: e.target.value })) })}{Field({ label: c.travel, field: "travel_cost", type: "number", value: approach.travel_cost, onChange: e => setApproach(v => ({ ...v, travel_cost: e.target.value })) })}{Field({ label: c.followupDate, field: "followup_date", type: "date", value: approach.followup_date, onChange: e => setApproach(v => ({ ...v, followup_date: e.target.value })) })}
           </div><label className="form-group"><span>{c.notes}</span><textarea rows="4" value={approach.notes} onChange={e => setApproach(v => ({ ...v, notes: e.target.value }))}/></label>
           <label className="form-group"><span>{c.hoursSpent}</span><input type="number" min="0" step="0.25" value={approach.hours_spent} onChange={e=>setApproach(v=>({...v,hours_spent:e.target.value}))}/></label>
           <div className="sales-action-row"><input ref={audioRef} hidden type="file" accept="audio/*" onChange={async e => { const file=e.target.files?.[0]; if(file) await transcribeAudio(file); e.target.value='' }}/><button type="button" className="btn" onClick={() => audioRef.current?.click()}>{c.audio}</button><button type="button" className="btn" disabled={busyAi || recording} onClick={startVoice}>{c.record}</button>{recording && <button type="button" className="btn btn-danger" onClick={stopVoice}>{c.recording}</button>}</div>
@@ -362,17 +378,17 @@ export default function SalespersonPortal() {
         {tab === 'contracts' && <><div className="card"><div className="card-title">{c.prepare}</div><form onSubmit={submitContract}><div className="sales-form-grid">
           <label className="form-group"><span>{c.lead}</span><select value={contract.lead_id} onChange={e => setContract(v => ({ ...v, lead_id: e.target.value }))}><option value="">—</option>{leads.filter(row => !['won','lost'].includes(row.stage)).map(row => <option key={row.id} value={row.id}>{row.site_name || row.company_name}</option>)}</select></label>
           <label className="form-group"><span>{c.service}</span><select value={contract.service_type} onChange={e => setContract(v => ({ ...v, service_type: e.target.value }))}>{['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning'].map(x => <option key={x}>{x}</option>)}</select></label>
-          <label className="form-group"><span>{c.billing}</span><select value={contract.billing_type} onChange={e => setContract(v => ({ ...v, billing_type: e.target.value }))}><option value="fixed_monthly">Monthly fixed</option><option value="per_visit">Per visit</option></select></label>
+          <label className="form-group"><span>{c.billing}</span><select value={contract.billing_type} onChange={e => setContract(v => ({ ...v, billing_type: e.target.value }))}><option value="fixed_monthly">{c.monthlyFixed}</option><option value="per_visit">{c.perVisit}</option></select></label>
           <label className="form-group"><span>{c.monthlyBase}</span><input type="number" min="0" value={contract.base_monthly_amount} onChange={e => setContract(v => ({ ...v, base_monthly_amount: e.target.value }))}/></label>
           {contract.billing_type === 'per_visit' && <><label className="form-group"><span>{c.priceVisit}</span><input type="number" min="0" value={contract.price_per_visit} onChange={e => setContract(v => ({ ...v, price_per_visit: e.target.value, base_monthly_amount: String(Number(e.target.value || 0) * Number(v.visits_per_month || 0)) }))}/></label><label className="form-group"><span>{c.visits}</span><input type="number" min="0" value={contract.visits_per_month} onChange={e => setContract(v => ({ ...v, visits_per_month: e.target.value, base_monthly_amount: String(Number(v.price_per_visit || 0) * Number(e.target.value || 0)) }))}/></label></>}
           <label className="form-group"><span>{c.commissionType}</span><select value={contract.commission_type} onChange={e => setContract(v => ({ ...v, commission_type: e.target.value }))}><option value="percent">{c.percent}</option><option value="fixed">{c.fixed}</option></select></label>
           <label className="form-group"><span>{c.commissionValue}</span><input type="number" min="0" step="0.1" value={contract.commission_value} onChange={e => setContract(v => ({ ...v, commission_value: e.target.value }))}/></label>
           <label className="form-group"><span>{c.hoursVisit}</span><input type="number" min="0" step="0.5" value={contract.hours_per_visit} onChange={e => setContract(v => ({ ...v, hours_per_visit: e.target.value }))}/></label>
-        </div><div className="sales-price-preview"><span>{c.totalClient}</span><strong>{yen(monthlyClientPrice)} / month</strong><small>{c.commissionType}: {yen(commissionExtra)} · {openContract?.company_name || ''}</small></div>
+        </div><div className="sales-price-preview"><span>{c.totalClient}</span><strong>{yen(monthlyClientPrice)} {c.perMonth}</strong><small>{c.commissionType}: {yen(commissionExtra)} · {openContract?.company_name || ''}</small></div>
           <label className="form-group sales-file-field"><span>{c.signedPdf} *</span><input type="file" accept="application/pdf,.pdf" onChange={e => uploadContractPdf(e.target.files?.[0])}/>{contract.signed_pdf_name && <small>{contract.signed_pdf_name}</small>}</label>
           {data.contracts?.filter(row => row.status === 'changes_requested' && row.salesperson_id === user.id).map(row => <div className="sales-review-note" key={row.id}><strong>{row.company_name}</strong><p>{row.admin_note}</p></div>)}
           <button className="btn btn-primary" type="submit" disabled={saving || !contract.signed_pdf_object_path}>{saving ? c.saving : c.submit}</button></form></div>
-          <div className="card"><div className="card-title">{c.activeContracts}</div>{(data.contracts || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{row.status} · {yen(row.client_monthly_total)} / month · {c.commission}: {yen(row.commission_amount)}</small>{row.admin_note && <p>{row.admin_note}</p>}</div>{row.signed_pdf_object_path && <button className="btn btn-sm" onClick={() => openSignedPdf(row)}>{c.open} PDF</button>}</div>)}{!data.contracts?.length && <p className="sales-muted">{c.noContracts}</p>}</div></>}
+          <div className="card"><div className="card-title">{c.activeContracts}</div>{(data.contracts || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{c.statuses[row.status] || row.status} · {yen(row.client_monthly_total)} {c.perMonth} · {c.commission}: {yen(row.commission_amount)}</small>{row.admin_note && <p>{row.admin_note}</p>}</div>{row.signed_pdf_object_path && <button className="btn btn-sm" onClick={() => openSignedPdf(row)}>{c.open} PDF</button>}</div>)}{!data.contracts?.length && <p className="sales-muted">{c.noContracts}</p>}</div></>}
       </>}
     </div>
   )

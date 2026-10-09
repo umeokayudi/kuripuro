@@ -1,4 +1,4 @@
-import { requireSalesSession, salesDb } from './_salesSession.js'
+import { requireActiveSalesSession, salesDb } from './_salesSession.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -22,6 +22,9 @@ function safeLead(input) {
 
 const CONTACT_CHANNELS = new Set(['visit', 'phone', 'line', 'email', 'meeting', 'other'])
 const GOAL_FIELDS = ['approaches', 'contacts', 'leads', 'quotes', 'contracts', 'revenue']
+const APPROACH_FIELDS = ['lead_id', 'work_date', 'place', 'company_name', 'site_name', 'contact_name', 'contact_title', 'contact_phone', 'contact_email', 'meishi_photo_url', 'notes', 'followup_note', 'followup_date', 'followup_status', 'outcome', 'travel_cost', 'duration_minutes', 'hours_spent', 'meeting_transcript', 'meeting_summary', 'ai_next_step', 'audio_object_path']
+const REPORT_FIELDS = ['work_date', 'hours_worked', 'started_at', 'ended_at', 'areas', 'summary', 'travel_cost']
+const pick = (input, fields) => Object.fromEntries(fields.filter(key => input?.[key] !== undefined).map(key => [key, input[key] === '' ? null : input[key]]))
 const isDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
 
 function num(v, min = 0) {
@@ -55,7 +58,7 @@ async function loadDashboard(db, user) {
     isAdmin ? db.from('sales_notifications').select('*').eq('audience', 'admin').is('read_at', null).order('created_at', { ascending: false }).limit(100)
       : db.from('sales_notifications').select('*').eq('audience', 'seller').eq('salesperson_id', id).is('read_at', null).order('created_at', { ascending: false }).limit(100),
     db.from('marketing_channels').select('id,name,channel_type,platform,is_active').eq('is_active', true).order('name'),
-    db.from('marketing_campaigns').select('id,channel_id,name,objective,status').eq('status', 'active').order('created_at', { ascending: false }),
+    (isAdmin ? db.from('marketing_campaigns').select('id,channel_id,name,objective,budget,starts_on,ends_on,status') : db.from('marketing_campaigns').select('id,channel_id,name,objective,status').eq('status', 'active')).order('created_at', { ascending: false }),
     isAdmin ? db.from('marketing_spend').select('*').order('spent_on', { ascending: false }).limit(1000) : Promise.resolve({ data: [] }),
     scope(db.from('sales_touchpoints').select('id,lead_id,salesperson_id,event_type,happened_at,channel,said_by,body,next_followup_date,created_at').order('happened_at', { ascending: false }).limit(3000)),
     scope(db.from('sales_goals').select('*').gte('period_month', `${Number(todayTokyo().slice(0, 4)) - 1}-01`).order('period_month', { ascending: false })),
@@ -252,7 +255,12 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'save-approach') {
-    const row = { ...body.approach, salesperson_id: admin ? (body.approach?.salesperson_id || null) : own, work_date: body.approach?.work_date || today, created_at: new Date().toISOString() }
+    const row = { ...pick(body.approach, APPROACH_FIELDS), salesperson_id: admin ? (body.approach?.salesperson_id || null) : own, work_date: body.approach?.work_date || today, created_at: new Date().toISOString() }
+    for (const key of ['place', 'company_name', 'site_name', 'contact_name', 'contact_title', 'contact_phone', 'contact_email', 'notes', 'followup_note', 'outcome', 'meeting_transcript', 'meeting_summary', 'ai_next_step', 'meishi_photo_url', 'followup_status']) if (row[key] === null) row[key] = ''
+    if (row.lead_id && !admin) {
+      const { data: ownedLead } = await db.from('sales_leads').select('id').eq('id', row.lead_id).eq('salesperson_id', own).maybeSingle()
+      if (!ownedLead) row.lead_id = null
+    }
     for (const key of ['travel_cost', 'duration_minutes', 'hours_spent']) row[key] = num(row[key] || 0)
     const { data, error } = await db.from('sales_field_approaches').insert(row).select().single()
     if (error) throw error
@@ -263,7 +271,7 @@ async function postAction(db, user, body, res) {
 
   if (action === 'save-quote') {
     const input = body.quote || {}
-    const { data: lead, error: leadErr } = await db.from('sales_leads').select('id,company_name,site_name,address,phone,email,contact_name,contact_title,salesperson_id').eq('id', input.lead_id).maybeSingle()
+    const { data: lead, error: leadErr } = await db.from('sales_leads').select('id,company_name,site_name,address,phone,email,contact_name,contact_title,contact_phone,contact_email,source,salesperson_id').eq('id', input.lead_id).maybeSingle()
     if (leadErr) throw leadErr
     if (!lead || (!admin && lead.salesperson_id !== own)) return jsonError(res, 404, 'Lead não encontrado nesta conta.')
     const items = Array.isArray(input.items) ? input.items.filter(item => String(item.description || '').trim()).slice(0, 80) : []
@@ -338,6 +346,12 @@ async function postAction(db, user, body, res) {
   if (action === 'set-quote-status') {
     const allowed = admin ? ['draft','sent','accepted','declined','expired'] : ['draft','sent','accepted','declined']
     if (!allowed.includes(body.status)) return jsonError(res, 400, 'Status de orçamento inválido.')
+    if (!admin) {
+      // Sellers move a quote forward only; once sent it cannot be reopened for editing.
+      const { data: current } = await db.from('mitsumori').select('status').eq('id', body.id).eq('salesperson_id', own).maybeSingle()
+      const next = { draft: ['sent'], pending: ['sent'], sent: ['accepted', 'declined'] }[current?.status || ''] || []
+      if (!next.includes(body.status)) return jsonError(res, 409, 'Este orçamento não pode voltar para esse status.')
+    }
     let query = db.from('mitsumori').update({ status:body.status }).eq('id', body.id)
     if (!admin) query = query.eq('salesperson_id', own)
     const { data: quote, error } = await query.select('id,lead_id,status').maybeSingle()
@@ -359,7 +373,9 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'save-report') {
-    const row = { ...body.report, salesperson_id: admin ? (body.report?.salesperson_id || own) : own, updated_at: new Date().toISOString() }
+    const row = { ...pick(body.report, REPORT_FIELDS), salesperson_id: admin ? (body.report?.salesperson_id || own) : own, updated_at: new Date().toISOString() }
+    if (!row.work_date) row.work_date = today
+    for (const key of ['started_at', 'ended_at', 'areas', 'summary']) if (row[key] === null) row[key] = ''
     row.travel_cost = num(row.travel_cost || 0)
     row.hours_worked = num(row.hours_worked || 0)
     const { data, error } = await db.from('sales_day_reports').upsert(row, { onConflict: 'salesperson_id,work_date' }).select().single()
@@ -469,7 +485,7 @@ async function postAction(db, user, body, res) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
-  const user = requireSalesSession(req, res)
+  const user = await requireActiveSalesSession(req, res)
   if (!user) return
   try {
     const db = salesDb()

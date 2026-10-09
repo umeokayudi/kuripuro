@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
+import { useAuth } from '../hooks/useAuth'
 import { salesGet, salesPost } from '../lib/salesApi'
 import { FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
 import { GOAL_KEYS, alertCounts, followupQueue, goalFor, monthResults } from '../lib/salesFollowup'
@@ -13,6 +14,7 @@ const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString()}`
 const japanToday = () => new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Tokyo' }).format(new Date())
 export default function SalesTeam() {
   const { lang } = useLang()
+  const { logout } = useAuth()
   const t = TXT[lang === 'ja' ? 'ja' : 'en']
   const [data, setData] = useState(null)
   const [selectedId, setSelectedId] = useState('')
@@ -33,15 +35,14 @@ export default function SalesTeam() {
 
   const act = async body => {
     setBusy(true)
-    try { await salesPost('/api/sales-data', body, lang); toast.success('Saved'); await load() }
-    catch (e) { toast.error(e.message) }
+    try { await salesPost('/api/sales-data', body, lang); toast.success(lang === 'ja' ? '保存しました' : 'Saved'); await load(); return true }
+    catch (e) { toast.error(e.message); return false }
     finally { setBusy(false) }
   }
 
   const createSeller = async e => {
     e.preventDefault()
-    await act({ action:'create-salesperson', ...form })
-    setForm({ full_name:'', email:'', password:'', phone:'' })
+    if (await act({ action:'create-salesperson', ...form })) setForm({ full_name:'', email:'', password:'', phone:'' })
   }
 
   const review = async (row, status) => act({ action:'review-contract', id:row.id, status, admin_note:reviewNote[row.id] || '' })
@@ -99,7 +100,7 @@ export default function SalesTeam() {
 
   return <div className="sales-admin-page">
     <div className="sales-admin-heading"><div><div className="sales-kicker">KURIPURO · SALES MANAGEMENT</div><h1>{t.title}</h1></div></div>
-    {error && <div className="card sales-setup-note"><strong>Sales API setup required</strong><p>{error}</p><small>Configure the server keys and review the sales migration before using this workspace.</small></div>}
+    {error && <div className="card sales-setup-note"><strong>{lang === 'ja' ? '営業データを読み込めません' : 'Sales data could not be loaded'}</strong><p>{error}</p><button type="button" className="btn btn-sm" onClick={logout}>{lang === 'ja' ? 'もう一度ログイン' : 'Sign in again'}</button></div>}
     {!data && !error && <div className="card">{t.loading}</div>}
     {data && <>
       <section className="card sales-alerts-section">
