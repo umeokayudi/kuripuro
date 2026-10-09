@@ -234,7 +234,7 @@ function AppContent() {
           <div className="topbar-right"><button type="button" className="ref-top-action" title={a.notifications}>♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
-          <div className="kp-build-stamp">KURIPURO · REBUILD COMERCIAL · 09 OUT 2026 · v1.0.4 · CRM FOLLOW-UP + METAS</div>
+          <div className="kp-build-stamp">KURIPURO · REBUILD COMERCIAL · 09 OUT 2026 · v1.0.5 · CRM FOLLOW-UP + METAS</div>
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
