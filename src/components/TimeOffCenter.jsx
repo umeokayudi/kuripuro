@@ -6,6 +6,8 @@ import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { fetchPendingTimeOff, decideTimeOff, TIME_OFF_CHANGED } from '../lib/timeOff'
 import { fmtDay } from './AvailabilityPlanner'
+import { fetchDayContext } from '../lib/dayContext'
+import DayContext from './DayContext'
 
 const SEEN_KEY = 'kp_timeoff_seen_v1'
 const readSeen = () => { try { return new Set(JSON.parse(sessionStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
@@ -24,6 +26,7 @@ export default function TimeOffCenter() {
   const [busy, setBusy] = useState(null)
   const [noteFor, setNoteFor] = useState(null)
   const [notes, setNotes] = useState({})
+  const [dayCtx, setDayCtx] = useState({})
   const seen = useRef(readSeen())
 
   const load = () => fetchPendingTimeOff(tokyoToday()).then(list => {
@@ -44,7 +47,10 @@ export default function TimeOffCenter() {
     writeSeen(seen.current)
     setToastOpen(false)
   }
-  const openPopup = () => { markSeen(); setOpen(true) }
+  const openPopup = () => {
+    markSeen(); setOpen(true)
+    fetchDayContext(rows.map(r => r.date)).then(setDayCtx).catch(() => {})
+  }
 
   const decide = async (row, status) => {
     setBusy(row.id + status)
@@ -108,6 +114,7 @@ export default function TimeOffCenter() {
                     <span className={`tor-kind is-${r.kind}`}>{r.kind === 'off' ? L('Day off', '休み') : L('Extra work', '追加勤務')}</span>
                   </div>
                   {r.note && <p className="tor-note">“{r.note}”</p>}
+                  <DayContext ctx={dayCtx[r.date]} req={r} L={L} />
                   {noteFor === r.id && (
                     <input className="tor-input" autoFocus value={notes[r.id] || ''} onChange={e => setNotes(x => ({ ...x, [r.id]: e.target.value }))} placeholder={L('Message to the employee (optional)', 'スタッフへのメッセージ（任意）')} />
                   )}
