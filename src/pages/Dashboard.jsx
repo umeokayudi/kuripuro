@@ -9,7 +9,6 @@ import DateRangeSheet, { presetRange, formatRangeLabel, tokyoToday } from '../co
 import { useAuth } from '../hooks/useAuth'
 import { summarizeJobs, summarizeByEmployee, formatMinutes, gpsCheck } from '../lib/workKpis'
 import toast from 'react-hot-toast'
-import TimeOffAlert from '../components/TimeOffAlert'
 
 const METRICS_KEY = 'kuripuro-dashboard-metrics-v2'
 const DEFAULT_METRICS = ['completed', 'cash', 'income', 'expenses', 'clients', 'satisfaction']
@@ -269,8 +268,6 @@ export default function Dashboard() {
           <div className="dx-updated">{updatedLabel}{updatedLabel && ' · '}<button type="button" onClick={load}>{lang === 'ja' ? '更新' : 'Refresh'}</button></div>
         </div>
       </header>
-
-      <TimeOffAlert />
 
       <section className="dx-kpis-wrap" aria-label={lang === 'ja' ? '注目指標' : 'Key metrics'}>
         <div className="dx-kpis">

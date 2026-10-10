@@ -414,11 +414,51 @@
 .emp-timeoff-st.is-pending{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
 .emp-timeoff-st.is-approved{background:#ecfdf3;color:#15803d;border:1px solid #bbf7d0}
 .emp-timeoff-st.is-rejected{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
-.timeoff-alert{display:flex;flex-direction:column;gap:10px;border-left:4px solid #f59e0b}
-.timeoff-alert-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)}
-.timeoff-alert-row>div{min-width:0}
-.timeoff-alert-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.timeoff-alert-actions input{max-width:160px;padding:6px 9px;border-radius:8px;border:1px solid var(--border)}
 .nav-item{position:relative}
 .nav-count{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#f59e0b;color:#fff;font-size:10.5px;font-weight:800;display:inline-grid;place-items:center;line-height:1}
 .sidebar-collapsed .nav-count{position:absolute;top:4px;right:6px;margin:0}
+
+/* ===== v1.0.15: day-off requests — topbar bell, alert and approval pop-up ===== */
+.tor-bell{position:relative}
+.tor-bell.has-items{color:#b45309!important;border-color:#fcd9a5!important;background:#fffaf0!important}
+.tor-count{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#f59e0b;color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center;box-shadow:0 0 0 2px #fff}
+.tor-toast{position:fixed;top:76px;right:24px;z-index:400;display:flex;align-items:center;gap:12px;max-width:min(400px,calc(100vw - 32px));padding:12px 12px 12px 14px;background:#fff;border:1px solid #e7ebf2;border-left:4px solid #f59e0b;border-radius:14px;box-shadow:0 14px 36px rgba(18,32,55,.16);animation:torIn .25s ease-out}
+@keyframes torIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.tor-toast-icon{font-size:20px}
+.tor-toast-text{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.tor-toast-text strong{font-size:13px;color:#172033}
+.tor-toast-text span{font-size:12px;color:#5f6b7d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tor-toast-close{border:0;background:none;color:#8a96a8;font-size:20px;line-height:1;cursor:pointer;padding:2px 4px}
+.tor-backdrop{position:fixed;inset:0;z-index:500;background:rgba(15,23,42,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px}
+.tor-modal{width:min(480px,100%);max-height:min(640px,calc(100vh - 32px));display:flex;flex-direction:column;background:#fff;border-radius:20px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden}
+.tor-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 20px 12px}
+.tor-head h2{margin:0;font-size:18px;font-weight:800;color:#172033;letter-spacing:-.02em}
+.tor-head p{margin:4px 0 0;font-size:13px;color:#5f6b7d}
+.tor-close{width:34px;height:34px;border-radius:10px;border:1px solid #e7ebf2;background:#fff;color:#5f6b7d;font-size:20px;line-height:1;cursor:pointer}
+.tor-list{overflow-y:auto;padding:4px 20px 8px;display:flex;flex-direction:column;gap:10px}
+.tor-item{border:1px solid #e7ebf2;border-radius:14px;padding:14px;background:#fbfcfe}
+.tor-item-top{display:flex;align-items:center;gap:12px}
+.tor-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;background:linear-gradient(135deg,#1d3a63,#315cf5);color:#fff;font-weight:800;display:grid;place-items:center}
+.tor-item-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.tor-item-main strong{font-size:14px;color:#172033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tor-item-main span{font-size:12.5px;color:#5f6b7d}
+.tor-kind{flex-shrink:0;font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px}
+.tor-kind.is-off{background:#fef2f2;color:#b91c1c}
+.tor-kind.is-extra{background:#eef3ff;color:#1f46ad}
+.tor-note{margin:10px 0 0;font-size:13px;color:#334155;background:#fff;border:1px solid #eef2f7;border-radius:10px;padding:8px 10px}
+.tor-input{width:100%;margin-top:10px;padding:10px 12px;border:1px solid #d7e0ef;border-radius:10px;font:inherit;font-size:13px;background:#fff}
+.tor-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.tor-actions .tor-link{grid-column:1/-1;justify-self:start}
+.tor-btn{height:42px;border-radius:12px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 16px;transition:transform .05s,background .15s}
+.tor-btn:active{transform:scale(.98)}
+.tor-btn:disabled{opacity:.6;cursor:default}
+.tor-btn-approve{border:0;background:#16a34a;color:#fff;box-shadow:0 4px 12px rgba(22,163,74,.25)}
+.tor-btn-approve:hover{background:#15803d}
+.tor-btn-reject{border:1.5px solid #fecaca;background:#fff;color:#b91c1c}
+.tor-btn-reject:hover{background:#fef2f2}
+.tor-btn-primary{border:0;background:#315cf5;color:#fff}
+.tor-btn-sm{height:34px;font-size:13px;padding:0 14px;border-radius:10px}
+.tor-btn-ghost{border:1px solid #e7ebf2;background:#fff;color:#334155}
+.tor-link{border:0;background:none;color:#315cf5;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;padding:2px 0}
+.tor-foot{display:flex;justify-content:space-between;gap:8px;padding:12px 20px 18px;border-top:1px solid #eef2f7}
+@media(max-width:720px){.tor-toast{top:64px;right:12px;left:12px;max-width:none}.tor-backdrop{align-items:flex-end;padding:0}.tor-modal{width:100%;border-radius:20px 20px 0 0;max-height:88vh}.tor-foot{padding-bottom:calc(18px + env(safe-area-inset-bottom))}}
