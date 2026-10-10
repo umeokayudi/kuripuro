@@ -36,7 +36,8 @@
     "setup:deploy-secrets": "bash scripts/setup-deploy-secrets.sh",
     "verify:production": "node scripts/verify-production.mjs",
     "test:client-care": "npx vite-node scripts/test-client-care.mjs",
-    "test:availability": "npx vite-node scripts/test-availability.mjs"
+    "test:availability": "npx vite-node scripts/test-availability.mjs",
+    "test:ai-guard": "node scripts/test-ai-guard.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
