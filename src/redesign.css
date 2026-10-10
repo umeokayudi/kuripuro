@@ -390,3 +390,35 @@
 .av-alert-copy small{font-size:11px;color:#a16207;line-height:1.4}
 .av-alert-cta{flex:0 0 auto;height:30px;padding:0 12px;border-radius:15px;background:#f59e0b;color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center}
 .av-alert.is-urgent .av-alert-cta{background:#dc2626}
+
+/* ===== v1.0.14: GPS map with business name, nearby service, signatures, time off ===== */
+.ex-map{height:190px}
+.ex-map-label{position:absolute;left:10px;bottom:10px;max-width:calc(100% - 20px);display:flex;flex-direction:column;gap:1px;padding:7px 11px;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 4px 14px rgba(15,23,42,.18);pointer-events:none}
+.ex-map-label strong{font-size:13px;font-weight:800;color:#172033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ex-map-label span{font-size:11px;color:#5f6b7d}
+.ex-nearby{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#ecfdf3;border-bottom:1px solid #bbf7d0;color:#14532d}
+.ex-nearby>span{font-size:18px}
+.ex-nearby>div{min-width:0;flex:1;display:flex;flex-direction:column}
+.ex-nearby small{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#15803d}
+.ex-nearby strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ex-nearby b{font-size:13px;color:#15803d;white-space:nowrap}
+.emp-timeoff{background:#fff;border:1px solid #e4e9f1;border-radius:18px;padding:14px;box-shadow:0 6px 18px rgba(24,39,75,.06)}
+.emp-timeoff-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.emp-timeoff-head h3{margin:0;font-size:14px;font-weight:800;color:#172033}
+.emp-timeoff-head button{border:0;background:none;color:#315cf5;font:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:4px 0}
+.emp-timeoff-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid #eef2f7}
+.emp-timeoff-row>div{min-width:0}
+.emp-timeoff-row strong{display:block;font-size:13px;color:#172033}
+.emp-timeoff-row small{display:block;font-size:11px;color:#5f6b7d;overflow-wrap:anywhere}
+.emp-timeoff-st{flex-shrink:0;font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px}
+.emp-timeoff-st.is-pending{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
+.emp-timeoff-st.is-approved{background:#ecfdf3;color:#15803d;border:1px solid #bbf7d0}
+.emp-timeoff-st.is-rejected{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+.timeoff-alert{display:flex;flex-direction:column;gap:10px;border-left:4px solid #f59e0b}
+.timeoff-alert-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)}
+.timeoff-alert-row>div{min-width:0}
+.timeoff-alert-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.timeoff-alert-actions input{max-width:160px;padding:6px 9px;border-radius:8px;border:1px solid var(--border)}
+.nav-item{position:relative}
+.nav-count{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#f59e0b;color:#fff;font-size:10.5px;font-weight:800;display:inline-grid;place-items:center;line-height:1}
+.sidebar-collapsed .nav-count{position:absolute;top:4px;right:6px;margin:0}

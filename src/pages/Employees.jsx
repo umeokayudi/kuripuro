@@ -8,7 +8,7 @@ const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 export default function Employees() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('list')
+  const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get('tab') === 'availability' ? 'availability' : 'list'))
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [pendingAvail, setPendingAvail] = useState(0)

@@ -9,6 +9,7 @@ import DateRangeSheet, { presetRange, formatRangeLabel, tokyoToday } from '../co
 import { useAuth } from '../hooks/useAuth'
 import { summarizeJobs, summarizeByEmployee, formatMinutes, gpsCheck } from '../lib/workKpis'
 import toast from 'react-hot-toast'
+import TimeOffAlert from '../components/TimeOffAlert'
 
 const METRICS_KEY = 'kuripuro-dashboard-metrics-v2'
 const DEFAULT_METRICS = ['completed', 'cash', 'income', 'expenses', 'clients', 'satisfaction']
@@ -269,6 +270,8 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <TimeOffAlert />
+
       <section className="dx-kpis-wrap" aria-label={lang === 'ja' ? '注目指標' : 'Key metrics'}>
         <div className="dx-kpis">
           {availableMetrics.filter(metric => visibleMetrics.includes(metric.id)).map(metric => (
@@ -492,6 +495,33 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {todayJobs.some(j => j.area) && (() => {
+        // Today by area (zone of the location): done / still to do
+        const byArea = {}
+        for (const j of todayJobs) {
+          if (j.status === 'cancelled') continue
+          const a = j.area || (lang === 'ja' ? '未設定' : 'No area')
+          byArea[a] = byArea[a] || { total: 0, done: 0, staff: new Set() }
+          byArea[a].total++
+          if (j.status === 'completed') byArea[a].done++
+          if (j.employee_name) byArea[a].staff.add(j.employee_name.split(' ')[0])
+        }
+        return (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>📍 {lang === 'ja' ? '本日のエリア別' : 'Today by area'}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+              {Object.entries(byArea).sort((a, b) => b[1].total - a[1].total).map(([area, v]) => (
+                <Link key={area} to="/jobs" style={{ textDecoration: 'none', color: 'inherit', background: 'var(--surface2)', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{area}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>{v.done}/{v.total}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{lang === 'ja' ? '完了' : 'done'}{v.staff.size ? ` · ${[...v.staff].join(', ')}` : ''}</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.todayJobsTitle} ({tokyoToday()})</div>
         {todayJobs.length === 0 ? (
@@ -503,7 +533,7 @@ export default function Dashboard() {
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 6 }}>{name}</div>
             {jobs.map(j => (
               <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                <span>{j.title?.replace(/ — .*/, '')} · {j.scheduled_time || '—'}</span>
+                <span>{j.title?.replace(/ — .*/, '')} · {j.scheduled_time || '—'}{j.area ? ` · 📍 ${j.area}` : ''}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: statusColor(j.status) }}>{t.status[j.status] || j.status}</span>
               </div>
             ))}
