@@ -6,6 +6,7 @@ import {
   salesSessionConfigured,
   setSalesSessionCookie,
   verifySalesPassword,
+  EMPLOYEE_SESSION_TTL,
 } from './_salesSession.js'
 
 const attempts = new Map()
@@ -65,6 +66,16 @@ export default async function handler(req, res) {
     if (admin && admin.password === password) {
       const user = { id: admin.id, name: admin.name, email: admin.email, role: 'admin' }
       setSalesSessionCookie(res, createSalesSession(user))
+      return res.status(200).json({ success: true, user })
+    }
+
+    // Employees get a signed session too, so their AI can only ever read their own account.
+    const { data: emp } = await db.from('employees')
+      .select('id,full_name,email,password,contract_type,hourly_rate,fixed_salary,salary_type,score')
+      .eq('email', email).eq('is_active', true).maybeSingle()
+    if (emp && emp.password === password) {
+      const user = { id: emp.id, name: emp.full_name, email: emp.email, role: 'employee', contract_type: emp.contract_type, hourly_rate: emp.hourly_rate, fixed_salary: emp.fixed_salary, salary_type: emp.salary_type, score: emp.score }
+      setSalesSessionCookie(res, createSalesSession(user, EMPLOYEE_SESSION_TTL), EMPLOYEE_SESSION_TTL)
       return res.status(200).json({ success: true, user })
     }
 

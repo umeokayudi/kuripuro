@@ -5,5 +5,6 @@ export default async function handler(_req, res) {
     ok: true,
     build: API_BUILD,
     geminiKey: !!process.env.GEMINI_API_KEY,
+    aiApprovalPassword: !!process.env.AI_APPROVAL_PASSWORD,
   })
 }

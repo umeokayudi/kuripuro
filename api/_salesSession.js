@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 
 const COOKIE = 'kp_sales_session'
 const SESSION_TTL = 60 * 60 * 12
+// Employees stay signed in on their phone for weeks, so their AI session lasts as long.
+export const EMPLOYEE_SESSION_TTL = 60 * 60 * 24 * 30
 const URL = process.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co'
 
 export function salesDb() {
@@ -25,13 +27,13 @@ function sign(value) {
   return createHmac('sha256', secret()).update(value).digest('base64url')
 }
 
-export function createSalesSession(user) {
+export function createSalesSession(user, ttl = SESSION_TTL) {
   const payload = Buffer.from(JSON.stringify({
     sub: user.id,
     role: user.role,
     name: user.name,
     email: user.email,
-    exp: Math.floor(Date.now() / 1000) + SESSION_TTL,
+    exp: Math.floor(Date.now() / 1000) + ttl,
   })).toString('base64url')
   return `${payload}.${sign(payload)}`
 }
@@ -47,14 +49,14 @@ export function readSalesSession(req) {
   if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return null
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
-    if (!data.sub || !['admin', 'salesperson'].includes(data.role) || data.exp < Date.now() / 1000) return null
+    if (!data.sub || !['admin', 'salesperson', 'employee'].includes(data.role) || data.exp < Date.now() / 1000) return null
     return { id: data.sub, role: data.role, name: data.name, email: data.email }
   } catch { return null }
 }
 
-export function setSalesSessionCookie(res, token) {
+export function setSalesSessionCookie(res, token, ttl = SESSION_TTL) {
   const secure = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'
-  res.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL}${secure ? '; Secure' : ''}`)
+  res.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${ttl}${secure ? '; Secure' : ''}`)
 }
 
 export function clearSalesSessionCookie(res) {
@@ -69,7 +71,7 @@ export function requireSalesSession(req, res, roles = ['admin', 'salesperson']) 
   }
   const user = readSalesSession(req)
   if (!user || !roles.includes(user.role)) {
-    res.status(401).json({ error: 'Sessão comercial inválida ou expirada.' })
+    res.status(401).json({ error: roles.includes('salesperson') ? 'Sessão comercial inválida ou expirada.' : 'Sua sessão expirou. Saia e entre de novo para usar a IA.' })
     return null
   }
   return user
