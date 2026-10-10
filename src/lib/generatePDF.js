@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { viewablePhotoUrl } from './photoUrl'
+import { signatureForDisplay } from './signature'
 
 // Carrega uma imagem de URL como dataURL pra embutir no PDF
 async function loadImageDataUrl(url) {
@@ -18,7 +19,12 @@ async function loadImageDataUrl(url) {
 }
 
 
-export async function generateDailyReport(date, jobs, employeeName) {
+const tokyoTime = (iso) => iso ? new Date(iso).toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', timeZone:'Asia/Tokyo' }) : '—'
+const fmtCoord = (lat, lng) => (lat != null && lng != null) ? `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}` : 'no GPS'
+
+// Daily report: every job of the day, each one with check-in/out time + GPS and its signature.
+export async function generateDailyReport(date, jobs, employeeName, opts = {}) {
+  const showEmployee = !!opts.showEmployee
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
   const W = 210, margin = 14
   let y = margin
@@ -34,7 +40,7 @@ export async function generateDailyReport(date, jobs, employeeName) {
   doc.setFontSize(10)
   doc.setFont('helvetica', 'normal')
   doc.text('Daily Service Report', margin, 20)
-  doc.text(new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' }), W - margin, 20, { align:'right' })
+  doc.text(new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' }), W - margin, 20, { align:'right' })
   y = 38
 
   // Info row
@@ -90,8 +96,8 @@ export async function generateDailyReport(date, jobs, employeeName) {
   // Table rows
   jobs.forEach((j, idx) => {
     if (y > 260) { doc.addPage(); y = margin }
-    const checkin = j.started_at ? new Date(j.started_at).toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit' }) : '—'
-    const checkout = j.completed_at ? new Date(j.completed_at).toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit' }) : '—'
+    const checkin = tokyoTime(j.started_at)
+    const checkout = tokyoTime(j.completed_at)
     const dur = j.started_at && j.completed_at ? Math.round((new Date(j.completed_at) - new Date(j.started_at)) / 60000) + 'm' : '—'
     const isEven = idx % 2 === 0
     if (isEven) { doc.setFillColor(248, 250, 255); doc.rect(margin, y - 1, W - margin*2, 8, 'F') }
@@ -99,16 +105,55 @@ export async function generateDailyReport(date, jobs, employeeName) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.text(String(idx + 1), margin + 2, y + 5)
-    const name = j.title.replace(/ — .*/,'').substring(0, 38)
+    const place = (j.title || '').replace(/ — .*/,'')
+    const name = showEmployee ? `${place.substring(0, 24)} · ${(j.employee_name || '—').split(' ')[0]}` : place.substring(0, 38)
     doc.text(name, margin + 8, y + 5)
     doc.text(checkin, margin + 90, y + 5)
     doc.text(checkout, margin + 115, y + 5)
     doc.text(dur, margin + 142, y + 5)
     if (j.status === 'completed') { doc.setTextColor(15, 110, 86); doc.setFont('helvetica', 'bold') }
     else { doc.setTextColor(200, 50, 50) }
-    doc.text(j.status.toUpperCase(), margin + 164, y + 5)
+    doc.text((j.status === 'in_progress' ? 'IN PROGRESS' : j.status === 'assigned' ? 'NOT DONE' : j.status).toUpperCase(), margin + 164, y + 5)
     y += 8
   })
+
+  // Check-in / check-out (GPS) and signature for EVERY job
+  y += 6
+  if (y > 250) { doc.addPage(); y = margin }
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(6, 13, 24)
+  doc.text('Check-in / Check-out (GPS) and signature', margin, y)
+  y += 5
+  for (const [idx, j] of jobs.entries()) {
+    const blockH = 30
+    if (y + blockH > 280) { doc.addPage(); y = margin }
+    doc.setDrawColor(220, 226, 236)
+    doc.roundedRect(margin, y, W - margin*2, blockH, 2, 2, 'S')
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 40, 60)
+    const place = (j.title || '').replace(/ — .*/,'')
+    doc.text(`${idx + 1}. ${place}`.substring(0, 60), margin + 3, y + 6)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(90, 90, 90)
+    const who = [j.employee_name, j.area ? `Area: ${j.area}` : null].filter(Boolean).join(' · ')
+    if (who) doc.text(who.substring(0, 70), margin + 3, y + 11)
+    const inLine = `In  ${tokyoTime(j.started_at)}  ${fmtCoord(j.start_lat, j.start_lng)}${j.gps_start_distance != null ? `  (${Math.round(j.gps_start_distance)} m from site)` : ''}`
+    const outLine = `Out ${tokyoTime(j.completed_at)}  ${fmtCoord(j.end_lat, j.end_lng)}${j.gps_end_distance != null ? `  (${Math.round(j.gps_end_distance)} m from site)` : ''}`
+    doc.text(inLine, margin + 3, y + 17)
+    doc.text(outLine, margin + 3, y + 22)
+    if (j.retro_report) doc.text('Retroactive report (sent after the service)', margin + 3, y + 27)
+    // signature box on the right
+    const boxW = 56, boxH = 24, bx = W - margin - boxW - 3, by = y + 3
+    doc.setDrawColor(200, 200, 200)
+    doc.rect(bx, by, boxW, boxH)
+    const sig = j.signature_url ? await signatureForDisplay(j.signature_url) : null
+    if (sig) {
+      try { doc.addImage(sig, 'PNG', bx + 1, by + 1, boxW - 2, boxH - 2) } catch {}
+    } else {
+      doc.setTextColor(200, 50, 50); doc.setFontSize(7)
+      doc.text(j.status === 'completed' ? 'Not signed' : '—', bx + boxW / 2, by + boxH / 2 + 1, { align: 'center' })
+    }
+    y += blockH + 3
+  }
 
   // Notes section
   const jobsWithNotes = jobs.filter(j => j.notes_employee)

@@ -41,8 +41,10 @@ import {
 import { tokyoToday, recentTokyoDates } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
-import AvailabilityPlanner, { PlanAlert } from '../components/AvailabilityPlanner'
-import { planningAlert } from '../lib/availability'
+import AvailabilityPlanner, { PlanAlert, statusLabel, fmtDay } from '../components/AvailabilityPlanner'
+import { planningAlert, addDays as addDaysIso } from '../lib/availability'
+import { SIGNATURE_INK } from '../lib/signature'
+import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -94,6 +96,9 @@ export default function EmployeePortal() {
   const [jobPhotos, setJobPhotos] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('')
+  const [herePos, setHerePos] = useState(null)
+  const [myTimeOff, setMyTimeOff] = useState([])
+  const [siteCoordsById, setSiteCoordsById] = useState({})
   const [retroJob, setRetroJob] = useState(null)
   const [retroChecklist, setRetroChecklist] = useState([])
   const [retroText, setRetroText] = useState('')
@@ -132,6 +137,7 @@ export default function EmployeePortal() {
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showSignature, setShowSignature] = useState(false)
   const [signatureJob, setSignatureJob] = useState(null)
+  const [retroSignOpen, setRetroSignOpen] = useState(false)
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [serviceContracts, setServiceContracts] = useState([])
@@ -298,6 +304,13 @@ export default function EmployeePortal() {
   const loadWeekPlans = async () => {
     const { data, error } = await supabase.from('employee_week_plans').select('week_start,submitted_at').eq('employee_id', user.id).gte('week_start', tokyoToday()).limit(30)
     if (!error) setWeekPlans(data || [])
+    // Day-off requests and their status (pending / approved / rejected) for the home card
+    const { data: off } = await supabase.from('employee_availability')
+      .select('id,date,kind,status,note,admin_note,decided_at')
+      .eq('employee_id', user.id).eq('kind', 'off')
+      .gte('date', addDaysIso(tokyoToday(), -30))
+      .order('date', { ascending: true }).limit(60)
+    setMyTimeOff(off || [])
   }
 
   const loadStatement = async () => {
@@ -648,13 +661,21 @@ export default function EmployeePortal() {
     : Math.ceil(retroChecklist.length * 0.7)
   const retroChecklistOk = checklistCompleteForRetro(retroChecklist)
 
-  const submitRetro = async () => {
+  const retroReady = () => {
     if (!retroChecklistOk) {
       toast.error(fill(e.retroChecklistIncomplete, { required: retroChecklistRequired, total: retroChecklist.length }))
-      return
+      return false
     }
-    if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return }
-    if (!retroPhoto) { toast.error(e.retroPhotoRequired); return }
+    if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return false }
+    if (!retroPhoto) { toast.error(e.retroPhotoRequired); return false }
+    return true
+  }
+
+  // Retro reports are signed too, so every job in the daily report has a signature.
+  const requestRetroSignature = () => { if (retroReady()) setRetroSignOpen(true) }
+
+  const submitRetro = async (sigDataUrl) => {
+    if (!retroReady()) return
     setRetroBusy(true)
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
@@ -678,7 +699,7 @@ export default function EmployeePortal() {
         status:'completed', completed_at:new Date().toISOString(),
         retro_report: retroText, retro_ai_summary: ev.resumo||null,
         retro_time_min: ev.tempo_estimado_min ?? null,
-        photo_end_url: photoUrl, admin_reviewed: false,
+        photo_end_url: photoUrl, admin_reviewed: false, signature_url: sigDataUrl || null,
         checklist_total: total || null, checklist_done: total ? done : null,
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id', retroJob.id)
@@ -951,6 +972,25 @@ export default function EmployeePortal() {
 
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayPendingJobs = todayJobs.filter(j=>['assigned','in_progress'].includes(j.status))
+
+  // GPS on the home map: where the employee is now, where today's sites are, and the nearest one.
+  const pendingKey = todayPendingJobs.map(j=>j.id).join(',')
+  useEffect(() => {
+    if (tab !== 'home' || !todayPendingJobs.length) return
+    let alive = true
+    const tick = async () => { const p = await capturePosition(); if (alive && p) setHerePos(p) }
+    tick()
+    const id = setInterval(tick, 60000)
+    ;(async () => {
+      const found = {}
+      for (const j of todayPendingJobs) {
+        try { const c = await siteCoords(j); if (c) found[j.id] = c } catch { /* no coords */ }
+      }
+      if (alive) setSiteCoordsById(found)
+    })()
+    return () => { alive = false; clearInterval(id) }
+  }, [tab, pendingKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const nearby = activeJob ? null : nearestJob(todayPendingJobs, siteCoordsById, herePos)
   const todayAllDone = todayJobs.length>0 && todayPendingJobs.length===0
   const nextShiftJob = getNextShiftJob(allJobs)
 
@@ -1099,6 +1139,12 @@ export default function EmployeePortal() {
         onConfirm={(sig)=>{ const job = signatureJob || activeJob; setShowSignature(false); setSignatureJob(null); handleComplete(sig, job) }}
         onCancel={()=>{ setShowSignature(false); setSignatureJob(null) }}
       />}
+      {retroSignOpen&&retroJob&&<SignatureModal
+        jobTitle={retroJob.title||''}
+        labels={e}
+        onConfirm={(sig)=>{ setRetroSignOpen(false); submitRetro(sig) }}
+        onCancel={()=>setRetroSignOpen(false)}
+      />}
       {trainingModal&&<TrainingModal job={trainingModal.job} contract={trainingModal.contract} onClose={()=>setTrainingModal(null)} lang={lang} labels={e} />}
       {showAddService&&(
         <AddServiceModal
@@ -1143,7 +1189,7 @@ export default function EmployeePortal() {
                 </label>
               </div>
 
-              <button onClick={submitRetro} disabled={retroBusy || !retroChecklistOk} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk?'not-allowed':'pointer'}}>
+              <button onClick={requestRetroSignature} disabled={retroBusy || !retroChecklistOk} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk?'not-allowed':'pointer'}}>
                 {retroBusy?e.retroSubmitting:!retroChecklistOk?fill(e.retroChecklistProgress,{done:retroChecklist.filter(c=>c.done).length,required:retroChecklistRequired}):e.retroSubmit}
               </button>
             </>) : (
@@ -1233,15 +1279,25 @@ export default function EmployeePortal() {
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
-              const mapJob = activeJob || todayPendingJobs[0] || null
+              const mapJob = activeJob || nearby?.job || todayPendingJobs[0] || null
               if (!mapJob) return null
-              const place = (mapJob.title||'').split(' —')[0]
-              const query = mapJob.address && !/^https?:\/\//i.test(mapJob.address.trim()) ? mapJob.address : `${mapJob.client_name||place} Tokyo`
+              const place = businessName(mapJob)
+              const coords = siteCoordsById[mapJob.id]
+              const query = mapQuery(mapJob, coords)
+              const distNow = herePos && coords ? Math.round(distanceMeters(herePos.lat, herePos.lng, coords.lat, coords.lng)) : null
               const stale = activeJob && isStaleActiveJob(activeJob,today,elapsed)
               return (
                 <section className={`ex-checkin${activeJob?' is-active':''}${stale?' is-stale':''}`}>
+                  {nearby&&!activeJob&&(
+                    <div className="ex-nearby" role="status">
+                      <span aria-hidden="true">📍</span>
+                      <div><small>{e.nearbyService}</small><strong>{businessName(nearby.job)}</strong></div>
+                      <b>{nearby.dist} m</b>
+                    </div>
+                  )}
                   <div className="ex-map">
-                    <iframe title={place} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=15&output=embed`} />
+                    <iframe title={place} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`} />
+                    <div className="ex-map-label"><strong>{place}</strong>{(mapJob.area||distNow!=null)&&<span>{[mapJob.area, distNow!=null?`${distNow} m`:null].filter(Boolean).join(' · ')}</span>}</div>
                     <button type="button" className="ex-checkin-btn" onClick={()=>goToTab('shift')}>
                       <span className="ex-checkin-icon" aria-hidden="true">{activeJob?'■':'⌖'}</span>{activeJob?e.checkOut:e.checkIn}
                     </button>
@@ -1279,6 +1335,26 @@ export default function EmployeePortal() {
             )}
 
             <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>goToTab('availability')} />
+
+            {/* Day-off requests with their status */}
+            {(()=>{
+              // Upcoming ones first; past ones only while the decision is recent
+              const rows = myTimeOff.filter(r => r.date >= today || r.status === 'pending').slice(0, 6)
+              return (
+                <section className="emp-timeoff" aria-label={e.myTimeOff}>
+                  <div className="emp-timeoff-head"><h3>🗓 {e.myTimeOff}</h3><button type="button" onClick={()=>goToTab('availability')}>{e.timeOffRequest} ›</button></div>
+                  {rows.length===0 ? <div style={{fontSize:12,color:'#5f6b7d'}}>{e.timeOffEmpty}</div> : rows.map(r=>(
+                    <div key={r.id} className="emp-timeoff-row">
+                      <div>
+                        <strong>{fmtDay(r.date, lang, { weekday:'short', day:'numeric', month:'short' })}</strong>
+                        {r.admin_note&&<small>{e.timeOffAdminNote}: {r.admin_note}</small>}
+                      </div>
+                      <span className={`emp-timeoff-st is-${r.status||'pending'}`}>{statusLabel(r.status, e)}</span>
+                    </div>
+                  ))}
+                </section>
+              )
+            })()}
 
             {/* Summary cards (swipe sideways) */}
             <div className="ex-cards" role="list">
@@ -2233,6 +2309,17 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
   const [hasSignature, setHasSignature] = useState(false)
   const lastPos = useRef(null)
 
+  // Paint the pad white so the saved PNG is dark ink on paper (a transparent PNG
+  // with white ink showed up blank on reports and PDFs).
+  const paper = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
+  useEffect(() => { paper() }, [])
+
   const getPos = (e, canvas) => {
     const rect = canvas.getBoundingClientRect()
     const scaleX = canvas.width / rect.width
@@ -2264,7 +2351,7 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
     ctx.lineWidth = 2.5
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    ctx.strokeStyle = '#fff'
+    ctx.strokeStyle = SIGNATURE_INK
     ctx.lineTo(pos.x, pos.y)
     ctx.stroke()
     ctx.beginPath()
@@ -2278,6 +2365,7 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    paper()
     setHasSignature(false)
   }
 
@@ -2295,13 +2383,13 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
         <div style={{fontSize:12,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>{jobTitle}</div>
 
         {/* Canvas */}
-        <div style={{position:'relative',borderRadius:14,overflow:'hidden',border:'1px solid rgba(255,255,255,0.15)',marginBottom:14,background:'rgba(255,255,255,0.05)'}}>
+        <div style={{position:'relative',borderRadius:14,overflow:'hidden',border:'1px solid #cfd8e6',marginBottom:14,background:'#fff'}}>
           <canvas ref={canvasRef} width={380} height={160}
             style={{width:'100%',height:160,display:'block',touchAction:'none'}}
             onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
             onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
           />
-          {!hasSignature&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.2)',fontSize:14,pointerEvents:'none'}}>{labels?.signHere || 'Sign here with your finger'}</div>}
+          {!hasSignature&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'#9aa6b8',fontSize:14,pointerEvents:'none'}}>{labels?.signHere || 'Sign here with your finger'}</div>}
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>

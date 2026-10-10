@@ -5,6 +5,7 @@ import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { plannerWeeks, weekDays, addDays, targetPlanWeek, unplannedEmployees, weekStartOf } from '../lib/availability'
 import { fmtDay } from './AvailabilityPlanner'
+import { decideTimeOff } from '../lib/timeOff'
 
 const KIND = {
   off: { en: 'Day off', ja: '休み', cls: 'badge-red' },
@@ -41,10 +42,7 @@ export default function AvailabilityAdmin({ employees, onPendingCount }) {
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const decide = async (row, status) => {
-    const { error } = await supabase.from('employee_availability')
-      .update({ status, admin_note: notes[row.id]?.trim() || null, decided_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('id', row.id)
-    if (error) return toast.error(error.message)
+    try { await decideTimeOff(row.id, status, notes[row.id]) } catch (error) { return toast.error(error.message) }
     toast.success(status === 'approved' ? L('Approved', '承認しました') : L('Rejected', '却下しました'))
     load()
   }
