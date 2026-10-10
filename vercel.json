@@ -9,7 +9,16 @@
       "maxDuration": 60
     }
   },
+  "crons": [
+    { "path": "/api/sales?action=reminders", "schedule": "0 15 * * *" }
+  ],
   "rewrites": [
+    { "source": "/api/sales-ai", "destination": "/api/sales?action=ai" },
+    { "source": "/api/sales-data", "destination": "/api/sales?action=data" },
+    { "source": "/api/sales-files", "destination": "/api/sales?action=files" },
+    { "source": "/api/sales-reminders", "destination": "/api/sales?action=reminders" },
+    { "source": "/api/sales-session", "destination": "/api/sales?action=session" },
+    { "source": "/api/upload-photo", "destination": "/api/photo" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

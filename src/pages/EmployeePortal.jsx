@@ -7,6 +7,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
+import ServiceTimer from '../components/ServiceTimer'
+import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
@@ -38,6 +40,11 @@ import {
 } from '../lib/cleaningType'
 import { tokyoToday, recentTokyoDates } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
+import AIChatPanel from '../components/AIChatPanel'
+import AvailabilityPlanner, { PlanAlert, statusLabel, fmtDay } from '../components/AvailabilityPlanner'
+import { planningAlert, addDays as addDaysIso } from '../lib/availability'
+import { SIGNATURE_INK } from '../lib/signature'
+import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -55,12 +62,30 @@ const BADGE_DEFS = [
   { key:'perfect_week', name:'Perfect Week', icon:'🔥', desc:'5 jobs in one week' },
 ]
 
+// Lives outside EmployeePortal so the clock tick does not remount it (and reset scroll).
+function JobPhoto({ url, label }) {
+  const [failed, setFailed] = useState(false)
+  const displayUrl = viewablePhotoUrl(url)
+  if (!url) return null
+  return (
+    <div>
+      <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
+      {failed ? (
+        <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
+      ) : (
+        <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
+      )}
+    </div>
+  )
+}
+
 export default function EmployeePortal() {
   const { user, logout } = useAuth()
   const { lang, t: tr } = useLang()
   const e = tr.employee
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [quickOpen, setQuickOpen] = useState(false)
   const [jobs, setJobs] = useState([])
   const [allJobs, setAllJobs] = useState([])
   const [spotJobs, setSpotJobs] = useState([])
@@ -71,6 +96,9 @@ export default function EmployeePortal() {
   const [jobPhotos, setJobPhotos] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('')
+  const [herePos, setHerePos] = useState(null)
+  const [myTimeOff, setMyTimeOff] = useState([])
+  const [siteCoordsById, setSiteCoordsById] = useState({})
   const [retroJob, setRetroJob] = useState(null)
   const [retroChecklist, setRetroChecklist] = useState([])
   const [retroText, setRetroText] = useState('')
@@ -89,6 +117,7 @@ export default function EmployeePortal() {
   const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
   const [empData, setEmpData] = useState(null)
+  const [weekPlans, setWeekPlans] = useState([])
   const [selectedJob, setSelectedJob] = useState(null)
   const [claimForm, setClaimForm] = useState({ job_id:'', amount:'', route:'', description:'' })
   const [claimPhoto, setClaimPhoto] = useState(null)
@@ -98,7 +127,7 @@ export default function EmployeePortal() {
   const [submittingComplaint, setSubmittingComplaint] = useState(false)
   const [submittingClaim, setSubmittingClaim] = useState(false)
   const [equipmentRequests, setEquipmentRequests] = useState([])
-  const [equipmentForm, setEquipmentForm] = useState({ category: 'supplies', item_name: '', quantity: '1', reason: '' })
+  const [equipmentForm, setEquipmentForm] = useState({ category: 'supplies', item_name: '', quantity: '1', reason: '', product_url: '' })
   const [equipmentPhoto, setEquipmentPhoto] = useState(null)
   const [equipmentPhotoPreview, setEquipmentPhotoPreview] = useState(null)
   const [submittingEquipment, setSubmittingEquipment] = useState(false)
@@ -108,6 +137,7 @@ export default function EmployeePortal() {
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showSignature, setShowSignature] = useState(false)
   const [signatureJob, setSignatureJob] = useState(null)
+  const [retroSignOpen, setRetroSignOpen] = useState(false)
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [serviceContracts, setServiceContracts] = useState([])
@@ -268,6 +298,19 @@ export default function EmployeePortal() {
     loadMessages()
     awardBadges(allVisible, bdg.data||[])
     loadStatement()
+    loadWeekPlans()
+  }
+
+  const loadWeekPlans = async () => {
+    const { data, error } = await supabase.from('employee_week_plans').select('week_start,submitted_at').eq('employee_id', user.id).gte('week_start', tokyoToday()).limit(30)
+    if (!error) setWeekPlans(data || [])
+    // Day-off requests and their status (pending / approved / rejected) for the home card
+    const { data: off } = await supabase.from('employee_availability')
+      .select('id,date,kind,status,note,admin_note,decided_at')
+      .eq('employee_id', user.id).eq('kind', 'off')
+      .gte('date', addDaysIso(tokyoToday(), -30))
+      .order('date', { ascending: true }).limit(60)
+    setMyTimeOff(off || [])
   }
 
   const loadStatement = async () => {
@@ -395,22 +438,29 @@ export default function EmployeePortal() {
     }
   }
 
-  const checkGPS = async (job) => {
-    if (!job.gps_lat||!job.gps_lng) return true
-    setGpsStatus('📍 Checking...')
+  // Where the worker is when they start or finish. Never blocks the job:
+  // without GPS permission it just returns null.
+  const capturePosition = async () => {
     try {
       const pos = await getCurrentPosition()
-      const dist = distanceMeters(pos.lat,pos.lng,Number(job.gps_lat),Number(job.gps_lng))
-      if (dist>100) {
-        setGpsStatus(`⚠️ ${Math.round(dist)}m away`)
-        return { ok: true, dist: Math.round(dist), override: true }
-      }
-      setGpsStatus(`✅ ${Math.round(dist)}m`)
-      return { ok: true, dist: Math.round(dist), override: false }
-    } catch {
+      return { lat: pos.lat, lng: pos.lng, acc: pos.acc != null ? Math.round(pos.acc) : null }
+    } catch { return null }
+  }
+
+  const checkGPS = async (job) => {
+    setGpsStatus('📍 Checking...')
+    const pos = await capturePosition()
+    if (!pos) {
       setGpsStatus('⚠️ GPS unavailable')
-      return { ok: true, dist: null, override: true }
+      return { ok: true, dist: null, override: Boolean(job.gps_lat && job.gps_lng), pos: null }
     }
+    if (!job.gps_lat || !job.gps_lng) {
+      setGpsStatus(`✅ GPS${pos.acc ? ` ±${pos.acc}m` : ''}`)
+      return { ok: true, dist: null, override: false, pos }
+    }
+    const dist = Math.round(distanceMeters(pos.lat, pos.lng, Number(job.gps_lat), Number(job.gps_lng)))
+    setGpsStatus(dist > 100 ? `⚠️ ${dist}m away` : `✅ ${dist}m`)
+    return { ok: true, dist, override: dist > 100, pos }
   }
 
   const handleAcceptSpot = async (job) => {
@@ -611,13 +661,21 @@ export default function EmployeePortal() {
     : Math.ceil(retroChecklist.length * 0.7)
   const retroChecklistOk = checklistCompleteForRetro(retroChecklist)
 
-  const submitRetro = async () => {
+  const retroReady = () => {
     if (!retroChecklistOk) {
       toast.error(fill(e.retroChecklistIncomplete, { required: retroChecklistRequired, total: retroChecklist.length }))
-      return
+      return false
     }
-    if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return }
-    if (!retroPhoto) { toast.error(e.retroPhotoRequired); return }
+    if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return false }
+    if (!retroPhoto) { toast.error(e.retroPhotoRequired); return false }
+    return true
+  }
+
+  // Retro reports are signed too, so every job in the daily report has a signature.
+  const requestRetroSignature = () => { if (retroReady()) setRetroSignOpen(true) }
+
+  const submitRetro = async (sigDataUrl) => {
+    if (!retroReady()) return
     setRetroBusy(true)
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
@@ -641,7 +699,7 @@ export default function EmployeePortal() {
         status:'completed', completed_at:new Date().toISOString(),
         retro_report: retroText, retro_ai_summary: ev.resumo||null,
         retro_time_min: ev.tempo_estimado_min ?? null,
-        photo_end_url: photoUrl, admin_reviewed: false,
+        photo_end_url: photoUrl, admin_reviewed: false, signature_url: sigDataUrl || null,
         checklist_total: total || null, checklist_done: total ? done : null,
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id', retroJob.id)
@@ -691,8 +749,13 @@ export default function EmployeePortal() {
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
       const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
       if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
+      const gpsFields = {
+        start_lat: gpsResult.pos?.lat ?? null, start_lng: gpsResult.pos?.lng ?? null, start_accuracy: gpsResult.pos?.acc ?? null,
+        gps_start_distance: gpsResult.dist ?? null, gps_override: Boolean(gpsResult.override),
+      }
+      try { await supabase.from('jobs').update(gpsFields).eq('id', job.id) } catch (ex) { console.log('gps fields skipped', ex?.message) }
       setChecklist(initChecklistState(job))
-      setActiveJob(data); setJobPhotos([]); toast.success('✅ Started!')
+      setActiveJob({ ...data, ...gpsFields }); setJobPhotos([]); toast.success('✅ Started!')
     } catch (err) {
       toast.error(err?.message || e.startError)
     } finally {
@@ -730,6 +793,8 @@ export default function EmployeePortal() {
       return
     }
     setSubmitting(true)
+    // Read the finish position while the photos upload
+    const endPositionPromise = capturePosition()
     try {
       let startPhotoUrl = job.photo_start_url
       const startPhotos = jobPhotos.filter(p => p.slot === 'start')
@@ -769,6 +834,15 @@ export default function EmployeePortal() {
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      try {
+        const endPos = await endPositionPromise
+        if (endPos) {
+          // Distance to the site when it has coordinates; otherwise to where the job was started.
+          const refLat = job.gps_lat ?? job.start_lat, refLng = job.gps_lng ?? job.start_lng
+          const endDist = refLat != null && refLng != null ? Math.round(distanceMeters(endPos.lat, endPos.lng, Number(refLat), Number(refLng))) : null
+          await supabase.from('jobs').update({ end_lat: endPos.lat, end_lng: endPos.lng, end_accuracy: endPos.acc, gps_end_distance: endDist }).eq('id', job.id)
+        }
+      } catch(ex){ console.log('gps end skipped', ex?.message) }
       try {
         await supabase.from('jobs').update({
           checklist_total: total || null, checklist_done: total ? done : null,
@@ -849,6 +923,13 @@ export default function EmployeePortal() {
   const handleSubmitEquipment = async () => {
     if (!equipmentForm.item_name.trim()) return toast.error(e.equipmentItemRequired)
     if (!equipmentForm.reason.trim() || equipmentForm.reason.trim().length < 10) return toast.error(e.equipmentReasonRequired)
+    const productUrl = equipmentForm.product_url.trim()
+    if (productUrl) {
+      try {
+        const parsed = new URL(productUrl)
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid')
+      } catch { return toast.error(e.equipmentLinkInvalid) }
+    }
     setSubmittingEquipment(true)
     try {
       const id = Date.now()
@@ -862,13 +943,13 @@ export default function EmployeePortal() {
         category: equipmentForm.category,
         item_name: equipmentForm.item_name.trim(),
         quantity: qty,
-        reason: equipmentForm.reason.trim(),
+        reason: `${equipmentForm.reason.trim()}${productUrl ? `\n\n[Product link] ${productUrl}` : ''}`,
         photo_url: photoUrl,
         status: 'pending',
       })
       if (error) throw error
       toast.success(e.equipmentSubmitSuccess)
-      setEquipmentForm({ category: 'supplies', item_name: '', quantity: '1', reason: '' })
+      setEquipmentForm({ category: 'supplies', item_name: '', quantity: '1', reason: '', product_url: '' })
       setEquipmentPhoto(null)
       if (equipmentPhotoPreview) URL.revokeObjectURL(equipmentPhotoPreview)
       setEquipmentPhotoPreview(null)
@@ -891,6 +972,25 @@ export default function EmployeePortal() {
 
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayPendingJobs = todayJobs.filter(j=>['assigned','in_progress'].includes(j.status))
+
+  // GPS on the home map: where the employee is now, where today's sites are, and the nearest one.
+  const pendingKey = todayPendingJobs.map(j=>j.id).join(',')
+  useEffect(() => {
+    if (tab !== 'home' || !todayPendingJobs.length) return
+    let alive = true
+    const tick = async () => { const p = await capturePosition(); if (alive && p) setHerePos(p) }
+    tick()
+    const id = setInterval(tick, 60000)
+    ;(async () => {
+      const found = {}
+      for (const j of todayPendingJobs) {
+        try { const c = await siteCoords(j); if (c) found[j.id] = c } catch { /* no coords */ }
+      }
+      if (alive) setSiteCoordsById(found)
+    })()
+    return () => { alive = false; clearInterval(id) }
+  }, [tab, pendingKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const nearby = activeJob ? null : nearestJob(todayPendingJobs, siteCoordsById, herePos)
   const todayAllDone = todayJobs.length>0 && todayPendingJobs.length===0
   const nextShiftJob = getNextShiftJob(allJobs)
 
@@ -922,10 +1022,12 @@ export default function EmployeePortal() {
     )
   }
 
+  const planAlert = planningAlert(weekPlans, today)
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
   const menuItems = [
     {key:'home',icon:'🏠',label:e.dashboard},
     {key:'shift',icon:'🗺',label:e.todayShift},
+    {key:'ai',icon:'✦',label:e.ai},
     {key:'spots',icon:'⚡',label:e.spotJobs,badge:spotJobs.length},
     {key:'history',icon:'📅',label:e.allJobs},
     {key:'salary',icon:'💴',label:e.salary},
@@ -933,15 +1035,27 @@ export default function EmployeePortal() {
     {key:'equipment',icon:'🧰',label:e.equipment},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
+    {key:'availability',icon:'🗓',label:e.availability,badge:planAlert?1:0},
     {key:'achievements',icon:'🏆',label:e.achievements},
   ]
 
   const bottomTabs = [
-    {key:'home',label:e.home,icon:'○'},
+    {key:'home',label:e.home,icon:'⌂'},
     {key:'shift',label:e.shift,icon:'▶'},
+    {key:'quick'},
     {key:'salary',label:e.salary,icon:'¥'},
-    {key:'chat',label:e.chat,icon:'✉',badge:unreadMsgs},
+    {key:'ai',label:e.ai,icon:'✦'},
   ]
+  const quickActions = [
+    !activeJob&&{icon:'✓',label:e.pastServiceButton,hint:e.pastServiceHint,run:()=>openPastService()},
+    {icon:'＋',label:e.addService,hint:e.addServiceHint,run:openAddService},
+    {icon:'🗓',label:e.availability,hint:e.availabilityHint,run:()=>goToTab('availability')},
+    {icon:'🚃',label:e.transport,hint:e.transportHint,run:()=>goToTab('transport')},
+    {icon:'🧰',label:e.equipment,hint:e.equipmentHint,run:()=>goToTab('equipment')},
+    {icon:'✉',label:e.chat,hint:e.chatHint,run:()=>goToTab('chat')},
+  ].filter(Boolean)
+
+  const currentTabLabel = menuItems.find(m=>m.key===tab)?.label
 
   const scrollToActiveJob = () => {
     setTimeout(() => {
@@ -959,30 +1073,14 @@ export default function EmployeePortal() {
     if (tab === 'shift' && activeJob) scrollToActiveJob()
   }, [tab, activeJob?.id])
 
-  const JobPhoto = ({ url, label }) => {
-    const [failed, setFailed] = useState(false)
-    const displayUrl = viewablePhotoUrl(url)
-    if (!url) return null
-    return (
-      <div>
-        <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginBottom:3}}>{label}</div>
-        {failed ? (
-          <a href={displayUrl} target="_blank" rel="noreferrer" style={{width:'100%',aspectRatio:'4/3',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',color:'#60a5fa',fontSize:11,textAlign:'center',padding:8,textDecoration:'none'}}>📷 Abrir foto</a>
-        ) : (
-          <img src={displayUrl} alt={label} onError={()=>setFailed(true)} style={{width:'100%',borderRadius:10,objectFit:'cover',aspectRatio:'4/3'}} />
-        )}
-      </div>
-    )
-  }
-
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (job.checklist_template||'').split('\n').filter(Boolean)
     const dDate = displayDate(job)
     const instructions = keyboxForJob(job)
     return (
-      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',zIndex:200,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={onClose}>
-        <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+      <div className="emp-sheet-backdrop" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',zIndex:200,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={onClose}>
+        <div className="emp-sheet" style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
           <div style={{width:40,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 18px'}} />
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
             <div style={{flex:1,marginRight:12}}>
@@ -1028,17 +1126,24 @@ export default function EmployeePortal() {
 
   return (
     <div className="emp-backdrop">
-    <div className="emp-shell" style={{minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
+    <div className="emp-shell" style={{width:'100%',minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
 
-      {selectedJob&&<JobModal job={selectedJob} onClose={()=>setSelectedJob(null)} />}
+      {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
+      {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
       {showSignature&&<SignatureModal
         jobTitle={signatureJob?.title||activeJob?.title||''}
         labels={e}
         onConfirm={(sig)=>{ const job = signatureJob || activeJob; setShowSignature(false); setSignatureJob(null); handleComplete(sig, job) }}
         onCancel={()=>{ setShowSignature(false); setSignatureJob(null) }}
+      />}
+      {retroSignOpen&&retroJob&&<SignatureModal
+        jobTitle={retroJob.title||''}
+        labels={e}
+        onConfirm={(sig)=>{ setRetroSignOpen(false); submitRetro(sig) }}
+        onCancel={()=>setRetroSignOpen(false)}
       />}
       {trainingModal&&<TrainingModal job={trainingModal.job} contract={trainingModal.contract} onClose={()=>setTrainingModal(null)} lang={lang} labels={e} />}
       {showAddService&&(
@@ -1064,8 +1169,8 @@ export default function EmployeePortal() {
       )}
 
       {retroJob&&(
-        <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:480,maxHeight:'88vh',overflowY:'auto'}}>
+        <div className="emp-sheet-backdrop" style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
+          <div className="emp-sheet" onClick={e=>e.stopPropagation()} style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:20,width:'100%',maxWidth:480,maxHeight:'88vh',overflowY:'auto'}}>
             <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4}}>📝 {e.retroTitle}</div>
             <div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginBottom:14}}>{retroJob.title.replace(/ — .*/,'')} · {retroJob.scheduled_date}</div>
 
@@ -1084,7 +1189,7 @@ export default function EmployeePortal() {
                 </label>
               </div>
 
-              <button onClick={submitRetro} disabled={retroBusy || !retroChecklistOk} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk?'not-allowed':'pointer'}}>
+              <button onClick={requestRetroSignature} disabled={retroBusy || !retroChecklistOk} style={{width:'100%',padding:16,borderRadius:14,border:'none',background:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:retroBusy||!retroChecklistOk?'rgba(255,255,255,0.3)':'#0a1929',fontSize:15,fontWeight:800,cursor:retroBusy||!retroChecklistOk?'not-allowed':'pointer'}}>
                 {retroBusy?e.retroSubmitting:!retroChecklistOk?fill(e.retroChecklistProgress,{done:retroChecklist.filter(c=>c.done).length,required:retroChecklistRequired}):e.retroSubmit}
               </button>
             </>) : (
@@ -1101,240 +1206,315 @@ export default function EmployeePortal() {
       )}
 
       {/* HEADER */}
-      <div style={{position:'sticky',top:0,zIndex:50,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(255,255,255,0.06)',padding:'14px 16px 10px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-          <div>
-            <div className="emp-brand">KuriPuro by JBM · v33</div>
-            <div className="emp-name" style={{fontSize:21,fontWeight:700,color:'#fff',letterSpacing:-0.5,lineHeight:1,marginTop:1}}>{user.name.split(' ')[0]}</div>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'short'})}</div>
+      <div className="emp-app-header">
+        <div className="emp-header-top">
+          <div className="emp-header-identity">
+            <div className="emp-brand"><span className="emp-kp-mark">KP</span><span>KURIPURO BY JBM</span></div>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div style={{background:`rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.1)`,border:`1px solid rgba(${empScore>=90?'74,222,128':empScore>=70?'251,191,36':'248,113,113'},0.2)`,borderRadius:14,padding:'7px 12px',textAlign:'center'}}>
-              <div style={{fontSize:20,fontWeight:800,color:scoreColor(empScore),lineHeight:1}}>{empScore}</div>
-              <div style={{fontSize:8,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:1,marginTop:1}}>{e.score}</div>
+          <div className="emp-header-actions">
+            <div className={`emp-score-card ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}>
+              <div className="emp-score-value">{empScore}</div>
+              <div className="emp-score-label">{e.score}</div>
             </div>
             <LanguageToggle variant="dark" compact />
-            <button onClick={()=>setTab('chat')} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+            <button aria-label={e.chat} onClick={()=>setTab('chat')} className="emp-header-icon-button">
               🔔
-              {unreadMsgs>0&&<div style={{position:'absolute',top:3,right:3,minWidth:16,height:16,borderRadius:20,background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',padding:'0 3px'}}>{unreadMsgs}</div>}
+              {unreadMsgs>0&&<div className="emp-header-notification-count">{unreadMsgs}</div>}
             </button>
-            <button onClick={()=>setMenuOpen(!menuOpen)} style={{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,position:'relative'}}>
-              {[0,1,2].map(i=><div key={i} style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,0.5)'}} />)}
-              {spotJobs.length>0&&<div style={{position:'absolute',top:4,right:4,width:8,height:8,borderRadius:'50%',background:'#c19c56',border:'2px solid #060d18'}} />}
+            <button aria-label={menuOpen ? e.close : e.more} aria-expanded={menuOpen} onClick={()=>setMenuOpen(!menuOpen)} className="emp-header-menu-button">
+              <span></span><span></span><span></span>
+              {spotJobs.length>0&&<i />}
             </button>
           </div>
         </div>
-        <div style={{marginTop:10,display:'flex',alignItems:'baseline',gap:4}}>
-          <span style={{fontSize:44,fontWeight:700,color:'#fff',fontFamily:'monospace',letterSpacing:-3,lineHeight:1}}>{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>
-          <span style={{fontSize:20,color:'rgba(255,255,255,0.2)',fontFamily:'monospace'}}>{String(clock.getSeconds()).padStart(2,'0')}</span>
+        {/* Same greeting header on every screen */}
+        <div className="ex-greet emp-hello">
+          <div>
+            <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
+            <p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}{tab!=='home'&&currentTabLabel?<b> · {currentTabLabel}</b>:null}</p>
+          </div>
+          <div><span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span></div>
         </div>
-        {!isOnline&&<div style={{background:'rgba(248,113,113,0.15)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:8,padding:'6px 12px',fontSize:11,color:'#f87171',fontWeight:600,marginTop:8,textAlign:'center'}}>
+        {!isOnline&&<div className="emp-offline-banner">
           ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
-          {gpsStatus&&<div style={{background:gpsStatus.includes('✅')?'rgba(74,222,128,0.1)':gpsStatus.includes('🚫')?'rgba(248,113,113,0.1)':'rgba(255,255,255,0.06)',borderRadius:20,padding:'4px 10px',fontSize:10,color:gpsStatus.includes('✅')?'#4ade80':gpsStatus.includes('🚫')?'#f87171':'rgba(255,255,255,0.4)',fontWeight:500,border:'1px solid rgba(255,255,255,0.08)'}}>{gpsStatus}</div>}
+          {gpsStatus&&<div className={`emp-status-chip ${gpsStatus.includes('✅')?'is-good':gpsStatus.includes('🚫')?'is-bad':''}`}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
+          {planAlert&&tab!=='availability'&&<div onClick={()=>setTab('availability')} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
-          {unreadMsgs>0&&<div onClick={()=>setTab('chat')} style={{background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#f87171',cursor:'pointer',fontWeight:600}}>💬 {unreadMsgs}</div>}
         </div>
       </div>
 
       {/* 3-dot dropdown */}
       {menuOpen&&(
-        <div style={{position:'fixed',inset:0,zIndex:100}} onClick={()=>setMenuOpen(false)}>
-          <div style={{position:'absolute',top:136,right:12,background:'#0d1f35',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,overflow:'hidden',minWidth:200,boxShadow:'0 28px 80px rgba(0,0,0,0.7)'}} onClick={e=>e.stopPropagation()}>
+        <div className="emp-menu-overlay" onClick={()=>setMenuOpen(false)}>
+          <section className="emp-menu-panel" role="dialog" aria-modal="true" aria-label={e.more} onClick={e=>e.stopPropagation()}>
+            <div className="emp-menu-head"><div><span className="emp-menu-kicker">KURIPURO BY JBM</span><h2>{e.more}</h2></div><button aria-label={e.close} className="emp-menu-close" onClick={()=>setMenuOpen(false)}>×</button></div>
+            <div className="emp-menu-items">
             {menuItems.map(item=>(
-              <button key={item.key} onClick={()=>{setTab(item.key);setMenuOpen(false)}} style={{width:'100%',padding:'14px 18px',border:'none',background:tab===item.key?'rgba(193,156,86,0.1)':'none',color:tab===item.key?'#c19c56':'rgba(255,255,255,0.7)',fontSize:14,fontWeight:tab===item.key?600:400,cursor:'pointer',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid rgba(255,255,255,0.04)',textAlign:'left'}}>
-                <span style={{fontSize:18}}>{item.icon}</span>
-                <div style={{flex:1}}>
+              <button key={item.key} onClick={()=>{setTab(item.key);setMenuOpen(false)}} className={`emp-menu-item${tab===item.key?' is-active':''}`}>
+                <span className="emp-menu-item-icon">{item.icon}</span>
+                <div className="emp-menu-item-copy">
                   <div>{item.label}</div>
-                  {item.preview&&<div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:120}}>{item.preview}</div>}
+                  {item.preview&&<div>{item.preview}</div>}
                 </div>
-                {item.badge>0&&<span style={{background:item.key==='chat'?'#f87171':'#c19c56',color:'#0a1929',borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:800}}>{item.badge}</span>}
+                {item.badge>0&&<span className={`emp-menu-badge${item.key==='chat'?' is-alert':''}`}>{item.badge}</span>}
               </button>
             ))}
-            <div style={{height:1,background:'rgba(255,255,255,0.05)'}} />
-            <button onClick={logout} style={{width:'100%',padding:'14px 18px',border:'none',background:'none',color:'#f87171',fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',gap:12,textAlign:'left'}}>
+            </div>
+            <div className="emp-menu-footer"><button onClick={logout} className="emp-menu-logout">
               <span style={{fontSize:18}}>🚪</span> {e.logout}
-            </button>
-          </div>
+            </button></div>
+          </section>
         </div>
       )}
 
       {/* CONTENT */}
-      <div style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+      <div className={`emp-content${tab==='ai'?' is-ai':''}`} style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
 
         {/* HOME */}
         {tab==='home'&&(
-          <div>
-            {/* Active job banner */}
-            {activeJob&&<div onClick={()=>goToTab('shift')} style={{background:isStaleActiveJob(activeJob,today,elapsed)?'linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))':'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:`1px solid ${isStaleActiveJob(activeJob,today,elapsed)?'rgba(251,191,36,0.35)':'rgba(74,222,128,0.25)'}`,borderRadius:20,padding:16,marginBottom:12,cursor:'pointer'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div>
-                  <div style={{fontSize:10,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:3}}>
-                    ● {isStaleActiveJob(activeJob,today,elapsed)?e.staleShiftTitle:e.activeShiftTitle}
-                  </div>
-                  <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.split(' —')[0]}</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>
-                    {activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:''}{e.tapToFinish}
-                  </div>
-                </div>
-                <div style={{fontSize:isStaleActiveJob(activeJob,today,elapsed)?14:28,fontWeight:700,color:isStaleActiveJob(activeJob,today,elapsed)?'#fbbf24':'#4ade80',fontFamily:'monospace',textAlign:'right',maxWidth:120}}>
-                  {isStaleActiveJob(activeJob,today,elapsed)?formatShiftElapsed(elapsed,lang):fmt(elapsed)}
-                </div>
-              </div>
-            </div>}
+          <div className="emp-home ex-home">
 
-            {!activeJob&&(
-              <button
-                type="button"
-                onClick={()=>openPastService()}
-                style={{width:'100%',padding:'14px 16px',marginBottom:12,borderRadius:16,border:'1px solid rgba(193,156,86,0.35)',background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(232,196,122,0.08))',color:'#e8c47a',fontSize:14,fontWeight:800,cursor:'pointer',textAlign:'left'}}
-              >
-                ✓ {e.pastServiceButton}
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',fontWeight:500,marginTop:4}}>{e.pastServiceHint}</div>
-              </button>
-            )}
-
-            {/* Today shift — pendente */}
-            {todayPendingJobs.length>0&&!activeJob&&(
-              <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div style={{fontSize:10,color:'#c19c56',fontWeight:700,letterSpacing:1}}>📋 {e.todayShift.toUpperCase()}</div>
-                  {(()=>{
-                    const nj=todayPendingJobs.find(j=>j.status==='assigned')
-                    if(!nj) return null
-                    const nd=new Date(nj.scheduled_date+'T'+(nj.scheduled_time||'00:30')+':00')
-                    const diffMs=nd-new Date()
-                    if(diffMs<0) return null
-                    const diffH=Math.floor(diffMs/3600000)
-                    const diffM=Math.floor((diffMs%3600000)/60000)
-                    return <div style={{fontSize:11,color:'#60a5fa',fontWeight:600}}>⏰ {diffH>0?diffH+'h ':''}{diffM}m {e.toStart}</div>
-                  })()}
-                </div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} {e.locations}</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}</div>
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginBottom:12}}>⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
-                <div style={{height:5,background:'rgba(255,255,255,0.1)',borderRadius:3,overflow:'hidden',marginBottom:10}}>
-                  <div style={{height:'100%',width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%',background:'linear-gradient(90deg,#c19c56,#e8c47a)',borderRadius:3,transition:'width 0.4s'}} />
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div style={{display:'flex',gap:4}}>
-                    {todayJobs.slice(0,8).map((j,i)=><div key={i} style={{width:8,height:8,borderRadius:'50%',background:j.status==='completed'?'#4ade80':j.status==='in_progress'?'#fbbf24':'rgba(255,255,255,0.2)'}} />)}
-                    {todayJobs.length>8&&<span style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginLeft:2}}>+{todayJobs.length-8}</span>}
-                  </div>
-                  <div style={{fontSize:13,fontWeight:600,color:'#c19c56'}}>{e.startArrow}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Turno de hoje concluído */}
-            {todayAllDone&&!activeJob&&(
-              <div onClick={()=>setTab('shift')} style={{background:'linear-gradient(135deg,rgba(74,222,128,0.12),rgba(74,222,128,0.03))',border:'1px solid rgba(74,222,128,0.25)',borderRadius:22,padding:18,marginBottom:14,cursor:'pointer'}}>
-                <div style={{fontSize:10,color:'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:8}}>✅ {e.todayShiftDone}</div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>{todayJobs.length} {e.locations}</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{e.tapToReview}</div>
-                {nextShiftJob&&nextShiftJob.scheduled_date>today&&(
-                  <div style={{fontSize:11,color:'#60a5fa',marginTop:4}}>{fill(e.nextShift,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
-                )}
-              </div>
-            )}
-
-            {/* Countdown to next upcoming job */}
-            {todayJobs.length===0&&nextShiftJob&&!activeJob&&(()=>{
-              const nextDate = new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')
-              const diffMs = nextDate - new Date()
-              const diffH = Math.floor(diffMs/3600000)
-              const diffM = Math.floor((diffMs%3600000)/60000)
-              if (diffMs < 0) return null
+            {/* Check-in card with the map of the next location */}
+            {(()=>{
+              const mapJob = activeJob || nearby?.job || todayPendingJobs[0] || null
+              if (!mapJob) return null
+              const place = businessName(mapJob)
+              const coords = siteCoordsById[mapJob.id]
+              const query = mapQuery(mapJob, coords)
+              const distNow = herePos && coords ? Math.round(distanceMeters(herePos.lat, herePos.lng, coords.lat, coords.lng)) : null
+              const stale = activeJob && isStaleActiveJob(activeJob,today,elapsed)
               return (
-                <div style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12}}>
-                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>⏰ {e.nextShiftLabel.toUpperCase()}</div>
-                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>{fill(e.timeAway,{time:diffH>0?`${diffH}h ${diffM}m`:`${diffM}m`})}</div>
-                  <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:2}}>{nextShiftJob.title.split(' —')[0]} · {nextShiftJob.scheduled_date} {nextShiftJob.scheduled_time}</div>
+                <section className={`ex-checkin${activeJob?' is-active':''}${stale?' is-stale':''}`}>
+                  {nearby&&!activeJob&&(
+                    <div className="ex-nearby" role="status">
+                      <span aria-hidden="true">📍</span>
+                      <div><small>{e.nearbyService}</small><strong>{businessName(nearby.job)}</strong></div>
+                      <b>{nearby.dist} m</b>
+                    </div>
+                  )}
+                  <div className="ex-map">
+                    <iframe title={place} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`} />
+                    <div className="ex-map-label"><strong>{place}</strong>{(mapJob.area||distNow!=null)&&<span>{[mapJob.area, distNow!=null?`${distNow} m`:null].filter(Boolean).join(' · ')}</span>}</div>
+                    <button type="button" className="ex-checkin-btn" onClick={()=>goToTab('shift')}>
+                      <span className="ex-checkin-icon" aria-hidden="true">{activeJob?'■':'⌖'}</span>{activeJob?e.checkOut:e.checkIn}
+                    </button>
+                  </div>
+                  <button type="button" className="ex-checkin-info" onClick={()=>goToTab('shift')}>
+                    <div>
+                      <small>{activeJob?(stale?e.staleShiftTitle:e.activeShiftTitle):e.nextLocation}</small>
+                      <strong>{place}</strong>
+                      <span>{activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${mapJob.scheduled_time||'—'} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
+                    </div>
+                    {activeJob?<b className="ex-timer">{stale?formatShiftElapsed(elapsed,lang):fmt(elapsed)}</b>:(()=>{
+                      const nd=new Date(mapJob.scheduled_date+'T'+(mapJob.scheduled_time||'00:30')+':00')
+                      const diffMs=nd-new Date()
+                      if(diffMs<0) return <b className="ex-go">›</b>
+                      const diffH=Math.floor(diffMs/3600000), diffM=Math.floor((diffMs%3600000)/60000)
+                      return <b className="ex-countdown">{diffH>0?diffH+'h ':''}{diffM}m<small>{e.toStart}</small></b>
+                    })()}
+                  </button>
+                </section>
+              )
+            })()}
+
+            {/* No shift today */}
+            {todayJobs.length===0&&!activeJob&&(
+              <div className="emp-no-shift-card">
+                <div className="emp-empty-icon">☀</div>
+                <div className="emp-empty-kicker">{e.todayShift}</div>
+                <div className="emp-empty-title">{e.noShiftToday}</div>
+                {nextShiftJob&&(()=>{
+                  const diffMs=new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')-new Date()
+                  return <div className="emp-empty-description">{diffMs>0&&diffMs<48*3600000?fill(e.timeAway,{time:Math.floor(diffMs/3600000)>0?`${Math.floor(diffMs/3600000)}h ${Math.floor((diffMs%3600000)/60000)}m`:`${Math.floor((diffMs%3600000)/60000)}m`}):fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
+                })()}
+                {nextShiftJob&&<div className="emp-next-job"><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</span></div>}
+              </div>
+            )}
+
+            <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>goToTab('availability')} />
+
+            {/* Day-off requests with their status */}
+            {(()=>{
+              // Upcoming ones first; past ones only while the decision is recent
+              const rows = myTimeOff.filter(r => r.date >= today || r.status === 'pending').slice(0, 6)
+              return (
+                <section className="emp-timeoff" aria-label={e.myTimeOff}>
+                  <div className="emp-timeoff-head"><h3>🗓 {e.myTimeOff}</h3><button type="button" onClick={()=>goToTab('availability')}>{e.timeOffRequest} ›</button></div>
+                  {rows.length===0 ? <div style={{fontSize:12,color:'#5f6b7d'}}>{e.timeOffEmpty}</div> : rows.map(r=>(
+                    <div key={r.id} className="emp-timeoff-row">
+                      <div>
+                        <strong>{fmtDay(r.date, lang, { weekday:'short', day:'numeric', month:'short' })}</strong>
+                        {r.admin_note&&<small>{e.timeOffAdminNote}: {r.admin_note}</small>}
+                      </div>
+                      <span className={`emp-timeoff-st is-${r.status||'pending'}`}>{statusLabel(r.status, e)}</span>
+                    </div>
+                  ))}
+                </section>
+              )
+            })()}
+
+            {/* Summary cards (swipe sideways) */}
+            <div className="ex-cards" role="list">
+              {todayJobs.length>0&&(
+                <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('shift')}>
+                  <div className="ex-card-head"><strong>{todayAllDone?e.todayShiftDone:e.todayShift}</strong><span className="ex-card-icon">▶</span></div>
+                  <div className="ex-card-big">{todayJobs.length} <small>{e.locations}</small></div>
+                  <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
+                  <div className="ex-progress"><i className="is-green" style={{width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%'}} /><i style={{width:(todayJobs.filter(j=>j.status==='in_progress').length/todayJobs.length*100)+'%'}} /></div>
+                  <span className="ex-pill">{todayAllDone?e.tapToReview:e.startArrow}</span>
+                </button>
+              )}
+              <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('salary')}>
+                <div className="ex-card-head"><strong>{e.workedHours}</strong><span className="ex-card-icon">⏱</span></div>
+                <div className="ex-card-big">{salaryData?.hours||0}h <small>{e.thisMonth}</small></div>
+                <div className="ex-card-sub">{salaryData?.jobs||0} {e.statJobs.toLowerCase()} · ¥{(salaryData?.total||0).toLocaleString()}</div>
+                {salaryData&&salaryData.fixedMax>0?(
+                  <div className="ex-progress"><i className="is-green" style={{width:Math.min((salaryData.base/salaryData.fixedMax)*100,100)+'%'}} /></div>
+                ):<div className="ex-progress"><i style={{width:Math.min(((salaryData?.workedDays||0)/26)*100,100)+'%'}} /></div>}
+                <span className="ex-pill">{e.viewSalary}</span>
+              </button>
+              {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(()=>{
+                const next=payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0]
+                return (
+                  <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('salary')}>
+                    <div className="ex-card-head"><strong>{e.nextPayment}</strong><span className="ex-card-icon">¥</span></div>
+                    <div className="ex-card-big">¥{Number(next.amount).toLocaleString()}</div>
+                    <div className="ex-card-sub">{next.payment_date}</div>
+                    <span className="ex-pill">{e.viewSalary}</span>
+                  </button>
+                )
+              })()}
+            </div>
+            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&!(empData.salary_type==='fixed'&&Number(empData.fixed_salary||0)===0)&&(
+              <div className="ex-warning">⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}</div>
+            )}
+
+            {/* Pending requests + notifications */}
+            {(()=>{
+              const pendingClaims=claims.filter(c=>c.status==='pending').length
+              const pendingEquipment=equipmentRequests.filter(r=>['pending','requested'].includes(r.status)).length
+              const notifications=unreadMsgs+spotJobs.length
+              return (
+                <div className="ex-duo">
+                  <button type="button" className="ex-tile" onClick={()=>goToTab(pendingClaims||!pendingEquipment?'transport':'equipment')}>
+                    <span>{e.pendingRequests}</span>
+                    <strong>{pendingClaims+pendingEquipment}</strong>
+                    <small>{fill(e.pendingBreakdown,{transport:pendingClaims,equipment:pendingEquipment})}</small>
+                  </button>
+                  <button type="button" className="ex-tile is-blue" onClick={()=>goToTab(spotJobs.length&&!unreadMsgs?'spots':'chat')}>
+                    <span>{e.notifications}</span>
+                    <b aria-hidden="true">🔔</b>
+                    <small>{fill(e.unreadCount,{n:notifications})}</small>
+                  </button>
                 </div>
               )
             })()}
 
-            {/* No jobs today */}
-            {todayJobs.length===0&&!activeJob&&(
-              <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:18,padding:'24px 20px',textAlign:'center',marginBottom:14}}>
-                <div style={{fontSize:36,marginBottom:8}}>☀️</div>
-                <div style={{fontSize:15,fontWeight:600,color:'rgba(255,255,255,0.6)'}}>{e.noShiftToday}</div>
-                {nextShiftJob&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)',marginTop:4}}>{fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>}
-              </div>
-            )}
+            {/* Quick actions */}
+            <div className="ex-section-title">{e.quickActionTitle}</div>
+            <div className="ex-chips">
+              {!activeJob&&<button type="button" className="ex-chip is-gold" onClick={()=>openPastService()}><i>✓</i>{e.pastServiceButton}</button>}
+              <button type="button" className="ex-chip" onClick={openAddService}><i>＋</i>{e.addService}</button>
+              <button type="button" className="ex-chip" onClick={()=>goToTab('transport')}><i>🚃</i>{e.transport}</button>
+              <button type="button" className="ex-chip" onClick={()=>goToTab('equipment')}><i>🧰</i>{e.equipment}</button>
+            </div>
 
-            {/* Unread messages banner */}
-            
-            {/* Next payment */}
-            {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
-              <div onClick={()=>setTab('salary')} style={{background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.15)',borderRadius:18,padding:'14px 16px',marginBottom:12,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div>
-                  <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:4}}>💴 {e.nextPayment.toUpperCase()}</div>
-                  <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>¥{Number(payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0].amount).toLocaleString()}</div>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance')[0].payment_date}</div>
-                </div>
-                <div style={{fontSize:14,color:'#60a5fa'}}>›</div>
-              </div>
-            )}
-
-            {/* Stats */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
-              {[['📋',salaryData?.jobs||0,e.statJobs],['⏱',(salaryData?.hours||0)+'h',e.statHours],['💴','¥'+(salaryData?.total||0).toLocaleString(),e.statEarned]].map(([icon,v,l])=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 8px',textAlign:'center'}}>
-                  <div style={{fontSize:18,marginBottom:3}}>{icon}</div>
-                  <div style={{fontSize:14,fontWeight:700,color:'#fff'}}>{v}</div>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:1,textTransform:'uppercase',letterSpacing:0.5}}>{l}</div>
-                </div>
+            {/* Quick access */}
+            <div className="ex-section-title">{e.quickAccess}</div>
+            <div className="ex-access">
+              {[
+                ['shift','▶',e.shift,'blue'],
+                ['calendar','▦',e.calendar,'amber'],
+                ['salary','¥',e.salary,'green'],
+                ['ai','✦',e.ai,'purple'],
+                ['chat','✉',e.chat,'pink',unreadMsgs],
+                ['history','☰',e.allJobs,'teal'],
+              ].map(([key,icon,label,tone,badge])=>(
+                <button type="button" key={key} className={`ex-access-item tone-${tone}`} onClick={()=>goToTab(key)}>
+                  <span className="ex-access-icon">{icon}{badge>0&&<em>{badge}</em>}</span>
+                  <span>{label}</span>
+                </button>
               ))}
             </div>
-            {salaryData&&salaryData.jobs>0&&salaryData.total===0&&empData&&!(empData.salary_type==='fixed'&&Number(empData.fixed_salary||0)===0)&&(
-              <div style={{background:'rgba(251,191,36,0.08)',border:'1px solid rgba(251,191,36,0.2)',borderRadius:12,padding:'10px 12px',marginBottom:12,fontSize:11,color:'rgba(255,255,255,0.55)',lineHeight:1.5}}>
-                ⚠️ {fill(e.salaryConfigHint,{type:salaryTypeLabel(empData.salary_type,lang)})}
-              </div>
-            )}
 
-            {/* Salary ring progress */}
-            {salaryData&&salaryData.fixedMax>0&&(
-              <div style={S.card}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{e.monthlySalary}</span>
-                  <span style={{fontSize:14,fontWeight:800,color:'#c19c56'}}>¥{salaryData.base.toLocaleString()} <span style={{fontSize:10,color:'rgba(255,255,255,0.2)'}}>/ ¥{salaryData.fixedMax.toLocaleString()}</span></span>
-                </div>
-                <div style={{height:6,background:'rgba(255,255,255,0.07)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
-                  <div style={{height:'100%',width:Math.min((salaryData.base/salaryData.fixedMax)*100,100)+'%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',transition:'width 0.6s'}} />
-                </div>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{fill(e.daysProjected,{days:salaryData.workedDays,rate:salaryData.dailyRate.toLocaleString(),projected:(salaryData.projected||0).toLocaleString()})}</div>
-              </div>
-            )}
-
-            {/* Score */}
-            <div style={S.card}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{e.performance}</span><span style={{fontSize:15,fontWeight:800,color:scoreColor(empScore)}}>{empScore}/100</span></div>
-              <div style={{height:5,background:'rgba(255,255,255,0.06)',borderRadius:3,overflow:'hidden'}}><div style={{height:'100%',width:empScore+'%',borderRadius:3,background:scoreColor(empScore)}} /></div>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.2)',marginTop:4}}>{empScore>=90?`🌟 ${e.scoreExcellent}`:empScore>=70?`👍 ${e.scoreGood}`:`⚠️ ${e.scoreNeedsWork}`}</div>
+            {/* Overview */}
+            <div className="ex-section-title">{e.overview}</div>
+            <div className="ex-overview">
+              <div className="ex-ov tone-blue"><strong>{salaryData?.jobs||0}</strong><span>{e.statJobs}</span></div>
+              <div className="ex-ov tone-purple"><strong>{salaryData?.hours||0}h</strong><span>{e.statHours}</span></div>
+              <div className="ex-ov tone-peach"><strong>¥{(salaryData?.total||0).toLocaleString()}</strong><span>{e.statEarned}</span></div>
+              <div className="ex-ov tone-gray"><strong style={{color:scoreColor(empScore)}}>{empScore}</strong><span>{e.performance} · {empScore>=90?e.scoreExcellent:empScore>=70?e.scoreGood:e.scoreNeedsWork}</span></div>
             </div>
 
+            {/* My progress: evolution and averages from start/finish times and GPS */}
+            {(()=>{
+              const monthKey = today.slice(0,7)
+              const prevKey = new Date(Date.UTC(Number(monthKey.slice(0,4)), Number(monthKey.slice(5,7))-2, 1)).toISOString().slice(0,7)
+              const month = summarizeJobs(allJobs.filter(j=>j.scheduled_date?.startsWith(monthKey)))
+              const prev = summarizeJobs(allJobs.filter(j=>j.scheduled_date?.startsWith(prevKey)))
+              const weeks = weeklyEvolution(allJobs, today, 8)
+              const maxJobs = Math.max(1, ...weeks.map(w=>w.completed))
+              const avgDelta = month.avgMin!=null&&prev.avgMin!=null ? month.avgMin-prev.avgMin : null
+              const kpis = [
+                ['⏱', e.avgService, formatMinutes(month.avgMin), avgDelta!=null&&avgDelta!==0?`${avgDelta>0?'+':'−'}${formatMinutes(Math.abs(avgDelta))} ${e.vsLastMonth}`:null],
+                ['🕘', e.onTime, month.onTimePct!=null?`${month.onTimePct}%`:'—', month.avgDelayMin!=null?fill(e.avgDelay,{m:month.avgDelayMin}):null],
+                ['📍', e.gpsCheckins, month.gpsPct!=null?`${month.gpsPct}%`:'—', month.gpsAway?fill(e.gpsAwayCount,{n:month.gpsAway}):null],
+                ['✓', e.checklistRate, month.checklistPct!=null?`${month.checklistPct}%`:'—', null],
+              ]
+              return (
+                <section className="ex-evo">
+                  <div className="ex-evo-head"><strong>{e.myProgress}</strong><small>{e.last8Weeks}</small></div>
+                  <div className="ex-evo-kpis">
+                    {kpis.map(([icon,label,value,sub])=>(
+                      <div key={label} className="ex-evo-kpi"><span>{icon} {label}</span><strong>{value}</strong>{sub&&<small>{sub}</small>}</div>
+                    ))}
+                  </div>
+                  <div className="ex-evo-chart" role="img" aria-label={e.jobsPerWeek}>
+                    {weeks.map((w,i)=>(
+                      <div key={w.week} className={`ex-evo-col${i===weeks.length-1?' is-now':''}`} title={`${w.week}: ${w.completed} · ${formatMinutes(w.avgMin)}`}>
+                        <small className="ex-evo-val">{w.completed||''}</small>
+                        <i style={{height:`${Math.max(4,(w.completed/maxJobs)*100)}%`}} />
+                        <span>{Number(w.week.slice(8))}/{Number(w.week.slice(5,7))}</span>
+                        <em>{w.avgMin!=null?`${w.avgMin}m`:'—'}</em>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="ex-evo-legend"><span><i className="is-bar" />{e.jobsPerWeek}</span><span>{e.avgMinutesRow}</span></div>
+                </section>
+              )
+            })()}
+
             {/* Badges */}
-            {badges.length>0&&<div style={S.card}>
-              <span style={S.label}>{e.badges}</span>
-              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                {badges.map(b=>{ const def=BADGE_DEFS.find(d=>d.key===b.badge_key); return <span key={b.id} style={{fontSize:24}} title={e[`badge_${def?.key}`]||def?.name}>{def?.icon||'🏅'}</span> })}
-              </div>
+            {badges.length>0&&<div className="ex-badges">
+              <span>{e.badges}</span>
+              <div>{badges.map(b=>{ const def=BADGE_DEFS.find(d=>d.key===b.badge_key); return <span key={b.id} title={e[`badge_${def?.key}`]||def?.name}>{def?.icon||'🏅'}</span> })}</div>
             </div>}
 
             {/* Spot jobs */}
-            {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.07)',border:'1px solid rgba(193,156,86,0.15)',borderRadius:18,padding:'14px 16px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div><div style={{fontSize:13,fontWeight:700,color:'#c19c56'}}>⚡ {fill(spotJobs.length>1?e.spotCountPlural:e.spotCount,{n:spotJobs.length})}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2}}>{e.tapToRespond}</div></div>
-              <div style={{fontSize:22,color:'#c19c56'}}>›</div>
-            </div>}
+            {spotJobs.length>0&&<button type="button" className="ex-spot" onClick={()=>setTab('spots')}>
+              <div><strong>⚡ {fill(spotJobs.length>1?e.spotCountPlural:e.spotCount,{n:spotJobs.length})}</strong><small>{e.tapToRespond}</small></div>
+              <span>›</span>
+            </button>}
+
+            <button type="button" className="ex-primary" onClick={()=>goToTab('calendar')}>{e.viewSchedule}</button>
           </div>
         )}
 
         {/* SHIFT */}
         {tab==='shift'&&(
+          <section className="emp-shift-screen">
+            <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
           <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
+          </section>
+        )}
+
+        {tab==='ai'&&(
+          <section className="emp-ai-screen">
+            <div className="emp-ai-chat"><AIChatPanel compact mode="employee" employeeId={user.id} employeeName={user.name} /></div>
+          </section>
         )}
 
         {/* SPOTS */}
@@ -1551,6 +1731,10 @@ export default function EmployeePortal() {
                 <span style={S.label}>{e.equipmentQuantity}</span>
                 <input type="number" min="1" value={equipmentForm.quantity} onChange={ev => setEquipmentForm(f => ({ ...f, quantity: ev.target.value }))} style={S.input} />
               </div>
+              <div style={{ marginBottom: 10 }}>
+                <span style={S.label}>{e.equipmentLink}</span>
+                <input type="url" inputMode="url" value={equipmentForm.product_url} onChange={ev => setEquipmentForm(f => ({ ...f, product_url: ev.target.value }))} placeholder={e.equipmentLinkPlaceholder} style={S.input} />
+              </div>
               <div style={{ marginBottom: 14 }}>
                 <span style={S.label}>{e.equipmentReason} *</span>
                 <textarea value={equipmentForm.reason} onChange={ev => setEquipmentForm(f => ({ ...f, reason: ev.target.value }))} placeholder={e.equipmentReasonPlaceholder} rows={4} style={{ ...S.input, resize: 'none' }} />
@@ -1584,7 +1768,7 @@ export default function EmployeePortal() {
                     {equipmentStatusLabel(r.status)}
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5, marginTop: 6 }}>{r.reason}</div>
+                {(() => { const match = r.reason.match(/\n\n\[Product link\] (https?:\/\/\S+)/); const reason = match ? r.reason.slice(0, match.index) : r.reason; return <><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5, marginTop: 6 }}>{reason}</div>{match&&<a href={match[1]} target="_blank" rel="noreferrer" className="emp-request-product-link">↗ {match[1]}</a>}</> })()}
                 {r.admin_note && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '6px 8px', marginTop: 8 }}>{e.equipmentAdminNote}: {r.admin_note}</div>}
               </div>
             ))}
@@ -1604,7 +1788,7 @@ export default function EmployeePortal() {
                 <span style={S.label}>Photos & Receipt</span>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                   {[{ref:claimPhotoRef,preview:claimPhotoPreview,label:'Photo',emoji:'📷'},{ref:claimReceiptRef,preview:claimReceiptPreview,label:'Receipt',emoji:'🧾'}].map(({ref,preview,label,emoji})=>(
-                    <div key={label} onClick={()=>ref.current.click()} style={{aspectRatio:'1',borderRadius:12,overflow:'hidden',cursor:'pointer',border:preview?'2px solid #4ade80':'2px dashed rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.02)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:5,color:'rgba(255,255,255,0.3)'}}>
+                    <div key={label} className={`emp-claim-upload${preview?' has-preview':''}`} onClick={()=>ref.current.click()} style={{aspectRatio:'1',borderRadius:12,overflow:'hidden',cursor:'pointer',border:preview?'2px solid #4ade80':'2px dashed rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.02)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:5,color:'rgba(255,255,255,0.3)'}}>
                       {preview?<img src={preview} style={{width:'100%',height:'100%',objectFit:'cover'}} />:<><span style={{fontSize:26}}>{emoji}</span><span style={{fontSize:10}}>{label}</span></>}
                     </div>
                   ))}
@@ -1668,6 +1852,10 @@ export default function EmployeePortal() {
         )}
 
         {/* ACHIEVEMENTS */}
+        {tab==='availability'&&(
+          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
+        )}
+
         {tab==='achievements'&&(
           <div>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:14}}>{fill(e.badgesEarned,{earned:badges.length,total:BADGE_DEFS.length})}</div>
@@ -1688,22 +1876,33 @@ export default function EmployeePortal() {
         )}
       </div>
 
+      {quickOpen&&(
+        <div className="ex-quick-overlay" onClick={()=>setQuickOpen(false)}>
+          <section className="ex-quick-sheet" role="dialog" aria-modal="true" aria-label={e.quickActionTitle} onClick={ev=>ev.stopPropagation()}>
+            <div className="ex-quick-grip" />
+            <strong>{e.quickActionTitle}</strong>
+            {quickActions.map(a=>(
+              <button type="button" key={a.label} className="ex-quick-item" onClick={()=>{setQuickOpen(false);a.run()}}>
+                <span>{a.icon}</span><div><b>{a.label}</b><small>{a.hint}</small></div>
+              </button>
+            ))}
+          </section>
+        </div>
+      )}
+
       {/* BOTTOM TAB BAR */}
-      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
-        {bottomTabs.map(t=>(
-          <button key={t.key} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
-            <div style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>
-            <div style={{fontSize:9,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.25)',fontWeight:tab===t.key?600:400,transition:'color 0.15s'}}>{t.label}</div>
+      <nav aria-label={lang==='ja'?'メインナビゲーション':'Main navigation'} className="emp-bottom-nav" style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,background:'rgba(6,13,24,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderTop:'1px solid rgba(255,255,255,0.08)',display:'flex',zIndex:50,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+        {bottomTabs.map(t=>t.key==='quick'?(
+          <div key="quick" className="ex-fab-slot"><button type="button" className={`ex-fab${quickOpen?' is-open':''}`} aria-label={e.quickActionTitle} aria-expanded={quickOpen} onClick={()=>setQuickOpen(v=>!v)}>＋</button></div>
+        ):(
+          <button key={t.key} className={`emp-bottom-item${tab===t.key?' is-active':''}`} onClick={()=>goToTab(t.key)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,position:'relative'}}>
+            <div className="emp-bottom-icon" style={{fontSize:t.key==='salary'?16:18,fontWeight:700,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.3)',lineHeight:1,fontFamily:t.key==='salary'?'monospace':'inherit',transition:'color 0.15s'}}>{t.icon}</div>
+            <div className="emp-bottom-label" style={{fontSize:9,color:tab===t.key?'#c19c56':'rgba(255,255,255,0.25)',fontWeight:tab===t.key?600:400,transition:'color 0.15s'}}>{t.label}</div>
             {tab===t.key&&<div style={{position:'absolute',bottom:0,left:'50%',transform:'translateX(-50%)',width:20,height:2,background:'#c19c56',borderRadius:1}} />}
             {t.badge>0&&<div style={{position:'absolute',top:6,right:'calc(50% - 14px)',width:16,height:16,borderRadius:'50%',background:'#f87171',border:'2px solid #060d18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff'}}>{t.badge}</div>}
           </button>
         ))}
-        {/* More button */}
-        <button onClick={()=>setMenuOpen(true)} style={{flex:1,padding:'10px 4px 8px',border:'none',background:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
-          <div style={{display:'flex',gap:2.5,marginBottom:1}}>{[0,1,2].map(i=><div key={i} style={{width:3.5,height:3.5,borderRadius:'50%',background:'rgba(255,255,255,0.3)'}} />)}</div>
-          <div style={{fontSize:9,color:'rgba(255,255,255,0.25)'}}>{e.more}</div>
-        </button>
-      </div>
+      </nav>
     </div>
     </div>
   )
@@ -1773,10 +1972,11 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.replace(/ — .*/,'')}</div>
               <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:3}}>{activeJob.scheduled_date} · {labels.tapToFinish}</div>
             </div>
-            <div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
-              {isStaleActiveJob(activeJob, today, elapsed) ? formatShiftElapsed(elapsed, lang) : fmt(elapsed)}
-            </div>
+            {activeIsStale&&<div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
+              {formatShiftElapsed(elapsed, lang)}
+            </div>}
           </div>
+          {!activeIsStale&&<ServiceTimer job={activeJob} elapsed={elapsed} history={allJobs} labels={labels} lang={lang} />}
           {activeInstructions && (
             <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
               <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
@@ -1828,6 +2028,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         <button
           type="button"
           onClick={()=>onOpenPastService()}
+          className="emp-outline-button"
           style={{width:'100%',padding:'14px 16px',marginBottom:10,borderRadius:14,border:'1px solid rgba(193,156,86,0.35)',background:'linear-gradient(135deg,rgba(193,156,86,0.18),rgba(232,196,122,0.1))',color:'#e8c47a',fontSize:14,fontWeight:800,cursor:'pointer'}}
         >
           ✓ {labels?.pastServiceButton || 'Already did this'}
@@ -1837,12 +2038,13 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         <button
           type="button"
           onClick={onOpenAddService}
+          className="emp-add-service-button"
           style={{width:'100%',padding:'14px 16px',marginBottom:14,borderRadius:14,border:'1px dashed rgba(96,165,250,0.35)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:14,fontWeight:700,cursor:'pointer'}}
         >
           + {labels?.addService || 'Add service'}
         </button>
       )}
-      <div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'14px 16px',marginBottom:14}}>
+      {total>0&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'14px 16px',marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
           <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{(labels?.locationsProgress || '{done}/{total} locations').replace('{done}', done).replace('{total}', total)}</div>
           <div style={{fontSize:12,color:done===total&&total>0?'#4ade80':'rgba(255,255,255,0.4)'}}>{done===total&&total>0?`✅ ${labels?.allDone || 'All done!'}`:(labels?.remaining || '{n} remaining').replace('{n}', total-done)}</div>
@@ -1850,9 +2052,14 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         <div style={{height:4,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden'}}>
           <div style={{height:'100%',width:total>0?(done/total*100)+'%':'0%',background:'linear-gradient(90deg,#60a5fa,#4ade80)',borderRadius:2,transition:'width 0.4s'}} />
         </div>
-      </div>
+      </div>}
 
-      {!activeJob && total===0&&<div style={{textAlign:'center',padding:40,color:'rgba(255,255,255,0.3)',fontSize:14}}>{labels?.noJobsToday || 'No jobs today'}</div>}
+      {!activeJob && total===0&&<div className="emp-shift-empty">
+        <div className="emp-empty-icon">☀</div>
+        <div className="emp-empty-kicker">{labels?.todayShift || 'Today'}</div>
+        <h2>{labels?.noShiftToday || labels?.noJobsToday || 'No shifts today'}</h2>
+        <p>{labels?.noJobsToday || 'No jobs today'}</p>
+      </div>}
 
       {todayQueue.map((job,idx)=>{
         const isActive = false
@@ -2038,15 +2245,15 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
   const selJobs = sel?(jobsByDate[sel]||[]):[]
   return (
     <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month-1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>‹</button>
-        <div style={{fontSize:15,fontWeight:600,color:'#fff'}}>{new Date(year,month).toLocaleString(lang==='ja'?'ja-JP':'en',{month:'long',year:'numeric'})}</div>
-        <button onClick={()=>setCm(m=>{const d=new Date(m.year,m.month+1);return{year:d.getFullYear(),month:d.getMonth()}})} style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:16,cursor:'pointer'}}>›</button>
+      <div className="emp-calendar-toolbar">
+        <button aria-label={lang==='ja'?'前の月':'Previous month'} onClick={()=>setCm(m=>{const d=new Date(m.year,m.month-1);return{year:d.getFullYear(),month:d.getMonth()}})}>‹</button>
+        <div>{new Date(year,month).toLocaleString(lang==='ja'?'ja-JP':'en',{month:'long',year:'numeric'})}</div>
+        <button aria-label={lang==='ja'?'次の月':'Next month'} onClick={()=>setCm(m=>{const d=new Date(m.year,m.month+1);return{year:d.getFullYear(),month:d.getMonth()}})}>›</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:4}}>
-        {['S','M','T','W','T','F','S'].map((d,i)=><div key={i} style={{textAlign:'center',fontSize:9,color:'rgba(255,255,255,0.3)',fontWeight:600,padding:'4px 0'}}>{d}</div>)}
+        {(lang==='ja'?['日','月','火','水','木','金','土']:['S','M','T','W','T','F','S']).map((d,i)=><div className="emp-calendar-weekday" key={i}>{d}</div>)}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:16}}>
+      <div className="emp-calendar-grid">
         {Array(firstDay).fill(null).map((_,i)=><div key={'e'+i} />)}
         {Array(daysInMonth).fill(null).map((_,i)=>{
           const day=i+1
@@ -2056,17 +2263,17 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
           const isToday=dStr===today
           const isSel=dStr===sel
           return (
-            <div key={day} onClick={()=>dj.length>0&&setSel(isSel?null:dStr)} style={{aspectRatio:'1',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:dj.length>0?'pointer':'default',background:isSel?'rgba(193,156,86,0.2)':isToday?'rgba(96,165,250,0.15)':'rgba(255,255,255,0.03)',border:isSel?'1px solid #c19c56':isToday?'1px solid rgba(96,165,250,0.4)':'1px solid rgba(255,255,255,0.05)'}}>
-              <div style={{fontSize:13,fontWeight:isToday?700:400,color:isToday?'#60a5fa':'rgba(255,255,255,0.8)'}}>{day}</div>
+            <div className={`emp-calendar-day${isToday?' is-today':''}${isSel?' is-selected':''}${dj.length?' has-jobs':''}`} key={day} onClick={()=>dj.length>0&&setSel(isSel?null:dStr)}>
+              <div className="emp-calendar-day-number">{day}</div>
               {color&&<div style={{width:5,height:5,borderRadius:'50%',background:color,marginTop:2}} />}
               {dj.length>1&&<div style={{fontSize:7,color:'rgba(255,255,255,0.3)',marginTop:1}}>{dj.length}</div>}
             </div>
           )
         })}
       </div>
-      <div style={{display:'flex',gap:12,marginBottom:16,justifyContent:'center'}}>
+      <div className="emp-calendar-legend">
         {[['#4ade80', statusLabels?.completed || 'Done'],['#60a5fa', statusLabels?.assigned || 'Scheduled'],['#fbbf24', statusLabels?.in_progress || 'Active']].map(([c,l])=>(
-          <div key={l} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:8,height:8,borderRadius:'50%',background:c}} /><span style={{fontSize:10,color:'rgba(255,255,255,0.4)'}}>{l}</span></div>
+          <div key={l} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:8,height:8,borderRadius:'50%',background:c}} /><span>{l}</span></div>
         ))}
       </div>
       {sel&&(
@@ -2102,6 +2309,17 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
   const [hasSignature, setHasSignature] = useState(false)
   const lastPos = useRef(null)
 
+  // Paint the pad white so the saved PNG is dark ink on paper (a transparent PNG
+  // with white ink showed up blank on reports and PDFs).
+  const paper = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
+  useEffect(() => { paper() }, [])
+
   const getPos = (e, canvas) => {
     const rect = canvas.getBoundingClientRect()
     const scaleX = canvas.width / rect.width
@@ -2133,7 +2351,7 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
     ctx.lineWidth = 2.5
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    ctx.strokeStyle = '#fff'
+    ctx.strokeStyle = SIGNATURE_INK
     ctx.lineTo(pos.x, pos.y)
     ctx.stroke()
     ctx.beginPath()
@@ -2147,6 +2365,7 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    paper()
     setHasSignature(false)
   }
 
@@ -2157,20 +2376,20 @@ function SignatureModal({ onConfirm, onCancel, jobTitle, labels }) {
   }
 
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:300,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
-      <div style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px'}}>
+    <div className="emp-sheet-backdrop" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:300,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+      <div className="emp-sheet" style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'20px 20px 50px'}}>
         <div style={{width:40,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 18px'}} />
         <div style={{fontSize:16,fontWeight:700,color:'#fff',marginBottom:4,textAlign:'center'}}>{labels?.signToComplete || 'Sign to complete'}</div>
         <div style={{fontSize:12,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>{jobTitle}</div>
 
         {/* Canvas */}
-        <div style={{position:'relative',borderRadius:14,overflow:'hidden',border:'1px solid rgba(255,255,255,0.15)',marginBottom:14,background:'rgba(255,255,255,0.05)'}}>
+        <div style={{position:'relative',borderRadius:14,overflow:'hidden',border:'1px solid #cfd8e6',marginBottom:14,background:'#fff'}}>
           <canvas ref={canvasRef} width={380} height={160}
             style={{width:'100%',height:160,display:'block',touchAction:'none'}}
             onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
             onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
           />
-          {!hasSignature&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.2)',fontSize:14,pointerEvents:'none'}}>{labels?.signHere || 'Sign here with your finger'}</div>}
+          {!hasSignature&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'#9aa6b8',fontSize:14,pointerEvents:'none'}}>{labels?.signHere || 'Sign here with your finger'}</div>}
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
@@ -2190,8 +2409,8 @@ function TrainingModal({ job, contract, onClose, lang, labels }) {
   const items = parseTrainingChecklist(contract?.training_checklist)
   const loc = (job?.title || '').replace(/ — .*/, '')
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'flex-end' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <div className="emp-sheet-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'flex-end' }} onClick={onClose}>
+      <div className="emp-sheet" onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
             <div style={{ fontSize: 11, color: '#c19c56', fontWeight: 700 }}>🎬 {labels?.cleaningManual || (lang === 'ja' ? '清掃マニュアル' : 'Cleaning manual')}</div>
@@ -2311,8 +2530,8 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
         : labels.addServiceConfirm
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <div className="emp-sheet-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
+      <div className="emp-sheet" onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>+ {labels.addServiceTitle}</div>
@@ -2457,8 +2676,8 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
   const canConfirm = picked && deepReady
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 270, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+    <div className="emp-sheet-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 270, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
+      <div className="emp-sheet" onClick={e => e.stopPropagation()} style={{ background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px 28px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ flex: 1, marginRight: 12 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: '#e8c47a' }}>✓ {labels.pastServiceTitle}</div>

@@ -12,7 +12,7 @@ export default function ServiceContracts() {
   const [selectedClient, setSelectedClient] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, discount_percent:0, tax_rate:10, price_includes_tax:true, billing_day:10, billing_notes:'', hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
+  const [form, setForm] = useState({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, discount_percent:0, tax_rate:10, price_includes_tax:true, billing_day:10, billing_notes:'', hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
 
   useEffect(() => { loadClients() }, [])
   useEffect(() => { if (selectedClient) loadContracts(selectedClient) }, [selectedClient])
@@ -45,7 +45,7 @@ export default function ServiceContracts() {
     if (!form.location_name||!selectedClient) return toast.error('Fill required fields')
     const visits = calcVisits(form.days_of_week)
     const revenue = form.billing_type==='fixed_monthly' ? parseFloat(form.fixed_monthly||0) : visits * parseFloat(form.price_per_visit||0)
-    const payload = { client_id:selectedClient, ...form, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, monthly_revenue:revenue }
+    const payload = { client_id:selectedClient, ...form, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, area:(form.area||'').trim()||null, monthly_revenue:revenue }
 
     if (editing) {
       const { error } = await supabase.from('service_contracts').update(payload).eq('id',editing)
@@ -63,13 +63,13 @@ export default function ServiceContracts() {
     await supabase.from('clients').update({ monthly_revenue: totalRevenue }).eq('id', selectedClient)
 
     setShowForm(false); setEditing(null)
-    setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
+    setForm({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
     loadContracts(selectedClient)
   }
 
   const handleEdit = (c) => {
     setEditing(c.id)
-    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', service_type:c.service_type||'Basic Cleaning', billing_type:c.billing_type||'per_visit', price_per_visit:c.price_per_visit||0, fixed_monthly:c.fixed_monthly||0, discount_percent:c.discount_percent||0, tax_rate:c.tax_rate??10, price_includes_tax:c.price_includes_tax!==false, billing_day:c.billing_day||10, billing_notes:c.billing_notes||'', hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'' })
+    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', area:c.area||'', service_type:c.service_type||'Basic Cleaning', billing_type:c.billing_type||'per_visit', price_per_visit:c.price_per_visit||0, fixed_monthly:c.fixed_monthly||0, discount_percent:c.discount_percent||0, tax_rate:c.tax_rate??10, price_includes_tax:c.price_includes_tax!==false, billing_day:c.billing_day||10, billing_notes:c.billing_notes||'', hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'' })
     setShowForm(true)
   }
 
@@ -104,7 +104,7 @@ export default function ServiceContracts() {
       {selectedClient&&(
         <>
           {/* Summary */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
+          <div className="kp-two-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
             {[['Locations',contracts.length],['Visits/mo',totalVisits],['Hours/mo',totalMonthlyHours.toFixed(0)+'h'],['Revenue/mo','¥'+totalMonthlyRevenue.toLocaleString()]].map(([l,v])=>(
               <div key={l} className="card" style={{padding:'12px 14px',textAlign:'center'}}>
                 <div style={{fontSize:20,fontWeight:700,color:'var(--green)'}}>{v}</div>
@@ -116,7 +116,7 @@ export default function ServiceContracts() {
           {/* Add button */}
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600}}>{client?.company_name} — Service Locations</div>
-            <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setForm({ location_name:'', location_address:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })}}>
+            <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setForm({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })}}>
               {showForm?'Cancel':'+ Add Location'}
             </button>
           </div>
@@ -127,6 +127,7 @@ export default function ServiceContracts() {
               <div className="card-title">{editing?'Edit Location':'New Location'}</div>
               <div className="grid-2">
                 <div className="form-group"><label>Location Name *</label><input value={form.location_name} onChange={e=>upd('location_name',e.target.value)} placeholder="Atomic Bar" /></div>
+                <div className="form-group"><label>Area / zone</label><input list="kp-areas" value={form.area||''} onChange={e=>upd('area',e.target.value)} placeholder="Shinbashi" /><datalist id="kp-areas">{[...new Set(contracts.map(c=>c.area).filter(Boolean))].sort().map(a=><option key={a} value={a} />)}</datalist></div>
                 <div className="form-group"><label>Service Type</label>
                   <select value={form.service_type} onChange={e=>upd('service_type',e.target.value)}>
                     {SERVICE_TYPES.map(s=><option key={s}>{s}</option>)}
@@ -188,7 +189,7 @@ export default function ServiceContracts() {
             <div key={c.id} className="card" style={{marginBottom:10}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
                 <div>
-                  <div style={{fontWeight:600,fontSize:14}}>{c.location_name}</div>
+                  <div style={{fontWeight:600,fontSize:14}}>{c.location_name}{c.area&&<span className="badge badge-navy" style={{marginLeft:8,fontWeight:600}}>📍 {c.area}</span>}</div>
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:1}}>{c.service_type} · {c.hours_per_visit}h/visit · <span style={{color:c.billing_type==='fixed_monthly'?'var(--amber)':'var(--text3)'}}>{c.billing_type==='fixed_monthly'?'Fixed Monthly':'Per Visit'}</span></div>
                   {hasMapsLink(c.location_address, c.location_name)&&<a href={mapsOpenUrl(c.location_address, c.location_name)} target="_blank" rel="noreferrer" style={{fontSize:11,color:'#60a5fa',textDecoration:'none'}}>🗺 Maps</a>}
                   {c.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>🔑 {c.notes}</div>}

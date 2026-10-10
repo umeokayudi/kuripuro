@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress } from '../lib/geocode'
 import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
@@ -89,7 +90,10 @@ function DayScheduleView({ onClose }) {
   const [date, setDate] = useState(toDateStr(new Date()))
   const [calMonth, setCalMonth] = useState(() => toDateStr(new Date()).slice(0, 7))
   const [showCalendar, setShowCalendar] = useState(false)
-  const [jobs, setJobs] = useState([])
+  const [dayJobs, setJobs] = useState([])
+  const [areaFilter, setAreaFilter] = useState('')
+  const dayAreas = useMemo(() => [...new Set(dayJobs.map(j => j.area).filter(Boolean))].sort(), [dayJobs])
+  const jobs = areaFilter ? dayJobs.filter(j => (j.area || '') === areaFilter) : dayJobs
   const [monthJobStats, setMonthJobStats] = useState({})
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(false)
@@ -218,7 +222,7 @@ function DayScheduleView({ onClose }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{locName}</div>
-            <div style={{ fontSize: 13, color: ctypeCfg.color, fontWeight: 600, marginTop: 2 }}>{ctypeCfg.label}</div>
+            <div style={{ fontSize: 13, color: ctypeCfg.color, fontWeight: 600, marginTop: 2 }}>{ctypeCfg.label}{j.area && <span style={{ color: 'var(--text3)', fontWeight: 600 }}> · 📍 {j.area}</span>}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 8 }}>
                 🕐 {j.scheduled_time || '00:30'}
@@ -373,6 +377,16 @@ function DayScheduleView({ onClose }) {
           <ProgressBar pct={progressPct} height={12} />
         </div>
 
+        {dayAreas.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>📍 {lang === 'ja' ? 'エリア' : 'Area'}</span>
+            <button type="button" className={`tab-pill${!areaFilter ? ' active' : ''}`} onClick={() => setAreaFilter('')}>{lang === 'ja' ? 'すべて' : 'All'} ({dayJobs.length})</button>
+            {dayAreas.map(a => (
+              <button key={a} type="button" className={`tab-pill${areaFilter === a ? ' active' : ''}`} onClick={() => setAreaFilter(a)}>{a} ({dayJobs.filter(j => j.area === a).length})</button>
+            ))}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
           {[
             [jt.total, jobs.length, 'var(--text)'],
@@ -443,6 +457,8 @@ function DayScheduleView({ onClose }) {
 }
 
 export default function Jobs() {
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
   const { lang, t } = useLang()
   const jt = t.jobs
   const st = t.status
@@ -466,6 +482,11 @@ export default function Jobs() {
   })
 
   useEffect(() => { loadAll() }, [])
+  useEffect(() => {
+    if (!searchId) return
+    const selected = jobs.find(job => job.id === searchId)
+    if (selected) setTab(selected.job_category === 'spot' ? 'spot' : 'list')
+  }, [searchId, jobs])
 
   const loadAll = async () => {
     setLoading(true)
@@ -562,8 +583,9 @@ export default function Jobs() {
     loadAll()
   }
 
-  const spotJobs = jobs.filter(j => j.job_category === 'spot')
-  const regularJobs = jobs.filter(j => j.job_category !== 'spot')
+  const matchingJobs = searchId ? jobs.filter(j => j.id === searchId) : jobs
+  const spotJobs = matchingJobs.filter(j => j.job_category === 'spot')
+  const regularJobs = matchingJobs.filter(j => j.job_category !== 'spot')
   const basicJobs = regularJobs.filter(j => getCleaningType(j) === 'basic')
   const deepJobs = regularJobs.filter(j => getCleaningType(j) === 'deep')
   const filteredJobs = cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs

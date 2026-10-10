@@ -83,6 +83,7 @@ export default function EquipmentRequests() {
 
       {filtered.map(r => (
         <div key={r.id} className="card" style={{ marginBottom: 12 }}>
+          {(() => { const match = (r.reason || '').match(/\n\n\[Product link\] (https?:\/\/\S+)/); const reason = match ? r.reason.slice(0, match.index) : r.reason; return <div className="equipment-request-copy">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
             <div>
               <div style={{ fontWeight: 600, fontSize: 15 }}>{r.employee_name}</div>
@@ -103,8 +104,10 @@ export default function EquipmentRequests() {
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 }}>
               {lang === 'ja' ? '理由' : 'Reason'}
             </div>
-            {r.reason}
+            {reason}
           </div>
+          {match && <a href={match[1]} target="_blank" rel="noreferrer" className="emp-request-product-link">↗ {match[1]}</a>}
+          </div> })()}
 
           {r.photo_url && (
             <a href={viewablePhotoUrl(r.photo_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ marginBottom: 10 }}>

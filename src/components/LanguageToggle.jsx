@@ -8,6 +8,8 @@ export default function LanguageToggle({ variant = 'dark', compact = false }) {
       <button
         type="button"
         className={`kp-lang-btn${lang === 'en' ? ' on' : ''}`}
+        aria-pressed={lang === 'en'}
+        aria-label="English"
         onClick={() => switchLang('en')}
       >
         EN
@@ -15,6 +17,8 @@ export default function LanguageToggle({ variant = 'dark', compact = false }) {
       <button
         type="button"
         className={`kp-lang-btn${lang === 'ja' ? ' on' : ''}`}
+        aria-pressed={lang === 'ja'}
+        aria-label="日本語"
         onClick={() => switchLang('ja')}
       >
         {compact ? 'JA' : '日本語'}

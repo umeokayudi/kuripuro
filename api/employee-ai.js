@@ -58,28 +58,55 @@ export default async function handler(req, res) {
 
   if (!requireAdminSecret(req, res)) return
 
-  const { messages, employeeId, employeeName } = req.body || {}
+  const { messages, employeeId, employeeName, language = 'en' } = req.body || {}
   if (!messages?.length || !employeeId) {
     return res.status(400).json({ error: 'messages and employeeId are required' })
   }
 
-  const systemInstruction = `Você é o assistente pessoal do funcionário ${employeeName || 'do KuriPuro'}.
-Você pode CONSULTAR apenas os dados deste funcionário (id: ${employeeId}) via query_my_data.
-Tabelas disponíveis: ${EMPLOYEE_TABLES.join(', ')}.
+  let attachmentBytes = 0
+  const validatedMessages = []
+  for (const message of messages) {
+    if (!Array.isArray(message.attachmentsData) || !message.attachmentsData.length) {
+      validatedMessages.push(message)
+      continue
+    }
+    if (message.attachmentsData.length > 3) {
+      return res.status(400).json({ error: 'Anexe no máximo 3 arquivos por mensagem.' })
+    }
+    const safeFiles = []
+    for (const file of message.attachmentsData) {
+      const match = String(file.dataUrl || '').match(/^data:([^;]+);base64,([A-Za-z0-9+/]+=*)$/)
+      if (!match || !/^(image\/(jpeg|png|webp|gif)|video\/(mp4|mpeg|mov|quicktime|avi|x-flv|mpg|webm|wmv|3gpp)|application\/pdf|text\/(plain|csv))$/i.test(match[1])) {
+        return res.status(415).json({ error: 'Formato não suportado. Use imagem, vídeo, PDF, TXT ou CSV.' })
+      }
+      attachmentBytes += match[2].length
+      if (attachmentBytes > 3_700_000) {
+        return res.status(413).json({ error: 'Os anexos ultrapassam o limite. Reduza os arquivos e tente novamente.' })
+      }
+      safeFiles.push({ inlineData: { mimeType: match[1], data: match[2] } })
+    }
+    validatedMessages.push({ ...message, validatedAttachments: safeFiles })
+  }
 
-Regras:
-- Responda em português, de forma clara e amigável.
-- NUNCA invente dados — busque com query_my_data antes de responder.
-- NÃO pode alterar, apagar ou criar registros.
-- NÃO revele dados de outros funcionários, clientes ou informações administrativas.
-- Pode ajudar com: agenda de jobs, salário/descontos, transporte, mensagens, badges, horários.
-- Seja conciso — respostas curtas funcionam melhor em voz.`
+  const responseLanguage = language === 'ja' ? 'Japanese' : language === 'pt' ? 'Portuguese' : 'English'
+  const systemInstruction = `You are the personal assistant for KuriPuro employee ${employeeName || ''}.
+You may query only this employee's records (id: ${employeeId}) using query_my_data.
+Available tables: ${EMPLOYEE_TABLES.join(', ')}.
+
+Rules:
+- Respond clearly and kindly in ${responseLanguage}.
+- Never invent data; query with query_my_data before answering about the employee's records.
+- Do not create, update, or delete records.
+- Do not reveal information about other employees, clients, or administrative data.
+- Help with this employee's schedule, salary and deductions, transport claims, messages, badges, and hours.
+- Keep answers concise, especially for voice conversations.`
 
   try {
-    const contents = messages.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }))
+    const contents = validatedMessages.map(m => {
+      const parts = [{ text: m.content || '' }]
+      parts.push(...(m.validatedAttachments || []))
+      return { role: m.role === 'assistant' ? 'model' : 'user', parts }
+    })
 
     const { reply, toolLog } = await runGeminiToolLoop({
       contents,
