@@ -38,6 +38,50 @@ const CopyIcon = () => <svg {...svgProps} width={14} height={14}><rect x="9" y="
 const RefreshIcon = () => <svg {...svgProps} width={14} height={14}><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 4v5h-5" /></svg>
 const ClipIcon = () => <svg {...svgProps}><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" /></svg>
 
+const approvalFrom = data => (data.pendingApproval ? { ...data.pendingApproval, state: 'waiting' } : undefined)
+
+const APPROVAL_TEXT = {
+  en: { title: 'Changes waiting for your authorization', create: 'Create', update: 'Change', delete: 'Delete', password: 'Approval password', authorize: 'Authorize', cancel: 'Cancel', cancelled: 'Cancelled. Nothing was changed.', done: 'Done: {n} of {total} changes applied.', failed: 'Stopped at an error: {error}', expired: 'This authorization expired. Ask the AI to prepare the change again.', noPassword: 'The AI approval password has not been created yet (AI_APPROVAL_PASSWORD on Vercel). Nothing can be changed until it exists.' },
+  ja: { title: '承認待ちの変更', create: '作成', update: '変更', delete: '削除', password: '承認パスワード', authorize: '承認する', cancel: 'キャンセル', cancelled: 'キャンセルしました。何も変更していません。', done: '完了: {total}件中{n}件を反映しました。', failed: 'エラーで停止しました: {error}', expired: 'この承認は期限切れです。もう一度AIに変更を準備させてください。', noPassword: 'AI承認パスワードがまだ作成されていません（Vercel の AI_APPROVAL_PASSWORD）。作成するまで変更はできません。' },
+  pt: { title: 'Mudanças aguardando sua autorização', create: 'Criar', update: 'Alterar', delete: 'Apagar', password: 'Senha de autorização', authorize: 'Autorizar', cancel: 'Cancelar', cancelled: 'Cancelado. Nada foi alterado.', done: 'Feito: {n} de {total} mudanças aplicadas.', failed: 'Parou por um erro: {error}', expired: 'Esta autorização expirou. Peça para a IA preparar a mudança de novo.', noPassword: 'A senha de autorização da IA ainda não foi criada (AI_APPROVAL_PASSWORD na Vercel). Nada pode ser alterado até ela existir.' },
+}
+
+function ApprovalCard({ approval, lang, onAuthorize, onCancel }) {
+  const tx = APPROVAL_TEXT[lang] || APPROVAL_TEXT.en
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const waiting = approval.state === 'waiting'
+  const submit = async e => {
+    e.preventDefault()
+    if (!password || busy) return
+    setBusy(true); setError('')
+    try { await onAuthorize(password) } catch (err) { setError(err.message) }
+    setBusy(false)
+  }
+  return (
+    <form className={`ai-approval is-${approval.state}`} onSubmit={submit}>
+      <div className="ai-approval-title">🔒 {tx.title}</div>
+      <ol className="ai-approval-list">
+        {approval.changes.map((c, i) => (
+          <li key={i} className={`is-${c.kind}`}><strong>{tx[c.kind]} · {c.table}</strong><span>{c.text}</span></li>
+        ))}
+      </ol>
+      {waiting && !approval.passwordConfigured && <p className="ai-approval-error">{tx.noPassword}</p>}
+      {waiting && approval.passwordConfigured && (
+        <div className="ai-approval-actions">
+          <input type="password" autoComplete="off" placeholder={tx.password} aria-label={tx.password} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} />
+          <button type="submit" className="ai-approval-ok" disabled={busy || !password}>{tx.authorize}</button>
+          <button type="button" className="ai-approval-cancel" onClick={onCancel} disabled={busy}>{tx.cancel}</button>
+        </div>
+      )}
+      {error && <p className="ai-approval-error">{error}</p>}
+      {approval.state === 'cancelled' && <p className="ai-approval-note">{tx.cancelled}</p>}
+      {approval.state === 'expired' && <p className="ai-approval-note">{tx.expired}</p>}
+    </form>
+  )
+}
+
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0 }) {
   const { t, lang } = useLang()
   const { user } = useAuth() || {}
@@ -106,7 +150,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const callAPI = async (allMessages) => {
     const endpoint = mode === 'employee' ? '/api/employee-ai' : '/api/admin-ai'
     const body = mode === 'employee'
-      ? { messages: allMessages, employeeId, employeeName }
+      ? { messages: allMessages }
       : { messages: allMessages }
     if (mode === 'employee') body.language = lang
     const controller = new AbortController()
@@ -142,7 +186,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     const newMessages = [...history, userMsg]
     setMessages(m => [...m, { ...userMsg, attachmentsData: undefined }])
     const data = await callAPI(newMessages)
-    const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
+    const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }
     setMessages(m => [...m, replyMsg])
     return data.reply
   }
@@ -193,7 +237,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     setLoading(true)
     try {
       const data = await callAPI(newMessages)
-      const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
+      const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }
       setMessages(m => [...m, replyMsg])
       if (voiceReplies) speakReply(data.reply)
     } catch (e) {
@@ -210,7 +254,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     setLoading(true)
     try {
       const data = await callAPI(lastRequest)
-      const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog }
+      const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }
       setMessages(current => [...current, replyMsg])
       if (voiceReplies) speakReply(data.reply)
     } catch (error) {
@@ -231,13 +275,29 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     setLoading(true)
     try {
       const data = await callAPI(request)
-      setMessages(m => [...m, { role: 'assistant', content: data.reply, toolLog: data.toolLog }])
+      setMessages(m => [...m, { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }])
       if (voiceReplies) speakReply(data.reply)
     } catch (error) {
       setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${error.message}`, isError: true }])
     } finally {
       setLoading(false)
     }
+  }
+
+  const setApproval = (index, patch) => setMessages(list => list.map((m, i) => (i === index ? { ...m, approval: { ...m.approval, ...patch } } : m)))
+
+  const authorizeChanges = async (index, password) => {
+    const tx = APPROVAL_TEXT[lang] || APPROVAL_TEXT.en
+    const resp = await apiPost('/api/admin-ai', { authorize: messagesRef.current[index].approval.token, password })
+    const data = await resp.json().catch(() => ({}))
+    if (!resp.ok) {
+      if (resp.status === 410) { setApproval(index, { state: 'expired', token: null }); return }
+      throw new Error(data.error || `Error ${resp.status}`)
+    }
+    setApproval(index, { state: 'done', token: null })
+    const failed = (data.results || []).find(r => !r.ok)
+    const summary = [fill(tx.done, { n: data.executed, total: data.total }), ...(failed ? [fill(tx.failed, { error: failed.error })] : [])].join('\n')
+    setMessages(list => [...list, { role: 'assistant', content: `${failed ? '⚠️' : '✅'} ${summary}` }])
   }
 
   const copyMessage = async (text, index) => {
@@ -314,6 +374,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
                 {formatText(m.content)}
                 {m.attachments?.length > 0 && <div className="ai-attachment-list">{m.attachments.map((file, j) => <span key={j}>📎 {file.name}</span>)}</div>}
                 {m.isError && i === messages.length - 1 && <button type="button" className="ai-retry-button" onClick={retryLastRequest} disabled={loading}>{lang === 'ja' ? '↻ 再試行' : '↻ Tentar novamente'}</button>}
+                {m.approval && <ApprovalCard approval={m.approval} lang={lang} onAuthorize={password => authorizeChanges(i, password)} onCancel={() => setApproval(i, { state: 'cancelled', token: null })} />}
                 {m.toolLog?.length > 0 && (
                   <details style={{ marginTop: 6 }}>
                     <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {fill(ai.toolQueries || '{n}', { n: m.toolLog.length })}</summary>
