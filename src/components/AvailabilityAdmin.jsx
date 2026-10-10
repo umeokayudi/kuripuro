@@ -6,6 +6,8 @@ import { tokyoToday } from '../lib/dates'
 import { plannerWeeks, weekDays, addDays, targetPlanWeek, unplannedEmployees, weekStartOf } from '../lib/availability'
 import { fmtDay } from './AvailabilityPlanner'
 import { decideTimeOff } from '../lib/timeOff'
+import { fetchDayContext } from '../lib/dayContext'
+import DayContext from './DayContext'
 
 const KIND = {
   off: { en: 'Day off', ja: '休み', cls: 'badge-red' },
@@ -29,6 +31,7 @@ export default function AvailabilityAdmin({ employees, onPendingCount }) {
   const [plans, setPlans] = useState([])
   const [week, setWeek] = useState(targetPlanWeek(today))
   const [notes, setNotes] = useState({})
+  const [dayCtx, setDayCtx] = useState({})
 
   const load = async () => {
     const [av, wp] = await Promise.all([
@@ -37,6 +40,8 @@ export default function AvailabilityAdmin({ employees, onPendingCount }) {
     ])
     setRows(av.data || [])
     setPlans(wp.data || [])
+    const pendingDates = (av.data || []).filter(r => r.status === 'pending').map(r => r.date)
+    fetchDayContext(pendingDates).then(setDayCtx).catch(() => {})
     onPendingCount?.((av.data || []).filter(r => r.status === 'pending').length)
   }
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -64,26 +69,26 @@ export default function AvailabilityAdmin({ employees, onPendingCount }) {
         {pending.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--text3)' }}>{L('Nothing waiting.', '確認待ちはありません。')}</div>
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>{L('Employee', 'スタッフ')}</th><th>{L('Date', '日付')}</th><th>{L('Type', '種類')}</th><th>{L('Note to employee', 'スタッフへのメモ')}</th><th /></tr></thead>
-              <tbody>
-                {pending.map(r => (
-                  <tr key={r.id}>
-                    <td>{name(r)}</td>
-                    <td>{fmtDay(r.date, lang, { weekday: 'short', day: 'numeric', month: 'short' })}</td>
-                    <td><span className={`badge ${KIND[r.kind]?.cls || ''}`}>{KIND[r.kind]?.[ja ? 'ja' : 'en'] || r.kind}</span></td>
-                    <td><input value={notes[r.id] || ''} onChange={e => setNotes(n => ({ ...n, [r.id]: e.target.value }))} placeholder={L('Optional', '任意')} style={{ minWidth: 140 }} /></td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="tor-btn tor-btn-reject tor-btn-sm" onClick={() => decide(r, 'rejected')}>✕ {L('Decline', '却下')}</button>
-                        <button className="tor-btn tor-btn-approve tor-btn-sm" onClick={() => decide(r, 'approved')}>✓ {L('Approve', '承認')}</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="tor-list av-requests">
+            {pending.map(r => (
+              <article key={r.id} className="tor-item">
+                <div className="tor-item-top">
+                  <div className="tor-avatar" aria-hidden="true">{name(r).slice(0, 1).toUpperCase()}</div>
+                  <div className="tor-item-main">
+                    <strong>{name(r)}</strong>
+                    <span>{fmtDay(r.date, lang, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                  </div>
+                  <span className={`tor-kind is-${r.kind}`}>{KIND[r.kind]?.[ja ? 'ja' : 'en'] || r.kind}</span>
+                </div>
+                {r.note && <p className="tor-note">“{r.note}”</p>}
+                <DayContext ctx={dayCtx[r.date]} req={r} L={L} />
+                <input className="tor-input" value={notes[r.id] || ''} onChange={e => setNotes(n => ({ ...n, [r.id]: e.target.value }))} placeholder={L('Message to the employee (optional)', 'スタッフへのメッセージ（任意）')} />
+                <div className="tor-actions">
+                  <button className="tor-btn tor-btn-reject" onClick={() => decide(r, 'rejected')}>✕ {L('Decline', '却下')}</button>
+                  <button className="tor-btn tor-btn-approve" onClick={() => decide(r, 'approved')}>✓ {L('Approve', '承認')}</button>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </div>
@@ -109,24 +114,29 @@ export default function AvailabilityAdmin({ employees, onPendingCount }) {
             <button key={w} className={`tab-pill${w === week ? ' active' : ''}`} onClick={() => setWeek(w)}>{fmtDay(w, lang)}</button>
           ))}
         </div>
-        <div className="table-wrap">
-          <table>
+        <div className="av-grid-wrap">
+          <table className="av-grid">
             <thead>
               <tr>
-                <th>{L('Employee', 'スタッフ')}</th>
-                {days.map(d => <th key={d} style={{ textAlign: 'center' }}>{fmtDay(d, lang, { weekday: 'short', day: 'numeric' })}</th>)}
+                <th className="av-name">{L('Employee', 'スタッフ')}</th>
+                {days.map(d => (
+                  <th key={d} className={d === today ? 'is-today' : ''}>
+                    <span>{fmtDay(d, lang, { weekday: 'short' })}</span>
+                    <b>{Number(d.slice(8, 10))}</b>
+                  </th>
+                ))}
                 <th>{L('Plan', '提出')}</th>
               </tr>
             </thead>
             <tbody>
               {active.map(emp => (
                 <tr key={emp.id}>
-                  <td style={{ whiteSpace: 'nowrap' }}>{emp.full_name}</td>
+                  <td className="av-name" title={emp.full_name}>{emp.full_name}</td>
                   {days.map(d => {
                     const r = cell[`${emp.id}|${d}`]
-                    if (!r) return <td key={d} style={{ textAlign: 'center', color: 'var(--text3)' }}>·</td>
+                    if (!r) return <td key={d} className="av-empty">·</td>
                     return (
-                      <td key={d} style={{ textAlign: 'center' }} title={`${KIND[r.kind]?.[ja ? 'ja' : 'en']} · ${STATUS[r.status]?.[ja ? 'ja' : 'en']}${r.admin_note ? ' · ' + r.admin_note : ''}`}>
+                      <td key={d} title={`${KIND[r.kind]?.[ja ? 'ja' : 'en']} · ${STATUS[r.status]?.[ja ? 'ja' : 'en']}${r.admin_note ? ' · ' + r.admin_note : ''}`}>
                         <span className={`badge ${r.status === 'rejected' ? '' : KIND[r.kind]?.cls}`} style={{ opacity: r.status === 'pending' ? 0.7 : 1 }}>
                           {r.kind === 'off' ? '✕' : '＋'}{r.status === 'pending' ? '?' : ''}
                         </span>
