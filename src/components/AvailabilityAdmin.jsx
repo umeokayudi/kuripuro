@@ -75,8 +75,10 @@ export default function AvailabilityAdmin({ employees, onPendingCount }) {
                     <td><span className={`badge ${KIND[r.kind]?.cls || ''}`}>{KIND[r.kind]?.[ja ? 'ja' : 'en'] || r.kind}</span></td>
                     <td><input value={notes[r.id] || ''} onChange={e => setNotes(n => ({ ...n, [r.id]: e.target.value }))} placeholder={L('Optional', '任意')} style={{ minWidth: 140 }} /></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm btn-primary" onClick={() => decide(r, 'approved')}>{L('Approve', '承認')}</button>{' '}
-                      <button className="btn btn-sm" onClick={() => decide(r, 'rejected')}>{L('Reject', '却下')}</button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="tor-btn tor-btn-reject tor-btn-sm" onClick={() => decide(r, 'rejected')}>✕ {L('Decline', '却下')}</button>
+                        <button className="tor-btn tor-btn-approve tor-btn-sm" onClick={() => decide(r, 'approved')}>✓ {L('Approve', '承認')}</button>
+                      </div>
                     </td>
                   </tr>
                 ))}

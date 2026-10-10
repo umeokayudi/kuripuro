@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
@@ -8,7 +9,10 @@ const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 export default function Employees() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get('tab') === 'availability' ? 'availability' : 'list'))
+  // Opened from the day-off pop-up ("Open calendar") while already on this page
+  useEffect(() => { if (new URLSearchParams(location.search).get('tab') === 'availability') setTab('availability') }, [location.search])
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [pendingAvail, setPendingAvail] = useState(0)
