@@ -1,9 +1,12 @@
 // Extrai dados de contrato de trabalho (PDF) via Gemini
 
 import { geminiGenerate } from './_gemini.js'
+import { aiRateLimited, requireAppSession } from './_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  const user = await requireAppSession(req, res, ['admin'])
+  if (!user || aiRateLimited(user, res)) return
 
   const { pdfBase64, fileName, employeeName } = req.body || {}
   if (!pdfBase64) return res.status(400).json({ error: 'pdfBase64 is required' })

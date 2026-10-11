@@ -113,7 +113,8 @@ export default function EmployeeProfile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ photoUrl: job.photo_end_url, locationName: job.title }),
       })
-      const result = await resp.json()
+      const result = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(result.error || `HTTP ${resp.status}`)
       await supabase.from('jobs').update({
         photo_ai_score: result?.nota ?? null,
         photo_ai_approved: result?.aprovado ?? null,
