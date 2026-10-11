@@ -13,6 +13,7 @@ import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
 import { ContractSignModal } from '../components/SpotContracts'
+import { contractStatus } from '../lib/spotContract'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
 import LanguageToggle from '../components/LanguageToggle'
@@ -1094,12 +1095,25 @@ export default function EmployeePortal() {
 
   const signJobContract = async (dataUrl, signedBy) => {
     const { data, error } = await supabase.from('spot_contracts')
-      .update({ signature_url: dataUrl, signed_by: signedBy, signed_at: new Date().toISOString(), status: 'signed' })
+      .update({ signature_url: dataUrl, signed_by: signedBy, signed_at: new Date().toISOString(), status: 'approved', approved_at: new Date().toISOString() })
       .eq('id', jobContract.id).select().single()
     if (error) return toast.error(error.message)
     setJobContract(data)
     setContractSignOpen(false)
     toast.success(e.contractSaved)
+  }
+
+  // Photo of the paper contract / proof on site, stored on the contract
+  const contractPhotoRef = useRef()
+  const addContractPhoto = async (file) => {
+    if (!file || !jobContract) return
+    try {
+      const path = await uploadJobPhoto(`jobs/${jobContract.job_id || 'contracts'}/contract_${jobContract.id}_${Date.now()}.jpg`, file)
+      const { data, error } = await supabase.from('spot_contracts').update({ proof_photos: [...(jobContract.proof_photos || []), path] }).eq('id', jobContract.id).select().single()
+      if (error) throw error
+      setJobContract(data)
+      toast.success(e.contractPhotoSaved)
+    } catch (err) { toast.error(err.message) }
   }
 
   // Google Calendar subscribes to the worker's private .ics feed, so every job shows up there.
@@ -1161,9 +1175,11 @@ export default function EmployeePortal() {
           {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
           {jobContract&&jobContract.job_id===job.id&&<div style={{background:'rgba(193,156,86,0.08)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'12px 14px',marginBottom:10}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:4}}>📄 {e.contractTitle} · {jobContract.contract_number}</div>
-            {jobContract.status==='signed'
+            {contractStatus(jobContract)==='approved'
               ? <div style={{fontSize:13,color:'#16a37e',fontWeight:600}}>✓ {e.contractSigned}{jobContract.signed_by?` · ${jobContract.signed_by}`:''}</div>
-              : jobContract.status!=='cancelled'&&<button onClick={()=>setContractSignOpen(true)} style={{width:'100%',padding:'12px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#c19c56,#e8c47a)',color:'#0a1929',fontSize:14,fontWeight:700,cursor:'pointer'}}>✍️ {e.contractSign}</button>}
+              : contractStatus(jobContract)==='draft'&&<button onClick={()=>setContractSignOpen(true)} style={{width:'100%',padding:'12px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#c19c56,#e8c47a)',color:'#0a1929',fontSize:14,fontWeight:700,cursor:'pointer'}}>✍️ {e.contractSign}</button>}
+            <input ref={contractPhotoRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={ev=>{addContractPhoto(ev.target.files?.[0]);ev.target.value=''}} />
+            <button onClick={()=>contractPhotoRef.current?.click()} style={{width:'100%',marginTop:8,padding:'10px',borderRadius:12,border:'1px dashed rgba(255,255,255,0.2)',background:'none',color:'rgba(255,255,255,0.7)',fontSize:13,cursor:'pointer'}}>📷 {e.contractPhoto}{(jobContract.proof_photos||[]).length?` (${jobContract.proof_photos.length})`:''}</button>
           </div>}
           {job.scheduled_date&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
             <a href={googleCalendarUrl(job)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:14,padding:'12px 8px',textAlign:'center',color:'#fff',fontSize:12,fontWeight:600,textDecoration:'none'}}>📅 {e.calGoogle}</a>

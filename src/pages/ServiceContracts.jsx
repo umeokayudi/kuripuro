@@ -4,6 +4,8 @@ import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router-dom'
 import SpotContracts from '../components/SpotContracts'
+import { spotContractHtml, recurringToContract } from '../lib/spotContract'
+import { showPrintOverlay } from '../lib/openPrintHtml'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const SERVICE_TYPES = ['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning']
@@ -161,7 +163,7 @@ function RecurringContracts() {
                 <div className="form-group"><label>Discount (%)</label><input type="number" min="0" max="100" step="0.1" value={form.discount_percent||0} onChange={e=>upd('discount_percent',e.target.value)} /></div>
                 <div className="form-group"><label>Tax (%)</label><select value={form.tax_rate??10} onChange={e=>upd('tax_rate',e.target.value)}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select></div>
                 <div className="form-group"><label>Price includes tax?</label><select value={String(form.price_includes_tax !== false)} onChange={e=>upd('price_includes_tax',e.target.value==='true')}><option value="true">Yes</option><option value="false">No</option></select></div>
-                <div className="form-group"><label>Billing day</label><input type="number" min="1" max="28" value={form.billing_day||10} onChange={e=>upd('billing_day',e.target.value)} /></div>
+                <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="28" value={form.billing_day||10} onChange={e=>upd('billing_day',e.target.value)} /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}><label>Billing notes</label><input value={form.billing_notes||''} onChange={e=>upd('billing_notes',e.target.value)} placeholder="Ex.: desconto acordado com o cliente" /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address / Maps URL</label><input value={form.location_address} onChange={e=>upd('location_address',e.target.value)} placeholder="https://maps.app.goo.gl/..." /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}>
@@ -220,9 +222,12 @@ function RecurringContracts() {
                 {(c.days_of_week||[]).map(d=><span key={d} style={{background:'var(--navy)',color:'#fff',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:500}}>{d}</span>)}
                 <span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text3)'}}>{c.visits_per_month} visits/mo</span>
                 <span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text3)'}}>{(c.visits_per_month*c.hours_per_visit).toFixed(0)}h/mo</span>
+                <span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text2)'}}>💴 payment by the {c.billing_day||10}th of next month</span>
               </div>
-              <div style={{display:'flex',gap:6}}>
-                <button className="btn btn-sm btn-primary" onClick={()=>handleEdit(c)}>✏️ Edit</button>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                <button className="btn btn-sm btn-primary" onClick={()=>showPrintOverlay(spotContractHtml(recurringToContract(c, client), 'ja'))}>📄 Generate contract 契約書</button>
+                <button className="btn btn-sm" onClick={()=>showPrintOverlay(spotContractHtml(recurringToContract(c, client), 'en'))}>📄 EN</button>
+                <button className="btn btn-sm" onClick={()=>handleEdit(c)}>✏️ Edit</button>
                 <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(c.id)}>✕ Remove</button>
               </div>
             </div>

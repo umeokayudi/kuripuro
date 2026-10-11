@@ -12,7 +12,8 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl } from '../lib/calendar'
-import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient } from '../lib/spotContract'
+import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient, contractStatus } from '../lib/spotContract'
+import { saveSpotContractWithInvoice, generateContractForJob } from '../lib/spotContractOps'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
@@ -571,9 +572,14 @@ export default function Jobs() {
     toast.success(isSpot ? 'Spot job sent! Waiting for employee response.' : 'Job created!')
     if (isSpot && contractForm.enabled) {
       const row = buildSpotContractRow({ contract: contractForm, job: inserted, form, location: locations.find(l => l.id === form.location_id), client: cli, employee: emp })
-      const { data: saved, error: cErr } = await supabase.from('spot_contracts').insert(row).select('contract_number').single()
-      if (cErr) toast.error(`Contract not saved: ${cErr.message}`)
-      else toast.success(`📄 Contract ${saved.contract_number} saved in Contracts → Spot`)
+      try {
+        const { contract: saved, invoice, invoiceError } = await saveSpotContractWithInvoice(row)
+        toast.success(`📄 Contract ${saved.contract_number} saved in Contracts → Spot`)
+        if (invoice) toast.success(`💴 Invoice created · payment due ${invoice.due_date}`)
+        if (invoiceError) toast.error(`Invoice not created: ${invoiceError.message}`)
+      } catch (cErr) {
+        toast.error(`Contract not saved: ${cErr.message}`)
+      }
     }
     setContractForm(emptySpotContractForm())
     setForm({ title:'', client_id:'', client_name:'', employee_id:'', employee_name:'', scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'', value:0, description:'', checklist_template:'', photo_required:false, location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic' })
@@ -759,8 +765,8 @@ export default function Jobs() {
               {j.description && <div style={{fontSize:12,color:'var(--text2)',background:'var(--surface2)',borderRadius:6,padding:'7px 10px'}}>{j.description}</div>}
               <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:8}}>
                 {(() => { const c = spotContracts.find(x => x.job_id === j.id); return c
-                  ? <Link className="btn btn-sm" to={`/contracts?spot=${c.id}`}>📄 {c.contract_number} · {c.status}</Link>
-                  : <span style={{fontSize:11,color:'var(--text3)',alignSelf:'center'}}>📄 No contract</span> })()}
+                  ? <Link className="btn btn-sm" to={`/contracts?spot=${c.id}`}>📄 {c.contract_number} · {({ draft:'awaiting approval', approved:'approved ✓', rejected:'not approved', cancelled:'cancelled' })[contractStatus(c)]}</Link>
+                  : <button className="btn btn-sm btn-primary" onClick={async()=>{ try { const { contract, invoiceError } = await generateContractForJob(j); toast.success(`📄 ${contract.contract_number}`); if (invoiceError) toast.error(invoiceError.message); loadAll() } catch (err) { toast.error(err.message) } }}>📄 Generate contract</button> })()}
                 <a className="btn btn-sm" href={googleCalendarUrl(j)} target="_blank" rel="noreferrer">📅 Google Calendar</a>
               </div>
             </div>

@@ -61,3 +61,9 @@ create policy allow_all_spot_contracts on public.spot_contracts for all using (t
 alter table public.spot_contracts add column if not exists client_address text;
 alter table public.spot_contracts add column if not exists client_representative text;
 alter table public.spot_contracts add column if not exists payment_day integer not null default 10;
+
+-- Approval (draft = aguardando, approved, rejected, cancelled), photo proofs (paths in bucket service-photos)
+-- and the invoice (faturas.id) created with the spot contract.
+alter table public.spot_contracts add column if not exists approved_at timestamptz;
+alter table public.spot_contracts add column if not exists proof_photos text[] not null default '{}';
+alter table public.spot_contracts add column if not exists fatura_id uuid;

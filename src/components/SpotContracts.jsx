@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { spotContractHtml, spotContractTotals, DEFAULT_PAYMENT_DAY } from '../lib/spotContract'
+import { spotContractHtml, spotContractTotals, DEFAULT_PAYMENT_DAY, contractStatus, dueDateAfter } from '../lib/spotContract'
+import { createSpotInvoice, generateContractForJob } from '../lib/spotContractOps'
+import { uploadJobPhoto } from '../lib/uploadPhoto'
+import { viewablePhotoUrl } from '../lib/photoUrl'
+import PhotoLightbox from './PhotoLightbox'
 import { signatureForDisplay, SIGNATURE_INK } from '../lib/signature'
 import { showPrintOverlay } from '../lib/openPrintHtml'
 import { googleCalendarUrl } from '../lib/calendar'
@@ -10,7 +14,9 @@ import toast from 'react-hot-toast'
 
 // v1.0.21 · Contracts → Spot contracts: every spot job's contract with the location, stored.
 
-const STATUS_BADGE = { draft: 'badge-amber', signed: 'badge-green', cancelled: 'badge-red' }
+const STATUS_BADGE = { draft: 'badge-amber', approved: 'badge-green', rejected: 'badge-red', cancelled: 'badge-navy' }
+const STATUS_LABEL = { draft: 'Awaiting approval', approved: 'Approved ✓', rejected: 'Not approved', cancelled: 'Cancelled' }
+const INVOICE_LABEL = { draft: 'draft', sent: 'sent', paid: 'paid ✓', overdue: 'overdue', cancelled: 'cancelled' }
 
 export default function SpotContracts() {
   const [params] = useSearchParams()
@@ -24,6 +30,13 @@ export default function SpotContracts() {
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState(null)
   const [signing, setSigning] = useState(null)
+  const [invoices, setInvoices] = useState({})
+  const [unlinkedJobs, setUnlinkedJobs] = useState([])
+  const [pickJob, setPickJob] = useState('')
+  const [busy, setBusy] = useState('')
+  const [lightbox, setLightbox] = useState(null)
+  const proofInput = useRef()
+  const proofFor = useRef(null)
 
   useEffect(() => { load() }, [])
 
@@ -42,6 +55,15 @@ export default function SpotContracts() {
       const { data: js } = await supabase.from('jobs').select('id,title,status,spot_status,scheduled_date,scheduled_time,address,employee_name,client_name,description,job_category').in('id', ids)
       setJobs(Object.fromEntries((js || []).map(j => [j.id, j])))
     }
+    const fids = list.map(r => r.fatura_id).filter(Boolean)
+    if (fids.length) {
+      const { data: fs } = await supabase.from('faturas').select('id,status,due_date,total').in('id', fids)
+      setInvoices(Object.fromEntries((fs || []).map(f => [f.id, f])))
+    }
+    // Spot jobs without a contract, for "Generate contract"
+    const { data: spots } = await supabase.from('jobs').select('*').eq('job_category', 'spot').neq('status', 'cancelled').order('scheduled_date', { ascending: false }).limit(200)
+    const linked = new Set(list.map(r => r.job_id))
+    setUnlinkedJobs((spots || []).filter(j => !linked.has(j.id)))
     setLoading(false)
   }
 
@@ -81,16 +103,72 @@ export default function SpotContracts() {
   }
 
   const setStatus = async (c, status) => {
-    if (status === 'cancelled' && !confirm('Cancel this contract?')) return
-    const { error } = await supabase.from('spot_contracts').update({ status }).eq('id', c.id)
+    if (status === 'cancelled' && !confirm('Cancel this contract? Its draft invoice is cancelled too.')) return
+    const patch = { status, approved_at: status === 'approved' ? new Date().toISOString() : null }
+    const { error } = await supabase.from('spot_contracts').update(patch).eq('id', c.id)
     if (error) return toast.error(error.message)
+    // A contract that is not going ahead should not leave an unpaid draft invoice behind.
+    const inv = invoices[c.fatura_id]
+    if ((status === 'cancelled' || status === 'rejected') && inv && inv.status === 'draft') {
+      await supabase.from('faturas').update({ status: 'cancelled' }).eq('id', inv.id)
+    }
+    if (status === 'draft' && inv && inv.status === 'cancelled') {
+      await supabase.from('faturas').update({ status: 'draft' }).eq('id', inv.id)
+    }
+    load()
+  }
+
+  const makeInvoice = async (c) => {
+    setBusy(`inv-${c.id}`)
+    try {
+      const f = await createSpotInvoice(c)
+      toast.success(`💴 Invoice created · payment due ${f.due_date}`)
+      load()
+    } catch (err) { toast.error(err.message) } finally { setBusy('') }
+  }
+
+  const generate = async () => {
+    const job = unlinkedJobs.find(j => j.id === pickJob)
+    if (!job) return toast.error('Pick a spot job')
+    setBusy('gen')
+    try {
+      const { contract, invoiceError } = await generateContractForJob(job)
+      toast.success(`📄 Contract ${contract.contract_number} generated`)
+      if (invoiceError) toast.error(`Invoice not created: ${invoiceError.message}`)
+      setPickJob('')
+      await load()
+      setEditing({ ...contract })
+    } catch (err) { toast.error(err.message) } finally { setBusy('') }
+  }
+
+  const addProofs = async (files) => {
+    const c = proofFor.current
+    if (!c || !files?.length) return
+    setBusy(`photo-${c.id}`)
+    try {
+      const paths = []
+      for (const [i, file] of [...files].entries()) {
+        paths.push(await uploadJobPhoto(`jobs/${c.job_id || 'contracts'}/contract_${c.id}_${Date.now()}_${i}.jpg`, file))
+      }
+      const next = [...(c.proof_photos || []), ...paths]
+      const { error } = await supabase.from('spot_contracts').update({ proof_photos: next }).eq('id', c.id)
+      if (error) throw error
+      toast.success(`📷 ${paths.length} photo(s) added`)
+      load()
+    } catch (err) { toast.error(err.message) } finally { setBusy(''); proofFor.current = null }
+  }
+
+  const removeProof = async (c, path) => {
+    if (!confirm('Remove this photo from the contract?')) return
+    const next = (c.proof_photos || []).filter(p => p !== path)
+    await supabase.from('spot_contracts').update({ proof_photos: next }).eq('id', c.id)
     load()
   }
 
   const saveSignature = async (dataUrl, signedBy) => {
-    const { error } = await supabase.from('spot_contracts').update({ signature_url: dataUrl, signed_by: signedBy, signed_at: new Date().toISOString(), status: 'signed' }).eq('id', signing.id)
+    const { error } = await supabase.from('spot_contracts').update({ signature_url: dataUrl, signed_by: signedBy, signed_at: new Date().toISOString(), status: 'approved', approved_at: new Date().toISOString() }).eq('id', signing.id)
     if (error) return toast.error(error.message)
-    toast.success('Signed ✓')
+    toast.success('Signed and approved ✓')
     setSigning(null)
     load()
   }
@@ -101,14 +179,14 @@ export default function SpotContracts() {
 
   const q = query.trim().toLowerCase()
   const shown = rows
-    .filter(r => filter === 'all' || r.status === filter)
+    .filter(r => filter === 'all' || contractStatus(r) === filter)
     .filter(r => !q || [r.location_name, r.client_name, r.employee_name, r.contract_number].some(v => String(v || '').toLowerCase().includes(q)))
-  const total = shown.filter(r => r.status !== 'cancelled').reduce((s, r) => s + spotContractTotals(r).total, 0)
+  const total = shown.filter(r => !['cancelled', 'rejected'].includes(contractStatus(r))).reduce((s, r) => s + spotContractTotals(r).total, 0)
 
   return (
     <div>
       <div className="kp-two-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
-        {[['Contracts', rows.length], ['To sign', rows.filter(r => r.status === 'draft').length], ['Signed', rows.filter(r => r.status === 'signed').length], ['Value (shown)', '¥' + total.toLocaleString()]].map(([l, v]) => (
+        {[['Contracts', rows.length], ['Awaiting approval', rows.filter(r => contractStatus(r) === 'draft').length], ['Approved', rows.filter(r => contractStatus(r) === 'approved').length], ['Value (shown)', '¥' + total.toLocaleString()]].map(([l, v]) => (
           <div key={l} className="card" style={{ padding: '12px 14px', textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{v}</div>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{l}</div>
@@ -117,10 +195,22 @@ export default function SpotContracts() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
-        {['all', 'draft', 'signed', 'cancelled'].map(f => (
-          <button key={f} type="button" className={`tab-pill${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : f === 'draft' ? 'To sign' : f === 'signed' ? 'Signed' : 'Cancelled'}</button>
+        {['all', 'draft', 'approved', 'rejected', 'cancelled'].map(f => (
+          <button key={f} type="button" className={`tab-pill${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : STATUS_LABEL[f]}</button>
         ))}
         <div className="form-group" style={{ flex: '1 1 200px', minWidth: 0, margin: 0 }}><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search location, staff, number…" /></div>
+      </div>
+
+      <input ref={proofInput} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => { addProofs(e.target.files); e.target.value = '' }} />
+      <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div className="form-group" style={{ flex: '1 1 260px', minWidth: 0, margin: 0 }}>
+          <label>📄 Generate contract for a spot job</label>
+          <select value={pickJob} onChange={e => setPickJob(e.target.value)}>
+            <option value="">{unlinkedJobs.length ? '— Spot jobs without a contract —' : 'Every spot job already has a contract'}</option>
+            {unlinkedJobs.map(j => <option key={j.id} value={j.id}>{j.scheduled_date} · {j.title} · {j.employee_name || '—'}</option>)}
+          </select>
+        </div>
+        <button className="btn btn-primary" disabled={!pickJob || busy === 'gen'} onClick={generate}>{busy === 'gen' ? '…' : '📄 Generate contract'}</button>
       </div>
 
       {loading && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>Loading…</div></div>}
@@ -133,13 +223,16 @@ export default function SpotContracts() {
           <div key={c.id} id={`spot-${c.id}`} className="card" style={{ marginBottom: 10, border: focusId === c.id ? '2px solid var(--navy)' : undefined }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{c.location_name} <span className={`badge ${STATUS_BADGE[c.status] || 'badge-navy'}`} style={{ marginLeft: 6 }}>{c.status === 'draft' ? 'to sign' : c.status}</span></div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{c.location_name} <span className={`badge ${STATUS_BADGE[contractStatus(c)] || 'badge-navy'}`} style={{ marginLeft: 6 }}>{STATUS_LABEL[contractStatus(c)]}</span></div>
                 <div style={{ fontSize: 12, color: 'var(--text3)' }}>{c.contract_number} · {c.service_date || '—'} {c.service_time || ''} · 👷 {c.employee_name || '—'}</div>
                 {c.client_name && <div style={{ fontSize: 12, color: 'var(--text3)' }}>🏢 {c.client_name}{c.contact_name ? ` · ${c.contact_name}` : ''}{c.contact_phone ? ` · ${c.contact_phone}` : ''}</div>}
                 {!c.client_name && (c.contact_name || c.contact_phone) && <div style={{ fontSize: 12, color: 'var(--text3)' }}>{c.contact_name} {c.contact_phone}</div>}
                 {hasMapsLink(c.location_address, c.location_name) && <a href={mapsOpenUrl(c.location_address, c.location_name)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#60a5fa', textDecoration: 'none' }}>🗺 Maps</a>}
                 {job && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Job: {job.status}{job.spot_status ? ` · employee ${job.spot_status}` : ''}</div>}
                 {c.signed_by && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}>✍️ {c.signed_by} · {new Date(c.signed_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</div>}
+                {(() => { const inv = invoices[c.fatura_id]; return inv
+                  ? <div style={{ fontSize: 12, marginTop: 4 }}>💴 Invoice {INVOICE_LABEL[inv.status] || inv.status} · <strong>payment due {inv.due_date}</strong> · <a href="/faturas" style={{ color: '#60a5fa' }}>open</a></div>
+                  : <div style={{ fontSize: 12, marginTop: 4, color: 'var(--text3)' }}>💴 No invoice yet · would be due {dueDateAfter(c.service_date, c.payment_day)}</div> })()}
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>¥{t.total.toLocaleString()}</div>
@@ -149,12 +242,27 @@ export default function SpotContracts() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button className="btn btn-sm btn-primary" onClick={() => printContract(c, 'ja')}>📄 契約書</button>
               <button className="btn btn-sm" onClick={() => printContract(c, 'en')}>📄 EN</button>
-              {c.status === 'draft' && <button className="btn btn-sm" onClick={() => setSigning(c)}>✍️ Sign</button>}
+              {contractStatus(c) === 'draft' && <button className="btn btn-sm" onClick={() => setSigning(c)}>✍️ Sign</button>}
+              {contractStatus(c) !== 'approved' && contractStatus(c) !== 'cancelled' && <button className="btn btn-sm" style={{ background: 'var(--green)', color: '#fff' }} onClick={() => setStatus(c, 'approved')}>✓ Approved</button>}
+              {contractStatus(c) === 'draft' && <button className="btn btn-sm" onClick={() => setStatus(c, 'rejected')}>✕ Not approved</button>}
+              {['approved', 'rejected'].includes(contractStatus(c)) && <button className="btn btn-sm" onClick={() => setStatus(c, 'draft')}>↺ Awaiting</button>}
+              <button className="btn btn-sm" disabled={busy === `photo-${c.id}`} onClick={() => { proofFor.current = c; proofInput.current?.click() }}>{busy === `photo-${c.id}` ? '…' : '📷 Add photo proof'}</button>
+              {!c.fatura_id && !['cancelled', 'rejected'].includes(contractStatus(c)) && <button className="btn btn-sm" disabled={busy === `inv-${c.id}`} onClick={() => makeInvoice(c)}>💴 Create invoice</button>}
               <button className="btn btn-sm" onClick={() => setEditing({ ...c })}>✏️ Edit</button>
               {(job || c.service_date) && <a className="btn btn-sm" href={googleCalendarUrl(job || { title: c.location_name, scheduled_date: c.service_date, scheduled_time: c.service_time, address: c.location_address, employee_name: c.employee_name, job_category: 'spot' })} target="_blank" rel="noreferrer">📅 Google Calendar</a>}
-              {c.status !== 'cancelled' && <button className="btn btn-sm btn-danger" onClick={() => setStatus(c, 'cancelled')}>✕ Cancel</button>}
-              {c.status === 'cancelled' && <button className="btn btn-sm" onClick={() => setStatus(c, 'draft')}>↺ Reopen</button>}
+              {contractStatus(c) !== 'cancelled' && <button className="btn btn-sm btn-danger" onClick={() => setStatus(c, 'cancelled')}>Cancel</button>}
+              {contractStatus(c) === 'cancelled' && <button className="btn btn-sm" onClick={() => setStatus(c, 'draft')}>↺ Reopen</button>}
             </div>
+            {(c.proof_photos || []).length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                {c.proof_photos.map(p => (
+                  <div key={p} style={{ position: 'relative' }}>
+                    <img src={viewablePhotoUrl(p)} alt="proof" onClick={() => setLightbox(viewablePhotoUrl(p))} style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, cursor: 'zoom-in', border: '1px solid var(--border)' }} />
+                    <button type="button" aria-label="Remove photo" onClick={() => removeProof(c, p)} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', border: 'none', background: 'var(--red)', color: '#fff', fontSize: 11, cursor: 'pointer' }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )
       })}
@@ -193,6 +301,7 @@ export default function SpotContracts() {
         </div>
       )}
 
+      <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel="Close" />
       {signing && <ContractSignModal contract={signing} onCancel={() => setSigning(null)} onConfirm={saveSignature} />}
     </div>
   )
