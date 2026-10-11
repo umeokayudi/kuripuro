@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { spotContractHtml, spotContractTotals, DEFAULT_SPOT_TERMS } from '../lib/spotContract'
+import { spotContractHtml, spotContractTotals, DEFAULT_PAYMENT_DAY } from '../lib/spotContract'
 import { signatureForDisplay, SIGNATURE_INK } from '../lib/signature'
 import { showPrintOverlay } from '../lib/openPrintHtml'
 import { googleCalendarUrl } from '../lib/calendar'
@@ -61,7 +61,9 @@ export default function SpotContracts() {
     const patch = {
       contact_name: e.contact_name || null, contact_phone: e.contact_phone || null,
       price: parseFloat(e.price) || 0, tax_rate: parseInt(e.tax_rate, 10) || 0, price_includes_tax: e.price_includes_tax !== false,
-      scope: e.scope || null, terms: e.terms || DEFAULT_SPOT_TERMS.ja, notes: e.notes || null,
+      scope: e.scope || null, terms: e.terms || null, notes: e.notes || null,
+      client_address: e.client_address || null, client_representative: e.client_representative || null,
+      payment_day: Math.max(1, Math.min(31, parseInt(e.payment_day, 10) || DEFAULT_PAYMENT_DAY)),
       service_date: e.service_date || null, service_time: e.service_time || null,
       employee_id: e.employee_id || null, employee_name: emp?.full_name || e.employee_name || '',
     }
@@ -162,6 +164,9 @@ export default function SpotContracts() {
           <div className="card" style={{ width: 'min(640px,100%)', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="card-title">Edit {editing.contract_number}</div>
             <div className="grid-2">
+              <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><input value={editing.client_address || ''} onChange={e => setEditing(x => ({ ...x, client_address: e.target.value }))} /></div>
+              <div className="form-group"><label>Representative (代表者)</label><input value={editing.client_representative || ''} onChange={e => setEditing(x => ({ ...x, client_representative: e.target.value }))} /></div>
+              <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="31" value={editing.payment_day ?? DEFAULT_PAYMENT_DAY} onChange={e => setEditing(x => ({ ...x, payment_day: e.target.value }))} /></div>
               <div className="form-group"><label>Contact person</label><input value={editing.contact_name || ''} onChange={e => setEditing(x => ({ ...x, contact_name: e.target.value }))} /></div>
               <div className="form-group"><label>Contact phone</label><input value={editing.contact_phone || ''} onChange={e => setEditing(x => ({ ...x, contact_phone: e.target.value }))} /></div>
               <div className="form-group"><label>Date</label><input type="date" value={editing.service_date || ''} onChange={e => setEditing(x => ({ ...x, service_date: e.target.value }))} /></div>
@@ -177,7 +182,7 @@ export default function SpotContracts() {
               <div className="form-group"><label>Price includes tax?</label><select value={String(editing.price_includes_tax !== false)} onChange={e => setEditing(x => ({ ...x, price_includes_tax: e.target.value === 'true' }))}><option value="true">Yes</option><option value="false">No</option></select></div>
             </div>
             <div className="form-group"><label>Scope of work</label><textarea rows={3} value={editing.scope || ''} onChange={e => setEditing(x => ({ ...x, scope: e.target.value }))} /></div>
-            <div className="form-group"><label>Terms</label><textarea rows={6} value={editing.terms || ''} onChange={e => setEditing(x => ({ ...x, terms: e.target.value }))} /></div>
+            <div className="form-group"><label>Special terms 特記事項</label><textarea rows={3} value={editing.terms || ''} onChange={e => setEditing(x => ({ ...x, terms: e.target.value }))} /></div>
             <div className="form-group"><label>Internal notes</label><input value={editing.notes || ''} onChange={e => setEditing(x => ({ ...x, notes: e.target.value }))} /></div>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>Changing date, time or staff also updates the job.</div>
             <div style={{ display: 'flex', gap: 8 }}>

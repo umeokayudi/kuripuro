@@ -12,7 +12,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl } from '../lib/calendar'
-import { emptySpotContractForm, buildSpotContractRow } from '../lib/spotContract'
+import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient } from '../lib/spotContract'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
@@ -498,7 +498,7 @@ export default function Jobs() {
     const [j, e, c, l] = await Promise.all([
       supabase.from('jobs').select('*').order('scheduled_date', { ascending: false }),
       supabase.from('employees').select('id,full_name,salary_type,hourly_rate,fixed_salary').eq('is_active', true),
-      supabase.from('clients').select('id,company_name').eq('is_active', true),
+      supabase.from('clients').select('id,company_name,address,contact_person,contact_name,phone,manager_name,manager_phone').eq('is_active', true),
       supabase.from('locations').select('*').eq('is_active', true).order('name'),
     ])
     // Table added in v1.0.21; ignore errors so Jobs still loads if it is missing.
@@ -811,7 +811,7 @@ export default function Jobs() {
               </select>
             </div>
             <div className="form-group"><label>Client</label>
-              <select value={form.client_id} onChange={e=>upd('client_id',e.target.value)}>
+              <select value={form.client_id} onChange={e=>{ upd('client_id',e.target.value); setContractForm(f=>({ ...f, ...contractPrefillFromClient(clients.find(c=>c.id===e.target.value)) })) }}>
                 <option value="">Select client...</option>
                 {clients.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
               </select>
@@ -849,7 +849,11 @@ export default function Jobs() {
                 📄 Create a contract with this location
               </label>
               {contractForm.enabled && (<>
+                <div style={{fontSize:12,color:'var(--text3)',marginBottom:10}}>業務委託契約書 · company data of the location (甲) is filled from the client; KuriPuro (乙) data is added automatically.</div>
                 <div className="grid-2">
+                  <div className="form-group" style={{gridColumn:'1/-1'}}><label>Company address (甲)</label><input value={contractForm.client_address} onChange={e=>updContract('client_address',e.target.value)} placeholder="東京都港区…" /></div>
+                  <div className="form-group"><label>Representative (代表者)</label><input value={contractForm.client_representative} onChange={e=>updContract('client_representative',e.target.value)} placeholder="代表取締役 山田 太郎" /></div>
+                  <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="31" value={contractForm.payment_day} onChange={e=>updContract('payment_day',e.target.value)} /></div>
                   <div className="form-group"><label>Contact person (location)</label><input value={contractForm.contact_name} onChange={e=>updContract('contact_name',e.target.value)} placeholder="山田様 / Store manager" /></div>
                   <div className="form-group"><label>Contact phone</label><input value={contractForm.contact_phone} onChange={e=>updContract('contact_phone',e.target.value)} placeholder="03-1234-5678" /></div>
                   <div className="form-group"><label>Price charged to the location (¥)</label><input type="number" value={contractForm.price} onChange={e=>updContract('price',e.target.value)} placeholder="30000" /></div>
@@ -861,7 +865,7 @@ export default function Jobs() {
                   </div>
                 </div>
                 <div className="form-group"><label>Scope of work (empty = description / checklist)</label><textarea value={contractForm.scope} onChange={e=>updContract('scope',e.target.value)} rows={3} placeholder="Kitchen floor, range hood, grease trap..." /></div>
-                <div className="form-group"><label>Contract terms (editable)</label><textarea value={contractForm.terms} onChange={e=>updContract('terms',e.target.value)} rows={5} /></div>
+                <div className="form-group"><label>Special terms 特記事項 (optional, added after the standard articles)</label><textarea value={contractForm.terms} onChange={e=>updContract('terms',e.target.value)} rows={3} placeholder="例：駐車場は店舗裏を使用可" /></div>
                 <div style={{fontSize:12,color:'var(--text3)'}}>Saved in Contracts → Spot contracts, where you can print it and collect the location's signature.</div>
               </>)}
             </div>

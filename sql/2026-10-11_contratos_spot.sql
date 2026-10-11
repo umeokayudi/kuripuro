@@ -56,3 +56,8 @@ create or replace trigger spot_contracts_fill before insert or update on public.
 
 alter table public.spot_contracts enable row level security;
 create policy allow_all_spot_contracts on public.spot_contracts for all using (true);
+
+-- 業務委託契約書: client company data (甲) and payment day (default 10th of the following month).
+alter table public.spot_contracts add column if not exists client_address text;
+alter table public.spot_contracts add column if not exists client_representative text;
+alter table public.spot_contracts add column if not exists payment_day integer not null default 10;
