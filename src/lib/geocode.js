@@ -26,6 +26,15 @@ export async function geocodeAddress(address) {
   return null
 }
 
+/** "850 m" up to 999 m, then "24.6 km" (or "125 km" from 100 km on). */
+export function formatDistance(meters) {
+  const m = Number(meters)
+  if (!Number.isFinite(m)) return '—'
+  if (Math.round(m) < 1000) return `${Math.round(m)} m`
+  const km = m / 1000
+  return `${km >= 100 ? Math.round(km) : km.toFixed(1)} km`
+}
+
 export function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000
   const dLat = (lat2 - lat1) * Math.PI / 180

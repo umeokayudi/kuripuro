@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { viewablePhotoUrl } from './photoUrl'
 import { signatureForDisplay } from './signature'
+import { formatDistance } from './geocode.js'
 
 // Carrega uma imagem de URL como dataURL pra embutir no PDF
 async function loadImageDataUrl(url) {
@@ -136,8 +137,8 @@ export async function generateDailyReport(date, jobs, employeeName, opts = {}) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(90, 90, 90)
     const who = [j.employee_name, j.area ? `Area: ${j.area}` : null].filter(Boolean).join(' · ')
     if (who) doc.text(who.substring(0, 70), margin + 3, y + 11)
-    const inLine = `In  ${tokyoTime(j.started_at)}  ${fmtCoord(j.start_lat, j.start_lng)}${j.gps_start_distance != null ? `  (${Math.round(j.gps_start_distance)} m from site)` : ''}`
-    const outLine = `Out ${tokyoTime(j.completed_at)}  ${fmtCoord(j.end_lat, j.end_lng)}${j.gps_end_distance != null ? `  (${Math.round(j.gps_end_distance)} m from site)` : ''}`
+    const inLine = `In  ${tokyoTime(j.started_at)}  ${fmtCoord(j.start_lat, j.start_lng)}${j.gps_start_distance != null ? `  (${formatDistance(j.gps_start_distance)} from site)` : ''}`
+    const outLine = `Out ${tokyoTime(j.completed_at)}  ${fmtCoord(j.end_lat, j.end_lng)}${j.gps_end_distance != null ? `  (${formatDistance(j.gps_end_distance)} from site)` : ''}`
     doc.text(inLine, margin + 3, y + 17)
     doc.text(outLine, margin + 3, y + 22)
     if (j.retro_report) doc.text('Retroactive report (sent after the service)', margin + 3, y + 27)

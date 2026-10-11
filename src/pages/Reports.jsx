@@ -9,6 +9,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
+import { formatDistance } from '../lib/geocode'
 import toast from 'react-hot-toast'
 
 function typeBadge(type, tr) {
@@ -33,8 +34,13 @@ function GpsBlock({ r, tr, lang }) {
             <div style={{ fontWeight: 600 }}>{label} · {at ? fmtTime(at, lang) : '—'}</div>
             {lat != null && lng != null ? (
               <>
-                <div style={{ color: 'var(--text3)' }}>{Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}{acc != null ? ` (±${Math.round(acc)} m)` : ''}</div>
-                {dist != null && <div style={{ color: Number(dist) > 150 ? 'var(--red)' : 'var(--text3)' }}>{fill(tr.gpsFromSite, { m: Math.round(dist) })}</div>}
+                {dist != null && (
+                  <div style={{ fontSize: 15, fontWeight: 700, color: Number(dist) > 150 ? 'var(--red)' : 'var(--green)' }}>
+                    {Number(dist) > 150 ? '⚠ ' : ''}{fill(tr.gpsFromSite, { m: formatDistance(dist) })}
+                  </div>
+                )}
+                <div style={{ color: 'var(--text3)', fontSize: 11.5 }}>{Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}</div>
+                {acc != null && <div style={{ color: 'var(--text3)', fontSize: 11 }}>{fill(tr.gpsAccuracy, { m: Math.round(acc) })}</div>}
                 <a href={mapUrl(lat, lng)} target="_blank" rel="noreferrer">{tr.openMap} ↗</a>
               </>
             ) : <div style={{ color: 'var(--text3)' }}>{tr.gpsNone}</div>}

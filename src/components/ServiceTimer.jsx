@@ -1,5 +1,6 @@
 import { jobDurationMin, formatMinutes, ON_SITE_METERS } from '../lib/workKpis'
 import { fill } from '../i18n/translations'
+import { formatDistance } from '../lib/geocode'
 
 const pad = n => String(n).padStart(2, '0')
 const clockText = secs => `${pad(Math.floor(secs / 3600))}:${pad(Math.floor((secs % 3600) / 60))}:${pad(secs % 60)}`
@@ -24,8 +25,8 @@ export default function ServiceTimer({ job, elapsed, history, labels, lang }) {
 
   let gps = null
   if (job.gps_start_distance != null) gps = job.gps_start_distance <= ON_SITE_METERS
-    ? { cls: 'is-good', text: fill(labels.gpsOnSite, { m: job.gps_start_distance }) }
-    : { cls: 'is-warn', text: fill(labels.gpsAway, { m: job.gps_start_distance }) }
+    ? { cls: 'is-good', text: fill(labels.gpsOnSite, { m: formatDistance(job.gps_start_distance) }) }
+    : { cls: 'is-warn', text: fill(labels.gpsAway, { m: formatDistance(job.gps_start_distance) }) }
   else if (job.start_lat != null) gps = { cls: 'is-good', text: labels.gpsSaved + (job.start_accuracy ? ` ±${job.start_accuracy}m` : '') }
   else gps = { cls: 'is-muted', text: labels.gpsMissing }
 
