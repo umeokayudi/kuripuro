@@ -55,6 +55,7 @@ export const kuripuroEn = {
     email: 'Email',
     password: 'Password',
     invalidLogin: 'Invalid login or password',
+    sessionExpired: 'Your session expired. Please sign in again.',
     loginHint: 'Admin, employee email, or store name — English and Japanese.',
   },
   payroll: {
@@ -1068,6 +1069,7 @@ export const kuripuroJa = {
     email: 'メール',
     password: 'パスワード',
     invalidLogin: 'ログイン情報が正しくありません',
+    sessionExpired: 'セッションの有効期限が切れました。もう一度ログインしてください。',
     loginHint: '管理者・従業員メール・店舗名でログイン。英語と日本語に対応。',
   },
   payroll: {

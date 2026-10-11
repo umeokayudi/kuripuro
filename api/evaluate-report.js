@@ -2,9 +2,12 @@
 // Relatório retroativo — IA analisa só o texto vs checklist (sem valor/pagamento).
 
 import { geminiGenerate } from './_gemini.js'
+import { aiRateLimited, requireAppSession } from './_auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
+  const user = await requireAppSession(req, res)
+  if (!user || aiRateLimited(user, res)) return
 
   const { report, checklist, jobTitle, markedDone } = req.body || {}
   if (!report) { res.status(400).json({ error: 'report is required' }); return }
