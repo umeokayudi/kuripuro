@@ -1,7 +1,7 @@
 // api/analyze-reports.js — IA analisa relatórios de serviço (tempo, padrões, metas)
 
 import { geminiGenerate } from './_gemini.js'
-import { requireAdminSecret } from './_auth.js'
+import { requireAdmin } from './_auth.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
@@ -74,7 +74,7 @@ const EMPTY = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  if (!requireAdminSecret(req, res)) return
+  if (!(await requireAdmin(req, res))) return
 
   const { days = 30, employeeName, lang = 'en' } = req.body || {}
   const locale = lang === 'ja' ? 'ja' : 'en'

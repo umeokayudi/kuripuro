@@ -1,3 +1,5 @@
+import { requireAppSession } from './_auth.js'
+
 // Resolve Google Maps URLs (incl. goo.gl / share.google) → lat/lng
 
 function parseCoordsFromUrl(url) {
@@ -37,11 +39,19 @@ function isMapsUrl(url) {
   return /goo\.gl|maps\.app|share\.google|maps\.google|google\.com\/maps/i.test(url || '')
 }
 
+// Only Google short/maps links are followed, so this route can't be used to fetch arbitrary sites.
+function isGoogleHost(address) {
+  try {
+    const { protocol, hostname } = new URL(address)
+    return protocol === 'https:' && /(^|\.)(goo\.gl|maps\.app\.goo\.gl|share\.google|google\.[a-z.]+)$/i.test(hostname)
+  } catch { return false }
+}
+
 async function resolveMapsUrl(address) {
   const direct = parseCoordsFromUrl(address)
   if (direct) return direct
 
-  if (!isMapsUrl(address)) return null
+  if (!isMapsUrl(address) || !isGoogleHost(address)) return null
 
   try {
     const res = await fetch(address, {
@@ -60,6 +70,7 @@ async function resolveMapsUrl(address) {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+  if (!(await requireAppSession(req, res))) return
 
   const address = req.query.address
   if (!address) return res.status(400).json({ error: 'address required' })

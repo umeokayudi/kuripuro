@@ -152,8 +152,8 @@ export default async function handler(req, res) {
   if (!dbUrl) {
     return res.status(503).json({
       error: 'SUPABASE_DB_URL not configured',
-      hint: 'Add your Supabase connection string (URI) to Vercel env vars, or run setup-portal-all.sql in Supabase SQL Editor',
-      sqlFile: 'setup-portal-all.sql',
+      hint: 'Add your Supabase connection string (URI) to Vercel env vars, or run sql/setup-portal-all.sql (in the repository) in Supabase SQL Editor',
+      sqlFile: 'sql/setup-portal-all.sql',
       sqlEditor: 'https://supabase.com/dashboard/project/fxsakrshmldmkdmbevna/sql/new',
     })
   }

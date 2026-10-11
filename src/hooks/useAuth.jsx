@@ -7,11 +7,28 @@ const AuthContext = createContext()
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [sessionExpired, setSessionExpired] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('kp_user')
-    if (saved) { try { setUser(JSON.parse(saved)) } catch {} }
+    let parsed = null
+    if (saved) { try { parsed = JSON.parse(saved) } catch {} }
+    if (parsed) setUser(parsed)
     setLoading(false)
+
+    // Admins, employees and sellers also need the server login cookie: the AI,
+    // photo checks and Sales Team refuse requests without it. Accounts saved
+    // before that cookie existed (or after it expired) would look signed in but
+    // every AI answer would fail, so send them back to the login screen once.
+    if (!parsed || !['admin', 'employee', 'salesperson'].includes(parsed.role)) return
+    fetch('/api/sales-session', { credentials: 'same-origin', cache: 'no-store' })
+      .then(async response => {
+        if (response.status !== 401) return // 503/404 (local dev, preview without secrets): keep the user
+        localStorage.removeItem('kp_user')
+        setUser(null)
+        setSessionExpired(true)
+      })
+      .catch(() => {})
   }, [])
 
   const login = async (email, password) => {
@@ -29,6 +46,7 @@ export function AuthProvider({ children }) {
       })
       const result = await response.json().catch(() => ({}))
       if (response.ok && result.user) {
+        setSessionExpired(false)
         setUser(result.user)
         localStorage.setItem('kp_user', JSON.stringify(result.user))
         return { success: true }
@@ -93,7 +111,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateSession }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateSession, sessionExpired }}>
       {children}
     </AuthContext.Provider>
   )

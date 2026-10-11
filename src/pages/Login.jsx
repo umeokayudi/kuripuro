@@ -4,7 +4,7 @@ import { useLang } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, sessionExpired } = useAuth()
   const { t } = useLang()
   const a = t.app
   const [email, setEmail] = useState('')
@@ -57,7 +57,7 @@ export default function Login() {
             required
             autoComplete="current-password"
           />
-          {error && <div className="login-error">{error}</div>}
+          {error ? <div className="login-error">{error}</div> : sessionExpired && <div className="login-error">{a.sessionExpired}</div>}
           <button type="submit" disabled={loading} className="login-go">
             {loading ? a.loading : a.signIn}
           </button>
