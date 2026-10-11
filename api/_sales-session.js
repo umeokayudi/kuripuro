@@ -65,7 +65,9 @@ export default async function handler(req, res) {
     const { data: admin } = await db.from('admins').select('id,name,email,password').eq('email', email).maybeSingle()
     if (admin && admin.password === password) {
       const user = { id: admin.id, name: admin.name, email: admin.email, role: 'admin' }
-      setSalesSessionCookie(res, createSalesSession(user))
+      // Admins stay signed in on the app for weeks (kp_user in localStorage), so the
+      // server session must last as long or Sales Team, Marketing and the AI stop working.
+      setSalesSessionCookie(res, createSalesSession(user, EMPLOYEE_SESSION_TTL), EMPLOYEE_SESSION_TTL)
       return res.status(200).json({ success: true, user })
     }
 

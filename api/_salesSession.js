@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const COOKIE = 'kp_sales_session'
 const SESSION_TTL = 60 * 60 * 12
-// Employees stay signed in on their phone for weeks, so their AI session lasts as long.
+// Employees and admins stay signed in on the app for weeks, so their server session lasts as long.
 export const EMPLOYEE_SESSION_TTL = 60 * 60 * 24 * 30
 const URL = process.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co'
 
