@@ -64,10 +64,35 @@ export function jobToServiceReport(job, lang = 'en') {
     photo_during_url: null,
     photo_after_url: job.photo_end_url,
     signature_url: job.signature_url,
+    gps_lat_in: job.start_lat ?? null,
+    gps_lng_in: job.start_lng ?? null,
+    gps_lat_out: job.end_lat ?? null,
+    gps_lng_out: job.end_lng ?? null,
     job_value: job.retro_value ?? job.value,
     pdf_url: null,
     created_at: job.completed_at || job.updated_at || new Date().toISOString(),
   }
+}
+
+/** Campos só de tela (não existem em service_reports): status, área, GPS de entrada/saída com horário. */
+export function jobReportExtras(job) {
+  if (!job) return {}
+  return {
+    job_status: job.status,
+    area: job.area || null,
+    address: job.address || null,
+    started_at: job.started_at || null,
+    completed_at: job.completed_at || null,
+    gps_acc_in: job.start_accuracy ?? null,
+    gps_acc_out: job.end_accuracy ?? null,
+    gps_dist_in: job.gps_start_distance ?? null,
+    gps_dist_out: job.gps_end_distance ?? null,
+  }
+}
+
+/** Linha de report para a tela a partir de um job (concluído ou não). */
+export function jobToReportView(job, lang = 'en') {
+  return { ...jobToServiceReport(job, lang), ...jobReportExtras(job) }
 }
 
 /** Preenche fotos e campos faltantes do relatório a partir do job original */
@@ -76,6 +101,11 @@ export function mergeReportWithJob(report, job, lang = 'en') {
   const fromJob = jobToServiceReport(job, lang)
   return {
     ...report,
+    ...jobReportExtras(job),
+    gps_lat_in: report.gps_lat_in ?? fromJob.gps_lat_in,
+    gps_lng_in: report.gps_lng_in ?? fromJob.gps_lng_in,
+    gps_lat_out: report.gps_lat_out ?? fromJob.gps_lat_out,
+    gps_lng_out: report.gps_lng_out ?? fromJob.gps_lng_out,
     photo_before_url: report.photo_before_url || fromJob.photo_before_url,
     photo_after_url: report.photo_after_url || fromJob.photo_after_url,
     signature_url: report.signature_url || fromJob.signature_url,
@@ -96,6 +126,8 @@ export function mergeReportWithJob(report, job, lang = 'en') {
 
 export function reportNeedsPhotoSync(report, job) {
   if (!job) return false
+  if (job.signature_url && !report?.signature_url) return true
+  if (job.start_lat != null && report?.gps_lat_in == null) return true
   const jobHasPhotos = !!(job.photo_start_url || job.photo_end_url)
   const reportHasPhotos = !!(report?.photo_before_url || report?.photo_after_url)
   return jobHasPhotos && !reportHasPhotos

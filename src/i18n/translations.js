@@ -1,4 +1,5 @@
 import { kuripuroEn, kuripuroJa } from './kuripuro'
+import { mitsumoriEn, mitsumoriJa } from './mitsumori'
 
 export const translations = {
   en: {
@@ -185,6 +186,7 @@ export const translations = {
       hours: 'h',
     },
     ...kuripuroEn,
+    sales: mitsumoriEn,
   },
 
   ja: {
@@ -371,6 +373,7 @@ export const translations = {
       hours: '時間',
     },
     ...kuripuroJa,
+    sales: mitsumoriJa,
   },
 }
 

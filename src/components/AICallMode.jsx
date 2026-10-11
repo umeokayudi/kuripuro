@@ -209,95 +209,50 @@ export default function AICallMode({ onClose, sendToAI }) {
 
   const statusLabel = {
     connecting: 'Conectando...',
-    listening: 'Ouvindo... fale e pause',
+    listening: 'Ouvindo... fale e faça uma pausa',
     thinking: 'Pensando...',
     speaking: 'Falando...',
-    idle: 'Pronto',
-  }[status]
-
-  const pulseColor = {
-    connecting: '#94a3b8',
-    listening: '#4ade80',
-    thinking: '#fbbf24',
-    speaking: '#c19c56',
-    idle: '#94a3b8',
+    idle: 'Toque no microfone para falar',
   }[status]
 
   const ptVoices = voices.filter(v => v.lang?.startsWith('pt'))
+  const lastLines = log.slice(-3)
+
+  const onMic = () => {
+    if (status === 'listening' && transcript) processUtterance()
+    else if (status === 'idle') startListeningRef.current?.()
+  }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'linear-gradient(160deg,#0d2137,#1a3a5c)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', padding: 24,
-    }}>
-      <div style={{ fontSize: 13, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.5, marginBottom: 8 }}>
-        Ligação com o Assistente
+    <div className="ai-call" role="dialog" aria-modal="true" aria-label="Falando com a Kuripuro IA">
+      <div className="ai-call-top">
+        <span />
+        <div><strong>Falando com a Kuripuro IA</strong><small>{statusLabel}</small></div>
+        <button type="button" className="ai-call-x" onClick={hangUp} aria-label="Fechar">×</button>
       </div>
 
-      {ptVoices.length > 0 && (
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, opacity: 0.6 }}>Voz:</span>
-          <select value={voiceName} onChange={e => setVoiceName(e.target.value)}
-            style={{ fontSize: 12, padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.3)', color: '#fff', maxWidth: 220 }}>
-            {ptVoices.map(v => (
-              <option key={v.name} value={v.name}>{v.name}</option>
-            ))}
+      <div className="ai-call-stage">
+        <div className={`ai-call-orb is-${status}`} aria-hidden="true"><span /><span /><span /></div>
+        <div className="ai-call-text" aria-live="polite">
+          {lastLines.map((l, i) => (
+            <div key={log.length - lastLines.length + i} className={`ai-call-line is-${l.role}${i < lastLines.length - 1 ? ' is-faded' : ''}`}>{l.text}</div>
+          ))}
+          {transcript && <div className="ai-call-line is-user ai-call-live">{transcript}</div>}
+        </div>
+      </div>
+
+      <div className="ai-call-controls">
+        {ptVoices.length > 0 ? (
+          <select value={voiceName} onChange={e => setVoiceName(e.target.value)} aria-label="Voz">
+            {ptVoices.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
           </select>
-        </div>
-      )}
-
-      <div style={{
-        width: 140, height: 140, borderRadius: '50%',
-        background: `radial-gradient(circle, ${pulseColor}33, transparent 70%)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 20,
-      }}>
-        <div style={{
-          width: 90, height: 90, borderRadius: '50%',
-          background: `linear-gradient(135deg, ${pulseColor}, ${pulseColor}aa)`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36,
-          animation: status === 'listening' || status === 'speaking' ? 'aiCallPulse 1.4s infinite ease-in-out' : 'none',
-        }}>
-          {status === 'speaking' ? '🔊' : status === 'thinking' ? '💭' : '🎤'}
-        </div>
-        <style>{`@keyframes aiCallPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }`}</style>
-      </div>
-
-      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>{statusLabel}</div>
-      {transcript && (
-        <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 8, maxWidth: 320, textAlign: 'center' }}>
-          "{transcript}"
-        </div>
-      )}
-      {transcript && status === 'listening' && (
-        <button onClick={() => processUtterance()} style={{
-          marginBottom: 12, padding: '8px 16px', borderRadius: 20, border: 'none',
-          background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 12, cursor: 'pointer',
-        }}>
-          Enviar agora
+        ) : <span />}
+        <button type="button" className={`ai-call-mic${status === 'listening' ? ' is-live' : ''}`} onClick={onMic}
+          title={status === 'listening' && transcript ? 'Enviar agora' : 'Falar'} aria-label={status === 'listening' && transcript ? 'Enviar agora' : 'Falar'}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /></svg>
         </button>
-      )}
-
-      <div style={{ width: '100%', maxWidth: 380, maxHeight: 180, overflowY: 'auto', marginTop: 8, marginBottom: 20 }}>
-        {log.slice(-8).map((l, i) => (
-          <div key={i} style={{
-            fontSize: 12.5, marginBottom: 8, opacity: 0.85,
-            textAlign: l.role === 'user' ? 'right' : 'left',
-            color: l.role === 'system' ? '#f87171' : '#fff',
-          }}>
-            <span style={{ opacity: 0.5 }}>{l.role === 'user' ? 'Você: ' : l.role === 'assistant' ? 'IA: ' : ''}</span>
-            {l.text}
-          </div>
-        ))}
+        <button type="button" className="ai-call-end" onClick={hangUp} title="Encerrar" aria-label="Encerrar">✕</button>
       </div>
-
-      <button onClick={hangUp} style={{
-        width: 60, height: 60, borderRadius: '50%', border: 'none',
-        background: '#ef4444', color: '#fff', fontSize: 24, cursor: 'pointer',
-        boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
-      }} title="Encerrar ligação">📞</button>
     </div>
   )
 }

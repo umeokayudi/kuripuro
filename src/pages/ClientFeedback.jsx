@@ -62,6 +62,7 @@ export default function ClientFeedback() {
 
   const clientName = (id) => clients.find(c => c.id === id)?.company_name || '—'
   const draft = (id) => responseDraft[id] ?? ''
+  const [quoteDraft, setQuoteDraft] = useState({})
 
   const saveComplaint = async (row) => {
     const admin_response = draft(row.id)
@@ -84,6 +85,19 @@ export default function ClientFeedback() {
     }).eq('id', row.id)
     if (error) return toast.error(error.message)
     toast.success(f.saved)
+    load()
+  }
+
+  const sendQuote = async (row) => {
+    const d = quoteDraft[row.id] || {}
+    const amount = Number(d.amount ?? row.quote_amount)
+    if (!amount) return toast.error(f.quoteAmount)
+    const { error } = await supabase.from('client_requests').update({
+      quote_amount: amount, quote_note: (d.note ?? row.quote_note ?? '').trim() || null,
+      quote_status: 'quoted', quoted_at: new Date().toISOString(),
+    }).eq('id', row.id)
+    if (error) return toast.error(error.message)
+    toast.success(f.quoteSentAdmin)
     load()
   }
 
@@ -260,6 +274,23 @@ export default function ClientFeedback() {
                 {row.preferred_date ? ` · ${fill(f.preferredDate, { date: row.preferred_date })}` : ''}
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>
+              {row.request_type === 'quote' && (
+                <div style={{ padding: 12, borderRadius: 10, background: 'var(--blue-bg)', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8, fontSize: 12, fontWeight: 700 }}>
+                    <span>{f.quoteRequest}{row.category ? ` · ${row.category}` : ''}</span>
+                    <span className={`badge ${row.quote_status === 'accepted' ? 'badge-green' : row.quote_status === 'declined' ? 'badge-red' : 'badge-blue'}`}>{f[`qs_${row.quote_status || 'requested'}`]}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr auto', gap: 8, alignItems: 'end' }}>
+                    <label style={{ fontSize: 11 }}>{f.quoteAmount}
+                      <input type="number" min="0" value={quoteDraft[row.id]?.amount ?? row.quote_amount ?? ''} onChange={e => setQuoteDraft(d => ({ ...d, [row.id]: { ...d[row.id], amount: e.target.value } }))} style={{ width: '100%' }} />
+                    </label>
+                    <label style={{ fontSize: 11 }}>{f.quoteNote}
+                      <input value={quoteDraft[row.id]?.note ?? row.quote_note ?? ''} onChange={e => setQuoteDraft(d => ({ ...d, [row.id]: { ...d[row.id], note: e.target.value } }))} style={{ width: '100%' }} />
+                    </label>
+                    <button className="btn btn-sm btn-primary" onClick={() => sendQuote(row)}>{f.sendQuote}</button>
+                  </div>
+                </div>
+              )}
               <textarea value={draft(row.id) || row.admin_notes || ''} onChange={e => setResponseDraft(d => ({ ...d, [row.id]: e.target.value }))} placeholder={f.adminNotes} rows={2} style={{ width: '100%', marginBottom: 8 }} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-sm btn-primary" onClick={() => saveRequest(row, row.status)}>{f.saveNotes}</button>

@@ -4,7 +4,7 @@ import { useLang } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, sessionExpired } = useAuth()
   const { t } = useLang()
   const a = t.app
   const [email, setEmail] = useState('')
@@ -25,8 +25,11 @@ export default function Login() {
     <div className="login-shell">
       <div className="login-card">
         <div className="login-lang-row"><LanguageToggle variant="dark" /></div>
-        <div className="login-mark">KuriPuro</div>
-        <div className="login-sub">by JBM</div>
+        <div className="login-brand-lockup">
+          <span className="login-kp-mark" aria-hidden="true">KP</span>
+          <span className="login-mark">KuriPuro</span>
+        </div>
+        <div className="login-sub">BY JBM · BUSINESS PORTAL</div>
         <div className="login-title">{a.signIn}</div>
         <div className="login-hint">{a.loginHint}</div>
         <form onSubmit={handleSubmit}>
@@ -40,6 +43,8 @@ export default function Login() {
             placeholder={a.loginPlaceholder}
             required
             autoComplete="username"
+            autoCapitalize="none"
+            spellCheck="false"
           />
           <label htmlFor="login-password">{a.password}</label>
           <input
@@ -52,7 +57,7 @@ export default function Login() {
             required
             autoComplete="current-password"
           />
-          {error && <div className="login-error">{error}</div>}
+          {error ? <div className="login-error">{error}</div> : sessionExpired && <div className="login-error">{a.sessionExpired}</div>}
           <button type="submit" disabled={loading} className="login-go">
             {loading ? a.loading : a.signIn}
           </button>

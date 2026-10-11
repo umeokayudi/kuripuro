@@ -1,5 +1,7 @@
 import { NavLink } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { countPendingTimeOff, TIME_OFF_CHANGED } from '../lib/timeOff'
+import { tokyoToday } from '../lib/dates'
 import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
@@ -52,6 +54,14 @@ const groups = [
       { to: '/cashflow', key: 'cashflow', icon: Icons.chart },
     ],
   },
+  {
+    key: 'navSales',
+    items: [
+      { to: '/mitsumori', key: 'mitsumori', icon: Icons.file },
+      { to: '/sales-team', key: 'salesTeam', icon: Icons.users },
+      { to: '/marketing', key: 'marketing', icon: Icons.chart },
+    ],
+  },
 ]
 
 export default function Sidebar({ mobileOpen = false, onMobileClose }) {
@@ -59,6 +69,15 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }) {
   const { logout } = useAuth()
   const s = t.sidebar
   const [collapsed, setCollapsed] = useState(false)
+  // Pending day-off requests: badge on Employees so the admin sees them from any page
+  const [pendingOff, setPendingOff] = useState(0)
+  useEffect(() => {
+    const load = () => countPendingTimeOff(tokyoToday()).then(setPendingOff)
+    load()
+    const id = setInterval(load, 60000)
+    window.addEventListener(TIME_OFF_CHANGED, load)
+    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load) }
+  }, [])
 
   return (
     <>
@@ -81,6 +100,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }) {
             {group.items.map(({ to, key, icon: Icon }) => (
               <NavLink key={to} to={to} end={to === '/'} onClick={onMobileClose} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
                 <Icon /><span className="nav-label">{s[key]}</span>
+                {key === 'employees' && pendingOff > 0 && <span className="nav-count" title={`${pendingOff}`}>{pendingOff}</span>}
               </NavLink>
             ))}
           </div>

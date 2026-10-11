@@ -1,16 +1,23 @@
-import { ExecutiveDashboard } from '../components/AnalyticsCharts'
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
+import OverviewChart from '../components/OverviewChart'
+import DateRangeSheet, { presetRange, formatRangeLabel, tokyoToday } from '../components/DateRangeSheet'
+import { useAuth } from '../hooks/useAuth'
+import { summarizeJobs, summarizeByEmployee, formatMinutes, gpsCheck } from '../lib/workKpis'
 import toast from 'react-hot-toast'
 
-const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+const METRICS_KEY = 'kuripuro-dashboard-metrics-v2'
+const DEFAULT_METRICS = ['completed', 'cash', 'income', 'expenses', 'clients', 'satisfaction']
+const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
+const daysBetween = (from, to) => Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5) + 1
 
 export default function Dashboard() {
   const { lang, t } = useLang()
+  const { user } = useAuth() || {}
   const d = t.dashboard
   const slotLabels = { ...d, status: t.status }
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
@@ -22,6 +29,15 @@ export default function Dashboard() {
   const [evals, setEvals] = useState([])
   const [monthJobs, setMonthJobs] = useState([])
   const [clientRatings, setClientRatings] = useState([])
+  const [trendJobs, setTrendJobs] = useState([])
+  const [trendCashflow, setTrendCashflow] = useState([])
+  const [range, setRange] = useState(() => ({ ...presetRange('month'), preset: 'month' }))
+  const [rangeOpen, setRangeOpen] = useState(false)
+  const [editMetrics, setEditMetrics] = useState(false)
+  const [visibleMetrics, setVisibleMetrics] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(METRICS_KEY)) || DEFAULT_METRICS }
+    catch { return DEFAULT_METRICS }
+  })
   const [progressMonth, setProgressMonth] = useState(currentYearMonth())
   const [detailLoc, setDetailLoc] = useState(null)
   const [detailTuesday, setDetailTuesday] = useState(null)
@@ -33,7 +49,10 @@ export default function Dashboard() {
     const today = tokyoToday()
     const monthStart = progressMonth + '-01'
     const monthEnd = progressMonth + '-31'
-    const [c, e, j, ev, stale, mj, cr] = await Promise.all([
+    // Selected range plus the same number of days before it, for the comparison.
+    const trendStart = addDays(range.from, -daysBetween(range.from, range.to))
+    const trendEnd = addDays(range.to, 1)
+    const [c, e, j, ev, stale, mj, cr, tj, tc] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
@@ -41,6 +60,8 @@ export default function Dashboard() {
       supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
       supabase.from('jobs').select('*').gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd).neq('status', 'cancelled'),
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('jobs').select('id,scheduled_date,scheduled_time,status,employee_id,employee_name,started_at,completed_at,gps_start_distance,start_lat,checklist_total,checklist_done,photo_ai_score').gte('scheduled_date', trendStart).lt('scheduled_date', trendEnd).neq('status', 'cancelled'),
+      supabase.from('cashflow').select('entry_type,amount,entry_date').gte('entry_date', trendStart).lt('entry_date', trendEnd),
     ])
     setClients(c.data || [])
     setEmployees(e.data || [])
@@ -49,6 +70,8 @@ export default function Dashboard() {
     setStaleCount(stale.count || 0)
     setMonthJobs(mj.data || [])
     setClientRatings(cr.data || [])
+    setTrendJobs(tj.data || [])
+    setTrendCashflow(tc.data || [])
     setLastUpdate(new Date())
     setLoading(false)
   }
@@ -58,7 +81,7 @@ export default function Dashboard() {
     const tick = setInterval(() => setClock(new Date()), 1000)
     const refresh = setInterval(load, 15000)
     return () => { clearInterval(tick); clearInterval(refresh) }
-  }, [progressMonth])
+  }, [progressMonth, range.from, range.to])
 
   const cancelStaleJobs = async () => {
     const today = tokyoToday()
@@ -89,6 +112,79 @@ export default function Dashboard() {
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])
   const monthLabel = new Date(progressMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
+  const rangeDays = daysBetween(range.from, range.to)
+  const prevFrom = addDays(range.from, -rangeDays)
+  const prevTo = addDays(range.from, -1)
+  const inRange = (iso, from, to) => iso && iso >= from && iso <= to
+  const completedIn = (from, to) => trendJobs.filter(job => job.status === 'completed' && inRange(job.scheduled_date, from, to)).length
+  const cashIn = (from, to, type) => trendCashflow.filter(row => row.entry_type === type && inRange(row.entry_date, from, to))
+    .reduce((sum, row) => sum + Number(row.amount || 0), 0)
+  const periodJobs = completedIn(range.from, range.to)
+  const prevJobs = completedIn(prevFrom, prevTo)
+  const periodIncome = cashIn(range.from, range.to, 'income')
+  const periodExpenses = cashIn(range.from, range.to, 'expense')
+  const periodNetCash = periodIncome - periodExpenses
+  const prevNetCash = cashIn(prevFrom, prevTo, 'income') - cashIn(prevFrom, prevTo, 'expense')
+  const growth = (now, before) => before ? Math.round(((now - before) / Math.abs(before)) * 100) : null
+
+  // Daily columns up to ~2 months, monthly columns beyond that.
+  const daily = rangeDays <= 62
+  const bucketKeys = []
+  if (daily) for (let i = 0; i < rangeDays; i++) bucketKeys.push(addDays(range.from, i))
+  else for (let key = range.from.slice(0, 7); key <= range.to.slice(0, 7);) {
+    bucketKeys.push(key)
+    const [y, m] = key.split('-').map(Number)
+    key = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7)
+  }
+  const overviewData = bucketKeys.map(key => {
+    const from = daily ? key : (key + '-01' < range.from ? range.from : key + '-01')
+    const to = daily ? key : (addDays(new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)), 1)).toISOString().slice(0, 10), -1))
+    const end = to > range.to ? range.to : to
+    const date = new Date((daily ? key : key + '-01') + 'T12:00:00Z')
+    return {
+      key,
+      label: daily ? String(date.getUTCDate()) : date.toLocaleDateString(dateLocale, { month: 'short', timeZone: 'UTC' }),
+      title: date.toLocaleDateString(dateLocale, daily ? { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' } : { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+      jobs: completedIn(from, end),
+      cash: cashIn(from, end, 'income') - cashIn(from, end, 'expense'),
+    }
+  })
+
+  const rangeJobs = trendJobs.filter(job => inRange(job.scheduled_date, range.from, range.to))
+  const team = summarizeJobs(rangeJobs)
+  const teamPrev = summarizeJobs(trendJobs.filter(job => inRange(job.scheduled_date, prevFrom, prevTo)))
+  const people = summarizeByEmployee(rangeJobs)
+  const liveJobs = todayJobs.filter(job => job.status === 'in_progress' && job.started_at)
+  const pctText = v => v == null ? '—' : `${v}%`
+
+  const metricLabels = lang === 'ja'
+    ? { completed: '完了した作業', cash: '記録済み純入金', income: '入金', expenses: '出金', clients: '稼働中の顧客', satisfaction: '顧客満足度', today: '本日の作業', revenue: '月間契約売上（推定）', profit: '推定利益' }
+    : { completed: 'Completed jobs', cash: 'Net cash', income: 'Money in', expenses: 'Money out', clients: 'Active clients', satisfaction: 'Satisfaction', today: "Today's jobs", revenue: 'Contract revenue', profit: 'Estimated profit' }
+  Object.assign(metricLabels, lang === 'ja'
+    ? { avgService: '平均作業時間', hoursWorked: '実働時間', onTime: '時間どおり開始', gps: 'GPSチェックイン' }
+    : { avgService: 'Avg. service time', hoursWorked: 'Hours worked', onTime: 'On-time starts', gps: 'GPS check-ins' })
+  const vsPrev = lang === 'ja' ? '前期間比' : 'vs previous period'
+  const satisfaction30 = avgStars(ratingsInPeriod(clientRatings, 30))
+  const availableMetrics = [
+    { id: 'completed', tone: 'green', value: periodJobs, delta: growth(periodJobs, prevJobs) },
+    { id: 'cash', tone: 'blue', value: fmt(periodNetCash), delta: growth(periodNetCash, prevNetCash) },
+    { id: 'income', tone: 'purple', value: fmt(periodIncome) },
+    { id: 'expenses', tone: 'orange', value: fmt(periodExpenses) },
+    { id: 'clients', tone: 'teal', value: clients.length },
+    { id: 'satisfaction', tone: 'amber', value: satisfaction30 != null ? `${satisfaction30.toFixed(1)} ★` : '—', note: lang === 'ja' ? '直近30日間' : 'Last 30 days' },
+    { id: 'today', tone: 'sky', value: todayJobs.length },
+    { id: 'revenue', tone: 'navy', value: fmt(revenue), note: lang === 'ja' ? '契約データに基づく推定' : 'Estimated, per month' },
+    { id: 'profit', tone: 'green', value: fmt(profit), note: lang === 'ja' ? '契約売上 − 推定コスト' : 'Estimated, per month' },
+    { id: 'avgService', tone: 'sky', value: formatMinutes(team.avgMin), delta: team.avgMin != null && teamPrev.avgMin ? growth(team.avgMin, teamPrev.avgMin) : null },
+    { id: 'hoursWorked', tone: 'navy', value: formatMinutes(team.totalMin), delta: growth(team.totalMin, teamPrev.totalMin) },
+    { id: 'onTime', tone: 'green', value: pctText(team.onTimePct) },
+    { id: 'gps', tone: 'teal', value: pctText(team.gpsPct) },
+  ]
+  const updateVisibleMetrics = next => { setVisibleMetrics(next); try { localStorage.setItem(METRICS_KEY, JSON.stringify(next)) } catch {} }
+  const minutesAgo = lastUpdate ? Math.max(0, Math.floor((clock - lastUpdate) / 60000)) : null
+  const updatedLabel = minutesAgo == null ? '' : lang === 'ja'
+    ? (minutesAgo === 0 ? 'たった今更新' : `${minutesAgo}分前に更新`)
+    : (minutesAgo === 0 ? 'Updated just now' : `Updated ${minutesAgo} min ago`)
 
   const ratings30 = ratingsInPeriod(clientRatings, 30)
   const ratings7 = ratingsInPeriod(clientRatings, 7)
@@ -96,7 +192,6 @@ export default function Dashboard() {
   const atRisk = satisfactionByClient.filter(x => x.avg != null && x.avg < 3.5)
   const overallAvg = avgStars(ratings30)
   const weeklyAvg = avgStars(ratings7)
-  const monthlyAvg = overallAvg
   const levelColor = l => ({ excellent: 'var(--green)', good: '#60a5fa', warning: '#EF9F27', critical: 'var(--red)', none: 'var(--text3)' }[l] || 'var(--text3)')
 
   const closeDetail = () => { setDetailLoc(null); setDetailTuesday(null) }
@@ -157,25 +252,108 @@ export default function Dashboard() {
 
   return (
     <div>
-      <DetailModal />
-      <div className="dash-ref-head"><div><div className="dash-ref-eyebrow">COMMAND CENTER · TOKYO</div><h1>Good evening, Alexandre 👋</h1><p>Here's what's happening with your business today.</p></div><div className="dash-ref-actions"><Link to="/jobs" className="btn dash-ref-primary">＋ New Job</Link><Link to="/clients" className="btn">＋ New Client</Link><Link to="/faturas" className="btn">＋ Invoice</Link></div></div>
-      <div className="dash-ref-kpis">
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Contract Base</span><span className="dash-ref-kpi-icon">¥</span></div><div className="dash-ref-kpi-value">{fmt(revenue)}</div><div className="dash-ref-kpi-meta positive">Current contract base</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Profit</span><span className="dash-ref-kpi-icon">↗</span></div><div className="dash-ref-kpi-value">{fmt(profit)}</div><div className="dash-ref-kpi-meta positive">{revenue ? ((profit/revenue)*100).toFixed(1) : '0.0'}% margin</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Jobs Completion</span><span className="dash-ref-kpi-icon">✓</span></div><div className="dash-ref-kpi-value">{todayJobs.length ? Math.round(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100) : 0}%</div><div className="dash-ref-kpi-meta">Today</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Active Clients</span><span className="dash-ref-kpi-icon">♙</span></div><div className="dash-ref-kpi-value">{clients.length}</div><div className="dash-ref-kpi-meta positive">Active accounts</div></div>
-        <div className="dash-ref-kpi"><div className="dash-ref-kpi-top"><span className="dash-ref-kpi-label">Open Issues</span><span className="dash-ref-kpi-icon">!</span></div><div className="dash-ref-kpi-value">{staleCount + atRisk.length}</div><div className="dash-ref-kpi-meta danger">{staleCount} delayed · {atRisk.length} client risk</div></div>
-      </div>
-      <div className="dash-ref-grid">
-        
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Business Health</div><div className="dash-ref-card-sub">Live indicators</div></div></div><div className="dash-ref-health"><div className="dash-ref-score"><div className="dash-ref-score-inner"><strong>{revenue ? Math.max(0,Math.min(100,Math.round(profit/revenue*100))) : 0}</strong><span>OVERALL</span></div></div><div className="dash-ref-health-list"><div className="dash-ref-health-row"><span>Service Quality</span><strong>{overallAvg ? Math.round(overallAvg*20) : '—'}</strong></div><div className="dash-ref-health-row"><span>Customer Satisfaction</span><strong>{overallAvg ? Math.round(overallAvg*20) : '—'}</strong></div><div className="dash-ref-health-row"><span>Schedule Adherence</span><strong>{todayJobs.length ? Math.round(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100) : 100}</strong></div></div></div></div>
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">AI Insights</div><div className="dash-ref-card-sub">Things worth checking now</div></div><Link to="/ai" className="dash-ref-link">See all</Link></div><div className="dash-ref-insights"><div className="dash-ref-insight"><span className="dash-ref-insight-icon">⚠</span><div><strong>{staleCount ? staleCount+' jobs need attention' : 'Operations are on track'}</strong><p>Review today's schedule and delayed work.</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">↗</span><div><strong>{fmt(profit)} estimated profit</strong><p>Based on current client values.</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">◎</span><div><strong>{atRisk.length} client risks</strong><p>Low satisfaction accounts to review.</p></div></div></div></div>
-      </div>
-      <div className="dash-ref-lower">
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Today's Operations</div><div className="dash-ref-card-sub">{todayJobs.length} jobs scheduled</div></div><Link to="/jobs" className="dash-ref-link">View all</Link></div><div className="dash-ref-list">{todayJobs.slice(0,6).map(j=><div className="dash-ref-list-row" key={j.id}><span className="dash-ref-time">{j.scheduled_time||'—'}</span><span className="dash-ref-thumb"></span><div className="dash-ref-job"><strong>{j.title?.replace(/ — .*/, '')}</strong><span>{j.employee_name||'Unassigned'}</span></div><span className="dash-ref-status">{t.status[j.status]||j.status}</span></div>)}{!todayJobs.length&&<div className="empty-state"><strong>No jobs today</strong></div>}</div></div>
-        
-        <div className="dash-ref-card"><div className="dash-ref-card-head"><div><div className="dash-ref-card-title">Recent Activity</div><div className="dash-ref-card-sub">Latest operational signals</div></div><Link to="/reports" className="dash-ref-link">View all</Link></div><div className="dash-ref-insights"><div className="dash-ref-insight"><span className="dash-ref-insight-icon">✓</span><div><strong>{todayJobs.filter(j=>j.status==='completed').length} jobs completed</strong><p>Today</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">★</span><div><strong>{ratings30.length} customer ratings</strong><p>Last 30 days</p></div></div><div className="dash-ref-insight"><span className="dash-ref-insight-icon">◌</span><div><strong>{employees.length} active employees</strong><p>Current team</p></div></div></div></div>
-      </div>
+      {DetailModal()}
+      {rangeOpen && <DateRangeSheet lang={lang} value={range} onClose={() => setRangeOpen(false)} onSave={next => { setRange(next); setRangeOpen(false) }} />}
+      <header className="dx-hero">
+        <div className="dx-hero-copy">
+          <span className="dx-eyebrow">{new Date().toLocaleDateString(dateLocale, { dateStyle: 'full', timeZone: 'Asia/Tokyo' })}</span>
+          <h1>{lang === 'ja' ? <>ダッシュボードへ<br />ようこそ</> : <>Welcome to your<br />Dashboard</>}{user?.name ? <span className="dx-hero-name">{lang === 'ja' ? `${user.name}さん` : `, ${user.name.split(' ')[0]}`}</span> : null}</h1>
+        </div>
+        <div className="dx-hero-controls">
+          <button type="button" className="dx-range" onClick={() => setRangeOpen(true)} aria-haspopup="dialog">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+            <span>{formatRangeLabel(range, lang)}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div className="dx-updated">{updatedLabel}{updatedLabel && ' · '}<button type="button" onClick={load}>{lang === 'ja' ? '更新' : 'Refresh'}</button></div>
+        </div>
+      </header>
+
+      <section className="dx-kpis-wrap" aria-label={lang === 'ja' ? '注目指標' : 'Key metrics'}>
+        <div className="dx-kpis">
+          {availableMetrics.filter(metric => visibleMetrics.includes(metric.id)).map(metric => (
+            <div className={`dx-kpi tone-${metric.tone}`} key={metric.id}>
+              <span className="dx-kpi-label">{metricLabels[metric.id]}</span>
+              <strong className="dx-kpi-value">{metric.value}</strong>
+              {metric.delta != null
+                ? <small className={`dx-kpi-delta ${metric.delta >= 0 ? 'is-up' : 'is-down'}`}>{metric.delta > 0 ? '▲ +' : metric.delta < 0 ? '▼ ' : ''}{metric.delta}% <em>{vsPrev}</em></small>
+                : metric.note ? <small className="dx-kpi-note">{metric.note}</small> : null}
+            </div>
+          ))}
+        </div>
+        <div className="dx-kpi-edit">
+          <button type="button" onClick={() => setEditMetrics(value => !value)}>{editMetrics ? (lang === 'ja' ? '完了' : 'Done') : (lang === 'ja' ? '表示する指標を編集' : 'Edit tiles')}</button>
+        </div>
+        {editMetrics && <div className="dash-metric-picker">{availableMetrics.map(metric => <label key={metric.id}><input type="checkbox" checked={visibleMetrics.includes(metric.id)} onChange={event => updateVisibleMetrics(event.target.checked ? [...visibleMetrics, metric.id] : visibleMetrics.filter(id => id !== metric.id))}/><span>{metricLabels[metric.id]}</span></label>)}</div>}
+      </section>
+
+      <section className="card dx-overview">
+        <div className="dx-overview-head">
+          <div><h2>{lang === 'ja' ? '実績の概要' : 'Performance overview'}</h2><p>{formatRangeLabel(range, lang)} · {lang === 'ja' ? (daily ? '日別' : '月別') : (daily ? 'by day' : 'by month')}</p></div>
+        </div>
+        <OverviewChart data={overviewData} cashLabel={metricLabels.cash} jobsLabel={metricLabels.completed} formatCash={fmt} emptyLabel={lang === 'ja' ? 'データなし' : 'No data'} />
+      </section>
+
+      <section className="card dx-team">
+        <div className="dx-overview-head">
+          <div><h2>{lang === 'ja' ? 'チームのパフォーマンス' : 'Team performance'}</h2><p>{formatRangeLabel(range, lang)} · {lang === 'ja' ? '開始・終了時刻とGPSから' : 'from start/finish times and GPS'}</p></div>
+          <Link to="/live" className="dx-link">{lang === 'ja' ? 'ライブ追跡 →' : 'Live tracking →'}</Link>
+        </div>
+        {liveJobs.length > 0 && (
+          <div className="dx-live">
+            {liveJobs.map(job => {
+              const secs = Math.max(0, Math.floor((clock - new Date(job.started_at)) / 1000))
+              const gps = gpsCheck(job)
+              return (
+                <div key={job.id} className="dx-live-item">
+                  <span className="dx-live-dot" />
+                  <div><strong>{job.employee_name || '—'}</strong><small>{(job.title || '').replace(/ — .*/, '')}{gps === 'away' ? (lang === 'ja' ? ' · ⚠ 現場外' : ' · ⚠ away from site') : gps ? ' · 📍' : ''}</small></div>
+                  <b>{String(Math.floor(secs / 3600)).padStart(2, '0')}:{String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</b>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <div className="dx-team-kpis">
+          {[
+            [metricLabels.avgService, formatMinutes(team.avgMin), teamPrev.avgMin != null && team.avgMin != null ? `${team.avgMin - teamPrev.avgMin > 0 ? '+' : team.avgMin - teamPrev.avgMin < 0 ? '−' : '±'}${formatMinutes(Math.abs(team.avgMin - teamPrev.avgMin))} ${vsPrev}` : null],
+            [metricLabels.hoursWorked, formatMinutes(team.totalMin), lang === 'ja' ? `計測 ${team.timed}件` : `${team.timed} timed jobs`],
+            [metricLabels.onTime, pctText(team.onTimePct), team.avgDelayMin != null ? (lang === 'ja' ? `平均開始 ${team.avgDelayMin}分` : `avg. start ${team.avgDelayMin > 0 ? '+' : ''}${team.avgDelayMin} min`) : null],
+            [metricLabels.gps, pctText(team.gpsPct), team.gpsAway ? (lang === 'ja' ? `現場外 ${team.gpsAway}件` : `${team.gpsAway} away from site`) : null],
+            [lang === 'ja' ? 'チェックリスト' : 'Checklist', pctText(team.checklistPct), null],
+          ].map(([label, value, sub]) => (
+            <div key={label} className="dx-team-kpi"><span>{label}</span><strong>{value}</strong>{sub && <small>{sub}</small>}</div>
+          ))}
+        </div>
+        {people.length === 0 ? <div className="ov-empty">{lang === 'ja' ? 'この期間の完了作業はありません' : 'No completed jobs in this period'}</div> : (
+          <div className="dx-table-wrap">
+            <table className="dx-table">
+              <thead><tr>
+                <th>{lang === 'ja' ? 'スタッフ' : 'Employee'}</th>
+                <th>{lang === 'ja' ? '件数' : 'Jobs'}</th>
+                <th>{lang === 'ja' ? '平均時間' : 'Avg. time'}</th>
+                <th>{lang === 'ja' ? '実働' : 'Hours'}</th>
+                <th>{lang === 'ja' ? '時間どおり' : 'On time'}</th>
+                <th>GPS</th>
+                <th>{lang === 'ja' ? 'チェック' : 'Checklist'}</th>
+              </tr></thead>
+              <tbody>
+                {people.map(p => (
+                  <tr key={p.id || p.name}>
+                    <td>{p.id ? <Link to={`/employees/${p.id}`}>{p.name}</Link> : p.name}</td>
+                    <td>{p.completed}</td>
+                    <td>{formatMinutes(p.avgMin)}</td>
+                    <td>{formatMinutes(p.totalMin)}</td>
+                    <td className={p.onTimePct != null && p.onTimePct < 80 ? 'is-bad' : ''}>{pctText(p.onTimePct)}</td>
+                    <td className={p.gpsAway ? 'is-bad' : ''}>{pctText(p.gpsPct)}{p.gpsAway ? ` · ⚠${p.gpsAway}` : ''}</td>
+                    <td>{pctText(p.checklistPct)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {staleCount > 0 && (
         <div style={{ background: 'rgba(239,159,39,0.08)', border: '1px solid rgba(239,159,39,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -183,16 +361,6 @@ export default function Dashboard() {
           <button onClick={cancelStaleJobs} className="btn btn-sm" style={{ background: '#EF9F27', color: '#fff', border: 'none', flexShrink: 0 }}>{d.cancelStale}</button>
         </div>
       )}
-
-      <ExecutiveDashboard
-        clients={clients}
-        monthJobs={monthJobs}
-        todayJobs={todayJobs}
-        employees={employees}
-        staleCount={staleCount}
-        atRisk={atRisk}
-        deepProgress={deepProgress}
-      />
 
       <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid #c19c56' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
@@ -205,10 +373,9 @@ export default function Dashboard() {
 
         <div className="dash-sat">
           {[
-            [d.avgRating, overallAvg != null ? overallAvg.toFixed(1) + ' ★' : '—'],
-            [d.weeklyAvg, weeklyAvg != null ? weeklyAvg.toFixed(1) : '—'],
-            [d.monthlyAvg, monthlyAvg != null ? monthlyAvg.toFixed(1) : '—'],
-            [d.ratingsCount, ratings30.length],
+          [d.avgRating, overallAvg != null ? overallAvg.toFixed(1) + ' ★' : '—'],
+          [d.weeklyAvg, weeklyAvg != null ? weeklyAvg.toFixed(1) : '—'],
+          [d.ratingsCount, ratings30.length],
           ].map(([l, v]) => (
             <div key={l} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: '#EF9F27' }}>{v}</div>
@@ -286,13 +453,13 @@ export default function Dashboard() {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {deepProgress.tuesdaySummary.map(({ date, expected, done }) => {
                 const ok = done >= expected
-                const shortDate = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })
+                const shortDate = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })
                 return (
                   <button key={date} type="button" onClick={() => { setDetailTuesday(date); setDetailLoc(null) }}
                     style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.1)', border: `1px solid ${ok ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.25)'}`, fontSize: 12, textAlign: 'left' }}>
-                    <div style={{ fontWeight: 700 }}>{fill(d.tuesdayShort, { date: shortDate })}</div>
-                    <div style={{ color: ok ? '#4ade80' : '#fbbf24', fontWeight: 600 }}>{fill(d.doneOf, { done, expected })}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{d.clickTuesday}</div>
+                    <div style={{ fontWeight: 700 }}>{shortDate}</div>
+                    <div style={{ color: ok ? '#15803d' : '#a16207', fontWeight: 600 }}>{fill(d.doneOf, { done, expected })}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{d.clickTuesday}</div>
                   </button>
                 )
               })}
@@ -325,6 +492,33 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {todayJobs.some(j => j.area) && (() => {
+        // Today by area (zone of the location): done / still to do
+        const byArea = {}
+        for (const j of todayJobs) {
+          if (j.status === 'cancelled') continue
+          const a = j.area || (lang === 'ja' ? '未設定' : 'No area')
+          byArea[a] = byArea[a] || { total: 0, done: 0, staff: new Set() }
+          byArea[a].total++
+          if (j.status === 'completed') byArea[a].done++
+          if (j.employee_name) byArea[a].staff.add(j.employee_name.split(' ')[0])
+        }
+        return (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>📍 {lang === 'ja' ? '本日のエリア別' : 'Today by area'}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+              {Object.entries(byArea).sort((a, b) => b[1].total - a[1].total).map(([area, v]) => (
+                <Link key={area} to="/jobs" style={{ textDecoration: 'none', color: 'inherit', background: 'var(--surface2)', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{area}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>{v.done}/{v.total}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{lang === 'ja' ? '完了' : 'done'}{v.staff.size ? ` · ${[...v.staff].join(', ')}` : ''}</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ fontWeight: 600, marginBottom: 12 }}>{d.todayJobsTitle} ({tokyoToday()})</div>
         {todayJobs.length === 0 ? (
@@ -336,7 +530,7 @@ export default function Dashboard() {
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 6 }}>{name}</div>
             {jobs.map(j => (
               <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                <span>{j.title?.replace(/ — .*/, '')} · {j.scheduled_time || '—'}</span>
+                <span>{j.title?.replace(/ — .*/, '')} · {j.scheduled_time || '—'}{j.area ? ` · 📍 ${j.area}` : ''}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: statusColor(j.status) }}>{t.status[j.status] || j.status}</span>
               </div>
             ))}

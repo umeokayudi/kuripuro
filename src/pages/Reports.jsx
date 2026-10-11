@@ -1,7 +1,9 @@
 import { ReportsAnalytics } from '../components/AnalyticsCharts'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { jobToServiceReport, fmtDuration, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync } from '../lib/jobReport'
+import { fmtDuration, fmtTime, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync, jobToReportView } from '../lib/jobReport'
+import SignatureImage from '../components/SignatureImage'
+import { tokyoToday } from '../lib/dates'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -13,6 +15,34 @@ function typeBadge(type, tr) {
   return type === 'retroativo'
     ? <span className="badge badge-amber">{tr.typeRetro}</span>
     : <span className="badge badge-green">{tr.typeLive}</span>
+}
+
+const mapUrl = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`
+
+function GpsBlock({ r, tr, lang }) {
+  const rows = [
+    [tr.gpsIn, r.started_at, r.gps_lat_in, r.gps_lng_in, r.gps_acc_in, r.gps_dist_in],
+    [tr.gpsOut, r.completed_at, r.gps_lat_out, r.gps_lng_out, r.gps_acc_out, r.gps_dist_out],
+  ]
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{tr.gpsTitle}</div>
+      <div className="grid-2" style={{ gap: 8 }}>
+        {rows.map(([label, at, lat, lng, acc, dist]) => (
+          <div key={label} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 600 }}>{label} · {at ? fmtTime(at, lang) : '—'}</div>
+            {lat != null && lng != null ? (
+              <>
+                <div style={{ color: 'var(--text3)' }}>{Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}{acc != null ? ` (±${Math.round(acc)} m)` : ''}</div>
+                {dist != null && <div style={{ color: Number(dist) > 150 ? 'var(--red)' : 'var(--text3)' }}>{fill(tr.gpsFromSite, { m: Math.round(dist) })}</div>}
+                <a href={mapUrl(lat, lng)} target="_blank" rel="noreferrer">{tr.openMap} ↗</a>
+              </>
+            ) : <div style={{ color: 'var(--text3)' }}>{tr.gpsNone}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function typeLabel(type, tr) {
@@ -30,29 +60,27 @@ export default function Reports() {
   const [aiAnalysis, setAiAnalysis] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [lightbox, setLightbox] = useState(null)
+  const [filterDay, setFilterDay] = useState('')
+  const [pdfBusy, setPdfBusy] = useState(false)
 
-  useEffect(() => { loadReports() }, [filterDays, lang])
+  useEffect(() => { loadReports() }, [filterDays, filterDay, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadReports = async () => {
     setLoading(true)
     const sinceIso = new Date(Date.now() - filterDays * 86400000).toISOString()
     const sinceDate = sinceIso.split('T')[0]
 
-    const [{ data: srData, error: srErr }, { data: jobs, error: jobErr }] = await Promise.all([
-      supabase
-        .from('service_reports')
-        .select('*')
-        .gte('report_date', sinceDate)
-        .order('created_at', { ascending: false })
-        .limit(100),
-      supabase
-        .from('jobs')
-        .select('*')
-        .eq('status', 'completed')
-        .gte('completed_at', sinceIso)
-        .order('completed_at', { ascending: false })
-        .limit(100),
-    ])
+    // The list starts from the JOBS, so every job shows up even when service_reports
+    // has no row for it yet (before v1.0.14 the list used service_reports only as soon
+    // as it had any row, and the other completed jobs disappeared from the report).
+    const jobsQuery = filterDay
+      ? supabase.from('jobs').select('*').eq('scheduled_date', filterDay).neq('status', 'cancelled').order('scheduled_time', { ascending: true }).limit(500)
+      : supabase.from('jobs').select('*').eq('status', 'completed').gte('completed_at', sinceIso).order('completed_at', { ascending: false }).limit(500)
+    const srQuery = filterDay
+      ? supabase.from('service_reports').select('*').eq('report_date', filterDay).limit(500)
+      : supabase.from('service_reports').select('*').gte('report_date', sinceDate).order('created_at', { ascending: false }).limit(500)
+
+    const [{ data: srData, error: srErr }, { data: jobs, error: jobErr }] = await Promise.all([srQuery, jobsQuery])
 
     if (srErr && jobErr) {
       toast.error(jobErr.message || srErr.message)
@@ -61,41 +89,51 @@ export default function Reports() {
       return
     }
 
-    const jobsById = Object.fromEntries((jobs || []).map(j => [j.id, j]))
+    const srByJob = Object.fromEntries((srData || []).filter(r => r.job_id).map(r => [r.job_id, r]))
+    const rows = (jobs || []).map(j => srByJob[j.id] ? mergeReportWithJob(srByJob[j.id], j, lang) : jobToReportView(j, lang))
 
-    if (srData?.length) {
-      let enriched = srData.map(r => mergeReportWithJob(r, jobsById[r.job_id], lang))
+    // service_reports whose job is outside this query (e.g. completed late) still count
+    const seen = new Set((jobs || []).map(j => j.id))
+    const orphans = (srData || []).filter(r => !r.job_id || !seen.has(r.job_id))
+    if (orphans.length) {
+      const ids = orphans.map(r => r.job_id).filter(Boolean)
+      const { data: extraJobs } = ids.length ? await supabase.from('jobs').select('*').in('id', ids) : { data: [] }
+      const extraById = Object.fromEntries((extraJobs || []).map(j => [j.id, j]))
+      for (const r of orphans) rows.push(extraById[r.job_id] ? mergeReportWithJob(r, extraById[r.job_id], lang) : r)
+    }
 
-      const missingJobIds = srData
-        .map(r => r.job_id)
-        .filter(id => id && !jobsById[id])
+    rows.sort((x, y) => filterDay
+      ? String(x.started_at || x.time_in || '').localeCompare(String(y.started_at || y.time_in || ''))
+      : String(y.completed_at || y.created_at || '').localeCompare(String(x.completed_at || x.created_at || '')))
+    setReports(rows)
 
-      if (missingJobIds.length) {
-        const { data: extraJobs } = await supabase
-          .from('jobs')
-          .select('*')
-          .in('id', missingJobIds)
-        for (const job of extraJobs || []) jobsById[job.id] = job
-        enriched = srData.map(r => mergeReportWithJob(r, jobsById[r.job_id], lang))
-      }
-
-      setReports(enriched)
-
-      for (const r of srData) {
-        const job = jobsById[r.job_id]
-        if (job && reportNeedsPhotoSync(r, job)) {
-          syncServiceReport(supabase, job).catch(() => {})
-        }
-      }
-    } else {
-      const mapped = (jobs || []).map(j => jobToServiceReport(j, lang))
-      setReports(mapped)
-      for (const j of jobs || []) {
-        syncServiceReport(supabase, j).catch(() => {})
-      }
+    for (const j of jobs || []) {
+      if (j.status !== 'completed') continue
+      const r = srByJob[j.id]
+      if (!r || reportNeedsPhotoSync(r, j)) syncServiceReport(supabase, j).catch(() => {})
     }
 
     setLoading(false)
+  }
+
+  const downloadDayPdf = async () => {
+    if (!filterDay) return toast.error(tr.dayPdfNeedsDay)
+    const ids = filtered.map(r => r.job_id).filter(Boolean)
+    if (!ids.length) return toast.error(tr.empty)
+    setPdfBusy(true)
+    try {
+      const { data: dayJobs, error } = await supabase.from('jobs').select('*').in('id', ids)
+      if (error) throw error
+      const order = new Map(ids.map((id, i) => [id, i]))
+      const sorted = (dayJobs || []).sort((a, b) => order.get(a.id) - order.get(b.id))
+      const { generateDailyReport } = await import('../lib/generatePDF')
+      const doc = await generateDailyReport(filterDay, sorted, filterEmp || (lang === 'ja' ? '全スタッフ' : 'All staff'), { showEmployee: !filterEmp })
+      doc.save(`report_${filterDay}${filterEmp ? '_' + filterEmp.replace(/\s+/g, '_') : ''}.pdf`)
+      toast.success(tr.dayPdfReady)
+    } catch (e) {
+      toast.error(e.message)
+    }
+    setPdfBusy(false)
   }
 
   const employees = useMemo(() =>
@@ -153,9 +191,9 @@ export default function Reports() {
   return (
     <div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
-        <div>
+        <div style={{ opacity: filterDay ? 0.45 : 1 }}>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.period}</div>
-          <select value={filterDays} onChange={e => setFilterDays(Number(e.target.value))} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
+          <select disabled={!!filterDay} value={filterDays} onChange={e => setFilterDays(Number(e.target.value))} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
             <option value={7}>{tr.days7}</option>
             <option value={30}>{tr.days30}</option>
             <option value={90}>{tr.days90}</option>
@@ -168,7 +206,17 @@ export default function Reports() {
             {employees.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.day}</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input type="date" value={filterDay} onChange={e => setFilterDay(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)' }} />
+            {filterDay
+              ? <button className="btn btn-sm" onClick={() => setFilterDay('')}>{tr.anyDay}</button>
+              : <button className="btn btn-sm" onClick={() => setFilterDay(tokyoToday())}>{lang === 'ja' ? '今日' : 'Today'}</button>}
+          </div>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {filterDay && <button className="btn" onClick={downloadDayPdf} disabled={pdfBusy || !filtered.length}>{pdfBusy ? tr.loading : tr.dayPdf}</button>}
           <button className="btn btn-primary" onClick={runAiAnalysis} disabled={aiLoading || !filtered.length}>
             {aiLoading ? tr.analyzing : tr.aiAnalyze}
           </button>
@@ -220,6 +268,7 @@ export default function Reports() {
                   <th>{tr.colDuration}</th>
                   <th>{tr.colChecklist}</th>
                   <th>{tr.colAiPhoto}</th>
+                  <th>{tr.colSignature}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -229,7 +278,7 @@ export default function Reports() {
                     <td style={{ fontWeight: 500 }}>{r.employee_name}</td>
                     <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name || r.job_title}</td>
                     <td>{r.report_date}</td>
-                    <td>{typeBadge(r.report_type, tr)}</td>
+                    <td>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr)}</td>
                     <td>{fmtDuration(r.duration_min, lang)}</td>
                     <td>{r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</td>
                     <td>
@@ -245,6 +294,7 @@ export default function Reports() {
                         />
                       ) : (r.photo_ai_score == null ? '—' : null)}
                     </td>
+                    <td><SignatureImage url={r.signature_url} height={34} emptyLabel={r.job_status && r.job_status !== 'completed' ? '—' : tr.noSignature} /></td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => setSelected(r)}>{tr.read}</button>
@@ -265,7 +315,7 @@ export default function Reports() {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 16 }}>{selected.job_title || selected.client_name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{selected.employee_name} · {selected.report_date}</div>
+                <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{selected.employee_name} · {selected.report_date}{selected.area ? ` · ${tr.area}: ${selected.area}` : ''}</div>
               </div>
               <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
             </div>
@@ -284,6 +334,13 @@ export default function Reports() {
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{v || '—'}</div>
                 </div>
               ))}
+            </div>
+
+            <GpsBlock r={selected} tr={tr} lang={lang} />
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{tr.signature}</div>
+              <SignatureImage url={selected.signature_url} height={90} emptyLabel={tr.noSignature} />
             </div>
 
             {selected.notes_out && (

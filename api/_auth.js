@@ -31,3 +31,38 @@ export function requireAdminSecretStrict(req, res) {
   }
   return requireAdminSecret(req, res)
 }
+
+/**
+ * Requires the signed login cookie (set by /api/sales-session at login) for
+ * routes that cost money (Gemini) or touch files. Returns the user or null
+ * after answering 401.
+ */
+export async function requireAppSession(req, res, roles = ['admin', 'employee']) {
+  const { requireSalesSession } = await import('./_salesSession.js')
+  return requireSalesSession(req, res, roles)
+}
+
+// Per-person ceiling on AI calls, so a leaked or looping session cannot run up
+// the Gemini bill. Kept in memory per server instance: a soft limit, not a quota.
+const usage = new Map()
+
+export function aiRateLimited(user, res, { max = 40, windowMin = 10 } = {}) {
+  const key = `${user.role}:${user.id}`
+  const now = Date.now()
+  const entry = usage.get(key)
+  if (!entry || entry.reset <= now) {
+    usage.set(key, { count: 1, reset: now + windowMin * 60_000 })
+    return false
+  }
+  entry.count += 1
+  if (entry.count <= max) return false
+  res.status(429).json({ error: 'Muitas análises seguidas. Aguarde alguns minutos e tente de novo.' })
+  return true
+}
+
+/** Admin-only routes: a valid admin login, or the old shared secret when it is configured. */
+export async function requireAdmin(req, res) {
+  const secret = process.env.ADMIN_API_SECRET
+  if (secret && req.headers['x-kuripuro-admin-key'] === secret) return true
+  return Boolean(await requireAppSession(req, res, ['admin']))
+}

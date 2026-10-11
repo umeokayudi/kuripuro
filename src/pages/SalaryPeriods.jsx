@@ -81,19 +81,20 @@ export default function SalaryPeriods() {
           status: 'awaiting_confirmation',
         }, { onConflict: 'period,employee_id' })
 
-        await supabase.from('salary_payments').upsert({
+        // No unique index on (employee_id, period, payment_type): deductions and
+        // advances share the period, so update the salary row if it exists.
+        const salaryRow = {
           employee_id: emp.id, employee_name: emp.full_name,
           period, amount: net, payment_date: payDate,
           description: desc,
           status: 'scheduled', payment_type: 'salary', is_deduction: false,
-        }, { onConflict: 'employee_id,period,payment_type', ignoreDuplicates: false }).catch(() => {
-          supabase.from('salary_payments').insert({
-            employee_id: emp.id, employee_name: emp.full_name,
-            period, amount: net, payment_date: payDate,
-            description: desc,
-            status: 'scheduled', payment_type: 'salary', is_deduction: false,
-          })
-        })
+        }
+        const { data: existing } = await supabase.from('salary_payments')
+          .select('id').eq('employee_id', emp.id).eq('period', period).eq('payment_type', 'salary').limit(1)
+        const { error: payErr } = existing?.length
+          ? await supabase.from('salary_payments').update(salaryRow).eq('id', existing[0].id)
+          : await supabase.from('salary_payments').insert(salaryRow)
+        if (payErr) throw payErr
       }
 
       toast.success(fill(p.closed, { period: fmtPeriod(period) }))

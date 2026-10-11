@@ -14,7 +14,6 @@ import {
   titleMatchesLocation,
   getCleaningType,
   parseDeepComponents,
-  isDeepCleanAllowedOnDate,
   DEFAULT_DEEP_CLEAN_PRICE,
   ALL_DEEP_COMPONENT_IDS,
 } from './cleaningType'
@@ -264,10 +263,6 @@ export async function employeeAddService(supabase, {
     return { ok: false, error: 'deep_components_required' }
   }
 
-  if (cleaningType === 'deep' && !isDeepCleanAllowedOnDate(location.name, date)) {
-    return { ok: false, error: 'wrong_deep_day' }
-  }
-
   const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })
 
   const { data: myActive } = await supabase
@@ -401,11 +396,6 @@ export async function preparePastServiceJob(supabase, {
 
   if (cleaningType === 'deep' && !deepComponents?.length) {
     return { ok: false, error: 'deep_components_required' }
-  }
-
-  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
-  if (cleaningType === 'deep' && date >= today && !isDeepCleanAllowedOnDate(location.name, date)) {
-    return { ok: false, error: 'wrong_deep_day' }
   }
 
   const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })
