@@ -107,7 +107,7 @@ export default function SalespersonPortal() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/sales-data?action=dashboard', { credentials: 'same-origin', cache: 'no-store' })
+      const response = await fetch('/api/sales-data', { credentials: 'same-origin', cache: 'no-store' })
       const result = await response.json().catch(() => ({}))
       if (response.status === 401) { toast.error(c.sessionExpired); logout(); return }
       if (!response.ok) throw new Error(result.error || c.unavailable)

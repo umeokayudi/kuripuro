@@ -35,7 +35,7 @@ export default function SalesTeam() {
   const [openReport, setOpenReport] = useState('')
 
   const load = useCallback(async () => {
-    try { setData(await salesGet('/api/sales-data?action=dashboard', lang)); setError('') }
+    try { setData(await salesGet('/api/sales-data', lang)); setError('') }
     catch (e) { setError(e.message) }
   }, [lang])
   useEffect(() => { load() }, [load])
