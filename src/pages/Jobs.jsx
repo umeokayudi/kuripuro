@@ -16,6 +16,12 @@ import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient,
 import { saveSpotContractWithInvoice, generateContractForJob } from '../lib/spotContractOps'
 import { fetchContractSellers } from '../lib/contractSellers'
 import SellerCommissionFields from '../components/SellerCommissionFields'
+import JobsPeriodPanel from '../components/JobsPeriodPanel'
+import { tokyoToday } from '../lib/dates'
+import { jobDurationMin } from '../lib/workKpis'
+import {
+  periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
+} from '../lib/jobsPeriod'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
@@ -470,6 +476,9 @@ export default function Jobs() {
   const CLEANING_TYPES = cleaningTypesForLang(lang)
   const [tab, setTab] = useState('list')
   const [cleaningFilter, setCleaningFilter] = useState('all')
+  const [period, setPeriod] = useState('7d')
+  const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
+  const [people, setPeople] = useState(() => new Set())
   const [jobs, setJobs] = useState([])
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
@@ -609,10 +618,32 @@ export default function Jobs() {
 
   const matchingJobs = searchId ? jobs.filter(j => j.id === searchId) : jobs
   const spotJobs = matchingJobs.filter(j => j.job_category === 'spot')
-  const regularJobs = matchingJobs.filter(j => j.job_category !== 'spot')
+  const allRegularJobs = matchingJobs.filter(j => j.job_category !== 'spot')
+  // Period + people filters (skipped when opening one job from search).
+  const range = searchId ? null : periodRange(period, tokyoToday(), customRange)
+  const prevRange = previousRange(range)
+  const peopleOptions = (() => {
+    const seen = new Map()
+    for (const j of allRegularJobs) if (!seen.has(j.employee_id || '')) seen.set(j.employee_id || '', j.employee_name || '')
+    for (const e of employees) if (seen.has(e.id)) seen.set(e.id, e.full_name)
+    return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => (!a.id) - (!b.id) || a.name.localeCompare(b.name))
+  })()
+  const byPeople = j => searchId || matchesPeople(j, people)
+  const regularJobs = allRegularJobs.filter(j => inRange(j, range) && byPeople(j))
+  const prevRegularJobs = prevRange ? allRegularJobs.filter(j => inRange(j, prevRange) && byPeople(j)) : []
   const basicJobs = regularJobs.filter(j => getCleaningType(j) === 'basic')
   const deepJobs = regularJobs.filter(j => getCleaningType(j) === 'deep')
   const filteredJobs = cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs
+  const prevFilteredJobs = prevRegularJobs.filter(j => cleaningFilter === 'all' || getCleaningType(j) === cleaningFilter)
+  const periodSummary = summarize(filteredJobs)
+  const prevSummary = prevRange ? summarize(prevFilteredJobs) : null
+  const personRows = summarizeByPerson(filteredJobs, prevFilteredJobs)
+  const dayTotals = {}
+  for (const j of filteredJobs) {
+    const d = (dayTotals[j.scheduled_date] ||= { n: 0, min: 0 })
+    d.n++
+    d.min += jobDurationMin(j) || 0
+  }
   const listCompleted = filteredJobs.filter(j => j.status === 'completed').length
   const listPct = filteredJobs.length ? Math.round((listCompleted / filteredJobs.length) * 100) : 0
 
@@ -633,6 +664,15 @@ export default function Jobs() {
 
       {tab==='list' && (
         <div>
+          {!searchId && (
+            <JobsPeriodPanel
+              period={period} setPeriod={setPeriod}
+              custom={customRange} setCustom={setCustomRange}
+              range={range} prevRange={prevRange}
+              people={people} setPeople={setPeople} peopleOptions={peopleOptions}
+              summary={periodSummary} prevSummary={prevSummary} byPerson={personRows}
+            />
+          )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
             {[
               { key: 'all', label: jt.filterAll, count: regularJobs.length, color: 'var(--navy)' },
@@ -675,12 +715,25 @@ export default function Jobs() {
               </div>
             </div>
           )}
-          {filteredJobs.map(j => {
+          {filteredJobs.map((j, idx) => {
             const ctype = getCleaningType(j)
             const ctypeCfg = CLEANING_TYPES[ctype]
             const locName = locationNameFromTitle(j.title)
+            const dur = jobDurationMin(j)
+            const startEnd = fmtStartEnd(j)
+            const newDay = j.scheduled_date !== filteredJobs[idx - 1]?.scheduled_date
+            const dayInfo = dayTotals[j.scheduled_date]
             return (
-            <div key={j.id} className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${ctypeCfg.color}` }}>
+            <div key={j.id}>
+            {newDay && j.scheduled_date && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, margin: '14px 2px 8px', fontSize: 13, color: 'var(--text2)' }}>
+                <span style={{ fontWeight: 800, color: 'var(--text)' }}>
+                  {new Date(j.scheduled_date + 'T12:00:00').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                </span>
+                <span>{fill(jt.jobsWithJobs, { n: dayInfo.n })}{dayInfo.min > 0 && ` · ⏱ ${fmtMinutes(dayInfo.min)}`}</span>
+              </div>
+            )}
+            <div className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${ctypeCfg.color}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
@@ -692,6 +745,12 @@ export default function Jobs() {
                   <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
                     👤 {j.employee_name || '—'} · 📅 {j.scheduled_date} · 🕐 {j.scheduled_time || '—'}
                   </div>
+                  {(dur != null || startEnd) && (
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>
+                      ⏱ {dur != null ? fmtMinutes(dur) : st.in_progress || '…'}
+                      {startEnd && <span style={{ fontWeight: 500, color: 'var(--text3)' }}> ({startEnd})</span>}
+                    </div>
+                  )}
                   {j.address && (
                     <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {j.address.startsWith('http') ? `🗺 ${jt.maps}` : j.address}
@@ -743,6 +802,7 @@ export default function Jobs() {
                 )}
                 {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>{jt.cancel}</button>}
               </div>
+            </div>
             </div>
           )})}
         </div>
