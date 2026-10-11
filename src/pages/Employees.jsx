@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import AvailabilityAdmin from '../components/AvailabilityAdmin'
+import NfcClockAdmin from '../components/NfcClockAdmin'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -142,6 +143,7 @@ export default function Employees() {
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>+ Add Employee</button>
         <button className={`tab-pill${tab==='complaints'?' active':''}`} onClick={()=>setTab('complaints')}>Complaints</button>
         <button className={`tab-pill${tab==='availability'?' active':''}`} onClick={()=>setTab('availability')}>🗓 Availability{pendingAvail>0?` (${pendingAvail})`:''}</button>
+        <button className={`tab-pill${tab==='nfc'?' active':''}`} onClick={()=>setTab('nfc')}>📶 NFC clock</button>
       </div>
 
       {tab==='list' && (
@@ -287,6 +289,8 @@ export default function Employees() {
           <button className="btn btn-primary" style={{marginTop:8}} onClick={handleAdd}>✅ Register Employee</button>
         </div>
       )}
+
+      {tab==='nfc' && <NfcClockAdmin employees={employees} />}
 
       {tab==='availability' && <AvailabilityAdmin employees={employees} onPendingCount={setPendingAvail} />}
 
