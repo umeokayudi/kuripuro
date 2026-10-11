@@ -7,6 +7,11 @@ import SpotContracts from '../components/SpotContracts'
 import { spotContractHtml, recurringToContract } from '../lib/spotContract'
 import { showPrintOverlay } from '../lib/openPrintHtml'
 import { saveContractPdf, contractPdfUrl } from '../lib/spotContractOps'
+import { sellerFields } from '../lib/spotContract'
+import { fetchContractSellers } from '../lib/contractSellers'
+import SellerCommissionFields from '../components/SellerCommissionFields'
+
+const NO_SELLER = { salesperson_id:'', salesperson_name:'', commission_type:null, commission_value:null, commission_amount:0 }
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const SERVICE_TYPES = ['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning']
@@ -32,9 +37,10 @@ function RecurringContracts() {
   const [selectedClient, setSelectedClient] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, discount_percent:0, tax_rate:10, price_includes_tax:true, billing_day:10, billing_notes:'', hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
+  const [form, setForm] = useState({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, discount_percent:0, tax_rate:10, price_includes_tax:true, billing_day:10, billing_notes:'', hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'', ...NO_SELLER })
+  const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
 
-  useEffect(() => { loadClients() }, [])
+  useEffect(() => { loadClients(); fetchContractSellers().then(setSellers) }, [])
   useEffect(() => { if (selectedClient) loadContracts(selectedClient) }, [selectedClient])
 
   const loadClients = async () => {
@@ -66,6 +72,9 @@ function RecurringContracts() {
     const visits = calcVisits(form.days_of_week)
     const revenue = form.billing_type==='fixed_monthly' ? parseFloat(form.fixed_monthly||0) : visits * parseFloat(form.price_per_visit||0)
     const payload = { client_id:selectedClient, ...form, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, area:(form.area||'').trim()||null, monthly_revenue:revenue }
+    // Seller of this location: monthly commission (salesperson_name is only on spot contracts).
+    Object.assign(payload, sellerFields(form))
+    delete payload.salesperson_name
 
     if (editing) {
       const { error } = await supabase.from('service_contracts').update(payload).eq('id',editing)
@@ -83,13 +92,13 @@ function RecurringContracts() {
     await supabase.from('clients').update({ monthly_revenue: totalRevenue }).eq('id', selectedClient)
 
     setShowForm(false); setEditing(null)
-    setForm({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })
+    setForm({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'', ...NO_SELLER })
     loadContracts(selectedClient)
   }
 
   const handleEdit = (c) => {
     setEditing(c.id)
-    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', area:c.area||'', service_type:c.service_type||'Basic Cleaning', billing_type:c.billing_type||'per_visit', price_per_visit:c.price_per_visit||0, fixed_monthly:c.fixed_monthly||0, discount_percent:c.discount_percent||0, tax_rate:c.tax_rate??10, price_includes_tax:c.price_includes_tax!==false, billing_day:c.billing_day||10, billing_notes:c.billing_notes||'', hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'' })
+    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', area:c.area||'', service_type:c.service_type||'Basic Cleaning', billing_type:c.billing_type||'per_visit', price_per_visit:c.price_per_visit||0, fixed_monthly:c.fixed_monthly||0, discount_percent:c.discount_percent||0, tax_rate:c.tax_rate??10, price_includes_tax:c.price_includes_tax!==false, billing_day:c.billing_day||10, billing_notes:c.billing_notes||'', hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'', salesperson_id:c.salesperson_id||'', salesperson_name:'', commission_type:c.commission_type||null, commission_value:c.commission_value??null, commission_amount:c.commission_amount||0 })
     setShowForm(true)
   }
 
@@ -179,6 +188,7 @@ function RecurringContracts() {
                 <div className="form-group"><label>Tax (%)</label><select value={form.tax_rate??10} onChange={e=>upd('tax_rate',e.target.value)}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select></div>
                 <div className="form-group"><label>Price includes tax?</label><select value={String(form.price_includes_tax !== false)} onChange={e=>upd('price_includes_tax',e.target.value==='true')}><option value="true">Yes</option><option value="false">No</option></select></div>
                 <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="28" value={form.billing_day||10} onChange={e=>upd('billing_day',e.target.value)} /></div>
+                <SellerCommissionFields monthly sellers={sellers.salespeople} rules={sellers.rules} contract={{ price: form.billing_type==='fixed_monthly' ? form.fixed_monthly : monthlyRevenue, tax_rate: form.tax_rate, price_includes_tax: form.price_includes_tax }} value={form} onChange={patch=>setForm(f=>({...f,...patch}))} />
                 <div className="form-group" style={{gridColumn:'1/-1'}}><label>Billing notes</label><input value={form.billing_notes||''} onChange={e=>upd('billing_notes',e.target.value)} placeholder="Ex.: desconto acordado com o cliente" /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address / Maps URL</label><input value={form.location_address} onChange={e=>upd('location_address',e.target.value)} placeholder="https://maps.app.goo.gl/..." /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}>
@@ -238,6 +248,7 @@ function RecurringContracts() {
                 <span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text3)'}}>{c.visits_per_month} visits/mo</span>
                 <span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text3)'}}>{(c.visits_per_month*c.hours_per_visit).toFixed(0)}h/mo</span>
                 <span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text2)'}}>💴 payment by the {c.billing_day||10}th of next month</span>
+                {c.salesperson_id&&<span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text2)'}}>💼 {sellers.salespeople.find(p=>p.id===c.salesperson_id)?.full_name||'Seller'} · ¥{Number(c.commission_amount||0).toLocaleString()}/mo</span>}
               </div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                 <button className="btn btn-sm btn-primary" onClick={()=>showPrintOverlay(spotContractHtml(recurringToContract(c, client), 'ja'))}>📄 Generate contract 契約書</button>

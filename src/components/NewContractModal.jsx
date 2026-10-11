@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { buildSpotContractRow, emptySpotContractForm, contractPrefillFromClient, spotContractTotals, dueDateAfter, DEFAULT_PAYMENT_DAY } from '../lib/spotContract'
 import { saveSpotContractWithInvoice } from '../lib/spotContractOps'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
+import { fetchContractSellers } from '../lib/contractSellers'
+import SellerCommissionFields from './SellerCommissionFields'
 import toast from 'react-hot-toast'
 
 // v1.0.21 · Contracts → Spot → "+ New contract": one form creates the job for the worker,
@@ -17,6 +19,7 @@ export default function NewContractModal({ onClose, onSaved }) {
   const [job, setJob] = useState(EMPTY_JOB)
   const [contract, setContract] = useState(emptySpotContractForm())
   const [saving, setSaving] = useState(false)
+  const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
 
   useEffect(() => {
     Promise.all([
@@ -24,6 +27,7 @@ export default function NewContractModal({ onClose, onSaved }) {
       supabase.from('locations').select('*').eq('is_active', true).order('name'),
       supabase.from('employees').select('id,full_name').eq('is_active', true).order('full_name'),
     ]).then(([c, l, e]) => { setClients(c.data || []); setLocations(l.data || []); setEmployees(e.data || []) })
+    fetchContractSellers().then(setSellers)
   }, [])
 
   const setJ = (k, v) => setJob(x => ({ ...x, [k]: v }))
@@ -143,6 +147,9 @@ export default function NewContractModal({ onClose, onSaved }) {
           <div className="form-group"><label>Summary</label>
             <div style={{ fontSize: 13, paddingTop: 8 }}>Total <strong>¥{t.total.toLocaleString()}</strong>{job.scheduled_date ? <> · due <strong>{dueDateAfter(job.scheduled_date, contract.payment_day || DEFAULT_PAYMENT_DAY)}</strong></> : null}</div>
           </div>
+        </div>
+        <div className="grid-2">
+          <SellerCommissionFields sellers={sellers.salespeople} rules={sellers.rules} contract={contract} value={contract} onChange={patch => setContract(x => ({ ...x, ...patch }))} />
         </div>
         <div className="form-group"><label>Scope of work 作業範囲</label><textarea rows={3} value={contract.scope} onChange={e => setC('scope', e.target.value)} placeholder="Kitchen deep clean, hood, floor…" /></div>
         <div className="form-group"><label>Special terms 特記事項</label><textarea rows={2} value={contract.terms} onChange={e => setC('terms', e.target.value)} /></div>

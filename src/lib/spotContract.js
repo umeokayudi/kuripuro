@@ -85,7 +85,7 @@ export function recurringToContract(sc, client = {}) {
 export const DEFAULT_PAYMENT_DAY = 10
 
 export function emptySpotContractForm() {
-  return { enabled: true, client_address: '', client_representative: '', contact_name: '', contact_phone: '', price: '', tax_rate: 10, price_includes_tax: true, payment_day: DEFAULT_PAYMENT_DAY, scope: '', terms: '' }
+  return { enabled: true, client_address: '', client_representative: '', contact_name: '', contact_phone: '', price: '', tax_rate: 10, price_includes_tax: true, payment_day: DEFAULT_PAYMENT_DAY, scope: '', terms: '', salesperson_id: '', salesperson_name: '', commission_type: null, commission_value: null, commission_amount: 0 }
 }
 
 /** Company data of 甲 (the location) prefilled from the clients row. */
@@ -127,6 +127,19 @@ export function buildSpotContractRow({ contract, job, form, location, client, em
     scope: (contract.scope || '').trim() || form.description || form.checklist_template || null,
     terms: (contract.terms || '').trim() || null,
     status: 'draft',
+    ...sellerFields(contract),
+  }
+}
+
+/** Seller + commission columns from a form (empty when no seller is picked). */
+export function sellerFields(f = {}) {
+  if (!f.salesperson_id) return { salesperson_id: null, salesperson_name: null, commission_type: null, commission_value: null, commission_amount: 0 }
+  return {
+    salesperson_id: f.salesperson_id,
+    salesperson_name: f.salesperson_name || null,
+    commission_type: f.commission_type || 'fixed',
+    commission_value: f.commission_value === '' || f.commission_value == null ? null : Number(f.commission_value),
+    commission_amount: Math.max(0, Math.round(Number(f.commission_amount) || 0)),
   }
 }
 

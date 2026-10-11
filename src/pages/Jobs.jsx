@@ -14,6 +14,8 @@ import toast from 'react-hot-toast'
 import { googleCalendarUrl } from '../lib/calendar'
 import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient, contractStatus } from '../lib/spotContract'
 import { saveSpotContractWithInvoice, generateContractForJob } from '../lib/spotContractOps'
+import { fetchContractSellers } from '../lib/contractSellers'
+import SellerCommissionFields from '../components/SellerCommissionFields'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
@@ -486,8 +488,9 @@ export default function Jobs() {
   const [contractForm, setContractForm] = useState(emptySpotContractForm)
   const [spotContracts, setSpotContracts] = useState([])
   const updContract = (k, v) => setContractForm(f => ({ ...f, [k]: v }))
+  const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll(); fetchContractSellers().then(setSellers) }, [])
   useEffect(() => {
     if (!searchId) return
     const selected = jobs.find(job => job.id === searchId)
@@ -869,6 +872,7 @@ export default function Jobs() {
                       <select value={String(contractForm.price_includes_tax)} onChange={e=>updContract('price_includes_tax',e.target.value==='true')}><option value="true">incl. tax</option><option value="false">+ tax</option></select>
                     </div>
                   </div>
+                  <SellerCommissionFields sellers={sellers.salespeople} rules={sellers.rules} contract={{ ...contractForm, price: contractForm.price || form.value }} value={contractForm} onChange={patch=>setContractForm(f=>({...f,...patch}))} />
                 </div>
                 <div className="form-group"><label>Scope of work (empty = description / checklist)</label><textarea value={contractForm.scope} onChange={e=>updContract('scope',e.target.value)} rows={3} placeholder="Kitchen floor, range hood, grease trap..." /></div>
                 <div className="form-group"><label>Special terms 特記事項 (optional, added after the standard articles)</label><textarea value={contractForm.terms} onChange={e=>updContract('terms',e.target.value)} rows={3} placeholder="例：駐車場は店舗裏を使用可" /></div>

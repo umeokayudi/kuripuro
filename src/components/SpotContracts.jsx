@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { spotContractHtml, spotContractTotals, DEFAULT_PAYMENT_DAY, contractStatus, dueDateAfter } from '../lib/spotContract'
+import { spotContractHtml, spotContractTotals, DEFAULT_PAYMENT_DAY, contractStatus, dueDateAfter, sellerFields } from '../lib/spotContract'
+import { commissionState } from '../lib/contractCommission'
+import { fetchContractSellers } from '../lib/contractSellers'
+import SellerCommissionFields from './SellerCommissionFields'
 import { createSpotInvoice, generateContractForJob, saveContractPdf, contractPdfUrl, refreshSpotContractPdf } from '../lib/spotContractOps'
 import NewContractModal from './NewContractModal'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
@@ -17,6 +20,7 @@ import toast from 'react-hot-toast'
 
 const STATUS_BADGE = { draft: 'badge-amber', approved: 'badge-green', rejected: 'badge-red', cancelled: 'badge-navy' }
 const STATUS_LABEL = { draft: 'Awaiting approval', approved: 'Approved ✓', rejected: 'Not approved', cancelled: 'Cancelled' }
+const COMMISSION_LABEL = { pending: 'after approval', earned: 'to pay', paid: 'paid ✓', void: 'void (contract not going ahead)' }
 const INVOICE_LABEL = { draft: 'draft', sent: 'sent', paid: 'paid ✓', overdue: 'overdue', cancelled: 'cancelled' }
 
 export default function SpotContracts() {
@@ -37,10 +41,11 @@ export default function SpotContracts() {
   const [busy, setBusy] = useState('')
   const [lightbox, setLightbox] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
   const proofInput = useRef()
   const proofFor = useRef(null)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); fetchContractSellers().then(setSellers) }, [])
 
   const load = async () => {
     setLoading(true)
@@ -107,6 +112,7 @@ export default function SpotContracts() {
       payment_day: Math.max(1, Math.min(31, parseInt(e.payment_day, 10) || DEFAULT_PAYMENT_DAY)),
       service_date: e.service_date || null, service_time: e.service_time || null,
       employee_id: e.employee_id || null, employee_name: emp?.full_name || e.employee_name || '',
+      ...sellerFields(e),
     }
     const { error } = await supabase.from('spot_contracts').update(patch).eq('id', e.id)
     if (error) return toast.error(error.message)
@@ -137,6 +143,13 @@ export default function SpotContracts() {
     }
     load()
     resavePdf(c.id)
+  }
+
+  const setCommissionPaid = async (c, paid) => {
+    const { error } = await supabase.from('spot_contracts').update({ commission_paid_at: paid ? new Date().toISOString() : null }).eq('id', c.id)
+    if (error) return toast.error(error.message)
+    toast.success(paid ? `💼 Commission marked paid to ${c.salesperson_name || 'seller'}` : 'Commission back to "to pay"')
+    load()
   }
 
   const makeInvoice = async (c) => {
@@ -205,7 +218,7 @@ export default function SpotContracts() {
   const q = query.trim().toLowerCase()
   const shown = rows
     .filter(r => filter === 'all' || contractStatus(r) === filter)
-    .filter(r => !q || [r.location_name, r.client_name, r.employee_name, r.contract_number].some(v => String(v || '').toLowerCase().includes(q)))
+    .filter(r => !q || [r.location_name, r.client_name, r.employee_name, r.salesperson_name, r.contract_number].some(v => String(v || '').toLowerCase().includes(q)))
   const total = shown.filter(r => !['cancelled', 'rejected'].includes(contractStatus(r))).reduce((s, r) => s + spotContractTotals(r).total, 0)
 
   return (
@@ -257,6 +270,8 @@ export default function SpotContracts() {
                 {!c.client_name && (c.contact_name || c.contact_phone) && <div style={{ fontSize: 12, color: 'var(--text3)' }}>{c.contact_name} {c.contact_phone}</div>}
                 {hasMapsLink(c.location_address, c.location_name) && <a href={mapsOpenUrl(c.location_address, c.location_name)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#60a5fa', textDecoration: 'none' }}>🗺 Maps</a>}
                 {job && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Job: {job.status}{job.spot_status ? ` · employee ${job.spot_status}` : ''}</div>}
+                {commissionState(c) !== 'none' && <div style={{ fontSize: 12, marginTop: 4 }}>💼 Seller {c.salesperson_name || '—'} · commission <strong>¥{Number(c.commission_amount).toLocaleString()}</strong> · {COMMISSION_LABEL[commissionState(c)]}{c.commission_paid_at ? ` ${new Date(c.commission_paid_at).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}` : ''}</div>}
+                {c.salesperson_id && commissionState(c) === 'none' && <div style={{ fontSize: 12, marginTop: 4, color: 'var(--text3)' }}>💼 Seller {c.salesperson_name || '—'} · no commission set</div>}
                 {c.pdf_saved_at && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>📥 PDF saved {new Date(c.pdf_saved_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</div>}
                 {c.signed_by && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}>✍️ {c.signed_by} · {new Date(c.signed_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</div>}
                 {(() => { const inv = invoices[c.fatura_id]; return inv
@@ -278,6 +293,8 @@ export default function SpotContracts() {
               {['approved', 'rejected'].includes(contractStatus(c)) && <button className="btn btn-sm" onClick={() => setStatus(c, 'draft')}>↺ Awaiting</button>}
               <button className="btn btn-sm" disabled={busy === `photo-${c.id}`} onClick={() => { proofFor.current = c; proofInput.current?.click() }}>{busy === `photo-${c.id}` ? '…' : '📷 Add photo proof'}</button>
               {!c.fatura_id && !['cancelled', 'rejected'].includes(contractStatus(c)) && <button className="btn btn-sm" disabled={busy === `inv-${c.id}`} onClick={() => makeInvoice(c)}>💴 Create invoice</button>}
+              {commissionState(c) === 'earned' && <button className="btn btn-sm" onClick={() => setCommissionPaid(c, true)}>💼 Commission paid</button>}
+              {commissionState(c) === 'paid' && <button className="btn btn-sm" onClick={() => setCommissionPaid(c, false)}>↺ Commission not paid</button>}
               <button className="btn btn-sm" onClick={() => setEditing({ ...c })}>✏️ Edit</button>
               {(job || c.service_date) && <a className="btn btn-sm" href={googleCalendarUrl(job || { title: c.location_name, scheduled_date: c.service_date, scheduled_time: c.service_time, address: c.location_address, employee_name: c.employee_name, job_category: 'spot' })} target="_blank" rel="noreferrer">📅 Google Calendar</a>}
               {contractStatus(c) !== 'cancelled' && <button className="btn btn-sm btn-danger" onClick={() => setStatus(c, 'cancelled')}>Cancel</button>}
@@ -318,6 +335,7 @@ export default function SpotContracts() {
               <div className="form-group"><label>Price (¥)</label><input type="number" value={editing.price ?? 0} onChange={e => setEditing(x => ({ ...x, price: e.target.value }))} /></div>
               <div className="form-group"><label>Tax</label><select value={editing.tax_rate ?? 10} onChange={e => setEditing(x => ({ ...x, tax_rate: e.target.value }))}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select></div>
               <div className="form-group"><label>Price includes tax?</label><select value={String(editing.price_includes_tax !== false)} onChange={e => setEditing(x => ({ ...x, price_includes_tax: e.target.value === 'true' }))}><option value="true">Yes</option><option value="false">No</option></select></div>
+              <SellerCommissionFields sellers={sellers.salespeople} rules={sellers.rules} contract={editing} value={editing} onChange={patch => setEditing(x => ({ ...x, ...patch }))} />
             </div>
             <div className="form-group"><label>Scope of work</label><textarea rows={3} value={editing.scope || ''} onChange={e => setEditing(x => ({ ...x, scope: e.target.value }))} /></div>
             <div className="form-group"><label>Special terms 特記事項</label><textarea rows={3} value={editing.terms || ''} onChange={e => setEditing(x => ({ ...x, terms: e.target.value }))} /></div>
@@ -332,7 +350,7 @@ export default function SpotContracts() {
       )}
 
       <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel="Close" />
-      {creating && <NewContractModal onClose={() => setCreating(false)} onSaved={({ contract, pdf }) => { setCreating(false); load(); pdf?.then(r => { if (r) load() }) }} />}
+      {creating && <NewContractModal onClose={() => setCreating(false)} onSaved={({ pdf }) => { setCreating(false); load(); pdf?.then(r => { if (r) load() }) }} />}
       {signing && <ContractSignModal contract={signing} onCancel={() => setSigning(null)} onConfirm={saveSignature} />}
     </div>
   )

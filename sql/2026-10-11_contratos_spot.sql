@@ -74,3 +74,24 @@ alter table public.spot_contracts add column if not exists pdf_path text;
 alter table public.spot_contracts add column if not exists pdf_saved_at timestamptz;
 alter table public.service_contracts add column if not exists contract_pdf_path text;
 alter table public.service_contracts add column if not exists contract_pdf_saved_at timestamptz;
+
+-- Seller (salespeople) on each contract, so the seller is paid commission for it.
+-- Spot: one-off commission; earned when the contract is approved, commission_paid_at when paid out.
+-- Fixed locations: monthly commission, filled from the approved sales_contract_submissions row.
+alter table public.spot_contracts add column if not exists salesperson_id uuid references public.salespeople(id) on delete set null;
+alter table public.spot_contracts add column if not exists salesperson_name text;
+alter table public.spot_contracts add column if not exists commission_type text;
+alter table public.spot_contracts add column if not exists commission_value numeric;
+alter table public.spot_contracts add column if not exists commission_amount numeric not null default 0;
+alter table public.spot_contracts add column if not exists commission_paid_at timestamptz;
+create index if not exists spot_contracts_seller_idx on public.spot_contracts (salesperson_id);
+alter table public.service_contracts add column if not exists salesperson_id uuid references public.salespeople(id) on delete set null;
+alter table public.service_contracts add column if not exists commission_type text;
+alter table public.service_contracts add column if not exists commission_value numeric;
+alter table public.service_contracts add column if not exists commission_amount numeric not null default 0;
+create index if not exists service_contracts_seller_idx on public.service_contracts (salesperson_id);
+update public.service_contracts sc
+   set salesperson_id = s.salesperson_id, commission_type = s.commission_type,
+       commission_value = s.commission_value, commission_amount = coalesce(s.commission_amount, 0)
+  from public.sales_contract_submissions s
+ where s.service_contract_id = sc.id and sc.salesperson_id is null;

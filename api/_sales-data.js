@@ -1,5 +1,6 @@
 import { requireActiveSalesSession, salesDb } from './_salesSession.js'
 import { geminiGenerate } from './_gemini.js'
+import { sellerCommissionSummary } from '../src/lib/contractCommission.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -143,6 +144,14 @@ async function loadDashboard(db, user) {
     scope(db.from('sales_goals').select('*').gte('period_month', `${Number(todayTokyo().slice(0, 4)) - 1}-01`).order('period_month', { ascending: false })),
     isAdmin ? db.from('marketing_goals').select('*').gte('period_month', `${Number(todayTokyo().slice(0, 4)) - 1}-01`).order('period_month', { ascending: false }) : Promise.resolve({ data: [] }),
   ])
+  // Contracts the seller brought in (spot = one-off commission, fixed location = monthly commission).
+  const [spotCommRes, fixedCommRes] = await Promise.all([
+    scope(db.from('spot_contracts').select('id,contract_number,location_name,client_name,service_date,status,price,tax_rate,price_includes_tax,salesperson_id,salesperson_name,commission_type,commission_value,commission_amount,commission_paid_at').eq('is_active', true).not('salesperson_id', 'is', null).order('service_date', { ascending: false }).limit(1000)),
+    scope(db.from('service_contracts').select('id,client_id,location_name,service_type,monthly_revenue,is_active,salesperson_id,commission_type,commission_value,commission_amount').eq('is_active', true).not('salesperson_id', 'is', null).limit(1000)),
+  ])
+  // Missing columns (SQL not applied yet) must not take the whole dashboard down.
+  const spotCommissions = spotCommRes.error ? [] : (spotCommRes.data || [])
+  const fixedCommissions = fixedCommRes.error ? [] : (fixedCommRes.data || [])
   const failed = [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes, marketingGoalsRes].find(r => r.error)
   if (failed) throw failed.error
   const leads = leadsRes.data || []
@@ -172,6 +181,10 @@ async function loadDashboard(db, user) {
       conversion_rate: ownApproaches.length ? won / ownApproaches.length * 100 : 0,
       followups_due: ownLeads.filter(row => row.next_followup_date && row.next_followup_date <= todayTokyo() && !['won', 'lost'].includes(row.stage)).length,
       reports: reports.filter(row => row.salesperson_id === person.id).length,
+      ...(() => {
+        const c = sellerCommissionSummary(spotCommissions.filter(row => row.salesperson_id === person.id), fixedCommissions.filter(row => row.salesperson_id === person.id))
+        return { spot_commission_due: c.earned, spot_commission_paid: c.paid, spot_commission_pending: c.pending, fixed_commission_monthly: c.monthly }
+      })(),
       commission_pending: ownContracts.filter(row => ['active', 'approved'].includes(row.status)).reduce((sum, row) => sum + Number(row.commission_amount || 0), 0),
       hours_this_month: reports.filter(row => row.salesperson_id === person.id && String(row.work_date || '').startsWith(todayTokyo().slice(0, 7))).reduce((sum, row) => sum + Number(row.hours_worked || 0), 0),
     }
@@ -185,7 +198,7 @@ async function loadDashboard(db, user) {
     const conversions = relatedLeads.filter(row => row.stage === 'won').length
     return { ...campaign, spend: campaignSpend, leads: relatedLeads.length, conversions, cost_per_lead: relatedLeads.length ? campaignSpend / relatedLeads.length : 0, customer_acquisition_cost: conversions ? campaignSpend / conversions : 0 }
   })
-  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [] }
+  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions } }
 }
 
 async function getAction(db, user, action, query = {}) {
@@ -569,6 +582,8 @@ async function postAction(db, user, body, res) {
       if (contractErr) throw contractErr
       serviceContractId = service.id
       }
+      // The seller who closed it is paid commission on this location (monthly).
+      await db.from('service_contracts').update({ salesperson_id: row.salesperson_id, commission_type: row.commission_type, commission_value: row.commission_value, commission_amount: Number(row.commission_amount || 0) }).eq('id', serviceContractId).is('salesperson_id', null)
       const { data: activeServices, error: revenueErr } = await db.from('service_contracts').select('monthly_revenue').eq('client_id', client.id).eq('is_active', true)
       if (revenueErr) throw revenueErr
       const monthlyRevenue = (activeServices || []).reduce((sum, service) => sum + Number(service.monthly_revenue || 0), 0)
