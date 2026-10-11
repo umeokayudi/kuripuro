@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { spotContractHtml, spotContractTotals, DEFAULT_PAYMENT_DAY, contractStatus, dueDateAfter } from '../lib/spotContract'
-import { createSpotInvoice, generateContractForJob } from '../lib/spotContractOps'
+import { createSpotInvoice, generateContractForJob, saveContractPdf, contractPdfUrl, refreshSpotContractPdf } from '../lib/spotContractOps'
+import NewContractModal from './NewContractModal'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import PhotoLightbox from './PhotoLightbox'
@@ -35,6 +36,7 @@ export default function SpotContracts() {
   const [pickJob, setPickJob] = useState('')
   const [busy, setBusy] = useState('')
   const [lightbox, setLightbox] = useState(null)
+  const [creating, setCreating] = useState(false)
   const proofInput = useRef()
   const proofFor = useRef(null)
 
@@ -77,6 +79,23 @@ export default function SpotContracts() {
     showPrintOverlay(spotContractHtml(c, lang, sig))
   }
 
+  // Every change re-saves the PDF copy, then reloads so the card shows the new save time.
+  const resavePdf = (id) => refreshSpotContractPdf(id).then(r => { if (r) load() })
+
+  const openPdf = async (c) => {
+    if (c.pdf_path) return window.open(contractPdfUrl(c.pdf_path, c.pdf_saved_at), '_blank', 'noopener')
+    const tab = window.open('', '_blank')
+    setBusy(`pdf-${c.id}`)
+    try {
+      const { blob } = await saveContractPdf(c)
+      const url = URL.createObjectURL(blob)
+      if (tab) tab.location.href = url
+      else window.open(url, '_blank')
+      toast.success('📥 PDF saved')
+      load()
+    } catch (err) { tab?.close(); toast.error(`PDF: ${err.message}`) } finally { setBusy('') }
+  }
+
   const saveEdit = async () => {
     const e = editing
     const emp = employees.find(x => x.id === e.employee_id)
@@ -100,6 +119,7 @@ export default function SpotContracts() {
     toast.success('Contract updated')
     setEditing(null)
     load()
+    resavePdf(e.id)
   }
 
   const setStatus = async (c, status) => {
@@ -116,6 +136,7 @@ export default function SpotContracts() {
       await supabase.from('faturas').update({ status: 'draft' }).eq('id', inv.id)
     }
     load()
+    resavePdf(c.id)
   }
 
   const makeInvoice = async (c) => {
@@ -132,12 +153,14 @@ export default function SpotContracts() {
     if (!job) return toast.error('Pick a spot job')
     setBusy('gen')
     try {
-      const { contract, invoiceError } = await generateContractForJob(job)
+      const result = await generateContractForJob(job)
+      const { contract, invoiceError } = result
       toast.success(`📄 Contract ${contract.contract_number} generated`)
       if (invoiceError) toast.error(`Invoice not created: ${invoiceError.message}`)
       setPickJob('')
       await load()
       setEditing({ ...contract })
+      result.pdf?.then(r => { if (r) load() })
     } catch (err) { toast.error(err.message) } finally { setBusy('') }
   }
 
@@ -169,8 +192,10 @@ export default function SpotContracts() {
     const { error } = await supabase.from('spot_contracts').update({ signature_url: dataUrl, signed_by: signedBy, signed_at: new Date().toISOString(), status: 'approved', approved_at: new Date().toISOString() }).eq('id', signing.id)
     if (error) return toast.error(error.message)
     toast.success('Signed and approved ✓')
+    const id = signing.id
     setSigning(null)
     load()
+    resavePdf(id)
   }
 
   if (missing) return (
@@ -201,6 +226,9 @@ export default function SpotContracts() {
         <div className="form-group" style={{ flex: '1 1 200px', minWidth: 0, margin: 0 }}><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search location, staff, number…" /></div>
       </div>
 
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New contract</button>
+      </div>
       <input ref={proofInput} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => { addProofs(e.target.files); e.target.value = '' }} />
       <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div className="form-group" style={{ flex: '1 1 260px', minWidth: 0, margin: 0 }}>
@@ -214,7 +242,7 @@ export default function SpotContracts() {
       </div>
 
       {loading && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>Loading…</div></div>}
-      {!loading && shown.length === 0 && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>No spot contracts yet. They are created automatically when you send a spot job in Jobs → New Job.</div></div>}
+      {!loading && shown.length === 0 && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>No spot contracts yet. Use + New contract, or send a spot job in Jobs → New Job.</div></div>}
 
       {shown.map(c => {
         const job = jobs[c.job_id]
@@ -229,6 +257,7 @@ export default function SpotContracts() {
                 {!c.client_name && (c.contact_name || c.contact_phone) && <div style={{ fontSize: 12, color: 'var(--text3)' }}>{c.contact_name} {c.contact_phone}</div>}
                 {hasMapsLink(c.location_address, c.location_name) && <a href={mapsOpenUrl(c.location_address, c.location_name)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#60a5fa', textDecoration: 'none' }}>🗺 Maps</a>}
                 {job && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Job: {job.status}{job.spot_status ? ` · employee ${job.spot_status}` : ''}</div>}
+                {c.pdf_saved_at && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>📥 PDF saved {new Date(c.pdf_saved_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</div>}
                 {c.signed_by && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}>✍️ {c.signed_by} · {new Date(c.signed_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</div>}
                 {(() => { const inv = invoices[c.fatura_id]; return inv
                   ? <div style={{ fontSize: 12, marginTop: 4 }}>💴 Invoice {INVOICE_LABEL[inv.status] || inv.status} · <strong>payment due {inv.due_date}</strong> · <a href="/faturas" style={{ color: '#60a5fa' }}>open</a></div>
@@ -242,6 +271,7 @@ export default function SpotContracts() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button className="btn btn-sm btn-primary" onClick={() => printContract(c, 'ja')}>📄 契約書</button>
               <button className="btn btn-sm" onClick={() => printContract(c, 'en')}>📄 EN</button>
+              <button className="btn btn-sm" disabled={busy === `pdf-${c.id}`} onClick={() => openPdf(c)}>{busy === `pdf-${c.id}` ? '…' : '📥 PDF'}</button>
               {contractStatus(c) === 'draft' && <button className="btn btn-sm" onClick={() => setSigning(c)}>✍️ Sign</button>}
               {contractStatus(c) !== 'approved' && contractStatus(c) !== 'cancelled' && <button className="btn btn-sm" style={{ background: 'var(--green)', color: '#fff' }} onClick={() => setStatus(c, 'approved')}>✓ Approved</button>}
               {contractStatus(c) === 'draft' && <button className="btn btn-sm" onClick={() => setStatus(c, 'rejected')}>✕ Not approved</button>}
@@ -302,6 +332,7 @@ export default function SpotContracts() {
       )}
 
       <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel="Close" />
+      {creating && <NewContractModal onClose={() => setCreating(false)} onSaved={({ contract, pdf }) => { setCreating(false); load(); pdf?.then(r => { if (r) load() }) }} />}
       {signing && <ContractSignModal contract={signing} onCancel={() => setSigning(null)} onConfirm={saveSignature} />}
     </div>
   )

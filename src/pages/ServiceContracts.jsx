@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 import SpotContracts from '../components/SpotContracts'
 import { spotContractHtml, recurringToContract } from '../lib/spotContract'
 import { showPrintOverlay } from '../lib/openPrintHtml'
+import { saveContractPdf, contractPdfUrl } from '../lib/spotContractOps'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const SERVICE_TYPES = ['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning']
@@ -25,6 +26,7 @@ export default function ServiceContracts() {
 }
 
 function RecurringContracts() {
+  const [pdfBusy, setPdfBusy] = useState('')
   const [clients, setClients] = useState([])
   const [contracts, setContracts] = useState([])
   const [selectedClient, setSelectedClient] = useState(null)
@@ -106,6 +108,19 @@ function RecurringContracts() {
   const totalMonthlyHours = contracts.reduce((s,c)=>s+Number(c.visits_per_month||0)*Number(c.hours_per_visit||0),0)
   const totalVisits = contracts.reduce((s,c)=>s+Number(c.visits_per_month||0),0)
   const client = clients.find(c=>c.id===selectedClient)
+
+  // Saves the location's 業務委託契約書 as a PDF on the contract and opens it.
+  const savePdf = async (c) => {
+    const tab = window.open('', '_blank')
+    setPdfBusy(c.id)
+    try {
+      const { blob } = await saveContractPdf(recurringToContract(c, client), { table: 'service_contracts', id: c.id })
+      const url = URL.createObjectURL(blob)
+      if (tab) tab.location.href = url
+      toast.success('📥 PDF saved on this location')
+      loadContracts(selectedClient)
+    } catch (err) { tab?.close(); toast.error(`PDF: ${err.message}`) } finally { setPdfBusy('') }
+  }
 
   return (
     <div>
@@ -227,6 +242,8 @@ function RecurringContracts() {
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                 <button className="btn btn-sm btn-primary" onClick={()=>showPrintOverlay(spotContractHtml(recurringToContract(c, client), 'ja'))}>📄 Generate contract 契約書</button>
                 <button className="btn btn-sm" onClick={()=>showPrintOverlay(spotContractHtml(recurringToContract(c, client), 'en'))}>📄 EN</button>
+                <button className="btn btn-sm" disabled={pdfBusy===c.id} onClick={()=>savePdf(c)}>{pdfBusy===c.id?'…':'📥 Save PDF'}</button>
+                {c.contract_pdf_path&&<a className="btn btn-sm" href={contractPdfUrl(c.contract_pdf_path, c.contract_pdf_saved_at)} target="_blank" rel="noreferrer" title={new Date(c.contract_pdf_saved_at).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})}>📄 Saved PDF</a>}
                 <button className="btn btn-sm" onClick={()=>handleEdit(c)}>✏️ Edit</button>
                 <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(c.id)}>✕ Remove</button>
               </div>

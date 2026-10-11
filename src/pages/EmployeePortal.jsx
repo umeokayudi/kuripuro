@@ -14,6 +14,7 @@ import toast from 'react-hot-toast'
 import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
 import { ContractSignModal } from '../components/SpotContracts'
 import { contractStatus } from '../lib/spotContract'
+import { refreshSpotContractPdf } from '../lib/spotContractOps'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
 import LanguageToggle from '../components/LanguageToggle'
@@ -1101,6 +1102,7 @@ export default function EmployeePortal() {
     setJobContract(data)
     setContractSignOpen(false)
     toast.success(e.contractSaved)
+    refreshSpotContractPdf(data.id)
   }
 
   // Photo of the paper contract / proof on site, stored on the contract

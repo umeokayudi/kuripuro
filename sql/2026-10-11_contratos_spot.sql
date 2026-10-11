@@ -67,3 +67,10 @@ alter table public.spot_contracts add column if not exists payment_day integer n
 alter table public.spot_contracts add column if not exists approved_at timestamptz;
 alter table public.spot_contracts add column if not exists proof_photos text[] not null default '{}';
 alter table public.spot_contracts add column if not exists fatura_id uuid;
+
+-- Saved PDF of the 業務委託契約書 (bucket service-photos, path jobs/contracts/<id>/<number>.pdf),
+-- re-saved after create, edit, approval and signature. Fixed (recurring) locations get the same.
+alter table public.spot_contracts add column if not exists pdf_path text;
+alter table public.spot_contracts add column if not exists pdf_saved_at timestamptz;
+alter table public.service_contracts add column if not exists contract_pdf_path text;
+alter table public.service_contracts add column if not exists contract_pdf_saved_at timestamptz;

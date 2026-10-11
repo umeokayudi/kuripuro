@@ -44,6 +44,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "heic2any": "^0.0.4",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
