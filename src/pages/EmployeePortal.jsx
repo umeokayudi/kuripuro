@@ -8,6 +8,8 @@ import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
 import { distanceMeters, getCurrentPosition } from '../lib/geocode'
 import ServiceTimer from '../components/ServiceTimer'
+import NfcScanSheet from '../components/NfcScanSheet'
+import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
@@ -149,6 +151,11 @@ export default function EmployeePortal() {
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showSignature, setShowSignature] = useState(false)
   const [signatureJob, setSignatureJob] = useState(null)
+  // Ponto por NFC (off unless the admin turned it on for everyone or for this worker)
+  const [nfcConfig, setNfcConfig] = useState({ active: false, tags: [] })
+  const [nfcScan, setNfcScan] = useState(null)
+  const nfcEndRef = useRef(null)
+  useEffect(() => { if (user?.id) loadNfcConfig(supabase, user.id).then(setNfcConfig) }, [user?.id])
   const [retroSignOpen, setRetroSignOpen] = useState(false)
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
@@ -740,12 +747,21 @@ export default function EmployeePortal() {
     return firstPath
   }
 
+  // Resolves null when NFC is off, 'cancel' when the worker closes the sheet, else the read result.
+  const askNfc = (phase, job) => {
+    if (!nfcConfig.active) return Promise.resolve(null)
+    if (!nfcSupported()) return Promise.resolve({ uid: null, status: 'no_device', tag: null })
+    return new Promise(resolve => setNfcScan({ phase, job, resolve }))
+  }
+
   const handleStart = async (job) => {
     const startPhotos = jobPhotos.filter(p => p.slot === 'start')
     if (startPhotos.length === 0) {
       toast.error('Tire ao menos 1 foto "Before" antes de iniciar')
       return
     }
+    const nfc = await askNfc('start', job)
+    if (nfc === 'cancel') return
     setSubmitting(true)
     try {
       const { data: otherActive } = await supabase.from('jobs').select('id,title').eq('employee_id', user.id).eq('status', 'in_progress').maybeSingle()
@@ -766,6 +782,7 @@ export default function EmployeePortal() {
         gps_start_distance: gpsResult.dist ?? null, gps_override: Boolean(gpsResult.override),
       }
       try { await supabase.from('jobs').update(gpsFields).eq('id', job.id) } catch (ex) { console.log('gps fields skipped', ex?.message) }
+      await saveNfcResult(supabase, job.id, 'start', nfc)
       setChecklist(initChecklistState(job))
       setActiveJob({ ...data, ...gpsFields }); setJobPhotos([]); toast.success('✅ Started!')
     } catch (err) {
@@ -775,7 +792,10 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleCompleteWithSig = (job) => {
+  const handleCompleteWithSig = async (job) => {
+    const nfc = await askNfc('end', job)
+    if (nfc === 'cancel') return
+    nfcEndRef.current = nfc
     setSignatureJob(job)
     setShowSignature(true)
   }
@@ -846,6 +866,8 @@ export default function EmployeePortal() {
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      await saveNfcResult(supabase, job.id, 'end', nfcEndRef.current)
+      nfcEndRef.current = null
       try {
         const endPos = await endPositionPromise
         if (endPos) {
@@ -1204,6 +1226,14 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {nfcScan&&<NfcScanSheet
+        phase={nfcScan.phase}
+        job={nfcScan.job}
+        tags={nfcConfig.tags}
+        labels={e}
+        onDone={(r)=>{ const done = nfcScan.resolve; setNfcScan(null); done(r) }}
+        onCancel={()=>{ const done = nfcScan.resolve; setNfcScan(null); done('cancel') }}
+      />}
       {showSignature&&<SignatureModal
         jobTitle={signatureJob?.title||activeJob?.title||''}
         labels={e}
