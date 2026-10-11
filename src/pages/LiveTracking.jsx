@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { apiFetch } from '../lib/apiFetch'
@@ -7,13 +7,73 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { useLang, fill } from '../hooks/useLang'
 
+const TZ = 'Asia/Tokyo'
+const LATE_AFTER_MIN = 5
+const LOCATION_FRESH_MIN = 15
+
+// "Now" as a Date whose local fields are Tokyo wall-clock time.
+const tokyoNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: TZ }))
+const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: TZ }).split(' ')[0]
+const hhmm = (iso) => iso ? new Date(iso).toLocaleTimeString('ja-JP', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }) : ''
+const shortTime = (t) => (t || '').slice(0, 5)
+const toMin = (t) => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + (m || 0) }
+
+// Minutes from now until the job's scheduled time today (negative = already passed).
+const minutesUntil = (scheduledTime, now) => {
+  if (!scheduledTime) return null
+  const [h, m] = scheduledTime.split(':').map(Number)
+  const target = new Date(now); target.setHours(h, m || 0, 0, 0)
+  return Math.round((target - now) / 60000)
+}
+
+const jobPlace = (j) => j.client_name || (j.title || '').replace(/ — .*/, '')
+const jobKind = (j) => {
+  const title = (j.title || '').replace(/ — .*/, '')
+  return title && title !== jobPlace(j) ? title : ''
+}
+const byTime = (a, b) => (a.scheduled_time || '99:99').localeCompare(b.scheduled_time || '99:99') || (a.sequence_order || 99) - (b.sequence_order || 99)
+
+// One status per person, in the order the admin needs to act on it.
+const GROUPS = ['attention', 'working', 'upcoming', 'done', 'free']
+
+function classify(emp, jobs, offToday, now, today) {
+  const mine = jobs.filter(j => j.employee_id === emp.id)
+  const todayJobs = mine.filter(j => j.scheduled_date === today && j.status !== 'cancelled').sort(byTime)
+  const active = mine.find(j => j.status === 'in_progress')
+  const pending = todayJobs.filter(j => j.status === 'assigned')
+  const next = pending[0] || null
+  const done = todayJobs.filter(j => j.status === 'completed')
+  const staleOpen = active && active.scheduled_date < today ? active : null
+  const nextIn = next ? minutesUntil(next.scheduled_time, now) : null
+  const lateMin = !active && nextIn != null && nextIn <= -LATE_AFTER_MIN ? -nextIn : 0
+
+  let group
+  if (lateMin || staleOpen) group = 'attention'
+  else if (active) group = 'working'
+  else if (next) group = 'upcoming'
+  else if (done.length) group = 'done'
+  else group = 'free'
+
+  return { emp, group, todayJobs, active, next, nextIn, done, lateMin, staleOpen, off: offToday.has(emp.id) }
+}
+
+export const fmtDuration = (min, L) => {
+  const m = Math.max(0, Math.round(min))
+  if (m < 60) return fill(L.dMin, { m })
+  const h = Math.floor(m / 60), r = m % 60
+  return r ? fill(L.dHourMin, { h, m: r }) : fill(L.dHour, { h })
+}
+
 export default function LiveTracking() {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const L = t.live
   const [employees, setEmployees] = useState([])
   const [jobs, setJobs] = useState([])
-  const [selected, setSelected] = useState(null)
+  const [offToday, setOffToday] = useState(new Set())
+  const [open, setOpen] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [updatedAt, setUpdatedAt] = useState(null)
+  const [showFree, setShowFree] = useState(false)
   const [photoInfo, setPhotoInfo] = useState(null)
   const [cleaning, setCleaning] = useState(false)
   const [retros, setRetros] = useState([])
@@ -41,8 +101,6 @@ export default function LiveTracking() {
     setCleaning(false)
   }
 
-  useEffect(() => { load(); const t = setInterval(load, 30000); return ()=>clearInterval(t) }, [])
-
   const loadRetros = async () => {
     const { data } = await supabase.from('jobs')
       .select('id,title,scheduled_date,employee_name,retro_report,retro_ai_summary,retro_value,value,checklist_done,checklist_total,admin_reviewed,photo_start_url,photo_end_url')
@@ -58,54 +116,205 @@ export default function LiveTracking() {
     loadRetros()
   }
 
-  const load = async () => {
+  const load = useCallback(async () => {
     loadRetros()
-    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
-    const [e, activeRes, completedTodayRes] = await Promise.all([
-      supabase.from('employees').select('id,full_name,score,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
-      supabase.from('jobs').select('*').in('status',['assigned','in_progress']).order('scheduled_date'),
-      supabase.from('jobs').select('*').eq('status','completed').eq('scheduled_date', today),
+    const today = tokyoToday()
+    const [e, activeRes, todayRes, offRes] = await Promise.all([
+      supabase.from('employees').select('id,full_name,phone,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
+      supabase.from('jobs').select('*').eq('status','in_progress'),
+      supabase.from('jobs').select('*').eq('scheduled_date', today).in('status',['assigned','in_progress','completed']),
+      supabase.from('employee_availability').select('employee_id,kind,status').eq('date', today).eq('kind','off'),
     ])
     setEmployees(e.data||[])
     const byId = new Map()
-    for (const j of [...(activeRes.data||[]), ...(completedTodayRes.data||[])]) byId.set(j.id, j)
+    for (const j of [...(activeRes.data||[]), ...(todayRes.data||[])]) byId.set(j.id, j)
     setJobs([...byId.values()])
+    setOffToday(new Set((offRes.data||[]).filter(r => r.status !== 'rejected').map(r => r.employee_id)))
+    setUpdatedAt(new Date())
     setLoading(false)
-  }
+  }, [])
 
-  const getEmpJobs = (empId) => jobs.filter(j=>j.employee_id===empId)
-  const getActiveJob = (empId) => jobs.find(j=>j.employee_id===empId&&j.status==='in_progress')
-  const getTodayJobs = (empId) => {
-    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
-    return jobs.filter(j=>j.employee_id===empId&&j.scheduled_date===today)
-  }
+  useEffect(() => { load(); const iv = setInterval(load, 30000); return ()=>clearInterval(iv) }, [load])
 
-  // Calcula atraso: primeiro job de hoje ainda não iniciado cujo horário-alvo já passou
-  const getLateness = (empId) => {
-    const now = new Date()
-    const nowTokyo = new Date(now.toLocaleString('en-US',{timeZone:'Asia/Tokyo'}))
-    const todayJobs = getTodayJobs(empId).filter(j=>j.status!=='completed'&&j.status!=='cancelled')
-    let worstLate = 0
-    for (const j of todayJobs) {
-      if (!j.scheduled_time || j.status==='in_progress') continue
-      const [h,m] = j.scheduled_time.split(':').map(Number)
-      const target = new Date(nowTokyo); target.setHours(h,m,0,0)
-      const lateMin = Math.round((nowTokyo - target)/60000)
-      if (lateMin > worstLate) worstLate = lateMin
+  const now = tokyoNow()
+  const today = tokyoToday()
+  const people = employees.map(emp => classify(emp, jobs, offToday, now, today))
+  const grouped = Object.fromEntries(GROUPS.map(g => [g, people.filter(p => p.group === g)]))
+  grouped.attention.sort((a, b) => b.lateMin - a.lateMin)
+  grouped.upcoming.sort((a, b) => (a.nextIn ?? 9999) - (b.nextIn ?? 9999))
+  grouped.working.sort((a, b) => new Date(a.active.started_at || 0) - new Date(b.active.started_at || 0))
+
+  const dateLabel = new Date().toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })
+  const tiles = [
+    { g: 'attention', n: grouped.attention.length, label: L.tileLate, tone: 'red' },
+    { g: 'working', n: grouped.working.length, label: L.tileWorking, tone: 'green' },
+    { g: 'upcoming', n: grouped.upcoming.length, label: L.tileUpcoming, tone: 'blue' },
+    { g: 'done', n: grouped.done.length, label: L.tileDone, tone: 'gray' },
+  ]
+
+  const statusLine = (p) => {
+    const { active, next, nextIn, lateMin, staleOpen, done, todayJobs } = p
+    if (staleOpen) return { main: fill(L.staleOpen, { place: jobPlace(staleOpen), date: staleOpen.scheduled_date }), sub: L.staleOpenHint }
+    if (lateMin) return {
+      main: fill(L.lateMain, { d: fmtDuration(lateMin, L) }),
+      sub: fill(L.lateSub, { place: jobPlace(next), time: shortTime(next.scheduled_time) }),
     }
-    return worstLate
+    if (active) {
+      const since = active.started_at ? (Date.now() - new Date(active.started_at)) / 60000 : null
+      const startedLate = active.started_at && active.scheduled_time && active.scheduled_date === today
+        ? toMin(hhmm(active.started_at)) - toMin(active.scheduled_time)
+        : 0
+      return {
+        main: active.started_at
+          ? fill(L.workingMain, { place: jobPlace(active), time: hhmm(active.started_at), d: fmtDuration(since, L) })
+          : fill(L.workingNoTime, { place: jobPlace(active) }),
+        sub: [
+          startedLate >= 10 ? fill(L.startedLate, { d: fmtDuration(startedLate, L) }) : '',
+          next ? fill(L.thenNext, { place: jobPlace(next), time: next.scheduled_time ? shortTime(next.scheduled_time) : '—' }) : '',
+        ].filter(Boolean).join(' · '),
+      }
+    }
+    if (next) return {
+      main: next.scheduled_time
+        ? fill(nextIn > 0 ? L.nextMain : L.nextNow, { place: jobPlace(next), time: shortTime(next.scheduled_time), d: fmtDuration(nextIn, L) })
+        : fill(L.nextNoTime, { place: jobPlace(next) }),
+      sub: done.length ? fill(L.doneSoFar, { done: done.length, total: todayJobs.length }) : '',
+    }
+    if (done.length) {
+      const last = done.map(j => j.completed_at).filter(Boolean).sort().pop()
+      return { main: fill(last ? L.doneMain : L.doneMainNoTime, { n: done.length, time: hhmm(last) }), sub: '' }
+    }
+    return { main: p.off ? L.dayOff : L.noJobs, sub: '' }
   }
 
-  const statusColor = s => s>=90?'#4ade80':s>=70?'#fbbf24':'#f87171'
+  const personCard = (p) => {
+    const { emp, group, todayJobs, active, next } = p
+    const s = statusLine(p)
+    const locAgeMin = emp.last_location_at ? (Date.now() - new Date(emp.last_location_at)) / 60000 : null
+    const showLoc = emp.location_sharing !== false && emp.last_lat && locAgeMin != null && locAgeMin < LOCATION_FRESH_MIN
+    const focusJob = p.staleOpen || active || next
+    const isOpen = open === emp.id
+    return (
+      <div key={emp.id} className={`lt-card is-${group}`}>
+        <button type="button" className="lt-card-head" onClick={() => setOpen(isOpen ? null : emp.id)} aria-expanded={isOpen}>
+          <span className="lt-avatar">{(emp.full_name || '?').trim().charAt(0)}</span>
+          <span className="lt-who">
+            <span className="lt-name">{emp.full_name}</span>
+            <span className="lt-main">{s.main}</span>
+            {s.sub && <span className="lt-sub">{s.sub}</span>}
+          </span>
+          {todayJobs.length > 0 && (
+            <span className="lt-dots" title={fill(L.doneSoFar, { done: p.done.length, total: todayJobs.length })}>
+              {todayJobs.map(j => <i key={j.id} className={`is-${j.status}`} />)}
+            </span>
+          )}
+        </button>
+        <div className="lt-actions">
+          {focusJob && hasMapsLink(focusJob.address, focusJob.title) && <a className="lt-act" href={mapsOpenUrl(focusJob.address, focusJob.title)} target="_blank" rel="noreferrer">🗺 {L.jobAddress}</a>}
+          {showLoc && <a className="lt-act" href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer">📍 {fill(L.whereNow, { d: fmtDuration(locAgeMin, L) })}</a>}
+          {emp.phone && <a className="lt-act" href={`tel:${emp.phone.replace(/[^\d+]/g, '')}`}>📞 {L.call}</a>}
+          {todayJobs.length > 0 && <button type="button" className="lt-act lt-act-ghost" onClick={() => setOpen(isOpen ? null : emp.id)}>{isOpen ? L.hideDay : fill(L.showDay, { n: todayJobs.length })}</button>}
+        </div>
+        {isOpen && todayJobs.length > 0 && (
+          <ol className="lt-timeline">
+            {todayJobs.map(j => (
+              <li key={j.id} className={`is-${j.status}`}>
+                <span className="lt-tl-time">{j.scheduled_time ? shortTime(j.scheduled_time) : '—'}</span>
+                <span className="lt-tl-body">
+                  <b>{jobPlace(j)}</b>{jobKind(j) && <span className="lt-tl-kind"> · {jobKind(j)}</span>}
+                  <span className="lt-tl-meta">
+                    {j.status === 'completed' ? fill(L.tlDone, { start: hhmm(j.started_at) || '—', end: hhmm(j.completed_at) || '—' }) + (j.started_at && j.completed_at ? ` (${fmtDuration((new Date(j.completed_at) - new Date(j.started_at)) / 60000, L)})` : '')
+                      : j.status === 'in_progress' ? fill(L.tlWorking, { start: hhmm(j.started_at) || '—' })
+                      : L.tlNotStarted}
+                  </span>
+                </span>
+                {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
+                  <JobPhotos photoStartUrl={j.photo_start_url} photoEndUrl={j.photo_end_url} beforeLabel={L.before} afterLabel={L.after} size={36} onPhotoClick={setLightbox} />
+                )}
+                {hasMapsLink(j.address, j.title) && <a className="lt-tl-map" href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" aria-label={L.jobAddress}>🗺</a>}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    )
+  }
+
+  const groupTitle = { attention: L.gAttention, working: L.gWorking, upcoming: L.gUpcoming, done: L.gDone }
 
   return (
-    <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <h2 style={{fontSize:22,fontWeight:700}}>{L.title}</h2>
-        <div style={{fontSize:12,color:'var(--text3)'}}>{L.autoRefresh}</div>
+    <div className="lt-page">
+      <div className="lt-head">
+        <div>
+          <h2>{L.title}</h2>
+          <div className="lt-date">{dateLabel}</div>
+        </div>
+        <button type="button" className="btn btn-sm" onClick={load}>↻ {updatedAt ? fill(L.updated, { time: updatedAt.toLocaleTimeString('ja-JP', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }) }) : L.refresh}</button>
       </div>
 
-      <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:14,marginBottom:16}}>
+      <div className="lt-tiles">
+        {tiles.map(tile => (
+          <a key={tile.g} href={`#lt-${tile.g}`} className={`lt-tile is-${tile.tone}${tile.n ? '' : ' is-zero'}`}
+            onClick={e => { e.preventDefault(); document.getElementById(`lt-${tile.g}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}>
+            <b>{tile.n}</b><span>{tile.label}</span>
+          </a>
+        ))}
+      </div>
+
+      {loading && <div className="lt-empty">{L.loading}</div>}
+
+      {!loading && people.length > 0 && grouped.attention.length === 0 && (grouped.working.length + grouped.upcoming.length) > 0 && (
+        <div className="lt-allgood">✓ {L.allGood}</div>
+      )}
+
+      {['attention', 'working', 'upcoming', 'done'].map(g => grouped[g].length > 0 && (
+        <section key={g} id={`lt-${g}`} className={`lt-group is-${g}`}>
+          <h3>{groupTitle[g]} <span>{grouped[g].length}</span></h3>
+          <div className="lt-list">
+            {grouped[g].map(p => personCard(p))}
+          </div>
+        </section>
+      ))}
+
+      {grouped.free.length > 0 && (
+        <section className="lt-group is-free">
+          <button type="button" className="lt-free-toggle" onClick={() => setShowFree(v => !v)} aria-expanded={showFree}>
+            {fill(L.gFree, { n: grouped.free.length })} <span>{showFree ? '▲' : '▼'}</span>
+          </button>
+          {showFree ? (
+            <div className="lt-list">{grouped.free.map(p => personCard(p))}</div>
+          ) : (
+            <div className="lt-free-names">{grouped.free.map(p => p.emp.full_name + (p.off ? ` (${L.offShort})` : '')).join(' · ')}</div>
+          )}
+        </section>
+      )}
+
+      {!loading && people.length === 0 && <div className="lt-empty">{L.noEmployees}</div>}
+
+      {retros.length>0&&(
+        <section className="lt-group lt-other">
+          <h3>📝 {fill(L.retroReview, { n: retros.length })}</h3>
+          <p className="lt-hint">{L.retroHint}</p>
+          {retros.map(r=>(
+            <div key={r.id} className="lt-retro">
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600}}>{(r.title||'').replace(/ — .*/,'')} <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>· {r.employee_name} · {r.scheduled_date}</span></div>
+                <div style={{fontSize:12,color:'var(--text2)',marginTop:4,fontStyle:'italic'}}>"{r.retro_report}"</div>
+                <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>🤖 {r.retro_ai_summary} — {r.checklist_done}/{r.checklist_total} {L.items}</div>
+                <div style={{fontSize:12,marginTop:4}}><b>{L.paid}: ¥{Number(r.retro_value||0).toLocaleString()}</b> {Number(r.value||0)>Number(r.retro_value||0)&&<span style={{color:'var(--red)'}}>({L.of} ¥{Number(r.value).toLocaleString()})</span>}</div>
+                {(r.photo_start_url || r.photo_end_url) && (
+                  <div style={{ marginTop: 8 }}>
+                    <JobPhotos photoStartUrl={r.photo_start_url} photoEndUrl={r.photo_end_url} beforeLabel={L.before} afterLabel={L.after} size={52} onPhotoClick={setLightbox} />
+                  </div>
+                )}
+              </div>
+              <button onClick={()=>approveRetro(r.id)} className="btn btn-sm" style={{flexShrink:0}}>✓ {L.markReviewed}</button>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <section className="lt-group lt-other">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
           <div>
             <div style={{fontSize:13,fontWeight:600}}>📸 {L.photoStorage}</div>
@@ -118,153 +327,12 @@ export default function LiveTracking() {
           </div>
           <div style={{display:'flex',gap:8}}>
             <button onClick={checkPhotos} className="btn btn-sm">{L.check}</button>
-            <button onClick={cleanPhotos} disabled={cleaning} className="btn btn-sm" style={{background:'#DC2626',color:'#fff',border:'none'}}>{cleaning?L.cleaning:`🗑️ ${L.cleanOld}`}</button>
-          </div>
-        </div>
-      </div>
-
-      {retros.length>0&&(
-        <div style={{background:'rgba(193,156,86,0.06)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:14,marginBottom:16}}>
-          <div style={{fontSize:13,fontWeight:700,color:'#c19c56',marginBottom:10}}>📝 {fill(L.retroReview, { n: retros.length })}</div>
-          {retros.map(r=>(
-            <div key={r.id} style={{background:'var(--surface)',borderRadius:10,padding:12,marginBottom:8,border:'1px solid var(--border)'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:600}}>{(r.title||'').replace(/ — .*/,'')} <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>· {r.employee_name} · {r.scheduled_date}</span></div>
-                  <div style={{fontSize:12,color:'var(--text2)',marginTop:4,fontStyle:'italic'}}>"{r.retro_report}"</div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>🤖 {r.retro_ai_summary} — {r.checklist_done}/{r.checklist_total} {L.items}</div>
-                  <div style={{fontSize:12,marginTop:4}}><b>{L.paid}: ¥{Number(r.retro_value||0).toLocaleString()}</b> {Number(r.value||0)>Number(r.retro_value||0)&&<span style={{color:'var(--red)'}}>({L.of} ¥{Number(r.value).toLocaleString()})</span>}</div>
-                  {(r.photo_start_url || r.photo_end_url) && (
-                    <div style={{ marginTop: 8 }}>
-                      <JobPhotos
-                        photoStartUrl={r.photo_start_url}
-                        photoEndUrl={r.photo_end_url}
-                        beforeLabel={L.before}
-                        afterLabel={L.after}
-                        size={52}
-                        onPhotoClick={setLightbox}
-                      />
-                    </div>
-                  )}
-                </div>
-                <button onClick={()=>approveRetro(r.id)} className="btn btn-sm" style={{background:'#16a34a',color:'#fff',border:'none',flexShrink:0}}>✓ {L.reviewed}</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
-        {employees.map(emp=>{
-          const activeJob = getActiveJob(emp.id)
-          const todayJobs = getTodayJobs(emp.id)
-          const done = todayJobs.filter(j=>j.status==='completed').length
-          const lateMin = getLateness(emp.id)
-          const locFresh = emp.last_location_at && (Date.now() - new Date(emp.last_location_at)) < 5*60000
-          return (
-            <div key={emp.id} onClick={()=>setSelected(selected===emp.id?null:emp.id)}
-              style={{background:'var(--surface)',border:`1px solid ${lateMin>=15?'rgba(248,113,113,0.4)':activeJob?'rgba(74,222,128,0.3)':'var(--border)'}`,borderRadius:14,padding:14,cursor:'pointer',transition:'all 0.2s'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
-                <div>
-                  <div style={{fontWeight:600,fontSize:14,display:'flex',alignItems:'center',gap:6}}>
-                    {emp.full_name.split(' ')[0]}
-                    {lateMin>=5&&<span style={{background:'rgba(248,113,113,0.15)',color:'#f87171',borderRadius:6,padding:'1px 6px',fontSize:10,fontWeight:700}}>⏰ {fill(L.late, { n: lateMin })}</span>}
-                  </div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
-                    {activeJob?<span style={{color:'#4ade80',fontWeight:600}}>● {L.working}</span>:todayJobs.length>0?<span style={{color:'var(--text3)'}}>● {L.idle}</span>:<span style={{color:'rgba(255,255,255,0.2)'}}>○ {L.noShift}</span>}
-                    {locFresh && emp.location_sharing !== false && <a href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 {L.seeLocation}</a>}
-                  </div>
-                </div>
-                <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:16,fontWeight:700,color:statusColor(emp.score||100)}}>{emp.score||100}</div>
-                  <div style={{fontSize:9,color:'var(--text3)'}}>score</div>
-                </div>
-              </div>
-
-              {activeJob&&(
-                <div style={{background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.15)',borderRadius:8,padding:'8px 10px',marginBottom:8}}>
-                  <div style={{fontSize:11,fontWeight:600,color:'#4ade80',marginBottom:2}}>▶ {activeJob.title.replace(/ — .*/,'').substring(0,25)}</div>
-                  <div style={{fontSize:10,color:'var(--text3)'}}>Started: {activeJob.started_at?new Date(activeJob.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'}</div>
-                  {hasMapsLink(activeJob.address, activeJob.title)&&<a href={mapsOpenUrl(activeJob.address, activeJob.title)} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 View location</a>}
-                </div>
-              )}
-
-              {todayJobs.length>0&&(
-                <div>
-                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                    <span style={{fontSize:10,color:'var(--text3)'}}>Today's progress</span>
-                    <span style={{fontSize:10,color:'var(--text2)',fontWeight:600}}>{done}/{todayJobs.length}</span>
-                  </div>
-                  <div style={{height:4,background:'var(--surface2)',borderRadius:2,overflow:'hidden'}}>
-                    <div style={{height:'100%',width:(done/todayJobs.length*100)+'%',background:done===todayJobs.length?'#4ade80':'#60a5fa',borderRadius:2,transition:'width 0.4s'}} />
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Selected employee detail */}
-      {selected&&(()=>{
-        const emp = employees.find(e=>e.id===selected)
-        const empJobs = getEmpJobs(selected)
-        const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
-        const todayJobs = empJobs.filter(j=>j.scheduled_date===today)
-        const upcoming = empJobs.filter(j=>j.scheduled_date>today).slice(0,5)
-        if (!emp) return null
-        return (
-          <div className="card">
-            <div className="card-title">{emp.full_name} — Today's Schedule</div>
-            {todayJobs.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No jobs today.</div>}
-            {todayJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map((j,idx)=>(
-              <div key={j.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
-                <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0,
-                  background:j.status==='completed'?'#4ade80':j.status==='in_progress'?'#fbbf24':'var(--surface2)',
-                  color:j.status==='completed'||j.status==='in_progress'?'#0a1929':'var(--text3)'}}>
-                  {j.status==='completed'?'✓':j.status==='in_progress'?'▶':idx+1}
-                </div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:500}}>{j.title.replace(/ — .*/,'')}</div>
-                  <div style={{fontSize:11,color:'var(--text3)',display:'flex',gap:10,marginTop:2}}>
-                    {j.started_at&&<span>▶ {new Date(j.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
-                    {j.completed_at&&<span>🏁 {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
-                    {j.started_at&&j.completed_at&&<span>⏱ {Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000)}m</span>}
-                  </div>
-                </div>
-                <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                  {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
-                    <JobPhotos
-                      photoStartUrl={j.photo_start_url}
-                      photoEndUrl={j.photo_end_url}
-                      beforeLabel="Antes"
-                      afterLabel="Depois"
-                      size={40}
-                      onPhotoClick={setLightbox}
-                    />
-                  )}
-                  {hasMapsLink(j.address, j.title)&&<a href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" className="btn btn-sm">🗺</a>}
-                  <span className={`badge ${j.status==='completed'?'badge-green':j.status==='in_progress'?'badge-amber':'badge-blue'}`}>{j.status}</span>
-                </div>
-              </div>
-            ))}
-
-            {upcoming.length>0&&(
-              <div style={{marginTop:14}}>
-                <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>Upcoming</div>
-                {upcoming.map(j=>(
-                  <div key={j.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:'1px solid var(--border)',fontSize:12}}>
-                    <span style={{color:'var(--text2)'}}>{j.scheduled_date} · {j.title.replace(/ — .*/,'')}</span>
-                    <span className="badge badge-blue">{j.status}</span>
-                  </div>
-                ))}
-              </div>
+            {photoInfo && !photoInfo.error && photoInfo.filesFound > 0 && (
+              <button onClick={cleanPhotos} disabled={cleaning} className="btn btn-sm lt-danger">{cleaning?L.cleaning:`🗑️ ${L.cleanOld}`}</button>
             )}
           </div>
-        )
-      })()}
+        </div>
+      </section>
 
       <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} />
     </div>
