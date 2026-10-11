@@ -2,11 +2,27 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
+import { useSearchParams } from 'react-router-dom'
+import SpotContracts from '../components/SpotContracts'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const SERVICE_TYPES = ['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning']
 
 export default function ServiceContracts() {
+  const [params] = useSearchParams()
+  const [view, setView] = useState(params.get('spot') ? 'spot' : 'locations')
+  return (
+    <div>
+      <div className="tab-pills">
+        <button type="button" className={`tab-pill${view==='locations'?' active':''}`} onClick={()=>setView('locations')}>📋 Recurring locations</button>
+        <button type="button" className={`tab-pill${view==='spot'?' active':''}`} onClick={()=>setView('spot')}>⚡ Spot contracts</button>
+      </div>
+      {view==='spot' ? <SpotContracts /> : <RecurringContracts />}
+    </div>
+  )
+}
+
+function RecurringContracts() {
   const [clients, setClients] = useState([])
   const [contracts, setContracts] = useState([])
   const [selectedClient, setSelectedClient] = useState(null)

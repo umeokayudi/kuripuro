@@ -11,6 +11,8 @@ import ServiceTimer from '../components/ServiceTimer'
 import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
+import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
+import { ContractSignModal } from '../components/SpotContracts'
 import { getConfirmablePeriod, canConfirmPeriod, fmtPeriod, getPeriodDates } from '../lib/salaryPeriod'
 import { youtubeEmbedUrl } from '../lib/youtube'
 import LanguageToggle from '../components/LanguageToggle'
@@ -94,6 +96,9 @@ export default function EmployeePortal() {
   const [jobs, setJobs] = useState([])
   const [allJobs, setAllJobs] = useState([])
   const [spotJobs, setSpotJobs] = useState([])
+  // v1.0.21 · spot contract of the open job (signed on site by the location)
+  const [jobContract, setJobContract] = useState(null)
+  const [contractSignOpen, setContractSignOpen] = useState(false)
   const [activeJob, setActiveJob] = useState(null)
   const [elapsed, setElapsed] = useState(0)
   const [checklist, setChecklist] = useState([])
@@ -1078,6 +1083,38 @@ export default function EmployeePortal() {
     if (tab === 'shift' && activeJob) scrollToActiveJob()
   }, [tab, activeJob?.id])
 
+  useEffect(() => {
+    setJobContract(null)
+    if (!selectedJob?.id || selectedJob.job_category !== 'spot') return
+    let alive = true
+    supabase.from('spot_contracts').select('*').eq('job_id', selectedJob.id).eq('is_active', true).maybeSingle()
+      .then(({ data }) => { if (alive) setJobContract(data || null) })
+    return () => { alive = false }
+  }, [selectedJob?.id])
+
+  const signJobContract = async (dataUrl, signedBy) => {
+    const { data, error } = await supabase.from('spot_contracts')
+      .update({ signature_url: dataUrl, signed_by: signedBy, signed_at: new Date().toISOString(), status: 'signed' })
+      .eq('id', jobContract.id).select().single()
+    if (error) return toast.error(error.message)
+    setJobContract(data)
+    setContractSignOpen(false)
+    toast.success(e.contractSaved)
+  }
+
+  // Google Calendar subscribes to the worker's private .ics feed, so every job shows up there.
+  const syncMyCalendar = async () => {
+    try {
+      const url = await fetchCalendarFeedUrl()
+      const webcal = url.replace(/^https?:/, 'webcal:')
+      window.open(`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`, '_blank', 'noopener')
+      navigator.clipboard?.writeText(url).catch(() => {})
+      toast.success(e.calSyncDone, { duration: 7000 })
+    } catch {
+      toast.error(e.calSyncFail)
+    }
+  }
+
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (job.checklist_template||'').split('\n').filter(Boolean)
@@ -1122,6 +1159,17 @@ export default function EmployeePortal() {
             </div>
           </div>}
           {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
+          {jobContract&&jobContract.job_id===job.id&&<div style={{background:'rgba(193,156,86,0.08)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'12px 14px',marginBottom:10}}>
+            <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:4}}>📄 {e.contractTitle} · {jobContract.contract_number}</div>
+            {jobContract.status==='signed'
+              ? <div style={{fontSize:13,color:'#16a37e',fontWeight:600}}>✓ {e.contractSigned}{jobContract.signed_by?` · ${jobContract.signed_by}`:''}</div>
+              : jobContract.status!=='cancelled'&&<button onClick={()=>setContractSignOpen(true)} style={{width:'100%',padding:'12px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#c19c56,#e8c47a)',color:'#0a1929',fontSize:14,fontWeight:700,cursor:'pointer'}}>✍️ {e.contractSign}</button>}
+          </div>}
+          {job.scheduled_date&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+            <a href={googleCalendarUrl(job)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:14,padding:'12px 8px',textAlign:'center',color:'#fff',fontSize:12,fontWeight:600,textDecoration:'none'}}>📅 {e.calGoogle}</a>
+            <button onClick={()=>downloadJobIcs(job)} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:14,padding:'12px 8px',color:'rgba(255,255,255,0.75)',fontSize:12,fontWeight:600,cursor:'pointer'}}>🗓 {e.calIcs}</button>
+            <button onClick={syncMyCalendar} style={{gridColumn:'1/-1',background:'none',border:'1px dashed rgba(255,255,255,0.15)',borderRadius:14,padding:'10px 8px',color:'rgba(255,255,255,0.6)',fontSize:12,cursor:'pointer'}}>🔄 {e.calSync}</button>
+          </div>}
           {job.status==='assigned'&&!activeJob&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
           <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>{e.close}</button>
         </div>
@@ -1149,6 +1197,12 @@ export default function EmployeePortal() {
         labels={e}
         onConfirm={(sig)=>{ setRetroSignOpen(false); submitRetro(sig) }}
         onCancel={()=>setRetroSignOpen(false)}
+      />}
+      {contractSignOpen&&jobContract&&<ContractSignModal
+        contract={jobContract}
+        labels={{ title: e.contractTitle, name: e.contractSignName, signHere: e.contractSignHere, agree: e.contractAgree, clear: e.clear, cancel: e.cancel, confirm: e.confirm }}
+        onCancel={()=>setContractSignOpen(false)}
+        onConfirm={signJobContract}
       />}
       {trainingModal&&<TrainingModal job={trainingModal.job} contract={trainingModal.contract} onClose={()=>setTrainingModal(null)} lang={lang} labels={e} />}
       {showAddService&&(
@@ -1335,7 +1389,7 @@ export default function EmployeePortal() {
                   const diffMs=new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')-new Date()
                   return <div className="emp-empty-description">{diffMs>0&&diffMs<48*3600000?fill(e.timeAway,{time:Math.floor(diffMs/3600000)>0?`${Math.floor(diffMs/3600000)}h ${Math.floor((diffMs%3600000)/60000)}m`:`${Math.floor((diffMs%3600000)/60000)}m`}):fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
                 })()}
-                {nextShiftJob&&<div className="emp-next-job"><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</span></div>}
+                {nextShiftJob&&<div className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(nextShiftJob)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(nextShiftJob)}} style={{cursor:'pointer'}}><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</span></div>}
               </div>
             )}
 
@@ -2107,6 +2161,8 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
                 {isDone&&<span style={{fontSize:10,color:'#4ade80',fontWeight:600}}>Ver detalhes ›</span>}
                 {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
+                {!isDone&&<a href={googleCalendarUrl(job)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label={labels?.calGoogle} title={labels?.calGoogle} style={{fontSize:18,textDecoration:'none'}}>📅</a>}
+                {!isDone&&job.job_category==='spot'&&setSelectedJob&&<button type="button" onClick={e=>{e.stopPropagation();setSelectedJob(job)}} aria-label={labels?.contractTitle} title={labels?.contractTitle} style={{fontSize:18,background:'none',border:'none',padding:0,cursor:'pointer'}}>📄</button>}
               </div>
             </div>
 

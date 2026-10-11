@@ -1,3 +1,4 @@
+import calendar from './_calendar.js'
 import salesAi from './_sales-ai.js'
 import salesData from './_sales-data.js'
 import salesFiles from './_sales-files.js'
@@ -8,6 +9,8 @@ export const config = { api: { bodyParser: { sizeLimit: '32mb' } } }
 
 const handlers = {
   ai: salesAi,
+  calendar,
+  'calendar-link': calendar,
   data: salesData,
   files: salesFiles,
   reminders: salesReminders,

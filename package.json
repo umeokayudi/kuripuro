@@ -38,7 +38,8 @@
     "verify:production": "node scripts/verify-production.mjs",
     "test:client-care": "npx vite-node scripts/test-client-care.mjs",
     "test:availability": "npx vite-node scripts/test-availability.mjs",
-    "test:ai-guard": "node scripts/test-ai-guard.mjs"
+    "test:ai-guard": "node scripts/test-ai-guard.mjs",
+    "test:spot-contract": "node scripts/test-spot-contract.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

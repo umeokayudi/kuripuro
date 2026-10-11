@@ -1,0 +1,260 @@
+import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { spotContractHtml, spotContractTotals, DEFAULT_SPOT_TERMS } from '../lib/spotContract'
+import { signatureForDisplay, SIGNATURE_INK } from '../lib/signature'
+import { showPrintOverlay } from '../lib/openPrintHtml'
+import { googleCalendarUrl } from '../lib/calendar'
+import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import toast from 'react-hot-toast'
+
+// v1.0.21 · Contracts → Spot contracts: every spot job's contract with the location, stored.
+
+const STATUS_BADGE = { draft: 'badge-amber', signed: 'badge-green', cancelled: 'badge-red' }
+
+export default function SpotContracts() {
+  const [params] = useSearchParams()
+  const focusId = params.get('spot')
+  const [rows, setRows] = useState([])
+  const [jobs, setJobs] = useState({})
+  const [employees, setEmployees] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [missing, setMissing] = useState(false)
+  const [filter, setFilter] = useState('all')
+  const [query, setQuery] = useState('')
+  const [editing, setEditing] = useState(null)
+  const [signing, setSigning] = useState(null)
+
+  useEffect(() => { load() }, [])
+
+  const load = async () => {
+    setLoading(true)
+    const [{ data, error }, emps] = await Promise.all([
+      supabase.from('spot_contracts').select('*').eq('is_active', true).order('service_date', { ascending: false }).limit(500),
+      supabase.from('employees').select('id,full_name').eq('is_active', true).order('full_name'),
+    ])
+    setMissing(!!error)
+    const list = data || []
+    setRows(list)
+    setEmployees(emps.data || [])
+    const ids = list.map(r => r.job_id).filter(Boolean)
+    if (ids.length) {
+      const { data: js } = await supabase.from('jobs').select('id,title,status,spot_status,scheduled_date,scheduled_time,address,employee_name,client_name,description,job_category').in('id', ids)
+      setJobs(Object.fromEntries((js || []).map(j => [j.id, j])))
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    if (!focusId || loading) return
+    document.getElementById(`spot-${focusId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusId, loading])
+
+  const printContract = async (c, lang) => {
+    const sig = c.signature_url ? await signatureForDisplay(c.signature_url) : ''
+    showPrintOverlay(spotContractHtml(c, lang, sig))
+  }
+
+  const saveEdit = async () => {
+    const e = editing
+    const emp = employees.find(x => x.id === e.employee_id)
+    const patch = {
+      contact_name: e.contact_name || null, contact_phone: e.contact_phone || null,
+      price: parseFloat(e.price) || 0, tax_rate: parseInt(e.tax_rate, 10) || 0, price_includes_tax: e.price_includes_tax !== false,
+      scope: e.scope || null, terms: e.terms || DEFAULT_SPOT_TERMS.ja, notes: e.notes || null,
+      service_date: e.service_date || null, service_time: e.service_time || null,
+      employee_id: e.employee_id || null, employee_name: emp?.full_name || e.employee_name || '',
+    }
+    const { error } = await supabase.from('spot_contracts').update(patch).eq('id', e.id)
+    if (error) return toast.error(error.message)
+    // Keep the job in step: who does it and when.
+    if (e.job_id) {
+      const jobPatch = { scheduled_date: patch.service_date, scheduled_time: patch.service_time }
+      if (patch.employee_id) Object.assign(jobPatch, { employee_id: patch.employee_id, employee_name: patch.employee_name })
+      if (jobPatch.scheduled_date) await supabase.from('jobs').update(jobPatch).eq('id', e.job_id)
+    }
+    toast.success('Contract updated')
+    setEditing(null)
+    load()
+  }
+
+  const setStatus = async (c, status) => {
+    if (status === 'cancelled' && !confirm('Cancel this contract?')) return
+    const { error } = await supabase.from('spot_contracts').update({ status }).eq('id', c.id)
+    if (error) return toast.error(error.message)
+    load()
+  }
+
+  const saveSignature = async (dataUrl, signedBy) => {
+    const { error } = await supabase.from('spot_contracts').update({ signature_url: dataUrl, signed_by: signedBy, signed_at: new Date().toISOString(), status: 'signed' }).eq('id', signing.id)
+    if (error) return toast.error(error.message)
+    toast.success('Signed ✓')
+    setSigning(null)
+    load()
+  }
+
+  if (missing) return (
+    <div className="card"><div style={{ fontSize: 13, color: 'var(--text2)' }}>The spot contracts table is not in the database yet (sql/2026-10-11_contratos_spot.sql).</div></div>
+  )
+
+  const q = query.trim().toLowerCase()
+  const shown = rows
+    .filter(r => filter === 'all' || r.status === filter)
+    .filter(r => !q || [r.location_name, r.client_name, r.employee_name, r.contract_number].some(v => String(v || '').toLowerCase().includes(q)))
+  const total = shown.filter(r => r.status !== 'cancelled').reduce((s, r) => s + spotContractTotals(r).total, 0)
+
+  return (
+    <div>
+      <div className="kp-two-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
+        {[['Contracts', rows.length], ['To sign', rows.filter(r => r.status === 'draft').length], ['Signed', rows.filter(r => r.status === 'signed').length], ['Value (shown)', '¥' + total.toLocaleString()]].map(([l, v]) => (
+          <div key={l} className="card" style={{ padding: '12px 14px', textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{v}</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+        {['all', 'draft', 'signed', 'cancelled'].map(f => (
+          <button key={f} type="button" className={`tab-pill${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>{f === 'all' ? 'All' : f === 'draft' ? 'To sign' : f === 'signed' ? 'Signed' : 'Cancelled'}</button>
+        ))}
+        <div className="form-group" style={{ flex: '1 1 200px', minWidth: 0, margin: 0 }}><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search location, staff, number…" /></div>
+      </div>
+
+      {loading && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>Loading…</div></div>}
+      {!loading && shown.length === 0 && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>No spot contracts yet. They are created automatically when you send a spot job in Jobs → New Job.</div></div>}
+
+      {shown.map(c => {
+        const job = jobs[c.job_id]
+        const t = spotContractTotals(c)
+        return (
+          <div key={c.id} id={`spot-${c.id}`} className="card" style={{ marginBottom: 10, border: focusId === c.id ? '2px solid var(--navy)' : undefined }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{c.location_name} <span className={`badge ${STATUS_BADGE[c.status] || 'badge-navy'}`} style={{ marginLeft: 6 }}>{c.status === 'draft' ? 'to sign' : c.status}</span></div>
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>{c.contract_number} · {c.service_date || '—'} {c.service_time || ''} · 👷 {c.employee_name || '—'}</div>
+                {c.client_name && <div style={{ fontSize: 12, color: 'var(--text3)' }}>🏢 {c.client_name}{c.contact_name ? ` · ${c.contact_name}` : ''}{c.contact_phone ? ` · ${c.contact_phone}` : ''}</div>}
+                {!c.client_name && (c.contact_name || c.contact_phone) && <div style={{ fontSize: 12, color: 'var(--text3)' }}>{c.contact_name} {c.contact_phone}</div>}
+                {hasMapsLink(c.location_address, c.location_name) && <a href={mapsOpenUrl(c.location_address, c.location_name)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#60a5fa', textDecoration: 'none' }}>🗺 Maps</a>}
+                {job && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Job: {job.status}{job.spot_status ? ` · employee ${job.spot_status}` : ''}</div>}
+                {c.signed_by && <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}>✍️ {c.signed_by} · {new Date(c.signed_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</div>}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>¥{t.total.toLocaleString()}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>staff +¥{Number(c.employee_pay || 0).toLocaleString()}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button className="btn btn-sm btn-primary" onClick={() => printContract(c, 'ja')}>📄 契約書</button>
+              <button className="btn btn-sm" onClick={() => printContract(c, 'en')}>📄 EN</button>
+              {c.status === 'draft' && <button className="btn btn-sm" onClick={() => setSigning(c)}>✍️ Sign</button>}
+              <button className="btn btn-sm" onClick={() => setEditing({ ...c })}>✏️ Edit</button>
+              {(job || c.service_date) && <a className="btn btn-sm" href={googleCalendarUrl(job || { title: c.location_name, scheduled_date: c.service_date, scheduled_time: c.service_time, address: c.location_address, employee_name: c.employee_name, job_category: 'spot' })} target="_blank" rel="noreferrer">📅 Google Calendar</a>}
+              {c.status !== 'cancelled' && <button className="btn btn-sm btn-danger" onClick={() => setStatus(c, 'cancelled')}>✕ Cancel</button>}
+              {c.status === 'cancelled' && <button className="btn btn-sm" onClick={() => setStatus(c, 'draft')}>↺ Reopen</button>}
+            </div>
+          </div>
+        )
+      })}
+
+      {editing && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setEditing(null)}>
+          <div className="card" style={{ width: 'min(640px,100%)', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div className="card-title">Edit {editing.contract_number}</div>
+            <div className="grid-2">
+              <div className="form-group"><label>Contact person</label><input value={editing.contact_name || ''} onChange={e => setEditing(x => ({ ...x, contact_name: e.target.value }))} /></div>
+              <div className="form-group"><label>Contact phone</label><input value={editing.contact_phone || ''} onChange={e => setEditing(x => ({ ...x, contact_phone: e.target.value }))} /></div>
+              <div className="form-group"><label>Date</label><input type="date" value={editing.service_date || ''} onChange={e => setEditing(x => ({ ...x, service_date: e.target.value }))} /></div>
+              <div className="form-group"><label>Time</label><input type="time" value={editing.service_time || ''} onChange={e => setEditing(x => ({ ...x, service_time: e.target.value }))} /></div>
+              <div className="form-group"><label>Assigned to</label>
+                <select value={editing.employee_id || ''} onChange={e => setEditing(x => ({ ...x, employee_id: e.target.value }))}>
+                  <option value="">—</option>
+                  {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
+                </select>
+              </div>
+              <div className="form-group"><label>Price (¥)</label><input type="number" value={editing.price ?? 0} onChange={e => setEditing(x => ({ ...x, price: e.target.value }))} /></div>
+              <div className="form-group"><label>Tax</label><select value={editing.tax_rate ?? 10} onChange={e => setEditing(x => ({ ...x, tax_rate: e.target.value }))}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select></div>
+              <div className="form-group"><label>Price includes tax?</label><select value={String(editing.price_includes_tax !== false)} onChange={e => setEditing(x => ({ ...x, price_includes_tax: e.target.value === 'true' }))}><option value="true">Yes</option><option value="false">No</option></select></div>
+            </div>
+            <div className="form-group"><label>Scope of work</label><textarea rows={3} value={editing.scope || ''} onChange={e => setEditing(x => ({ ...x, scope: e.target.value }))} /></div>
+            <div className="form-group"><label>Terms</label><textarea rows={6} value={editing.terms || ''} onChange={e => setEditing(x => ({ ...x, terms: e.target.value }))} /></div>
+            <div className="form-group"><label>Internal notes</label><input value={editing.notes || ''} onChange={e => setEditing(x => ({ ...x, notes: e.target.value }))} /></div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>Changing date, time or staff also updates the job.</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary" onClick={saveEdit}>✅ Save</button>
+              <button className="btn" onClick={() => setEditing(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {signing && <ContractSignModal contract={signing} onCancel={() => setSigning(null)} onConfirm={saveSignature} />}
+    </div>
+  )
+}
+
+/** White signature pad (dark ink on paper) + signer name. */
+export function ContractSignModal({ contract, onCancel, onConfirm, labels = {} }) {
+  const canvasRef = useRef()
+  const drawing = useRef(false)
+  const [hasInk, setHasInk] = useState(false)
+  const [name, setName] = useState(contract?.contact_name || '')
+
+  const paper = () => {
+    const c = canvasRef.current
+    if (!c) return
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, c.width, c.height)
+  }
+  useEffect(() => { paper() }, [])
+
+  const pos = (e) => {
+    const c = canvasRef.current
+    const r = c.getBoundingClientRect()
+    const p = e.touches ? e.touches[0] : e
+    return { x: (p.clientX - r.left) * c.width / r.width, y: (p.clientY - r.top) * c.height / r.height }
+  }
+  const start = (e) => {
+    e.preventDefault()
+    const ctx = canvasRef.current.getContext('2d')
+    const p = pos(e)
+    ctx.beginPath(); ctx.moveTo(p.x, p.y)
+    drawing.current = true
+    setHasInk(true)
+  }
+  const move = (e) => {
+    if (!drawing.current) return
+    e.preventDefault()
+    const ctx = canvasRef.current.getContext('2d')
+    const p = pos(e)
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = SIGNATURE_INK
+    ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(p.x, p.y)
+  }
+  const end = () => { drawing.current = false }
+  const clear = () => { paper(); setHasInk(false) }
+  const ready = hasInk && name.trim()
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onCancel}>
+      <div style={{ background: '#fff', color: '#122033', borderRadius: 16, padding: 18, width: 'min(460px,100%)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>{labels.title || 'Location signature'}</div>
+        <div style={{ fontSize: 12, color: '#5c6573', marginBottom: 10 }}>{contract?.contract_number} · {contract?.location_name} · ¥{spotContractTotals(contract).total.toLocaleString()}</div>
+        <label style={{ fontSize: 12, color: '#5c6573' }}>{labels.name || 'Name of the person signing'}</label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="山田 太郎" style={{ width: '100%', margin: '4px 0 10px', padding: 10, borderRadius: 8, border: '1px solid #cfd8e6', color: '#122033', background: '#fff' }} />
+        <div style={{ border: '1px solid #cfd8e6', borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
+          <canvas ref={canvasRef} width={420} height={170} style={{ width: '100%', height: 170, display: 'block', touchAction: 'none' }}
+            onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+            onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
+          {!hasInk && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9aa6b8', fontSize: 14, pointerEvents: 'none' }}>{labels.signHere || 'Sign here'}</div>}
+        </div>
+        <div style={{ fontSize: 11, color: '#5c6573', margin: '8px 0 12px' }}>{labels.agree || 'By signing, the location agrees to the date, price and terms of this contract.'}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <button type="button" className="btn" onClick={clear}>{labels.clear || 'Clear'}</button>
+          <button type="button" className="btn" onClick={onCancel}>{labels.cancel || 'Cancel'}</button>
+          <button type="button" className="btn btn-primary" disabled={!ready} onClick={() => onConfirm(canvasRef.current.toDataURL('image/png'), name.trim())}>✓ {labels.confirm || 'Confirm'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
