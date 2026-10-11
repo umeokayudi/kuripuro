@@ -45,6 +45,7 @@ import AvailabilityPlanner, { PlanAlert, statusLabel, fmtDay } from '../componen
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
+import { employeeThemeFor, loadEmployeeTheme } from '../lib/employeeTheme'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -83,6 +84,10 @@ export default function EmployeePortal() {
   const { user, logout } = useAuth()
   const { lang, t: tr } = useLang()
   const e = tr.employee
+  // Personal theme for this exact account only (matched by employee id).
+  const personalTheme = employeeThemeFor(user)
+  const themeClass = personalTheme ? ` kp-theme-${personalTheme}` : ''
+  useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
   const [quickOpen, setQuickOpen] = useState(false)
@@ -1125,8 +1130,8 @@ export default function EmployeePortal() {
   }
 
   return (
-    <div className="emp-backdrop">
-    <div className="emp-shell" style={{width:'100%',minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
+    <div className={`emp-backdrop${themeClass}`}>
+    <div className={`emp-shell${themeClass}`} style={{width:'100%',minHeight:'100vh',background:'#060d18',display:'flex',flexDirection:'column',maxWidth:430,margin:'0 auto',WebkitTapHighlightColor:'transparent',fontFamily:'"Plus Jakarta Sans","Noto Sans JP",-apple-system,sans-serif',paddingBottom:70}}>
       <input type="file" ref={photoInputRef} accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>{const slot=photoInputRef.current.dataset.slot||'end';addPhoto(slot,e.target.files);e.target.value=''}} />
       <input type="file" ref={claimPhotoRef} accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimPhotoPreview)URL.revokeObjectURL(claimPhotoPreview);setClaimPhoto(f);setClaimPhotoPreview(URL.createObjectURL(f))}}} />
       <input type="file" ref={claimReceiptRef} accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files[0];if(f){if(claimReceiptPreview)URL.revokeObjectURL(claimReceiptPreview);setClaimReceipt(f);setClaimReceiptPreview(URL.createObjectURL(f))}}} />
