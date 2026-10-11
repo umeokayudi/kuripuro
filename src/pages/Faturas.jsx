@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
+import { dueDateAfter } from '../lib/spotContract'
 import { useLang, fill } from '../hooks/useLang'
 import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAutomation'
 
@@ -88,6 +89,10 @@ export default function Faturas() {
         .eq('period_end', end)
         .neq('status', 'cancelled')
 
+      // Spot jobs already billed by their own spot-contract invoice are not billed again here.
+      const { data: spotBilled } = await supabase.from('spot_contracts').select('job_id').not('fatura_id', 'is', null)
+      const spotBilledJobs = new Set((spotBilled || []).map(r => r.job_id).filter(Boolean))
+
       const existingKeys = new Set((existing || []).map(f => `${f.client_id}:${f.period_start}:${f.period_end}`))
       let created = 0
       let skipped = 0
@@ -110,7 +115,7 @@ export default function Faturas() {
           .eq('status', 'completed')
 
         const lines = clientContracts
-          .map(contract => buildContractLine(contract, completedJobs || []))
+          .map(contract => buildContractLine(contract, (completedJobs || []).filter(j => !spotBilledJobs.has(j.id))))
           .filter(Boolean)
 
         if (!lines.length) continue
@@ -120,8 +125,8 @@ export default function Faturas() {
         const includesTax = clientContracts.every(c => c.price_includes_tax !== false)
         const tax = calculateTax(totalAfterDiscount, taxRate, includesTax)
         const subtotal = includesTax ? totalAfterDiscount - tax : totalAfterDiscount
-        const dueDate = new Date()
-        dueDate.setDate(dueDate.getDate() + 30)
+        // Payment day of the contract (default the 10th) in the month after the billed period.
+        const payDay = clientContracts.find(c => c.billing_day)?.billing_day || 10
 
         const { data: fatura, error } = await supabase.from('faturas').insert({
           client_id: clientId,
@@ -129,7 +134,7 @@ export default function Faturas() {
           period_start: start,
           period_end: end,
           issue_date: new Date().toISOString().slice(0,10),
-          due_date: dueDate.toISOString().slice(0,10),
+          due_date: dueDateAfter(start, payDay),
           subtotal,
           tax_amount: tax,
           total: totalAfterDiscount,

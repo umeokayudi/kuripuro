@@ -8,6 +8,7 @@ import { AlertBanner, ContactHistory, ContactLogForm, FollowupChip, GoalBars, La
 import { RESPONSE_TAGS, alertCounts, followupQueue, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
 import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
+import SellerContractCommissions from '../components/SellerContractCommissions'
 
 const COPY = {
   en: {
@@ -380,7 +381,7 @@ export default function SalespersonPortal() {
         {tab === 'overview' && <SalesInbox lang={lang} notifications={data.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) editLead(row) }} />}
         {tab === 'overview' && <>
           <div className="sales-metrics">
-            {[[c.leadsN, metrics.leads || 0], [c.approachesN, metrics.approaches || 0], [c.quotes, metrics.quotes || 0], [c.active, metrics.active_contracts || 0], [c.conversion, `${Number(metrics.conversion_rate || 0).toFixed(1)}%`], [c.ticket, yen(metrics.quote_average)], [c.commission, yen(metrics.commission_pending)], [c.hours, `${Number(metrics.hours_this_month || 0).toFixed(1)}h`], [c.due, metrics.followups_due || 0]].map(([label, value]) => <div className="sales-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
+            {[[c.leadsN, metrics.leads || 0], [c.approachesN, metrics.approaches || 0], [c.quotes, metrics.quotes || 0], [c.active, metrics.active_contracts || 0], [c.conversion, `${Number(metrics.conversion_rate || 0).toFixed(1)}%`], [c.ticket, yen(metrics.quote_average)], [c.commission, yen(Number(metrics.commission_pending || 0) + Number(metrics.spot_commission_due || 0))], [c.hours, `${Number(metrics.hours_this_month || 0).toFixed(1)}h`], [c.due, metrics.followups_due || 0]].map(([label, value]) => <div className="sales-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
           </div>
           <div className="sales-grid-two">
             <div className="card"><div className="card-title">{c.followups}</div>{queue.filter(row => row.info.status !== 'scheduled').slice(0, 6).map(({ lead: row, info }) => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><LastContactLine info={info} lead={row} f={f} /><FollowupChip info={info} f={f} /></div><button className="btn btn-sm" onClick={() => markFollowup(row)}>{f.logContact}</button></div>)}{queue.filter(row => row.info.status !== 'scheduled').length === 0 && <p className="sales-muted">{c.noFollowups}</p>}</div>
@@ -444,7 +445,8 @@ export default function SalespersonPortal() {
           <label className="form-group sales-file-field"><span>{c.signedPdf} *</span><input type="file" accept="application/pdf,.pdf" onChange={e => uploadContractPdf(e.target.files?.[0])}/>{contract.signed_pdf_name && <small>{contract.signed_pdf_name}</small>}</label>
           {data.contracts?.filter(row => row.status === 'changes_requested' && row.salesperson_id === user.id).map(row => <div className="sales-review-note" key={row.id}><strong>{row.company_name}</strong><p>{row.admin_note}</p></div>)}
           <button className="btn btn-primary" type="submit" disabled={saving || !contract.signed_pdf_object_path}>{saving ? c.saving : c.submit}</button></form></div>
-          <div className="card"><div className="card-title">{c.activeContracts}</div>{(data.contracts || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{c.statuses[row.status] || row.status} · {yen(row.client_monthly_total)} {c.perMonth} · {c.commission}: {yen(row.commission_amount)}</small>{row.admin_note && <p>{row.admin_note}</p>}</div>{row.signed_pdf_object_path && <button className="btn btn-sm" onClick={() => openSignedPdf(row)}>{c.open} PDF</button>}</div>)}{!data.contracts?.length && <p className="sales-muted">{c.noContracts}</p>}</div></>}
+          <div className="card"><div className="card-title">{c.activeContracts}</div>{(data.contracts || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{c.statuses[row.status] || row.status} · {yen(row.client_monthly_total)} {c.perMonth} · {c.commission}: {yen(row.commission_amount)}</small>{row.admin_note && <p>{row.admin_note}</p>}</div>{row.signed_pdf_object_path && <button className="btn btn-sm" onClick={() => openSignedPdf(row)}>{c.open} PDF</button>}</div>)}{!data.contracts?.length && <p className="sales-muted">{c.noContracts}</p>}</div>
+          <SellerContractCommissions data={data} lang={lang} /></>}
       </>}
     </div>
   )

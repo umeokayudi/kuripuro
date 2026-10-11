@@ -93,5 +93,6 @@ function guessType(path) {
   if (ext === 'webp') return 'image/webp'
   if (ext === 'heic' || ext === 'heif') return 'image/heic'
   if (ext === 'gif') return 'image/gif'
+  if (ext === 'pdf') return 'application/pdf'
   return 'image/jpeg'
 }

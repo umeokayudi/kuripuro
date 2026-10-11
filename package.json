@@ -38,11 +38,13 @@
     "verify:production": "node scripts/verify-production.mjs",
     "test:client-care": "npx vite-node scripts/test-client-care.mjs",
     "test:availability": "npx vite-node scripts/test-availability.mjs",
-    "test:ai-guard": "node scripts/test-ai-guard.mjs"
+    "test:ai-guard": "node scripts/test-ai-guard.mjs",
+    "test:spot-contract": "node scripts/test-spot-contract.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "heic2any": "^0.0.4",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
