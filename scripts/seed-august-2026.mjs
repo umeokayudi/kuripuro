@@ -3,7 +3,8 @@ import { getSupabaseEnv, assertSupabaseKey, supabaseHeaders } from './_supabaseE
 import {
   buildMonthSchedule,
   jobsToRows,
-  contractsForActiveEmployees,
+  assignEmployees,
+  defaultScheduleEmployees,
   locationsFromContracts,
   DEFAULT_LOCATIONS,
 } from '../src/lib/scheduleGenerator.js'
@@ -33,12 +34,11 @@ async function main() {
   const employees = await sb('GET', 'employees?select=id,full_name,is_active&is_active=eq.true')
   const serviceContracts = await sb('GET', 'service_contracts?select=*&is_active=eq.true')
 
-  const contracts = contractsForActiveEmployees(employees)
   const locations = locationsFromContracts(serviceContracts)?.length
     ? locationsFromContracts(serviceContracts)
     : DEFAULT_LOCATIONS
 
-  const jobs = buildMonthSchedule(MONTH, { contracts, locations, includeDuskin: true })
+  const jobs = assignEmployees(buildMonthSchedule(MONTH, { locations }), { employees: defaultScheduleEmployees(employees) })
 
   const completedIso = new Date(`${COMPLETE_UNTIL}T23:59:59+09:00`).toISOString()
   jobs.forEach(j => {
@@ -57,7 +57,7 @@ async function main() {
     await sb('DELETE', `jobs?id=in.(${idList})`)
   }
 
-  const rows = jobsToRows(jobs, contracts).map(r => ({
+  const rows = jobsToRows(jobs).map(r => ({
     title: r.title,
     employee_id: r.employee_id,
     employee_name: r.employee_name,
