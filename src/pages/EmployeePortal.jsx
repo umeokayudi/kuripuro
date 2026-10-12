@@ -690,7 +690,6 @@ export default function EmployeePortal() {
       toast.error(fill(e.retroChecklistIncomplete, { required: retroChecklistRequired, total: retroChecklist.length }))
       return false
     }
-    if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return false }
     if (!retroPhoto) { toast.error(e.retroPhotoRequired); return false }
     return true
   }
@@ -704,24 +703,28 @@ export default function EmployeePortal() {
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
       const markedDone = retroChecklist.filter(c => c.done).map(c => c.label)
-      const resp = await fetch('/api/evaluate-report', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          report: retroText,
-          checklist: ck,
-          jobTitle: retroJob.title,
-          markedDone,
-        }),
-      })
-      const ev = await resp.json()
-      if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
-      const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
       const total = retroChecklist.length
       const done = retroChecklist.filter(c => c.done).length
       const missedLabels = retroChecklist.filter(c => !c.done).map(c => c.label)
+      // Notes are optional: with no text there is nothing for the AI to read, so the marked checklist stands.
+      let ev = { itens_feitos: done, itens_total: total, nao_feitos: [], tempo_estimado_min: null, resumo: null }
+      if (retroText.trim()) {
+        const resp = await fetch('/api/evaluate-report', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            report: retroText,
+            checklist: ck,
+            jobTitle: retroJob.title,
+            markedDone,
+          }),
+        })
+        ev = await resp.json()
+        if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
+      }
+      const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
       const { error } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(),
-        retro_report: retroText, retro_ai_summary: ev.resumo||null,
+        retro_report: retroText.trim(), retro_ai_summary: ev.resumo||null,
         retro_time_min: ev.tempo_estimado_min ?? null,
         photo_end_url: photoUrl, admin_reviewed: false, signature_url: sigDataUrl || null,
         checklist_total: total || null, checklist_done: total ? done : null,
@@ -1329,7 +1332,7 @@ export default function EmployeePortal() {
               <div style={{textAlign:'center'}}>
                 <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',marginBottom:8}}>✓ {fill(e.retroEvalChecklist, { done: retroEval.itens_feitos, total: retroEval.itens_total })}</div>
                 <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{e.retroEvalPayNote}</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.6)',background:'rgba(255,255,255,0.04)',borderRadius:12,padding:12,marginTop:8,textAlign:'left',lineHeight:1.6}}>{retroEval.resumo}</div>
+                {retroEval.resumo&&<div style={{fontSize:12,color:'rgba(255,255,255,0.6)',background:'rgba(255,255,255,0.04)',borderRadius:12,padding:12,marginTop:8,textAlign:'left',lineHeight:1.6}}>{retroEval.resumo}</div>}
                 {(retroEval.nao_feitos||[]).length>0&&<div style={{fontSize:11,color:'#f87171',marginTop:8,textAlign:'left'}}>{fill(e.retroEvalUnrecognized, { items: retroEval.nao_feitos.join(', ') })}</div>}
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:12}}>{e.finalizing}</div>
               </div>
