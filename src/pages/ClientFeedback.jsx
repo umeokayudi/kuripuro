@@ -4,6 +4,7 @@ import { useLang, fill } from '../hooks/useLang'
 import { avgStars, starsDisplay } from '../lib/satisfaction'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
+import ClientSatisfactionPanel from '../components/ClientSatisfactionPanel'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
 
@@ -170,6 +171,8 @@ export default function ClientFeedback() {
         <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{f.title}</h2>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{f.subtitle}</div>
       </div>
+
+      <ClientSatisfactionPanel />
 
       <div className="tab-pills" style={{ marginBottom: 16 }}>
         {TABS.map(k => (
