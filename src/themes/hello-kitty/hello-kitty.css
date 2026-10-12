@@ -169,6 +169,7 @@
 .emp-shell.kp-theme-hello-kitty .ex-evo-col i{background:var(--hk-pink-mid) !important}
 .emp-shell.kp-theme-hello-kitty .ex-evo-col.is-now i{background:var(--hk-pink) !important}
 .emp-shell.kp-theme-hello-kitty .emp-timeoff-head button{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-bell-all{color:var(--hk-pink) !important}
 
 /* Service timer keeps its warning/overtime colours, normal state goes pink. */
 .emp-shell.kp-theme-hello-kitty .svc-timer:not(.is-warn):not(.is-over){--tone:var(--hk-pink);--tone-soft:var(--hk-pink-soft)}

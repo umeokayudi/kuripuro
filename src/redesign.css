@@ -414,6 +414,24 @@
 .emp-timeoff-st.is-pending{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
 .emp-timeoff-st.is-approved{background:#ecfdf3;color:#15803d;border:1px solid #bbf7d0}
 .emp-timeoff-st.is-rejected{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+.emp-timeoff+.av-planner{margin-top:14px}
+.emp-bell-overlay{position:fixed;inset:0;z-index:210;display:flex;justify-content:center;align-items:flex-start;padding:calc(env(safe-area-inset-top) + 72px) 16px 16px;background:rgba(15,27,47,.38);backdrop-filter:blur(4px)}
+.emp-bell-pop{width:min(100%,420px);max-height:calc(100dvh - 100px);display:flex;flex-direction:column;background:#fff;border:1px solid #e4e9f1;border-radius:20px;box-shadow:0 20px 60px rgba(14,31,57,.22);overflow:hidden}
+.emp-bell-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #eef2f7}
+.emp-bell-head h2{margin:0;font-size:16px;font-weight:800;color:#172033}
+.emp-bell-list{overflow-y:auto;padding:6px 10px}
+.emp-bell-item{width:100%;display:flex;align-items:center;gap:12px;padding:11px 6px;border:0;border-bottom:1px solid #eef2f7;background:none;text-align:left;font:inherit;color:#172033}
+.emp-bell-item:last-child{border-bottom:0}
+.emp-bell-item>div{min-width:0;flex:1}
+.emp-bell-item strong{display:block;font-size:13.5px;font-weight:750}
+.emp-bell-item small{display:block;font-size:11.5px;color:#5f6b7d;overflow-wrap:anywhere;margin-top:2px}
+.emp-bell-item.is-link{cursor:pointer}
+.emp-bell-item>b{color:#94a3b8;font-size:18px}
+.emp-bell-icon{flex-shrink:0;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:800;background:#eef2ff;color:#315cf5}
+.emp-bell-item.is-approved .emp-bell-icon{background:#ecfdf3;color:#15803d}
+.emp-bell-item.is-rejected .emp-bell-icon{background:#fef2f2;color:#b91c1c}
+.emp-bell-empty{margin:14px 6px;font-size:13px;color:#5f6b7d}
+.emp-bell-all{border:0;border-top:1px solid #eef2f7;background:#f8fafc;color:#315cf5;font:inherit;font-size:13px;font-weight:750;padding:13px 16px;text-align:left;cursor:pointer}
 .nav-item{position:relative}
 .nav-count{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#f59e0b;color:#fff;font-size:10.5px;font-weight:800;display:inline-grid;place-items:center;line-height:1}
 .sidebar-collapsed .nav-count{position:absolute;top:4px;right:6px;margin:0}
