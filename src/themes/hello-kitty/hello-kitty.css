@@ -330,3 +330,5 @@
 @media(prefers-reduced-motion:no-preference){
   .emp-shell.kp-theme-hello-kitty .ex-fab:not(.is-open):active{transform:scale(.94)}
 }
+.emp-shell.kp-theme-hello-kitty .ai-voice-status{background:rgba(236,79,140,.10);color:var(--hk-pink-dark)}
+.emp-shell.kp-theme-hello-kitty .ai-voice-spinner{border-color:rgba(236,79,140,.25);border-top-color:var(--hk-pink)}

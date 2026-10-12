@@ -4,6 +4,7 @@
 import { runGeminiToolLoop } from './_tool-loop.js'
 import { requireSalesSession, salesDb } from './_salesSession.js'
 import { trimHistory, workOnlyRule, maskPendingRows, PENDING_RULE } from './_ai-guard.js'
+import { transcribeAudio } from './_transcribe.js'
 
 const EMPLOYEE_TABLES = ['jobs', 'salary_payments', 'transport_claims', 'equipment_requests', 'messages', 'badges', 'checkins', 'salary_statements', 'salary_complaints', 'employee_contracts', 'employee_availability']
 
@@ -67,6 +68,8 @@ export default async function handler(req, res) {
   if (!(await isActiveEmployee(session.id))) return res.status(401).json({ error: 'Sua sessão expirou. Saia e entre de novo para usar a IA.' })
   const employeeId = session.id
   const employeeName = session.name
+
+  if (req.body?.transcribe) return transcribeAudio(res, req.body.transcribe)
 
   const { language = 'en' } = req.body || {}
   const messages = Array.isArray(req.body?.messages) ? trimHistory(req.body.messages) : []

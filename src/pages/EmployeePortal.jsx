@@ -1334,21 +1334,21 @@ export default function EmployeePortal() {
             </button>
           </div>
         </div>
-        {/* Same greeting header on every screen */}
-        <div className="ex-greet emp-hello">
+        {/* Same greeting header on every screen except the AI helper, which gets the whole height */}
+        {tab!=='ai'&&<div className="ex-greet emp-hello">
           <div>
             <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
             <p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}{tab!=='home'&&currentTabLabel?<b> · {currentTabLabel}</b>:null}</p>
           </div>
           <div><span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span></div>
-        </div>
+        </div>}
         {!isOnline&&<div className="emp-offline-banner">
           ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div className={`emp-status-chip ${gpsStatus.includes('✅')?'is-good':gpsStatus.includes('🚫')?'is-bad':''}`}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
-          {planAlert&&tab!=='availability'&&<div onClick={()=>setTab('availability')} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
+          {planAlert&&tab!=='availability'&&tab!=='ai'&&<div onClick={()=>setTab('availability')} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
         </div>
       </div>
