@@ -38,50 +38,124 @@ export const DEFAULT_LOCATIONS = [
 ]
 
 const DAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
-const PALETTE = ['#60a5fa', '#4ade80', '#fbbf24', '#c084fc', '#f472b6', '#38bdf8']
+export const SCHEDULE_COLORS = ['#60a5fa', '#4ade80', '#fbbf24', '#c084fc', '#f472b6', '#38bdf8']
 export const DOW_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 export const DOW_JA = ['日', '月', '火', '水', '木', '金', '土']
 export const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /**
- * Contrato de escala por funcionário (employee_id do Supabase).
- * Deep clean e manutenção mensal: inserir manualmente no admin.
+ * Rotas da escala (o trabalho fixo do mês). Não têm funcionário fixo: quem faz
+ * cada dia é decidido por assignEmployees(), conforme a disponibilidade marcada
+ * por cada um (employee_availability) e o responsável escolhido pelo admin.
+ * Deep clean e manutenção mensal avulsos: inserir manualmente no admin.
  */
-export const EMPLOYEE_SCHEDULE_CONTRACTS = [
+export const SCHEDULE_ROUTES = [
   {
-    employeeId: '583d1ad6-1046-41db-8944-8f69120be41d',
+    key: 'otp_basic',
     label: 'OTP · limpeza básica diária',
     detail: 'Todos os restaurantes OTP nos dias do contrato. Segunda: Atomic até 21:00.',
     template: 'otp_basic',
     mondayAtomic: true,
   },
   {
-    employeeId: '583d1ad6-1046-41db-8944-8f69120be41d',
+    key: 'otp_deep_only',
     label: 'OTP · deep-only seg+qua + manutenção folga',
     detail: 'Ibushio, Nyu Ibushio, Horumon, Manmosu — deep seg+qua; grease trap 2x/mês; fogão, range hood, grelha e ar 1x/mês no dia de folga.',
     template: 'otp_deep_only',
   },
   {
-    employeeId: '583d1ad6-1046-41db-8944-8f69120be41d',
+    key: 'duskin_sunday',
     label: 'Duskin · domingos do mês',
     detail: '1º dom (cera/polidora/banheiros/prédios), 3º dom (prédios + Sugita Restaurant), penúltimo dom (limpeza geral).',
     template: 'duskin_sunday',
   },
 ]
 
-export function contractsForActiveEmployees(activeEmployees) {
-  const activeIds = new Set((activeEmployees || []).filter(e => e.is_active !== false).map(e => e.id))
-  return EMPLOYEE_SCHEDULE_CONTRACTS
-    .filter(c => activeIds.has(c.employeeId))
-    .map((c, i) => {
-      const emp = activeEmployees.find(e => e.id === c.employeeId)
-      return {
-        ...c,
-        employeeName: emp?.full_name || 'Funcionário',
-        shortName: (emp?.full_name || '?').split(' ')[0],
-        color: PALETTE[i % PALETTE.length],
-      }
-    })
+/** Funcionários que entram na escala por padrão (logins de teste ficam de fora). */
+export function defaultScheduleEmployees(employees) {
+  return (employees || []).filter(e => e.is_active !== false && !/^teste\b/i.test(e.full_name || ''))
+}
+
+/** Uma marcação conta enquanto não foi recusada pelo admin (pendente também conta). */
+function counts(row) {
+  return row && row.status !== 'rejected'
+}
+
+/** Mapa `${employee_id}|${date}` -> 'off' | 'extra' a partir das linhas de employee_availability. */
+export function availabilityIndex(rows) {
+  const idx = {}
+  ;(rows || []).forEach(r => {
+    if (!counts(r) || (r.kind !== 'off' && r.kind !== 'extra')) return
+    idx[`${r.employee_id}|${r.date}`] = { kind: r.kind, status: r.status }
+  })
+  return idx
+}
+
+const shortNameOf = (emp) => (emp?.full_name || '?').split(' ')[0]
+
+/**
+ * Decide quem faz cada rota em cada dia.
+ * - Ninguém recebe trabalho num dia que marcou folga (pendente ou aprovada).
+ * - Se a rota tem responsável e ele pode, fica com ele.
+ * - Senão: quem marcou "trabalho extra" no dia, depois quem ainda não tem rota
+ *   naquele dia, depois quem trabalhou menos dias no mês.
+ * - Se ninguém pode, os jobs ficam sem funcionário (aparecem como "Sem funcionário").
+ * `overrides['date|routeKey']` força uma escolha do admin ('' = sem funcionário).
+ */
+export function assignEmployees(jobs, { employees = [], availability = {}, owners = {}, overrides = {} } = {}) {
+  const empById = Object.fromEntries(employees.map(e => [e.id, e]))
+  const routeOrder = Object.fromEntries(SCHEDULE_ROUTES.map((r, i) => [r.key, i]))
+  const groups = {}
+  jobs.forEach(j => { (groups[`${j.date}|${j.routeKey}`] = groups[`${j.date}|${j.routeKey}`] || []).push(j) })
+  const keys = Object.keys(groups).sort((a, b) => {
+    const [da, ra] = a.split('|'); const [db, rb] = b.split('|')
+    return da === db ? (routeOrder[ra] ?? 9) - (routeOrder[rb] ?? 9) : da.localeCompare(db)
+  })
+
+  const daysWorked = Object.fromEntries(employees.map(e => [e.id, new Set()]))
+  const busy = {} // date -> Set(employeeId)
+  const result = []
+
+  keys.forEach(key => {
+    const [date, routeKey] = key.split('|')
+    const mark = (id) => availability[`${id}|${date}`]?.kind
+    const canWork = (id) => !!empById[id] && mark(id) !== 'off'
+    const busyToday = busy[date] || (busy[date] = new Set())
+
+    let chosen = null
+    let reason = 'auto'
+    const owner = owners[routeKey]
+    if (Object.prototype.hasOwnProperty.call(overrides, key)) {
+      chosen = overrides[key] && empById[overrides[key]] ? overrides[key] : null
+      reason = 'manual'
+    } else if (owner && canWork(owner)) {
+      chosen = owner
+      reason = 'owner'
+    } else {
+      const candidates = employees.filter(e => canWork(e.id)).sort((a, b) =>
+        (mark(b.id) === 'extra') - (mark(a.id) === 'extra') ||
+        busyToday.has(a.id) - busyToday.has(b.id) ||
+        daysWorked[a.id].size - daysWorked[b.id].size ||
+        (a.full_name || '').localeCompare(b.full_name || ''))
+      chosen = candidates[0]?.id || null
+      if (owner && empById[owner]) reason = 'ownerOff'
+      if (!chosen) reason = 'nobody'
+    }
+
+    if (chosen) { busyToday.add(chosen); daysWorked[chosen].add(date) }
+    const emp = chosen ? empById[chosen] : null
+    groups[key].forEach(j => result.push({
+      ...j,
+      employeeId: chosen,
+      employee: emp ? shortNameOf(emp) : '',
+      employeeName: emp?.full_name || null,
+      groupKey: key,
+      assignReason: reason,
+      coveringFor: reason === 'ownerOff' ? shortNameOf(empById[owner]) : null,
+    }))
+  })
+
+  return result.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time) || a.id - b.id)
 }
 
 export function locationsFromContracts(serviceContracts) {
@@ -181,8 +255,8 @@ function restDayDatesInMonth(month, restDow) {
 }
 
 function addOtpDeepOnlyMaintenance(month, contract, jobs, jobIdRef) {
-  const emp = contract.shortName
-  const empId = contract.employeeId
+  const emp = ''
+  const empId = null
 
   otpDeepOnlyLocations().forEach((loc, locIdx) => {
     const restDates = restDayDatesInMonth(month, loc.restDay)
@@ -221,18 +295,24 @@ function addOtpDeepOnlyMaintenance(month, contract, jobs, jobIdRef) {
 }
 
 export function buildMonthSchedule(month, {
-  contracts = [],
+  routes = SCHEDULE_ROUTES,
   locations = DEFAULT_LOCATIONS,
-  includeDuskin = true,
 } = {}) {
+  const contracts = routes
   const days = getDaysInMonth(month)
   const jobs = []
   let jobId = 1
   const jobIdRef = { value: jobId }
 
+  const tagRoute = (from, contract) => {
+    for (let i = from; i < jobs.length; i++) jobs[i].routeKey = contract.key || contract.template
+  }
+
   contracts.forEach(contract => {
     if (contract.template === 'otp_deep_only') {
+      const from = jobs.length
       addOtpDeepOnlyMaintenance(month, contract, jobs, jobIdRef)
+      tagRoute(from, contract)
     }
   })
   jobId = jobIdRef.value
@@ -258,8 +338,9 @@ export function buildMonthSchedule(month, {
     const isMon = dow === 1
 
     contracts.forEach(contract => {
-      const emp = contract.shortName
-      const empId = contract.employeeId
+      const emp = ''
+      const empId = null
+      const from = jobs.length
 
       if (contract.template === 'otp_basic') {
         if (isMon && contract.mondayAtomic && atomicLoc) {
@@ -309,7 +390,7 @@ export function buildMonthSchedule(month, {
         })
       }
 
-      if (contract.template === 'duskin_sunday' && includeDuskin && dow === 0) {
+      if (contract.template === 'duskin_sunday' && dow === 0) {
         const b = DUSKIN_SITES
 
         if (dateStr === firstSun) {
@@ -336,6 +417,7 @@ export function buildMonthSchedule(month, {
           addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building3, '15:00', 'Monthly Cleaning', 5)
         }
       }
+      tagRoute(from, contract)
     })
   })
 
@@ -362,7 +444,8 @@ export function scheduleStats(jobs) {
   const byEmployee = {}
   const byDow = [0, 0, 0, 0, 0, 0, 0]
   jobs.forEach(j => {
-    byEmployee[j.employee] = (byEmployee[j.employee] || 0) + 1
+    const k = j.employeeId || ''
+    byEmployee[k] = (byEmployee[k] || 0) + 1
     byDow[new Date(j.date + 'T12:00:00').getDay()]++
   })
   return { total: jobs.length, byEmployee, byDow, days: new Set(jobs.map(j => j.date)).size }
@@ -375,8 +458,7 @@ export function keyboxForJob(job) {
   return loc?.notes || ''
 }
 
-export function jobsToRows(jobs, contracts) {
-  const empById = Object.fromEntries(contracts.map(c => [c.employeeId, c]))
+export function jobsToRows(jobs) {
   const clientMap = {
     'On The Planet': SCHEDULE_CLIENTS.ontheplanet,
     'Atomic Bar': SCHEDULE_CLIENTS.atomicbar,
@@ -386,8 +468,8 @@ export function jobsToRows(jobs, contracts) {
 
   return jobs.map(j => ({
     title: j.title,
-    employee_id: j.employeeId,
-    employee_name: empById[j.employeeId]?.employeeName || j.employee,
+    employee_id: j.employeeId || null,
+    employee_name: j.employeeName || j.employee || null,
     client_id: clientMap[j.client]?.id || SCHEDULE_CLIENTS.ontheplanet.id,
     client_name: j.client,
     scheduled_date: j.date,

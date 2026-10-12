@@ -38,6 +38,7 @@
     "verify:production": "node scripts/verify-production.mjs",
     "test:client-care": "npx vite-node scripts/test-client-care.mjs",
     "test:availability": "npx vite-node scripts/test-availability.mjs",
+    "test:schedule": "npx vite-node scripts/test-schedule-generator.mjs",
     "test:ai-guard": "node scripts/test-ai-guard.mjs",
     "test:spot-contract": "node scripts/test-spot-contract.mjs",
     "test:nfc-clock": "node scripts/test-nfc-clock.mjs",
