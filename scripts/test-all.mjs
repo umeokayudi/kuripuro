@@ -23,6 +23,7 @@ const steps = [
   ['npm run test:employee-theme', 'employee-theme'],
   ['npm run test:spot-contract', 'spot-contract'],
   ['npm run test:nfc-clock', 'nfc-clock'],
+  ['npm run test:jobs-period', 'jobs-period'],
 ]
 
 console.log('=== KuriPuro full test suite ===\n')

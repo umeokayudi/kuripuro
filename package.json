@@ -40,7 +40,8 @@
     "test:availability": "npx vite-node scripts/test-availability.mjs",
     "test:ai-guard": "node scripts/test-ai-guard.mjs",
     "test:spot-contract": "node scripts/test-spot-contract.mjs",
-    "test:nfc-clock": "node scripts/test-nfc-clock.mjs"
+    "test:nfc-clock": "node scripts/test-nfc-clock.mjs",
+    "test:jobs-period": "node scripts/test-jobs-period.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
