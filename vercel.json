@@ -10,7 +10,8 @@
     }
   },
   "crons": [
-    { "path": "/api/sales?action=reminders", "schedule": "0 15 * * *" }
+    { "path": "/api/sales?action=reminders", "schedule": "0 15 * * *" },
+    { "path": "/api/sales?action=payroll-close", "schedule": "5 15 * * *" }
   ],
   "rewrites": [
     { "source": "/api/sales-ai", "destination": "/api/sales?route=ai" },
