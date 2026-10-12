@@ -21,6 +21,7 @@ const groups = [
   {
     key: 'navPeople',
     items: [
+      { to: '/users', key: 'users', icon: Icons.user },
       { to: '/employees', key: 'employees', icon: Icons.users },
       { to: '/evaluations', key: 'evaluations', icon: Icons.users },
       { to: '/equipment-requests', key: 'equipmentRequests', icon: Icons.list },
@@ -43,6 +44,7 @@ const groups = [
       { to: '/clients', key: 'clients', icon: Icons.building },
       { to: '/contracts', key: 'contracts', icon: Icons.file },
       { to: '/client-feedback', key: 'clientFeedback', icon: Icons.receipt },
+      { to: '/partners', key: 'partners', icon: Icons.building },
       { to: '/adminchat', key: 'chat', icon: Icons.users },
     ],
   },
