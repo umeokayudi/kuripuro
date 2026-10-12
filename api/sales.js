@@ -20,8 +20,10 @@ const handlers = {
 }
 
 export default async function handler(req, res) {
-  const action = String(req.query?.action || '')
-  const selected = handlers[action]
+  // The vercel.json rewrites pass the handler as `route`, so it never collides with the
+  // page's own `action` (e.g. /api/sales-data?action=dashboard). `action` stays for the cron URL.
+  const first = value => Array.isArray(value) ? value[0] : value
+  const selected = handlers[String(first(req.query?.route) || '')] || handlers[String(first(req.query?.action) || '')]
   if (!selected) return res.status(404).json({ error: 'Sales endpoint not found.' })
   return selected(req, res)
 }
