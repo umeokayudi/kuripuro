@@ -21,7 +21,7 @@ function compactJob(j) {
     employee: j.employee_name,
     location: j.title,
     date: j.scheduled_date,
-    type: j.retro_report ? 'retroactive' : 'live',
+    type: j.retro_report != null ? 'retroactive' : 'live',
     duration_min: dur,
     checklist: j.checklist_total ? `${j.checklist_done || 0}/${j.checklist_total}` : null,
     missed_items: j.checklist_missed_items || null,
