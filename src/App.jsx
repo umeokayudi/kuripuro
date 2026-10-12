@@ -48,6 +48,8 @@ const AdminAI = lazy(() => import('./pages/AdminAI'))
 const SalespersonPortal = lazy(() => import('./pages/SalespersonPortal'))
 const SalesTeam = lazy(() => import('./pages/SalesTeam'))
 const Marketing = lazy(() => import('./pages/Marketing'))
+const Users = lazy(() => import('./pages/Users'))
+const Partners = lazy(() => import('./pages/Partners'))
 
 function PortalLoading() {
   return (
@@ -100,6 +102,8 @@ const PAGE_KEYS = {
   '/salary-complaints': 'salaryIssues',
   '/equipment-requests': 'equipmentRequests',
   '/ai': 'ai',
+  '/users': 'users',
+  '/partners': 'partners',
 }
 
 function pageTitle(pathname, sidebar) {
@@ -271,6 +275,8 @@ function AppContent() {
               <Route path="/salary-complaints" element={<SalaryComplaints />} />
               <Route path="/equipment-requests" element={<EquipmentRequests />} />
               <Route path="/ai" element={<AdminAI />} />
+              <Route path="/users" element={<Users />} />
+              <Route path="/partners" element={<Partners />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Suspense>
