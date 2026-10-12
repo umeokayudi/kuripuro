@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { hasMapsLink, mapsOpenUrl, mapsCoordsUrl } from '../lib/mapsLink'
 import { apiFetch } from '../lib/apiFetch'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -174,7 +174,7 @@ export default function LiveTracking() {
                   </div>
                   <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
                     {activeJob?<span style={{color:'#4ade80',fontWeight:600}}>● {L.working}</span>:todayJobs.length>0?<span style={{color:'var(--text3)'}}>● {L.idle}</span>:<span style={{color:'rgba(255,255,255,0.2)'}}>○ {L.noShift}</span>}
-                    {locFresh && emp.location_sharing !== false && <a href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 {L.seeLocation}</a>}
+                    {locFresh && emp.location_sharing !== false && <a href={mapsCoordsUrl(emp.last_lat, emp.last_lng)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:'#60a5fa',marginLeft:8,textDecoration:'none'}}>📍 {L.seeLocation}</a>}
                   </div>
                 </div>
                 <div style={{textAlign:'right'}}>
