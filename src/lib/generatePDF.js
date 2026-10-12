@@ -219,17 +219,42 @@ export async function generateDailyReport(date, jobs, employeeName, opts = {}) {
     }
   }
 
-  // Signature area
-  y = Math.max(y + 10, 240)
-  if (y > 265) { doc.addPage(); y = margin + 20 }
-  doc.setDrawColor(180, 180, 180)
-  doc.line(margin, y, margin + 70, y)
-  doc.line(W - margin - 70, y, W - margin, y)
-  doc.setFontSize(8)
-  doc.setTextColor(120, 120, 120)
-  doc.text('Employee Signature', margin, y + 5)
-  doc.text('Admin Signature', W - margin - 70, y + 5)
-  doc.text(employeeName, margin, y + 10)
+  // Signature area: each employee's own signature (taken from the jobs they signed
+  // at check-out) and the admin's saved signature, side by side.
+  const signers = new Map()
+  for (const j of jobs) {
+    const name = showEmployee ? (j.employee_name || employeeName) : employeeName
+    if (!name) continue
+    const prev = signers.get(name)
+    const at = j.completed_at || j.started_at || ''
+    if (!prev || (j.signature_url && (!prev.url || at >= prev.at))) signers.set(name, { url: j.signature_url || prev?.url || null, at })
+  }
+  const slots = [...signers].map(([name, s]) => ({ label: 'Employee Signature', name, url: s.url }))
+  slots.push({ label: 'Admin Signature', name: opts.adminName || '', url: opts.adminSignature || null })
+  const perRow = 3, slotGap = 8, slotW = (W - margin * 2 - slotGap * (perRow - 1)) / perRow
+  const sigH = 20, rowH = sigH + 14
+  const rows = Math.ceil(slots.length / perRow)
+  y = Math.max(y + 10, 280 - rows * rowH)
+  if (y + rows * rowH > 282) { doc.addPage(); y = margin + 10 }
+  for (const [i, slot] of slots.entries()) {
+    const col = slot.label === 'Admin Signature' && slots.length <= perRow ? perRow - 1 : i % perRow
+    const row = slot.label === 'Admin Signature' && slots.length <= perRow ? 0 : Math.floor(i / perRow)
+    const sx = margin + col * (slotW + slotGap), sy = y + row * rowH
+    const img = slot.url ? await signatureForDisplay(slot.url) : null
+    if (img) {
+      try { doc.addImage(img, 'PNG', sx + 4, sy, Math.min(slotW - 8, sigH * 2.4), sigH) } catch {}
+    }
+    doc.setDrawColor(180, 180, 180)
+    doc.line(sx, sy + sigH + 1, sx + slotW, sy + sigH + 1)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120, 120, 120)
+    doc.text(slot.label, sx, sy + sigH + 5)
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 40, 40)
+    if (slot.name) doc.text(String(slot.name).substring(0, 40), sx, sy + sigH + 10)
+    if (!img) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(200, 50, 50)
+      doc.text('Not signed', sx + slotW / 2, sy + sigH - 4, { align: 'center' })
+    }
+  }
 
   // Footer
   doc.setFillColor(6, 13, 24)
