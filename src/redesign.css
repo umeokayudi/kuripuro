@@ -495,3 +495,8 @@
 @media(max-width:720px){.av-grid{font-size:11.5px}.av-grid .av-name{width:28%}.av-grid th:last-child,.av-grid td:last-child{width:32px}}
 .topbar-right>.tor-bell{display:grid!important}
 .tor-backdrop{z-index:1100}
+
+/* Ponto por NFC: "tap the sticker" sheet */
+.nfc-pulse { display: inline-block; animation: nfc-pulse 1.4s ease-in-out infinite; }
+@keyframes nfc-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.12); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .nfc-pulse { animation: none; } }
