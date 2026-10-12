@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { spotContractHtml, spotContractTotals, DEFAULT_PAYMENT_DAY, contractStatus, dueDateAfter, sellerFields } from '../lib/spotContract'
+import { spotContractHtml, spotContractTotals, DEFAULT_PAYMENT_DAY, contractStatus, dueDateAfter, sellerFields, spotDetailsDefaults, cleanContractDetails } from '../lib/spotContract'
+import ContractDetailsFields from './ContractDetailsFields'
 import { commissionState } from '../lib/contractCommission'
 import { fetchContractSellers } from '../lib/contractSellers'
 import SellerCommissionFields from './SellerCommissionFields'
@@ -108,6 +109,7 @@ export default function SpotContracts() {
       contact_name: e.contact_name || null, contact_phone: e.contact_phone || null,
       price: parseFloat(e.price) || 0, tax_rate: parseInt(e.tax_rate, 10) || 0, price_includes_tax: e.price_includes_tax !== false,
       scope: e.scope || null, terms: e.terms || null, notes: e.notes || null,
+      contract_details: cleanContractDetails(e.contract_details),
       client_address: e.client_address || null, client_representative: e.client_representative || null,
       payment_day: Math.max(1, Math.min(31, parseInt(e.payment_day, 10) || DEFAULT_PAYMENT_DAY)),
       service_date: e.service_date || null, service_time: e.service_time || null,
@@ -172,7 +174,7 @@ export default function SpotContracts() {
       if (invoiceError) toast.error(`Invoice not created: ${invoiceError.message}`)
       setPickJob('')
       await load()
-      setEditing({ ...contract })
+      setEditing({ ...contract, contract_details: spotDetailsDefaults(contract) })
       result.pdf?.then(r => { if (r) load() })
     } catch (err) { toast.error(err.message) } finally { setBusy('') }
   }
@@ -295,7 +297,7 @@ export default function SpotContracts() {
               {!c.fatura_id && !['cancelled', 'rejected'].includes(contractStatus(c)) && <button className="btn btn-sm" disabled={busy === `inv-${c.id}`} onClick={() => makeInvoice(c)}>💴 Create invoice</button>}
               {commissionState(c) === 'earned' && <button className="btn btn-sm" onClick={() => setCommissionPaid(c, true)}>💼 Commission paid</button>}
               {commissionState(c) === 'paid' && <button className="btn btn-sm" onClick={() => setCommissionPaid(c, false)}>↺ Commission not paid</button>}
-              <button className="btn btn-sm" onClick={() => setEditing({ ...c })}>✏️ Edit</button>
+              <button className="btn btn-sm" onClick={() => setEditing({ ...c, contract_details: spotDetailsDefaults(c) })}>✏️ Edit</button>
               {(job || c.service_date) && <a className="btn btn-sm" href={googleCalendarUrl(job || { title: c.location_name, scheduled_date: c.service_date, scheduled_time: c.service_time, address: c.location_address, employee_name: c.employee_name, job_category: 'spot' })} target="_blank" rel="noreferrer">📅 Google Calendar</a>}
               {contractStatus(c) !== 'cancelled' && <button className="btn btn-sm btn-danger" onClick={() => setStatus(c, 'cancelled')}>Cancel</button>}
               {contractStatus(c) === 'cancelled' && <button className="btn btn-sm" onClick={() => setStatus(c, 'draft')}>↺ Reopen</button>}
@@ -337,8 +339,9 @@ export default function SpotContracts() {
               <div className="form-group"><label>Price includes tax?</label><select value={String(editing.price_includes_tax !== false)} onChange={e => setEditing(x => ({ ...x, price_includes_tax: e.target.value === 'true' }))}><option value="true">Yes</option><option value="false">No</option></select></div>
               <SellerCommissionFields sellers={sellers.salespeople} rules={sellers.rules} contract={editing} value={editing} onChange={patch => setEditing(x => ({ ...x, ...patch }))} />
             </div>
-            <div className="form-group"><label>Scope of work</label><textarea rows={3} value={editing.scope || ''} onChange={e => setEditing(x => ({ ...x, scope: e.target.value }))} /></div>
-            <div className="form-group"><label>Special terms 特記事項</label><textarea rows={3} value={editing.terms || ''} onChange={e => setEditing(x => ({ ...x, terms: e.target.value }))} /></div>
+            <ContractDetailsFields value={editing.contract_details || {}} onChange={d => setEditing(x => ({ ...x, contract_details: d }))} showClientAddress={false} showTerms={false} showScope={false} />
+            <div className="form-group"><label>Scope of work in Japanese 作業範囲</label><textarea rows={3} value={editing.scope || ''} onChange={e => setEditing(x => ({ ...x, scope: e.target.value }))} /></div>
+            <div className="form-group"><label>Special terms 特記事項 (Japanese)</label><textarea rows={3} value={editing.terms || ''} onChange={e => setEditing(x => ({ ...x, terms: e.target.value }))} /></div>
             <div className="form-group"><label>Internal notes</label><input value={editing.notes || ''} onChange={e => setEditing(x => ({ ...x, notes: e.target.value }))} /></div>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>Changing date, time or staff also updates the job.</div>
             <div style={{ display: 'flex', gap: 8 }}>

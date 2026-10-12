@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { buildSpotContractRow, emptySpotContractForm, contractPrefillFromClient, spotContractTotals, dueDateAfter, DEFAULT_PAYMENT_DAY } from '../lib/spotContract'
+import { buildSpotContractRow, emptySpotContractForm, contractPrefillFromClient, spotContractTotals, dueDateAfter, DEFAULT_PAYMENT_DAY, writtenAddress, serviceTypeJa, defaultScopeJa } from '../lib/spotContract'
+import ContractDetailsFields from './ContractDetailsFields'
 import { saveSpotContractWithInvoice } from '../lib/spotContractOps'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
 import { fetchContractSellers } from '../lib/contractSellers'
@@ -151,8 +152,11 @@ export default function NewContractModal({ onClose, onSaved }) {
         <div className="grid-2">
           <SellerCommissionFields sellers={sellers.salespeople} rules={sellers.rules} contract={contract} value={contract} onChange={patch => setContract(x => ({ ...x, ...patch }))} />
         </div>
-        <div className="form-group"><label>Scope of work 作業範囲</label><textarea rows={3} value={contract.scope} onChange={e => setC('scope', e.target.value)} placeholder="Kitchen deep clean, hood, floor…" /></div>
-        <div className="form-group"><label>Special terms 特記事項</label><textarea rows={2} value={contract.terms} onChange={e => setC('terms', e.target.value)} /></div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', margin: '6px 0 6px' }}>4 · What the contract says (Japanese)</div>
+        <ContractDetailsFields value={contract.contract_details || {}} onChange={d => setC('contract_details', d)} showClientAddress={false} showTerms={false} showScope={false}
+          placeholders={{ written_address: writtenAddress(job.address) || undefined, responsible: contract.client_representative || contract.contact_name || undefined, service_label: serviceTypeJa(job.location_name) || undefined }} />
+        <div className="form-group"><label>Scope of work in Japanese 作業範囲</label><textarea rows={3} value={contract.scope} onChange={e => setC('scope', e.target.value)} placeholder={defaultScopeJa(contract.contract_details?.service_label || serviceTypeJa(job.location_name)) || '厨房の清掃、レンジフード、床…'} /></div>
+        <div className="form-group"><label>Special terms 特記事項 (Japanese)</label><textarea rows={2} value={contract.terms} onChange={e => setC('terms', e.target.value)} /></div>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>Saving creates the contract, its invoice and the PDF{job.create_job ? ', and sends the job to the worker' : ''}.</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : '📄 Create contract'}</button>
