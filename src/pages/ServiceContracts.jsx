@@ -4,6 +4,7 @@ import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router-dom'
 import SpotContracts from '../components/SpotContracts'
+import DeepCleanTracker from '../components/DeepCleanTracker'
 import { spotContractHtml, recurringToContract } from '../lib/spotContract'
 import { showPrintOverlay } from '../lib/openPrintHtml'
 import { saveContractPdf, contractPdfUrl } from '../lib/spotContractOps'
@@ -18,14 +19,15 @@ const SERVICE_TYPES = ['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleanin
 
 export default function ServiceContracts() {
   const [params] = useSearchParams()
-  const [view, setView] = useState(params.get('spot') ? 'spot' : 'locations')
+  const [view, setView] = useState(params.get('spot') ? 'spot' : params.get('deep') ? 'deep' : 'locations')
   return (
     <div>
       <div className="tab-pills">
         <button type="button" className={`tab-pill${view==='locations'?' active':''}`} onClick={()=>setView('locations')}>📋 Recurring locations</button>
         <button type="button" className={`tab-pill${view==='spot'?' active':''}`} onClick={()=>setView('spot')}>⚡ Spot contracts</button>
+        <button type="button" className={`tab-pill${view==='deep'?' active':''}`} onClick={()=>setView('deep')}>✨ On The Planet deep cleaning</button>
       </div>
-      {view==='spot' ? <SpotContracts /> : <RecurringContracts />}
+      {view==='spot' ? <SpotContracts /> : view==='deep' ? <DeepCleanTracker /> : <RecurringContracts />}
     </div>
   )
 }
