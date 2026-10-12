@@ -1907,3 +1907,12 @@ body { background: var(--hq-bg); }
 .sales-ai-result{white-space:pre-wrap}
 @media(max-width:1100px){.kpi-board{grid-template-columns:repeat(6,minmax(180px,220px))}}
 @media(max-width:720px){.sales-routing-row,.sales-inbox-row{flex-direction:column}.sales-routing-row .sales-followup-actions,.sales-inbox-row .sales-followup-actions{flex-direction:row;flex-wrap:wrap}.sales-form-grid-3{grid-template-columns:1fr 1fr}}
+/* Microphone: recording / transcribing line above the composer */
+.ai-voice-status { display:flex; align-items:center; gap:8px; margin:0 10px 6px; padding:7px 10px; border-radius:12px; background:rgba(239,68,68,.08); color:#b42318; font-size:12.5px; font-weight:600; }
+.ai-voice-status.is-busy { background:rgba(49,92,245,.08); color:#2847c4; }
+.ai-voice-status > span:not(.ai-rec-dot):not(.ai-voice-spinner) { flex:1; min-width:0; }
+.ai-voice-status b { font-variant-numeric:tabular-nums; }
+.ai-voice-status button { border:0; background:transparent; color:inherit; font:inherit; text-decoration:underline; padding:2px 4px; cursor:pointer; }
+.ai-voice-spinner { width:12px; height:12px; flex:0 0 12px; border-radius:50%; border:2px solid rgba(49,92,245,.25); border-top-color:#315cf5; animation:ai-spin .7s linear infinite; }
+.ai-voice-status .ai-rec-dot { flex:0 0 12px; }
+.ai-composer-mic:disabled { opacity:.45; cursor:default; }
