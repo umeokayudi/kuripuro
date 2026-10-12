@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 
-// v1.0.30 · Business partners (parceiros de negócio) — table business_partners.
+// v1.0.35 · Business partners (parceiros de negócio) — table business_partners.
 // Companies and people the business works with that are not clients, employees or sellers.
 
 const CATEGORIES = [

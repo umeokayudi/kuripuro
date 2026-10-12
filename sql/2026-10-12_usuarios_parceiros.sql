@@ -1,4 +1,4 @@
--- v1.0.30 · Users area, employee role (função) and business partners.
+-- v1.0.35 · Users area, employee role (função) and business partners.
 -- Additive only: one new column on employees and one new table. Safe to run twice.
 
 -- Employee role shown as a badge (Employees list, profile, Users area).

@@ -1,4 +1,4 @@
-// v1.0.30 · Employee role (função) stored in employees.job_role.
+// v1.0.35 · Employee role (função) stored in employees.job_role.
 // Preset keys are translated; anything else is free text typed by the admin.
 
 export const EMPLOYEE_ROLES = [

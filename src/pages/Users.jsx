@@ -7,7 +7,7 @@ import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { RoleBadge } from '../components/EmployeeRole'
 
-// v1.0.30 · One place for every login: admins, employees, sellers and client logins.
+// v1.0.35 · One place for every login: admins, employees, sellers and client logins.
 // Each type still lives in its own table; this page only lists them together.
 // Passwords are never read here.
 
