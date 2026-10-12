@@ -372,7 +372,7 @@ export async function employeeAddService(supabase, {
 
 export function isJobFullyRegistered(job) {
   if (!job || job.status !== 'completed') return false
-  return !!(job.retro_report || (job.photo_end_url && job.completed_at))
+  return !!(job.retro_report != null || (job.photo_end_url && job.completed_at))
 }
 
 /**

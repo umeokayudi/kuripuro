@@ -131,8 +131,8 @@ export default function LiveTracking() {
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:600}}>{(r.title||'').replace(/ — .*/,'')} <span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>· {r.employee_name} · {r.scheduled_date}</span></div>
-                  <div style={{fontSize:12,color:'var(--text2)',marginTop:4,fontStyle:'italic'}}>"{r.retro_report}"</div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>🤖 {r.retro_ai_summary} — {r.checklist_done}/{r.checklist_total} {L.items}</div>
+                  {r.retro_report&&<div style={{fontSize:12,color:'var(--text2)',marginTop:4,fontStyle:'italic'}}>"{r.retro_report}"</div>}
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{r.retro_ai_summary&&<>🤖 {r.retro_ai_summary} — </>}{r.checklist_done}/{r.checklist_total} {L.items}</div>
                   <div style={{fontSize:12,marginTop:4}}><b>{L.paid}: ¥{Number(r.retro_value||0).toLocaleString()}</b> {Number(r.value||0)>Number(r.retro_value||0)&&<span style={{color:'var(--red)'}}>({L.of} ¥{Number(r.value).toLocaleString()})</span>}</div>
                   {(r.photo_start_url || r.photo_end_url) && (
                     <div style={{ marginTop: 8 }}>

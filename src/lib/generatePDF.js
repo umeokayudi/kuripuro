@@ -140,7 +140,7 @@ export async function generateDailyReport(date, jobs, employeeName, opts = {}) {
     const outLine = `Out ${tokyoTime(j.completed_at)}  ${fmtCoord(j.end_lat, j.end_lng)}${j.gps_end_distance != null ? `  (${Math.round(j.gps_end_distance)} m from site)` : ''}`
     doc.text(inLine, margin + 3, y + 17)
     doc.text(outLine, margin + 3, y + 22)
-    if (j.retro_report) doc.text('Retroactive report (sent after the service)', margin + 3, y + 27)
+    if (j.retro_report != null) doc.text('Retroactive report (sent after the service)', margin + 3, y + 27)
     // signature box on the right
     const boxW = 56, boxH = 24, bx = W - margin - boxW - 3, by = y + 3
     doc.setDrawColor(200, 200, 200)
