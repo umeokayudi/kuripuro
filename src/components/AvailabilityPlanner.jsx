@@ -32,6 +32,24 @@ export function PlanAlert({ alert, e, lang, onOpen }) {
   )
 }
 
+/** Every day-off request with its answer (upcoming + still pending). Lives on the availability tab, not on home. */
+export function TimeOffList({ rows, e, lang }) {
+  return (
+    <section className="emp-timeoff" aria-label={e.myTimeOff}>
+      <div className="emp-timeoff-head"><h3>🗓 {e.myTimeOff}</h3></div>
+      {rows.length === 0 ? <div style={{ fontSize: 12, color: '#5f6b7d' }}>{e.timeOffEmpty}</div> : rows.map(r => (
+        <div key={r.id} className="emp-timeoff-row">
+          <div>
+            <strong>{fmtDay(r.date, lang, { weekday: 'short', day: 'numeric', month: 'short' })}</strong>
+            {r.admin_note && <small>{e.timeOffAdminNote}: {r.admin_note}</small>}
+          </div>
+          <span className={`emp-timeoff-st is-${r.status || 'pending'}`}>{statusLabel(r.status, e)}</span>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 export function fmtDay(iso, lang, opts = { day: 'numeric', month: 'short' }) {
   return new Date(iso + 'T12:00:00Z').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { ...opts, timeZone: 'UTC' })
 }

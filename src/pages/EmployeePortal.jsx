@@ -45,7 +45,8 @@ import {
 import { tokyoToday, recentTokyoDates } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
-import AvailabilityPlanner, { PlanAlert, statusLabel, fmtDay } from '../components/AvailabilityPlanner'
+import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
+import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
@@ -110,6 +111,10 @@ export default function EmployeePortal() {
   const [gpsStatus, setGpsStatus] = useState('')
   const [herePos, setHerePos] = useState(null)
   const [myTimeOff, setMyTimeOff] = useState([])
+  // Approved / rejected day-off requests show once in the bell, then disappear
+  const [seenTimeOff, setSeenTimeOff] = useState(() => loadSeen(user.id))
+  const [bellOpen, setBellOpen] = useState(false)
+  const toastedTimeOff = useRef(new Set())
   const [siteCoordsById, setSiteCoordsById] = useState({})
   const [retroJob, setRetroJob] = useState(null)
   const [retroChecklist, setRetroChecklist] = useState([])
@@ -1076,6 +1081,27 @@ export default function EmployeePortal() {
     }, 200)
   }
 
+  const timeOffNotices = unseenDecisions(myTimeOff, seenTimeOff)
+  const bellCount = unreadMsgs + timeOffNotices.length
+  const closeBell = () => {
+    setBellOpen(false)
+    if (timeOffNotices.length) setSeenTimeOff(markSeen(user.id, seenTimeOff, myTimeOff))
+  }
+  const bellGo = (key) => { closeBell(); goToTab(key) }
+
+  // One short toast per new answer; the details stay in the bell until opened
+  useEffect(() => {
+    const fresh = timeOffNotices.filter(r => !toastedTimeOff.current.has(r.id + ':' + r.status))
+    if (!fresh.length) return
+    fresh.forEach(r => toastedTimeOff.current.add(r.id + ':' + r.status))
+    toast(e.timeOffNoticeToast, { icon: '🔔', id: 'kp-timeoff-notice' })
+  }, [timeOffNotices.map(r => r.id + ':' + r.status).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opening the full list also counts as seeing the answers
+  useEffect(() => {
+    if (tab === 'availability' && timeOffNotices.length) setSeenTimeOff(markSeen(user.id, seenTimeOff, myTimeOff))
+  }, [tab, myTimeOff]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const goToTab = (key) => {
     setTab(key)
     if (key === 'shift' && activeJob) scrollToActiveJob()
@@ -1294,9 +1320,9 @@ export default function EmployeePortal() {
               <div className="emp-score-label">{e.score}</div>
             </div>
             <LanguageToggle variant="dark" compact />
-            <button aria-label={e.chat} onClick={()=>setTab('chat')} className="emp-header-icon-button">
+            <button aria-label={e.notifications} aria-expanded={bellOpen} onClick={()=>setBellOpen(true)} className="emp-header-icon-button">
               🔔
-              {unreadMsgs>0&&<div className="emp-header-notification-count">{unreadMsgs}</div>}
+              {bellCount>0&&<div className="emp-header-notification-count">{bellCount}</div>}
             </button>
             <button aria-label={menuOpen ? e.close : e.more} aria-expanded={menuOpen} onClick={()=>setMenuOpen(!menuOpen)} className="emp-header-menu-button">
               <span></span><span></span><span></span>
@@ -1322,6 +1348,30 @@ export default function EmployeePortal() {
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
         </div>
       </div>
+
+      {/* Bell: answers to day-off requests + shortcuts to messages / spot jobs */}
+      {bellOpen&&(
+        <div className="emp-bell-overlay" onClick={closeBell}>
+          <section className="emp-bell-pop" role="dialog" aria-modal="true" aria-label={e.notifications} onClick={ev=>ev.stopPropagation()}>
+            <div className="emp-bell-head"><h2>🔔 {e.notifications}</h2><button aria-label={e.close} className="emp-menu-close" onClick={closeBell}>×</button></div>
+            <div className="emp-bell-list">
+              {timeOffNotices.map(r=>(
+                <div key={r.id} className={`emp-bell-item is-${r.status}`}>
+                  <span className="emp-bell-icon" aria-hidden="true">{r.status==='approved'?'✓':'✕'}</span>
+                  <div>
+                    <strong>{fill(r.status==='approved'?e.timeOffNoticeApproved:e.timeOffNoticeRejected,{date:fmtDay(r.date, lang, { weekday:'short', day:'numeric', month:'short' })})}</strong>
+                    {r.admin_note&&<small>{e.timeOffAdminNote}: {r.admin_note}</small>}
+                  </div>
+                </div>
+              ))}
+              {unreadMsgs>0&&<button type="button" className="emp-bell-item is-link" onClick={()=>bellGo('chat')}><span className="emp-bell-icon" aria-hidden="true">💬</span><div><strong>{e.bellMessages}</strong><small>{fill(e.unreadCount,{n:unreadMsgs})}</small></div><b>›</b></button>}
+              {spotJobs.length>0&&<button type="button" className="emp-bell-item is-link" onClick={()=>bellGo('spots')}><span className="emp-bell-icon" aria-hidden="true">⚡</span><div><strong>{e.bellSpots}</strong><small>{spotJobs.length}</small></div><b>›</b></button>}
+              {!timeOffNotices.length&&!unreadMsgs&&!spotJobs.length&&<p className="emp-bell-empty">{e.bellNothingNew}</p>}
+            </div>
+            <button type="button" className="emp-bell-all" onClick={()=>bellGo('availability')}>🗓 {e.bellSeeAllTimeOff} ›</button>
+          </section>
+        </div>
+      )}
 
       {/* 3-dot dropdown */}
       {menuOpen&&(
@@ -1413,26 +1463,6 @@ export default function EmployeePortal() {
 
             <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>goToTab('availability')} />
 
-            {/* Day-off requests with their status */}
-            {(()=>{
-              // Upcoming ones first; past ones only while the decision is recent
-              const rows = myTimeOff.filter(r => r.date >= today || r.status === 'pending').slice(0, 6)
-              return (
-                <section className="emp-timeoff" aria-label={e.myTimeOff}>
-                  <div className="emp-timeoff-head"><h3>🗓 {e.myTimeOff}</h3><button type="button" onClick={()=>goToTab('availability')}>{e.timeOffRequest} ›</button></div>
-                  {rows.length===0 ? <div style={{fontSize:12,color:'#5f6b7d'}}>{e.timeOffEmpty}</div> : rows.map(r=>(
-                    <div key={r.id} className="emp-timeoff-row">
-                      <div>
-                        <strong>{fmtDay(r.date, lang, { weekday:'short', day:'numeric', month:'short' })}</strong>
-                        {r.admin_note&&<small>{e.timeOffAdminNote}: {r.admin_note}</small>}
-                      </div>
-                      <span className={`emp-timeoff-st is-${r.status||'pending'}`}>{statusLabel(r.status, e)}</span>
-                    </div>
-                  ))}
-                </section>
-              )
-            })()}
-
             {/* Summary cards (swipe sideways) */}
             <div className="ex-cards" role="list">
               {todayJobs.length>0&&(
@@ -1473,7 +1503,7 @@ export default function EmployeePortal() {
             {(()=>{
               const pendingClaims=claims.filter(c=>c.status==='pending').length
               const pendingEquipment=equipmentRequests.filter(r=>['pending','requested'].includes(r.status)).length
-              const notifications=unreadMsgs+spotJobs.length
+              const notifications=bellCount+spotJobs.length
               return (
                 <div className="ex-duo">
                   <button type="button" className="ex-tile" onClick={()=>goToTab(pendingClaims||!pendingEquipment?'transport':'equipment')}>
@@ -1481,7 +1511,7 @@ export default function EmployeePortal() {
                     <strong>{pendingClaims+pendingEquipment}</strong>
                     <small>{fill(e.pendingBreakdown,{transport:pendingClaims,equipment:pendingEquipment})}</small>
                   </button>
-                  <button type="button" className="ex-tile is-blue" onClick={()=>goToTab(spotJobs.length&&!unreadMsgs?'spots':'chat')}>
+                  <button type="button" className="ex-tile is-blue" onClick={()=>setBellOpen(true)}>
                     <span>{e.notifications}</span>
                     <b aria-hidden="true">🔔</b>
                     <small>{fill(e.unreadCount,{n:notifications})}</small>
@@ -1929,6 +1959,7 @@ export default function EmployeePortal() {
         )}
 
         {/* ACHIEVEMENTS */}
+        {tab==='availability'&&<TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />}
         {tab==='availability'&&(
           <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
         )}
