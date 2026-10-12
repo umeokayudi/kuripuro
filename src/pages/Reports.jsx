@@ -10,6 +10,7 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
+import { mapsCoordsUrl } from '../lib/mapsLink'
 
 function typeBadge(type, tr) {
   return type === 'retroativo'
@@ -17,7 +18,7 @@ function typeBadge(type, tr) {
     : <span className="badge badge-green">{tr.typeLive}</span>
 }
 
-const mapUrl = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`
+const mapUrl = (lat, lng) => mapsCoordsUrl(lat, lng)
 
 function GpsBlock({ r, tr, lang }) {
   const rows = [
