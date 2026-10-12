@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { hasMapsLink, mapsOpenUrl, mapsCoordsUrl } from '../lib/mapsLink'
 import { apiFetch } from '../lib/apiFetch'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -211,7 +211,7 @@ export default function LiveTracking() {
         </button>
         <div className="lt-actions">
           {focusJob && hasMapsLink(focusJob.address, focusJob.title) && <a className="lt-act" href={mapsOpenUrl(focusJob.address, focusJob.title)} target="_blank" rel="noreferrer">🗺 {L.jobAddress}</a>}
-          {showLoc && <a className="lt-act" href={`https://www.google.com/maps?q=${emp.last_lat},${emp.last_lng}`} target="_blank" rel="noreferrer">📍 {fill(L.whereNow, { d: fmtDuration(locAgeMin, L) })}</a>}
+          {showLoc && <a className="lt-act" href={mapsCoordsUrl(emp.last_lat, emp.last_lng)} target="_blank" rel="noreferrer">📍 {fill(L.whereNow, { d: fmtDuration(locAgeMin, L) })}</a>}
           {emp.phone && <a className="lt-act" href={`tel:${emp.phone.replace(/[^\d+]/g, '')}`}>📞 {L.call}</a>}
           {todayJobs.length > 0 && <button type="button" className="lt-act lt-act-ghost" onClick={() => setOpen(isOpen ? null : emp.id)}>{isOpen ? L.hideDay : fill(L.showDay, { n: todayJobs.length })}</button>}
         </div>
