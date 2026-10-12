@@ -4,7 +4,7 @@ import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySl
 import { useLang, fill } from '../hooks/useLang'
 
 // On The Planet deep-cleaning contract tracker. Lived on the admin dashboard until
-// v1.0.30; now a tab of the Contracts page.
+// v1.0.34; now a tab of the Contracts page.
 export default function DeepCleanTracker() {
   const { lang, t } = useLang()
   const d = t.dashboard

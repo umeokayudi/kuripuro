@@ -496,7 +496,7 @@
 .topbar-right>.tor-bell{display:grid!important}
 .tor-backdrop{z-index:1100}
 
-/* v1.0.30 — month-by-month charts replace the small number tiles */
+/* v1.0.34 — month-by-month charts replace the small number tiles */
 .mk-wrap{margin-bottom:20px}
 .mk-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:12px;flex-wrap:wrap}
 .mk-head h2{font-size:17px;color:#14213a;margin:0}

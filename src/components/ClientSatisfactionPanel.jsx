@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 import { groupRatingsByClient, ratingsInPeriod, avgStars, starsDisplay } from '../lib/satisfaction'
 
-// Moved from the admin dashboard in v1.0.30: per-client satisfaction (last 30 days)
+// Moved from the admin dashboard in v1.0.34: per-client satisfaction (last 30 days)
 // and internal employee scores now live on the Client Feedback page.
 const levelColor = l => ({ excellent: 'var(--green)', good: '#60a5fa', warning: '#EF9F27', critical: 'var(--red)', none: 'var(--text3)' }[l] || 'var(--text3)')
 

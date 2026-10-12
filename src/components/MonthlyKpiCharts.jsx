@@ -6,7 +6,7 @@ import { avgStars } from '../lib/satisfaction'
 import { summarizeJobs, formatMinutes } from '../lib/workKpis'
 import MonthBars from './MonthBars'
 
-// v1.0.30 — the editable number tiles at the top of the dashboard, now one roomy
+// v1.0.34 — the editable number tiles at the top of the dashboard, now one roomy
 // month-by-month bar chart per metric (last 6 or 12 months, current month highlighted).
 const CHARTS_KEY = 'kuripuro-dashboard-charts-v1'
 const DEFAULT_CHARTS = ['completed', 'cash', 'satisfaction', 'income', 'expenses', 'clients']
