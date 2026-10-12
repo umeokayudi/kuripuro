@@ -6,7 +6,7 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
-import { distanceMeters, getCurrentPosition } from '../lib/geocode'
+import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geocode'
 import ServiceTimer from '../components/ServiceTimer'
 import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
@@ -771,7 +771,7 @@ export default function EmployeePortal() {
       }
       const gpsResult = await checkGPS(job)
       if (gpsResult.override) {
-        const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
+        const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist!=null?formatDistance(gpsResult.dist):'an unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
         if (!proceed) { setGpsStatus(''); return }
       }
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
@@ -1399,7 +1399,7 @@ export default function EmployeePortal() {
                     <div className="ex-nearby" role="status">
                       <span aria-hidden="true">📍</span>
                       <div><small>{e.nearbyService}</small><strong>{businessName(nearby.job)}</strong></div>
-                      <b>{nearby.dist} m</b>
+                      <b>{formatDistance(nearby.dist)}</b>
                     </div>
                   )}
                   <div className="ex-map">
