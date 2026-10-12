@@ -55,7 +55,7 @@ export function spotInvoiceRows(c) {
 
 const DAY_JA = { Mon: '月', Tue: '火', Wed: '水', Thu: '木', Fri: '金', Sat: '土', Sun: '日' }
 
-// v1.0.30 · What the contract prints, on top of the row: written address, 責任者, 作業内容 in Japanese
+// v1.0.36 · What the contract prints, on top of the row: written address, 責任者, 作業内容 in Japanese
 // and a note (the "why") per item. Stored in contract_details (jsonb) on spot_contracts and service_contracts.
 export const CONTRACT_NOTE_KEYS = ['place', 'service', 'fee', 'payment', 'scope']
 export function contractDetails(c) {

@@ -1,6 +1,6 @@
 import { CONTRACT_NOTE_KEYS } from '../lib/spotContract'
 
-// v1.0.30 · What the 業務委託契約書 prints beyond the price: written address, 責任者, 作業内容 in Japanese,
+// v1.0.36 · What the 業務委託契約書 prints beyond the price: written address, 責任者, 作業内容 in Japanese,
 // and a note per item explaining why (printed as 備考 under that item). Saved in contract_details.
 
 const NOTE_LABELS = {

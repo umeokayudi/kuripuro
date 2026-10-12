@@ -103,7 +103,7 @@ assert.equal(row.salesperson_id, null)
 assert.equal(row.commission_amount, 0)
 console.log('✅ seller commission on contracts')
 
-// v1.0.30 · written address, 責任者, no hours, Japanese service, monthly price, notes per item
+// v1.0.36 · written address, 責任者, no hours, Japanese service, monthly price, notes per item
 {
   const sp = await import('../src/lib/spotContract.js')
   const maps = 'https://www.google.com/maps/search/?api=1&query=ATOMIC%20BAR%20%E5%85%AD%E6%9C%AC%E6%9C%A83-14-14%205F%20%E6%9D%B1%E4%BA%AC'
@@ -128,5 +128,5 @@ console.log('✅ seller commission on contracts')
   assert.ok(spot.includes('作業日：2026年10月20日') && !spot.includes('22:00'))
   assert.ok(spot.includes('レンジフード清掃') && spot.includes('本業務（1回）の委託料'))
   assert.deepEqual(sp.cleanContractDetails({ responsible: ' 山田 ', service_label: '', notes: { fee: '', place: '駅前' } }), { responsible: '山田', notes: { place: '駅前' } })
-  console.log('✅ contract details (v1.0.30)')
+  console.log('✅ contract details (v1.0.36)')
 }
