@@ -1,5 +1,6 @@
 import calendar from './_calendar.js'
 import contractSales from './_contract-sales.js'
+import payrollClose from './_payroll-close.js'
 import salesAi from './_sales-ai.js'
 import salesData from './_sales-data.js'
 import salesFiles from './_sales-files.js'
@@ -15,6 +16,7 @@ const handlers = {
   'contract-sellers': contractSales,
   data: salesData,
   files: salesFiles,
+  'payroll-close': payrollClose,
   reminders: salesReminders,
   session: salesSession,
 }

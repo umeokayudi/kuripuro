@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
+import { closeSalaryPeriod } from '../lib/salaryClose'
+import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
+import { useSearchParams } from 'react-router-dom'
 import { useLang, fill } from '../hooks/useLang'
 
 export default function SalaryPeriods() {
@@ -13,6 +16,8 @@ export default function SalaryPeriods() {
   const [loading, setLoading] = useState(true)
   const [closing, setClosing] = useState(false)
   const [schemaOk, setSchemaOk] = useState(true)
+  const [searchParams] = useSearchParams()
+  const wanted = searchParams.get('period')
 
   useEffect(() => { loadPeriods() }, [])
 
@@ -22,7 +27,7 @@ export default function SalaryPeriods() {
     const { data, error } = await supabase.from('salary_periods').select('*').order('period', { ascending: false })
     if (error?.code === 'PGRST205') { setSchemaOk(false); setLoading(false); return }
     setPeriods(data || [])
-    if (data?.length && !selectedPeriod) setSelectedPeriod(data[0].period)
+    if (data?.length && !selectedPeriod) setSelectedPeriod(data.find(r => r.period === wanted)?.period || data[0].period)
     setLoading(false)
   }
 
@@ -36,74 +41,30 @@ export default function SalaryPeriods() {
     if (!window.confirm(fill(p.closeConfirm, { period: fmtPeriod(period), deadline: confirmDeadline, payDate }))) return
     setClosing(true)
     try {
-      await supabase.from('salary_periods').upsert({
-        period, closed_at: new Date().toISOString(), confirm_deadline: confirmDeadline,
-        pay_date: payDate, status: 'closed',
-      }, { onConflict: 'period' })
-
-      const { data: employees } = await supabase.from('employees').select('*').eq('is_active', true)
-      const monthStart = period + '-01'
-      const monthEnd = period + '-31'
-
-      for (const emp of employees || []) {
-        const { data: jobs } = await supabase.from('jobs').select('*')
-          .eq('employee_id', emp.id).eq('status', 'completed')
-          .gte('scheduled_date', monthStart).lte('scheduled_date', monthEnd)
-
-        const { data: deductions } = await supabase.from('salary_payments').select('amount')
-          .eq('employee_id', emp.id).eq('period', period).eq('is_deduction', true)
-
-        const jobPay = (j) => Number(j.retro_value ?? j.value ?? 0)
-        let base = 0
-        if (emp.salary_type === 'fixed') {
-          const days = new Set((jobs || []).map(j => j.scheduled_date)).size
-          base = Math.min(Math.round((emp.fixed_salary || 0) / (emp.monthly_work_days || 22) * days), emp.fixed_salary || 0)
-        } else if (emp.salary_type === 'hourly') {
-          base = (jobs || []).reduce((s, j) => {
-            if (j.started_at && j.completed_at) return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
-            return s + (j.retro_time_min || 45)
-          }, 0) / 60 * (emp.hourly_rate || 0)
-          base = Math.round(base)
-        } else if (emp.salary_type === 'per_job') {
-          base = (jobs || []).reduce((s, j) => s + Math.round(jobPay(j) * ((emp.job_bonus_rate || 100) / 100)), 0)
-        } else {
-          base = emp.fixed_salary || 0
-        }
-
-        const dedTotal = (deductions || []).reduce((s, d) => s + Number(d.amount || 0), 0)
-        const net = Math.max(0, base - dedTotal)
-        const desc = fill(p.salaryDesc, { period: fmtPeriod(period) })
-
-        await supabase.from('salary_statements').upsert({
-          period, employee_id: emp.id, employee_name: emp.full_name,
-          base_salary: base, deductions: dedTotal, net_total: net,
-          breakdown: { jobs: jobs?.length || 0, salary_type: emp.salary_type },
-          status: 'awaiting_confirmation',
-        }, { onConflict: 'period,employee_id' })
-
-        // No unique index on (employee_id, period, payment_type): deductions and
-        // advances share the period, so update the salary row if it exists.
-        const salaryRow = {
-          employee_id: emp.id, employee_name: emp.full_name,
-          period, amount: net, payment_date: payDate,
-          description: desc,
-          status: 'scheduled', payment_type: 'salary', is_deduction: false,
-        }
-        const { data: existing } = await supabase.from('salary_payments')
-          .select('id').eq('employee_id', emp.id).eq('period', period).eq('payment_type', 'salary').limit(1)
-        const { error: payErr } = existing?.length
-          ? await supabase.from('salary_payments').update(salaryRow).eq('id', existing[0].id)
-          : await supabase.from('salary_payments').insert(salaryRow)
-        if (payErr) throw payErr
-      }
-
+      await closeSalaryPeriod(supabase, period, { salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(period) }) })
       toast.success(fill(p.closed, { period: fmtPeriod(period) }))
+      notifyChanged()
       loadPeriods()
       loadStatements(period)
     } catch (e) {
       toast.error(e.message)
     }
     setClosing(false)
+  }
+
+  const notifyChanged = () => { try { window.dispatchEvent(new Event(PAYROLL_CHANGED)) } catch { /* SSR */ } }
+
+  const setPeriodStatus = async (period, status, message) => {
+    const { error } = await supabase.from('salary_periods').update({ status }).eq('period', period)
+    if (error) { toast.error(error.message); return }
+    toast.success(message)
+    notifyChanged()
+    loadPeriods()
+  }
+
+  const reopen = (period) => {
+    if (!window.confirm(fill(p.reopenConfirm, { period: fmtPeriod(period) }))) return
+    setPeriodStatus(period, 'open', fill(p.reopened, { period: fmtPeriod(period) }))
   }
 
   const finalizeStatement = async (id) => {
@@ -148,7 +109,7 @@ export default function SalaryPeriods() {
           {periods.map(row => (
             <button key={row.period} className={`tab-pill${selectedPeriod === row.period ? ' active' : ''}`}
               onClick={() => setSelectedPeriod(row.period)}>
-              {fmtPeriod(row.period)} ({row.status})
+              {fmtPeriod(row.period)} ({p.status?.[row.status] || row.status})
             </button>
           ))}
         </div>
@@ -157,6 +118,26 @@ export default function SalaryPeriods() {
       {selectedPeriod && (
         <div className="card">
           <div className="card-title">{fill(p.slips, { period: fmtPeriod(selectedPeriod) })}</div>
+          {(() => {
+            const row = periods.find(r => r.period === selectedPeriod)
+            if (!row) return null
+            return (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+                {row.status === 'auto_closed' && (
+                  <>
+                    <span style={{ fontSize: 13, color: 'var(--text2)' }}>🤖 {p.autoClosedHint}</span>
+                    <button className="btn btn-sm btn-primary" onClick={() => setPeriodStatus(row.period, 'closed', p.reviewedToast)}>✓ {p.markReviewed}</button>
+                  </>
+                )}
+                {row.status !== 'open' && (
+                  <button className="btn btn-sm" onClick={() => reopen(row.period)}>🔓 {p.reopen}</button>
+                )}
+                {row.status === 'open' && (
+                  <button className="btn btn-sm btn-primary" disabled={closing} onClick={() => closeMonth(row.period)}>🔒 {fill(p.closePrev, { period: fmtPeriod(row.period) })}</button>
+                )}
+              </div>
+            )
+          })()}
           {(() => {
             const d = getPeriodDates(selectedPeriod)
             return <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>{fill(p.confirmUntil, { deadline: d.confirmDeadline, payDate: d.payDate })}</div>
