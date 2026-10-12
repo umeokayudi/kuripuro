@@ -1,2 +1,2 @@
-export const APP_VERSION = 'v1.0.31'
+export const APP_VERSION = 'v1.0.32'
 export const APP_BUILD_LABEL = `REBUILD · ${APP_VERSION} · IA SEM SAUDAÇÃO + ÁUDIO NO IPHONE · 12 OUT 2026`
