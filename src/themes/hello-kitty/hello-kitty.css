@@ -336,3 +336,17 @@
 
 /* Personal greeting line ("Obrigado por tudo") under the title */
 .emp-shell.kp-theme-hello-kitty .ex-greet p.emp-hello-love{margin-top:2px;color:var(--hk-pink-dark) !important;font-weight:700;font-size:13px}
+/* ---------- Earnings charts (EarningsPanel) ---------- */
+.emp-shell.kp-theme-hello-kitty .earn{
+  --earn-bg:#fff;
+  --earn-border:var(--hk-border);
+  --earn-text:var(--hk-text);
+  --earn-muted:var(--hk-muted);
+  --earn-faint:var(--hk-pink-softer);
+  --earn-accent:var(--hk-pink);
+  --earn-bar:var(--hk-pink-soft);
+  --earn-pos:#1f9d55;
+  --earn-neg:#d23b4f;
+  box-shadow:var(--hk-shadow);
+}
+

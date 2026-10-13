@@ -51,6 +51,7 @@ import {
 import { tokyoToday } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
+import EarningsPanel from '../components/EarningsPanel'
 import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
@@ -132,6 +133,7 @@ export default function EmployeePortal() {
   const [retroEval, setRetroEval] = useState(null)
   const [retroBusy, setRetroBusy] = useState(false)
   const [salaryData, setSalaryData] = useState(null)
+  const [makingPayslip, setMakingPayslip] = useState(false)
   const [payments, setPayments] = useState([])
   const [weekDeductions, setWeekDeductions] = useState([])
   const [monthDeductions, setMonthDeductions] = useState([])
@@ -1746,6 +1748,7 @@ export default function EmployeePortal() {
               {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} {e.spotLabel} ⚡</div>}
               {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>{fill(e.projectedMonth,{amount:salaryData.projected.toLocaleString()})}</div>}
             </div>
+            <EarningsPanel employeeId={user.id} lang={lang} theme="portal" />
             {(() => { const w = weekSummary(); return (
               <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:18,padding:16,marginBottom:14}}>
                 <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>📅 {fill(e.weekRange,{start:w.start,end:w.end})}</div>
@@ -1779,19 +1782,20 @@ export default function EmployeePortal() {
             )})()}
             {/* PDF buttons */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
-              <button onClick={async()=>{
-                const month = new Date().toISOString().slice(0,7)
-                const { generatePayslipJP, generatePayslip } = await import('../lib/generatePDF')
-                if (lang==='ja') {
-                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
-                  doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
-                  toast.success('給与明細ダウンロード完了!')
-                } else {
-                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, advances)
-                  doc.save('payslip_'+user.name.replace(' ','_')+'_'+month+'.pdf')
-                  toast.success('Payslip downloaded!')
-                }
-              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:13,fontWeight:600,cursor:'pointer',gridColumn:'1/-1'}}>
+              <button disabled={makingPayslip} onClick={async()=>{
+                const month = tokyoToday().slice(0,7)
+                setMakingPayslip(true)
+                try {
+                  const [{ downloadPayslipPdf }, monthJobs, pays] = await Promise.all([
+                    import('../lib/payslipPdf'),
+                    Promise.resolve(enrichJobValues(allJobs, serviceContracts).filter(j=>j.status==='completed'&&j.scheduled_date?.startsWith(month)&&j.scheduled_date<=tokyoToday())),
+                    supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('period',month).order('payment_date'),
+                  ])
+                  await downloadPayslipPdf({ employee: empData||{ full_name: user.name }, month, salary: salaryData, deductions: monthDeductions, payments: pays.data||[], jobs: monthJobs.sort((a,b)=>a.scheduled_date.localeCompare(b.scheduled_date)), lang })
+                  toast.success(lang==='ja'?'給与明細ダウンロード完了!':'Payslip downloaded!')
+                } catch (err) { toast.error(err.message||'PDF error') }
+                setMakingPayslip(false)
+              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:13,fontWeight:600,cursor:'pointer',gridColumn:'1/-1',opacity:makingPayslip?0.6:1}}>
                 📄 {e.downloadPayslip}
               </button>
             </div>
