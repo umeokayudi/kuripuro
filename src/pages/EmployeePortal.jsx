@@ -37,6 +37,7 @@ import {
   isOverdueAssignedJob,
   isCriticallyOverdueJob,
   hoursPastScheduled,
+  isCarryoverJob,
 } from '../lib/jobOverdue'
 import {
   DEEP_CLEAN_COMPONENTS,
@@ -1014,6 +1015,7 @@ export default function EmployeePortal() {
 
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayPendingJobs = todayJobs.filter(j=>['assigned','in_progress'].includes(j.status))
+  const carryoverPendingJobs = allJobs.filter(j=>isCarryoverJob(j,today))
 
   // GPS on the home map: where the employee is now, where today's sites are, and the nearest one.
   const pendingKey = todayPendingJobs.map(j=>j.id).join(',')
@@ -1439,7 +1441,7 @@ export default function EmployeePortal() {
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
-              const mapJob = activeJob || nearby?.job || todayPendingJobs[0] || null
+              const mapJob = activeJob || nearby?.job || carryoverPendingJobs[0] || todayPendingJobs[0] || null
               if (!mapJob) return null
               const place = businessName(mapJob)
               const coords = siteCoordsById[mapJob.id]
@@ -2084,7 +2086,11 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
 
 function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
-  const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
+  // Jobs from an earlier day that were not started yet stay startable for 24h after their time.
+  const carryoverJobs = allJobs.filter(j=>isCarryoverJob(j,today))
+    .sort((a,b)=>`${a.scheduled_date} ${a.scheduled_time||'00:00'}`.localeCompare(`${b.scheduled_date} ${b.scheduled_time||'00:00'}`))
+  const queueJobs = [...carryoverJobs, ...todayJobs]
+  const todayQueue = queueJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
   const beforePhotos = jobPhotos.filter(p=>p.slot==='start')
@@ -2195,7 +2201,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         </div>
       </div>}
 
-      {!activeJob && total===0&&<div className="emp-shift-empty">
+      {!activeJob && total===0 && carryoverJobs.length===0&&<div className="emp-shift-empty">
         <div className="emp-empty-icon">☀</div>
         <div className="emp-empty-kicker">{labels?.todayShift || 'Today'}</div>
         <h2>{labels?.noShiftToday || labels?.noJobsToday || 'No shifts today'}</h2>
@@ -2208,7 +2214,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         const isOverdue = !isDone && !isActive && job.status==='assigned' && isOverdueAssignedJob(job)
         const isCritical = isOverdue && isCriticallyOverdueJob(job)
         const overdueHours = isOverdue ? Math.floor(hoursPastScheduled(job)) : 0
-        const isNext = !activeJob && job.status==='assigned' && !isOverdue && todayJobs.slice(0,idx).every(j=>j.status==='completed' || isOverdueAssignedJob(j))
+        const isNext = !activeJob && job.status==='assigned' && !isOverdue && todayQueue.slice(0,idx).every(j=>j.status==='completed' || isOverdueAssignedJob(j))
         const instructions = keyboxForJob(job)
         const trainingContract = contractForJob(job, serviceContracts)
         const hasTraining = trainingContract?.training_video_url
@@ -2235,7 +2241,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                         </span>
                       )
                     })()}
-                    <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
+                    <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{job.scheduled_date!==today?`${job.scheduled_date.slice(5)} `:''}{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
                   </div>
                 </div>
               </div>
