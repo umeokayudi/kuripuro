@@ -170,7 +170,9 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       : { messages: allMessages }
     if (mode === 'employee') body.language = lang
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 35000)
+    // A bit longer than the server's own 52 s budget (Vercel maxDuration is 60 s), so the
+    // browser never gives up while the server is still finishing a long request.
+    const timer = setTimeout(() => controller.abort(), 62000)
     let resp
     try {
       resp = await apiPost(endpoint, body, { signal: controller.signal })

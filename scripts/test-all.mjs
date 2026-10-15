@@ -14,6 +14,7 @@ const steps = [
   ['npm run test:sales-insights', 'sales-insights'],
   ['npm run test:mitsumori', 'mitsumori'],
   ['npm run test:ai-guard', 'ai-guard'],
+  ['npm run test:tool-loop', 'tool-loop'],
   ['npm run test:safety-net', 'safety-net'],
   ['npm run test:deep-clean', 'deep-clean'],
   ['npm run test:portal-auth', 'portal-auth'],
