@@ -237,6 +237,34 @@ async function postAction(db, user, body, res) {
     return { success: true }
   }
 
+  if (action === 'update-salesperson') {
+    if (!admin) return jsonError(res, 403, 'Somente admin pode editar vendedor.')
+    const patch = {}
+    if (body.full_name !== undefined) {
+      if (!String(body.full_name).trim()) return jsonError(res, 400, 'Informe o nome.')
+      patch.full_name = String(body.full_name).trim()
+    }
+    if (body.email !== undefined) {
+      const email = String(body.email).trim().toLowerCase()
+      if (!email.includes('@')) return jsonError(res, 400, 'E-mail inválido.')
+      patch.email = email
+    }
+    if (body.phone !== undefined) patch.phone = String(body.phone || '').trim()
+    if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active)
+    if (body.password) {
+      if (String(body.password).length < 10) return jsonError(res, 400, 'A senha do vendedor precisa de pelo menos 10 caracteres.')
+      const { hashSalesPassword } = await import('./_salesSession.js')
+      patch.password_hash = hashSalesPassword(String(body.password))
+    }
+    if (!Object.keys(patch).length) return jsonError(res, 400, 'Nada para salvar.')
+    const { data, error } = await db.from('salespeople').update(patch).eq('id', body.salesperson_id).select('id,full_name,email,phone,is_active').single()
+    if (error) {
+      if (error.code === '23505') return jsonError(res, 409, 'Este e-mail já está em uso.')
+      throw error
+    }
+    return { salesperson: data }
+  }
+
   if (action === 'set-commission-rule') {
     if (!admin) return jsonError(res, 403, 'Somente admin pode definir comissão padrão.')
     if (!['percent', 'fixed'].includes(body.commission_type)) return jsonError(res, 400, 'Tipo de comissão inválido.')

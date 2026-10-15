@@ -6,6 +6,7 @@ import { salesPost } from '../lib/salesApi'
 import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { RoleBadge } from '../components/EmployeeRole'
+import UserEditDialog from '../components/UserEditDialog'
 
 // v1.0.35 · One place for every login: admins, employees, sellers and client logins.
 // Each type still lives in its own table; this page only lists them together.
@@ -17,7 +18,7 @@ const TXT = {
     all: 'All', admin: 'Admins', employee: 'Employees', salesperson: 'Sellers', client: 'Clients',
     typeOne: { admin: 'Admin', employee: 'Employee', salesperson: 'Seller', client: 'Client' },
     search: 'Search name, e-mail, role or store…', showInactive: 'Show inactive',
-    active: 'Active', inactive: 'Inactive', open: 'Open', activate: 'Activate', deactivate: 'Deactivate',
+    active: 'Active', inactive: 'Inactive', open: 'Open', edit: 'Edit', activate: 'Activate', deactivate: 'Deactivate',
     lastSeen: 'Last seen', never: 'never', add: '+ Add user', addAdmin: 'New admin', addEmployee: 'Employee', addSeller: 'Seller', addClient: 'Client login',
     whichType: 'What kind of login?', name: 'Name', email: 'E-mail', password: 'Password (8+ characters)', create: 'Create admin', cancel: 'Cancel',
     created: 'Admin created', emailUsed: 'This e-mail already has a login', fillAll: 'Fill name, e-mail and a password with 8+ characters',
@@ -28,7 +29,7 @@ const TXT = {
     all: 'すべて', admin: '管理者', employee: '従業員', salesperson: '営業', client: 'クライアント',
     typeOne: { admin: '管理者', employee: '従業員', salesperson: '営業', client: 'クライアント' },
     search: '名前・メール・役割・店舗で検索…', showInactive: '無効も表示',
-    active: '有効', inactive: '無効', open: '開く', activate: '有効にする', deactivate: '無効にする',
+    active: '有効', inactive: '無効', open: '開く', edit: '編集', activate: '有効にする', deactivate: '無効にする',
     lastSeen: '最終利用', never: 'なし', add: '+ ユーザー追加', addAdmin: '新しい管理者', addEmployee: '従業員', addSeller: '営業', addClient: 'クライアントログイン',
     whichType: 'どの種類のログイン？', name: '氏名', email: 'メール', password: 'パスワード（8文字以上）', create: '管理者を作成', cancel: 'キャンセル',
     created: '管理者を作成しました', emailUsed: 'このメールはすでに使われています', fillAll: '氏名・メール・8文字以上のパスワードを入力してください',
@@ -44,7 +45,7 @@ function initials(name) {
 
 export default function Users() {
   const { lang } = useLang()
-  const { user: me } = useAuth()
+  const { user: me, updateSession } = useAuth()
   const navigate = useNavigate()
   const t = TXT[lang === 'ja' ? 'ja' : 'en']
   const [rows, setRows] = useState([])
@@ -55,6 +56,7 @@ export default function Users() {
   const [adding, setAdding] = useState(false)
   const [adminForm, setAdminForm] = useState(null)
   const [busy, setBusy] = useState('')
+  const [editing, setEditing] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -68,7 +70,7 @@ export default function Users() {
       ...(admins.data || []).map(a => ({ type: 'admin', id: a.id, name: a.name || a.email, email: a.email, active: true, created_at: a.created_at })),
       ...(employees.data || []).map(e => ({ type: 'employee', id: e.id, name: e.full_name, email: e.email, phone: e.phone, active: e.is_active !== false, role: e.job_role, last_seen: e.last_seen, created_at: e.created_at })),
       ...(sellers.data || []).map(s => ({ type: 'salesperson', id: s.id, name: s.full_name, email: s.email, phone: s.phone, active: s.is_active !== false, created_at: s.created_at })),
-      ...(clients.data || []).map(c => ({ type: 'client', id: c.id, client_id: c.client_id, name: c.contact_name || c.location_name || c.client_name || c.email, email: c.email, place: [c.client_name, c.location_name].filter(Boolean).join(' · '), active: c.is_active !== false, last_seen: c.last_seen, created_at: c.created_at })),
+      ...(clients.data || []).map(c => ({ type: 'client', id: c.id, client_id: c.client_id, name: c.contact_name || c.location_name || c.client_name || c.email, contact_name: c.contact_name, email: c.email, place: [c.client_name, c.location_name].filter(Boolean).join(' · '), active: c.is_active !== false, last_seen: c.last_seen, created_at: c.created_at })),
     ])
     setLoading(false)
   }, [])
@@ -223,6 +225,7 @@ export default function Users() {
               </div>
             </div>
             <div className="kp-users-actions">
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => setEditing(r)}>{t.edit}</button>
               {r.type !== 'admin' && <button type="button" className="btn btn-sm" onClick={() => open(r)}>{t.open}</button>}
               {r.type !== 'admin' && (
                 <button type="button" className="btn btn-sm" disabled={busy === r.type + r.id} onClick={() => toggleActive(r)}>
@@ -233,6 +236,20 @@ export default function Users() {
           </div>
         ))}
       </div>
+      {editing && (
+        <UserEditDialog
+          user={editing}
+          allRows={rows}
+          lang={lang}
+          typeLabel={t.typeOne[editing.type]}
+          onClose={() => setEditing(null)}
+          onSaved={patch => {
+            setRows(list => list.map(x => (x.type === editing.type && x.id === editing.id ? { ...x, ...patch } : x)))
+            if (editing.type === 'admin' && me?.role === 'admin' && me.id === editing.id) updateSession({ name: patch.name, email: patch.email })
+            setEditing(null)
+          }}
+        />
+      )}
     </div>
   )
 }
