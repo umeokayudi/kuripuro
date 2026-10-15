@@ -214,6 +214,17 @@ async function getAction(db, user, action, query = {}) {
   throw Object.assign(new Error('Ação de leitura inválida.'), { status: 400 })
 }
 
+// One e-mail = one login. The sign-in checks admins and employees before sellers,
+// so a seller sharing their e-mail could never reach the Sales portal.
+async function emailTakenByOtherLogin(db, email, sellerId = null) {
+  const [adm, emp, seller] = await Promise.all([
+    db.from('admins').select('id').eq('email', email).limit(1).maybeSingle(),
+    db.from('employees').select('id').eq('email', email).limit(1).maybeSingle(),
+    db.from('salespeople').select('id').eq('email', email).limit(1).maybeSingle(),
+  ])
+  return Boolean(adm.data || emp.data || (seller.data && seller.data.id !== sellerId))
+}
+
 async function postAction(db, user, body, res) {
   const today = todayTokyo()
   const { action } = body || {}
@@ -222,8 +233,11 @@ async function postAction(db, user, body, res) {
 
   if (action === 'create-salesperson') {
     if (!admin) return jsonError(res, 403, 'Somente admin pode criar vendedor.')
-    const { full_name, email, password, phone = '' } = body
-    if (!String(full_name || '').trim() || !String(email || '').trim() || String(password || '').length < 10) return jsonError(res, 400, 'Informe nome, e-mail e senha com pelo menos 10 caracteres.')
+    const { full_name, email, phone = '' } = body
+    // The login form trims what is typed, so store the trimmed password too.
+    const password = String(body.password || '').trim()
+    if (!String(full_name || '').trim() || !String(email || '').trim() || password.length < 10) return jsonError(res, 400, 'Informe nome, e-mail e senha com pelo menos 10 caracteres.')
+    if (await emailTakenByOtherLogin(db, String(email).trim().toLowerCase())) return jsonError(res, 409, 'Este e-mail já é usado por outro login (admin, funcionário ou vendedor).')
     const { hashSalesPassword } = await import('./_salesSession.js')
     const { data, error } = await db.from('salespeople').insert({ full_name: String(full_name).trim(), email: String(email).trim().toLowerCase(), password_hash: hashSalesPassword(password), phone: String(phone).trim(), is_active: true }).select('id,full_name,email,phone,is_active').single()
     if (error) throw error
@@ -247,14 +261,15 @@ async function postAction(db, user, body, res) {
     if (body.email !== undefined) {
       const email = String(body.email).trim().toLowerCase()
       if (!email.includes('@')) return jsonError(res, 400, 'E-mail inválido.')
+      if (await emailTakenByOtherLogin(db, email, body.salesperson_id)) return jsonError(res, 409, 'Este e-mail já é usado por outro login (admin, funcionário ou vendedor).')
       patch.email = email
     }
     if (body.phone !== undefined) patch.phone = String(body.phone || '').trim()
     if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active)
-    if (body.password) {
-      if (String(body.password).length < 10) return jsonError(res, 400, 'A senha do vendedor precisa de pelo menos 10 caracteres.')
+    if (String(body.password || '').trim()) {
+      if (String(body.password).trim().length < 10) return jsonError(res, 400, 'A senha do vendedor precisa de pelo menos 10 caracteres.')
       const { hashSalesPassword } = await import('./_salesSession.js')
-      patch.password_hash = hashSalesPassword(String(body.password))
+      patch.password_hash = hashSalesPassword(String(body.password).trim())
     }
     if (!Object.keys(patch).length) return jsonError(res, 400, 'Nada para salvar.')
     const { data, error } = await db.from('salespeople').update(patch).eq('id', body.salesperson_id).select('id,full_name,email,phone,is_active').single()

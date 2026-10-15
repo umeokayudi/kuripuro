@@ -95,7 +95,10 @@ export default async function handler(req, res) {
       await db.from('salespeople').update({ password_hash: hashSalesPassword(password) }).eq('id', seller.id)
     }
     const user = { id: seller.id, name: seller.full_name, email: seller.email, role: 'salesperson', phone: seller.phone || '' }
-    setSalesSessionCookie(res, createSalesSession(user))
+    // Same 30-day session as employees: kp_user stays in the browser, so a 12h cookie
+    // made sellers look signed in while every Sales portal call failed. Deactivation
+    // still applies at once (requireActiveSalesSession checks is_active per request).
+    setSalesSessionCookie(res, createSalesSession(user, EMPLOYEE_SESSION_TTL), EMPLOYEE_SESSION_TTL)
     return res.status(200).json({ success: true, user })
   } catch (error) {
     return res.status(500).json({ error: 'Não foi possível iniciar a sessão comercial.' })

@@ -17,6 +17,8 @@ const TXT = {
     title: 'Users', hint: 'Every login on KuriPuro: admins, employees, sellers and client logins.',
     all: 'All', admin: 'Admins', employee: 'Employees', salesperson: 'Sellers', client: 'Clients',
     typeOne: { admin: 'Admin', employee: 'Employee', salesperson: 'Seller', client: 'Client' },
+    sector: { admin: 'Admins', employee: 'Employees', salesperson: 'Sales / Marketing', client: 'Clients' },
+    addOne: { admin: '+ New admin', employee: '+ New employee', salesperson: '+ New seller', client: '+ New client login' },
     search: 'Search name, e-mail, role or store…', showInactive: 'Show inactive',
     active: 'Active', inactive: 'Inactive', open: 'Open', edit: 'Edit', activate: 'Activate', deactivate: 'Deactivate',
     lastSeen: 'Last seen', never: 'never', add: '+ Add user', addAdmin: 'New admin', addEmployee: 'Employee', addSeller: 'Seller', addClient: 'Client login',
@@ -28,6 +30,8 @@ const TXT = {
     title: 'ユーザー', hint: 'KuriPuroのすべてのログイン（管理者・従業員・営業・クライアント）。',
     all: 'すべて', admin: '管理者', employee: '従業員', salesperson: '営業', client: 'クライアント',
     typeOne: { admin: '管理者', employee: '従業員', salesperson: '営業', client: 'クライアント' },
+    sector: { admin: '管理者', employee: '従業員', salesperson: '営業・マーケティング', client: 'クライアント' },
+    addOne: { admin: '+ 管理者', employee: '+ 従業員', salesperson: '+ 営業', client: '+ クライアントログイン' },
     search: '名前・メール・役割・店舗で検索…', showInactive: '無効も表示',
     active: '有効', inactive: '無効', open: '開く', edit: '編集', activate: '有効にする', deactivate: '無効にする',
     lastSeen: '最終利用', never: 'なし', add: '+ ユーザー追加', addAdmin: '新しい管理者', addEmployee: '従業員', addSeller: '営業', addClient: 'クライアントログイン',
@@ -38,6 +42,8 @@ const TXT = {
 }
 
 const TYPES = ['admin', 'employee', 'salesperson', 'client']
+// Order of the sectors on screen: field staff first, admins last.
+const SECTION_ORDER = ['employee', 'salesperson', 'client', 'admin']
 
 function initials(name) {
   return String(name || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?'
@@ -53,8 +59,6 @@ export default function Users() {
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [showInactive, setShowInactive] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [adminForm, setAdminForm] = useState(null)
   const [busy, setBusy] = useState('')
   const [editing, setEditing] = useState(null)
 
@@ -123,29 +127,42 @@ export default function Users() {
     }
   }
 
-  const createAdmin = async e => {
-    e.preventDefault()
-    const name = adminForm.name.trim()
-    const email = adminForm.email.trim().toLowerCase()
-    if (!name || !email.includes('@') || adminForm.password.length < 8) return toast.error(t.fillAll)
-    if (rows.some(r => String(r.email || '').toLowerCase() === email)) return toast.error(t.emailUsed)
-    setBusy('new-admin')
-    const { error } = await supabase.from('admins').insert({ name, email, password: adminForm.password })
-    setBusy('')
-    if (error) return toast.error(error.message)
-    toast.success(t.created)
-    setAdminForm(null)
-    setAdding(false)
-    load()
+  // Admin and seller logins are created right here; employees and client logins
+  // need their full forms (pay, contract / client and store), so those open their page.
+  const addFor = type => {
+    if (type === 'admin' || type === 'salesperson') setEditing({ type, isNew: true, active: true })
+    else if (type === 'employee') navigate('/employees?tab=register')
+    else navigate('/clients')
   }
 
-  const pick = type => {
-    if (type === 'admin') { setAdminForm({ name: '', email: '', password: '' }); return }
-    setAdding(false)
-    if (type === 'employee') navigate('/employees?tab=register')
-    if (type === 'salesperson') navigate('/sales-team')
-    if (type === 'client') navigate('/clients')
-  }
+  const renderRow = r => (
+    <div key={r.type + r.id} className="kp-users-row" style={{ opacity: r.active ? 1 : 0.6 }}>
+      <div className="avatar" style={{ width: 38, height: 38, fontSize: 13, fontWeight: 700, background: 'var(--surface2)', color: 'var(--text2)', flexShrink: 0 }}>{initials(r.name)}</div>
+      <div className="kp-users-main">
+        <div className="kp-users-name">
+          {r.name}
+          {me?.role === 'admin' && r.type === 'admin' && r.id === me.id && <span style={{ fontSize: 11, color: 'var(--text3)' }}>({t.you})</span>}
+          {r.type === 'employee' && <RoleBadge value={r.role} lang={lang} size="sm" />}
+          {!r.active && <span className="badge badge-red">{t.inactive}</span>}
+        </div>
+        <div className="kp-users-meta">
+          {[r.email, r.place, r.phone].filter(Boolean).join(' · ')}
+          {(r.type === 'employee' || r.type === 'client') && <> · {t.lastSeen}: {fmtSeen(r.last_seen)}</>}
+        </div>
+      </div>
+      <div className="kp-users-actions">
+        <button type="button" className="btn btn-sm btn-primary" onClick={() => setEditing(r)}>{t.edit}</button>
+        {r.type !== 'admin' && <button type="button" className="btn btn-sm" onClick={() => open(r)}>{t.open}</button>}
+        {r.type !== 'admin' && (
+          <button type="button" className="btn btn-sm" disabled={busy === r.type + r.id} onClick={() => toggleActive(r)}>
+            {r.active ? t.deactivate : t.activate}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
+  const sections = (filter === 'all' ? SECTION_ORDER : [filter]).map(type => ({ type, list: visible.filter(r => r.type === type) }))
 
   return (
     <div>
@@ -154,45 +171,13 @@ export default function Users() {
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{t.title}</h2>
           <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{t.hint}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="btn" onClick={() => navigate('/partners')}>{t.partners}</button>
-          <button type="button" className="btn btn-primary" onClick={() => { setAdding(v => !v); setAdminForm(null) }}>{t.add}</button>
-        </div>
+        <button type="button" className="btn" onClick={() => navigate('/partners')}>{t.partners}</button>
       </div>
 
-      {adding && (
-        <div className="card" style={{ marginBottom: 14 }}>
-          {!adminForm ? (
-            <>
-              <div className="card-title">{t.whichType}</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button type="button" className="btn" onClick={() => pick('admin')}><span className="kp-type-badge kp-type-admin">{t.typeOne.admin}</span>&nbsp;{t.addAdmin}</button>
-                <button type="button" className="btn" onClick={() => pick('employee')}><span className="kp-type-badge kp-type-employee">{t.typeOne.employee}</span>&nbsp;{t.addEmployee} →</button>
-                <button type="button" className="btn" onClick={() => pick('salesperson')}><span className="kp-type-badge kp-type-salesperson">{t.typeOne.salesperson}</span>&nbsp;{t.addSeller} →</button>
-                <button type="button" className="btn" onClick={() => pick('client')}><span className="kp-type-badge kp-type-client">{t.typeOne.client}</span>&nbsp;{t.addClient} →</button>
-              </div>
-            </>
-          ) : (
-            <form onSubmit={createAdmin}>
-              <div className="card-title">{t.addAdmin}</div>
-              <div className="grid-2">
-                <div className="form-group"><label>{t.name}</label><input value={adminForm.name} onChange={e => setAdminForm(f => ({ ...f, name: e.target.value }))} /></div>
-                <div className="form-group"><label>{t.email}</label><input type="email" value={adminForm.email} onChange={e => setAdminForm(f => ({ ...f, email: e.target.value }))} /></div>
-                <div className="form-group"><label>{t.password}</label><input type="text" autoComplete="new-password" value={adminForm.password} onChange={e => setAdminForm(f => ({ ...f, password: e.target.value }))} /></div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="submit" className="btn btn-primary" disabled={busy === 'new-admin'}>{t.create}</button>
-                <button type="button" className="btn" onClick={() => { setAdminForm(null); setAdding(false) }}>{t.cancel}</button>
-              </div>
-            </form>
-          )}
-        </div>
-      )}
-
-      <div className="kp-users-kpis">
-        {['all', ...TYPES].map(k => (
-          <button key={k} type="button" className={`kp-users-kpi${filter === k ? ' active' : ''}`} onClick={() => setFilter(k)} aria-pressed={filter === k}>
-            <strong>{counts[k]}</strong><span>{t[k]}</span>
+      <div className="kp-users-tabs" role="tablist">
+        {['all', ...SECTION_ORDER].map(k => (
+          <button key={k} type="button" role="tab" className={`kp-users-tab${filter === k ? ' active' : ''}`} onClick={() => setFilter(k)} aria-selected={filter === k}>
+            {k === 'all' ? t.all : t.sector[k]} <span>{counts[k]}</span>
           </button>
         ))}
       </div>
@@ -205,37 +190,20 @@ export default function Users() {
         </label>
       </div>
 
-      <div className="card" style={{ padding: 0 }}>
-        {loading && <div style={{ padding: 16, fontSize: 13, color: 'var(--text3)' }}>{t.loading}</div>}
-        {!loading && !visible.length && <div style={{ padding: 16, fontSize: 13, color: 'var(--text3)' }}>{t.empty}</div>}
-        {visible.map(r => (
-          <div key={r.type + r.id} className="kp-users-row" style={{ opacity: r.active ? 1 : 0.6 }}>
-            <div className="avatar" style={{ width: 38, height: 38, fontSize: 13, fontWeight: 700, background: 'var(--surface2)', color: 'var(--text2)', flexShrink: 0 }}>{initials(r.name)}</div>
-            <div className="kp-users-main">
-              <div className="kp-users-name">
-                {r.name}
-                {me?.role === 'admin' && r.type === 'admin' && r.id === me.id && <span style={{ fontSize: 11, color: 'var(--text3)' }}>({t.you})</span>}
-                <span className={`kp-type-badge kp-type-${r.type}`}>{t.typeOne[r.type]}</span>
-                {r.type === 'employee' && <RoleBadge value={r.role} lang={lang} size="sm" />}
-                {!r.active && <span className="badge badge-red">{t.inactive}</span>}
-              </div>
-              <div className="kp-users-meta">
-                {[r.email, r.place, r.phone].filter(Boolean).join(' · ')}
-                {(r.type === 'employee' || r.type === 'client') && <> · {t.lastSeen}: {fmtSeen(r.last_seen)}</>}
-              </div>
-            </div>
-            <div className="kp-users-actions">
-              <button type="button" className="btn btn-sm btn-primary" onClick={() => setEditing(r)}>{t.edit}</button>
-              {r.type !== 'admin' && <button type="button" className="btn btn-sm" onClick={() => open(r)}>{t.open}</button>}
-              {r.type !== 'admin' && (
-                <button type="button" className="btn btn-sm" disabled={busy === r.type + r.id} onClick={() => toggleActive(r)}>
-                  {r.active ? t.deactivate : t.activate}
-                </button>
-              )}
-            </div>
+      {loading && <div className="card" style={{ fontSize: 13, color: 'var(--text3)' }}>{t.loading}</div>}
+      {!loading && sections.map(({ type, list }) => (
+        <section key={type} className="kp-users-section">
+          <div className="kp-users-section-head">
+            <span className={`kp-type-badge kp-type-${type}`}>{t.sector[type]}</span>
+            <span className="kp-users-section-count">{list.length}</span>
+            <button type="button" className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => addFor(type)}>{t.addOne[type]}</button>
           </div>
-        ))}
-      </div>
+          <div className="card" style={{ padding: 0, margin: 0 }}>
+            {list.length ? list.map(renderRow) : <div style={{ padding: 14, fontSize: 13, color: 'var(--text3)' }}>{t.empty}</div>}
+          </div>
+        </section>
+      ))}
+
       {editing && (
         <UserEditDialog
           user={editing}
@@ -244,6 +212,7 @@ export default function Users() {
           typeLabel={t.typeOne[editing.type]}
           onClose={() => setEditing(null)}
           onSaved={patch => {
+            if (!patch) { setEditing(null); load(); return }
             setRows(list => list.map(x => (x.type === editing.type && x.id === editing.id ? { ...x, ...patch } : x)))
             if (editing.type === 'admin' && me?.role === 'admin' && me.id === editing.id) updateSession({ name: patch.name, email: patch.email })
             setEditing(null)

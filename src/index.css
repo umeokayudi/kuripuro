@@ -1954,3 +1954,13 @@ body { background: var(--hq-bg); }
   .kp-dialog-backdrop{align-items:flex-end;padding:0}
   .kp-dialog{max-width:none;border-radius:18px 18px 0 0;max-height:92vh;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
 }
+/* v1.0.44 · Users split by sector */
+.kp-users-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.kp-users-tab{border:1px solid var(--border);background:var(--surface);color:var(--text2);font:600 13px var(--font);padding:8px 14px;border-radius:999px;cursor:pointer}
+.kp-users-tab span{margin-left:6px;font-weight:800;color:var(--text)}
+.kp-users-tab.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.kp-users-tab.active span{color:#fff}
+.kp-users-section{margin-bottom:16px}
+.kp-users-section-head{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
+.kp-users-section-head .kp-type-badge{font-size:13px;padding:4px 12px}
+.kp-users-section-count{font-size:13px;font-weight:700;color:var(--text3)}

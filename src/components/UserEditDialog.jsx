@@ -7,12 +7,13 @@ import { RolePicker } from './EmployeeRole'
 // v1.0.44 · Edit any login from the Users page: name, e-mail, phone, role,
 // active, and set a new password. The current password is never read; leaving
 // the password box empty keeps it. Sellers go through the API (hashed password).
+// With user.isNew it creates an admin or seller login instead (password required).
 
 const MIN_PASSWORD = { admin: 8, employee: 6, client: 6, salesperson: 10 }
 
 const TXT = {
   en: {
-    title: 'Edit login', name: 'Name', contact: 'Contact name', email: 'E-mail (login)', phone: 'Phone', role: 'Role',
+    title: 'Edit login', newTitle: 'New login', created: 'Login created', needPassword: n => `Set a password with at least ${n} characters`, newPasswordLabel: 'Password', name: 'Name', contact: 'Contact name', email: 'E-mail (login)', phone: 'Phone', role: 'Role',
     password: 'New password', passwordHint: n => `Leave empty to keep the current password. At least ${n} characters.`,
     generate: 'Generate', copy: 'Copy', copied: 'Copied', active: 'Can sign in (active)', save: 'Save', cancel: 'Cancel',
     saved: 'Saved', saving: 'Saving…', needName: 'Write the name', badEmail: 'Write a valid e-mail', emailUsed: 'This e-mail already has a login',
@@ -20,7 +21,7 @@ const TXT = {
     tellUser: 'Send the new password to the person; it is not shown again.', storeHint: 'Store logins can also sign in with the store name.',
   },
   ja: {
-    title: 'ログインを編集', name: '氏名', contact: '担当者名', email: 'メール（ログイン）', phone: '電話', role: '役割',
+    title: 'ログインを編集', newTitle: '新しいログイン', created: 'ログインを作成しました', needPassword: n => `${n}文字以上のパスワードを設定してください`, newPasswordLabel: 'パスワード', name: '氏名', contact: '担当者名', email: 'メール（ログイン）', phone: '電話', role: '役割',
     password: '新しいパスワード', passwordHint: n => `空欄なら現在のパスワードのままです。${n}文字以上。`,
     generate: '自動生成', copy: 'コピー', copied: 'コピーしました', active: 'ログイン可能（有効）', save: '保存', cancel: 'キャンセル',
     saved: '保存しました', saving: '保存中…', needName: '氏名を入力してください', badEmail: '正しいメールを入力してください', emailUsed: 'このメールはすでに使われています',
@@ -48,6 +49,7 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
     active: user.active !== false,
   }))
   const [saving, setSaving] = useState(false)
+  const isNew = Boolean(user.isNew)
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
@@ -65,9 +67,21 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
     if (!email.includes('@') && !(user.type === 'client' && !email && !user.email)) return toast.error(t.badEmail)
     if (email && allRows.some(r => !(r.type === user.type && r.id === user.id) && String(r.email || '').toLowerCase() === email)) return toast.error(t.emailUsed)
     if (password && password.length < min) return toast.error(t.shortPassword(min))
+    if (isNew && !password) return toast.error(t.needPassword(min))
     setSaving(true)
     try {
       let patchRow = { email: email || null, active: form.active }
+      if (isNew) {
+        if (user.type === 'salesperson') {
+          await salesPost('/api/sales-data', { action: 'create-salesperson', full_name: name, email, phone: form.phone.trim(), password }, lang)
+        } else {
+          const { error } = await supabase.from('admins').insert({ name, email, password })
+          if (error) throw new Error(error.code === '23505' ? t.emailUsed : error.message)
+        }
+        toast.success(`${t.created} · ${t.tellUser}`, { duration: 6000 })
+        onSaved(null)
+        return
+      }
       if (user.type === 'salesperson') {
         const body = { action: 'update-salesperson', salesperson_id: user.id, full_name: name, email, phone: form.phone.trim(), is_active: form.active }
         if (password) body.password = password
@@ -104,9 +118,9 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
 
   return (
     <div className="kp-dialog-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <form className="kp-dialog" role="dialog" aria-modal="true" aria-label={t.title} onSubmit={save}>
+      <form className="kp-dialog" role="dialog" aria-modal="true" aria-label={isNew ? t.newTitle : t.title} onSubmit={save}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-          <div style={{ fontSize: 17, fontWeight: 800, flex: 1, minWidth: 0 }}>{t.title}</div>
+          <div style={{ fontSize: 17, fontWeight: 800, flex: 1, minWidth: 0 }}>{isNew ? t.newTitle : t.title}</div>
           <span className={`kp-type-badge kp-type-${user.type}`}>{typeLabel}</span>
           <button type="button" className="kp-dialog-x" onClick={onClose} aria-label={t.cancel}>×</button>
         </div>
@@ -122,16 +136,16 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
         )}
 
         <div className="form-group">
-          <label>{t.password}</label>
+          <label>{isNew ? `${t.newPasswordLabel} *` : t.password}</label>
           <div style={{ display: 'flex', gap: 6 }}>
             <input type="text" value={form.password} onChange={e => upd('password', e.target.value)} autoComplete="new-password" spellCheck={false} style={{ flex: 1, minWidth: 0, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }} />
             <button type="button" className="btn btn-sm" onClick={() => upd('password', randomPassword(Math.max(min, 10)))}>{t.generate}</button>
             {form.password && <button type="button" className="btn btn-sm" onClick={copyPassword}>{t.copy}</button>}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>{t.passwordHint(min)}{user.type === 'client' ? ` ${t.storeHint}` : ''}</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>{isNew ? t.shortPassword(min) + '.' : t.passwordHint(min)}{user.type === 'client' ? ` ${t.storeHint}` : ''}</div>
         </div>
 
-        {user.type !== 'admin' && (
+        {user.type !== 'admin' && !isNew && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, margin: '4px 0 14px' }}>
             <input type="checkbox" checked={form.active} onChange={e => upd('active', e.target.checked)} style={{ width: 16, height: 16 }} />
             {t.active}
