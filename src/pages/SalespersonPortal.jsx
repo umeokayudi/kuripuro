@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
-import LanguageToggle from '../components/LanguageToggle'
+import FieldAppShell, { Sheet } from '../components/FieldAppShell'
 import { prepareImageForUpload } from '../lib/imageUpload'
-import { AlertBanner, ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
+import { ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
 import { RESPONSE_TAGS, alertCounts, followupQueue, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
 import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
@@ -38,6 +38,15 @@ const COPY = {
     dayStarted: t => `Working since ${t}`, dayEnded: (a, b) => `Day closed ${a}–${b}`, dayNote: 'Anything to add for the manager? (optional)', dayTravel: 'Travel cost today (¥)', endConfirm: 'End the day now and send the report?', writing: 'Writing report…', dayReport: 'Day report', reopen: 'Restart day',
     outcome: 'What happened', outcomes: { talked: 'Talked, no next step yet', meeting_scheduled: 'Meeting scheduled', quote_sent: 'Quote sent', negotiating: 'Negotiating', closed: 'Closed / signed', no_interest: 'Not interested', absent: 'Nobody / absent' },
     clientSaid: 'What the client answered', answerType: 'Type of answer',
+    home: 'Home', more: 'More', kicker: 'KURIPURO · SALES', newLeadShort: 'New lead', logVisit: 'Log visit', todo: 'To do today', allDone: 'Nothing due today. Go find new clients!',
+    monthOverview: 'This month', seeAll: 'See all', search: 'Search shop, company or contact', all: 'All',
+    cardStep: 'Business card photo', cardStepHint: 'Take a photo of the business card. AI fills in the details and your location is saved.', takePhoto: 'Take photo of the card', retake: 'Retake photo', reading: 'Reading the card…',
+    gps: 'Location (GPS)', gpsGetting: 'Getting your location…', gpsOk: acc => `Location saved (±${acc} m)`, gpsFail: 'Could not get your location. Turn on location for this site and try again.', gpsRetry: 'Try again',
+    mapsLink: 'Google Maps link of the shop', mapsHint: 'In Google Maps: find the shop → Share → Copy link, then paste here.', openMaps: 'Open Google Maps here', paste: 'Paste', useGps: 'Use my location', mapsBad: 'Paste a Google Maps link (google.com/maps or maps.app.goo.gl).',
+    needCard: 'Take the business card photo first.', needGps: 'Location is required to save a lead.', required: 'required', details: 'More details', call: 'Call', map: 'Map', card: 'Card',
+    leadInfo: 'Details', editLead: 'Edit details', stage: 'Stage', history: 'History', noCard: 'No card photo', workingFor: 'Working', dayClosed: 'Day closed', endDaySheet: 'End the day',
+    menuReports: 'Visits & day reports', menuContracts: 'Contracts', menuGoals: 'My goals', menuKpi: 'My KPIs', menuAi: 'AI funnel review', menuHint: { approaches: 'Every visit and day you logged', contracts: 'Send a signed contract', goals: 'Monthly targets', kpi: 'Numbers and trends', ai: 'Ask the AI what to do next' },
+    notifications: 'Notifications', visitFor: 'Visit', visitDetails: 'Time, travel, recording', hoursLog: 'Hours of a past day',
   },
   ja: {
     title: '営業ワークスペース', overview: '概要', leads: 'リード', followups: 'フォローアップ', approaches: '活動レポート', contracts: '契約',
@@ -66,6 +75,15 @@ const COPY = {
     dayStarted: t => `${t}から稼働中`, dayEnded: (a, b) => `${a}–${b} 終了`, dayNote: '管理者への補足（任意）', dayTravel: '本日の交通費 (¥)', endConfirm: '本日の業務を終了して日報を送信しますか？', writing: '日報を作成中…', dayReport: '日報', reopen: '再開',
     outcome: '結果', outcomes: { talked: '話せた（次の予定なし）', meeting_scheduled: '面談を設定', quote_sent: '見積を送付', negotiating: '交渉中', closed: '成約・署名', no_interest: '興味なし', absent: '不在' },
     clientSaid: 'お客様の返答', answerType: '返答の種類',
+    home: 'ホーム', more: 'その他', kicker: 'KURIPURO · 営業', newLeadShort: '新規リード', logVisit: '訪問を記録', todo: '今日やること', allDone: '今日の期限はありません。新しいお客様を探しましょう！',
+    monthOverview: '今月', seeAll: 'すべて見る', search: '店舗・会社・担当者で検索', all: 'すべて',
+    cardStep: '名刺の写真', cardStepHint: '名刺を撮影してください。AIが内容を読み取り、現在地も保存されます。', takePhoto: '名刺を撮影', retake: '撮り直す', reading: '名刺を読み取り中…',
+    gps: '現在地（GPS）', gpsGetting: '現在地を取得中…', gpsOk: acc => `現在地を保存しました（±${acc} m）`, gpsFail: '現在地を取得できません。位置情報を許可して再度お試しください。', gpsRetry: '再取得',
+    mapsLink: '店舗のGoogleマップリンク', mapsHint: 'Googleマップで店舗を探し → 共有 → リンクをコピーして貼り付けてください。', openMaps: 'Googleマップを開く', paste: '貼り付け', useGps: '現在地を使う', mapsBad: 'Googleマップのリンクを貼り付けてください（google.com/maps または maps.app.goo.gl）。',
+    needCard: '先に名刺を撮影してください。', needGps: 'リードの保存には現在地が必要です。', required: '必須', details: '詳細', call: '電話', map: '地図', card: '名刺',
+    leadInfo: '情報', editLead: '情報を編集', stage: '段階', history: '履歴', noCard: '名刺写真なし', workingFor: '稼働中', dayClosed: '終了', endDaySheet: '業務終了',
+    menuReports: '訪問・日報', menuContracts: '契約', menuGoals: '目標', menuKpi: 'KPI・推移', menuAi: 'AI営業分析', menuHint: { approaches: '記録した訪問と日報', contracts: '署名済み契約を提出', goals: '今月の目標', kpi: '数字と推移', ai: '次にやることをAIに相談' },
+    notifications: 'お知らせ', visitFor: '訪問', visitDetails: '時間・交通費・録音', hoursLog: '過去日の稼働時間',
   },
 }
 
@@ -81,14 +99,34 @@ async function callApi(url, body) {
   return result
 }
 
-const blankLead = () => ({ company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', address: '', region: '', source: 'visit', first_contact_date: todayJapan(), next_followup_date: '', notes: '', marketing_channel_id:'', marketing_campaign_id:'', business_card_object_path:'' })
+const MAPS_RE = /^https:\/\/(www\.)?(google\.[a-z.]+\/maps|maps\.google\.[a-z.]+|maps\.app\.goo\.gl|goo\.gl\/maps)/i
+const mapsSearch = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+const leadMapUrl = row => row?.maps_url || (row?.gps_lat != null && row?.gps_lng != null ? mapsSearch(row.gps_lat, row.gps_lng) : (row?.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.address)}` : ''))
+const SELLER_STAGES = ['approach', 'followup', 'quote', 'negotiation']
+
+// Fresh, precise fix for a new lead (not a cached one from an hour ago).
+const readPosition = () => new Promise((resolve, reject) => {
+  if (!navigator.geolocation) return reject(new Error('no-gps'))
+  navigator.geolocation.getCurrentPosition(
+    pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy || 0) }),
+    reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 })
+})
+
+const blankLead = () => ({ company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', address: '', region: '', source: 'visit', first_contact_date: todayJapan(), next_followup_date: '', notes: '', marketing_channel_id:'', marketing_campaign_id:'', business_card_object_path:'', maps_url:'' })
 const blankApproach = () => ({ lead_id: '', work_date: todayJapan(), place: '', company_name: '', site_name: '', contact_name: '', contact_title: '', contact_phone: '', contact_email: '', notes: '', followup_note: '', followup_date: '', outcome: '', travel_cost: 0, duration_minutes: 0, hours_spent: 0, meeting_transcript: '', meeting_summary: '', ai_next_step: '', followup_status: 'open', client_response: '', response_tag: '' })
 
 export default function SalespersonPortal() {
   const { user, logout } = useAuth()
   const { lang } = useLang()
   const c = COPY[lang === 'ja' ? 'ja' : 'en']
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState('home')
+  const [sheet, setSheet] = useState('')
+  const [gps, setGps] = useState({ state: 'idle' })
+  const [cardPreview, setCardPreview] = useState('')
+  const [cardUrl, setCardUrl] = useState('')
+  const [editingLead, setEditingLead] = useState(false)
+  const [leadSearch, setLeadSearch] = useState('')
+  const [stageFilter, setStageFilter] = useState('all')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -152,31 +190,57 @@ export default function SalespersonPortal() {
     return result
   }
 
+  const captureGps = async () => {
+    setGps({ state: 'getting' })
+    try {
+      const pos = await readPosition()
+      setGps({ state: 'ok', ...pos })
+      setLead(prev => ({ ...prev, gps_lat: pos.lat, gps_lng: pos.lng, gps_accuracy: pos.acc, gps_captured_at: new Date().toISOString() }))
+      return pos
+    } catch {
+      setGps({ state: 'fail' })
+      return null
+    }
+  }
+
+  const openNewLead = () => {
+    setLead(blankLead()); setLeadId(''); setCardPreview(''); setGps({ state: 'idle' }); setSheet('newLead')
+  }
+
   const runCardAI = async file => {
     if (!file) return
     setBusyAi(true)
+    setCardPreview(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file) })
+    // Location is taken while the card is read, so the seller waits once.
+    const gpsJob = captureGps()
     try {
       const photo = await prepareImageForUpload(file)
       const upload = await uploadFile(photo, 'business-card')
-      const { answer } = await callApi('/api/sales-ai', { task: 'business-card', object_path: upload.path, mime_type: upload.mime_type, language: lang })
-      setLead(prev => ({ ...prev, company_name:answer?.company_name || prev.company_name, site_name:answer?.site_name || prev.site_name, contact_name:answer?.contact_name || prev.contact_name, contact_title:answer?.contact_title || prev.contact_title, contact_phone:answer?.phone || prev.contact_phone, contact_email:answer?.email || prev.contact_email, address:answer?.address || prev.address, business_card_object_path:upload.path, first_contact_date: answer?.date || prev.first_contact_date }))
-      setTab('leads')
+      setLead(prev => ({ ...prev, business_card_object_path: upload.path }))
+      const { answer } = await callApi('/api/sales-ai', { task: 'business-card', object_path: upload.path, mime_type: upload.mime_type, language: lang }).catch(() => ({ answer: null }))
+      if (answer) setLead(prev => ({ ...prev, company_name:answer.company_name || prev.company_name, site_name:answer.site_name || prev.site_name, contact_name:answer.contact_name || prev.contact_name, contact_title:answer.contact_title || prev.contact_title, contact_phone:answer.phone || prev.contact_phone, contact_email:answer.email || prev.contact_email, address:answer.address || prev.address, first_contact_date: answer.date || prev.first_contact_date }))
       toast.success(c.confirm)
-    } catch (error) { toast.error(error.message) }
-    finally { setBusyAi(false); if (cardRef.current) cardRef.current.value = '' }
+    } catch (error) { toast.error(error.message); setCardPreview('') }
+    finally { setBusyAi(false); if (cardRef.current) cardRef.current.value = ''; await gpsJob }
   }
 
   const saveLead = async event => {
     event?.preventDefault()
+    if (!leadId && !lead.business_card_object_path) return toast.error(c.needCard)
+    if (!leadId && (lead.gps_lat == null || lead.gps_lng == null)) return toast.error(c.needGps)
     if (!lead.company_name.trim()) return toast.error(c.companyRequired)
+    if (lead.maps_url && !MAPS_RE.test(lead.maps_url.trim())) return toast.error(c.mapsBad)
     setSaving(true)
     try {
       await post({ action: 'save-lead', id: leadId || undefined, lead })
       toast.success(c.leadSaved)
-      setLead(blankLead()); setLeadId('')
-      setTab('overview')
+      if (leadId) { setEditingLead(false) } else { setLead(blankLead()); setCardPreview(''); setSheet(''); setTab('leads') }
     } catch (error) { toast.error(error.message) }
     finally { setSaving(false) }
+  }
+
+  const pasteMaps = async () => {
+    try { const text = (await navigator.clipboard.readText()).trim(); if (text) setLead(v => ({ ...v, maps_url: text })) } catch { /* clipboard blocked: the seller types or long-presses to paste */ }
   }
 
   const startVoice = async () => {
@@ -250,7 +314,7 @@ export default function SalespersonPortal() {
       await post({ action: 'save-approach', approach: body })
       if (linked) await post({ action: 'log-contact', contact: { lead_id: linked.id, happened_at: approach.work_date, channel: 'visit', body: [approach.outcome && c.outcomes[approach.outcome], approach.meeting_summary || approach.notes || ''].filter(Boolean).join(' · '), client_response: clientResponse, response_tag: responseTag, next_followup_date: approach.followup_date || '' } })
       toast.success(c.saveApproach)
-      setApproach(blankApproach()); setTab('overview')
+      setApproach(blankApproach()); setSheet('')
     } catch (error) { toast.error(error.message) }
     finally { setSaving(false) }
   }
@@ -278,11 +342,10 @@ export default function SalespersonPortal() {
   }
 
   const endDay = async () => {
-    if (!window.confirm(c.endConfirm)) return
     setDayBusy(true)
     try {
       await post({ action: 'end-day', note: dayNote, travel_cost: dayTravel === '' ? undefined : Number(dayTravel), location: await where(), language: lang === 'ja' ? 'ja' : 'pt' })
-      setDayNote(''); setDayTravel('')
+      setDayNote(''); setDayTravel(''); setSheet('')
       toast.success(c.reportSaved)
     } catch (error) { toast.error(error.message) }
     finally { setDayBusy(false) }
@@ -320,7 +383,6 @@ export default function SalespersonPortal() {
       await post({ action: 'submit-contract', contract })
       toast.success(c.submitted)
       setContract(prev => ({ ...prev, lead_id: '', signed_pdf_object_path: '', signed_pdf_name: '', base_monthly_amount: '', commission_value: '' }))
-      setTab('overview')
     } catch (error) { toast.error(error.message) }
     finally { setSaving(false) }
   }
@@ -336,11 +398,18 @@ export default function SalespersonPortal() {
   }
 
   const editLead = row => {
-    setLead({ ...blankLead(), ...row }); setLeadId(row.id); setTab('leads')
+    setLead({ ...blankLead(), ...row }); setLeadId(row.id); setEditingLead(false); setContactLeadId(''); setCardUrl(''); setSheet('lead')
+    if (row.business_card_object_path) {
+      fetch(`/api/sales-files?path=${encodeURIComponent(row.business_card_object_path)}`, { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : null).then(r => { if (r?.url) setCardUrl(r.url) }).catch(() => {})
+    }
   }
 
-  const markFollowup = row => {
-    setContactLeadId(row.id); setTab('followups')
+  const markFollowup = row => { editLead(row); setContactLeadId(row.id) }
+
+  const openVisit = row => {
+    setApproach({ ...blankApproach(), ...(row ? { lead_id: row.id, company_name: row.company_name || '', site_name: row.site_name || '', contact_name: row.contact_name || '', place: row.site_name || row.company_name || '' } : {}) })
+    setSheet('visit')
   }
 
   const openSignedPdf = async contractRow => {
@@ -353,101 +422,308 @@ export default function SalespersonPortal() {
     } catch (error) { toast.error(error.message) }
   }
 
-  const nav = [['overview', c.overview], ['leads', c.leads], ['followups', counts.needsAction ? `${c.followups} (${counts.needsAction})` : c.followups], ['goals', f.goals], ['kpi', lang === 'ja' ? 'KPI・推移' : 'My KPIs'], ['approaches', c.approaches], ['contracts', c.contracts]]
-  const Field = ({ label, field, value = lead[field], onChange = e => setLead(prev => ({ ...prev, [field]: e.target.value })), type = 'text' }) => <label className="form-group"><span>{label}</span><input type={type} value={value ?? ''} onChange={onChange} /></label>
+  const Field = ({ label, field, value = lead[field], onChange = e => setLead(prev => ({ ...prev, [field]: e.target.value })), type = 'text', ...rest }) => <label className="form-group"><span>{label}</span><input type={type} value={value ?? ''} onChange={onChange} {...rest} /></label>
+  const bellCount = (data?.notifications?.length || 0) + counts.overdue + counts.today
+  const todo = queue.filter(row => ['overdue', 'today'].includes(row.info.status))
+  const commissionDue = Number(metrics.commission_pending || 0) + Number(metrics.spot_commission_due || 0)
+  const thisMonth = today.slice(0, 7)
+  const monthLeads = leads.filter(row => String(row.first_contact_date || row.created_at || '').startsWith(thisMonth)).length
+  const monthVisits = (data?.approaches || []).filter(row => String(row.work_date || '').startsWith(thisMonth)).length
+  const monthQuotes = (data?.quotes || []).filter(row => String(row.created_at || '').startsWith(thisMonth)).length
+  const q = leadSearch.trim().toLowerCase()
+  const visibleLeads = leads.filter(row => (stageFilter === 'all' || row.stage === stageFilter) && (!q || [row.company_name, row.site_name, row.contact_name, row.address, row.contact_phone].some(v => String(v || '').toLowerCase().includes(q))))
+  const selectedLead = leads.find(row => row.id === leadId)
+  const dayState = todayRow?.closed_at ? 'closed' : todayRow?.started_at ? 'working' : 'idle'
+
+  const LeadRow = ({ row, info, action }) => {
+    const mapUrl = leadMapUrl(row)
+    return <div className="sp-lead-row">
+      <button type="button" className="sp-lead-main" onClick={() => editLead(row)}>
+        <span className={`sp-stage-dot is-${row.stage}`} aria-hidden="true" />
+        <span className="sp-lead-text">
+          <strong>{row.site_name || row.company_name}</strong>
+          <small>{[row.site_name && row.company_name !== row.site_name ? row.company_name : '', row.contact_name, c.stages[row.stage] || row.stage].filter(Boolean).join(' · ')}</small>
+          {info && <FollowupChip info={info} f={f} />}
+        </span>
+      </button>
+      <div className="sp-lead-actions">
+        {row.contact_phone && <a className="sp-round-btn" href={`tel:${row.contact_phone}`} aria-label={c.call} title={c.call}>📞</a>}
+        {mapUrl && <a className="sp-round-btn" href={mapUrl} target="_blank" rel="noreferrer" aria-label={c.map} title={c.map}>📍</a>}
+        {action}
+      </div>
+    </div>
+  }
+
+  const gpsChip = <div className={`sp-gps is-${gps.state}`} role="status">
+    <span aria-hidden="true">{gps.state === 'ok' ? '✓' : gps.state === 'fail' ? '!' : '📍'}</span>
+    <span>{gps.state === 'ok' ? c.gpsOk(gps.acc) : gps.state === 'fail' ? c.gpsFail : gps.state === 'getting' ? c.gpsGetting : c.gps}</span>
+    {(gps.state === 'fail' || gps.state === 'idle') && <button type="button" className="fa-btn fa-btn-sm" onClick={captureGps}>{gps.state === 'fail' ? c.gpsRetry : c.useGps}</button>}
+  </div>
+
+  const mapsField = <div className="form-group sp-maps-field">
+    <span>{c.mapsLink}</span>
+    <div className="sp-input-row">
+      <input type="url" inputMode="url" placeholder="https://maps.app.goo.gl/…" value={lead.maps_url || ''} onChange={e => setLead(v => ({ ...v, maps_url: e.target.value }))} />
+      <button type="button" className="fa-btn fa-btn-sm" onClick={pasteMaps}>{c.paste}</button>
+    </div>
+    <small className="sp-hint">{c.mapsHint}</small>
+    <div className="sp-chip-row">
+      {lead.gps_lat != null && <a className="fa-btn fa-btn-sm" href={mapsSearch(lead.gps_lat, lead.gps_lng)} target="_blank" rel="noreferrer">🗺 {c.openMaps}</a>}
+      {lead.gps_lat != null && !lead.maps_url && <button type="button" className="fa-btn fa-btn-sm" onClick={() => setLead(v => ({ ...v, maps_url: `https://www.google.com/maps?q=${Number(v.gps_lat).toFixed(6)},${Number(v.gps_lng).toFixed(6)}` }))}>{c.useGps}</button>}
+    </div>
+  </div>
+
+  const leadFields = <div className="sp-form">
+    {Field({ label: `${c.company} *`, field: 'company_name' })}{Field({ label: c.site, field: 'site_name' })}
+    <div className="sp-two">{Field({ label: c.contact, field: 'contact_name' })}{Field({ label: c.role, field: 'contact_title' })}</div>
+    <div className="sp-two">{Field({ label: c.phone, field: 'contact_phone', type: 'tel', inputMode: 'tel' })}{Field({ label: c.email, field: 'contact_email', type: 'email' })}</div>
+    {Field({ label: c.address, field: 'address' })}
+    {mapsField}
+    <div className="form-group"><span>{c.followupDate}</span><input type="date" min={today} value={lead.next_followup_date || ''} onChange={e => setLead(v => ({ ...v, next_followup_date: e.target.value }))} />
+      <div className="sp-chip-row">{f.quick.map(([label, n]) => <button type="button" key={label} className="fa-chip" onClick={() => setLead(v => ({ ...v, next_followup_date: new Date(Date.parse(`${today}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10) }))}>{label}</button>)}</div>
+    </div>
+    <label className="form-group"><span>{c.followupNote}</span><textarea rows="2" value={lead.notes || ''} onChange={e => setLead(v => ({ ...v, notes: e.target.value }))} /></label>
+    <details className="sp-details"><summary>{c.details}</summary>
+      <div className="sp-two">{Field({ label: f.firstContact, field: 'first_contact_date', type: 'date' })}{Field({ label: c.region, field: 'region' })}</div>
+      <div className="sp-two">
+        <label className="form-group"><span>{c.source}</span><select value={lead.marketing_channel_id || ''} onChange={e=>setLead(v=>({...v,marketing_channel_id:e.target.value,marketing_campaign_id:''}))}><option value="">—</option>{data?.marketing?.channels?.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+        <label className="form-group"><span>{c.campaign}</span><select value={lead.marketing_campaign_id || ''} onChange={e=>setLead(v=>({...v,marketing_campaign_id:e.target.value}))}><option value="">—</option>{data?.marketing?.campaigns?.filter(row=>!lead.marketing_channel_id || row.channel_id===lead.marketing_channel_id).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+      </div>
+    </details>
+  </div>
+
+  const tabs = [
+    { key: 'home', label: c.home, icon: '⌂' },
+    { key: 'leads', label: c.leads, icon: '◎', badge: 0 },
+    { key: 'followups', label: c.followups, icon: '↻', badge: counts.overdue + counts.today },
+    { key: 'more', label: c.more, icon: '☰' },
+  ]
+  const menuItems = [
+    { key: 'approaches', icon: '📝', label: c.menuReports, hint: c.menuHint.approaches },
+    { key: 'contracts', icon: '✍️', label: c.menuContracts, hint: c.menuHint.contracts },
+    { key: 'goals', icon: '🎯', label: c.menuGoals, hint: c.menuHint.goals },
+    { key: 'kpi', icon: '📈', label: c.menuKpi, hint: c.menuHint.kpi },
+    { key: 'ai', icon: '✦', label: c.menuAi, hint: c.menuHint.ai, onClick: () => setSheet('ai') },
+  ]
+
+  const dayCard = <section className={`sp-day is-${dayState}`}>
+    <div className="sp-day-icon" aria-hidden="true">{dayState === 'working' ? '●' : dayState === 'closed' ? '✓' : '▶'}</div>
+    <div className="sp-day-copy">
+      <span className="sp-kicker">{c.myDay}</span>
+      <strong>{dayState === 'idle' ? c.startDay : dayState === 'working' ? c.dayStarted(todayRow.started_at) : c.dayEnded(todayRow.started_at, todayRow.ended_at)}</strong>
+      {dayState === 'idle' && <small>{c.dayNotStarted}</small>}
+    </div>
+    {dayState === 'idle' && <button type="button" className="fa-btn fa-btn-primary" disabled={dayBusy} onClick={startDay}>{c.startDay}</button>}
+    {dayState === 'working' && <button type="button" className="fa-btn fa-btn-dark" disabled={dayBusy} onClick={() => setSheet('endDay')}>{c.endDaySheet}</button>}
+    {dayState === 'closed' && <button type="button" className="fa-btn fa-btn-sm" disabled={dayBusy} onClick={startDay}>{c.reopen}</button>}
+    {todayRow?.ai_report && <details className="sp-day-report"><summary>{c.dayReport}</summary><div className="sales-ai-result">{todayRow.ai_report}</div></details>}
+  </section>
 
   return (
-    <div className="sales-portal">
-      <header className="sales-portal-head">
-        <div><div className="sales-kicker">KURIPURO · SALES</div><h1>{c.title}</h1><div className="sales-person-name">{user.name}</div></div>
-        <div className="sales-portal-head-actions"><LanguageToggle variant="dark"/><button className="btn btn-sm" type="button" onClick={logout}>{c.logout}</button></div>
-      </header>
-      <nav className="sales-tabs">{nav.map(([key, label]) => <button type="button" className={tab === key ? 'active' : ''} onClick={() => setTab(key)} key={key}>{label}</button>)}</nav>
+    <FieldAppShell kicker={c.kicker} userName={user.name} lang={lang} bellCount={bellCount} onBell={() => setSheet('bell')}
+      menuItems={menuItems} onLogout={logout} logoutLabel={c.logout} tabs={tabs} tab={tab} onTab={key => { setTab(key); window.scrollTo(0, 0) }}
+      onPlus={openNewLead} plusLabel={c.newLeadShort}>
+      {loading && !data ? <div className="fa-card fa-muted">{c.loading}</div> : !data ? <div className="fa-card fa-muted">{c.unavailable}</div> : <>
 
-      {data && <AlertBanner counts={counts} f={f} onOpen={tab === 'followups' ? null : () => { setFollowFilter('action'); setTab('followups') }} />}
-      {loading ? <div className="card">{c.loading}</div> : !data ? <div className="card">{c.unavailable}</div> : <>
-        {(tab === 'overview' || tab === 'approaches') && <section className={`card sales-my-day${todayRow?.closed_at ? ' done' : todayRow?.started_at ? ' working' : ''}`}>
-          <div className="sales-section-head"><div><div className="card-title">{c.myDay} · {today}</div>
-            <p className="sales-muted">{!todayRow?.started_at ? c.dayNotStarted : todayRow.closed_at ? c.dayEnded(todayRow.started_at, todayRow.ended_at) : c.dayStarted(todayRow.started_at)}</p></div>
-            {!todayRow?.started_at && <button type="button" className="btn btn-primary" disabled={dayBusy} onClick={startDay}>{c.startDay}</button>}
-            {todayRow?.closed_at && <button type="button" className="btn btn-sm" disabled={dayBusy} onClick={startDay}>{c.reopen}</button>}
+        {tab === 'home' && <div className="fa-stack">
+          {dayCard}
+          <div className="sp-cta-grid">
+            <button type="button" className="sp-cta is-main" onClick={openNewLead}>
+              <span className="sp-cta-icon" aria-hidden="true">📇</span>
+              <span><strong>{c.newLeadShort}</strong><small>{c.cardStep} + GPS</small></span>
+            </button>
+            <button type="button" className="sp-cta" onClick={() => openVisit(null)}><span className="sp-cta-icon" aria-hidden="true">📝</span><span><strong>{c.logVisit}</strong></span></button>
+            <button type="button" className="sp-cta" onClick={() => setTab('followups')}><span className="sp-cta-icon" aria-hidden="true">↻</span><span><strong>{c.followups}</strong>{counts.needsAction > 0 && <small>{counts.needsAction}</small>}</span></button>
           </div>
-          {todayRow?.started_at && !todayRow.closed_at && <div className="sales-day-end">
-            <div className="sales-form-grid"><label className="form-group"><span>{c.dayNote}</span><input value={dayNote} onChange={e => setDayNote(e.target.value)} /></label><label className="form-group"><span>{c.dayTravel}</span><input type="number" min="0" value={dayTravel} onChange={e => setDayTravel(e.target.value)} /></label></div>
-            <button type="button" className="btn btn-primary" disabled={dayBusy} onClick={endDay}>{dayBusy ? c.writing : c.endDay}</button>
-          </div>}
-          {todayRow?.ai_report && <details><summary>{c.dayReport}</summary><div className="sales-ai-result">{todayRow.ai_report}</div></details>}
-        </section>}
-        {tab === 'overview' && <SalesInbox lang={lang} notifications={data.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) editLead(row) }} />}
-        {tab === 'overview' && <>
-          <div className="sales-metrics">
-            {[[c.leadsN, metrics.leads || 0], [c.approachesN, metrics.approaches || 0], [c.quotes, metrics.quotes || 0], [c.active, metrics.active_contracts || 0], [c.conversion, `${Number(metrics.conversion_rate || 0).toFixed(1)}%`], [c.ticket, yen(metrics.quote_average)], [c.commission, yen(Number(metrics.commission_pending || 0) + Number(metrics.spot_commission_due || 0))], [c.hours, `${Number(metrics.hours_this_month || 0).toFixed(1)}h`], [c.due, metrics.followups_due || 0]].map(([label, value]) => <div className="sales-metric" key={label}><span>{label}</span><strong>{value}</strong></div>)}
-          </div>
-          <div className="sales-grid-two">
-            <div className="card"><div className="card-title">{c.followups}</div>{queue.filter(row => row.info.status !== 'scheduled').slice(0, 6).map(({ lead: row, info }) => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><LastContactLine info={info} lead={row} f={f} /><FollowupChip info={info} f={f} /></div><button className="btn btn-sm" onClick={() => markFollowup(row)}>{f.logContact}</button></div>)}{queue.filter(row => row.info.status !== 'scheduled').length === 0 && <p className="sales-muted">{c.noFollowups}</p>}</div>
-            <div className="card"><div className="sales-section-head"><div className="card-title">{f.goalsMonth}</div><button className="btn btn-sm" onClick={() => setTab('goals')}>{c.open}</button></div><GoalBars goal={myGoal} actual={myResults} today={today} f={f} compact /></div>
-            <div className="card"><div className="card-title">{c.aiReview}</div><p className="sales-muted">{c.aiHint}</p><button className="btn btn-primary" disabled={busyAi} onClick={runFunnelAI}>{busyAi ? c.saving : c.searchAi}</button>{aiResult && <div className="sales-ai-result">{aiResult}</div>}</div>
-          </div>
-          <div className="card"><div className="sales-section-head"><div className="card-title">{c.leads}</div><button className="btn btn-primary" onClick={() => { setLead(blankLead()); setLeadId(''); setTab('leads') }}>{c.addLead}</button></div>{leads.slice(0, 10).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{row.contact_name} · {c.stages[row.stage] || row.stage}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={today} /><FollowupChip info={statusOf.get(row.id)} f={f} /></div><button className="btn btn-sm" onClick={() => editLead(row)}>{c.open}</button></div>)}{leads.length === 0 && <p className="sales-muted">{c.noLeads}</p>}</div>
-        </>}
 
-        {tab === 'leads' && <div className="card"><div className="sales-section-head"><div><div className="card-title">{leadId ? c.open : c.addLead}</div><p className="sales-muted">{c.confirm}</p></div><div><input ref={cardRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => runCardAI(e.target.files?.[0])}/><button className="btn" type="button" disabled={busyAi} onClick={() => cardRef.current?.click()}>{busyAi ? c.saving : c.scanCard}</button></div></div>
-          <form onSubmit={saveLead}><div className="sales-form-grid">
-            {Field({ label: c.company, field: "company_name" })}{Field({ label: c.site, field: "site_name" })}{Field({ label: c.contact, field: "contact_name" })}{Field({ label: c.role, field: "contact_title" })}{Field({ label: c.phone, field: "contact_phone" })}{Field({ label: c.email, field: "contact_email" })}{Field({ label: c.address, field: "address" })}{Field({ label: c.region, field: "region" })}{Field({ label: f.firstContact, field: "first_contact_date", type: "date" })}{Field({ label: f.lastContact, field: "last_contact_date", type: "date" })}{Field({ label: c.followupDate, field: "next_followup_date", type: "date" })}{Field({ label: c.followupNote, field: "notes" })}
-            <label className="form-group"><span>{c.source}</span><select value={lead.marketing_channel_id || ''} onChange={e=>setLead(v=>({...v,marketing_channel_id:e.target.value,marketing_campaign_id:''}))}><option value="">{c.source}</option>{data.marketing?.channels?.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
-            <label className="form-group"><span>{c.campaign}</span><select value={lead.marketing_campaign_id || ''} onChange={e=>setLead(v=>({...v,marketing_campaign_id:e.target.value}))}><option value="">—</option>{data.marketing?.campaigns?.filter(row=>!lead.marketing_channel_id || row.channel_id===lead.marketing_channel_id).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
-          </div><button disabled={saving} className="btn btn-primary" type="submit">{saving ? c.saving : c.save}</button></form>
-          {leadId && <div className="sales-lead-contacts">
-            <div className="sales-section-head"><div><FollowupChip info={statusOf.get(leadId)} f={f} /></div>{contactLeadId !== leadId && <button type="button" className="btn btn-primary btn-sm" onClick={() => setContactLeadId(leadId)}>{f.logContact}</button>}</div>
-            {contactLeadId === leadId && <ContactLogForm key={leadId} lead={{ id: leadId }} today={today} f={f} busy={saving} onSave={logContact} onCancel={() => setContactLeadId('')} />}
-            <ContactHistory leadId={leadId} touchpoints={touchpoints} f={f} />
-          </div>}
-          <div className="sales-list-divider">{leads.map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{row.contact_name} · {c.stages[row.stage] || row.stage}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={today} /></div><button className="btn btn-sm" onClick={() => editLead(row)}>{c.open}</button></div>)}</div>
+          <section className="fa-card">
+            <div className="fa-card-head"><h2>{c.todo}</h2>{todo.length > 0 && <span className="fa-pill is-alert">{todo.length}</span>}</div>
+            {todo.slice(0, 6).map(({ lead: row, info }) => <LeadRow key={row.id} row={row} info={info} action={<button type="button" className="fa-btn fa-btn-sm fa-btn-primary" onClick={() => markFollowup(row)}>{f.logContact}</button>} />)}
+            {todo.length === 0 && <p className="fa-muted">{c.allDone}</p>}
+            {todo.length > 6 && <button type="button" className="fa-link" onClick={() => setTab('followups')}>{c.seeAll} ›</button>}
+          </section>
+
+          <div className="fa-section-title">{c.monthOverview}</div>
+          <div className="fa-tiles">
+            <div className="fa-tile is-blue"><strong>{monthLeads}</strong><span>{c.leadsN}</span></div>
+            <div className="fa-tile is-purple"><strong>{monthVisits}</strong><span>{c.approachesN}</span></div>
+            <div className="fa-tile is-amber"><strong>{monthQuotes}</strong><span>{c.quotes}</span></div>
+            <div className="fa-tile is-green"><strong>{yen(commissionDue)}</strong><span>{c.commission}</span></div>
+          </div>
+
+          <section className="fa-card">
+            <div className="fa-card-head"><h2>{f.goalsMonth}</h2><button type="button" className="fa-link" onClick={() => setTab('goals')}>{c.open} ›</button></div>
+            <GoalBars goal={myGoal} actual={myResults} today={today} f={f} compact />
+          </section>
+
+          <section className="fa-card">
+            <div className="fa-card-head"><h2>{c.leads}</h2><button type="button" className="fa-link" onClick={() => setTab('leads')}>{c.seeAll} ›</button></div>
+            {leads.slice(0, 5).map(row => <LeadRow key={row.id} row={row} />)}
+            {leads.length === 0 && <p className="fa-muted">{c.noLeads}</p>}
+          </section>
         </div>}
 
-        {tab === 'approaches' && <div className="sales-grid-two sales-reports-grid"><form className="card" onSubmit={saveApproach}><div className="card-title">{c.approachLog}</div><div className="sales-form-grid">
-          <label className="form-group"><span>{c.linkedLead}</span><select value={approach.lead_id} onChange={e => { const picked = leads.find(row => row.id === e.target.value); setApproach(v => ({ ...v, lead_id: e.target.value, company_name: picked?.company_name || v.company_name, site_name: picked?.site_name || v.site_name, contact_name: picked?.contact_name || v.contact_name })) }}><option value="">{c.none}</option>{leads.filter(row => !["won", "lost"].includes(row.stage)).map(row => <option key={row.id} value={row.id}>{row.site_name || row.company_name}</option>)}</select></label>{Field({ label: c.place, field: "place", value: approach.place, onChange: e => setApproach(v => ({ ...v, place: e.target.value })) })}{Field({ label: c.company, field: "company_name", value: approach.company_name, onChange: e => setApproach(v => ({ ...v, company_name: e.target.value })) })}{Field({ label: c.site, field: "site_name", value: approach.site_name, onChange: e => setApproach(v => ({ ...v, site_name: e.target.value })) })}{Field({ label: c.contact, field: "contact_name", value: approach.contact_name, onChange: e => setApproach(v => ({ ...v, contact_name: e.target.value })) })}{Field({ label: c.date, field: "work_date", type: "date", value: approach.work_date, onChange: e => setApproach(v => ({ ...v, work_date: e.target.value })) })}{Field({ label: c.duration, field: "duration_minutes", type: "number", value: approach.duration_minutes, onChange: e => setApproach(v => ({ ...v, duration_minutes: e.target.value })) })}{Field({ label: c.travel, field: "travel_cost", type: "number", value: approach.travel_cost, onChange: e => setApproach(v => ({ ...v, travel_cost: e.target.value })) })}{Field({ label: c.followupDate, field: "followup_date", type: "date", value: approach.followup_date, onChange: e => setApproach(v => ({ ...v, followup_date: e.target.value })) })}
-          </div>
-          <div className="form-group"><span>{c.outcome}</span><div className="sales-tag-picker">{Object.entries(c.outcomes).map(([key, label]) => <button type="button" key={key} aria-pressed={approach.outcome === key} className={`btn btn-sm${approach.outcome === key ? ' active' : ''}`} onClick={() => setApproach(v => ({ ...v, outcome: v.outcome === key ? '' : key }))}>{label}</button>)}</div></div>
-          <label className="form-group"><span>{c.clientSaid}</span><textarea rows="2" value={approach.client_response} onChange={e => setApproach(v => ({ ...v, client_response: e.target.value }))}/></label>
-          <div className="form-group"><span>{c.answerType}</span><div className="sales-tag-picker">{RESPONSE_TAGS.map(key => <button type="button" key={key} aria-pressed={approach.response_tag === key} className={`btn btn-sm${approach.response_tag === key ? ' active' : ''}`} onClick={() => setApproach(v => ({ ...v, response_tag: v.response_tag === key ? '' : key }))}>{f.responseTags[key]}</button>)}</div></div>
-          <label className="form-group"><span>{c.notes}</span><textarea rows="4" value={approach.notes} onChange={e => setApproach(v => ({ ...v, notes: e.target.value }))}/></label>
-          <label className="form-group"><span>{c.hoursSpent}</span><input type="number" min="0" step="0.25" value={approach.hours_spent} onChange={e=>setApproach(v=>({...v,hours_spent:e.target.value}))}/></label>
-          <div className="sales-action-row"><input ref={audioRef} hidden type="file" accept="audio/*" onChange={async e => { const file=e.target.files?.[0]; if(file) await transcribeAudio(file); e.target.value='' }}/><button type="button" className="btn" onClick={() => audioRef.current?.click()}>{c.audio}</button><button type="button" className="btn" disabled={busyAi || recording} onClick={startVoice}>{c.record}</button>{recording && <button type="button" className="btn btn-danger" onClick={stopVoice}>{c.recording}</button>}</div>
-          <label className="form-group"><span>{c.transcript}</span><textarea rows="5" value={approach.meeting_transcript} onChange={e => setApproach(v => ({ ...v, meeting_transcript: e.target.value }))}/></label><button type="button" className="btn" disabled={busyAi} onClick={analyzeTranscript}>{busyAi ? c.saving : c.transcribe}</button>
-          {approach.meeting_summary && <div className="sales-ai-result"><strong>{c.summary}</strong><p>{approach.meeting_summary}</p><strong>{c.nextStep}</strong><p>{approach.ai_next_step}</p></div>}
-          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? c.saving : c.saveApproach}</button>
-        </form><div><form className="card" onSubmit={saveDailyReport}><div className="card-title">{c.month} · {c.hours}</div><div className="sales-form-grid">{Field({ label: c.date, field: "work_date", type: "date", value: dailyReport.work_date, onChange: e=>setDailyReport(v=>({...v,work_date:e.target.value})) })}{Field({ label: c.hours, field: "hours_worked", type: "number", value: dailyReport.hours_worked, onChange: e=>setDailyReport(v=>({...v,hours_worked:e.target.value})) })}{Field({ label: c.travel, field: "travel_cost", type: "number", value: dailyReport.travel_cost, onChange: e=>setDailyReport(v=>({...v,travel_cost:e.target.value})) })}</div><label className="form-group"><span>{c.notes}</span><textarea rows="3" value={dailyReport.summary} onChange={e=>setDailyReport(v=>({...v,summary:e.target.value}))}/></label><button className="btn btn-primary" disabled={saving}>{saving?c.saving:c.saveApproach}</button></form><div className="card"><div className="card-title">{c.month}</div>{(data.reports || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.work_date}</strong><small>{row.hours_worked}h · {yen(row.travel_cost)} · {row.summary}</small></div></div>)}{(data.approaches || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name || row.place}</strong><small>{row.work_date}{row.outcome ? ` · ${c.outcomes[row.outcome] || row.outcome}` : ''} · {row.hours_spent || 0}h · {row.duration_minutes || 0} min · {yen(row.travel_cost)}</small>{row.meeting_summary && <p>{row.meeting_summary}</p>}</div></div>)}</div></div></div>}
+        {tab === 'leads' && <div className="fa-stack">
+          <div className="fa-screen-head"><h2>{c.leads}</h2><button type="button" className="fa-btn fa-btn-primary fa-btn-sm" onClick={openNewLead}>+ {c.newLeadShort}</button></div>
+          <input className="fa-search" type="search" placeholder={c.search} value={leadSearch} onChange={e => setLeadSearch(e.target.value)} />
+          <div className="sp-chip-row is-scroll">{['all', ...SELLER_STAGES, 'won', 'lost'].map(key => { const n = key === 'all' ? leads.length : leads.filter(row => row.stage === key).length; return <button type="button" key={key} className={`fa-chip${stageFilter === key ? ' is-active' : ''}`} onClick={() => setStageFilter(key)}>{key === 'all' ? c.all : c.stages[key]} <b>{n}</b></button> })}</div>
+          <section className="fa-card is-list">
+            {visibleLeads.map(row => <LeadRow key={row.id} row={row} info={statusOf.get(row.id)} />)}
+            {visibleLeads.length === 0 && <p className="fa-muted">{c.noLeads}</p>}
+          </section>
+        </div>}
 
-        {tab === 'followups' && <div className="card"><div className="sales-section-head"><div className="card-title">{c.followups}</div><div className="sales-filter-pills">{[['action', `${f.alertTitle} (${counts.needsAction})`], ['all', `${c.leadsN} (${queue.length})`]].map(([key, label]) => <button type="button" key={key} className={`btn btn-sm${followFilter === key ? ' active' : ''}`} onClick={() => setFollowFilter(key)}>{label}</button>)}</div></div>
-          {queue.filter(row => followFilter === 'all' || ['overdue', 'today', 'stale', 'soon', 'missing'].includes(row.info.status)).map(({ lead: row, info }) => <div className={`sales-followup sales-followup-${info.status}`} key={row.id}>
-            <div><strong>{row.site_name || row.company_name}</strong><small>{[row.contact_name, row.contact_phone].filter(Boolean).join(' · ')}</small><LastContactLine info={info} lead={row} f={f} /><FollowupChip info={info} f={f} />{row.notes && <p>{row.notes}</p>}
-              {contactLeadId === row.id && <ContactLogForm key={row.id} lead={row} today={today} f={f} busy={saving} onSave={logContact} onCancel={() => setContactLeadId('')} />}
+        {tab === 'followups' && <div className="fa-stack">
+          <div className="fa-screen-head"><h2>{c.followups}</h2></div>
+          <div className="sp-chip-row">{[['action', `${f.alertTitle} (${counts.needsAction})`], ['all', `${c.all} (${queue.length})`]].map(([key, label]) => <button type="button" key={key} className={`fa-chip${followFilter === key ? ' is-active' : ''}`} onClick={() => setFollowFilter(key)}>{label}</button>)}</div>
+          <section className="fa-card is-list">
+            {queue.filter(row => followFilter === 'all' || ['overdue', 'today', 'stale', 'soon', 'missing'].includes(row.info.status)).map(({ lead: row, info }) => <LeadRow key={row.id} row={row} info={info} action={<button type="button" className="fa-btn fa-btn-sm fa-btn-primary" onClick={() => markFollowup(row)}>{f.logContact}</button>} />)}
+            {queue.length === 0 && <p className="fa-muted">{c.noFollowups}</p>}
+          </section>
+        </div>}
+
+        {tab === 'approaches' && <div className="fa-stack">
+          <div className="fa-screen-head"><h2>{c.menuReports}</h2><button type="button" className="fa-btn fa-btn-primary fa-btn-sm" onClick={() => openVisit(null)}>+ {c.logVisit}</button></div>
+          {dayCard}
+          <section className="fa-card is-list">
+            {(data.approaches || []).map(row => <div className="sp-history-row" key={row.id}>
+              <span className="sp-date">{String(row.work_date || '').slice(5)}</span>
+              <div><strong>{row.site_name || row.company_name || row.place}</strong><small>{[row.outcome && (c.outcomes[row.outcome] || row.outcome), row.duration_minutes ? `${row.duration_minutes} min` : '', Number(row.travel_cost) ? yen(row.travel_cost) : ''].filter(Boolean).join(' · ')}</small>{row.meeting_summary && <p>{row.meeting_summary}</p>}</div>
+            </div>)}
+            {!(data.approaches || []).length && <p className="fa-muted">—</p>}
+          </section>
+          <section className="fa-card is-list">
+            <div className="fa-card-head"><h2>{c.dayReport}</h2></div>
+            {(data.reports || []).map(row => <details className="sp-history-row is-report" key={row.id}><summary><span className="sp-date">{String(row.work_date || '').slice(5)}</span><span><strong>{row.hours_worked || 0}h · {yen(row.travel_cost)}</strong><small>{[row.started_at, row.ended_at].filter(Boolean).join('–')}</small></span></summary>{(row.ai_report || row.summary) && <div className="sales-ai-result">{row.ai_report || row.summary}</div>}</details>)}
+          </section>
+          <details className="fa-card sp-details"><summary>{c.hoursLog}</summary>
+            <form onSubmit={saveDailyReport} className="sp-form">
+              <div className="sp-two">{Field({ label: c.date, field: 'work_date', type: 'date', value: dailyReport.work_date, onChange: e=>setDailyReport(v=>({...v,work_date:e.target.value})) })}{Field({ label: c.hours, field: 'hours_worked', type: 'number', value: dailyReport.hours_worked, onChange: e=>setDailyReport(v=>({...v,hours_worked:e.target.value})) })}</div>
+              {Field({ label: c.travel, field: 'travel_cost', type: 'number', value: dailyReport.travel_cost, onChange: e=>setDailyReport(v=>({...v,travel_cost:e.target.value})) })}
+              <label className="form-group"><span>{c.notes}</span><textarea rows="3" value={dailyReport.summary} onChange={e=>setDailyReport(v=>({...v,summary:e.target.value}))}/></label>
+              <button className="fa-btn fa-btn-primary fa-btn-block" disabled={saving}>{saving ? c.saving : c.saveApproach}</button>
+            </form>
+          </details>
+        </div>}
+
+        {tab === 'kpi' && <div className="fa-stack sp-wide"><SalesKpiPanel data={data} lang={lang} today={today} channels={data.marketing?.channels || []} /></div>}
+        {tab === 'goals' && <div className="fa-stack"><div className="fa-screen-head"><h2>{f.goalsMonth} · {month}</h2></div><section className="fa-card"><GoalBars goal={myGoal} actual={myResults} today={today} f={f} /></section></div>}
+
+        {tab === 'contracts' && <div className="fa-stack">
+          <div className="fa-screen-head"><h2>{c.contracts}</h2></div>
+          <form className="fa-card sp-form" onSubmit={submitContract}>
+            <div className="fa-card-head"><h2>{c.prepare}</h2></div>
+            <label className="form-group"><span>{c.lead}</span><select value={contract.lead_id} onChange={e => setContract(v => ({ ...v, lead_id: e.target.value }))}><option value="">—</option>{leads.filter(row => !['won','lost'].includes(row.stage)).map(row => <option key={row.id} value={row.id}>{row.site_name || row.company_name}</option>)}</select></label>
+            <div className="sp-two">
+              <label className="form-group"><span>{c.service}</span><select value={contract.service_type} onChange={e => setContract(v => ({ ...v, service_type: e.target.value }))}>{['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning'].map(x => <option key={x}>{x}</option>)}</select></label>
+              <label className="form-group"><span>{c.billing}</span><select value={contract.billing_type} onChange={e => setContract(v => ({ ...v, billing_type: e.target.value }))}><option value="fixed_monthly">{c.monthlyFixed}</option><option value="per_visit">{c.perVisit}</option></select></label>
             </div>
-            {contactLeadId !== row.id && <div className="sales-followup-actions"><button className="btn btn-primary btn-sm" onClick={() => setContactLeadId(row.id)}>{f.logContact}</button><button className="btn btn-sm" onClick={() => editLead(row)}>{c.open}</button></div>}
-          </div>)}
-          {queue.length === 0 && <p className="sales-muted">{c.noFollowups}</p>}
+            {contract.billing_type === 'per_visit' && <div className="sp-two"><label className="form-group"><span>{c.priceVisit}</span><input type="number" min="0" value={contract.price_per_visit} onChange={e => setContract(v => ({ ...v, price_per_visit: e.target.value, base_monthly_amount: String(Number(e.target.value || 0) * Number(v.visits_per_month || 0)) }))}/></label><label className="form-group"><span>{c.visits}</span><input type="number" min="0" value={contract.visits_per_month} onChange={e => setContract(v => ({ ...v, visits_per_month: e.target.value, base_monthly_amount: String(Number(v.price_per_visit || 0) * Number(e.target.value || 0)) }))}/></label></div>}
+            <div className="sp-two">
+              <label className="form-group"><span>{c.monthlyBase}</span><input type="number" min="0" value={contract.base_monthly_amount} onChange={e => setContract(v => ({ ...v, base_monthly_amount: e.target.value }))}/></label>
+              <label className="form-group"><span>{c.hoursVisit}</span><input type="number" min="0" step="0.5" value={contract.hours_per_visit} onChange={e => setContract(v => ({ ...v, hours_per_visit: e.target.value }))}/></label>
+            </div>
+            <div className="sp-two">
+              <label className="form-group"><span>{c.commissionType}</span><select value={contract.commission_type} onChange={e => setContract(v => ({ ...v, commission_type: e.target.value }))}><option value="percent">{c.percent}</option><option value="fixed">{c.fixed}</option></select></label>
+              <label className="form-group"><span>{c.commissionValue}</span><input type="number" min="0" step="0.1" value={contract.commission_value} onChange={e => setContract(v => ({ ...v, commission_value: e.target.value }))}/></label>
+            </div>
+            <div className="sp-price"><span>{c.totalClient}</span><strong>{yen(monthlyClientPrice)} {c.perMonth}</strong><small>{c.commissionType}: {yen(commissionExtra)}{openContract?.company_name ? ` · ${openContract.company_name}` : ''}</small></div>
+            <label className="form-group sp-file"><span>{c.signedPdf} *</span><input type="file" accept="application/pdf,.pdf" onChange={e => uploadContractPdf(e.target.files?.[0])}/>{contract.signed_pdf_name && <small>✓ {contract.signed_pdf_name}</small>}</label>
+            {data.contracts?.filter(row => row.status === 'changes_requested' && row.salesperson_id === user.id).map(row => <div className="sales-review-note" key={row.id}><strong>{row.company_name}</strong><p>{row.admin_note}</p></div>)}
+            <button className="fa-btn fa-btn-primary fa-btn-block" type="submit" disabled={saving || !contract.signed_pdf_object_path}>{saving ? c.saving : c.submit}</button>
+          </form>
+          <section className="fa-card is-list"><div className="fa-card-head"><h2>{c.activeContracts}</h2></div>
+            {(data.contracts || []).map(row => <div className="sp-history-row" key={row.id}><span className={`fa-pill is-${row.status}`}>{c.statuses[row.status] || row.status}</span><div><strong>{row.site_name || row.company_name}</strong><small>{yen(row.client_monthly_total)} {c.perMonth} · {c.commission}: {yen(row.commission_amount)}</small>{row.admin_note && <p>{row.admin_note}</p>}</div>{row.signed_pdf_object_path && <button type="button" className="fa-btn fa-btn-sm" onClick={() => openSignedPdf(row)}>PDF</button>}</div>)}
+            {!data.contracts?.length && <p className="fa-muted">{c.noContracts}</p>}
+          </section>
+          <SellerContractCommissions data={data} lang={lang} />
         </div>}
-
-        {tab === 'kpi' && <SalesKpiPanel data={data} lang={lang} today={today} channels={data.marketing?.channels || []} />}
-        {tab === 'goals' && <div className="card"><div className="card-title">{f.goalsMonth} · {month}</div><GoalBars goal={myGoal} actual={myResults} today={today} f={f} /></div>}
-
-        {tab === 'contracts' && <><div className="card"><div className="card-title">{c.prepare}</div><form onSubmit={submitContract}><div className="sales-form-grid">
-          <label className="form-group"><span>{c.lead}</span><select value={contract.lead_id} onChange={e => setContract(v => ({ ...v, lead_id: e.target.value }))}><option value="">—</option>{leads.filter(row => !['won','lost'].includes(row.stage)).map(row => <option key={row.id} value={row.id}>{row.site_name || row.company_name}</option>)}</select></label>
-          <label className="form-group"><span>{c.service}</span><select value={contract.service_type} onChange={e => setContract(v => ({ ...v, service_type: e.target.value }))}>{['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning'].map(x => <option key={x}>{x}</option>)}</select></label>
-          <label className="form-group"><span>{c.billing}</span><select value={contract.billing_type} onChange={e => setContract(v => ({ ...v, billing_type: e.target.value }))}><option value="fixed_monthly">{c.monthlyFixed}</option><option value="per_visit">{c.perVisit}</option></select></label>
-          <label className="form-group"><span>{c.monthlyBase}</span><input type="number" min="0" value={contract.base_monthly_amount} onChange={e => setContract(v => ({ ...v, base_monthly_amount: e.target.value }))}/></label>
-          {contract.billing_type === 'per_visit' && <><label className="form-group"><span>{c.priceVisit}</span><input type="number" min="0" value={contract.price_per_visit} onChange={e => setContract(v => ({ ...v, price_per_visit: e.target.value, base_monthly_amount: String(Number(e.target.value || 0) * Number(v.visits_per_month || 0)) }))}/></label><label className="form-group"><span>{c.visits}</span><input type="number" min="0" value={contract.visits_per_month} onChange={e => setContract(v => ({ ...v, visits_per_month: e.target.value, base_monthly_amount: String(Number(v.price_per_visit || 0) * Number(e.target.value || 0)) }))}/></label></>}
-          <label className="form-group"><span>{c.commissionType}</span><select value={contract.commission_type} onChange={e => setContract(v => ({ ...v, commission_type: e.target.value }))}><option value="percent">{c.percent}</option><option value="fixed">{c.fixed}</option></select></label>
-          <label className="form-group"><span>{c.commissionValue}</span><input type="number" min="0" step="0.1" value={contract.commission_value} onChange={e => setContract(v => ({ ...v, commission_value: e.target.value }))}/></label>
-          <label className="form-group"><span>{c.hoursVisit}</span><input type="number" min="0" step="0.5" value={contract.hours_per_visit} onChange={e => setContract(v => ({ ...v, hours_per_visit: e.target.value }))}/></label>
-        </div><div className="sales-price-preview"><span>{c.totalClient}</span><strong>{yen(monthlyClientPrice)} {c.perMonth}</strong><small>{c.commissionType}: {yen(commissionExtra)} · {openContract?.company_name || ''}</small></div>
-          <label className="form-group sales-file-field"><span>{c.signedPdf} *</span><input type="file" accept="application/pdf,.pdf" onChange={e => uploadContractPdf(e.target.files?.[0])}/>{contract.signed_pdf_name && <small>{contract.signed_pdf_name}</small>}</label>
-          {data.contracts?.filter(row => row.status === 'changes_requested' && row.salesperson_id === user.id).map(row => <div className="sales-review-note" key={row.id}><strong>{row.company_name}</strong><p>{row.admin_note}</p></div>)}
-          <button className="btn btn-primary" type="submit" disabled={saving || !contract.signed_pdf_object_path}>{saving ? c.saving : c.submit}</button></form></div>
-          <div className="card"><div className="card-title">{c.activeContracts}</div>{(data.contracts || []).map(row => <div className="sales-row" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{c.statuses[row.status] || row.status} · {yen(row.client_monthly_total)} {c.perMonth} · {c.commission}: {yen(row.commission_amount)}</small>{row.admin_note && <p>{row.admin_note}</p>}</div>{row.signed_pdf_object_path && <button className="btn btn-sm" onClick={() => openSignedPdf(row)}>{c.open} PDF</button>}</div>)}{!data.contracts?.length && <p className="sales-muted">{c.noContracts}</p>}</div>
-          <SellerContractCommissions data={data} lang={lang} /></>}
       </>}
-    </div>
+
+      {sheet === 'newLead' && <Sheet title={c.addLead} onClose={() => !busyAi && !saving && setSheet('')}>
+        <form onSubmit={saveLead} className="sp-form">
+          <div className={`sp-card-capture${cardPreview ? ' has-photo' : ''}`}>
+            <input ref={cardRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => runCardAI(e.target.files?.[0])} />
+            {cardPreview ? <img src={cardPreview} alt={c.card} /> : <div className="sp-card-empty"><span aria-hidden="true">📇</span><strong>{c.cardStep} <em>({c.required})</em></strong><small>{c.cardStepHint}</small></div>}
+            <button type="button" className={`fa-btn ${cardPreview ? 'fa-btn-sm' : 'fa-btn-primary fa-btn-block'}`} disabled={busyAi} onClick={() => cardRef.current?.click()}>{busyAi ? c.reading : cardPreview ? c.retake : `📷 ${c.takePhoto}`}</button>
+          </div>
+          {gpsChip}
+          {leadFields}
+          <button disabled={saving || busyAi || !lead.business_card_object_path || lead.gps_lat == null} className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" type="submit">{saving ? c.saving : c.save}</button>
+          {(!lead.business_card_object_path || lead.gps_lat == null) && <p className="sp-hint is-center">{!lead.business_card_object_path ? c.needCard : c.needGps}</p>}
+        </form>
+      </Sheet>}
+
+      {sheet === 'lead' && selectedLead && <Sheet title={selectedLead.site_name || selectedLead.company_name} onClose={() => { setSheet(''); setLeadId(''); setContactLeadId('') }}>
+        <div className="sp-lead-top">
+          <div className="sp-lead-card">{cardUrl ? <a href={cardUrl} target="_blank" rel="noreferrer"><img src={cardUrl} alt={c.card} /></a> : <span>{selectedLead.business_card_object_path ? '📇' : c.noCard}</span>}</div>
+          <div className="sp-lead-meta">
+            <strong>{selectedLead.company_name}</strong>
+            <small>{[selectedLead.contact_name, selectedLead.contact_title].filter(Boolean).join(' · ')}</small>
+            <FollowupChip info={statusOf.get(selectedLead.id)} f={f} />
+          </div>
+        </div>
+        <div className="sp-quick-actions">
+          {selectedLead.contact_phone && <a className="sp-qa" href={`tel:${selectedLead.contact_phone}`}><span>📞</span>{c.call}</a>}
+          {leadMapUrl(selectedLead) && <a className="sp-qa" href={leadMapUrl(selectedLead)} target="_blank" rel="noreferrer"><span>📍</span>{c.map}</a>}
+          <button type="button" className="sp-qa" onClick={() => setContactLeadId(selectedLead.id)}><span>💬</span>{f.logContact}</button>
+          <button type="button" className="sp-qa" onClick={() => openVisit(selectedLead)}><span>📝</span>{c.logVisit}</button>
+        </div>
+        {!['won', 'lost'].includes(selectedLead.stage) && <div className="form-group"><span>{c.stage}</span><div className="sp-chip-row">{SELLER_STAGES.map(key => <button type="button" key={key} className={`fa-chip${selectedLead.stage === key ? ' is-active' : ''}`} disabled={saving} onClick={async () => { if (selectedLead.stage === key) return; setSaving(true); try { await post({ action: 'save-lead', id: selectedLead.id, lead: { stage: key, company_name: selectedLead.company_name } }) } catch (error) { toast.error(error.message) } finally { setSaving(false) } }}>{c.stages[key]}</button>)}</div></div>}
+        {contactLeadId === selectedLead.id && <div className="fa-card is-inset"><ContactLogForm key={selectedLead.id} lead={selectedLead} today={today} f={f} busy={saving} onSave={logContact} onCancel={() => setContactLeadId('')} /></div>}
+        {!editingLead ? <div className="sp-info-list">
+          {[[c.phone, selectedLead.contact_phone], [c.email, selectedLead.contact_email], [c.address, selectedLead.address], [c.followupDate, selectedLead.next_followup_date], [c.followupNote, selectedLead.notes], [c.gps, selectedLead.gps_lat != null ? `${Number(selectedLead.gps_lat).toFixed(5)}, ${Number(selectedLead.gps_lng).toFixed(5)}${selectedLead.gps_accuracy ? ` (±${Math.round(selectedLead.gps_accuracy)} m)` : ''}` : ''], [c.mapsLink, selectedLead.maps_url]].filter(([, v]) => v).map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+          <button type="button" className="fa-btn fa-btn-block" onClick={() => setEditingLead(true)}>✎ {c.editLead}</button>
+        </div> : <form onSubmit={saveLead} className="sp-form">{leadFields}<div className="sp-two"><button type="button" className="fa-btn" onClick={() => { setLead({ ...blankLead(), ...selectedLead }); setEditingLead(false) }}>{f.cancel}</button><button className="fa-btn fa-btn-primary" disabled={saving}>{saving ? c.saving : c.save}</button></div></form>}
+        <ContactHistory leadId={selectedLead.id} touchpoints={touchpoints} f={f} />
+      </Sheet>}
+
+      {sheet === 'visit' && <Sheet title={c.approachLog} onClose={() => !saving && setSheet('')}>
+        <form className="sp-form" onSubmit={saveApproach}>
+          <label className="form-group"><span>{c.linkedLead}</span><select value={approach.lead_id} onChange={e => { const picked = leads.find(row => row.id === e.target.value); setApproach(v => ({ ...v, lead_id: e.target.value, company_name: picked?.company_name || v.company_name, site_name: picked?.site_name || v.site_name, contact_name: picked?.contact_name || v.contact_name, place: v.place || picked?.site_name || picked?.company_name || '' })) }}><option value="">{c.none}</option>{leads.filter(row => !['won', 'lost'].includes(row.stage)).map(row => <option key={row.id} value={row.id}>{row.site_name || row.company_name}</option>)}</select></label>
+          {Field({ label: `${c.place} *`, field: 'place', value: approach.place, onChange: e => setApproach(v => ({ ...v, place: e.target.value })) })}
+          {!approach.lead_id && <div className="sp-two">{Field({ label: c.company, field: 'company_name', value: approach.company_name, onChange: e => setApproach(v => ({ ...v, company_name: e.target.value })) })}{Field({ label: c.contact, field: 'contact_name', value: approach.contact_name, onChange: e => setApproach(v => ({ ...v, contact_name: e.target.value })) })}</div>}
+          <div className="form-group"><span>{c.outcome}</span><div className="sp-chip-row">{Object.entries(c.outcomes).map(([key, label]) => <button type="button" key={key} aria-pressed={approach.outcome === key} className={`fa-chip${approach.outcome === key ? ' is-active' : ''}`} onClick={() => setApproach(v => ({ ...v, outcome: v.outcome === key ? '' : key }))}>{label}</button>)}</div></div>
+          <label className="form-group"><span>{c.clientSaid}</span><textarea rows="2" value={approach.client_response} onChange={e => setApproach(v => ({ ...v, client_response: e.target.value }))}/></label>
+          <div className="form-group"><span>{c.answerType}</span><div className="sp-chip-row">{RESPONSE_TAGS.map(key => <button type="button" key={key} aria-pressed={approach.response_tag === key} className={`fa-chip${approach.response_tag === key ? ' is-active' : ''}`} onClick={() => setApproach(v => ({ ...v, response_tag: v.response_tag === key ? '' : key }))}>{f.responseTags[key]}</button>)}</div></div>
+          <div className="sp-voice"><input ref={audioRef} hidden type="file" accept="audio/*" onChange={async e => { const file=e.target.files?.[0]; if(file) await transcribeAudio(file); e.target.value='' }}/>
+            {!recording ? <button type="button" className="fa-btn" disabled={busyAi} onClick={startVoice}>🎙 {c.record}</button> : <button type="button" className="fa-btn fa-btn-danger" onClick={stopVoice}>■ {c.recording}</button>}
+            <button type="button" className="fa-btn fa-btn-ghost" onClick={() => audioRef.current?.click()}>{c.audio}</button>
+          </div>
+          <label className="form-group"><span>{c.notes}</span><textarea rows="3" value={approach.notes} onChange={e => setApproach(v => ({ ...v, notes: e.target.value }))}/></label>
+          {approach.meeting_summary && <div className="sales-ai-result"><strong>{c.summary}</strong><p>{approach.meeting_summary}</p><strong>{c.nextStep}</strong><p>{approach.ai_next_step}</p></div>}
+          <div className="form-group"><span>{c.followupDate}</span><input type="date" value={approach.followup_date} onChange={e => setApproach(v => ({ ...v, followup_date: e.target.value }))}/>
+            <div className="sp-chip-row">{f.quick.map(([label, n]) => <button type="button" key={label} className="fa-chip" onClick={() => setApproach(v => ({ ...v, followup_date: new Date(Date.parse(`${v.work_date || today}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10) }))}>{label}</button>)}</div>
+          </div>
+          <details className="sp-details"><summary>{c.visitDetails}</summary>
+            <div className="sp-two">{Field({ label: c.date, field: 'work_date', type: 'date', value: approach.work_date, onChange: e => setApproach(v => ({ ...v, work_date: e.target.value })) })}{Field({ label: c.duration, field: 'duration_minutes', type: 'number', value: approach.duration_minutes, onChange: e => setApproach(v => ({ ...v, duration_minutes: e.target.value })) })}</div>
+            <div className="sp-two">{Field({ label: c.travel, field: 'travel_cost', type: 'number', value: approach.travel_cost, onChange: e => setApproach(v => ({ ...v, travel_cost: e.target.value })) })}<label className="form-group"><span>{c.hoursSpent}</span><input type="number" min="0" step="0.25" value={approach.hours_spent} onChange={e=>setApproach(v=>({...v,hours_spent:e.target.value}))}/></label></div>
+            <label className="form-group"><span>{c.transcript}</span><textarea rows="4" value={approach.meeting_transcript} onChange={e => setApproach(v => ({ ...v, meeting_transcript: e.target.value }))}/></label>
+            <button type="button" className="fa-btn" disabled={busyAi} onClick={analyzeTranscript}>{busyAi ? c.saving : c.transcribe}</button>
+          </details>
+          <button type="submit" className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" disabled={saving}>{saving ? c.saving : c.saveApproach}</button>
+        </form>
+      </Sheet>}
+
+      {sheet === 'endDay' && <Sheet title={c.endDaySheet} onClose={() => !dayBusy && setSheet('')}>
+        <div className="sp-form">
+          <p className="fa-muted">{c.endConfirm}</p>
+          <label className="form-group"><span>{c.dayNote}</span><textarea rows="3" value={dayNote} onChange={e => setDayNote(e.target.value)} /></label>
+          <label className="form-group"><span>{c.dayTravel}</span><input type="number" min="0" inputMode="numeric" value={dayTravel} onChange={e => setDayTravel(e.target.value)} /></label>
+          <button type="button" className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" disabled={dayBusy} onClick={endDay}>{dayBusy ? c.writing : c.endDay}</button>
+        </div>
+      </Sheet>}
+
+      {sheet === 'bell' && <Sheet title={c.notifications} onClose={() => setSheet('')}>
+        {(counts.overdue + counts.today) > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setFollowFilter('action'); setTab('followups') }}><span aria-hidden="true">↻</span><div><strong>{f.alertTitle}</strong><small>{[counts.overdue && `${counts.overdue} ${f.alertOverdue}`, counts.today && `${counts.today} ${f.alertToday}`].filter(Boolean).join(' · ')}</small></div><b>›</b></button>}
+        <SalesInbox lang={lang} notifications={data?.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) editLead(row) }} />
+      </Sheet>}
+
+      {sheet === 'ai' && <Sheet title={c.aiReview} onClose={() => setSheet('')}>
+        <p className="fa-muted">{c.aiHint}</p>
+        <button type="button" className="fa-btn fa-btn-primary fa-btn-block" disabled={busyAi} onClick={runFunnelAI}>{busyAi ? c.saving : `✦ ${c.searchAi}`}</button>
+        {aiResult && <div className="sales-ai-result">{aiResult}</div>}
+      </Sheet>}
+    </FieldAppShell>
   )
 }

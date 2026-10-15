@@ -46,6 +46,7 @@ const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
 const SalespersonPortal = lazy(() => import('./pages/SalespersonPortal'))
+const MarketingPortal = lazy(() => import('./pages/MarketingPortal'))
 const SalesTeam = lazy(() => import('./pages/SalesTeam'))
 const Marketing = lazy(() => import('./pages/Marketing'))
 const Users = lazy(() => import('./pages/Users'))
@@ -196,6 +197,11 @@ function AppContent() {
       <Suspense fallback={<PortalLoading />}>
         <EmployeePortal />
       </Suspense>
+    </PortalErrorBoundary>
+  )
+  if (user.role === 'salesperson' && user.team === 'marketing') return (
+    <PortalErrorBoundary label="Marketing portal">
+      <Suspense fallback={<PortalLoading />}><MarketingPortal /></Suspense>
     </PortalErrorBoundary>
   )
   if (user.role === 'salesperson') return (

@@ -67,13 +67,15 @@ export default function Users() {
     const [admins, employees, sellers, clients] = await Promise.all([
       supabase.from('admins').select('id,name,email,created_at').order('name'),
       supabase.from('employees').select('id,full_name,email,phone,is_active,job_role,last_seen,created_at').order('full_name'),
-      supabase.from('salespeople').select('id,full_name,email,phone,is_active,created_at').order('full_name'),
+      // team needs sql/2026-10-15_vendedor_gps_marketing.sql; without it everyone is a seller.
+      supabase.from('salespeople').select('id,full_name,email,phone,is_active,created_at,team').order('full_name')
+        .then(r => r.error ? supabase.from('salespeople').select('id,full_name,email,phone,is_active,created_at').order('full_name') : r),
       supabase.from('client_users').select('id,client_id,client_name,location_name,contact_name,email,is_active,last_seen,created_at').order('client_name'),
     ])
     setRows([
       ...(admins.data || []).map(a => ({ type: 'admin', id: a.id, name: a.name || a.email, email: a.email, active: true, created_at: a.created_at })),
       ...(employees.data || []).map(e => ({ type: 'employee', id: e.id, name: e.full_name, email: e.email, phone: e.phone, active: e.is_active !== false, role: e.job_role, last_seen: e.last_seen, created_at: e.created_at })),
-      ...(sellers.data || []).map(s => ({ type: 'salesperson', id: s.id, name: s.full_name, email: s.email, phone: s.phone, active: s.is_active !== false, created_at: s.created_at })),
+      ...(sellers.data || []).map(s => ({ type: 'salesperson', id: s.id, name: s.full_name, email: s.email, phone: s.phone, active: s.is_active !== false, team: s.team === 'marketing' ? 'marketing' : 'sales', created_at: s.created_at })),
       ...(clients.data || []).map(c => ({ type: 'client', id: c.id, client_id: c.client_id, name: c.contact_name || c.location_name || c.client_name || c.email, contact_name: c.contact_name, email: c.email, place: [c.client_name, c.location_name].filter(Boolean).join(' · '), active: c.is_active !== false, last_seen: c.last_seen, created_at: c.created_at })),
     ])
     setLoading(false)
@@ -143,6 +145,7 @@ export default function Users() {
           {r.name}
           {me?.role === 'admin' && r.type === 'admin' && r.id === me.id && <span style={{ fontSize: 11, color: 'var(--text3)' }}>({t.you})</span>}
           {r.type === 'employee' && <RoleBadge value={r.role} lang={lang} size="sm" />}
+          {r.type === 'salesperson' && <span className={`kp-team-badge is-${r.team}`}>{r.team === 'marketing' ? (lang === 'ja' ? 'マーケティング' : 'Marketing') : (lang === 'ja' ? '営業' : 'Sales')}</span>}
           {!r.active && <span className="badge badge-red">{t.inactive}</span>}
         </div>
         <div className="kp-users-meta">

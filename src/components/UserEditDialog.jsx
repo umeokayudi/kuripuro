@@ -13,7 +13,7 @@ const MIN_PASSWORD = { admin: 8, employee: 6, client: 6, salesperson: 10 }
 
 const TXT = {
   en: {
-    title: 'Edit login', newTitle: 'New login', created: 'Login created', needPassword: n => `Set a password with at least ${n} characters`, newPasswordLabel: 'Password', name: 'Name', contact: 'Contact name', email: 'E-mail (login)', phone: 'Phone', role: 'Role',
+    title: 'Edit login', newTitle: 'New login', created: 'Login created', needPassword: n => `Set a password with at least ${n} characters`, newPasswordLabel: 'Password', name: 'Name', contact: 'Contact name', email: 'E-mail (login)', phone: 'Phone', role: 'Role', team: 'Portal', teamSales: 'Sales (seller portal)', teamMarketing: 'Marketing (marketing portal)',
     password: 'New password', passwordHint: n => `Leave empty to keep the current password. At least ${n} characters.`,
     generate: 'Generate', copy: 'Copy', copied: 'Copied', active: 'Can sign in (active)', save: 'Save', cancel: 'Cancel',
     saved: 'Saved', saving: 'Saving…', needName: 'Write the name', badEmail: 'Write a valid e-mail', emailUsed: 'This e-mail already has a login',
@@ -21,7 +21,7 @@ const TXT = {
     tellUser: 'Send the new password to the person; it is not shown again.', storeHint: 'Store logins can also sign in with the store name.',
   },
   ja: {
-    title: 'ログインを編集', newTitle: '新しいログイン', created: 'ログインを作成しました', needPassword: n => `${n}文字以上のパスワードを設定してください`, newPasswordLabel: 'パスワード', name: '氏名', contact: '担当者名', email: 'メール（ログイン）', phone: '電話', role: '役割',
+    title: 'ログインを編集', newTitle: '新しいログイン', created: 'ログインを作成しました', needPassword: n => `${n}文字以上のパスワードを設定してください`, newPasswordLabel: 'パスワード', name: '氏名', contact: '担当者名', email: 'メール（ログイン）', phone: '電話', role: '役割', team: 'ポータル', teamSales: '営業（営業ポータル）', teamMarketing: 'マーケティング（マーケティングポータル）',
     password: '新しいパスワード', passwordHint: n => `空欄なら現在のパスワードのままです。${n}文字以上。`,
     generate: '自動生成', copy: 'コピー', copied: 'コピーしました', active: 'ログイン可能（有効）', save: '保存', cancel: 'キャンセル',
     saved: '保存しました', saving: '保存中…', needName: '氏名を入力してください', badEmail: '正しいメールを入力してください', emailUsed: 'このメールはすでに使われています',
@@ -45,6 +45,7 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
     email: user.email || '',
     phone: user.phone || '',
     role: user.role || '',
+    team: user.team || 'sales',
     password: '',
     active: user.active !== false,
   }))
@@ -73,7 +74,7 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
       let patchRow = { email: email || null, active: form.active }
       if (isNew) {
         if (user.type === 'salesperson') {
-          await salesPost('/api/sales-data', { action: 'create-salesperson', full_name: name, email, phone: form.phone.trim(), password }, lang)
+          await salesPost('/api/sales-data', { action: 'create-salesperson', full_name: name, email, phone: form.phone.trim(), password, team: form.team }, lang)
         } else {
           const { error } = await supabase.from('admins').insert({ name, email, password })
           if (error) throw new Error(error.code === '23505' ? t.emailUsed : error.message)
@@ -83,10 +84,10 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
         return
       }
       if (user.type === 'salesperson') {
-        const body = { action: 'update-salesperson', salesperson_id: user.id, full_name: name, email, phone: form.phone.trim(), is_active: form.active }
+        const body = { action: 'update-salesperson', salesperson_id: user.id, full_name: name, email, phone: form.phone.trim(), is_active: form.active, team: form.team }
         if (password) body.password = password
         await salesPost('/api/sales-data', body, lang)
-        patchRow = { ...patchRow, name, phone: form.phone.trim() }
+        patchRow = { ...patchRow, name, phone: form.phone.trim(), team: form.team }
       } else {
         let table, patch
         if (user.type === 'admin') {
@@ -130,6 +131,14 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
         <div className="form-group"><label>{t.email}</label><input type="email" value={form.email} onChange={e => upd('email', e.target.value)} autoComplete="off" /></div>
         {(user.type === 'employee' || user.type === 'salesperson') && (
           <div className="form-group"><label>{t.phone}</label><input value={form.phone} onChange={e => upd('phone', e.target.value)} /></div>
+        )}
+        {user.type === 'salesperson' && (
+          <div className="form-group"><label>{t.team}</label>
+            <select value={form.team} onChange={e => upd('team', e.target.value)}>
+              <option value="sales">{t.teamSales}</option>
+              <option value="marketing">{t.teamMarketing}</option>
+            </select>
+          </div>
         )}
         {user.type === 'employee' && (
           <div className="form-group"><label>{t.role}</label><RolePicker value={form.role} onChange={v => upd('role', v)} lang={lang} /></div>

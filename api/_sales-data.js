@@ -7,7 +7,36 @@ const LEAD_FIELDS = new Set([
   'locations_count', 'contact_name', 'contact_title', 'contact_phone', 'contact_email', 'contact_line_id',
   'first_contact_date', 'last_contact_date', 'next_followup_date', 'source', 'needs', 'still_needed',
   'decision_maker', 'expected_monthly', 'expected_start', 'competitor', 'notes', 'interest', 'stage', 'lost_reason', 'region', 'marketing_channel_id', 'marketing_campaign_id', 'business_card_object_path',
+  'gps_lat', 'gps_lng', 'gps_accuracy', 'gps_captured_at', 'maps_url',
 ])
+// Added by sql/2026-10-15_vendedor_gps_marketing.sql. Until it runs, saving a lead
+// keeps working and the location goes into the notes instead.
+const LEAD_GEO_FIELDS = ['gps_lat', 'gps_lng', 'gps_accuracy', 'gps_captured_at', 'maps_url']
+const missingColumn = error => error && (error.code === 'PGRST204' || error.code === '42703' || /column/i.test(String(error.message || '')))
+const isMapsLink = value => /^https:\/\/(www\.)?(google\.[a-z.]+\/maps|maps\.google\.[a-z.]+|maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(String(value || '').trim())
+
+function geoNote(payload) {
+  const parts = []
+  if (payload.gps_lat != null && payload.gps_lng != null) parts.push(`GPS ${Number(payload.gps_lat).toFixed(5)},${Number(payload.gps_lng).toFixed(5)}${payload.gps_accuracy ? ` (±${Math.round(payload.gps_accuracy)} m)` : ''}`)
+  if (payload.maps_url) parts.push(`Maps ${payload.maps_url}`)
+  return parts.length ? `📍 ${parts.join(' · ')}` : ''
+}
+
+async function writeLead(db, payload, { id, own } = {}) {
+  const run = row => {
+    if (!id) return db.from('sales_leads').insert(row).select().single()
+    let query = db.from('sales_leads').update(row).eq('id', id)
+    if (own) query = query.eq('salesperson_id', own)
+    return query.select().maybeSingle()
+  }
+  const first = await run(payload)
+  if (!missingColumn(first.error) || !LEAD_GEO_FIELDS.some(key => key in payload)) return first
+  const fallback = { ...payload }
+  const note = geoNote(payload)
+  for (const key of LEAD_GEO_FIELDS) delete fallback[key]
+  if (note && !String(fallback.notes || '').includes(note)) fallback.notes = [fallback.notes, note].filter(Boolean).join('\n')
+  return run(fallback)
+}
 
 function safeLead(input) {
   const out = {}
@@ -18,6 +47,13 @@ function safeLead(input) {
   for (const key of ['first_contact_date', 'last_contact_date', 'next_followup_date', 'expected_start']) {
     if (out[key] === '') out[key] = null
   }
+  for (const key of ['gps_lat', 'gps_lng', 'gps_accuracy']) {
+    if (key in out) out[key] = out[key] === '' || out[key] == null || !Number.isFinite(Number(out[key])) ? null : Number(out[key])
+  }
+  if (out.gps_lat != null && Math.abs(out.gps_lat) > 90) out.gps_lat = null
+  if (out.gps_lng != null && Math.abs(out.gps_lng) > 180) out.gps_lng = null
+  if ('gps_captured_at' in out) out.gps_captured_at = out.gps_captured_at ? String(out.gps_captured_at).slice(0, 40) : null
+  if ('maps_url' in out) out.maps_url = String(out.maps_url || '').trim().slice(0, 600) || null
   if (out.region != null) out.region = String(out.region).trim().slice(0, 80) || null
   if (!out.region && out.address) out.region = regionFromAddress(out.address)
   out.updated_at = new Date().toISOString()
@@ -123,7 +159,39 @@ ${JSON.stringify({ seller: input.seller, date: input.date, start: input.started,
   }
 }
 
+// Marketing logins see every lead's source and stage (to measure channels), not the
+// sellers' private contact details, and no seller pay.
+const MARKETING_LEAD_COLUMNS = 'id,stage,company_name,site_name,region,source,salesperson_id,marketing_channel_id,marketing_campaign_id,first_contact_date,last_contact_date,closed_at,created_at,updated_at,expected_monthly'
+
+async function loadMarketingDashboard(db, user) {
+  const since = `${Number(todayTokyo().slice(0, 4)) - 1}-01`
+  const [leadsRes, contractsRes, peopleRes, notificationsRes, channelsRes, campaignsRes, spendRes, goalsRes] = await Promise.all([
+    db.from('sales_leads').select(MARKETING_LEAD_COLUMNS).order('updated_at', { ascending: false }).limit(2000),
+    db.from('sales_contract_submissions').select('id,lead_id,salesperson_id,status,company_name,site_name,client_monthly_total,base_monthly_amount,created_at,reviewed_at').order('created_at', { ascending: false }).limit(1000),
+    db.from('salespeople').select('id,full_name,is_active').order('full_name'),
+    db.from('sales_notifications').select('*').eq('audience', 'seller').eq('salesperson_id', user.id).is('read_at', null).order('created_at', { ascending: false }).limit(100),
+    db.from('marketing_channels').select('id,name,channel_type,platform,is_active').eq('is_active', true).order('name'),
+    db.from('marketing_campaigns').select('id,channel_id,name,objective,budget,starts_on,ends_on,status').order('created_at', { ascending: false }),
+    db.from('marketing_spend').select('*').order('spent_on', { ascending: false }).limit(2000),
+    db.from('marketing_goals').select('*').gte('period_month', since).order('period_month', { ascending: false }),
+  ])
+  const failed = [leadsRes, peopleRes, notificationsRes, channelsRes, campaignsRes, spendRes, goalsRes].find(r => r.error)
+  if (failed) throw failed.error
+  // A missing optional column on contracts must not hide the whole portal.
+  const contracts = contractsRes.error ? [] : (contractsRes.data || [])
+  const leads = leadsRes.data || []
+  const spend = spendRes.data || []
+  const campaigns = (campaignsRes.data || []).map(campaign => {
+    const relatedLeads = leads.filter(row => row.marketing_campaign_id === campaign.id)
+    const campaignSpend = spend.filter(row => row.campaign_id === campaign.id).reduce((sum, row) => sum + Number(row.amount || 0), 0)
+    const conversions = relatedLeads.filter(row => row.stage === 'won').length
+    return { ...campaign, spend: campaignSpend, leads: relatedLeads.length, conversions, cost_per_lead: relatedLeads.length ? campaignSpend / relatedLeads.length : 0, customer_acquisition_cost: conversions ? campaignSpend / conversions : 0 }
+  })
+  return { user, today: todayTokyo(), leads, contracts, salespeople: peopleRes.data || [], notifications: notificationsRes.data || [], marketing: { channels: channelsRes.data || [], campaigns, spend, goals: goalsRes.data || [] } }
+}
+
 async function loadDashboard(db, user) {
+  if (user.role === 'salesperson' && user.team === 'marketing') return loadMarketingDashboard(db, user)
   const isAdmin = user.role === 'admin'
   const id = user.id
   const scope = q => isAdmin ? q : q.eq('salesperson_id', id)
@@ -133,7 +201,7 @@ async function loadDashboard(db, user) {
     scope(db.from('sales_field_approaches').select('*').order('work_date', { ascending: false }).limit(1000)),
     scope(db.from('sales_day_reports').select('*').order('work_date', { ascending: false }).limit(500)),
     scope(db.from('sales_contract_submissions').select('*').order('created_at', { ascending: false }).limit(500)),
-    isAdmin ? db.from('salespeople').select('id,full_name,email,phone,is_active,created_at').order('full_name') : Promise.resolve({ data: [] }),
+    isAdmin ? db.from('salespeople').select('id,full_name,email,phone,is_active,created_at,team').order('full_name').then(r => r.error ? db.from('salespeople').select('id,full_name,email,phone,is_active,created_at').order('full_name') : r) : Promise.resolve({ data: [] }),
     isAdmin ? db.from('sales_commission_rules').select('*') : db.from('sales_commission_rules').select('*').eq('salesperson_id', id),
     isAdmin ? db.from('sales_notifications').select('*').eq('audience', 'admin').is('read_at', null).order('created_at', { ascending: false }).limit(100)
       : db.from('sales_notifications').select('*').eq('audience', 'seller').eq('salesperson_id', id).is('read_at', null).order('created_at', { ascending: false }).limit(100),
@@ -229,6 +297,7 @@ async function postAction(db, user, body, res) {
   const today = todayTokyo()
   const { action } = body || {}
   const admin = user.role === 'admin'
+  const marketer = user.role === 'salesperson' && user.team === 'marketing'
   const own = user.id
 
   if (action === 'create-salesperson') {
@@ -241,6 +310,11 @@ async function postAction(db, user, body, res) {
     const { hashSalesPassword } = await import('./_salesSession.js')
     const { data, error } = await db.from('salespeople').insert({ full_name: String(full_name).trim(), email: String(email).trim().toLowerCase(), password_hash: hashSalesPassword(password), phone: String(phone).trim(), is_active: true }).select('id,full_name,email,phone,is_active').single()
     if (error) throw error
+    if (body.team === 'marketing') {
+      const teamRes = await db.from('salespeople').update({ team: 'marketing' }).eq('id', data.id)
+      if (teamRes.error) return { salesperson: data, warning: 'Rode o SQL 2026-10-15 para separar marketing de vendas.' }
+      data.team = 'marketing'
+    }
     return { salesperson: data }
   }
 
@@ -266,13 +340,20 @@ async function postAction(db, user, body, res) {
     }
     if (body.phone !== undefined) patch.phone = String(body.phone || '').trim()
     if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active)
+    if (body.team !== undefined) patch.team = body.team === 'marketing' ? 'marketing' : 'sales'
     if (String(body.password || '').trim()) {
       if (String(body.password).trim().length < 10) return jsonError(res, 400, 'A senha do vendedor precisa de pelo menos 10 caracteres.')
       const { hashSalesPassword } = await import('./_salesSession.js')
       patch.password_hash = hashSalesPassword(String(body.password).trim())
     }
     if (!Object.keys(patch).length) return jsonError(res, 400, 'Nada para salvar.')
-    const { data, error } = await db.from('salespeople').update(patch).eq('id', body.salesperson_id).select('id,full_name,email,phone,is_active').single()
+    let { data, error } = await db.from('salespeople').update(patch).eq('id', body.salesperson_id).select('id,full_name,email,phone,is_active').single()
+    if (missingColumn(error) && 'team' in patch) {
+      // team column not created yet: save everything else.
+      delete patch.team
+      if (!Object.keys(patch).length) return jsonError(res, 400, 'Rode o SQL 2026-10-15 para separar marketing de vendas.')
+      ;({ data, error } = await db.from('salespeople').update(patch).eq('id', body.salesperson_id).select('id,full_name,email,phone,is_active').single())
+    }
     if (error) {
       if (error.code === '23505') return jsonError(res, 409, 'Este e-mail já está em uso.')
       throw error
@@ -290,7 +371,7 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'save-marketing-channel') {
-    if (!admin) return jsonError(res, 403, 'Somente admin pode editar canais de marketing.')
+    if (!admin && !marketer) return jsonError(res, 403, 'Somente admin ou marketing pode editar canais de marketing.')
     const name = String(body.name || '').trim().slice(0, 120)
     if (!name) return jsonError(res, 400, 'Informe o nome do canal.')
     const payload = { name, channel_type: body.channel_type || 'other', platform: String(body.platform || '').slice(0, 120), is_active: body.is_active !== false }
@@ -301,7 +382,7 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'save-marketing-campaign') {
-    if (!admin) return jsonError(res, 403, 'Somente admin pode editar campanhas.')
+    if (!admin && !marketer) return jsonError(res, 403, 'Somente admin ou marketing pode editar campanhas.')
     if (!String(body.name || '').trim() || !body.channel_id) return jsonError(res, 400, 'Informe nome e canal.')
     const payload = { channel_id: body.channel_id, name: String(body.name).trim().slice(0, 180), objective: String(body.objective || '').slice(0, 2000), budget: num(body.budget || 0), starts_on: body.starts_on || null, ends_on: body.ends_on || null, status: body.status || 'active' }
     const query = body.id ? db.from('marketing_campaigns').update(payload).eq('id', body.id) : db.from('marketing_campaigns').insert(payload)
@@ -311,7 +392,7 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'record-marketing-spend') {
-    if (!admin) return jsonError(res, 403, 'Somente admin pode registrar investimento em marketing.')
+    if (!admin && !marketer) return jsonError(res, 403, 'Somente admin ou marketing pode registrar investimento em marketing.')
     const amount = num(body.amount)
     const { data, error } = await db.from('marketing_spend').insert({ campaign_id: body.campaign_id, spent_on: body.spent_on || today, amount, impressions: count(body.impressions), clicks: count(body.clicks), conversions: count(body.conversions), description: String(body.description || '').slice(0, 500) }).select().single()
     if (error) throw error
@@ -324,17 +405,21 @@ async function postAction(db, user, body, res) {
     if (admin && body.salesperson_id) payload.salesperson_id = body.salesperson_id
     if (!admin) payload.salesperson_id = own
     if (!admin && ['won', 'lost'].includes(payload.stage)) payload.stage = 'followup'
+    if (payload.maps_url && !isMapsLink(payload.maps_url)) return jsonError(res, 400, 'Cole um link do Google Maps (google.com/maps ou maps.app.goo.gl).')
+    // Every lead a seller registers carries the business card photo and where they were.
+    if (!admin && !body.id) {
+      if (!String(payload.business_card_object_path || '').startsWith(`cards/${own}/`)) return jsonError(res, 400, 'Tire a foto do cartão de visita (business card) antes de salvar o lead.')
+      if (payload.gps_lat == null || payload.gps_lng == null) return jsonError(res, 400, 'Ative a localização (GPS) para registrar o lead.')
+    }
     if (body.id) {
-      let query = db.from('sales_leads').update(payload).eq('id', body.id)
-      if (!admin) query = query.eq('salesperson_id', own)
-      const { data, error } = await query.select().maybeSingle()
+      const { data, error } = await writeLead(db, payload, { id: body.id, own: admin ? null : own })
       if (error) throw error
       if (!data) return jsonError(res, 404, 'Lead não encontrado nesta conta.')
       return { lead: data }
     }
     if (!payload.first_contact_date) payload.first_contact_date = today
     if (!payload.last_contact_date) payload.last_contact_date = payload.first_contact_date
-    const { data, error } = await db.from('sales_leads').insert(payload).select().single()
+    const { data, error } = await writeLead(db, payload)
     if (error) throw error
     return { lead: data }
   }
@@ -387,7 +472,7 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'save-marketing-goal') {
-    if (!admin) return jsonError(res, 403, 'Somente admin pode definir metas de marketing.')
+    if (!admin && !marketer) return jsonError(res, 403, 'Somente admin ou marketing pode definir metas de marketing.')
     const month = String(body.period_month || '')
     if (!/^\d{4}-\d{2}$/.test(month)) return jsonError(res, 400, 'Mês inválido.')
     const goal = body.goal || {}
