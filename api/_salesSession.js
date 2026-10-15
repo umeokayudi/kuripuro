@@ -75,9 +75,6 @@ export function requireSalesSession(req, res, roles = ['admin', 'salesperson']) 
     res.status(401).json({ error: roles.includes('salesperson') ? 'Sessão comercial inválida ou expirada.' : 'Sua sessão expirou. Saia e entre de novo para usar a IA.' })
     return null
   }
-  // The team comes from the database on every request, so moving someone between
-  // sales and marketing in Users takes effect without a new login.
-  user.team = data.team === 'marketing' ? 'marketing' : 'sales'
   return user
 }
 
@@ -99,6 +96,9 @@ export async function requireActiveSalesSession(req, res, roles = ['admin', 'sal
     res.status(401).json({ error: 'Sessão comercial inválida ou expirada.' })
     return null
   }
+  // The team comes from the database on every request, so moving someone between
+  // sales and marketing in Users takes effect without a new login.
+  user.team = data.team === 'marketing' ? 'marketing' : 'sales'
   return user
 }
 
