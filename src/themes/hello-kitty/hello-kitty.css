@@ -333,3 +333,6 @@
 }
 .emp-shell.kp-theme-hello-kitty .ai-voice-status{background:rgba(236,79,140,.10);color:var(--hk-pink-dark)}
 .emp-shell.kp-theme-hello-kitty .ai-voice-spinner{border-color:rgba(236,79,140,.25);border-top-color:var(--hk-pink)}
+
+/* Personal greeting line ("Obrigado por tudo") under the title */
+.emp-shell.kp-theme-hello-kitty .ex-greet p.emp-hello-love{margin-top:2px;color:var(--hk-pink-dark) !important;font-weight:700;font-size:13px}

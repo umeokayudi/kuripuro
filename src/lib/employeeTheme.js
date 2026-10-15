@@ -7,6 +7,17 @@ const EMPLOYEE_THEMES = {
   [LETICIA_EMPLOYEE_ID]: 'hello-kitty',
 }
 
+// Personal greeting shown instead of "Good morning" for the same accounts.
+// Always in Portuguese, whatever language the portal is set to.
+const EMPLOYEE_GREETINGS = {
+  [LETICIA_EMPLOYEE_ID]: { title: 'Te amo muito', emoji: '❤️', subtitle: 'Obrigado por tudo' },
+}
+
+export function employeeGreetingFor(user) {
+  if (!user || user.role !== 'employee' || typeof user.id !== 'string') return null
+  return Object.prototype.hasOwnProperty.call(EMPLOYEE_GREETINGS, user.id) ? EMPLOYEE_GREETINGS[user.id] : null
+}
+
 export function employeeThemeFor(user) {
   if (!user || user.role !== 'employee' || typeof user.id !== 'string') return null
   return Object.prototype.hasOwnProperty.call(EMPLOYEE_THEMES, user.id) ? EMPLOYEE_THEMES[user.id] : null

@@ -52,7 +52,7 @@ import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/tim
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
-import { employeeThemeFor, loadEmployeeTheme } from '../lib/employeeTheme'
+import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -94,6 +94,7 @@ export default function EmployeePortal() {
   // Personal theme for this exact account only (matched by employee id).
   const personalTheme = employeeThemeFor(user)
   const themeClass = personalTheme ? ` kp-theme-${personalTheme}` : ''
+  const personalGreeting = employeeGreetingFor(user)
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -1366,7 +1367,14 @@ export default function EmployeePortal() {
         {/* Same greeting header on every screen except the AI helper, which gets the whole height */}
         {tab!=='ai'&&<div className="ex-greet emp-hello">
           <div>
-            <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
+            {personalGreeting?(
+              <>
+                <h1 lang="pt">{personalGreeting.title} <span aria-hidden="true">{personalGreeting.emoji}</span></h1>
+                <p className="emp-hello-love" lang="pt">{personalGreeting.subtitle}</p>
+              </>
+            ):(
+              <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
+            )}
             <p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}{tab!=='home'&&currentTabLabel?<b> · {currentTabLabel}</b>:null}</p>
           </div>
           <div><span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span></div>
