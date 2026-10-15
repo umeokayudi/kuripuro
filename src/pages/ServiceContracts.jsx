@@ -4,7 +4,9 @@ import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router-dom'
 import SpotContracts from '../components/SpotContracts'
-import { spotContractHtml, recurringToContract } from '../lib/spotContract'
+import DeepCleanTracker from '../components/DeepCleanTracker'
+import { spotContractHtml, recurringToContract, contractDetailsDefaults, cleanContractDetails } from '../lib/spotContract'
+import ContractDetailsFields from '../components/ContractDetailsFields'
 import { showPrintOverlay } from '../lib/openPrintHtml'
 import { saveContractPdf, contractPdfUrl } from '../lib/spotContractOps'
 import { sellerFields } from '../lib/spotContract'
@@ -18,20 +20,22 @@ const SERVICE_TYPES = ['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleanin
 
 export default function ServiceContracts() {
   const [params] = useSearchParams()
-  const [view, setView] = useState(params.get('spot') ? 'spot' : 'locations')
+  const [view, setView] = useState(params.get('spot') ? 'spot' : params.get('deep') ? 'deep' : 'locations')
   return (
     <div>
       <div className="tab-pills">
         <button type="button" className={`tab-pill${view==='locations'?' active':''}`} onClick={()=>setView('locations')}>📋 Recurring locations</button>
         <button type="button" className={`tab-pill${view==='spot'?' active':''}`} onClick={()=>setView('spot')}>⚡ Spot contracts</button>
+        <button type="button" className={`tab-pill${view==='deep'?' active':''}`} onClick={()=>setView('deep')}>✨ On The Planet deep cleaning</button>
       </div>
-      {view==='spot' ? <SpotContracts /> : <RecurringContracts />}
+      {view==='spot' ? <SpotContracts /> : view==='deep' ? <DeepCleanTracker /> : <RecurringContracts />}
     </div>
   )
 }
 
 function RecurringContracts() {
   const [pdfBusy, setPdfBusy] = useState('')
+  const [details, setDetails] = useState(null)
   const [clients, setClients] = useState([])
   const [contracts, setContracts] = useState([])
   const [selectedClient, setSelectedClient] = useState(null)
@@ -118,6 +122,18 @@ function RecurringContracts() {
   const totalVisits = contracts.reduce((s,c)=>s+Number(c.visits_per_month||0),0)
   const client = clients.find(c=>c.id===selectedClient)
 
+  // "Generate contract" first opens the contract details (written address, 責任者, 作業内容, notes per item).
+  const openDetails = (c) => setDetails({ c, value: contractDetailsDefaults(recurringToContract(c, client)) })
+  const withDetails = (c, value) => ({ ...c, contract_details: cleanContractDetails(value) })
+  const saveDetails = async () => {
+    const { c, value } = details
+    const contract_details = cleanContractDetails(value)
+    const { error } = await supabase.from('service_contracts').update({ contract_details }).eq('id', c.id)
+    if (error) return toast.error(error.message)
+    setDetails(null)
+    await savePdf({ ...c, contract_details })
+  }
+
   // Saves the location's 業務委託契約書 as a PDF on the contract and opens it.
   const savePdf = async (c) => {
     const tab = window.open('', '_blank')
@@ -133,6 +149,20 @@ function RecurringContracts() {
 
   return (
     <div>
+      {details && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={()=>setDetails(null)}>
+          <div className="card" style={{ width:'min(680px,100%)', maxHeight:'92vh', overflowY:'auto' }} onClick={e=>e.stopPropagation()}>
+            <div className="card-title">📄 Contract 業務委託契約書 · {details.c.location_name}</div>
+            <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>Check what the contract will say. Everything here is printed in Japanese; the notes explain the reason for each item.</div>
+            <ContractDetailsFields value={details.value} onChange={value=>setDetails(d=>({ ...d, value }))} />
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <button className="btn btn-primary" disabled={pdfBusy===details.c.id} onClick={saveDetails}>💾 Save + PDF</button>
+              <button className="btn" onClick={()=>showPrintOverlay(spotContractHtml(recurringToContract(withDetails(details.c, details.value), client), 'ja'))}>👁 Preview</button>
+              <button className="btn" onClick={()=>setDetails(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Client selector */}
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
         {clients.map(c=>(
@@ -251,7 +281,7 @@ function RecurringContracts() {
                 {c.salesperson_id&&<span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text2)'}}>💼 {sellers.salespeople.find(p=>p.id===c.salesperson_id)?.full_name||'Seller'} · ¥{Number(c.commission_amount||0).toLocaleString()}/mo</span>}
               </div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                <button className="btn btn-sm btn-primary" onClick={()=>showPrintOverlay(spotContractHtml(recurringToContract(c, client), 'ja'))}>📄 Generate contract 契約書</button>
+                <button className="btn btn-sm btn-primary" onClick={()=>openDetails(c)}>📄 Generate contract 契約書</button>
                 <button className="btn btn-sm" onClick={()=>showPrintOverlay(spotContractHtml(recurringToContract(c, client), 'en'))}>📄 EN</button>
                 <button className="btn btn-sm" disabled={pdfBusy===c.id} onClick={()=>savePdf(c)}>{pdfBusy===c.id?'…':'📥 Save PDF'}</button>
                 {c.contract_pdf_path&&<a className="btn btn-sm" href={contractPdfUrl(c.contract_pdf_path, c.contract_pdf_saved_at)} target="_blank" rel="noreferrer" title={new Date(c.contract_pdf_saved_at).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})}>📄 Saved PDF</a>}

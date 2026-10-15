@@ -13,7 +13,7 @@ export function jobReportText(job) {
 }
 
 export function jobReportType(job) {
-  if (job?.retro_report) return 'retroativo'
+  if (job?.retro_report != null) return 'retroativo'
   return 'ao vivo'
 }
 

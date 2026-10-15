@@ -10,15 +10,16 @@
     }
   },
   "crons": [
-    { "path": "/api/sales?action=reminders", "schedule": "0 15 * * *" }
+    { "path": "/api/sales?action=reminders", "schedule": "0 15 * * *" },
+    { "path": "/api/sales?action=payroll-close", "schedule": "5 15 * * *" }
   ],
   "rewrites": [
-    { "source": "/api/sales-ai", "destination": "/api/sales?action=ai" },
-    { "source": "/api/sales-data", "destination": "/api/sales?action=data" },
-    { "source": "/api/sales-files", "destination": "/api/sales?action=files" },
-    { "source": "/api/sales-reminders", "destination": "/api/sales?action=reminders" },
-    { "source": "/api/sales-session", "destination": "/api/sales?action=session" },
-    { "source": "/api/calendar/:e/:t/kuripuro.ics", "destination": "/api/sales?action=calendar&e=:e&t=:t" },
+    { "source": "/api/sales-ai", "destination": "/api/sales?route=ai" },
+    { "source": "/api/sales-data", "destination": "/api/sales?route=data" },
+    { "source": "/api/sales-files", "destination": "/api/sales?route=files" },
+    { "source": "/api/sales-reminders", "destination": "/api/sales?route=reminders" },
+    { "source": "/api/sales-session", "destination": "/api/sales?route=session" },
+    { "source": "/api/calendar/:e/:t/kuripuro.ics", "destination": "/api/sales?route=calendar&e=:e&t=:t" },
     { "source": "/api/upload-photo", "destination": "/api/photo" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { noticeKey, unseenDecisions, timeOffListRows, markSeen } from '../src/lib/timeOffNotices.js'
 import { weekStartOf, isLocked, plannerWeeks, targetPlanWeek, planningAlert, diffWeek, nextKind, unplannedEmployees } from '../src/lib/availability.js'
 
 // 2026-10-09 is a Friday
@@ -35,5 +36,20 @@ assert.deepEqual(deletes, ['2026-10-21'])
 assert.equal(nextKind('available'), 'off')
 assert.equal(nextKind('extra'), 'available')
 assert.deepEqual(unplannedEmployees([{ id: 'a' }, { id: 'b' }], [{ employee_id: 'a', week_start: '2026-10-19' }], today).map(e => e.id), ['b'])
+
+// Day-off answers show once in the employee's bell, then disappear
+const offRows = [
+  { id: 1, date: '2026-10-20', status: 'approved' },
+  { id: 2, date: '2026-10-19', status: 'rejected' },
+  { id: 3, date: '2026-10-21', status: 'pending' },
+  { id: 4, date: '2026-10-01', status: 'pending' },
+  { id: 5, date: '2026-10-02', status: 'approved' },
+]
+assert.deepEqual(unseenDecisions(offRows, new Set()).map(r => r.id), [5, 2, 1])
+const seen = markSeen('e1', new Set(['old:approved']), offRows)
+assert.equal(seen.has('old:approved'), false) // gone from the list → forgotten
+assert.deepEqual(unseenDecisions(offRows, seen), [])
+assert.deepEqual(unseenDecisions([{ ...offRows[1], status: 'approved' }], seen).map(noticeKey), ['2:approved']) // decision changed → new notice
+assert.deepEqual(timeOffListRows(offRows, today).map(r => r.id), [1, 2, 3, 4])
 
 console.log('✅ availability rules OK')

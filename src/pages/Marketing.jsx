@@ -29,7 +29,7 @@ export default function Marketing() {
 
   const load = useCallback(async () => {
     try {
-      const result = await salesGet('/api/sales-data?action=dashboard', lang)
+      const result = await salesGet('/api/sales-data', lang)
       setData({ channels:[], campaigns:[], spend:[], ...(result.marketing || {}), marketing: result.marketing || {}, leads: result.leads || [], contracts: result.contracts || [], today: result.today, notifications: result.notifications || [], salespeople: result.salespeople || [] })
       setError('')
     } catch (e) { setError(e.message) }

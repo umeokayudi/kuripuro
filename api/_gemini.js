@@ -54,9 +54,9 @@ async function resolveModels(key) {
   return cachedModels
 }
 
-async function callModel(key, model, body) {
+async function callModel(key, model, body, timeoutMs = 25000) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 25000)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const resp = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -76,7 +76,8 @@ async function callModel(key, model, body) {
   }
 }
 
-export async function geminiGenerate(body) {
+/** options.timeoutMs: how long one model call may take (default 25 s). */
+export async function geminiGenerate(body, { timeoutMs } = {}) {
   const key = process.env.GEMINI_API_KEY
   if (!key) {
     throw new Error(
@@ -88,7 +89,7 @@ export async function geminiGenerate(body) {
   let lastErr = ''
 
   for (const model of models) {
-    const { ok, text, retryable } = await callModel(key, model, body)
+    const { ok, text, retryable } = await callModel(key, model, body, timeoutMs)
     if (ok) {
       try { return JSON.parse(text) } catch { throw new Error(`Gemini resposta inválida: ${text.slice(0, 200)}`) }
     }
@@ -100,4 +101,4 @@ export async function geminiGenerate(body) {
   throw new Error(`Gemini API error: ${lastErr}`)
 }
 
-export const API_BUILD = '2026-10-11-v1.0.24'
+export const API_BUILD = '2026-10-15-v1.0.43'

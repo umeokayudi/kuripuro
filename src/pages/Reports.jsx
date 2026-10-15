@@ -1,5 +1,5 @@
 import { ReportsAnalytics } from '../components/AnalyticsCharts'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { fmtDuration, fmtTime, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync, jobToReportView } from '../lib/jobReport'
 import SignatureImage from '../components/SignatureImage'
@@ -9,7 +9,10 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
+import { formatDistance } from '../lib/geocode'
+import { useAuth } from '../hooks/useAuth'
 import toast from 'react-hot-toast'
+import { mapsCoordsUrl } from '../lib/mapsLink'
 
 function typeBadge(type, tr) {
   return type === 'retroativo'
@@ -17,7 +20,7 @@ function typeBadge(type, tr) {
     : <span className="badge badge-green">{tr.typeLive}</span>
 }
 
-const mapUrl = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`
+const mapUrl = (lat, lng) => mapsCoordsUrl(lat, lng)
 
 function GpsBlock({ r, tr, lang }) {
   const rows = [
@@ -33,13 +36,92 @@ function GpsBlock({ r, tr, lang }) {
             <div style={{ fontWeight: 600 }}>{label} · {at ? fmtTime(at, lang) : '—'}</div>
             {lat != null && lng != null ? (
               <>
-                <div style={{ color: 'var(--text3)' }}>{Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}{acc != null ? ` (±${Math.round(acc)} m)` : ''}</div>
-                {dist != null && <div style={{ color: Number(dist) > 150 ? 'var(--red)' : 'var(--text3)' }}>{fill(tr.gpsFromSite, { m: Math.round(dist) })}</div>}
+                {dist != null && (
+                  <div style={{ fontSize: 15, fontWeight: 700, color: Number(dist) > 150 ? 'var(--red)' : 'var(--green)' }}>
+                    {Number(dist) > 150 ? '⚠ ' : ''}{fill(tr.gpsFromSite, { m: formatDistance(dist) })}
+                  </div>
+                )}
+                <div style={{ color: 'var(--text3)', fontSize: 11.5 }}>{Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}</div>
+                {acc != null && <div style={{ color: 'var(--text3)', fontSize: 11 }}>{fill(tr.gpsAccuracy, { m: Math.round(acc) })}</div>}
                 <a href={mapUrl(lat, lng)} target="_blank" rel="noreferrer">{tr.openMap} ↗</a>
               </>
             ) : <div style={{ color: 'var(--text3)' }}>{tr.gpsNone}</div>}
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// Admin's own signature for the bottom of the day report PDF. Saved on admins.signature_url;
+// until that column exists it is kept on this device only.
+const adminSigKey = id => `kp_admin_signature_${id || 'admin'}`
+
+async function loadAdminSignature(user) {
+  if (!user?.id) return null
+  const { data, error } = await supabase.from('admins').select('signature_url').eq('id', user.id).maybeSingle()
+  if (!error && data?.signature_url) return data.signature_url
+  try { return localStorage.getItem(adminSigKey(user.id)) } catch { return null }
+}
+
+async function saveAdminSignature(user, dataUrl) {
+  try { localStorage.setItem(adminSigKey(user?.id), dataUrl) } catch {}
+  if (!user?.id) return false
+  const { error } = await supabase.from('admins').update({ signature_url: dataUrl }).eq('id', user.id)
+  return !error
+}
+
+function AdminSignaturePad({ tr, current, onSave, onCancel }) {
+  const canvasRef = useRef(null)
+  const drawing = useRef(false)
+  const [hasInk, setHasInk] = useState(false)
+  const paper = () => {
+    const ctx = canvasRef.current?.getContext('2d')
+    if (!ctx) return
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height)
+  }
+  useEffect(() => { paper() }, [])
+  const pos = e => {
+    const c = canvasRef.current, r = c.getBoundingClientRect()
+    const t = e.touches ? e.touches[0] : e
+    return { x: (t.clientX - r.left) * (c.width / r.width), y: (t.clientY - r.top) * (c.height / r.height) }
+  }
+  const start = e => {
+    e.preventDefault()
+    drawing.current = true
+    const ctx = canvasRef.current.getContext('2d'), p = pos(e)
+    ctx.strokeStyle = '#0f2747'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    ctx.beginPath(); ctx.moveTo(p.x, p.y)
+  }
+  const move = e => {
+    if (!drawing.current) return
+    e.preventDefault()
+    const ctx = canvasRef.current.getContext('2d'), p = pos(e)
+    ctx.lineTo(p.x, p.y); ctx.stroke()
+    setHasInk(true)
+  }
+  const end = () => { drawing.current = false }
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onCancel}>
+      <div style={{ background: '#fff', color: '#122033', borderRadius: 16, padding: 18, width: 'min(460px,100%)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>{tr.adminSigTitle}</div>
+        <div style={{ fontSize: 12, color: '#5c6573', marginBottom: 10 }}>{tr.adminSigHint}</div>
+        {current && !hasInk && (
+          <div style={{ fontSize: 11, color: '#5c6573', marginBottom: 6 }}>{tr.adminSigCurrent} <img src={current} alt="" style={{ height: 32, verticalAlign: 'middle', border: '1px solid #e3e8f0', borderRadius: 4 }} /></div>
+        )}
+        <div style={{ border: '1px solid #cfd8e6', borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
+          <canvas ref={canvasRef} width={420} height={170} style={{ width: '100%', height: 170, display: 'block', touchAction: 'none' }}
+            onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+            onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
+          {!hasInk && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9aa6b8', fontSize: 14, pointerEvents: 'none' }}>{tr.adminSigHere}</div>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: current ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr', gap: 8, marginTop: 12 }}>
+          <button type="button" className="btn" onClick={() => { paper(); setHasInk(false) }}>{tr.adminSigClear}</button>
+          <button type="button" className="btn" onClick={onCancel}>{tr.adminSigCancel}</button>
+          {current && <button type="button" className="btn" onClick={() => onSave(null)}>{tr.adminSigKeep}</button>}
+          <button type="button" className="btn btn-primary" disabled={!hasInk} onClick={() => onSave(canvasRef.current.toDataURL('image/png'))}>✓ {tr.adminSigSave}</button>
+        </div>
       </div>
     </div>
   )
@@ -62,6 +144,11 @@ export default function Reports() {
   const [lightbox, setLightbox] = useState(null)
   const [filterDay, setFilterDay] = useState('')
   const [pdfBusy, setPdfBusy] = useState(false)
+  const { user } = useAuth()
+  const [adminSig, setAdminSig] = useState(null)
+  const [sigPad, setSigPad] = useState(false)
+
+  useEffect(() => { loadAdminSignature(user).then(setAdminSig) }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadReports() }, [filterDays, filterDay, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,8 +203,24 @@ export default function Reports() {
     setLoading(false)
   }
 
-  const downloadDayPdf = async () => {
+  // First PDF without a saved admin signature asks for one; the pad then continues the download.
+  const onAdminSig = async (dataUrl) => {
+    const fromDownload = sigPad === 'download'
+    setSigPad(false)
+    let sig = adminSig
+    if (dataUrl) {
+      await saveAdminSignature(user, dataUrl)
+      setAdminSig(dataUrl)
+      sig = dataUrl
+      toast.success(tr.adminSigSaved)
+    }
+    if (fromDownload) downloadDayPdf(sig, true)
+  }
+
+  const downloadDayPdf = async (sigOverride, skipAsk) => {
     if (!filterDay) return toast.error(tr.dayPdfNeedsDay)
+    const sig = typeof sigOverride === 'string' ? sigOverride : adminSig
+    if (!sig && skipAsk !== true) return setSigPad('download')
     const ids = filtered.map(r => r.job_id).filter(Boolean)
     if (!ids.length) return toast.error(tr.empty)
     setPdfBusy(true)
@@ -127,7 +230,7 @@ export default function Reports() {
       const order = new Map(ids.map((id, i) => [id, i]))
       const sorted = (dayJobs || []).sort((a, b) => order.get(a.id) - order.get(b.id))
       const { generateDailyReport } = await import('../lib/generatePDF')
-      const doc = await generateDailyReport(filterDay, sorted, filterEmp || (lang === 'ja' ? '全スタッフ' : 'All staff'), { showEmployee: !filterEmp })
+      const doc = await generateDailyReport(filterDay, sorted, filterEmp || (lang === 'ja' ? '全スタッフ' : 'All staff'), { showEmployee: !filterEmp, adminName: user?.name || '', adminSignature: sig || null })
       doc.save(`report_${filterDay}${filterEmp ? '_' + filterEmp.replace(/\s+/g, '_') : ''}.pdf`)
       toast.success(tr.dayPdfReady)
     } catch (e) {
@@ -216,7 +319,8 @@ export default function Reports() {
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {filterDay && <button className="btn" onClick={downloadDayPdf} disabled={pdfBusy || !filtered.length}>{pdfBusy ? tr.loading : tr.dayPdf}</button>}
+          <button className="btn" onClick={() => setSigPad('edit')} title={tr.adminSigTitle}>✍️ {adminSig ? tr.adminSigChange : tr.adminSigAdd}</button>
+          {filterDay && <button className="btn" onClick={() => downloadDayPdf()} disabled={pdfBusy || !filtered.length}>{pdfBusy ? tr.loading : tr.dayPdf}</button>}
           <button className="btn btn-primary" onClick={runAiAnalysis} disabled={aiLoading || !filtered.length}>
             {aiLoading ? tr.analyzing : tr.aiAnalyze}
           </button>
@@ -395,6 +499,7 @@ export default function Reports() {
       )}
 
       <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={tr.close} />
+      {sigPad && <AdminSignaturePad tr={tr} current={adminSig} onSave={onAdminSig} onCancel={() => { const fromDownload = sigPad === 'download'; setSigPad(false); if (fromDownload) downloadDayPdf(null, true) }} />}
     </div>
   )
 }

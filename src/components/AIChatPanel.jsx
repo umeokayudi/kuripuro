@@ -38,6 +38,14 @@ const CopyIcon = () => <svg {...svgProps} width={14} height={14}><rect x="9" y="
 const RefreshIcon = () => <svg {...svgProps} width={14} height={14}><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 4v5h-5" /></svg>
 const ClipIcon = () => <svg {...svgProps}><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" /></svg>
 
+const MAX_RECORDING_MS = 60_000
+
+const VOICE_TEXT = {
+  en: { recording: 'Recording… tap the mic to stop', transcribing: 'Turning your audio into text…', cancel: 'Cancel', empty: 'I could not hear anything. Try again a little closer to the phone.', failed: 'Could not transcribe the audio.', denied: 'Microphone blocked. Allow the microphone for this site in the browser settings (on iPhone: Settings › Safari › Microphone).', noMic: 'Could not open the microphone.', unsupported: 'This browser cannot record audio.' },
+  ja: { recording: '録音中… マイクをタップして停止', transcribing: '音声を文字にしています…', cancel: 'キャンセル', empty: '音声が聞き取れませんでした。もう少し近くで話してください。', failed: '音声を文字にできませんでした。', denied: 'マイクがブロックされています。ブラウザの設定でこのサイトのマイクを許可してください（iPhone: 設定 › Safari › マイク）。', noMic: 'マイクを開けませんでした。', unsupported: 'このブラウザでは録音できません。' },
+  pt: { recording: 'Gravando… toque no microfone para parar', transcribing: 'Transformando o áudio em texto…', cancel: 'Cancelar', empty: 'Não consegui ouvir nada. Tente de novo mais perto do celular.', failed: 'Não consegui transcrever o áudio.', denied: 'Microfone bloqueado. Permita o microfone para este site nas configurações do navegador (no iPhone: Ajustes › Safari › Microfone).', noMic: 'Não consegui abrir o microfone.', unsupported: 'Este navegador não consegue gravar áudio.' },
+}
+
 const approvalFrom = data => (data.pendingApproval ? { ...data.pendingApproval, state: 'waiting' } : undefined)
 
 const APPROVAL_TEXT = {
@@ -101,6 +109,14 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const [callOpen, setCallOpen] = useState(false)
   const [voiceReplies, setVoiceReplies] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const [recSeconds, setRecSeconds] = useState(0)
+  const [voiceError, setVoiceError] = useState('')
+  const recorderRef = useRef(null)
+  const recStreamRef = useRef(null)
+  const recTimerRef = useRef(null)
+  const recLimitRef = useRef(null)
+  const voiceText = VOICE_TEXT[lang] || VOICE_TEXT.en
   const [voices, setVoices] = useState([])
   const [voiceName, setVoiceName] = useState(getSavedVoiceName())
   const [attachments, setAttachments] = useState([])
@@ -154,7 +170,9 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       : { messages: allMessages }
     if (mode === 'employee') body.language = lang
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 35000)
+    // A bit longer than the server's own 52 s budget (Vercel maxDuration is 60 s), so the
+    // browser never gives up while the server is still finishing a long request.
+    const timer = setTimeout(() => controller.abort(), 62000)
     let resp
     try {
       resp = await apiPost(endpoint, body, { signal: controller.signal })
@@ -191,17 +209,113 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     return data.reply
   }
 
-  const startVoiceInput = () => {
+  // Microphone: record a voice note and let the server transcribe it into the text box.
+  // The browser's own speech recognition is only a fallback: on iPhone Safari it often stops
+  // right away or listens in the wrong language, while MediaRecorder works everywhere.
+  const stopRecordingStream = () => {
+    clearInterval(recTimerRef.current)
+    clearTimeout(recLimitRef.current)
+    recStreamRef.current?.getTracks().forEach(track => track.stop())
+    recStreamRef.current = null
+  }
+
+  useEffect(() => () => {
+    const recorder = recorderRef.current
+    if (recorder) { recorder.onstop = null; if (recorder.state !== 'inactive') recorder.stop() }
+    stopRecordingStream()
+  }, [])
+
+  const transcribeRecording = async (blob) => {
+    setTranscribing(true)
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(blob)
+      })
+      const type = (blob.type || 'audio/mp4').split(';')[0]
+      const resp = await apiPost(mode === 'employee' ? '/api/employee-ai' : '/api/admin-ai', { transcribe: { dataUrl: `data:${type};base64,${base64}` } })
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(data.error || `Error ${resp.status}`)
+      const text = String(data.text || '').trim()
+      if (!text) { setVoiceError(voiceText.empty); return }
+      setInput(prev => (prev.trim() ? prev.trimEnd() + ' ' : '') + text)
+      requestAnimationFrame(() => inputRef.current?.focus())
+    } catch (error) {
+      setVoiceError(`${voiceText.failed} ${error.message || ''}`.trim())
+    } finally {
+      setTranscribing(false)
+    }
+  }
+
+  const startSpeechRecognition = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { alert(ai.voiceChrome); return }
+    if (!SR) { setVoiceError(voiceText.unsupported); return }
     const recognition = new SR()
-    recognition.lang = lang === 'ja' ? 'ja-JP' : 'en-US'
+    recognition.lang = lang === 'ja' ? 'ja-JP' : lang === 'en' ? 'en-US' : 'pt-BR'
     recognition.interimResults = false
     recognition.onstart = () => setRecording(true)
     recognition.onresult = (e) => setInput(prev => (prev ? prev + ' ' : '') + e.results[0][0].transcript)
-    recognition.onerror = () => setRecording(false)
-    recognition.onend = () => setRecording(false)
+    recognition.onerror = (e) => { setRecording(false); if (e.error === 'not-allowed' || e.error === 'service-not-allowed') setVoiceError(voiceText.denied) }
+    recognition.onend = () => { setRecording(false); recorderRef.current = null }
+    recorderRef.current = recognition
     recognition.start()
+  }
+
+  const startVoiceInput = async () => {
+    if (transcribing) return
+    setVoiceError('')
+    // Second tap stops: the recording is then transcribed into the text box
+    if (recording) { recorderRef.current?.stop(); return }
+    if (!navigator.mediaDevices?.getUserMedia || typeof window.MediaRecorder === 'undefined') { startSpeechRecognition(); return }
+    let stream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (error) {
+      setVoiceError(error?.name === 'NotAllowedError' ? voiceText.denied : voiceText.noMic)
+      return
+    }
+    const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+      .find(type => window.MediaRecorder.isTypeSupported?.(type))
+    let recorder
+    try {
+      recorder = new window.MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 64000 })
+    } catch {
+      recorder = new window.MediaRecorder(stream)
+    }
+    const chunks = []
+    recStreamRef.current = stream
+    recorderRef.current = recorder
+    recorder.ondataavailable = e => { if (e.data?.size) chunks.push(e.data) }
+    recorder.onstop = () => {
+      stopRecordingStream()
+      recorderRef.current = null
+      setRecording(false)
+      const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || 'audio/mp4' })
+      if (blob.size < 1200) { setVoiceError(voiceText.empty); return }
+      transcribeRecording(blob)
+    }
+    recorder.onerror = () => { stopRecordingStream(); recorderRef.current = null; setRecording(false); setVoiceError(voiceText.failed) }
+    // timeslice so iPhone Safari delivers the data even for very short notes
+    recorder.start(1000)
+    setRecSeconds(0)
+    setRecording(true)
+    const startedAt = Date.now()
+    recTimerRef.current = setInterval(() => setRecSeconds(Math.floor((Date.now() - startedAt) / 1000)), 500)
+    recLimitRef.current = setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, MAX_RECORDING_MS)
+  }
+
+  const cancelVoiceInput = () => {
+    const recorder = recorderRef.current
+    if (!recorder) return
+    recorder.onstop = null
+    recorder.onend = null
+    if (recorder.abort) recorder.abort()
+    else if (recorder.state !== 'inactive') recorder.stop()
+    stopRecordingStream()
+    recorderRef.current = null
+    setRecording(false)
   }
 
   const onInputKeyDown = (e) => {
@@ -407,6 +521,13 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
         <input ref={fileInputRef} type="file" accept="application/pdf,text/plain,text/csv,.txt,.md,.csv" multiple hidden onChange={e => { addSelectedFiles(e.target.files); e.target.value = '' }} />
       </>
       {attachmentError && <div className="ai-attachment-error">{attachmentError}</div>}
+      {(recording || transcribing) && <div className={`ai-voice-status${transcribing ? ' is-busy' : ''}`} role="status">
+        {transcribing ? <span className="ai-voice-spinner" /> : <span className="ai-rec-dot" />}
+        <span>{transcribing ? voiceText.transcribing : voiceText.recording}</span>
+        {recording && <b>{Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}</b>}
+        {recording && <button type="button" onClick={cancelVoiceInput}>{voiceText.cancel}</button>}
+      </div>}
+      {voiceError && <div className="ai-attachment-error">{voiceError}</div>}
       {attachments.length > 0 && <div className="ai-attachment-tray">{attachments.map((file, i) => <div className="ai-attachment-card" key={i}>
         {file.type.startsWith('image/') ? <img src={file.dataUrl} alt={file.name} /> : file.type.startsWith('video/') ? <video src={file.dataUrl} muted playsInline /> : <span className="ai-attachment-file-icon">PDF</span>}
         <span className="ai-attachment-file-meta"><b>{file.name}</b><small>{file.type.split('/')[0].toUpperCase()} · {(file.size / 1024).toFixed(0)} KB</small></span>
@@ -428,7 +549,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
               <button type="button" title={lang === 'ja' ? 'ファイル' : 'Arquivo'} aria-label={lang === 'ja' ? 'ファイルを追加' : 'Adicionar arquivo'} onClick={() => fileInputRef.current?.click()}><ClipIcon /></button>
             </div>
             <div className="ai-composer-actions">
-              <button type="button" className={`ai-composer-mic${recording ? ' is-on' : ''}`} onClick={startVoiceInput}
+              <button type="button" className={`ai-composer-mic${recording ? ' is-on' : ''}`} onClick={startVoiceInput} disabled={transcribing}
                 title={lang === 'ja' ? '話す' : 'Falar'} aria-label={lang === 'ja' ? '話す' : 'Falar'}>
                 {recording ? <span className="ai-rec-dot" /> : <MicIcon />}
               </button>

@@ -6,8 +6,10 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
-import { distanceMeters, getCurrentPosition } from '../lib/geocode'
+import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geocode'
 import ServiceTimer from '../components/ServiceTimer'
+import NfcScanSheet from '../components/NfcScanSheet'
+import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
@@ -45,11 +47,12 @@ import {
 import { tokyoToday, recentTokyoDates } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
-import AvailabilityPlanner, { PlanAlert, statusLabel, fmtDay } from '../components/AvailabilityPlanner'
+import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
+import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
-import { employeeThemeFor, loadEmployeeTheme } from '../lib/employeeTheme'
+import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -91,6 +94,7 @@ export default function EmployeePortal() {
   // Personal theme for this exact account only (matched by employee id).
   const personalTheme = employeeThemeFor(user)
   const themeClass = personalTheme ? ` kp-theme-${personalTheme}` : ''
+  const personalGreeting = employeeGreetingFor(user)
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -110,6 +114,10 @@ export default function EmployeePortal() {
   const [gpsStatus, setGpsStatus] = useState('')
   const [herePos, setHerePos] = useState(null)
   const [myTimeOff, setMyTimeOff] = useState([])
+  // Approved / rejected day-off requests show once in the bell, then disappear
+  const [seenTimeOff, setSeenTimeOff] = useState(() => loadSeen(user.id))
+  const [bellOpen, setBellOpen] = useState(false)
+  const toastedTimeOff = useRef(new Set())
   const [siteCoordsById, setSiteCoordsById] = useState({})
   const [retroJob, setRetroJob] = useState(null)
   const [retroChecklist, setRetroChecklist] = useState([])
@@ -149,6 +157,11 @@ export default function EmployeePortal() {
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [showSignature, setShowSignature] = useState(false)
   const [signatureJob, setSignatureJob] = useState(null)
+  // Ponto por NFC (off unless the admin turned it on for everyone or for this worker)
+  const [nfcConfig, setNfcConfig] = useState({ active: false, tags: [] })
+  const [nfcScan, setNfcScan] = useState(null)
+  const nfcEndRef = useRef(null)
+  useEffect(() => { if (user?.id) loadNfcConfig(supabase, user.id).then(setNfcConfig) }, [user?.id])
   const [retroSignOpen, setRetroSignOpen] = useState(false)
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
@@ -678,7 +691,6 @@ export default function EmployeePortal() {
       toast.error(fill(e.retroChecklistIncomplete, { required: retroChecklistRequired, total: retroChecklist.length }))
       return false
     }
-    if (!retroText.trim() || retroText.trim().length < 15) { toast.error(e.retroTextTooShort); return false }
     if (!retroPhoto) { toast.error(e.retroPhotoRequired); return false }
     return true
   }
@@ -692,24 +704,28 @@ export default function EmployeePortal() {
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
       const markedDone = retroChecklist.filter(c => c.done).map(c => c.label)
-      const resp = await fetch('/api/evaluate-report', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          report: retroText,
-          checklist: ck,
-          jobTitle: retroJob.title,
-          markedDone,
-        }),
-      })
-      const ev = await resp.json()
-      if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
-      const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
       const total = retroChecklist.length
       const done = retroChecklist.filter(c => c.done).length
       const missedLabels = retroChecklist.filter(c => !c.done).map(c => c.label)
+      // Notes are optional: with no text there is nothing for the AI to read, so the marked checklist stands.
+      let ev = { itens_feitos: done, itens_total: total, nao_feitos: [], tempo_estimado_min: null, resumo: null }
+      if (retroText.trim()) {
+        const resp = await fetch('/api/evaluate-report', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            report: retroText,
+            checklist: ck,
+            jobTitle: retroJob.title,
+            markedDone,
+          }),
+        })
+        ev = await resp.json()
+        if (ev.error) { toast.error('Erro na avaliação: '+ev.error); setRetroBusy(false); return }
+      }
+      const photoUrl = await uploadJobPhoto(`jobs/${retroJob.id}/retro.jpg`, retroPhoto)
       const { error } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(),
-        retro_report: retroText, retro_ai_summary: ev.resumo||null,
+        retro_report: retroText.trim(), retro_ai_summary: ev.resumo||null,
         retro_time_min: ev.tempo_estimado_min ?? null,
         photo_end_url: photoUrl, admin_reviewed: false, signature_url: sigDataUrl || null,
         checklist_total: total || null, checklist_done: total ? done : null,
@@ -740,12 +756,21 @@ export default function EmployeePortal() {
     return firstPath
   }
 
+  // Resolves null when NFC is off, 'cancel' when the worker closes the sheet, else the read result.
+  const askNfc = (phase, job) => {
+    if (!nfcConfig.active) return Promise.resolve(null)
+    if (!nfcSupported()) return Promise.resolve({ uid: null, status: 'no_device', tag: null })
+    return new Promise(resolve => setNfcScan({ phase, job, resolve }))
+  }
+
   const handleStart = async (job) => {
     const startPhotos = jobPhotos.filter(p => p.slot === 'start')
     if (startPhotos.length === 0) {
       toast.error('Tire ao menos 1 foto "Before" antes de iniciar')
       return
     }
+    const nfc = await askNfc('start', job)
+    if (nfc === 'cancel') return
     setSubmitting(true)
     try {
       const { data: otherActive } = await supabase.from('jobs').select('id,title').eq('employee_id', user.id).eq('status', 'in_progress').maybeSingle()
@@ -755,7 +780,7 @@ export default function EmployeePortal() {
       }
       const gpsResult = await checkGPS(job)
       if (gpsResult.override) {
-        const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist?gpsResult.dist+'m':'unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
+        const proceed = window.confirm(`⚠️ GPS shows you are ${gpsResult.dist!=null?formatDistance(gpsResult.dist):'an unknown distance'} from the location.\n\nProceed anyway? This will be logged in the report.`)
         if (!proceed) { setGpsStatus(''); return }
       }
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
@@ -766,6 +791,7 @@ export default function EmployeePortal() {
         gps_start_distance: gpsResult.dist ?? null, gps_override: Boolean(gpsResult.override),
       }
       try { await supabase.from('jobs').update(gpsFields).eq('id', job.id) } catch (ex) { console.log('gps fields skipped', ex?.message) }
+      await saveNfcResult(supabase, job.id, 'start', nfc)
       setChecklist(initChecklistState(job))
       setActiveJob({ ...data, ...gpsFields }); setJobPhotos([]); toast.success('✅ Started!')
     } catch (err) {
@@ -775,7 +801,10 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleCompleteWithSig = (job) => {
+  const handleCompleteWithSig = async (job) => {
+    const nfc = await askNfc('end', job)
+    if (nfc === 'cancel') return
+    nfcEndRef.current = nfc
     setSignatureJob(job)
     setShowSignature(true)
   }
@@ -846,6 +875,8 @@ export default function EmployeePortal() {
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      await saveNfcResult(supabase, job.id, 'end', nfcEndRef.current)
+      nfcEndRef.current = null
       try {
         const endPos = await endPositionPromise
         if (endPos) {
@@ -1076,6 +1107,27 @@ export default function EmployeePortal() {
     }, 200)
   }
 
+  const timeOffNotices = unseenDecisions(myTimeOff, seenTimeOff)
+  const bellCount = unreadMsgs + timeOffNotices.length
+  const closeBell = () => {
+    setBellOpen(false)
+    if (timeOffNotices.length) setSeenTimeOff(markSeen(user.id, seenTimeOff, myTimeOff))
+  }
+  const bellGo = (key) => { closeBell(); goToTab(key) }
+
+  // One short toast per new answer; the details stay in the bell until opened
+  useEffect(() => {
+    const fresh = timeOffNotices.filter(r => !toastedTimeOff.current.has(r.id + ':' + r.status))
+    if (!fresh.length) return
+    fresh.forEach(r => toastedTimeOff.current.add(r.id + ':' + r.status))
+    toast(e.timeOffNoticeToast, { icon: '🔔', id: 'kp-timeoff-notice' })
+  }, [timeOffNotices.map(r => r.id + ':' + r.status).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opening the full list also counts as seeing the answers
+  useEffect(() => {
+    if (tab === 'availability' && timeOffNotices.length) setSeenTimeOff(markSeen(user.id, seenTimeOff, myTimeOff))
+  }, [tab, myTimeOff]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const goToTab = (key) => {
     setTab(key)
     if (key === 'shift' && activeJob) scrollToActiveJob()
@@ -1204,6 +1256,14 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {nfcScan&&<NfcScanSheet
+        phase={nfcScan.phase}
+        job={nfcScan.job}
+        tags={nfcConfig.tags}
+        labels={e}
+        onDone={(r)=>{ const done = nfcScan.resolve; setNfcScan(null); done(r) }}
+        onCancel={()=>{ const done = nfcScan.resolve; setNfcScan(null); done('cancel') }}
+      />}
       {showSignature&&<SignatureModal
         jobTitle={signatureJob?.title||activeJob?.title||''}
         labels={e}
@@ -1273,7 +1333,7 @@ export default function EmployeePortal() {
               <div style={{textAlign:'center'}}>
                 <div style={{fontSize:13,color:'rgba(255,255,255,0.6)',marginBottom:8}}>✓ {fill(e.retroEvalChecklist, { done: retroEval.itens_feitos, total: retroEval.itens_total })}</div>
                 <div style={{fontSize:12,color:'rgba(255,255,255,0.45)',marginBottom:8}}>{e.retroEvalPayNote}</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.6)',background:'rgba(255,255,255,0.04)',borderRadius:12,padding:12,marginTop:8,textAlign:'left',lineHeight:1.6}}>{retroEval.resumo}</div>
+                {retroEval.resumo&&<div style={{fontSize:12,color:'rgba(255,255,255,0.6)',background:'rgba(255,255,255,0.04)',borderRadius:12,padding:12,marginTop:8,textAlign:'left',lineHeight:1.6}}>{retroEval.resumo}</div>}
                 {(retroEval.nao_feitos||[]).length>0&&<div style={{fontSize:11,color:'#f87171',marginTop:8,textAlign:'left'}}>{fill(e.retroEvalUnrecognized, { items: retroEval.nao_feitos.join(', ') })}</div>}
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:12}}>{e.finalizing}</div>
               </div>
@@ -1294,9 +1354,9 @@ export default function EmployeePortal() {
               <div className="emp-score-label">{e.score}</div>
             </div>
             <LanguageToggle variant="dark" compact />
-            <button aria-label={e.chat} onClick={()=>setTab('chat')} className="emp-header-icon-button">
+            <button aria-label={e.notifications} aria-expanded={bellOpen} onClick={()=>setBellOpen(true)} className="emp-header-icon-button">
               🔔
-              {unreadMsgs>0&&<div className="emp-header-notification-count">{unreadMsgs}</div>}
+              {bellCount>0&&<div className="emp-header-notification-count">{bellCount}</div>}
             </button>
             <button aria-label={menuOpen ? e.close : e.more} aria-expanded={menuOpen} onClick={()=>setMenuOpen(!menuOpen)} className="emp-header-menu-button">
               <span></span><span></span><span></span>
@@ -1304,24 +1364,55 @@ export default function EmployeePortal() {
             </button>
           </div>
         </div>
-        {/* Same greeting header on every screen */}
-        <div className="ex-greet emp-hello">
+        {/* Same greeting header on every screen except the AI helper, which gets the whole height */}
+        {tab!=='ai'&&<div className="ex-greet emp-hello">
           <div>
-            <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
+            {personalGreeting?(
+              <>
+                <h1 lang="pt">{personalGreeting.title} <span aria-hidden="true">{personalGreeting.emoji}</span></h1>
+                <p className="emp-hello-love" lang="pt">{personalGreeting.subtitle}</p>
+              </>
+            ):(
+              <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
+            )}
             <p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}{tab!=='home'&&currentTabLabel?<b> · {currentTabLabel}</b>:null}</p>
           </div>
           <div><span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span></div>
-        </div>
+        </div>}
         {!isOnline&&<div className="emp-offline-banner">
           ⚠️ {e.offline}
         </div>}
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div className={`emp-status-chip ${gpsStatus.includes('✅')?'is-good':gpsStatus.includes('🚫')?'is-bad':''}`}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
-          {planAlert&&tab!=='availability'&&<div onClick={()=>setTab('availability')} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
+          {planAlert&&tab!=='availability'&&tab!=='ai'&&<div onClick={()=>setTab('availability')} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
         </div>
       </div>
+
+      {/* Bell: answers to day-off requests + shortcuts to messages / spot jobs */}
+      {bellOpen&&(
+        <div className="emp-bell-overlay" onClick={closeBell}>
+          <section className="emp-bell-pop" role="dialog" aria-modal="true" aria-label={e.notifications} onClick={ev=>ev.stopPropagation()}>
+            <div className="emp-bell-head"><h2>🔔 {e.notifications}</h2><button aria-label={e.close} className="emp-menu-close" onClick={closeBell}>×</button></div>
+            <div className="emp-bell-list">
+              {timeOffNotices.map(r=>(
+                <div key={r.id} className={`emp-bell-item is-${r.status}`}>
+                  <span className="emp-bell-icon" aria-hidden="true">{r.status==='approved'?'✓':'✕'}</span>
+                  <div>
+                    <strong>{fill(r.status==='approved'?e.timeOffNoticeApproved:e.timeOffNoticeRejected,{date:fmtDay(r.date, lang, { weekday:'short', day:'numeric', month:'short' })})}</strong>
+                    {r.admin_note&&<small>{e.timeOffAdminNote}: {r.admin_note}</small>}
+                  </div>
+                </div>
+              ))}
+              {unreadMsgs>0&&<button type="button" className="emp-bell-item is-link" onClick={()=>bellGo('chat')}><span className="emp-bell-icon" aria-hidden="true">💬</span><div><strong>{e.bellMessages}</strong><small>{fill(e.unreadCount,{n:unreadMsgs})}</small></div><b>›</b></button>}
+              {spotJobs.length>0&&<button type="button" className="emp-bell-item is-link" onClick={()=>bellGo('spots')}><span className="emp-bell-icon" aria-hidden="true">⚡</span><div><strong>{e.bellSpots}</strong><small>{spotJobs.length}</small></div><b>›</b></button>}
+              {!timeOffNotices.length&&!unreadMsgs&&!spotJobs.length&&<p className="emp-bell-empty">{e.bellNothingNew}</p>}
+            </div>
+            <button type="button" className="emp-bell-all" onClick={()=>bellGo('availability')}>🗓 {e.bellSeeAllTimeOff} ›</button>
+          </section>
+        </div>
+      )}
 
       {/* 3-dot dropdown */}
       {menuOpen&&(
@@ -1369,7 +1460,7 @@ export default function EmployeePortal() {
                     <div className="ex-nearby" role="status">
                       <span aria-hidden="true">📍</span>
                       <div><small>{e.nearbyService}</small><strong>{businessName(nearby.job)}</strong></div>
-                      <b>{nearby.dist} m</b>
+                      <b>{formatDistance(nearby.dist)}</b>
                     </div>
                   )}
                   <div className="ex-map">
@@ -1413,26 +1504,6 @@ export default function EmployeePortal() {
 
             <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>goToTab('availability')} />
 
-            {/* Day-off requests with their status */}
-            {(()=>{
-              // Upcoming ones first; past ones only while the decision is recent
-              const rows = myTimeOff.filter(r => r.date >= today || r.status === 'pending').slice(0, 6)
-              return (
-                <section className="emp-timeoff" aria-label={e.myTimeOff}>
-                  <div className="emp-timeoff-head"><h3>🗓 {e.myTimeOff}</h3><button type="button" onClick={()=>goToTab('availability')}>{e.timeOffRequest} ›</button></div>
-                  {rows.length===0 ? <div style={{fontSize:12,color:'#5f6b7d'}}>{e.timeOffEmpty}</div> : rows.map(r=>(
-                    <div key={r.id} className="emp-timeoff-row">
-                      <div>
-                        <strong>{fmtDay(r.date, lang, { weekday:'short', day:'numeric', month:'short' })}</strong>
-                        {r.admin_note&&<small>{e.timeOffAdminNote}: {r.admin_note}</small>}
-                      </div>
-                      <span className={`emp-timeoff-st is-${r.status||'pending'}`}>{statusLabel(r.status, e)}</span>
-                    </div>
-                  ))}
-                </section>
-              )
-            })()}
-
             {/* Summary cards (swipe sideways) */}
             <div className="ex-cards" role="list">
               {todayJobs.length>0&&(
@@ -1473,7 +1544,7 @@ export default function EmployeePortal() {
             {(()=>{
               const pendingClaims=claims.filter(c=>c.status==='pending').length
               const pendingEquipment=equipmentRequests.filter(r=>['pending','requested'].includes(r.status)).length
-              const notifications=unreadMsgs+spotJobs.length
+              const notifications=bellCount+spotJobs.length
               return (
                 <div className="ex-duo">
                   <button type="button" className="ex-tile" onClick={()=>goToTab(pendingClaims||!pendingEquipment?'transport':'equipment')}>
@@ -1481,7 +1552,7 @@ export default function EmployeePortal() {
                     <strong>{pendingClaims+pendingEquipment}</strong>
                     <small>{fill(e.pendingBreakdown,{transport:pendingClaims,equipment:pendingEquipment})}</small>
                   </button>
-                  <button type="button" className="ex-tile is-blue" onClick={()=>goToTab(spotJobs.length&&!unreadMsgs?'spots':'chat')}>
+                  <button type="button" className="ex-tile is-blue" onClick={()=>setBellOpen(true)}>
                     <span>{e.notifications}</span>
                     <b aria-hidden="true">🔔</b>
                     <small>{fill(e.unreadCount,{n:notifications})}</small>
@@ -1929,6 +2000,7 @@ export default function EmployeePortal() {
         )}
 
         {/* ACHIEVEMENTS */}
+        {tab==='availability'&&<TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />}
         {tab==='availability'&&(
           <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
         )}

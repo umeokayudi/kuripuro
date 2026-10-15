@@ -9,10 +9,12 @@ const steps = [
   ['npm run test:work-kpis', 'work-kpis'],
   ['npm run test:client-care', 'client-care'],
   ['npm run test:availability', 'availability'],
+  ['npm run test:schedule', 'schedule generator'],
   ['npm run test:sales-kpi', 'sales-kpi'],
   ['npm run test:sales-insights', 'sales-insights'],
   ['npm run test:mitsumori', 'mitsumori'],
   ['npm run test:ai-guard', 'ai-guard'],
+  ['npm run test:tool-loop', 'tool-loop'],
   ['npm run test:safety-net', 'safety-net'],
   ['npm run test:deep-clean', 'deep-clean'],
   ['npm run test:portal-auth', 'portal-auth'],
@@ -22,6 +24,9 @@ const steps = [
   ['npm run test:employee-pay', 'employee-pay'],
   ['npm run test:employee-theme', 'employee-theme'],
   ['npm run test:spot-contract', 'spot-contract'],
+  ['npm run test:nfc-clock', 'nfc-clock'],
+  ['npm run test:jobs-period', 'jobs-period'],
+  ['npm run test:maps-link', 'maps-link'],
 ]
 
 console.log('=== KuriPuro full test suite ===\n')

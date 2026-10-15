@@ -3,6 +3,7 @@
 // pra poder consultar e alterar dados no Supabase a partir de linguagem natural.
 
 import { API_BUILD } from './_gemini.js'
+import { transcribeAudio } from './_transcribe.js'
 import { runGeminiToolLoop } from './_tool-loop.js'
 import { requireSalesSession } from './_salesSession.js'
 import {
@@ -215,6 +216,7 @@ export default async function handler(req, res) {
   if (!admin) return
 
   if (req.body?.authorize) return authorizeChanges(req, res, admin)
+  if (req.body?.transcribe) return transcribeAudio(res, req.body.transcribe)
 
   const messages = Array.isArray(req.body?.messages) ? trimHistory(req.body.messages) : null
   if (!messages?.length) {
