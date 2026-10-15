@@ -48,6 +48,7 @@ const AdminAI = lazy(() => import('./pages/AdminAI'))
 const SalespersonPortal = lazy(() => import('./pages/SalespersonPortal'))
 const MarketingPortal = lazy(() => import('./pages/MarketingPortal'))
 const SalesTeam = lazy(() => import('./pages/SalesTeam'))
+const SalesFunnelPage = lazy(() => import('./pages/SalesFunnelPage'))
 const Marketing = lazy(() => import('./pages/Marketing'))
 const Users = lazy(() => import('./pages/Users'))
 const Partners = lazy(() => import('./pages/Partners'))
@@ -92,6 +93,7 @@ const PAGE_KEYS = {
   '/contracts': 'contracts',
   '/faturas': 'faturas',
   '/mitsumori': 'mitsumori',
+  '/sales-funnel': 'salesFunnel',
   '/sales-team': 'salesTeam',
   '/marketing': 'marketing',
   '/payments': 'payments',
@@ -269,6 +271,7 @@ function AppContent() {
               <Route path="/contracts" element={<ServiceContracts />} />
               <Route path="/faturas" element={<Faturas />} />
               <Route path="/mitsumori" element={<Mitsumori />} />
+              <Route path="/sales-funnel" element={<SalesFunnelPage />} />
               <Route path="/sales-team" element={<SalesTeam />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/payments" element={<Payments />} />

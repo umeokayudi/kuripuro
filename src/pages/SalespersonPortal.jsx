@@ -9,6 +9,8 @@ import { RESPONSE_TAGS, alertCounts, followupQueue, goalFor, monthOf, monthResul
 import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
 import SellerContractCommissions from '../components/SellerContractCommissions'
+import SalesFunnel, { buildDeals } from '../components/SalesFunnel'
+import ClientPage from '../components/ClientPage'
 
 const COPY = {
   en: {
@@ -125,8 +127,7 @@ export default function SalespersonPortal() {
   const [cardPreview, setCardPreview] = useState('')
   const [cardUrl, setCardUrl] = useState('')
   const [editingLead, setEditingLead] = useState(false)
-  const [leadSearch, setLeadSearch] = useState('')
-  const [stageFilter, setStageFilter] = useState('all')
+  const [dealView, setDealView] = useState(null)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -234,7 +235,7 @@ export default function SalespersonPortal() {
     try {
       await post({ action: 'save-lead', id: leadId || undefined, lead })
       toast.success(c.leadSaved)
-      if (leadId) { setEditingLead(false) } else { setLead(blankLead()); setCardPreview(''); setSheet(''); setTab('leads') }
+      if (leadId) { setEditingLead(false); setSheet('') } else { setLead(blankLead()); setCardPreview(''); setSheet(''); setTab('leads') }
     } catch (error) { toast.error(error.message) }
     finally { setSaving(false) }
   }
@@ -405,7 +406,9 @@ export default function SalespersonPortal() {
     }
   }
 
-  const markFollowup = row => { editLead(row); setContactLeadId(row.id) }
+  const openDeal = (row, contact = false) => setDealView({ id: row.id, contact })
+  const markFollowup = row => openDeal(row, true)
+  const openEditLead = row => { setLead({ ...blankLead(), ...row }); setLeadId(row.id); setEditingLead(true); setContactLeadId(''); setSheet('lead') }
 
   const openVisit = row => {
     setApproach({ ...blankApproach(), ...(row ? { lead_id: row.id, company_name: row.company_name || '', site_name: row.site_name || '', contact_name: row.contact_name || '', place: row.site_name || row.company_name || '' } : {}) })
@@ -430,15 +433,14 @@ export default function SalespersonPortal() {
   const monthLeads = leads.filter(row => String(row.first_contact_date || row.created_at || '').startsWith(thisMonth)).length
   const monthVisits = (data?.approaches || []).filter(row => String(row.work_date || '').startsWith(thisMonth)).length
   const monthQuotes = (data?.quotes || []).filter(row => String(row.created_at || '').startsWith(thisMonth)).length
-  const q = leadSearch.trim().toLowerCase()
-  const visibleLeads = leads.filter(row => (stageFilter === 'all' || row.stage === stageFilter) && (!q || [row.company_name, row.site_name, row.contact_name, row.address, row.contact_phone].some(v => String(v || '').toLowerCase().includes(q))))
   const selectedLead = leads.find(row => row.id === leadId)
+  const deals = useMemo(() => buildDeals(data, today), [data, today])
   const dayState = todayRow?.closed_at ? 'closed' : todayRow?.started_at ? 'working' : 'idle'
 
   const LeadRow = ({ row, info, action }) => {
     const mapUrl = leadMapUrl(row)
     return <div className="sp-lead-row">
-      <button type="button" className="sp-lead-main" onClick={() => editLead(row)}>
+      <button type="button" className="sp-lead-main" onClick={() => openDeal(row)}>
         <span className={`sp-stage-dot is-${row.stage}`} aria-hidden="true" />
         <span className="sp-lead-text">
           <strong>{row.site_name || row.company_name}</strong>
@@ -563,14 +565,9 @@ export default function SalespersonPortal() {
           </section>
         </div>}
 
-        {tab === 'leads' && <div className="fa-stack">
+        {tab === 'leads' && <div className="fa-stack sp-funnel-tab">
           <div className="fa-screen-head"><h2>{c.leads}</h2><button type="button" className="fa-btn fa-btn-primary fa-btn-sm" onClick={openNewLead}>+ {c.newLeadShort}</button></div>
-          <input className="fa-search" type="search" placeholder={c.search} value={leadSearch} onChange={e => setLeadSearch(e.target.value)} />
-          <div className="sp-chip-row is-scroll">{['all', ...SELLER_STAGES, 'won', 'lost'].map(key => { const n = key === 'all' ? leads.length : leads.filter(row => row.stage === key).length; return <button type="button" key={key} className={`fa-chip${stageFilter === key ? ' is-active' : ''}`} onClick={() => setStageFilter(key)}>{key === 'all' ? c.all : c.stages[key]} <b>{n}</b></button> })}</div>
-          <section className="fa-card is-list">
-            {visibleLeads.map(row => <LeadRow key={row.id} row={row} info={statusOf.get(row.id)} />)}
-            {visibleLeads.length === 0 && <p className="fa-muted">{c.noLeads}</p>}
-          </section>
+          <SalesFunnel data={data} lang={lang} today={today} onChanged={load} onAddLead={openNewLead} openLeadId={dealView?.id || ''} onOpenLead={id => setDealView(id ? { id } : null)} />
         </div>}
 
         {tab === 'followups' && <div className="fa-stack">
@@ -639,6 +636,9 @@ export default function SalespersonPortal() {
           <SellerContractCommissions data={data} lang={lang} />
         </div>}
       </>}
+
+      {dealView && deals.find(d => d.lead.id === dealView.id) && <ClientPage key={dealView.id} deal={deals.find(d => d.lead.id === dealView.id)} data={data} lang={lang} today={today}
+        startWithContact={dealView.contact} onClose={() => setDealView(null)} onChanged={load} onEdit={openEditLead} onLogVisit={row => openVisit(row)} />}
 
       {sheet === 'newLead' && <Sheet title={c.addLead} onClose={() => !busyAi && !saving && setSheet('')}>
         <form onSubmit={saveLead} className="sp-form">
@@ -716,7 +716,7 @@ export default function SalespersonPortal() {
 
       {sheet === 'bell' && <Sheet title={c.notifications} onClose={() => setSheet('')}>
         {(counts.overdue + counts.today) > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setFollowFilter('action'); setTab('followups') }}><span aria-hidden="true">↻</span><div><strong>{f.alertTitle}</strong><small>{[counts.overdue && `${counts.overdue} ${f.alertOverdue}`, counts.today && `${counts.today} ${f.alertToday}`].filter(Boolean).join(' · ')}</small></div><b>›</b></button>}
-        <SalesInbox lang={lang} notifications={data?.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) editLead(row) }} />
+        <SalesInbox lang={lang} notifications={data?.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) { setSheet(''); openDeal(row) } }} />
       </Sheet>}
 
       {sheet === 'ai' && <Sheet title={c.aiReview} onClose={() => setSheet('')}>

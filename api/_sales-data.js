@@ -279,7 +279,47 @@ async function getAction(db, user, action, query = {}) {
     if (error) throw error
     return { items:data || [] }
   }
+  if (action === 'deal') return loadDeal(db, user, String(query.lead_id || ''))
   throw Object.assign(new Error('Ação de leitura inválida.'), { status: 400 })
+}
+
+// One client's whole story for the client page: quotes, contract, and once the
+// contract is active, the services done/scheduled and the invoices.
+async function loadDeal(db, user, leadId) {
+  const notFound = () => Object.assign(new Error('Cliente não encontrado nesta conta.'), { status: 404 })
+  if (!leadId || (user.role === 'salesperson' && user.team === 'marketing')) throw notFound()
+  let leadQuery = db.from('sales_leads').select('*').eq('id', leadId)
+  if (user.role !== 'admin') leadQuery = leadQuery.eq('salesperson_id', user.id)
+  const { data: lead, error } = await leadQuery.maybeSingle()
+  if (error) throw error
+  if (!lead) throw notFound()
+  const [quotesRes, subsRes] = await Promise.all([
+    db.from('mitsumori').select('id,quote_number,status,subtotal,tax_amount,total,tax_rate,issue_date,valid_until,frequency,hours_per_visit,expected_start,created_at,sent_at,decided_at,decision_reason,salesperson_id,items:mitsumori_items(description,quantity,unit_price,total)').eq('lead_id', lead.id).order('created_at', { ascending: false }),
+    db.from('sales_contract_submissions').select('*').eq('lead_id', lead.id).order('created_at', { ascending: false }),
+  ])
+  if (quotesRes.error) throw quotesRes.error
+  if (subsRes.error) throw subsRes.error
+  const submissions = subsRes.data || []
+  const serviceIds = submissions.map(r => r.service_contract_id).filter(Boolean)
+  let services = []
+  if (serviceIds.length) {
+    const res = await db.from('service_contracts').select('id,client_id,location_name,location_address,service_type,billing_type,monthly_revenue,visits_per_month,hours_per_visit,days_of_week,billing_day,is_active,created_at').in('id', serviceIds)
+    services = res.data || []
+  }
+  const clientId = services.find(r => r.client_id)?.client_id || null
+  let client = null, jobs = [], invoices = []
+  if (clientId) {
+    const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10)
+    const [clientRes, jobsRes, invRes] = await Promise.all([
+      db.from('clients').select('id,company_name,contact_name,phone,email,address,monthly_revenue,is_active,created_at,manager_name,manager_phone,manager_email').eq('id', clientId).maybeSingle(),
+      db.from('jobs').select('id,title,scheduled_date,scheduled_time,employee_name,status,started_at,completed_at,job_category').eq('client_id', clientId).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(80),
+      db.from('faturas').select('id,period_start,period_end,issue_date,due_date,total,status,paid_at,payment_method').eq('client_id', clientId).order('issue_date', { ascending: false }).limit(24),
+    ])
+    client = clientRes.data || null
+    jobs = jobsRes.error ? [] : (jobsRes.data || [])
+    invoices = invRes.error ? [] : (invRes.data || [])
+  }
+  return { lead, quotes: quotesRes.data || [], submissions, services, client, jobs, invoices }
 }
 
 // One e-mail = one login. The sign-in checks admins and employees before sellers,
@@ -634,13 +674,20 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'submit-contract') {
-    if (admin) return jsonError(res, 403, 'A proposta deve ser enviada pelo acesso do vendedor.')
+    // Sellers send their own clients; an admin can also prepare one for the seller.
+    // Without the signed PDF it is saved as a draft (step "generate contract"), and
+    // attaching the signed PDF later sends it to the admin for approval.
     const input = body.contract || {}
-    const { data: lead, error: leadErr } = await db.from('sales_leads').select('id,company_name,site_name,address,contact_name,salesperson_id').eq('id', input.lead_id).eq('salesperson_id', own).maybeSingle()
+    let leadQuery = db.from('sales_leads').select('id,company_name,site_name,address,contact_name,salesperson_id').eq('id', input.lead_id)
+    if (!admin) leadQuery = leadQuery.eq('salesperson_id', own)
+    const { data: lead, error: leadErr } = await leadQuery.maybeSingle()
     if (leadErr) throw leadErr
     if (!lead) return jsonError(res, 404, 'Lead não encontrado nesta conta.')
+    if (admin && !lead.salesperson_id) return jsonError(res, 400, 'Atribua um vendedor a este cliente antes de gerar o contrato.')
     const pdfPath = String(input.signed_pdf_object_path || '')
-    if (!pdfPath.startsWith(`contracts/${own}/`) || !pdfPath.endsWith('.pdf')) return jsonError(res, 400, 'Anexe o PDF do contrato assinado antes de enviar.')
+    const signed = Boolean(pdfPath)
+    if (signed && (!pdfPath.startsWith(`contracts/${own}/`) || !pdfPath.endsWith('.pdf'))) return jsonError(res, 400, 'Anexe o PDF do contrato assinado antes de enviar.')
+    const ownerId = admin ? lead.salesperson_id : own
     const billingType = input.billing_type === 'per_visit' ? 'per_visit' : 'fixed_monthly'
     const unitPrice = num(input.price_per_visit || 0)
     const visitsPerMonth = Math.round(num(input.visits_per_month || 0))
@@ -651,7 +698,7 @@ async function postAction(db, user, body, res) {
     if (commissionType === 'percent' && rate > 100) return jsonError(res, 400, 'A comissão percentual deve ser de até 100%.')
     const extra = commission(base, commissionType, rate)
     const payload = {
-      salesperson_id: own, lead_id: lead.id, quote_id: input.quote_id || null, status: 'pending_review',
+      salesperson_id: ownerId, lead_id: lead.id, quote_id: input.quote_id || null, status: signed ? 'pending_review' : 'draft',
       company_name: lead.company_name, site_name: String(input.site_name || lead.site_name || lead.company_name),
       address: String(input.address || lead.address || ''), contact_name: String(input.contact_name || lead.contact_name || ''),
       service_type: String(input.service_type || 'Basic Cleaning'), billing_type: billingType,
@@ -660,13 +707,23 @@ async function postAction(db, user, body, res) {
       price_per_visit: unitPrice, visits_per_month: visitsPerMonth,
       hours_per_visit: num(input.hours_per_visit || 2), days_of_week: Array.isArray(input.days_of_week) ? input.days_of_week.filter(x => typeof x === 'string').slice(0, 7) : [],
       billing_day: Math.min(28, Math.max(1, Math.round(num(input.billing_day || 10)))), tax_rate: Math.round(num(input.tax_rate ?? 10)),
-      signed_pdf_object_path: pdfPath, signed_pdf_name: String(input.signed_pdf_name || 'signed-contract.pdf').slice(0, 160),
-      submitted_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      signed_pdf_object_path: signed ? pdfPath : null, signed_pdf_name: signed ? String(input.signed_pdf_name || 'signed-contract.pdf').slice(0, 160) : null,
+      submitted_at: signed ? new Date().toISOString() : null, updated_at: new Date().toISOString(),
     }
-    const { data, error } = await db.from('sales_contract_submissions').insert(payload).select().single()
+    let data, error
+    if (input.id) {
+      // Edit a draft (or one the admin sent back) instead of creating a second contract.
+      let q = db.from('sales_contract_submissions').update(payload).eq('id', input.id).in('status', ['draft', 'changes_requested'])
+      if (!admin) q = q.eq('salesperson_id', own)
+      ;({ data, error } = await q.select().maybeSingle())
+      if (!error && !data) return jsonError(res, 409, 'Este contrato já foi enviado e não pode mais ser editado.')
+    } else {
+      ;({ data, error } = await db.from('sales_contract_submissions').insert(payload).select().single())
+    }
     if (error) throw error
+    if (!signed) return { contract: data }
     await db.from('sales_notifications').insert([
-      { salesperson_id: own, audience: 'seller', event_type: 'contract_submitted', title: 'Contrato enviado para aprovação', body: lead.company_name, lead_id: lead.id, contract_submission_id: data.id },
+      { salesperson_id: ownerId, audience: 'seller', event_type: 'contract_submitted', title: 'Contrato enviado para aprovação', body: lead.company_name, lead_id: lead.id, contract_submission_id: data.id },
       { salesperson_id: null, audience: 'admin', event_type: 'contract_review', title: 'Novo contrato para revisar', body: `${lead.company_name} · ¥${Math.round(base + extra).toLocaleString()}/mês`, lead_id: lead.id, contract_submission_id: data.id },
     ])
     return { contract: data }
