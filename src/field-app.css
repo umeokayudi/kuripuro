@@ -418,3 +418,42 @@ body.fa-sheet-open { overflow: hidden; }
 .fn-timeline li > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .fn-timeline strong { font-size: 13px; } .fn-timeline small { color: var(--fa-muted); font-size: 11.5px; }
 .fn-timeline p { margin: 4px 0 0; font-size: 12.5px; color: #3a4357; background: #f6f8fc; border: 1px solid #edf0f6; border-radius: 10px; padding: 7px 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Seller home: follow-up dates, numbers, commissions, clients */
+.sh-fu { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--fa-line); }
+.sh-fu:first-of-type { border-top: 0; }
+.sh-fu button { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; color: inherit; font: inherit; }
+.sh-fu-date { display: flex; flex-direction: column; align-items: center; border-radius: 12px; padding: 6px 4px !important; background: #f2f5ff !important; text-align: center !important; }
+.sh-fu-date b { font-size: 15px; color: #3557f5; }
+.sh-fu-date small { font-size: 10.5px; color: var(--fa-muted); font-weight: 600; }
+.sh-fu.is-overdue .sh-fu-date { background: #fff1f1 !important; } .sh-fu.is-overdue .sh-fu-date b, .sh-fu.is-overdue .sh-fu-date small { color: #d93636; }
+.sh-fu.is-today .sh-fu-date { background: #fff6e6 !important; } .sh-fu.is-today .sh-fu-date b, .sh-fu.is-today .sh-fu-date small { color: #c27400; }
+.sh-fu-main { display: flex; flex-direction: column; min-width: 0; }
+.sh-fu-main strong { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-fu-main small { color: var(--fa-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-seg { margin-left: auto; }
+.sh-seg button { padding: 5px 10px; font-size: 12px; }
+.sh-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sh-tile { border-radius: 14px; padding: 10px; background: #f4f6fb; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sh-tile strong { font-size: 20px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-tile span { font-size: 11.5px; color: var(--fa-muted); font-weight: 600; }
+.sh-tile.is-blue { background: #eef2ff; } .sh-tile.is-blue strong { color: #3557f5; }
+.sh-tile.is-purple { background: #f4efff; } .sh-tile.is-purple strong { color: #7c4ce0; }
+.sh-tile.is-teal { background: #e9faf6; } .sh-tile.is-teal strong { color: #0f9f8a; }
+.sh-tile.is-amber { background: #fff6e6; } .sh-tile.is-amber strong { color: #c27400; }
+.sh-tile.is-green { background: #ecfbf2; } .sh-tile.is-green strong { color: #16a34a; }
+.sh-tile.is-dark { background: #172033; } .sh-tile.is-dark strong { color: #fff; font-size: 17px; } .sh-tile.is-dark span { color: #b7c0d4; }
+.sh-rate { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12.5px; color: var(--fa-muted); font-weight: 600; }
+.sh-bar { flex: 1; height: 8px; border-radius: 99px; background: #edf0f6; overflow: hidden; }
+.sh-bar i { display: block; height: 100%; background: linear-gradient(90deg, #0f9f8a, #16a34a); border-radius: 99px; }
+.sh-rate b { color: var(--fa-text); }
+.sh-comm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sh-comm-grid > div { border: 1px solid var(--fa-line); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.sh-comm-grid span { font-size: 11.5px; color: var(--fa-muted); font-weight: 600; }
+.sh-comm-grid strong { font-size: 16px; }
+.sh-comm-grid .is-main { grid-column: 1 / -1; background: linear-gradient(135deg, #16a34a, #0f9f6e); border: 0; color: #fff; }
+.sh-comm-grid .is-main span { color: #d6f5e3; } .sh-comm-grid .is-main strong { font-size: 24px; }
+.sh-search { width: 100%; margin-bottom: 8px; }
+.sh-clients { background: none; padding: 0; }
+.sh-clients .fn-list-row { width: 100%; }
+@media (max-width: 380px) { .sh-tiles { grid-template-columns: repeat(2, 1fr); } }

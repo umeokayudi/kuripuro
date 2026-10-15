@@ -9,6 +9,7 @@ import { RESPONSE_TAGS, alertCounts, followupQueue, goalFor, monthOf, monthResul
 import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
 import SellerContractCommissions from '../components/SellerContractCommissions'
+import { ClientList, CommissionsCard, MyNumbers, NextFollowups } from '../components/SellerHome'
 import SalesFunnel, { buildDeals } from '../components/SalesFunnel'
 import ClientPage from '../components/ClientPage'
 
@@ -427,12 +428,6 @@ export default function SalespersonPortal() {
 
   const Field = ({ label, field, value = lead[field], onChange = e => setLead(prev => ({ ...prev, [field]: e.target.value })), type = 'text', ...rest }) => <label className="form-group"><span>{label}</span><input type={type} value={value ?? ''} onChange={onChange} {...rest} /></label>
   const bellCount = (data?.notifications?.length || 0) + counts.overdue + counts.today
-  const todo = queue.filter(row => ['overdue', 'today'].includes(row.info.status))
-  const commissionDue = Number(metrics.commission_pending || 0) + Number(metrics.spot_commission_due || 0)
-  const thisMonth = today.slice(0, 7)
-  const monthLeads = leads.filter(row => String(row.first_contact_date || row.created_at || '').startsWith(thisMonth)).length
-  const monthVisits = (data?.approaches || []).filter(row => String(row.work_date || '').startsWith(thisMonth)).length
-  const monthQuotes = (data?.quotes || []).filter(row => String(row.created_at || '').startsWith(thisMonth)).length
   const selectedLead = leads.find(row => row.id === leadId)
   const deals = useMemo(() => buildDeals(data, today), [data, today])
   const dayState = todayRow?.closed_at ? 'closed' : todayRow?.started_at ? 'working' : 'idle'
@@ -501,6 +496,8 @@ export default function SalespersonPortal() {
     { key: 'more', label: c.more, icon: '☰' },
   ]
   const menuItems = [
+    { key: 'clients', icon: '👥', label: lang === 'ja' ? '自分の顧客' : 'My clients', hint: lang === 'ja' ? '全顧客と状況' : 'Every client and its stage' },
+    { key: 'commissions', icon: '💴', label: lang === 'ja' ? 'コミッションと支払い' : 'Commissions & payments', hint: lang === 'ja' ? '受取予定・受取済み' : 'To receive and received' },
     { key: 'approaches', icon: '📝', label: c.menuReports, hint: c.menuHint.approaches },
     { key: 'contracts', icon: '✍️', label: c.menuContracts, hint: c.menuHint.contracts },
     { key: 'goals', icon: '🎯', label: c.menuGoals, hint: c.menuHint.goals },
@@ -538,31 +535,21 @@ export default function SalespersonPortal() {
             <button type="button" className="sp-cta" onClick={() => setTab('followups')}><span className="sp-cta-icon" aria-hidden="true">↻</span><span><strong>{c.followups}</strong>{counts.needsAction > 0 && <small>{counts.needsAction}</small>}</span></button>
           </div>
 
-          <section className="fa-card">
-            <div className="fa-card-head"><h2>{c.todo}</h2>{todo.length > 0 && <span className="fa-pill is-alert">{todo.length}</span>}</div>
-            {todo.slice(0, 6).map(({ lead: row, info }) => <LeadRow key={row.id} row={row} info={info} action={<button type="button" className="fa-btn fa-btn-sm fa-btn-primary" onClick={() => markFollowup(row)}>{f.logContact}</button>} />)}
-            {todo.length === 0 && <p className="fa-muted">{c.allDone}</p>}
-            {todo.length > 6 && <button type="button" className="fa-link" onClick={() => setTab('followups')}>{c.seeAll} ›</button>}
-          </section>
-
-          <div className="fa-section-title">{c.monthOverview}</div>
-          <div className="fa-tiles">
-            <div className="fa-tile is-blue"><strong>{monthLeads}</strong><span>{c.leadsN}</span></div>
-            <div className="fa-tile is-purple"><strong>{monthVisits}</strong><span>{c.approachesN}</span></div>
-            <div className="fa-tile is-amber"><strong>{monthQuotes}</strong><span>{c.quotes}</span></div>
-            <div className="fa-tile is-green"><strong>{yen(commissionDue)}</strong><span>{c.commission}</span></div>
-          </div>
+          <NextFollowups queue={queue} lang={lang} onOpen={row => openDeal(row)} onLog={markFollowup} logLabel={f.logContact} />
+          <MyNumbers data={data} today={today} lang={lang} />
+          <CommissionsCard data={data} metrics={metrics} lang={lang} onDetails={() => setTab('commissions')} />
+          <ClientList deals={deals} lang={lang} onOpen={row => openDeal(row)} limit={6} onSeeAll={() => setTab('clients')} seeAllLabel={c.seeAll} />
 
           <section className="fa-card">
             <div className="fa-card-head"><h2>{f.goalsMonth}</h2><button type="button" className="fa-link" onClick={() => setTab('goals')}>{c.open} ›</button></div>
             <GoalBars goal={myGoal} actual={myResults} today={today} f={f} compact />
           </section>
+        </div>}
 
-          <section className="fa-card">
-            <div className="fa-card-head"><h2>{c.leads}</h2><button type="button" className="fa-link" onClick={() => setTab('leads')}>{c.seeAll} ›</button></div>
-            {leads.slice(0, 5).map(row => <LeadRow key={row.id} row={row} />)}
-            {leads.length === 0 && <p className="fa-muted">{c.noLeads}</p>}
-          </section>
+        {tab === 'clients' && <div className="fa-stack"><ClientList deals={deals} lang={lang} onOpen={row => openDeal(row)} /></div>}
+        {tab === 'commissions' && <div className="fa-stack">
+          <CommissionsCard data={data} metrics={metrics} lang={lang} />
+          <SellerContractCommissions data={data} lang={lang} />
         </div>}
 
         {tab === 'leads' && <div className="fa-stack sp-funnel-tab">
