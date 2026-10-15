@@ -73,7 +73,7 @@ const TOOLS = [{
           select: { type: 'STRING', description: 'Colunas separadas por vírgula ou "*"' },
           filters: { type: 'OBJECT', description: 'Filtros: igualdade {"status":"assigned"} ou ilike {"full_name":{"op":"ilike","value":"%nome%"}}' },
           order: { type: 'STRING', description: 'Ordenação PostgREST, ex: scheduled_date.asc' },
-          limit: { type: 'NUMBER', description: 'Máximo de registros (padrão 50)' },
+          limit: { type: 'NUMBER', description: 'Máximo de registros (padrão 50). Peça só as colunas necessárias em select para responder mais rápido.' },
         },
         required: ['table'],
       },
