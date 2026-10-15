@@ -1944,3 +1944,23 @@ body { background: var(--hq-bg); }
   .kp-users-actions{width:100%;justify-content:flex-end}
   .kp-users-meta{white-space:normal;overflow-wrap:anywhere}
 }
+
+/* v1.0.44 · Users edit dialog */
+.kp-dialog-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.kp-dialog{width:100%;max-width:520px;max-height:calc(100vh - 32px);overflow:auto;background:var(--surface);color:var(--text);border-radius:18px;padding:20px;box-shadow:0 20px 60px rgba(15,23,42,.25)}
+.kp-dialog .form-group{margin-bottom:12px}
+.kp-dialog-x{border:0;background:var(--surface2);color:var(--text2);width:32px;height:32px;border-radius:50%;font-size:20px;line-height:1;cursor:pointer}
+@media (max-width:640px){
+  .kp-dialog-backdrop{align-items:flex-end;padding:0}
+  .kp-dialog{max-width:none;border-radius:18px 18px 0 0;max-height:92vh;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+}
+/* v1.0.44 · Users split by sector */
+.kp-users-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.kp-users-tab{border:1px solid var(--border);background:var(--surface);color:var(--text2);font:600 13px var(--font);padding:8px 14px;border-radius:999px;cursor:pointer}
+.kp-users-tab span{margin-left:6px;font-weight:800;color:var(--text)}
+.kp-users-tab.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.kp-users-tab.active span{color:#fff}
+.kp-users-section{margin-bottom:16px}
+.kp-users-section-head{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
+.kp-users-section-head .kp-type-badge{font-size:13px;padding:4px 12px}
+.kp-users-section-count{font-size:13px;font-weight:700;color:var(--text3)}
