@@ -18,6 +18,7 @@ import { fetchContractSellers } from '../lib/contractSellers'
 import SellerCommissionFields from '../components/SellerCommissionFields'
 import JobsPeriodPanel from '../components/JobsPeriodPanel'
 import { tokyoToday } from '../lib/dates'
+import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
@@ -210,6 +211,7 @@ function DayScheduleView({ onClose }) {
 
   const JobCard = ({ j, idx }) => {
     const stl = statusStyle(j.status, st)
+    const missed = isMissedJob(j)
     const locName = locationNameFromTitle(j.title)
     const ctype = getCleaningType(j)
     const ctypeCfg = CLEANING_TYPES[ctype]
@@ -238,9 +240,10 @@ function DayScheduleView({ onClose }) {
               <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 8 }}>
                 🕐 {j.scheduled_time || '00:30'}
               </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: stl.text, background: stl.bg, padding: '4px 10px', borderRadius: 8 }}>
-                {stl.label}
+              <span style={{ fontSize: 12, fontWeight: 600, color: missed ? '#fca5a5' : stl.text, background: missed ? 'rgba(248,113,113,0.12)' : stl.bg, padding: '4px 10px', borderRadius: 8 }}>
+                {missed ? jt.incomplete : stl.label}
               </span>
+              {isRetroJob(j) && <span className="badge badge-amber" title={jt.retroBadgeHint}>{jt.retroBadge}</span>}
               {j.value > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value).toLocaleString()}</span>}
             </div>
             {j.description && (
@@ -758,7 +761,10 @@ export default function Jobs() {
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                  <span className={`badge ${statusColor(j.status)}`}>{st[j.status] || j.status}</span>
+                  {isMissedJob(j)
+                    ? <span className="badge badge-red">{jt.incomplete}</span>
+                    : <span className={`badge ${statusColor(j.status)}`}>{st[j.status] || j.status}</span>}
+                  {isRetroJob(j) && <span className="badge badge-amber" title={jt.retroBadgeHint}>{jt.retroBadge}</span>}
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value || j.spot_value || 0).toLocaleString()}</span>
                 </div>
               </div>
