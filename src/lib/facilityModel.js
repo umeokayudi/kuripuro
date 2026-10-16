@@ -280,3 +280,62 @@ export function dedupeRecommendations(candidates, existing = []) {
 }
 
 export const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 }
+
+/** Data (YYYY-MM-DD) mais recente entre a ficha do elemento e o histórico de limpezas. */
+export function lastServicedFromLog(el, logs = []) {
+  let best = el?.last_serviced_at || null
+  for (const l of logs) {
+    if (l.element_id !== el?.id || !l.service_date) continue
+    const d = String(l.service_date).slice(0, 10)
+    if (!best || d > best) best = d
+  }
+  return best
+}
+
+/** Layout com last_serviced_at atualizado a partir do histórico (facility_service_log). */
+export function withServiceLog(layout, logs = []) {
+  if (!logs.length) return layout
+  return {
+    ...layout,
+    elements: layout.elements.map(el => {
+      const last = lastServicedFromLog(el, logs)
+      return last === el.last_serviced_at ? el : { ...el, last_serviced_at: last }
+    }),
+  }
+}
+
+/**
+ * Situação de manutenção do elemento para pintar o mapa:
+ * 'overdue' (passou do intervalo) · 'due' (vence em breve) · 'ok' · 'none' (sem registro) · null (sem limpeza recorrente).
+ */
+export function elementStatus(el, now = new Date()) {
+  const kind = ELEMENT_KINDS[el?.kind] || ELEMENT_KINDS.other
+  const interval = el?.service_interval_days || kind.intervalDays
+  if (!interval || !kind.service) return null
+  if (!el.last_serviced_at) return 'none'
+  const days = daysBetween(el.last_serviced_at, now)
+  if (days >= interval) return 'overdue'
+  if (days >= interval * 0.85) return 'due'
+  return 'ok'
+}
+
+export function statusMap(layout, now = new Date()) {
+  const out = new Map()
+  for (const el of layout.elements || []) {
+    const st = elementStatus(el, now)
+    if (st) out.set(el.id, st)
+  }
+  return out
+}
+
+/** Elementos com serviço aceito pelo cliente (ainda não executado) = tarefas para o funcionário. */
+export function todoElementIds(recs = []) {
+  return new Set(recs.filter(r => r.status === 'accepted' && r.element_id).map(r => r.element_id))
+}
+
+/** Histórico de um elemento, mais recente primeiro. */
+export function elementHistory(elementId, logs = []) {
+  return logs
+    .filter(l => l.element_id === elementId)
+    .sort((a, b) => String(b.service_date).localeCompare(String(a.service_date)) || String(b.created_at || '').localeCompare(String(a.created_at || '')))
+}

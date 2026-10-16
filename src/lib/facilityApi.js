@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { apiPost } from './apiFetch'
-import { normalizeLayout, ruleRecommendations, dedupeRecommendations } from './facilityModel'
+import { normalizeLayout, ruleRecommendations, dedupeRecommendations, withServiceLog, ELEMENT_KINDS } from './facilityModel'
+import { uploadJobPhoto } from './uploadPhoto'
 
 export function isMissingFacilityTable(error) {
   const msg = error?.message || ''
@@ -114,7 +115,9 @@ async function recentHistory(clientId, locationName) {
  */
 export async function generateRecommendations(model) {
   const existing = await listRecommendations({ modelId: model.id })
-  const rules = ruleRecommendations(model.layout).map(r => ({ ...r, source: 'rule' }))
+  const logs = await listServiceLog({ modelId: model.id })
+  const layout = withServiceLog(model.layout, logs)
+  const rules = ruleRecommendations(layout).map(r => ({ ...r, source: 'rule' }))
 
   let ai = []
   let aiError = null
@@ -122,8 +125,11 @@ export async function generateRecommendations(model) {
     const history = await recentHistory(model.client_id, model.location_name)
     const resp = await apiPost('/api/admin-ai', {
       facilityAction: 'recommend',
-      layout: model.layout,
-      history,
+      layout,
+      history: [
+        ...logs.slice(0, 40).map(l => ({ date: l.service_date, title: `${l.service || 'Cleaning'} — ${l.element_name || ''}`, status: 'completed' })),
+        ...history,
+      ],
       locationName: model.location_name || model.name,
     })
     const body = await resp.json().catch(() => ({}))
@@ -182,5 +188,54 @@ export async function decideRecommendation(rec, decision, { by, clientUserId } =
 
 export async function deleteRecommendation(id) {
   const { error } = await supabase.from('facility_recommendations').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** Histórico de limpezas por equipamento (vinculado aos serviços). Sem tabela → lista vazia. */
+export async function listServiceLog({ modelId, clientId, jobId, limit = 300 } = {}) {
+  let q = supabase.from('facility_service_log').select('*').order('service_date', { ascending: false }).order('created_at', { ascending: false }).limit(limit)
+  if (modelId) q = q.eq('model_id', modelId)
+  if (clientId) q = q.eq('client_id', clientId)
+  if (jobId) q = q.eq('job_id', jobId)
+  const { data, error } = await q
+  if (error) return []
+  return data || []
+}
+
+/**
+ * Funcionário (ou admin) registra que limpou um equipamento durante o serviço.
+ * Fotos opcionais; recomendações pendentes/aceitas desse equipamento passam a 'done'.
+ */
+export async function logElementService({ model, element, job, employee, notes, files = [] }) {
+  const photos = []
+  for (const [i, file] of [...files].entries()) {
+    const base = job?.id ? `jobs/${job.id}/facility_${element.id}_${Date.now()}_${i}.jpg` : `facility/${model.id}/${element.id}_${Date.now()}_${i}.jpg`
+    photos.push(await uploadJobPhoto(base, file))
+  }
+  const kind = ELEMENT_KINDS[element.kind] || ELEMENT_KINDS.other
+  const { data, error } = await supabase.from('facility_service_log').insert({
+    model_id: model.id,
+    client_id: model.client_id,
+    location_name: model.location_name || null,
+    element_id: element.id,
+    element_name: element.name,
+    service: kind.service || null,
+    job_id: job?.id || null,
+    employee_id: employee?.id || null,
+    employee_name: employee?.name || null,
+    notes: (notes || '').trim() || null,
+    photos,
+  }).select('*').single()
+  if (error) throw error
+  await supabase.from('facility_recommendations')
+    .update({ status: 'done' })
+    .eq('model_id', model.id)
+    .eq('element_id', element.id)
+    .in('status', ['pending', 'accepted'])
+  return data
+}
+
+export async function deleteServiceLog(id) {
+  const { error } = await supabase.from('facility_service_log').delete().eq('id', id)
   if (error) throw error
 }

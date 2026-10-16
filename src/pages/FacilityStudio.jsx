@@ -18,6 +18,9 @@ import {
   restaurantTemplate,
   areaSquareMeters,
   PRIORITY_ORDER,
+  withServiceLog,
+  statusMap,
+  todoElementIds,
 } from '../lib/facilityModel'
 import {
   checkFacilitySchema,
@@ -28,9 +31,12 @@ import {
   generateRecommendations,
   listModels,
   listRecommendations,
+  listServiceLog,
+  deleteServiceLog,
   saveModel,
 } from '../lib/facilityApi'
 import FacilityScene from '../components/facility/FacilityScene'
+import { StatusLegend } from '../components/facility/FacilityViewer'
 import FacilityItemPopup, { RecommendationCard } from '../components/facility/FacilityItemPopup'
 
 const COLLECTION = { area: 'areas', element: 'elements', wall: 'walls' }
@@ -68,6 +74,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
   const [hints, setHints] = useState('')
   const [busy, setBusy] = useState('')
   const [recs, setRecs] = useState([])
+  const [logs, setLogs] = useState([])
   const [newLocation, setNewLocation] = useState('')
   const [addAreaKind, setAddAreaKind] = useState('kitchen')
   const [addElKind, setAddElKind] = useState('range_hood')
@@ -97,6 +104,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
 
   const loadRecs = useCallback(async (modelId) => {
     try { setRecs(await listRecommendations({ modelId })) } catch { setRecs([]) }
+    setLogs(await listServiceLog({ modelId }))
   }, [])
 
   const openModel = (m) => {
@@ -339,6 +347,15 @@ export default function FacilityStudio({ clients, initialClientId }) {
     setBusy('')
   }
 
+  const removeLog = async (log) => {
+    try {
+      await deleteServiceLog(log.id)
+      setLogs(ls => ls.filter(l => l.id !== log.id))
+    } catch (e) {
+      toast.error(e.message)
+    }
+  }
+
   const removeRec = async (rec) => {
     try {
       await deleteRecommendation(rec.id)
@@ -423,6 +440,9 @@ export default function FacilityStudio({ clients, initialClientId }) {
   }
 
   const layout = current.layout
+  const liveLayout = withServiceLog(layout, logs)
+  const elStatus = statusMap(liveLayout)
+  const todo = todoElementIds(recs)
   const selArea = selected?.type === 'area' ? layout.areas.find(a => a.id === selected.id) : null
   const selEl = selected?.type === 'element' ? layout.elements.find(e => e.id === selected.id) : null
   const selWall = selected?.type === 'wall' ? layout.walls.find(w => w.id === selected.id) : null
@@ -505,7 +525,10 @@ export default function FacilityStudio({ clients, initialClientId }) {
             editable
             onChange={changeItem}
             alerts={alerts}
+            status={elStatus}
+            todo={todo}
           />
+          <StatusLegend t={t} />
           {mode === '2d' && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>{t.dragHint}</div>}
           <div className="fac-toolbar">
             <select value={addAreaKind} onChange={e => setAddAreaKind(e.target.value)} style={{ padding: '5px 8px' }}>
@@ -653,13 +676,33 @@ export default function FacilityStudio({ clients, initialClientId }) {
         </div>
       </div>
 
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="card-title" style={{ marginBottom: 4 }}>📋 {t.historyTitle}</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>{t.historyHint}</div>
+        {logs.length === 0 && <div style={{ fontSize: 13, color: 'var(--text3)' }}>{t.noHistory}</div>}
+        {logs.slice(0, 40).map(l => (
+          <div key={l.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderTop: '1px solid var(--border)', fontSize: 13 }}>
+            <span style={{ fontWeight: 700, minWidth: 84 }}>{l.service_date}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <button type="button" onClick={() => setPreview({ type: 'element', id: l.element_id })} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent, #c19c56)', fontWeight: 700, cursor: 'pointer' }}>{l.element_name}</button>
+              {l.service ? ` · ${l.service}` : ''}
+              <div style={{ color: 'var(--text3)', fontSize: 12 }}>{[l.employee_name, l.job_id ? t.fromJob : null, l.photos?.length ? `📷 ${l.photos.length}` : null].filter(Boolean).join(' · ')}</div>
+              {l.notes && <div style={{ fontSize: 12 }}>{l.notes}</div>}
+            </span>
+            <button type="button" title={t.remove} onClick={() => removeLog(l)} style={{ background: 'none', border: 'none', color: 'inherit', opacity: 0.5, cursor: 'pointer' }}>✕</button>
+          </div>
+        ))}
+      </div>
+
       {preview && (
         <FacilityItemPopup
-          layout={layout}
+          layout={liveLayout}
           item={preview}
           t={t}
           lang={lang}
           recs={recs}
+          logs={logs}
+          todo={todo}
           onClose={() => setPreview(null)}
           onSelectItem={setPreview}
         />

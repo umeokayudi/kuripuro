@@ -6,6 +6,11 @@ import {
   dedupeRecommendations,
   areaForElement,
   perimeterWalls,
+  withServiceLog,
+  elementStatus,
+  statusMap,
+  todoElementIds,
+  elementHistory,
 } from '../src/lib/facilityModel.js'
 import { FACILITY_STATEMENTS, FACILITY_SETUP_SQL } from '../src/lib/facilitySetupSql.js'
 
@@ -78,5 +83,35 @@ assert(deduped.filter(r => r.element_id === 'hood').length === 1, 'candidates de
 // SQL
 assert(FACILITY_STATEMENTS.some(s => s.includes('create table if not exists facility_models')), 'models table SQL')
 assert(FACILITY_SETUP_SQL.includes('facility_recommendations') && !FACILITY_SETUP_SQL.includes(');;'), 'setup SQL rendered')
+
+// v1.0.49: cleaning history from jobs drives last cleaned date, map colours and to-dos
+const histLayout = normalizeLayout({
+  width: 10, depth: 8,
+  elements: [
+    { id: 'hood', kind: 'range_hood', last_serviced_at: '2026-01-01' },
+    { id: 'trap', kind: 'grease_trap' },
+    { id: 'tbl', kind: 'table' },
+  ],
+})
+const logs = [
+  { id: 'l1', element_id: 'hood', service_date: '2026-10-10', created_at: '2026-10-10T01:00:00Z' },
+  { id: 'l2', element_id: 'hood', service_date: '2026-09-01', created_at: '2026-09-01T01:00:00Z' },
+]
+const live = withServiceLog(histLayout, logs)
+const nowH = new Date('2026-10-16T03:00:00Z')
+assert(live.elements.find(e => e.id === 'hood').last_serviced_at === '2026-10-10', 'log date beats older manual date')
+assert(histLayout.elements.find(e => e.id === 'hood').last_serviced_at === '2026-01-01', 'original layout untouched')
+assert(elementStatus(live.elements[0], nowH) === 'ok', 'recently cleaned hood is ok')
+assert(elementStatus(histLayout.elements[0], nowH) === 'overdue', 'hood without log is overdue')
+assert(elementStatus(live.elements[1], nowH) === 'none', 'trap without record = none')
+assert(elementStatus(live.elements[2], nowH) === null, 'table has no recurring cleaning')
+assert(elementStatus({ kind: 'grease_trap', last_serviced_at: '2026-10-03' }, nowH) === 'due', '13 of 15 days = due soon')
+const sm = statusMap(live, nowH)
+assert(sm.get('hood') === 'ok' && !sm.has('tbl'), 'status map')
+assert(!ruleRecommendations(live, nowH).some(r => r.element_id === 'hood'), 'logged cleaning stops the hood recommendation')
+const td = todoElementIds([{ element_id: 'hood', status: 'accepted' }, { element_id: 'trap', status: 'pending' }, { element_id: 'tbl', status: 'done' }])
+assert(td.has('hood') && td.size === 1, 'only accepted recs are to-dos')
+assert(elementHistory('hood', logs)[0].id === 'l1', 'history newest first')
+assert(FACILITY_SETUP_SQL.includes('facility_service_log') && FACILITY_SETUP_SQL.includes("'done'"), 'service log table + done status in SQL')
 
 console.log('✅ Smart Facility model tests passed')

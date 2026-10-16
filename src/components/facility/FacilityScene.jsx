@@ -57,6 +57,8 @@ export default function FacilityScene({
   editable = false,
   onChange,
   alerts,
+  status,
+  todo,
   maxHeight = 520,
 }) {
   const wrapRef = useRef(null)
@@ -219,11 +221,13 @@ export default function FacilityScene({
           const color = elementColor(el.kind)
           const sel = isSel('element', el.id)
           const alert = alerts?.has?.(el.id)
+          const st = status?.get?.(el.id)
+          const stCls = `${st ? ` fac-st-${st}` : ''}${todo?.has?.(el.id) ? ' fac-todo' : ''}`
           if (!is3d) {
             return (
               <div
                 key={el.id}
-                className={`fac-el-2d${sel ? ' sel' : ''}`}
+                className={`fac-el-2d${sel ? ' sel' : ''}${stCls}`}
                 title={el.name}
                 style={{
                   left: el.x * s,
@@ -249,7 +253,7 @@ export default function FacilityScene({
           return (
             <div
               key={el.id}
-              className={`fac-el${sel ? ' sel' : ''}`}
+              className={`fac-el${sel ? ' sel' : ''}${stCls}`}
               title={el.name}
               style={{
                 left: el.x * s,

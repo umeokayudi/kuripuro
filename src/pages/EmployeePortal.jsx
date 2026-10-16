@@ -1255,7 +1255,7 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
-      {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} onClose={()=>setFacilityJob(null)} />}
+      {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} job={facilityJob} employee={{ id: user?.id, name: user?.name }} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
         job={nfcScan.job}
@@ -2136,6 +2136,11 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
               <div style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6,whiteSpace:'pre-line'}}>{activeInstructions}</div>
             </div>
+          )}
+          {hasFacility?.(activeJob)&&(
+            <button type="button" onClick={ev=>{ ev.stopPropagation(); onOpenFacility(activeJob) }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.45)',background:'rgba(193,156,86,0.14)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
+              {facilityLabel}
+            </button>
           )}
           {!activeJob.photo_start_url && (
             <div style={{marginBottom:12}}>
