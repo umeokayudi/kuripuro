@@ -2,6 +2,7 @@
 // Requer SUPABASE_DB_URL na Vercel (Settings → Database → Connection string URI)
 
 import { requireAdminSecretStrict } from './_auth.js'
+import { FACILITY_STATEMENTS } from '../src/lib/facilitySetupSql.js'
 
 const STATEMENTS = [
   `create table if not exists client_users (
@@ -139,6 +140,7 @@ const STATEMENTS = [
   `drop policy if exists "allow_all_equipment_requests" on equipment_requests`,
   `create policy "allow_all_equipment_requests" on equipment_requests for all using (true)`,
   `create index if not exists idx_equipment_requests_employee on equipment_requests(employee_id, created_at desc)`,
+  ...FACILITY_STATEMENTS,
 ]
 
 export default async function handler(req, res) {

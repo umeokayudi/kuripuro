@@ -1,0 +1,222 @@
+.fac-stage {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  perspective: 1600px;
+  background: radial-gradient(ellipse at 50% 30%, #1e3a5f 0%, #0b1726 75%);
+  border-radius: 14px;
+  touch-action: none;
+  user-select: none;
+}
+.fac-stage.fac-2d { perspective: none; background: #0f2135; }
+.fac-floor {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.35s ease;
+  background-color: #16283d;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+  box-shadow: 0 30px 60px rgba(0,0,0,0.45);
+  outline: 2px solid rgba(255,255,255,0.12);
+}
+.fac-2d .fac-floor { transition: none; }
+.fac-area {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+  overflow: hidden;
+  transform-style: preserve-3d;
+}
+.fac-area-label { pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.6); white-space: nowrap; }
+.fac-area.sel { outline: 2px dashed #c19c56; outline-offset: -3px; }
+.fac-wall {
+  position: absolute;
+  transform-origin: 0 0;
+  background: linear-gradient(180deg, rgba(226,232,240,0.95), rgba(148,163,184,0.85));
+  border: 1px solid rgba(15,23,42,0.35);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.fac-2d .fac-wall { background: #e2e8f0; border: none; border-radius: 3px; }
+.fac-wall.sel { background: #c19c56 !important; }
+.fac-el {
+  position: absolute;
+  transform-style: preserve-3d;
+  cursor: pointer;
+}
+.fac-face {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(0,0,0,0.25);
+  transform-origin: 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.fac-el-2d {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(0,0,0,0.35);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  font-size: 12px;
+}
+.fac-el-2d.sel, .fac-el.sel .fac-face { border: 2px solid #c19c56; box-shadow: 0 0 0 2px rgba(193,156,86,0.5); }
+.fac-icon { pointer-events: none; line-height: 1; }
+.fac-alert-dot {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239,68,68,0.7);
+  animation: fac-pulse 1.6s infinite;
+  pointer-events: none;
+}
+@keyframes fac-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(239,68,68,0); }
+  100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+}
+.fac-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: #c19c56;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  cursor: nwse-resize;
+}
+.fac-wall-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: #c19c56;
+  border: 2px solid #fff;
+  cursor: move;
+  z-index: 3;
+}
+.fac-dims {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.55);
+  pointer-events: none;
+}
+.fac-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; }
+.fac-chip {
+  border: 1px solid rgba(148,163,184,0.35);
+  background: rgba(148,163,184,0.1);
+  color: inherit;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fac-chip.on { background: #c19c56; border-color: #c19c56; color: #0b1726; font-weight: 700; }
+.fac-chip.alert { border-color: #ef4444; }
+.fac-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 400;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+@media (min-width: 720px) { .fac-overlay { align-items: center; } }
+.fac-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: #0d1f35;
+  color: #fff;
+  border-radius: 22px 22px 0 0;
+  padding: 18px 18px 36px;
+  box-sizing: border-box;
+}
+@media (min-width: 720px) { .fac-sheet { border-radius: 18px; padding-bottom: 22px; } }
+.fac-sheet h3 { margin: 0; font-size: 19px; }
+.fac-muted { color: rgba(255,255,255,0.5); font-size: 12px; }
+.fac-block {
+  background: rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 11px 13px;
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+.fac-block-title { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.45); margin-bottom: 4px; }
+.fac-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }
+.fac-photos img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 10px; cursor: zoom-in; background: rgba(255,255,255,0.05); }
+.fac-rec {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 11px 13px;
+  margin-top: 10px;
+}
+.fac-rec-high { border-color: rgba(239,68,68,0.6); }
+.fac-rec-actions { display: flex; gap: 8px; margin-top: 10px; }
+.fac-btn {
+  flex: 1;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.07);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fac-btn-gold { background: #c19c56; border-color: #c19c56; color: #0b1726; }
+.fac-btn:disabled { opacity: 0.5; cursor: default; }
+.fac-studio-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+@media (max-width: 1000px) { .fac-studio-grid { grid-template-columns: minmax(0, 1fr); } }
+.fac-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; margin: 10px 0; }
+.fac-thumb { position: relative; }
+.fac-thumb img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
+.fac-thumb button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+/* Bloco escuro para usar o 3D/pop-ups dentro de telas claras (portal do cliente) */
+.fac-dark { background: #0d1f35; color: #fff; border-radius: 16px; padding: 12px 14px; }
+.fac-dark .fac-rec:first-child { margin-top: 0; }

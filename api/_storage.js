@@ -66,7 +66,7 @@ export async function fetchStorageBuffer(pathOrUrl) {
 
 export async function uploadStorageObject(path, buffer, contentType = 'image/jpeg') {
   const cleanPath = String(path).replace(/^\/+/, '')
-  if (!/^(jobs|claims)\//.test(cleanPath)) {
+  if (!/^(jobs|claims|facility)\//.test(cleanPath)) {
     throw new Error('Caminho de upload inválido')
   }
 
