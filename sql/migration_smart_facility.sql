@@ -1,0 +1,50 @@
+-- KuriPuro Smart Facility — cole tudo e clique RUN
+create table if not exists facility_models (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete cascade not null,
+  location_name text,
+  name text not null,
+  layout jsonb not null default '{}'::jsonb,
+  photos jsonb not null default '[]'::jsonb,
+  status text not null default 'draft' check (status in ('draft', 'approved')),
+  ai_notes text,
+  approved_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists facility_recommendations (
+  id uuid primary key default gen_random_uuid(),
+  model_id uuid references facility_models(id) on delete cascade not null,
+  client_id uuid references clients(id) on delete cascade not null,
+  location_name text,
+  element_id text,
+  element_name text,
+  service text not null,
+  reason text,
+  priority text not null default 'medium' check (priority in ('high', 'medium', 'low')),
+  source text not null default 'rule' check (source in ('ai', 'rule', 'admin')),
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'declined')),
+  decided_by text,
+  decided_at timestamptz,
+  client_request_id uuid,
+  created_at timestamptz default now()
+);
+
+alter table facility_models enable row level security;
+
+alter table facility_recommendations enable row level security;
+
+drop policy if exists "allow_all_facility_models" on facility_models;
+
+create policy "allow_all_facility_models" on facility_models for all using (true);
+
+drop policy if exists "allow_all_facility_recommendations" on facility_recommendations;
+
+create policy "allow_all_facility_recommendations" on facility_recommendations for all using (true);
+
+create index if not exists idx_facility_models_client on facility_models(client_id, location_name);
+
+create index if not exists idx_facility_recs_model on facility_recommendations(model_id, status, created_at desc);
+
+create index if not exists idx_facility_recs_client on facility_recommendations(client_id, status);

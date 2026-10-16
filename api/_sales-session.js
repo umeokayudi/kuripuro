@@ -49,8 +49,12 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true })
   }
   if (req.method === 'GET') {
-    const { readSalesSession } = await import('./_salesSession.js')
+    const { readSalesSession, sellerAccess } = await import('./_salesSession.js')
     const user = readSalesSession(req)
+    if (user?.role === 'salesperson') {
+      const { data } = await sellerAccess(user.id).catch(() => ({}))
+      if (data) user.team = data.team === 'marketing' ? 'marketing' : 'sales'
+    }
     return res.status(user ? 200 : 401).json(user ? { user } : { error: 'Sessão expirada.' })
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -81,9 +85,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, user })
     }
 
-    const { data: seller } = await db.from('salespeople')
-      .select('id,full_name,email,password_hash,phone,is_active')
-      .eq('email', email).eq('is_active', true).maybeSingle()
+    const sellerQuery = cols => db.from('salespeople').select(cols).eq('email', email).eq('is_active', true).maybeSingle()
+    let { data: seller, error: sellerErr } = await sellerQuery('id,full_name,email,password_hash,phone,is_active,team')
+    // Before the team column exists every sales login is a seller.
+    if (sellerErr) ({ data: seller } = await sellerQuery('id,full_name,email,password_hash,phone,is_active'))
     if (!seller || !verifySalesPassword(password, seller.password_hash, email)) {
       // Employee and client logins also pass here first; only count a failure
       // when no other account type matches, which the browser checks next.
@@ -94,8 +99,11 @@ export default async function handler(req, res) {
     if (!String(seller.password_hash || '').startsWith('scrypt$')) {
       await db.from('salespeople').update({ password_hash: hashSalesPassword(password) }).eq('id', seller.id)
     }
-    const user = { id: seller.id, name: seller.full_name, email: seller.email, role: 'salesperson', phone: seller.phone || '' }
-    setSalesSessionCookie(res, createSalesSession(user))
+    const user = { id: seller.id, name: seller.full_name, email: seller.email, role: 'salesperson', phone: seller.phone || '', team: seller.team === 'marketing' ? 'marketing' : 'sales' }
+    // Same 30-day session as employees: kp_user stays in the browser, so a 12h cookie
+    // made sellers look signed in while every Sales portal call failed. Deactivation
+    // still applies at once (requireActiveSalesSession checks is_active per request).
+    setSalesSessionCookie(res, createSalesSession(user, EMPLOYEE_SESSION_TTL), EMPLOYEE_SESSION_TTL)
     return res.status(200).json({ success: true, user })
   } catch (error) {
     return res.status(500).json({ error: 'Não foi possível iniciar a sessão comercial.' })

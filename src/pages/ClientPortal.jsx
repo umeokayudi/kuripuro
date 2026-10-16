@@ -19,6 +19,9 @@ import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
+import { listModels, listRecommendations, decideRecommendation } from '../lib/facilityApi'
+import FacilityViewer from '../components/facility/FacilityViewer'
+import { RecommendationCard } from '../components/facility/FacilityItemPopup'
 import './client-portal.css'
 
 function sanitizePostgrestToken(value) {
@@ -105,6 +108,11 @@ export default function ClientPortal() {
   const [ratingPhotoPreview, setRatingPhotoPreview] = useState(null)
   const [credForm, setCredForm] = useState({ currentPassword: '', newEmail: '', newPassword: '' })
   const [savingCreds, setSavingCreds] = useState(false)
+
+  const [facilityModels, setFacilityModels] = useState([])
+  const [facilityModelId, setFacilityModelId] = useState('')
+  const [facilityRecs, setFacilityRecs] = useState([])
+  const [facilityBusy, setFacilityBusy] = useState('')
 
   const msgEndRef = useRef()
 
@@ -193,6 +201,35 @@ export default function ClientPortal() {
     const refresh = setInterval(() => loadAll({ silent: true }), 20000)
     return () => clearInterval(refresh)
   }, [user?.id, c, loadAll])
+
+  const loadFacility = useCallback(async () => {
+    if (!user?.client_id) return
+    try {
+      const models = (await listModels(user.client_id))
+        .filter(m => m.status === 'approved')
+        .filter(m => !user.location_name || !m.location_name || m.location_name === user.location_name)
+      setFacilityModels(models)
+      setFacilityModelId(id => (models.some(m => m.id === id) ? id : (models.find(m => m.location_name === user.location_name) || models[0])?.id || ''))
+      setFacilityRecs(await listRecommendations({ clientId: user.client_id, locationName: user.location_name }))
+    } catch {
+      setFacilityModels([])
+    }
+  }, [user?.client_id, user?.location_name])
+
+  useEffect(() => { loadFacility() }, [loadFacility])
+
+  const decideFacilityRec = async (rec, decision) => {
+    setFacilityBusy(rec.id)
+    try {
+      await decideRecommendation(rec, decision, { by: 'client', clientUserId: user.id })
+      toast.success(decision === 'accepted' ? tr.facility.recAccepted : tr.facility.recDeclined)
+      await loadFacility()
+      if (decision === 'accepted') loadAll({ silent: true })
+    } catch (e) {
+      toast.error(e.message)
+    }
+    setFacilityBusy('')
+  }
 
   useEffect(() => {
     const tick = setInterval(() => setClock(new Date()), 60000)
@@ -478,6 +515,9 @@ export default function ClientPortal() {
     || summarizeCleaningMonth(jobs, deepProgressMonth, today, true)
   const weeklyDone = weeklyCompleted(jobs, deepProgressMonth)
 
+  const pendingFacilityRecs = facilityRecs.filter(r => r.status === 'pending')
+  const facilityModel = facilityModels.find(m => m.id === facilityModelId) || null
+
   const navItems = [
     { key: 'home', icon: <NavIcon name="home" />, label: c.home },
     { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
@@ -486,6 +526,9 @@ export default function ClientPortal() {
     { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
     { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits },
     { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
+    ...(facilityModels.length || pendingFacilityRecs.length
+      ? [{ key: 'facility', icon: <NavIcon name="store" />, label: tr.facility.storeModel, badge: pendingFacilityRecs.length }]
+      : []),
     { key: 'settings', icon: <NavIcon name="settings" />, label: c.settings },
   ]
   const bottomKeys = ['home', 'billing', 'stores', 'requests', 'chat']
@@ -677,6 +720,15 @@ export default function ClientPortal() {
             ) : tab === 'home' && (
               <>
                 <BillingAlerts invoices={invoices} today={today} labels={c} lang={lang} onOpen={() => setTab('billing')} />
+                {pendingFacilityRecs.length > 0 && (
+                  <button type="button" className="cpx-alert is-info" onClick={() => setTab('facility')}>
+                    <b>🧽</b>
+                    <span>
+                      <strong>{tr.facility.recommendedForYou} ({pendingFacilityRecs.length})</strong>
+                      <small>{pendingFacilityRecs.slice(0, 3).map(r => r.service).join(' / ')}</small>
+                    </span>
+                  </button>
+                )}
                 {maintAlerts.length > 0 && (
                   <button type="button" className={`cpx-alert ${maintOverdue ? 'is-warn' : 'is-info'}`} onClick={() => setTab('stores')}>
                     <b>🛠</b>
@@ -983,6 +1035,45 @@ export default function ClientPortal() {
                   <RequestCard key={rq.id} rq={rq} labels={c} lang={lang} onDecide={decideQuote} />
                 ))}
               </div>
+            )}
+
+            {!loading && tab === 'facility' && (
+              <>
+                {pendingFacilityRecs.length > 0 && (
+                  <>
+                    <div className="cp-section-title">{tr.facility.recommendedForYou}</div>
+                    <div className="fac-dark" style={{ marginBottom: 16 }}>
+                      {pendingFacilityRecs.map(r => (
+                        <RecommendationCard key={r.id} rec={r} t={tr.facility} onDecide={decideFacilityRec} busy={facilityBusy === r.id} showStatus={false} />
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="cp-section-title">{tr.facility.storeModel}</div>
+                {facilityModels.length > 1 && (
+                  <div className="fac-toolbar">
+                    {facilityModels.map(m => (
+                      <button key={m.id} type="button" className={`fac-chip${m.id === facilityModelId ? ' on' : ''}`} onClick={() => setFacilityModelId(m.id)}>
+                        {m.location_name || m.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {facilityModel ? (
+                  <div className="fac-dark">
+                    <FacilityViewer
+                      model={facilityModel}
+                      t={tr.facility}
+                      lang={lang}
+                      recs={facilityRecs.filter(r => r.model_id === facilityModel.id)}
+                      onDecide={decideFacilityRec}
+                      busyId={facilityBusy}
+                    />
+                  </div>
+                ) : (
+                  <PortalEmpty icon="🏢" text={tr.facility.noModel} />
+                )}
+              </>
             )}
 
             {!loading && tab === 'settings' && (

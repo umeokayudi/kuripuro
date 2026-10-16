@@ -41,11 +41,13 @@ export default async function handler(req, res) {
       const path = String(req.query?.path || '')
       const submissionId = String(req.query?.submission_id || '')
       let allowed = user.role === 'admin'
+      let viaContract = false
       if (!allowed && submissionId) {
+        // The seller's own contract, even when an admin uploaded the signed PDF for them.
         const { data: contract } = await db.from('sales_contract_submissions').select('salesperson_id,signed_pdf_object_path').eq('id', submissionId).maybeSingle()
-        allowed = contract?.salesperson_id === user.id && contract?.signed_pdf_object_path === path
+        viaContract = allowed = contract?.salesperson_id === user.id && contract?.signed_pdf_object_path === path && /^contracts\/[^/]+\/[^/]+\.pdf$/.test(path)
       } else if (!allowed) allowed = ownsSalesObject(user, path, ['cards', 'meetings'])
-      if (!allowed || !ownsSalesObject(user, path) && user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado ao arquivo.' })
+      if (!allowed || (!viaContract && !ownsSalesObject(user, path) && user.role !== 'admin')) return res.status(403).json({ error: 'Acesso negado ao arquivo.' })
       const { data, error } = await db.storage.from(BUCKET).createSignedUrl(path, 60)
       if (error) throw error
       return res.status(200).json({ url: data.signedUrl })

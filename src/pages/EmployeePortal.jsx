@@ -12,6 +12,8 @@ import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { locationFromJob } from '../lib/clientPortal'
+import FacilityModal from '../components/facility/FacilityModal'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
 import { ContractSignModal } from '../components/SpotContracts'
@@ -36,7 +38,9 @@ import {
 import {
   isOverdueAssignedJob,
   isCriticallyOverdueJob,
-  hoursPastScheduled,
+  isMissedJob,
+  canRegisterLate,
+  isRetroJob,
 } from '../lib/jobOverdue'
 import {
   DEEP_CLEAN_COMPONENTS,
@@ -44,7 +48,7 @@ import {
   getCleaningType,
   cleaningTypesForLang,
 } from '../lib/cleaningType'
-import { tokyoToday, recentTokyoDates } from '../lib/dates'
+import { tokyoToday } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
 import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
@@ -98,6 +102,8 @@ export default function EmployeePortal() {
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [facilityIndex, setFacilityIndex] = useState([])
+  const [facilityJob, setFacilityJob] = useState(null)
   const [quickOpen, setQuickOpen] = useState(false)
   const [jobs, setJobs] = useState([])
   const [allJobs, setAllJobs] = useState([])
@@ -522,30 +528,10 @@ export default function EmployeePortal() {
     setShowPastService(true)
   }
 
-  const handleOverdueCancel = async (job) => {
+  // Late on the same day: only the basic registration, saved as retroactive.
+  const handleRegisterLate = (job) => {
     if (overdueBusy) return
-    setOverdueBusy(job.id)
-    try {
-      const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).eq('id', job.id).eq('status', 'assigned')
-      if (error) throw error
-      toast.success(e.overdueCancelSuccess)
-      await loadAll()
-    } catch (err) {
-      toast.error(err.message)
-    } finally {
-      setOverdueBusy(null)
-    }
-  }
-
-  const handleOverdueNotDone = async (job) => {
-    if (overdueBusy) return
-    setOverdueBusy(job.id)
-    try {
-      toast.success(e.overdueOpenRetro)
-      openRetro(job)
-    } finally {
-      setOverdueBusy(null)
-    }
+    openRetro(job)
   }
 
   const handleAbandonStaleShift = async (job) => {
@@ -592,6 +578,7 @@ export default function EmployeePortal() {
           toast(e.finishExistingShift || e.pastServiceInProgress)
           setTab('shift')
         } else if (result.error === 'blocked') toast.error(e.pastServiceBlocked)
+        else if (result.error === 'day_closed') toast.error(e.lateRegisterClosed)
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable || 'Este local não tem mais limpeza básica — use Deep Clean')
         else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
@@ -674,6 +661,7 @@ export default function EmployeePortal() {
 
   // Relatório retroativo: trabalhador descreve o que fez, IA avalia contra o checklist
   const openRetro = (job) => {
+    if (!canRegisterLate(job)) { toast.error(e.lateRegisterClosed); return }
     setRetroJob(job)
     setRetroText('')
     setRetroPhoto(null)
@@ -700,6 +688,8 @@ export default function EmployeePortal() {
 
   const submitRetro = async (sigDataUrl) => {
     if (!retroReady()) return
+    // The sheet may have stayed open past midnight: the day is closed, the job stays incomplete.
+    if (!canRegisterLate(retroJob)) { toast.error(e.lateRegisterClosed); setRetroJob(null); loadAll(); return }
     setRetroBusy(true)
     try {
       const ck = parseChecklistTemplate(checklistTemplateForJob(retroJob))
@@ -1183,6 +1173,14 @@ export default function EmployeePortal() {
     }
   }
 
+  // Smart Facility: mapa 3D aprovado do local (só mostra o botão quando existe)
+  useEffect(() => {
+    supabase.from('facility_models').select('client_id,location_name').eq('status', 'approved')
+      .then(({ data }) => setFacilityIndex(data || []))
+  }, [])
+  const hasFacility = (job) => !!job?.client_id && facilityIndex.some(m => m.client_id === job.client_id
+    && (!m.location_name || m.location_name === locationFromJob(job)))
+
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (job.checklist_template||'').split('\n').filter(Boolean)
@@ -1200,7 +1198,7 @@ export default function EmployeePortal() {
             <div style={{fontSize:18,fontWeight:800,color:'#c19c56'}}>¥{Number(job.spot_value||job.value||0).toLocaleString()}</div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:14}}>
-            {[['📅 '+e.jobDate,dDate],['🕐 '+e.jobStart,job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,tr.status[job.status]||job.status]].map(([l,v])=>(
+            {[['📅 '+e.jobDate,dDate],['🕐 '+e.jobStart,job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,isMissedJob(job)?e.statusIncomplete:`${tr.status[job.status]||job.status}${isRetroJob(job)?` · ${e.retroBadge}`:''}`]].map(([l,v])=>(
               <div key={l} style={{background:'rgba(255,255,255,0.06)',borderRadius:12,padding:'10px 12px'}}>
                 <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{l}</div>
                 <div style={{fontSize:12,fontWeight:500,color:'#fff'}}>{v}</div>
@@ -1226,6 +1224,7 @@ export default function EmployeePortal() {
               <JobPhoto url={job.photo_end_url} label={e.photoEnd} />
             </div>
           </div>}
+          {hasFacility(job)&&<button type="button" onClick={()=>setFacilityJob(job)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.3)',borderRadius:14,padding:'13px',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>{tr.facility.openModel}</button>}
           {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
           {jobContract&&jobContract.job_id===job.id&&<div style={{background:'rgba(193,156,86,0.08)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'12px 14px',marginBottom:10}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:4}}>📄 {e.contractTitle} · {jobContract.contract_number}</div>
@@ -1240,7 +1239,7 @@ export default function EmployeePortal() {
             <button onClick={()=>downloadJobIcs(job)} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:14,padding:'12px 8px',color:'rgba(255,255,255,0.75)',fontSize:12,fontWeight:600,cursor:'pointer'}}>🗓 {e.calIcs}</button>
             <button onClick={syncMyCalendar} style={{gridColumn:'1/-1',background:'none',border:'1px dashed rgba(255,255,255,0.15)',borderRadius:14,padding:'10px 8px',color:'rgba(255,255,255,0.6)',fontSize:12,cursor:'pointer'}}>🔄 {e.calSync}</button>
           </div>}
-          {job.status==='assigned'&&!activeJob&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
+          {job.status==='assigned'&&!activeJob&&canRegisterLate(job)&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
           <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>{e.close}</button>
         </div>
       </div>
@@ -1256,6 +1255,7 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
         job={nfcScan.job}
@@ -1655,7 +1655,7 @@ export default function EmployeePortal() {
         {tab==='shift'&&(
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onOverdueCancel={handleOverdueCancel} onOverdueNotDone={handleOverdueNotDone} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} labels={e} lang={lang} />
           </section>
         )}
 
@@ -2057,6 +2057,10 @@ export default function EmployeePortal() {
   )
 }
 
+function RetroBadge({ labels }) {
+  return <span style={{fontSize:9,fontWeight:800,padding:'2px 7px',borderRadius:20,color:'#fbbf24',background:'rgba(251,191,36,0.15)',border:'1px solid rgba(251,191,36,0.35)',letterSpacing:0.3}}>{labels?.retroBadge || 'Retroactive'}</span>
+}
+
 function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   const statusColor = { completed:'#4ade80', assigned:'#60a5fa', in_progress:'#fbbf24', cancelled:'rgba(255,255,255,0.3)' }
   const statusLabel = { completed: labels?.statusCompleted || 'Completed', assigned: labels?.statusAssigned || 'Pending', in_progress: labels?.statusProgress || 'In progress', cancelled: labels?.statusCancelled || 'Cancelled' }
@@ -2073,8 +2077,9 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
             <div key={j.id} onClick={()=>setSelectedJob&&setSelectedJob(j)} style={{...(S?.card||{}),marginBottom:8,padding:12,cursor:'pointer',background:'rgba(255,255,255,0.03)',borderRadius:12,border:'1px solid rgba(255,255,255,0.06)'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{(j.title||'').split(' — ')[0]}</div>
-                <div style={{fontSize:10,color:statusColor[j.status]||'rgba(255,255,255,0.4)',fontWeight:600}}>
-                  {j.status==='completed' && j.checklist_total ? `${j.checklist_done ?? 0}/${j.checklist_total}` : (statusLabel[j.status]||j.status)}
+                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:10,color:isMissedJob(j)?'#f87171':(statusColor[j.status]||'rgba(255,255,255,0.4)'),fontWeight:600}}>
+                  {isRetroJob(j)&&<RetroBadge labels={labels} />}
+                  {isMissedJob(j) ? (labels?.statusIncomplete || 'Incomplete') : j.status==='completed' && j.checklist_total ? `${j.checklist_done ?? 0}/${j.checklist_total}` : (statusLabel[j.status]||j.status)}
                 </div>
               </div>
               <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:2}}>
@@ -2090,7 +2095,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onOverdueCancel, onOverdueNotDone, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2215,8 +2220,8 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         const isDone = job.status==='completed'
         const isOverdue = !isDone && !isActive && job.status==='assigned' && isOverdueAssignedJob(job)
         const isCritical = isOverdue && isCriticallyOverdueJob(job)
-        const overdueHours = isOverdue ? Math.floor(hoursPastScheduled(job)) : 0
-        const isNext = !activeJob && job.status==='assigned' && !isOverdue && todayJobs.slice(0,idx).every(j=>j.status==='completed' || isOverdueAssignedJob(j))
+        // Late jobs can still be checked in until the day ends; the late registration is an extra option.
+        const isNext = !activeJob && job.status==='assigned' && todayQueue.slice(0,idx).every(j=>j.status==='completed' || j.status==='cancelled' || isOverdueAssignedJob(j))
         const instructions = keyboxForJob(job)
         const trainingContract = contractForJob(job, serviceContracts)
         const hasTraining = trainingContract?.training_video_url
@@ -2243,6 +2248,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                         </span>
                       )
                     })()}
+                    {isRetroJob(job)&&<RetroBadge labels={labels} />}
                     <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
                   </div>
                 </div>
@@ -2259,29 +2265,19 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
             {isOverdue&&(
               <div style={{background:isCritical?'rgba(248,113,113,0.12)':'rgba(251,191,36,0.1)',border:`1px solid ${isCritical?'rgba(248,113,113,0.35)':'rgba(251,191,36,0.3)'}`,borderRadius:12,padding:'12px',marginBottom:10}}>
                 <div style={{fontSize:12,color:isCritical?'#f87171':'#fbbf24',fontWeight:700,marginBottom:4}}>
-                  {isCritical ? labels.overdueCriticalTitle : labels.overdueTitle}
+                  {labels.overdueTitle}
                 </div>
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.55)',marginBottom:10,lineHeight:1.5}}>
-                  {fill(labels.overdueHint, { hours: overdueHours })}
+                  {labels.overdueHint}
                 </div>
-                <div style={{display:'flex',gap:8}}>
-                  <button
-                    type="button"
-                    disabled={overdueBusy===job.id}
-                    onClick={(e)=>{ e.stopPropagation(); onOverdueNotDone?.(job) }}
-                    style={{flex:1,padding:'12px 10px',borderRadius:10,border:'none',background:overdueBusy===job.id?'rgba(255,255,255,0.08)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:overdueBusy===job.id?'rgba(255,255,255,0.3)':'#0a1929',fontSize:12,fontWeight:800,cursor:overdueBusy===job.id?'not-allowed':'pointer'}}
-                  >
-                    {labels.overdueOpenRetro}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={overdueBusy===job.id}
-                    onClick={(e)=>{ e.stopPropagation(); onOverdueCancel?.(job) }}
-                    style={{flex:1,padding:'12px 10px',borderRadius:10,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.7)',fontSize:12,fontWeight:700,cursor:overdueBusy===job.id?'not-allowed':'pointer'}}
-                  >
-                    {labels.overdueCancel}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={overdueBusy===job.id}
+                  onClick={(e)=>{ e.stopPropagation(); onRegisterLate?.(job) }}
+                  style={{width:'100%',padding:'12px 10px',borderRadius:10,border:'none',background:overdueBusy===job.id?'rgba(255,255,255,0.08)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:overdueBusy===job.id?'rgba(255,255,255,0.3)':'#0a1929',fontSize:13,fontWeight:800,cursor:overdueBusy===job.id?'not-allowed':'pointer'}}
+                >
+                  📝 {labels.overdueRegisterLate}
+                </button>
               </div>
             )}
 
@@ -2289,6 +2285,12 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>
                 🔑 {instructions.split('\n')[0]}
               </div>
+            )}
+
+            {(isNext||isActive)&&hasFacility?.(job)&&(
+              <button type="button" onClick={ev=>{ ev.stopPropagation(); onOpenFacility(job) }} style={{width:'100%',padding:'10px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.1)',color:'#c19c56',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:8}}>
+                {facilityLabel}
+              </button>
             )}
 
             {isActive&&(() => {
@@ -2805,7 +2807,8 @@ function PastServiceModal({ labels, lang, busy, prefill, onClose, onSubmit }) {
   const filtered = q
     ? visibleLocations.filter(loc => loc.name.toLowerCase().includes(q) || (loc.group || '').toLowerCase().includes(q))
     : visibleLocations
-  const dateOptions = recentTokyoDates(14)
+  // Late registration only for today: once the day turns the job is incomplete.
+  const dateOptions = [tokyoToday()]
 
   const toggleDeepComponent = (id) => {
     setDeepComponents(prev => {

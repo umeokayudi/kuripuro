@@ -6,6 +6,7 @@ import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } f
 import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 import ClientCareAdmin from '../components/ClientCareAdmin'
+import FacilityStudio from './FacilityStudio'
 
 export default function Clients() {
   const [searchParams] = useSearchParams()
@@ -15,6 +16,7 @@ export default function Clients() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [portalClientId, setPortalClientId] = useState('')
+  const [facilityClientId, setFacilityClientId] = useState('')
   const [portalUsers, setPortalUsers] = useState([])
   const [portalForm, setPortalForm] = useState({ contact_name: '', email: '', password: '', location_name: '' })
   const [editingPortalUser, setEditingPortalUser] = useState(null)
@@ -250,9 +252,11 @@ export default function Clients() {
         <button className={`tab-pill${tab==='services'?' active':''}`} onClick={()=>setTab('services')}>Services</button>
         <button className={`tab-pill${tab==='portal'?' active':''}`} onClick={()=>setTab('portal')}>🔐 Portal</button>
         <button className={`tab-pill${tab==='care'?' active':''}`} onClick={()=>setTab('care')}>🤝 Manager &amp; stores</button>
+        <button className={`tab-pill${tab==='facility'?' active':''}`} onClick={()=>setTab('facility')}>🏢 Smart Facility</button>
       </div>
 
       {tab==='care'&&<ClientCareAdmin clients={clients} onClientsChanged={load} />}
+      {tab==='facility'&&<FacilityStudio clients={clients} initialClientId={facilityClientId} />}
 
       {/* LIST */}
       {tab==='list'&&(
@@ -289,6 +293,7 @@ export default function Clients() {
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <button className="btn btn-sm btn-primary" onClick={()=>handleEdit(c)}>✏️ Edit</button>
                   <button className="btn btn-sm" onClick={()=>{setPortalClientId(c.id);setTab('portal')}}>🔐 Portal</button>
+                  <button className="btn btn-sm" onClick={()=>{setFacilityClientId(c.id);setTab('facility')}}>🏢 3D</button>
                   <button className="btn btn-sm" onClick={()=>handleToggle(c.id,c.is_active)}>{c.is_active?'Deactivate':'Activate'}</button>
                   <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(c.id,c.company_name)}>🗑 Delete</button>
                 </div>

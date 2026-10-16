@@ -33,6 +33,7 @@ export function createSalesSession(user, ttl = SESSION_TTL) {
     role: user.role,
     name: user.name,
     email: user.email,
+    ...(user.team ? { team: user.team } : {}),
     exp: Math.floor(Date.now() / 1000) + ttl,
   })).toString('base64url')
   return `${payload}.${sign(payload)}`
@@ -50,7 +51,7 @@ export function readSalesSession(req) {
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
     if (!data.sub || !['admin', 'salesperson', 'employee'].includes(data.role) || data.exp < Date.now() / 1000) return null
-    return { id: data.sub, role: data.role, name: data.name, email: data.email }
+    return { id: data.sub, role: data.role, name: data.name, email: data.email, ...(data.team ? { team: data.team } : {}) }
   } catch { return null }
 }
 
@@ -77,16 +78,27 @@ export function requireSalesSession(req, res, roles = ['admin', 'salesperson']) 
   return user
 }
 
+/** is_active + team; works before the team column exists (everyone is then "sales"). */
+export async function sellerAccess(id) {
+  const db = salesDb()
+  const res = await db.from('salespeople').select('is_active,team').eq('id', id).maybeSingle()
+  if (!res.error) return res
+  return db.from('salespeople').select('is_active').eq('id', id).maybeSingle()
+}
+
 /** Like requireSalesSession, but also refuses sellers deactivated after they signed in. */
 export async function requireActiveSalesSession(req, res, roles = ['admin', 'salesperson']) {
   const user = requireSalesSession(req, res, roles)
   if (!user || user.role !== 'salesperson') return user
-  const { data, error } = await salesDb().from('salespeople').select('is_active').eq('id', user.id).maybeSingle()
+  const { data, error } = await sellerAccess(user.id)
   if (error || !data?.is_active) {
     clearSalesSessionCookie(res)
     res.status(401).json({ error: 'Sessão comercial inválida ou expirada.' })
     return null
   }
+  // The team comes from the database on every request, so moving someone between
+  // sales and marketing in Users takes effect without a new login.
+  user.team = data.team === 'marketing' ? 'marketing' : 'sales'
   return user
 }
 

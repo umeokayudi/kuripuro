@@ -23,6 +23,17 @@ export function AuthProvider({ children }) {
     if (!parsed || !['admin', 'employee', 'salesperson'].includes(parsed.role)) return
     fetch('/api/sales-session', { credentials: 'same-origin', cache: 'no-store' })
       .then(async response => {
+        if (response.status === 200 && parsed.role === 'salesperson') {
+          // Admin may have moved this login between sales and marketing.
+          const fresh = await response.json().catch(() => ({}))
+          const team = fresh?.user?.team
+          if (team && team !== parsed.team) {
+            const next = { ...parsed, team }
+            localStorage.setItem('kp_user', JSON.stringify(next))
+            setUser(next)
+          }
+          return
+        }
         if (response.status !== 401) return // 503/404 (local dev, preview without secrets): keep the user
         localStorage.removeItem('kp_user')
         setUser(null)

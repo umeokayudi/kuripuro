@@ -60,6 +60,7 @@ const groups = [
     key: 'navSales',
     items: [
       { to: '/mitsumori', key: 'mitsumori', icon: Icons.file },
+      { to: '/sales-funnel', key: 'salesFunnel', icon: Icons.chart },
       { to: '/sales-team', key: 'salesTeam', icon: Icons.users },
       { to: '/marketing', key: 'marketing', icon: Icons.chart },
     ],
