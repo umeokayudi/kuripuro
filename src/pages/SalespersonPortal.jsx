@@ -490,10 +490,10 @@ export default function SalespersonPortal() {
   </div>
 
   const tabs = [
-    { key: 'home', label: c.home, icon: '⌂' },
-    { key: 'leads', label: c.leads, icon: '◎', badge: 0 },
-    { key: 'followups', label: c.followups, icon: '↻', badge: counts.overdue + counts.today },
-    { key: 'more', label: c.more, icon: '☰' },
+    { key: 'home', label: c.home, icon: 'home' },
+    { key: 'leads', label: c.leads, icon: 'funnel', badge: 0 },
+    { key: 'followups', label: c.followups, icon: 'followups', badge: counts.overdue + counts.today },
+    { key: 'more', label: c.more, icon: 'more' },
   ]
   const menuItems = [
     { key: 'clients', icon: '👥', label: lang === 'ja' ? '自分の顧客' : 'My clients', hint: lang === 'ja' ? '全顧客と状況' : 'Every client and its stage' },
@@ -524,7 +524,7 @@ export default function SalespersonPortal() {
       onPlus={openNewLead} plusLabel={c.newLeadShort}>
       {loading && !data ? <div className="fa-card fa-muted">{c.loading}</div> : !data ? <div className="fa-card fa-muted">{c.unavailable}</div> : <>
 
-        {tab === 'home' && <div className="fa-stack">
+        {tab === 'home' && <div className="fa-stack fa-dash">
           {dayCard}
           <div className="sp-cta-grid">
             <button type="button" className="sp-cta is-main" onClick={openNewLead}>
@@ -538,12 +538,12 @@ export default function SalespersonPortal() {
           <NextFollowups queue={queue} lang={lang} onOpen={row => openDeal(row)} onLog={markFollowup} logLabel={f.logContact} />
           <MyNumbers data={data} today={today} lang={lang} />
           <CommissionsCard data={data} metrics={metrics} lang={lang} onDetails={() => setTab('commissions')} />
-          <ClientList deals={deals} lang={lang} onOpen={row => openDeal(row)} limit={6} onSeeAll={() => setTab('clients')} seeAllLabel={c.seeAll} />
 
           <section className="fa-card">
             <div className="fa-card-head"><h2>{f.goalsMonth}</h2><button type="button" className="fa-link" onClick={() => setTab('goals')}>{c.open} ›</button></div>
             <GoalBars goal={myGoal} actual={myResults} today={today} f={f} compact />
           </section>
+          <ClientList className="fa-wide" deals={deals} lang={lang} onOpen={row => openDeal(row)} limit={6} onSeeAll={() => setTab('clients')} seeAllLabel={c.seeAll} />
         </div>}
 
         {tab === 'clients' && <div className="fa-stack"><ClientList deals={deals} lang={lang} onOpen={row => openDeal(row)} /></div>}

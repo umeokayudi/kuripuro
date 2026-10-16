@@ -98,10 +98,10 @@ export default function MarketingPortal() {
   const listedLeads = leads.filter(r => !q || [r.company_name, r.site_name, channelName(r.marketing_channel_id), r.region].some(v => String(v || '').toLowerCase().includes(q)))
 
   const tabs = [
-    { key: 'home', label: t.home, icon: '⌂' },
-    { key: 'campaigns', label: t.campaigns, icon: '◎' },
-    { key: 'kpi', label: t.kpi, icon: '📈' },
-    { key: 'more', label: t.more, icon: '☰' },
+    { key: 'home', label: t.home, icon: 'home' },
+    { key: 'campaigns', label: t.campaigns, icon: 'campaigns' },
+    { key: 'kpi', label: t.kpi, icon: 'kpi' },
+    { key: 'more', label: t.more, icon: 'more' },
   ]
   const menuItems = [
     { key: 'channels', icon: '📡', label: t.channels, hint: t.menuHint.channels },
@@ -127,12 +127,12 @@ export default function MarketingPortal() {
       menuItems={menuItems} onLogout={logout} logoutLabel={t.logout} tabs={tabs} tab={tab} onTab={key => { setTab(key); window.scrollTo(0, 0) }}
       onPlus={() => { setSpend(blankSpend()); setSheet('spend') }} plusLabel={t.recordSpend}>
       {loading && !data ? <div className="fa-card fa-muted">{t.loading}</div> : !data ? null : <>
-        {tab === 'home' && <div className="fa-stack">
+        {tab === 'home' && <div className="fa-stack fa-dash">
           <button type="button" className="sp-cta is-main" onClick={() => { setSpend(blankSpend()); setSheet('spend') }}>
             <span className="sp-cta-icon" aria-hidden="true">¥</span><span><strong>{t.recordSpend}</strong><small>{yen(month.spend)} · {t.month}</small></span>
           </button>
           <div className="fa-section-title">{t.month}</div>
-          <div className="fa-tiles">
+          <div className="fa-tiles is-four">
             <div className="fa-tile is-blue"><strong>{yen(month.spend)}</strong><span>{t.spend}</span></div>
             <div className="fa-tile is-purple"><strong>{month.leads}</strong><span>{t.leads}</span><small>{t.cpl}: {month.leads ? yen(month.spend / month.leads) : '—'}</small></div>
             <div className="fa-tile is-green"><strong>{month.won}</strong><span>{t.won}</span></div>

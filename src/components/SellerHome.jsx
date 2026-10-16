@@ -39,7 +39,7 @@ export function NextFollowups({ queue, lang, onOpen, onLog, logLabel, limit = 8 
     {rows.map(({ lead, info }) => <div key={lead.id} className={`sh-fu is-${info.status}`}>
       <button type="button" className="sh-fu-date" onClick={() => onOpen(lead)}><b>{shortDay(info.next)}</b><small>{when(info)}</small></button>
       <button type="button" className="sh-fu-main" onClick={() => onOpen(lead)}><strong>{lead.site_name || lead.company_name}</strong><small>{[lead.contact_name, lead.still_needed || lead.needs].filter(Boolean).join(' · ') || '—'}</small></button>
-      <button type="button" className="fa-btn fa-btn-sm" onClick={() => onLog(lead)}>{logLabel}</button>
+      <button type="button" className="fa-btn fa-btn-sm sh-fu-log" onClick={() => onLog(lead)}>{logLabel}</button>
     </div>)}
     {rows.length === 0 && <p className="fa-muted">{c.none}</p>}
   </section>
@@ -86,7 +86,7 @@ export function CommissionsCard({ data, metrics, lang, onDetails }) {
   </section>
 }
 
-export function ClientList({ deals, lang, onOpen, limit = 0, onSeeAll, seeAllLabel }) {
+export function ClientList({ deals, lang, onOpen, limit = 0, onSeeAll, seeAllLabel, className = '' }) {
   const c = COPY[lang === 'ja' ? 'ja' : 'en']
   const t = funnelCopy(lang)
   const [q, setQ] = useState('')
@@ -98,7 +98,7 @@ export function ClientList({ deals, lang, onOpen, limit = 0, onSeeAll, seeAllLab
     .filter(d => !query || [d.lead.company_name, d.lead.site_name, d.lead.contact_name, d.lead.address].some(v => String(v || '').toLowerCase().includes(query)))
     .sort((a, b) => String(b.last).localeCompare(String(a.last)))
   const shown = limit ? rows.slice(0, limit) : rows
-  return <section className="fa-card">
+  return <section className={`fa-card ${className}`}>
     <div className="fa-card-head"><h2>{c.clients}</h2><span className="fa-pill">{rows.length}</span></div>
     {!limit && <input className="fn-search sh-search" type="search" placeholder={c.search} value={q} onChange={e => setQ(e.target.value)} />}
     <div className="sp-chip-row">{Object.keys(c.filters).map(k => <button type="button" key={k} className={`fa-chip${filter === k ? ' is-active' : ''}`} onClick={() => setFilter(k)}>{c.filters[k]}</button>)}</div>

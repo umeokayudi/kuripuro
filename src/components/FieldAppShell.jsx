@@ -11,6 +11,19 @@ export function useClock() {
   return now
 }
 
+const ICONS = {
+  home: <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
+  funnel: <path d="M3 4h18l-7 8.5V19l-4 2v-8.5z" />,
+  followups: <><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 4v5h-5" /></>,
+  more: <path d="M4 7h16M4 12h16M4 17h16" />,
+  campaigns: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1" /></>,
+  kpi: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+}
+function NavIcon({ name }) {
+  if (!ICONS[name]) return name
+  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ICONS[name]}</svg>
+}
+
 export function greetingFor(date, lang) {
   const h = date.getHours()
   if (lang === 'ja') return h < 11 ? 'おはようございます' : h < 18 ? 'こんにちは' : 'こんばんは'
@@ -47,7 +60,7 @@ export default function FieldAppShell({
   const navButton = item => (
     <button key={item.key} type="button" className={`fa-nav-item${tab === item.key ? ' is-active' : ''}`} aria-current={tab === item.key ? 'page' : undefined}
       onClick={() => item.key === 'more' ? setMenuOpen(true) : onTab(item.key)}>
-      <span className="fa-nav-icon" aria-hidden="true">{item.icon}</span>
+      <span className="fa-nav-icon" aria-hidden="true"><NavIcon name={item.icon} /></span>
       <span className="fa-nav-label">{item.label}</span>
       {item.badge > 0 && <span className="fa-nav-badge">{item.badge > 99 ? '99+' : item.badge}</span>}
     </button>
@@ -68,13 +81,14 @@ export default function FieldAppShell({
         </div>
       </header>
 
-      <div className="fa-hello">
+      {tab === tabs[0]?.key && <div className="fa-hello">
         <div>
-          <h1>{greetingFor(now, lang)}, {first}!</h1>
+          <span className="fa-hello-kicker">{greetingFor(now, lang)}</span>
+          <h1>{first}</h1>
           <p>{now.toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         </div>
-        <div className="fa-clock">{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-      </div>
+        <div className="fa-clock">{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
+      </div>}
       {statusChip}
 
       <main className="fa-content">{children}</main>
