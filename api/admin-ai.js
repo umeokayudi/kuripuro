@@ -6,6 +6,7 @@ import { API_BUILD } from './_gemini.js'
 import { transcribeAudio } from './_transcribe.js'
 import { runGeminiToolLoop } from './_tool-loop.js'
 import { requireSalesSession } from './_salesSession.js'
+import { handleFacilityAction } from './_facility-ai.js'
 import {
   trimHistory, workOnlyRule, createApprovalToken, readApprovalToken, approvalPasswordConfigured,
   checkApprovalPassword, approvalLocked, recordApprovalFailure, clearApprovalFailures, describeAction,
@@ -217,6 +218,10 @@ export default async function handler(req, res) {
 
   if (req.body?.authorize) return authorizeChanges(req, res, admin)
   if (req.body?.transcribe) return transcribeAudio(res, req.body.transcribe)
+  if (req.body?.facilityAction) {
+    const { status, body } = await handleFacilityAction(req.body)
+    return res.status(status).json(body)
+  }
 
   const messages = Array.isArray(req.body?.messages) ? trimHistory(req.body.messages) : null
   if (!messages?.length) {

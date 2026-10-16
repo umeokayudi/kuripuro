@@ -54,6 +54,7 @@ Variável obrigatória no Vercel: `GEMINI_API_KEY` (https://aistudio.google.com/
 - **Employees** — registration (personal data + bank account), score system (100 pts − complaints), complaint tracking
 - **Salary** — payroll calculation by period, transport allowance, bonus/deductions, CSV export, payslip
 - **Clients** — contract value, profitability per client, margin analysis
+- **Smart Facility** — digital 3D model per store (Clients → 🏢 Smart Facility): upload photos, AI drafts the floor plan, admin edits areas/walls/equipment and approves; clients and staff tap equipment for photos, location and operating instructions; AI cleaning recommendations the client accepts or declines (accepted → service request). Run `sql/migration_smart_facility.sql` once (or the auto-setup button).
 - **Cashflow** — income/expense entries, net balance, accumulated balance
 - **領収書** — receipt generator with live preview + jsPDF download, history
 

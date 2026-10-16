@@ -12,6 +12,8 @@ import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { locationFromJob } from '../lib/clientPortal'
+import FacilityModal from '../components/facility/FacilityModal'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
 import { ContractSignModal } from '../components/SpotContracts'
@@ -100,6 +102,8 @@ export default function EmployeePortal() {
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [facilityIndex, setFacilityIndex] = useState([])
+  const [facilityJob, setFacilityJob] = useState(null)
   const [quickOpen, setQuickOpen] = useState(false)
   const [jobs, setJobs] = useState([])
   const [allJobs, setAllJobs] = useState([])
@@ -1169,6 +1173,14 @@ export default function EmployeePortal() {
     }
   }
 
+  // Smart Facility: mapa 3D aprovado do local (só mostra o botão quando existe)
+  useEffect(() => {
+    supabase.from('facility_models').select('client_id,location_name').eq('status', 'approved')
+      .then(({ data }) => setFacilityIndex(data || []))
+  }, [])
+  const hasFacility = (job) => !!job?.client_id && facilityIndex.some(m => m.client_id === job.client_id
+    && (!m.location_name || m.location_name === locationFromJob(job)))
+
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (job.checklist_template||'').split('\n').filter(Boolean)
@@ -1212,6 +1224,7 @@ export default function EmployeePortal() {
               <JobPhoto url={job.photo_end_url} label={e.photoEnd} />
             </div>
           </div>}
+          {hasFacility(job)&&<button type="button" onClick={()=>setFacilityJob(job)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.3)',borderRadius:14,padding:'13px',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>{tr.facility.openModel}</button>}
           {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
           {jobContract&&jobContract.job_id===job.id&&<div style={{background:'rgba(193,156,86,0.08)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'12px 14px',marginBottom:10}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:4}}>📄 {e.contractTitle} · {jobContract.contract_number}</div>
@@ -1242,6 +1255,7 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
         job={nfcScan.job}
@@ -1641,7 +1655,7 @@ export default function EmployeePortal() {
         {tab==='shift'&&(
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} labels={e} lang={lang} />
           </section>
         )}
 
@@ -2081,7 +2095,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, onOpenAddService, onOpenPastService, onRegisterLate, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2271,6 +2285,12 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>
                 🔑 {instructions.split('\n')[0]}
               </div>
+            )}
+
+            {(isNext||isActive)&&hasFacility?.(job)&&(
+              <button type="button" onClick={ev=>{ ev.stopPropagation(); onOpenFacility(job) }} style={{width:'100%',padding:'10px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.1)',color:'#c19c56',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:8}}>
+                {facilityLabel}
+              </button>
             )}
 
             {isActive&&(() => {
