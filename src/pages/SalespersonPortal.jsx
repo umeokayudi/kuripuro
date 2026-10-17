@@ -10,6 +10,7 @@ import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
 import SellerContractCommissions from '../components/SellerContractCommissions'
 import { ClientList, CommissionsCard, MyNumbers, NextFollowups } from '../components/SellerHome'
+import SellerQuoteRequests, { QuoteRequestsAlert, quoteRequestsToSend, quoteRequestsWaiting } from '../components/SellerQuoteRequests'
 import SalesFunnel, { buildDeals } from '../components/SalesFunnel'
 import ClientPage from '../components/ClientPage'
 
@@ -427,7 +428,8 @@ export default function SalespersonPortal() {
   }
 
   const Field = ({ label, field, value = lead[field], onChange = e => setLead(prev => ({ ...prev, [field]: e.target.value })), type = 'text', ...rest }) => <label className="form-group"><span>{label}</span><input type={type} value={value ?? ''} onChange={onChange} {...rest} /></label>
-  const bellCount = (data?.notifications?.length || 0) + counts.overdue + counts.today
+  const quoteAlerts = quoteRequestsToSend(data).length + quoteRequestsWaiting(data).length
+  const bellCount = (data?.notifications?.length || 0) + counts.overdue + counts.today + quoteAlerts
   const selectedLead = leads.find(row => row.id === leadId)
   const deals = useMemo(() => buildDeals(data, today), [data, today])
   const dayState = todayRow?.closed_at ? 'closed' : todayRow?.started_at ? 'working' : 'idle'
@@ -497,6 +499,7 @@ export default function SalespersonPortal() {
   ]
   const menuItems = [
     { key: 'clients', icon: '👥', label: lang === 'ja' ? '自分の顧客' : 'My clients', hint: lang === 'ja' ? '全顧客と状況' : 'Every client and its stage' },
+    { key: 'quotes', icon: '📝', label: lang === 'ja' ? '見積もり依頼' : 'Quote requests', hint: lang === 'ja' ? 'お客様からの依頼・上乗せ額' : 'From your clients · add your extra', badge: quoteAlerts },
     { key: 'commissions', icon: '💴', label: lang === 'ja' ? 'コミッションと支払い' : 'Commissions & payments', hint: lang === 'ja' ? '受取予定・受取済み' : 'To receive and received' },
     { key: 'approaches', icon: '📝', label: c.menuReports, hint: c.menuHint.approaches },
     { key: 'contracts', icon: '✍️', label: c.menuContracts, hint: c.menuHint.contracts },
@@ -526,6 +529,7 @@ export default function SalespersonPortal() {
 
         {tab === 'home' && <div className="fa-stack fa-dash">
           {dayCard}
+          <QuoteRequestsAlert data={data} lang={lang} onOpen={() => { setTab('quotes'); window.scrollTo(0, 0) }} />
           <div className="sp-cta-grid">
             <button type="button" className="sp-cta is-main" onClick={openNewLead}>
               <span className="sp-cta-icon" aria-hidden="true">📇</span>
@@ -547,6 +551,10 @@ export default function SalespersonPortal() {
         </div>}
 
         {tab === 'clients' && <div className="fa-stack"><ClientList deals={deals} lang={lang} onOpen={row => openDeal(row)} /></div>}
+        {tab === 'quotes' && <div className="fa-stack">
+          <div className="fa-screen-head"><h2>{lang === 'ja' ? '見積もり依頼' : 'Quote requests'}</h2></div>
+          <SellerQuoteRequests data={data} lang={lang} onChanged={load} />
+        </div>}
         {tab === 'commissions' && <div className="fa-stack">
           <CommissionsCard data={data} metrics={metrics} lang={lang} />
           <SellerContractCommissions data={data} lang={lang} />
@@ -703,6 +711,7 @@ export default function SalespersonPortal() {
 
       {sheet === 'bell' && <Sheet title={c.notifications} onClose={() => setSheet('')}>
         {(counts.overdue + counts.today) > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setFollowFilter('action'); setTab('followups') }}><span aria-hidden="true">↻</span><div><strong>{f.alertTitle}</strong><small>{[counts.overdue && `${counts.overdue} ${f.alertOverdue}`, counts.today && `${counts.today} ${f.alertToday}`].filter(Boolean).join(' · ')}</small></div><b>›</b></button>}
+        {quoteAlerts > 0 && <QuoteRequestsAlert data={data} lang={lang} onOpen={() => { setSheet(''); setTab('quotes') }} />}
         <SalesInbox lang={lang} notifications={data?.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) { setSheet(''); openDeal(row) } }} />
       </Sheet>}
 

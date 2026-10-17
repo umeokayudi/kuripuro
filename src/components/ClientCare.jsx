@@ -387,7 +387,8 @@ export function QuoteForm({ locations, defaults, labels, lang, onSubmit, onCance
 
 export function RequestCard({ rq, labels, lang, onDecide }) {
   const isQuote = rq.request_type === 'quote'
-  const qs = rq.quote_status || (isQuote ? 'requested' : null)
+  // 'priced' = the company set its price and the seller is preparing it: still "waiting" for the client.
+  const qs = rq.quote_status === 'priced' ? 'requested' : rq.quote_status || (isQuote ? 'requested' : null)
   const pill = isQuote
     ? { requested: [labels.qRequested, 'open'], quoted: [labels.qQuoted, 'soon'], accepted: [labels.qAccepted, 'paid'], declined: [labels.qDeclined, 'muted'] }[qs] || [qs, 'open']
     : rq.status === 'completed' ? [labels.statusDone, 'paid'] : [labels.statusPending, 'open']
