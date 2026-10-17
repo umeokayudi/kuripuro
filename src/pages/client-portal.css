@@ -1279,7 +1279,7 @@
 .cpx-hello.is-tab{margin-top:10px}.cpx-hello.is-tab h1{margin:0;font-size:22px}
 .cpx-manager-photo{line-height:1;text-align:center;place-content:center}
 
-/* —— v1.0.55: responsible person, simple store form, quick ratings, menu, chat —— */
+/* —— v1.0.58: responsible person, simple store form, quick ratings, menu, chat —— */
 .cpx-manager-crew{grid-column:1/-1;font-size:12.5px;color:#c7d4ee}
 .cpx-manager-actions button{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:17px;border:0;background:#fff;color:#0c1c30;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
 .cpx-details-empty{display:flex;flex-direction:column;gap:12px;align-items:flex-start}

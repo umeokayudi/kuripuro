@@ -40,7 +40,7 @@ assert.equal(sum.recentlyPaid.id, 'd')
 assert.equal(receiptNumber({ id: 'abcdef12', paid_at: '2026-10-02T00:00:00Z' }), 'R-202610-ABCDEF')
 console.log('✅ client care rules OK')
 
-// v1.0.55: stores, responsible person, crew, chat photos
+// v1.0.58: stores, responsible person, crew, chat photos
 const { storeBaseName, clientStoreNames, storeContact, storeCrew } = await import('../src/lib/clientPortal.js')
 const { chatPhoto, photoMessage, chatPreview } = await import('../src/lib/chatContent.js')
 assert.equal(storeBaseName('Nyu Sakana Yakio - Deep Clean'), 'Nyu Sakana Yakio')
@@ -65,4 +65,4 @@ assert.deepEqual(storeCrew(crewJobs, 'Tooda'), ['Pedro', 'Leticia'])
 assert.equal(chatPhoto(photoMessage('jobs/client-chat/a/b.jpg')), 'jobs/client-chat/a/b.jpg')
 assert.equal(chatPhoto('hello [photo] x'), null)
 assert.equal(chatPreview(photoMessage('jobs/x.jpg'), '📷'), '📷')
-console.log('client portal v1.0.55 helpers ok')
+console.log('client portal v1.0.58 helpers ok')
