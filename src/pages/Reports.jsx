@@ -7,7 +7,7 @@ import { tokyoToday } from '../lib/dates'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, pickLang } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
 import { formatDistance } from '../lib/geocode'
 import { useAuth } from '../hooks/useAuth'
@@ -230,7 +230,7 @@ export default function Reports() {
       const order = new Map(ids.map((id, i) => [id, i]))
       const sorted = (dayJobs || []).sort((a, b) => order.get(a.id) - order.get(b.id))
       const { generateDailyReport } = await import('../lib/generatePDF')
-      const doc = await generateDailyReport(filterDay, sorted, filterEmp || (lang === 'ja' ? '全スタッフ' : 'All staff'), { showEmployee: !filterEmp, adminName: user?.name || '', adminSignature: sig || null })
+      const doc = await generateDailyReport(filterDay, sorted, filterEmp || pickLang(lang, 'All staff', '全スタッフ', 'Todos os funcionários'), { showEmployee: !filterEmp, adminName: user?.name || '', adminSignature: sig || null })
       doc.save(`report_${filterDay}${filterEmp ? '_' + filterEmp.replace(/\s+/g, '_') : ''}.pdf`)
       toast.success(tr.dayPdfReady)
     } catch (e) {
@@ -315,7 +315,7 @@ export default function Reports() {
             <input type="date" value={filterDay} onChange={e => setFilterDay(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)' }} />
             {filterDay
               ? <button className="btn btn-sm" onClick={() => setFilterDay('')}>{tr.anyDay}</button>
-              : <button className="btn btn-sm" onClick={() => setFilterDay(tokyoToday())}>{lang === 'ja' ? '今日' : 'Today'}</button>}
+              : <button className="btn btn-sm" onClick={() => setFilterDay(tokyoToday())}>{pickLang(lang, 'Today', '今日', 'Hoje')}</button>}
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>

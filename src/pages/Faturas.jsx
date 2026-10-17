@@ -11,7 +11,6 @@ export default function Faturas() {
   const [searchParams] = useSearchParams()
   const searchId = searchParams.get('search')
   const { t, lang, tr } = useLang()
-  const ja = lang === 'ja'
   const inv = t.invoices
   const [faturas, setFaturas] = useState([])
   const [clients, setClients] = useState([])

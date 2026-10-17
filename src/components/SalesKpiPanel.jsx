@@ -47,13 +47,33 @@ const COPY = {
     ranking: '営業ランキング', seller: '担当', inactive: '無効',
     quotesSent: '見積送付', quotesAccepted: '承認', acceptance: '承認率', overdueShort: '期限超過', meetings: '面談', openLeads2: '進行中', reportDays: '日報', message: 'メッセージ',
   },
+  pt: {
+    title: 'KPIs e evolução', sub: 'Todos os números vêm das abordagens, contatos, orçamentos e contratos aprovados registrados.',
+    ranges: { month: 'Este mês', '3m': '3 meses', '6m': '6 meses', year: 'Este ano', '12m': '12 meses' },
+    everyone: 'Equipe toda', vsPrev: 'vs período anterior',
+    revenue: 'Contratado / mês', wins: 'Negócios fechados', winRate: 'Taxa de fechamento', leads: 'Novos leads', contacts: 'Contatos registrados', approaches: 'Abordagens', quotes: 'Orçamentos enviados', daysToClose: 'Mediana de dias até fechar', attainment: 'Atingimento da meta',
+    days: d => `${d} dias`, noGoal: 'sem meta definida',
+    evolution: 'Evolução por mês', goal: 'Meta', actual: 'Realizado', empty: 'Nenhuma atividade neste período ainda.',
+    metrics: { revenue: 'Faturamento', wins: 'Fechados', leads: 'Leads', contacts: 'Contatos', approaches: 'Abordagens', quotes: 'Orçamentos', attainment: 'Meta %' },
+    funnel: 'Funil de conversão', funnelSub: 'Leads que começaram no período e até onde chegaram.',
+    steps: { approaches: 'Abordagens', leads: 'Leads', contacted: 'Contatados', quoted: 'Orçados', won: 'Fechados' }, conv: 'da etapa anterior',
+    leadToWin: 'Lead → fechado',
+    followup: 'Disciplina de follow-up', followupSub: 'Clientes em aberto hoje.', onTrack: 'Em dia', overdue: 'Atrasados', stale: '14+ dias sem contato', missing: 'Sem próxima data', avgSince: 'Média de dias desde o último contato', onTrackRate: 'Em dia',
+    closing: 'Fechamento', avgDays: 'Média', fastest: 'Mais rápido', slowest: 'Mais lento', contactsPerWin: 'Contatos por fechamento', lost: 'Perdidos', lostReasons: 'Por que os negócios foram perdidos', noLost: 'Nenhum negócio perdido neste período.',
+    pipeline: 'Pipeline em aberto', pipelineValue: 'Previsto / mês', openLeads: 'Leads em aberto', quoteValue: 'Valor orçado', weighted: 'Previsão ponderada', weightedHint: 'Valor previsto × chance por etapa',
+    stages: { approach: 'Abordagem', followup: 'Follow-up', quote: 'Orçamento', negotiation: 'Negociação' },
+    sources: 'De onde vêm os leads', winRateShort: 'fechados',
+    efficiency: 'Eficiência em campo', hours: 'Horas trabalhadas', perHour: 'Abordagens / hora', travel: 'Custo de transporte', travelPerWin: 'Transporte por fechamento', avgDeal: 'Negócio médio / mês',
+    ranking: 'Ranking de vendedores', seller: 'Vendedor', inactive: 'inativo',
+    quotesSent: 'Orçamentos enviados', quotesAccepted: 'Aprovados', acceptance: 'Aprovação', overdueShort: 'Follow-ups atrasados', meetings: 'Reuniões', openLeads2: 'Clientes em aberto', reportDays: 'Relatórios diários', message: 'Mensagem',
+  },
 }
 
 const METRIC_FORMAT = { revenue: yen, attainment: pct }
 const METRIC_GOAL = { revenue: 'revenue', leads: 'leads', contacts: 'contacts', approaches: 'approaches', quotes: 'quotes', wins: 'contracts' }
 
 export default function SalesKpiPanel({ data, lang, sellers = null, today, channels = [], onMessage }) {
-  const t = COPY[lang === 'ja' ? 'ja' : 'en']
+  const t = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [rangeKey, setRangeKey] = useState('6m')
   const [sellerId, setSellerId] = useState('')
   const [metric, setMetric] = useState('revenue')

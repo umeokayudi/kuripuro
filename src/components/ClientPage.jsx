@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { translations } from '../i18n/translations'
 import toast from 'react-hot-toast'
 import { salesGet, salesPost } from '../lib/salesApi'
 import { ContactLogForm, followupCopy } from './SalesFollowupParts'
@@ -42,6 +43,8 @@ function contractFromQuote(lead, quote, submission, rule) {
 }
 
 function contractHtml(c, lead, seller, t, lang) {
+  // The contract goes to Japanese clients: a Portuguese admin prints the English version.
+  if (lang === 'pt') { lang = 'en'; t = translations.en }
   const base = c.billing_type === 'per_visit' ? Number(c.price_per_visit || 0) * Number(c.visits_per_month || 0) : Number(c.base_monthly_amount || 0)
   const extra = c.commission_type === 'percent' ? base * Number(c.commission_value || 0) / 100 : Number(c.commission_value || 0)
   const monthly = base + extra

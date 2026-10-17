@@ -12,8 +12,8 @@ import { fetchDayContext } from '../lib/dayContext'
 import DayContext from './DayContext'
 
 const SEEN_KEY = 'kp_timeoff_seen_v1'
-const readSeen = () => { try { return new Set(JSON.parse(sessionStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
-const writeSeen = (ids) => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...ids])) } catch { /* private mode */ } }
+const readSeen = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
+const writeSeen = (ids) => { try { localStorage.setItem(SEEN_KEY, JSON.stringify([...ids].slice(-500))) } catch { /* private mode */ } }
 
 // Admin topbar: bell with the number of pending day-off requests (plus payroll months the
 // cron closed automatically), a small alert when new ones arrive, and a pop-up to approve /
@@ -38,8 +38,13 @@ export default function TimeOffCenter() {
   ]).then(([list, periods]) => {
     setRows(list)
     setPayroll(periods)
-    // Alert only for items the admin has not been told about in this session
-    if ([...list, ...periods].some(r => !seen.current.has(r.id))) setToastOpen(true)
+    // Alert only once per item, ever: after that the number stays in the side menu until it is resolved
+    const fresh = [...list, ...periods].filter(r => !seen.current.has(r.id))
+    if (fresh.length) {
+      fresh.forEach(r => seen.current.add(r.id))
+      writeSeen(seen.current)
+      setToastOpen(true)
+    }
   })
 
   useEffect(() => {
@@ -49,6 +54,13 @@ export default function TimeOffCenter() {
     window.addEventListener(PAYROLL_CHANGED, load)
     return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The pop-up alert goes away on its own; the bell and the side-menu numbers stay.
+  useEffect(() => {
+    if (!toastOpen) return
+    const id = setTimeout(() => setToastOpen(false), 12000)
+    return () => clearTimeout(id)
+  }, [toastOpen])
 
   const markSeen = () => {
     rows.concat(payroll).forEach(r => seen.current.add(r.id))
