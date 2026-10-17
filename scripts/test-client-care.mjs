@@ -39,3 +39,30 @@ assert.equal(sum.paidThisYear, 3000)
 assert.equal(sum.recentlyPaid.id, 'd')
 assert.equal(receiptNumber({ id: 'abcdef12', paid_at: '2026-10-02T00:00:00Z' }), 'R-202610-ABCDEF')
 console.log('✅ client care rules OK')
+
+// v1.0.55: stores, responsible person, crew, chat photos
+const { storeBaseName, clientStoreNames, storeContact, storeCrew } = await import('../src/lib/clientPortal.js')
+const { chatPhoto, photoMessage, chatPreview } = await import('../src/lib/chatContent.js')
+assert.equal(storeBaseName('Nyu Sakana Yakio - Deep Clean'), 'Nyu Sakana Yakio')
+assert.equal(storeBaseName('Ibushio — Grease Trap'), 'Ibushio')
+assert.equal(storeBaseName('Tooda'), 'Tooda')
+assert.deepEqual(clientStoreNames(['Tooda', 'Tooda - Deep Clean', 'Ibushio — AC Cleaning'], { location_name: null }), ['Tooda', 'Ibushio'])
+assert.deepEqual(clientStoreNames(['Tooda', 'Ibushio'], { location_name: 'Ibushio' }), ['Ibushio'])
+const sellers = [{ id: 's1', full_name: 'Carlos' }, { id: 's2', full_name: 'Ana' }]
+const cts = [{ location_name: 'Tooda - Deep Clean', salesperson_id: 's2' }, { location_name: 'Ibushio', salesperson_id: 's1' }]
+assert.equal(storeContact({ client: {}, contracts: cts, salespeople: sellers, location: 'Tooda' }).name, 'Ana')
+assert.equal(storeContact({ client: {}, contracts: cts, salespeople: sellers, location: 'Other' }).name, 'Ana')
+assert.equal(storeContact({ client: { manager_name: 'Yudi' }, contracts: cts, salespeople: sellers, location: 'Tooda' }).name, 'Yudi')
+assert.equal(storeContact({ client: {}, contracts: [], salespeople: [], location: 'Tooda' }), null)
+const crewJobs = [
+  { status: 'completed', employee_name: 'Pedro Silva', title: 'Tooda — Basic Cleaning', scheduled_date: '2026-10-01' },
+  { status: 'completed', employee_name: 'Pedro Silva', title: 'Tooda — Basic Cleaning', scheduled_date: '2026-10-02' },
+  { status: 'completed', employee_name: 'Leticia U', title: 'Tooda — Deep Clean', scheduled_date: '2026-10-03' },
+  { status: 'assigned', employee_name: 'Sasaki', title: 'Tooda — Basic Cleaning', scheduled_date: '2026-10-04' },
+  { status: 'completed', employee_name: 'Guilherme', title: 'Ibushio — Basic Cleaning', scheduled_date: '2026-10-04' },
+]
+assert.deepEqual(storeCrew(crewJobs, 'Tooda'), ['Pedro', 'Leticia'])
+assert.equal(chatPhoto(photoMessage('jobs/client-chat/a/b.jpg')), 'jobs/client-chat/a/b.jpg')
+assert.equal(chatPhoto('hello [photo] x'), null)
+assert.equal(chatPreview(photoMessage('jobs/x.jpg'), '📷'), '📷')
+console.log('client portal v1.0.55 helpers ok')

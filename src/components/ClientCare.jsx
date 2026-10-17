@@ -17,38 +17,45 @@ export const itemLabel = (key, lang) => {
   return item ? (lang === 'ja' ? item.ja : item.en) : key
 }
 
-/* ───────── Account manager ───────── */
-export function ManagerCard({ client, labels, compact = false }) {
+/* ───────── Who looks after the store ───────── */
+const initialsOf = name => String(name || '').split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+
+// Always shown: a named person when we have one, otherwise the KuriPuro team,
+// so the client always knows who to talk to and can open the chat in one tap.
+export function ManagerCard({ contact, crew = [], storeName, labels, compact = false, onChat }) {
   const [qr, setQr] = useState(null)
-  const line = client?.manager_line_url
+  const line = contact?.line
   useEffect(() => {
     let alive = true
-    if (!line) { setQr(null); return undefined }
+    if (!line || compact) { setQr(null); return undefined }
     QRCode.toDataURL(line, { margin: 1, width: 240, color: { dark: '#0c1c30', light: '#ffffff' } })
       .then(url => { if (alive) setQr(url) })
       .catch(() => { if (alive) setQr(null) })
     return () => { alive = false }
-  }, [line])
-  if (!client?.manager_name) return null
-  const initials = client.manager_name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
+  }, [line, compact])
+  const name = contact?.name || labels.kpTeam
   return (
     <section className={`cpx-manager${compact ? ' is-compact' : ''}`}>
       <div className="cpx-manager-main">
-        {client.manager_photo_url
-          ? <img className="cpx-manager-photo" src={client.manager_photo_url} alt="" />
-          : <span className="cpx-manager-photo">{initials}</span>}
+        {contact?.photo
+          ? <img className="cpx-manager-photo" src={contact.photo} alt="" />
+          : <span className="cpx-manager-photo">{contact?.name ? initialsOf(contact.name) : 'KP'}</span>}
         <div>
-          <small>{labels.yourManager}</small>
-          <strong>{client.manager_name}</strong>
-          <span>{labels.managerHint}</span>
+          <small>{storeName ? fill(labels.managerOfStore, { store: storeName }) : labels.yourManager}</small>
+          <strong>{name}</strong>
+          <span>{contact?.name ? labels.managerHint : labels.kpTeamHint}</span>
         </div>
       </div>
+      {crew.length > 0 && (
+        <div className="cpx-manager-crew">🧹 {fill(labels.crewLine, { names: crew.join(', ') })}</div>
+      )}
       <div className="cpx-manager-actions">
-        {client.manager_phone && <a href={`tel:${client.manager_phone.replace(/[^\d+]/g, '')}`}>📞 {client.manager_phone}</a>}
-        {client.manager_email && <a href={`mailto:${client.manager_email}`}>✉️ {client.manager_email}</a>}
+        {onChat && <button type="button" className="is-chat" onClick={onChat}>💬 {labels.sendMessageTo}</button>}
+        {contact?.phone && <a href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`}>📞 {labels.callBtn}</a>}
         {line && <a href={line} target="_blank" rel="noreferrer" className="is-line">LINE</a>}
+        {contact?.email && !compact && <a href={`mailto:${contact.email}`}>✉️ {contact.email}</a>}
       </div>
-      {qr && !compact && (
+      {qr && (
         <div className="cpx-manager-qr">
           <img src={qr} alt="LINE QR" />
           <small>{labels.scanLine}</small>
@@ -214,37 +221,76 @@ export function BillingView({ invoices, today, labels, lang, clientName }) {
 }
 
 /* ───────── Stores: details + maintenance ───────── */
+const COUNT_FIELDS = ['seats', 'bathrooms', 'ac_units', 'range_hoods', 'exhaust_fans', 'grease_trap_count']
+const FIELD_ICON = { seats: '🪑', bathrooms: '🚻', ac_units: '❄️', range_hoods: '🔥', exhaust_fans: '🌀', grease_trap_count: '🛢', area_m2: '📐', grease_trap_size: '📏', opening_hours: '🕒', access_notes: '🔑' }
+
+function Stepper({ value, onChange, label }) {
+  const n = value === '' || value === null || value === undefined ? null : Number(value)
+  return (
+    <div className="cpx-stepper" role="group" aria-label={label}>
+      <button type="button" onClick={() => onChange(n ? n - 1 : 0)} disabled={!n} aria-label="−">−</button>
+      <b className={n == null ? 'is-empty' : ''}>{n ?? 0}</b>
+      <button type="button" onClick={() => onChange((n || 0) + 1)} aria-label="+">+</button>
+    </div>
+  )
+}
+
+// Store details: counts are tapped with + / −, everything is optional and saved with one button.
 function LocationDetails({ profile, labels, onSave, saving }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(profile || {})
   useEffect(() => { setDraft(profile || {}) }, [profile])
   const filled = LOCATION_FIELDS.filter(f => profile?.[f.key] !== null && profile?.[f.key] !== undefined && profile?.[f.key] !== '')
+  const set = (key, v) => setDraft(d => ({ ...d, [key]: v }))
   if (!editing) {
+    if (filled.length === 0) {
+      return (
+        <div className="cpx-details-empty">
+          <p>{labels.detailsIntro}</p>
+          <button type="button" className="cp-btn cp-btn-blue" onClick={() => setEditing(true)}>{labels.addDetails}</button>
+        </div>
+      )
+    }
     return (
       <div className="cpx-details">
-        {filled.length === 0
-          ? <div className="cpx-empty">{labels.noDetails}</div>
-          : (
-            <div className="cpx-detail-grid">
-              {filled.map(f => (
-                <div key={f.key}><small>{labels[`f_${f.key}`]}</small><strong>{profile[f.key]}{f.unit ? ` ${f.unit}` : ''}</strong></div>
-              ))}
+        <div className="cpx-detail-grid">
+          {filled.map(f => (
+            <div key={f.key} className={f.key === 'access_notes' ? 'is-wide' : ''}>
+              <small>{FIELD_ICON[f.key]} {labels[`f_${f.key}`]}</small>
+              <strong>{profile[f.key]}{f.unit ? ` ${f.unit}` : ''}</strong>
             </div>
-          )}
-        <button type="button" className="cpx-link" onClick={() => setEditing(true)}>{filled.length ? labels.editDetails : labels.addDetails}</button>
+          ))}
+        </div>
+        <button type="button" className="cpx-link" onClick={() => setEditing(true)}>{labels.editDetails}</button>
       </div>
     )
   }
+  const field = key => LOCATION_FIELDS.find(f => f.key === key)
   return (
     <div className="cpx-details is-editing">
+      <p className="cpx-details-hint">{labels.detailsOptional}</p>
+      <div className="cpx-count-list">
+        {COUNT_FIELDS.map(key => (
+          <div key={key} className="cpx-count-row">
+            <span>{FIELD_ICON[key]} {labels[`f_${key}`]}</span>
+            <Stepper value={draft[key]} label={labels[`f_${key}`]} onChange={v => set(key, v)} />
+          </div>
+        ))}
+      </div>
       <div className="cpx-form-grid">
-        {LOCATION_FIELDS.map(f => (
-          <label key={f.key} className={f.key === 'access_notes' ? 'is-wide' : ''}>
-            <span>{labels[`f_${f.key}`]}{f.unit ? ` (${f.unit})` : ''}</span>
-            <input className="cp-input" type={f.type} min={f.type === 'number' ? 0 : undefined} value={draft[f.key] ?? ''}
-              onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))} />
+        {['area_m2', 'grease_trap_size', 'opening_hours'].map(key => (
+          <label key={key}>
+            <span>{FIELD_ICON[key]} {labels[`f_${key}`]}{field(key).unit ? ` (${field(key).unit})` : ''}</span>
+            <input className="cp-input" type={field(key).type} inputMode={field(key).type === 'number' ? 'numeric' : undefined}
+              min={field(key).type === 'number' ? 0 : undefined} value={draft[key] ?? ''}
+              placeholder={labels[`ph_${key}`] || ''} onChange={e => set(key, e.target.value)} />
           </label>
         ))}
+        <label className="is-wide">
+          <span>{FIELD_ICON.access_notes} {labels.f_access_notes}</span>
+          <textarea className="cp-textarea" rows={2} value={draft.access_notes ?? ''} placeholder={labels.ph_access_notes || ''}
+            onChange={e => set('access_notes', e.target.value)} />
+        </label>
       </div>
       <div className="cpx-row-btns">
         <button type="button" className="cp-btn" onClick={() => { setDraft(profile || {}); setEditing(false) }}>{labels.cancel}</button>
@@ -293,7 +339,7 @@ export function maintenanceAlertsFor({ locations, jobs, records, today }) {
   return out.sort((a, b) => a.daysLeft - b.daysLeft)
 }
 
-export function StoresView({ clientId, locations, jobs, profiles, records, today, labels, lang, onChanged, onQuote, userName }) {
+export function StoresView({ clientId, locations, jobs, profiles, records, today, labels, lang, onChanged, onQuote, userName, contactFor, crewFor, onChat }) {
   const [active, setActive] = useState(locations[0] || '')
   const [saving, setSaving] = useState(false)
   useEffect(() => { if (!locations.includes(active)) setActive(locations[0] || '') }, [locations, active])
@@ -329,6 +375,9 @@ export function StoresView({ clientId, locations, jobs, profiles, records, today
             )
           })}
         </div>
+      )}
+      {contactFor && (
+        <ManagerCard contact={contactFor(active)} crew={crewFor?.(active) || []} storeName={active} labels={labels} compact onChat={onChat} />
       )}
       <section className="cpx-panel">
         <header><h2>{active}</h2><small>{labels.storeDetails}</small></header>
