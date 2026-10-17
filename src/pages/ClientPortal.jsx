@@ -14,7 +14,9 @@ import { summarizeCleaningMonth, deepSummaryFromPlan, weeklyCompleted, shiftMont
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
+  clientStoreNames, storeContact, storeCrew,
 } from '../lib/clientPortal'
+import { chatPhoto, chatDayKey, photoMessage } from '../lib/chatContent'
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
@@ -83,6 +85,9 @@ export default function ClientPortal() {
   const [profiles, setProfiles] = useState([])
   const [maintRecords, setMaintRecords] = useState([])
   const [quoteDefaults, setQuoteDefaults] = useState({})
+  const [salespeople, setSalespeople] = useState([])
+  const [sendingPhoto, setSendingPhoto] = useState(false)
+  const [quickRating, setQuickRating] = useState('')
   const [moreOpen, setMoreOpen] = useState(false)
   const [feedbackTab, setFeedbackTab] = useState('complaints')
   const [newMsg, setNewMsg] = useState('')
@@ -141,7 +146,7 @@ export default function ClientPortal() {
         : `client_id.eq.${user.client_id}`
       const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
         supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
-        supabase.from('service_contracts').select('location_name').eq('client_id', user.client_id).eq('is_active', true),
+        supabase.from('service_contracts').select('location_name,salesperson_id').eq('client_id', user.client_id).eq('is_active', true),
         supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at').limit(100),
         supabase.from('client_complaints').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
         supabase.from('client_compliments').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
@@ -165,6 +170,11 @@ export default function ClientPortal() {
         supabase.from('location_profiles').select('*').eq('client_id', user.client_id),
         supabase.from('location_maintenance').select('*').eq('client_id', user.client_id),
       ])
+      const sellerIds = [...new Set((contractsRes.data || []).map(ct => ct.salesperson_id).filter(Boolean))]
+      if (sellerIds.length) {
+        const { data: sp } = await supabase.from('salespeople').select('id,full_name,phone,email').in('id', sellerIds)
+        setSalespeople(sp || [])
+      } else setSalespeople([])
       setInvoices(invRes.data || [])
       setClientRow(cliRes.data || null)
       setProfiles(filterByLocation(profRes.data, user.location_name))
@@ -240,10 +250,15 @@ export default function ClientPortal() {
     return () => clearInterval(tick)
   }, [])
 
+  // Jump to the newest message when the chat opens or a new one arrives, not on every refresh.
+  const chatSeenRef = useRef({ tab: '', count: 0 })
   useEffect(() => {
-    if (!c || tab !== 'chat') return
-    markMessagesRead()
-    setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 150)
+    if (!c || tab !== 'chat') { chatSeenRef.current.tab = tab; return }
+    if (messages.some(m => m.sender === 'admin' && !m.read)) markMessagesRead()
+    const opened = chatSeenRef.current.tab !== 'chat'
+    const grew = messages.length > chatSeenRef.current.count
+    chatSeenRef.current = { tab, count: messages.length }
+    if (opened || grew) setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: opened ? 'auto' : 'smooth', block: 'end' }), 80)
   }, [tab, messages, c, markMessagesRead])
 
   useEffect(() => {
@@ -335,14 +350,49 @@ export default function ClientPortal() {
     )
   }
 
-  const sendMessage = async () => {
-    if (!newMsg.trim()) return
+  const sendMessage = async (text = newMsg) => {
+    const content = String(text || '').trim()
+    if (!content) return false
     const { error } = await supabase.from('client_messages').insert({
       client_id: user.client_id, client_user_id: user.id, client_name: user.client_name,
-      location_name: user.location_name, sender: 'client', content: newMsg.trim(), read: false,
+      location_name: user.location_name, sender: 'client', content, read: false,
     })
+    if (error) { toast.error(error.message); return false }
+    if (text === newMsg) setNewMsg('')
+    loadAll({ silent: true })
+    return true
+  }
+
+  const sendPhoto = async (file) => {
+    if (!file || sendingPhoto) return
+    setSendingPhoto(true)
+    try {
+      const path = await uploadJobPhoto(`jobs/client-chat/${user.client_id}/${crypto.randomUUID()}.jpg`, file)
+      await sendMessage(photoMessage(path))
+    } catch (err) {
+      toast.error(err?.message || 'Upload failed')
+    } finally {
+      setSendingPhoto(false)
+    }
+  }
+
+  // One tap on a star saves the rating; comment and photo stay optional in the visit sheet.
+  const quickRate = async (jobsToRate, stars) => {
+    const list = jobsToRate.filter(Boolean)
+    if (!list.length || quickRating) return
+    setQuickRating(list.length > 1 ? 'all' : list[0].id)
+    const rows = list.map(job => {
+      const existing = ratings.find(r => r.job_id === job.id)
+      return {
+        client_id: user.client_id, client_user_id: user.id, job_id: job.id,
+        employee_name: job.employee_name, location_name: locationFromJob(job),
+        stars, comment: existing?.comment || null,
+      }
+    })
+    const { error } = await supabase.from('client_ratings').upsert(rows, { onConflict: 'job_id' })
+    setQuickRating('')
     if (error) return toast.error(error.message)
-    setNewMsg('')
+    toast.success(c.ratingSent)
     loadAll({ silent: true })
   }
 
@@ -507,7 +557,12 @@ export default function ClientPortal() {
   const ratingForJob = (jobId) => ratings.find(r => r.job_id === jobId)
 
   const billingOverdue = invoices.filter(inv => !(inv.status === 'paid' || inv.paid_at) && inv.due_date && inv.due_date < today).length
-  const storeNames = [...new Set([...locations, ...profiles.map(p => p.location_name)])].filter(Boolean)
+  const storeNames = clientStoreNames([...locations, ...profiles.map(p => p.location_name)], user)
+  const crewSince = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
+  const contactFor = loc => storeContact({ client: clientRow, contracts, salespeople, location: loc })
+  const crewFor = loc => storeCrew(jobs, loc, { since: crewSince })
+  const homeStore = user.location_name || (storeNames.length === 1 ? storeNames[0] : '')
+  const unratedVisits = completed.filter(j => !ratingForJob(j.id) && j.scheduled_date >= crewSince).slice(0, 6)
   const maintAlerts = maintenanceAlertsFor({ locations: storeNames, jobs, records: maintRecords, today })
   const maintOverdue = maintAlerts.filter(a => a.state === 'overdue').length
   const monthKey = today.slice(0, 7)
@@ -522,21 +577,24 @@ export default function ClientPortal() {
   const pendingFacilityRecs = facilityRecs.filter(r => r.status === 'pending')
   const facilityModel = facilityModels.find(m => m.id === facilityModelId) || null
 
+  const quotesWaiting = requests.filter(rq => rq.quote_status === 'quoted').length
   const navItems = [
     { key: 'home', icon: <NavIcon name="home" />, label: c.home },
-    { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
+    { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits, badge: unratedVisits.length },
     { key: 'stores', icon: <NavIcon name="store" />, label: c.storesTab, badge: maintOverdue },
-    { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab },
     { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
-    { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits },
+    { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
+    { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab, badge: quotesWaiting },
     { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
     ...(facilityModels.length || pendingFacilityRecs.length
       ? [{ key: 'facility', icon: <NavIcon name="store" />, label: tr.facility.storeModel, badge: pendingFacilityRecs.length }]
       : []),
     { key: 'settings', icon: <NavIcon name="settings" />, label: c.settings },
   ]
-  const bottomKeys = ['home', 'billing', 'stores', 'requests', 'chat']
+  // Bottom bar keeps the everyday screens; payments and quotes live at the top of the menu.
+  const bottomKeys = ['home', 'visits', 'stores', 'chat']
   const moreItems = navItems.filter(n => !bottomKeys.includes(n.key))
+  const moreBadge = moreItems.reduce((sum, n) => sum + (n.badge || 0), 0)
 
   const avgRating = ratings.length
     ? (ratings.reduce((s, r) => s + r.stars, 0) / ratings.length).toFixed(1)
@@ -742,6 +800,12 @@ export default function ClientPortal() {
                     </span>
                   </button>
                 )}
+                <ManagerCard contact={contactFor(homeStore)} crew={homeStore ? crewFor(homeStore) : []} storeName={homeStore}
+                  labels={c} compact onChat={() => setTab('chat')} />
+                {unratedVisits.length > 0 && (
+                  <QuickRatePanel visits={unratedVisits} labels={c} busy={quickRating} onRate={quickRate}
+                    onOpen={setSelectedVisit} />
+                )}
                 <CleaningProgressCard
                   basic={basicSummary}
                   deep={deepSummary}
@@ -753,7 +817,6 @@ export default function ClientPortal() {
                   onNext={() => setDeepProgressMonth(m => shiftMonth(m, 1))}
                   canNext={deepProgressMonth < currentYearMonth()}
                 />
-                <ManagerCard client={clientRow} labels={c} compact />
                 <div className="cp-section-title cpx-section">{c.today} <small>{today}</small></div>
                 <div className="cp-visit-grid">
                   {todayJobs.length === 0
@@ -878,6 +941,9 @@ export default function ClientPortal() {
                   </div>
                 </div>
 
+                {unratedVisits.length > 0 && (
+                  <QuickRatePanel visits={unratedVisits} labels={c} busy={quickRating} onRate={quickRate} onOpen={setSelectedVisit} />
+                )}
                 <div className="cp-section-title"><span>📋</span> {c.visits}</div>
                 <div className="cp-visit-grid">
                   {filteredVisits.length === 0
@@ -905,29 +971,24 @@ export default function ClientPortal() {
             )}
             {!loading && tab === 'stores' && (
               <StoresView clientId={user.client_id} locations={storeNames} jobs={jobs} profiles={profiles} records={maintRecords}
-                today={today} labels={c} lang={lang} userName={user.contact_name || user.name} onChanged={() => loadAll({ silent: true })} onQuote={openQuote} />
+                today={today} labels={c} lang={lang} userName={user.contact_name || user.name} onChanged={() => loadAll({ silent: true })} onQuote={openQuote}
+                contactFor={contactFor} crewFor={crewFor} onChat={() => setTab('chat')} />
             )}
-            {!loading && tab === 'chat' && <ManagerCard client={clientRow} labels={c} />}
             {!loading && tab === 'chat' && (
-              <div className="cp-chat">
-                <div className="cp-chat-msgs">
-                  {messages.length === 0 && <PortalEmpty icon="💬" text={c.noMessages} />}
-                  {messages.map(m => (
-                    <div key={m.id} className={`cp-bubble ${m.sender === 'client' ? 'client' : 'admin'}`}>
-                      {m.content}
-                      <div className="cp-bubble-time">
-                        {new Date(m.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={msgEndRef} />
-                </div>
-                <div className="cp-chat-input-row">
-                  <input className="cp-input cp-chat-input" value={newMsg} onChange={e => setNewMsg(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder={c.messagePlaceholder} />
-                  <button type="button" className="cp-chat-send" onClick={sendMessage} disabled={!newMsg.trim()}>{c.sendMessage}</button>
-                </div>
-              </div>
+              <ClientChat
+                messages={messages}
+                contact={contactFor(homeStore)}
+                labels={c}
+                lang={lang}
+                desktop={desktopMode}
+                value={newMsg}
+                onChange={setNewMsg}
+                onSend={sendMessage}
+                onPhoto={sendPhoto}
+                sendingPhoto={sendingPhoto}
+                onPhotoClick={setLightbox}
+                endRef={msgEndRef}
+              />
             )}
 
             {!loading && tab === 'complaints' && (
@@ -1165,16 +1226,27 @@ export default function ClientPortal() {
                   </button>
                 ))}
                 <button type="button" className={`cp-nav-btn${moreItems.some(n => n.key === tab) ? ' active' : ''}`} onClick={() => setMoreOpen(true)}>
-                  <span className="cp-nav-icon"><NavIcon name="more" /></span>
-                  <span className="cp-nav-label">{c.moreTab}</span>
+                  <span className="cp-nav-icon"><NavIcon name="menu" /></span>
+                  {moreBadge > 0 && <span className="cp-nav-badge">{moreBadge}</span>}
+                  <span className="cp-nav-label">{c.menuTab}</span>
                 </button>
               </div>
             </nav>
             {moreOpen && (
               <div className="cp-overlay" onClick={() => setMoreOpen(false)}>
                 <div className="cp-sheet cpx-more" onClick={e => e.stopPropagation()}>
-                  <strong>{c.moreTab}</strong>
-                  {moreItems.map(n => (
+                  <strong>{c.menuTab}</strong>
+                  <div className="cpx-more-tiles">
+                    {moreItems.filter(n => n.key === 'billing' || n.key === 'requests').map(n => (
+                      <button key={n.key} type="button" className={tab === n.key ? 'is-active' : ''} onClick={() => { setTab(n.key); setMoreOpen(false) }}>
+                        <span>{n.icon}</span>
+                        <strong>{n.label}</strong>
+                        <small>{n.key === 'billing' ? c.menuBillingHint : c.menuQuotesHint}</small>
+                        {n.badge > 0 && <b>{n.badge}</b>}
+                      </button>
+                    ))}
+                  </div>
+                  {moreItems.filter(n => n.key !== 'billing' && n.key !== 'requests').map(n => (
                     <button key={n.key} type="button" onClick={() => { setTab(n.key); setMoreOpen(false) }}>
                       <span>{n.icon}</span>{n.label}{n.badge > 0 && <b>{n.badge}</b>}
                     </button>
@@ -1252,6 +1324,9 @@ const ICON_PATHS = {
   billing: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3',
   store: 'M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
+  menu: 'M4 7h16M4 12h16M4 17h16',
+  camera: 'M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  send: 'M4 12l16-8-6 16-2.5-6.5z',
 }
 
 function NavIcon({ name }) {
@@ -1394,6 +1469,112 @@ function VisitCard({
       )}
       {onClick && <div className="cp-card-link">{labels.viewDetails} →</div>}
       {rating && <div className="cp-stars">{'★'.repeat(rating.stars)}{'☆'.repeat(5 - rating.stars)}</div>}
+    </div>
+  )
+}
+
+// Rate recent visits with one tap per star, or all of them at once.
+function QuickRatePanel({ visits, labels, busy, onRate, onOpen }) {
+  return (
+    <section className="cpx-quickrate">
+      <header>
+        <div>
+          <h2>{labels.quickRateTitle}</h2>
+          <small>{labels.quickRateHint}</small>
+        </div>
+        {visits.length > 1 && (
+          <button type="button" className="cpx-rate-all" disabled={!!busy} onClick={() => onRate(visits, 5)}>
+            {busy === 'all' ? '…' : labels.rateAllFive}
+          </button>
+        )}
+      </header>
+      {visits.map(j => (
+        <div key={j.id} className="cpx-quickrate-row">
+          <button type="button" className="cpx-quickrate-info" onClick={() => onOpen(j)}>
+            <strong>{locationFromJob(j)}</strong>
+            <small>{j.scheduled_date}{j.employee_name ? ` · ${j.employee_name.split(' ')[0]}` : ''}</small>
+          </button>
+          <div className="cpx-quickrate-stars" aria-label={labels.rateService}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <button key={n} type="button" disabled={!!busy} onClick={() => onRate([j], n)} aria-label={`${n}★`}>★</button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function ClientChat({ messages, contact, labels, lang, desktop, value, onChange, onSend, onPhoto, sendingPhoto, onPhotoClick, endRef }) {
+  const fileRef = useRef()
+  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const todayKey = chatDayKey(new Date().toISOString())
+  const dayLabel = key => key === todayKey
+    ? labels.chatToday
+    : new Date(`${key}T12:00:00+09:00`).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', weekday: 'short', timeZone: 'Asia/Tokyo' })
+  const quick = [labels.quickQuote, labels.quickSchedule, labels.quickProblem]
+  const name = contact?.name || labels.kpTeam
+  let lastDay = ''
+  return (
+    <div className={`cpx-chat${desktop ? ' is-desktop' : ''}`}>
+      <div className="cpx-chat-head">
+        <span className="cpx-chat-avatar">{contact?.name ? contact.name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() : 'KP'}</span>
+        <div>
+          <strong>{name}</strong>
+          <small>{contact?.name ? labels.yourManager : labels.kpTeamHint}</small>
+        </div>
+        {contact?.phone && <a className="cpx-chat-call" href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`} aria-label={labels.callBtn}>📞</a>}
+      </div>
+      <div className="cpx-chat-msgs">
+        {messages.length === 0 && (
+          <div className="cpx-chat-empty">
+            <span>👋</span>
+            <p>{fill(labels.chatEmpty, { name })}</p>
+          </div>
+        )}
+        {messages.map(m => {
+          const day = chatDayKey(m.created_at)
+          const showDay = day !== lastDay
+          lastDay = day
+          const photo = chatPhoto(m.content)
+          const mine = m.sender === 'client'
+          return (
+            <div key={m.id} className="cpx-chat-item">
+              {showDay && <div className="cpx-chat-day"><span>{dayLabel(day)}</span></div>}
+              <div className={`cpx-bubble ${mine ? 'is-mine' : 'is-them'}${photo ? ' is-photo' : ''}`}>
+                {photo
+                  ? <button type="button" onClick={() => onPhotoClick(photo)}><img src={viewablePhotoUrl(photo)} alt="" loading="lazy" /></button>
+                  : m.content}
+                <time>{new Date(m.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}</time>
+              </div>
+            </div>
+          )
+        })}
+        <div ref={endRef} />
+      </div>
+      <div className="cpx-chat-compose">
+        {!value.trim() && (
+          <div className="cpx-chat-quick">
+            {quick.map(q => <button key={q} type="button" onClick={() => onSend(q)}>{q}</button>)}
+          </div>
+        )}
+        <div className="cpx-chat-row">
+          <button type="button" className="cpx-chat-photo" onClick={() => fileRef.current?.click()} disabled={sendingPhoto} aria-label={labels.sendPhoto} title={labels.sendPhoto}>
+            {sendingPhoto ? '…' : <NavIcon name="camera" />}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = '' }} />
+          <textarea
+            rows={1}
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSend() } }}
+            placeholder={labels.messagePlaceholder}
+          />
+          <button type="button" className="cpx-chat-send" onClick={() => onSend()} disabled={!value.trim()} aria-label={labels.sendMessage}>
+            <NavIcon name="send" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
