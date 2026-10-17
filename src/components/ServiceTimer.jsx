@@ -1,4 +1,4 @@
-import { jobDurationMin, formatMinutes, ON_SITE_METERS } from '../lib/workKpis'
+import { expectedJobMinutes, formatMinutes, ON_SITE_METERS } from '../lib/workKpis'
 import { fill } from '../i18n/translations'
 import { formatDistance } from '../lib/geocode'
 
@@ -6,13 +6,8 @@ const pad = n => String(n).padStart(2, '0')
 const clockText = secs => `${pad(Math.floor(secs / 3600))}:${pad(Math.floor((secs % 3600) / 60))}:${pad(secs % 60)}`
 
 /** Big running stopwatch for the job in progress, measured against the worker's own average. */
-export default function ServiceTimer({ job, elapsed, history, labels, lang }) {
-  const title = (job.title || '').split(' —')[0]
-  const past = (history || []).filter(j => j.id !== job.id && j.status === 'completed')
-  const here = past.filter(j => (j.title || '').split(' —')[0] === title).map(jobDurationMin).filter(v => v != null)
-  const all = past.map(jobDurationMin).filter(v => v != null)
-  const avgOf = list => Math.round(list.reduce((s, v) => s + v, 0) / list.length)
-  const expected = here.length ? avgOf(here) : all.length ? avgOf(all) : null
+export default function ServiceTimer({ job, elapsed, history, labels, lang, voiceOn, onToggleVoice }) {
+  const { expected, atThisPlace } = expectedJobMinutes(job, history)
   const target = (expected || 45) * 60
   const ratio = Math.min(elapsed / target, 1.5)
   const tone = ratio < 1 ? 'is-good' : ratio < 1.25 ? 'is-warn' : 'is-over'
@@ -45,11 +40,16 @@ export default function ServiceTimer({ job, elapsed, history, labels, lang }) {
       <div className="svc-info">
         <span className="svc-kicker">⏱ {labels.timerTitle}</span>
         {started && <span>{fill(labels.startedAt, { time: time(started) })}</span>}
-        <span>{expected ? fill(here.length ? labels.avgHere : labels.avgOverall, { time: formatMinutes(expected) }) : labels.firstTimeHere}</span>
+        <span>{expected ? fill(atThisPlace ? labels.avgHere : labels.avgOverall, { time: formatMinutes(expected) }) : labels.firstTimeHere}</span>
         {end && (overMin > 0
           ? <span className="svc-over">{fill(labels.overTime, { time: formatMinutes(overMin) })}</span>
           : <span>{fill(labels.expectedEnd, { time: time(end) })}</span>)}
         <span className={`svc-gps ${gps.cls}`}>📍 {gps.text}</span>
+        {onToggleVoice && (
+          <button type="button" className={`svc-voice ${voiceOn ? 'is-on' : ''}`} onClick={onToggleVoice} aria-pressed={voiceOn}>
+            {voiceOn ? '🔊' : '🔇'} {voiceOn ? labels.voiceOn : labels.voiceOff}
+          </button>
+        )}
       </div>
     </div>
   )

@@ -13,6 +13,16 @@ export function jobDurationMin(job) {
   return min >= 1 && min <= 12 * 60 ? Math.round(min) : null
 }
 
+/** Expected minutes for this job: the worker's average at this place, else overall, else null. */
+export function expectedJobMinutes(job, history) {
+  const title = (job?.title || '').split(' —')[0]
+  const past = (history || []).filter(j => j.id !== job?.id && j.status === 'completed')
+  const here = past.filter(j => (j.title || '').split(' —')[0] === title).map(jobDurationMin).filter(v => v != null)
+  const all = past.map(jobDurationMin).filter(v => v != null)
+  const avgOf = list => Math.round(list.reduce((s, v) => s + v, 0) / list.length)
+  return { expected: here.length ? avgOf(here) : all.length ? avgOf(all) : null, atThisPlace: here.length > 0 }
+}
+
 /** Minutes late versus the scheduled time (Tokyo). Negative = early. Null when unknown. */
 export function startDelayMin(job) {
   if (!job?.started_at || !job?.scheduled_date || !/^\d{1,2}:\d{2}/.test(job.scheduled_time || '')) return null

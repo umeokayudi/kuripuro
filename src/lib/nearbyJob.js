@@ -32,7 +32,9 @@ export function mapQuery(job, coords) {
   return `${name || job?.client_name || ''} Tokyo`.trim()
 }
 
-const CACHE_KEY = 'kp_site_coords_v1'
+// v2: Maps place links without coordinates now resolve on the server, so old "not found" entries are dropped.
+const CACHE_KEY = 'kp_site_coords_v2'
+const missThisSession = new Set()
 const readCache = () => { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') } catch { return {} } }
 const writeCache = (c) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify(c)) } catch { /* private mode */ } }
 
@@ -42,11 +44,12 @@ export async function siteCoords(job) {
   const addr = String(job?.address || '').trim()
   if (!addr) return null
   const cache = readCache()
-  if (cache[addr] !== undefined) return cache[addr]
+  if (cache[addr]) return cache[addr]
+  if (missThisSession.has(addr)) return null
   const r = await geocodeAddress(addr)
   const coords = r?.lat != null && r?.lng != null ? { lat: r.lat, lng: r.lng } : null
-  cache[addr] = coords
-  writeCache(cache)
+  // Only hits are kept on the device; a miss is retried next time the app opens.
+  if (coords) { cache[addr] = coords; writeCache(cache) } else missThisSession.add(addr)
   return coords
 }
 
