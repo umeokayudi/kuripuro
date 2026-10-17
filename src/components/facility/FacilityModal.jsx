@@ -9,6 +9,7 @@ import './facility.css'
  * Com job + employee, o funcionário vê as tarefas aceitas pelo cliente e marca equipamentos como limpos.
  */
 export default function FacilityModal({ clientId, locationName, title, t, lang, job, employee, onClose }) {
+  // funcionário (tem job) também vê o rascunho enquanto o escritório não aprova
   const [model, setModel] = useState(undefined)
   const [recs, setRecs] = useState([])
   const [logs, setLogs] = useState([])
@@ -23,15 +24,16 @@ export default function FacilityModal({ clientId, locationName, title, t, lang, 
     setLogs(l)
   }, [])
 
+  const allowDraft = !!job
   useEffect(() => {
     let cancelled = false
-    loadApprovedModel(clientId, locationName).then(m => {
+    loadApprovedModel(clientId, locationName, { allowDraft }).then(m => {
       if (cancelled) return
       setModel(m)
       loadExtras(m)
     })
     return () => { cancelled = true }
-  }, [clientId, locationName, loadExtras])
+  }, [clientId, locationName, loadExtras, allowDraft])
 
   const canLog = !!job && !!employee?.id && job.status !== 'cancelled'
 
@@ -55,6 +57,7 @@ export default function FacilityModal({ clientId, locationName, title, t, lang, 
         </div>
         {model === undefined && <div className="fac-muted">...</div>}
         {model === null && <div className="fac-block">{t.noModel}</div>}
+        {model && model.status !== 'approved' && <div className="fac-muted" style={{ marginBottom: 6 }}>📝 {t.draftMap}</div>}
         {model && (
           <FacilityViewer
             model={model}

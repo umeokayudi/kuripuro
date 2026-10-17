@@ -15,6 +15,7 @@ import {
   elementTasks,
   careForElement,
   careSchedule,
+  serviceOffers,
   taskState,
 } from '../src/lib/facilityModel.js'
 import { generatePlan, fillAllRooms, fillRoom, placeItem, PLAN_PRESETS, rotate90, snapToWall, nudge, duplicateItem } from '../src/lib/facilityBuilder.js'
@@ -177,6 +178,18 @@ assert(elementStatus(live52.elements[0], now52) === 'ok', 'hood ok after recent 
 assert(ruleRecommendations(live52, now52).some(r => r.service === 'Tighten legs'), 'rules offer overdue maintenance')
 const neverMaint = withServiceLog({ width: 10, depth: 8, areas: [], walls: [], elements: [normalizeLayout({ elements: [{ id: 'b', kind: 'breaker' }] }).elements[0]] }, [])
 assert(ruleRecommendations(neverMaint, now52).length === 0, 'never-recorded maintenance alone does not create an offer')
+
+// --- v1.0.53: há quantos dias + serviços para oferecer ---
+assert(taskState({ interval_days: 30, last: '2026-10-15' }, now52).daysSince === 2, 'days since last time')
+const offerModels = [
+  { id: 'm1', client_id: 'c1', status: 'approved', name: 'Shop', location_name: 'Ebisu', layout: { width: 10, depth: 8, elements: [hoodEl, custom] } },
+  { id: 'm2', client_id: 'c2', status: 'draft', name: 'Draft', layout: { width: 10, depth: 8, elements: [custom] } },
+]
+const offers = serviceOffers(offerModels, hoodLogs.map(l => ({ ...l, model_id: 'm1' })), { now: now52 })
+assert(offers.length >= 1 && offers.every(o => o.model_id === 'm1'), 'offers only from approved stores')
+assert(offers[0].task_name === 'Tighten legs' && offers[0].status === 'overdue' && offers[0].daysSince > 90 && offers[0].location === 'Ebisu', 'most overdue offer first, with days since')
+assert(!offers.some(o => o.status === 'ok' && o.daysLeft > 14), 'offers skip tasks far from due')
+assert(JSON.parse(JSON.stringify(offers)).length === offers.length, 'offers are plain objects')
 
 // --- v1.0.52: easy builder ---
 const ov = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.01 && Math.min(a.y + a.d, b.y + b.d) - Math.max(a.y, b.y) > 0.01

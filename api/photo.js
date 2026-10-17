@@ -1,6 +1,6 @@
 // Serve fotos do Supabase Storage (bucket pode ser privado)
 
-import { fetchStorageBuffer, parseStorageRef, uploadStorageObject } from './_storage.js'
+import { createSignedUploadUrl, createSignedUrls, fetchStorageBuffer, listJobVideos, parseStorageRef, uploadStorageObject } from './_storage.js'
 
 // Only job/claim photos go through here. Private buckets (signed contracts,
 // business cards, meeting audio) are served only by /api/sales-files.
@@ -9,8 +9,45 @@ const UPLOAD_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_UPLOAD = 4 * 1024 * 1024
 // Saved contract PDFs (業務委託契約書) live next to the job photos, under jobs/contracts/.
 const isContractPdf = (path, type) => type === 'application/pdf' && /^jobs\/contracts\/[\w-]+\/[\w.-]+\.pdf$/.test(String(path))
+// Vídeo opcional do serviço: jobs/<jobId>/video_<n>.<ext>. Só devolvemos URLs assinadas;
+// o arquivo nunca passa por esta função (limite de ~4,5 MB do corpo na Vercel).
+const VIDEO_EXT = { 'video/webm': 'webm', 'video/mp4': 'mp4', 'video/quicktime': 'mov' }
+const MAX_VIDEOS_PER_JOB = 5
+const validJobId = (id) => /^[\w-]{6,64}$/.test(String(id || '')) && id !== 'contracts'
+
+async function videoUploadUrl(req, res) {
+  const { jobId, contentType } = req.body || {}
+  const type = String(contentType || '').toLowerCase().split(';')[0].trim()
+  const ext = VIDEO_EXT[type]
+  if (!validJobId(jobId)) return res.status(400).json({ error: 'jobId inválido' })
+  if (!ext) return res.status(415).json({ error: 'Envie um vídeo WebM, MP4 ou MOV.' })
+  try {
+    const existing = await listJobVideos(jobId)
+    if (existing.length >= MAX_VIDEOS_PER_JOB) return res.status(409).json({ error: 'Limite de vídeos deste serviço atingido.' })
+    const next = existing.reduce((n, v) => Math.max(n, v.index + 1), 0)
+    const signed = await createSignedUploadUrl(`jobs/${jobId}/video_${next}.${ext}`)
+    return res.status(200).json({ ...signed, contentType: type })
+  } catch (err) {
+    return res.status(500).json({ error: err.message })
+  }
+}
+
+async function videoList(req, res) {
+  const jobId = req.query.videos
+  if (!validJobId(jobId)) return res.status(400).json({ error: 'jobId inválido' })
+  res.setHeader('Cache-Control', 'no-store')
+  try {
+    const videos = await listJobVideos(jobId)
+    const urls = await createSignedUrls(videos.map(v => v.path), 3600)
+    return res.status(200).json({ videos: videos.map(v => ({ ...v, url: urls[v.path] || null })) })
+  } catch (err) {
+    return res.status(502).json({ error: err.message })
+  }
+}
 
 export default async function handler(req, res) {
+  if (req.method === 'POST' && req.body?.action === 'video-upload-url') return videoUploadUrl(req, res)
+  if (req.method === 'GET' && req.query.videos) return videoList(req, res)
   if (req.method === 'POST') {
     const { path, data, contentType } = req.body || {}
     if (!path || !data) return res.status(400).json({ error: 'path e data são obrigatórios' })

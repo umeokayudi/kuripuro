@@ -623,3 +623,17 @@
 .mk-card-plain{justify-content:flex-start}
 @media(max-width:1200px){.mk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:720px){.mk-grid{grid-template-columns:1fr;gap:12px}.mk-head{align-items:flex-start}.mk-now strong{font-size:24px}}
+
+/* v1.0.53 Smart Facility: sininho "serviços para oferecer" (separado dos pedidos de folga) */
+.fob-bell.has-items{color:#0369a1!important;border-color:#bae6fd!important;background:#f0f9ff!important}
+.fob-bell .tor-count{background:#0ea5e9}
+.fob-bell .tor-count.fob-late{background:#ef4444}
+.fob-toast{top:136px;border-left-color:#0ea5e9}
+.fob-avatar{background:#f1f5f9;color:#0f172a;font-size:20px}
+.fob-item.st-overdue{border-left:4px solid #ef4444}
+.fob-item.st-due,.fob-item.st-ok{border-left:4px solid #f59e0b}
+.fob-item.is-offered{opacity:.65}
+.fob-kind.st-overdue{background:#fef2f2;color:#b91c1c}
+.fob-kind.st-due,.fob-kind.st-ok{background:#fffbeb;color:#b45309}
+.fob-when{margin:10px 0 0;font-size:13px;font-weight:600;color:#334155}
+.fob-item .tor-item-main strong{white-space:normal}
