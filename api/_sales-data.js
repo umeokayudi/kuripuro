@@ -1,6 +1,7 @@
 import { requireActiveSalesSession, salesDb } from './_salesSession.js'
 import { geminiGenerate } from './_gemini.js'
 import { sellerCommissionSummary } from '../src/lib/contractCommission.js'
+import { serviceOffers } from '../src/lib/facilityModel.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -257,6 +258,7 @@ async function loadDashboard(db, user) {
       hours_this_month: reports.filter(row => row.salesperson_id === person.id && String(row.work_date || '').startsWith(todayTokyo().slice(0, 7))).reduce((sum, row) => sum + Number(row.hours_worked || 0), 0),
     }
   })
+  const facilityOffers = await loadFacilityOffers(db, isAdmin ? null : [...new Set(fixedCommissions.filter(row => row.salesperson_id === id).map(row => row.client_id).filter(Boolean))])
   const channels = channelsRes.data || []
   const campaigns = campaignsRes.data || []
   const spend = spendRes.data || []
@@ -266,7 +268,7 @@ async function loadDashboard(db, user) {
     const conversions = relatedLeads.filter(row => row.stage === 'won').length
     return { ...campaign, spend: campaignSpend, leads: relatedLeads.length, conversions, cost_per_lead: relatedLeads.length ? campaignSpend / relatedLeads.length : 0, customer_acquisition_cost: conversions ? campaignSpend / conversions : 0 }
   })
-  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions } }
+  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions }, facilityOffers }
 }
 
 async function getAction(db, user, action, query = {}) {
@@ -869,5 +871,32 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('[sales-data]', error?.message || error)
     return res.status(error.status || 500).json({ error: error.status ? error.message : 'Falha ao processar operação comercial.' })
+  }
+}
+
+// Smart Facility: limpezas/manutenções atrasadas ou vencendo nas lojas dos clientes do vendedor (admin: todas).
+// Sem tabelas de facility (SQL não aplicado) → lista vazia, sem derrubar o painel.
+async function loadFacilityOffers(db, clientIds) {
+  if (clientIds && !clientIds.length) return []
+  try {
+    let mq = db.from('facility_models').select('id,client_id,location_name,name,layout,status').eq('status', 'approved')
+    if (clientIds) mq = mq.in('client_id', clientIds)
+    const { data: models, error } = await mq
+    if (error || !models?.length) return []
+    const ids = models.map(m => m.id)
+    const cids = [...new Set(models.map(m => m.client_id))]
+    const [logsRes, recsRes, clientsRes] = await Promise.all([
+      db.from('facility_service_log').select('model_id,element_id,service,service_date').in('model_id', ids).order('service_date', { ascending: false }).limit(3000),
+      db.from('facility_recommendations').select('model_id,element_id,service').in('model_id', ids).eq('status', 'pending'),
+      db.from('clients').select('id,company_name,contact_name,phone').in('id', cids),
+    ])
+    const clients = new Map((clientsRes.data || []).map(c => [c.id, c]))
+    const offered = new Set((recsRes.data || []).map(r => `${r.model_id}:${r.element_id}:${String(r.service || '').toLowerCase()}`))
+    return serviceOffers(models, logsRes.data || []).map(r => {
+      const c = clients.get(r.client_id) || {}
+      return { ...r, client_name: c.company_name || '', contact_name: c.contact_name || '', phone: c.phone || '', offered: offered.has(`${r.model_id}:${r.element_id}:${r.task_name.toLowerCase()}`) }
+    })
+  } catch {
+    return []
   }
 }

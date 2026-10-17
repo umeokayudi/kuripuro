@@ -10,6 +10,7 @@ import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
 import SellerContractCommissions from '../components/SellerContractCommissions'
 import { ClientList, CommissionsCard, MyNumbers, NextFollowups } from '../components/SellerHome'
+import SellerFacilityOffers, { offersCopy } from '../components/SellerFacilityOffers'
 import SalesFunnel, { buildDeals } from '../components/SalesFunnel'
 import ClientPage from '../components/ClientPage'
 
@@ -427,7 +428,9 @@ export default function SalespersonPortal() {
   }
 
   const Field = ({ label, field, value = lead[field], onChange = e => setLead(prev => ({ ...prev, [field]: e.target.value })), type = 'text', ...rest }) => <label className="form-group"><span>{label}</span><input type={type} value={value ?? ''} onChange={onChange} {...rest} /></label>
-  const bellCount = (data?.notifications?.length || 0) + counts.overdue + counts.today
+  const offers = data?.facilityOffers || []
+  const offersTodo = offers.filter(r => !r.offered)
+  const bellCount = (data?.notifications?.length || 0) + counts.overdue + counts.today + (offersTodo.length ? 1 : 0)
   const selectedLead = leads.find(row => row.id === leadId)
   const deals = useMemo(() => buildDeals(data, today), [data, today])
   const dayState = todayRow?.closed_at ? 'closed' : todayRow?.started_at ? 'working' : 'idle'
@@ -496,6 +499,7 @@ export default function SalespersonPortal() {
     { key: 'more', label: c.more, icon: 'more' },
   ]
   const menuItems = [
+    { key: 'offers', icon: '🧽', label: offersCopy(lang).title + (offersTodo.length ? ` (${offersTodo.length})` : ''), hint: lang === 'ja' ? '清掃・メンテナンスの提案時期' : 'Cleaning & maintenance due at your clients' },
     { key: 'clients', icon: '👥', label: lang === 'ja' ? '自分の顧客' : 'My clients', hint: lang === 'ja' ? '全顧客と状況' : 'Every client and its stage' },
     { key: 'commissions', icon: '💴', label: lang === 'ja' ? 'コミッションと支払い' : 'Commissions & payments', hint: lang === 'ja' ? '受取予定・受取済み' : 'To receive and received' },
     { key: 'approaches', icon: '📝', label: c.menuReports, hint: c.menuHint.approaches },
@@ -536,6 +540,7 @@ export default function SalespersonPortal() {
           </div>
 
           <NextFollowups queue={queue} lang={lang} onOpen={row => openDeal(row)} onLog={markFollowup} logLabel={f.logContact} />
+          {offersTodo.length > 0 && <SellerFacilityOffers offers={offersTodo} lang={lang} limit={3} onSeeAll={() => setTab('offers')} />}
           <MyNumbers data={data} today={today} lang={lang} />
           <CommissionsCard data={data} metrics={metrics} lang={lang} onDetails={() => setTab('commissions')} />
 
@@ -546,6 +551,7 @@ export default function SalespersonPortal() {
           <ClientList className="fa-wide" deals={deals} lang={lang} onOpen={row => openDeal(row)} limit={6} onSeeAll={() => setTab('clients')} seeAllLabel={c.seeAll} />
         </div>}
 
+        {tab === 'offers' && <div className="fa-stack"><SellerFacilityOffers offers={offers} lang={lang} /></div>}
         {tab === 'clients' && <div className="fa-stack"><ClientList deals={deals} lang={lang} onOpen={row => openDeal(row)} /></div>}
         {tab === 'commissions' && <div className="fa-stack">
           <CommissionsCard data={data} metrics={metrics} lang={lang} />
@@ -703,6 +709,7 @@ export default function SalespersonPortal() {
 
       {sheet === 'bell' && <Sheet title={c.notifications} onClose={() => setSheet('')}>
         {(counts.overdue + counts.today) > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setFollowFilter('action'); setTab('followups') }}><span aria-hidden="true">↻</span><div><strong>{f.alertTitle}</strong><small>{[counts.overdue && `${counts.overdue} ${f.alertOverdue}`, counts.today && `${counts.today} ${f.alertToday}`].filter(Boolean).join(' · ')}</small></div><b>›</b></button>}
+        {offersTodo.length > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setTab('offers') }}><span aria-hidden="true">🧽</span><div><strong>{offersCopy(lang).title}</strong><small>{offersCopy(lang).offerTo(offersTodo[0].task_name, offersTodo[0].client_name || offersTodo[0].location)}{offersTodo.length > 1 ? ` +${offersTodo.length - 1}` : ''}</small></div><b>›</b></button>}
         <SalesInbox lang={lang} notifications={data?.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) { setSheet(''); openDeal(row) } }} />
       </Sheet>}
 

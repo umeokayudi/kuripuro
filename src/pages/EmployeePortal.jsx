@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
+import { compressVideo } from '../lib/videoCompress'
+import { uploadJobVideo } from '../lib/jobVideo'
+import JobVideoPicker from '../components/JobVideoPicker'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
@@ -116,6 +119,9 @@ export default function EmployeePortal() {
   const [checklist, setChecklist] = useState([])
   const [notes, setNotes] = useState('')
   const [jobPhotos, setJobPhotos] = useState([])
+  // Vídeo opcional do serviço: comprimido ao escolher, enviado só depois de finalizar
+  const [jobVideo, setJobVideo] = useState(null)
+  const videoTaskRef = useRef(null)
   const [submitting, setSubmitting] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('')
   const [herePos, setHerePos] = useState(null)
@@ -550,6 +556,7 @@ export default function EmployeePortal() {
       localStorage.removeItem(`kp_ck_${job.id}`)
       setActiveJob(null)
       setJobPhotos([])
+      clearJobVideo()
       setChecklist([])
       setElapsed(0)
       toast.success(e.staleShiftReset)
@@ -791,6 +798,51 @@ export default function EmployeePortal() {
     }
   }
 
+  const vt = tr.jobVideo || {}
+
+  const clearJobVideo = () => {
+    videoTaskRef.current?.abort.abort()
+    videoTaskRef.current = null
+    setJobVideo(null)
+  }
+
+  const pickJobVideo = (file) => {
+    videoTaskRef.current?.abort.abort()
+    const task = { abort: new AbortController() }
+    videoTaskRef.current = task
+    setJobVideo({ status: 'compressing', progress: 0 })
+    task.promise = compressVideo(file, {
+      signal: task.abort.signal,
+      onProgress: (progress) => { if (videoTaskRef.current === task) setJobVideo(v => v && v.status === 'compressing' ? { ...v, progress } : v) },
+    })
+    task.promise.then(
+      (res) => { if (videoTaskRef.current === task) setJobVideo({ status: 'ready', progress: 1, size: res.size }) },
+      (err) => {
+        if (videoTaskRef.current !== task) return
+        videoTaskRef.current = null
+        setJobVideo(null)
+        if (err?.code === 'aborted') return
+        toast.error(err?.code === 'too_large' ? vt.tooLarge : err?.code === 'not_video' ? vt.notVideo : (err?.message || vt.notVideo))
+      },
+    )
+  }
+
+  // Não bloqueia a finalização: espera a compressão (se ainda rodando) e envia em segundo plano
+  const sendJobVideoAfterComplete = (jobId, task) => {
+    if (!task?.promise) return
+    task.promise
+      .then(async (res) => {
+        const id = toast.loading(vt.uploading || 'Sending video…')
+        try {
+          await uploadJobVideo(jobId, res)
+          toast.success(vt.uploaded || 'Video sent', { id })
+        } catch (err) {
+          toast.error(fill(vt.uploadFailed || 'Video failed: {msg}', { msg: err?.message || '' }), { id, duration: 6000 })
+        }
+      })
+      .catch(() => { /* erro de compressão já foi avisado */ })
+  }
+
   const handleCompleteWithSig = async (job) => {
     const nfc = await askNfc('end', job)
     if (nfc === 'cancel') return
@@ -911,6 +963,10 @@ export default function EmployeePortal() {
 
       clearInterval(timerRef.current)
       localStorage.removeItem(`kp_ck_${job.id}`)
+      const videoTask = videoTaskRef.current
+      videoTaskRef.current = null
+      setJobVideo(null)
+      sendJobVideoAfterComplete(job.id, videoTask)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
       const scoreMsg = aiScore!=null ? ` · IA: ${aiScore}/10${aiApproved?' ✅':' ⚠️'}` : ''
       if (missed>0) toast(`${fill(e.completePartial, { done, total })}${scoreMsg}`, {icon:'⚠️', duration:5000})
@@ -1173,10 +1229,16 @@ export default function EmployeePortal() {
     }
   }
 
-  // Smart Facility: mapa 3D aprovado do local (só mostra o botão quando existe)
+  // Smart Facility: mapa 3D do local (aprovado ou rascunho) — só mostra o botão quando existe.
+  // Recarrega ao voltar para o app: um mapa criado/aprovado depois de abrir o app aparece sem precisar sair.
   useEffect(() => {
-    supabase.from('facility_models').select('client_id,location_name').eq('status', 'approved')
+    const load = () => supabase.from('facility_models').select('client_id,location_name,status')
       .then(({ data }) => setFacilityIndex(data || []))
+    load()
+    const onVisible = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVisible)
+    const id = setInterval(load, 5 * 60000)
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id) }
   }, [])
   const hasFacility = (job) => !!job?.client_id && facilityIndex.some(m => m.client_id === job.client_id
     && (!m.location_name || m.location_name === locationFromJob(job)))
@@ -1255,7 +1317,7 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
-      {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} onClose={()=>setFacilityJob(null)} />}
+      {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} job={facilityJob} employee={{ id: user?.id, name: user?.name }} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
         job={nfcScan.job}
@@ -1655,7 +1717,7 @@ export default function EmployeePortal() {
         {tab==='shift'&&(
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} labels={e} lang={lang} />
           </section>
         )}
 
@@ -2095,7 +2157,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, jobVideo, onPickVideo, onRemoveVideo, videoLabels, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2137,6 +2199,11 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               <div style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6,whiteSpace:'pre-line'}}>{activeInstructions}</div>
             </div>
           )}
+          {hasFacility?.(activeJob)&&(
+            <button type="button" onClick={ev=>{ ev.stopPropagation(); onOpenFacility(activeJob) }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.45)',background:'rgba(193,156,86,0.14)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
+              {facilityLabel}
+            </button>
+          )}
           {!activeJob.photo_start_url && (
             <div style={{marginBottom:12}}>
               <div style={{fontSize:10,color:'#f87171',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({labels.required})</div>
@@ -2164,6 +2231,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </label>
             </div>
           </div>
+          {onPickVideo && <JobVideoPicker video={jobVideo} onPick={onPickVideo} onRemove={onRemoveVideo} labels={videoLabels} />}
           {activeIsStale && (
             <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginBottom:8,lineHeight:1.4}}>
               {labels.staleChecklistScroll || 'Scroll to see all checklist items'} · {labels.staleChecklistMin || `min ${activeChecklistRequired}/${activeChecklist.length}`}
@@ -2343,6 +2411,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                     </label>
                   </div>
                 </div>
+                {onPickVideo && <JobVideoPicker video={jobVideo} onPick={onPickVideo} onRemove={onRemoveVideo} labels={videoLabels} />}
 
                 <ChecklistPicker checklist={jobChecklist} setChecklist={setChecklist} labels={labels} lang={lang} />
 

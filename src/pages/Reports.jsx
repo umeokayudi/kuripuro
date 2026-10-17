@@ -6,6 +6,7 @@ import SignatureImage from '../components/SignatureImage'
 import { tokyoToday } from '../lib/dates'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
+import JobVideos from '../components/JobVideos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
@@ -488,6 +489,7 @@ export default function Reports() {
                     <a href={viewablePhotoUrl(selected.photo_after_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ flex: 1 }}>{tr.openFullscreen} ({tr.after})</a>
                   )}
                 </div>
+                {selected.job_id && <JobVideos jobId={selected.job_id} style={{ marginTop: 10 }} />}
               </div>
             )}
 

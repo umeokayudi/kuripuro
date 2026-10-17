@@ -9,6 +9,7 @@ import { fetchStorageBuffer } from './_storage.js'
 import {
   AREA_KINDS,
   ELEMENT_KINDS,
+  elementTasks,
   normalizeLayout,
 } from '../src/lib/facilityModel.js'
 
@@ -76,16 +77,82 @@ Reply ONLY with JSON:
   return { layout, notes: typeof parsed.notes === 'string' ? parsed.notes.slice(0, 2000) : '', photosUsed: images.length }
 }
 
+/**
+ * Construção aos poucos: a IA olha UMA foto nova junto com a planta atual e devolve
+ * só o que essa foto mostra (áreas/equipamentos), já posicionado na planta existente.
+ * O navegador junta com mergeLayoutAdditions (não substitui o que o admin já corrigiu).
+ */
+async function analyzePhoto({ photo, layout, caption, name }) {
+  if (typeof photo !== 'string' || !photo) throw Object.assign(new Error('Envie uma foto'), { status: 400 })
+  let image
+  try {
+    const { buffer, contentType } = await fetchStorageBuffer(photo)
+    image = { inlineData: { mimeType: contentType || 'image/jpeg', data: buffer.toString('base64') } }
+  } catch {
+    throw Object.assign(new Error('Não foi possível ler a foto'), { status: 400 })
+  }
+  const current = normalizeLayout(layout)
+  const summary = {
+    width: current.width,
+    depth: current.depth,
+    areas: current.areas.map(a => ({ id: a.id, name: a.name, kind: a.kind, x: a.x, y: a.y, w: a.w, d: a.d })),
+    elements: current.elements.map(e => ({ name: e.name, kind: e.kind, x: e.x, y: e.y, w: e.w, d: e.d })),
+  }
+
+  const prompt = `You are a facility surveyor for a commercial cleaning company in Japan, building the digital floor plan of "${name || 'a restaurant'}" one photo at a time.
+Current plan (meters, origin top-left, x right, y down): ${JSON.stringify(summary)}
+${caption ? `The person who took this photo says: ${String(caption).slice(0, 400)}` : ''}
+
+Look at THIS photo only. Return the areas and equipment it shows, placed consistently with the current plan:
+- If the photo shows an area already in the plan, reuse its id in "areaId" and do not repeat the area.
+- If it shows a new room, add it next to the existing ones (you may enlarge "width"/"depth" if needed).
+- If equipment is already in the plan, return it again at the same position (it will be matched, not duplicated).
+- Only what you can see or strongly infer. For switches, breakers, valves and machines write short "instructions" (on/off, safety). For everything write "location_hint" (how a new employee finds it). Japanese first, then English.
+
+Area kinds: ${Object.keys(AREA_KINDS).join(', ')}
+Element kinds: ${Object.keys(ELEMENT_KINDS).join(', ')}
+
+Reply ONLY with JSON:
+{"width": number, "depth": number,
+ "areas": [{"id": string, "name": string, "kind": string, "x": number, "y": number, "w": number, "d": number}],
+ "walls": [{"x1": number, "y1": number, "x2": number, "y2": number}],
+ "elements": [{"name": string, "kind": string, "areaId": string, "x": number, "y": number, "w": number, "d": number, "location_hint": string, "instructions": string}],
+ "seen": "one short sentence: what this photo shows"}`
+
+  const data = await geminiGenerate({
+    contents: [{ parts: [image, { text: prompt }] }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 3000, responseMimeType: 'application/json' },
+  })
+  const parsed = parseJson(data)
+  if (!parsed || typeof parsed !== 'object') throw new Error('A IA não entendeu esta foto — tente outra foto ou descreva o que ela mostra')
+  return {
+    additions: {
+      width: Number(parsed.width) || current.width,
+      depth: Number(parsed.depth) || current.depth,
+      areas: Array.isArray(parsed.areas) ? parsed.areas.slice(0, 10) : [],
+      walls: Array.isArray(parsed.walls) ? parsed.walls.slice(0, 12) : [],
+      elements: Array.isArray(parsed.elements) ? parsed.elements.slice(0, 30) : [],
+    },
+    seen: typeof parsed.seen === 'string' ? parsed.seen.slice(0, 300) : '',
+  }
+}
+
 async function recommendServices({ layout, history = [], locationName }) {
   const model = normalizeLayout(layout)
   if (!model.elements.length) return { recommendations: [] }
 
+  // care = tarefas com a última data já calculada pelo navegador a partir do histórico
+  const rawCare = new Map((Array.isArray(layout?.elements) ? layout.elements : []).map(e => [e?.id, Array.isArray(e?.care) ? e.care : null]))
   const elements = model.elements.map(e => ({
     id: e.id,
     name: e.name,
     kind: e.kind,
-    last_serviced_at: e.last_serviced_at,
-    service_interval_days: e.service_interval_days || ELEMENT_KINDS[e.kind]?.intervalDays || null,
+    tasks: (rawCare.get(e.id) || elementTasks(e)).slice(0, 8).map(t => ({
+      type: t.type,
+      name: String(t.name || '').slice(0, 120),
+      every_days: t.interval_days || null,
+      last_done: t.last || t.last_done || null,
+    })),
     notes: e.notes,
   }))
   const recent = (Array.isArray(history) ? history : []).slice(0, 60).map(h => ({
@@ -104,7 +171,7 @@ ${JSON.stringify(recent)}
 Services we sell: ${catalog.join('; ')}
 
 Suggest at most 6 cleaning or maintenance services the client would genuinely benefit from now.
-Prefer elements with no record or overdue intervals, and kitchen grease/ventilation risks. Do not invent elements.
+Each element lists its cleaning and maintenance tasks with the last date done. Prefer tasks never done or past their interval, and kitchen grease/ventilation risks. When a suggestion matches a listed task, use that task name exactly as "service". Do not invent elements.
 Reply ONLY with JSON: {"recommendations": [{"element_id": string, "service": string, "reason": string (one sentence, Japanese then English), "priority": "high"|"medium"|"low"}]}`
 
   const data = await geminiGenerate({
@@ -132,7 +199,8 @@ export async function handleFacilityAction({ facilityAction, ...body }) {
   try {
     if (facilityAction === 'generate') return { status: 200, body: await generateLayout(body) }
     if (facilityAction === 'recommend') return { status: 200, body: await recommendServices(body) }
-    return { status: 400, body: { error: 'facilityAction must be generate or recommend' } }
+    if (facilityAction === 'add-photo') return { status: 200, body: await analyzePhoto(body) }
+    return { status: 400, body: { error: 'facilityAction must be generate, add-photo or recommend' } }
   } catch (err) {
     return { status: err.status || 500, body: { error: err.message } }
   }

@@ -9,6 +9,7 @@ import {
 import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
+import JobVideos from '../components/JobVideos'
 import { ManagerCard, BillingView, BillingAlerts, StoresView, QuoteForm, RequestCard, MaintenanceList, maintenanceAlertsFor, itemLabel } from '../components/ClientCare'
 import { summarizeCleaningMonth, deepSummaryFromPlan, weeklyCompleted, shiftMonth } from '../lib/clientProgress'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -19,8 +20,10 @@ import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
-import { listModels, listRecommendations, decideRecommendation } from '../lib/facilityApi'
+import { listModels, listRecommendations, decideRecommendation, listServiceLog } from '../lib/facilityApi'
 import FacilityViewer from '../components/facility/FacilityViewer'
+import CareList from '../components/facility/CareList'
+import { careSchedule, withServiceLog } from '../lib/facilityModel'
 import { RecommendationCard } from '../components/facility/FacilityItemPopup'
 import './client-portal.css'
 
@@ -112,6 +115,7 @@ export default function ClientPortal() {
   const [facilityModels, setFacilityModels] = useState([])
   const [facilityModelId, setFacilityModelId] = useState('')
   const [facilityRecs, setFacilityRecs] = useState([])
+  const [facilityLogs, setFacilityLogs] = useState([])
   const [facilityBusy, setFacilityBusy] = useState('')
 
   const msgEndRef = useRef()
@@ -211,6 +215,7 @@ export default function ClientPortal() {
       setFacilityModels(models)
       setFacilityModelId(id => (models.some(m => m.id === id) ? id : (models.find(m => m.location_name === user.location_name) || models[0])?.id || ''))
       setFacilityRecs(await listRecommendations({ clientId: user.client_id, locationName: user.location_name }))
+      setFacilityLogs(await listServiceLog({ clientId: user.client_id }))
     } catch {
       setFacilityModels([])
     }
@@ -589,6 +594,7 @@ export default function ClientPortal() {
                     <a href={viewablePhotoUrl(selectedVisit.photo_end_url)} target="_blank" rel="noreferrer" className="cp-btn" style={{ flex: 1, textAlign: 'center', fontSize: 12, textDecoration: 'none' }}>{c.openPhoto || 'Abrir foto'} ({c.after})</a>
                   )}
                 </div>
+                <JobVideos jobId={selectedVisit.id} style={{ marginTop: 10 }} />
               </div>
             )}
             <div className="cp-rating-box">
@@ -1066,12 +1072,44 @@ export default function ClientPortal() {
                       t={tr.facility}
                       lang={lang}
                       recs={facilityRecs.filter(r => r.model_id === facilityModel.id)}
+                      logs={facilityLogs.filter(l => l.model_id === facilityModel.id)}
                       onDecide={decideFacilityRec}
                       busyId={facilityBusy}
                     />
                   </div>
                 ) : (
                   <PortalEmpty icon="🏢" text={tr.facility.noModel} />
+                )}
+                {facilityModel && (() => {
+                  const rows = careSchedule(withServiceLog(facilityModel.layout, facilityLogs.filter(l => l.model_id === facilityModel.id)))
+                  if (!rows.length) return null
+                  return (
+                    <>
+                      <div className="cp-section-title" style={{ marginTop: 18 }}>🧽🔧 {tr.facility.careForClient}</div>
+                      <div className="fac-muted" style={{ fontSize: 12, marginBottom: 8 }}>{tr.facility.careForClientHint}</div>
+                      <div className="fac-dark">
+                        <CareList rows={rows} t={tr.facility} lang={lang} showElement dark limit={8} />
+                      </div>
+                    </>
+                  )
+                })()}
+                {facilityModel && facilityLogs.some(l => l.model_id === facilityModel.id) && (
+                  <>
+                    <div className="cp-section-title" style={{ marginTop: 18 }}>{tr.facility.recentWork}</div>
+                    <div className="fac-dark">
+                      <div className="fac-hist">
+                        {facilityLogs.filter(l => l.model_id === facilityModel.id).slice(0, 12).map(l => (
+                          <div key={l.id} className="fac-hist-row">
+                            <span className="fac-hist-date">{new Date(l.service_date + 'T00:00:00+09:00').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Tokyo' })}</span>
+                            <span style={{ flex: 1 }}>
+                              <strong>{l.element_name}</strong>{l.service ? ` · ${l.service}` : ''}
+                              {l.photos?.length > 0 && <div className="fac-muted">📷 {l.photos.length}</div>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
                 )}
               </>
             )}

@@ -1,12 +1,31 @@
 /** Traduções adicionais — admin, jobs, relatórios, dashboard, funcionário */
 
 export const kuripuroEn = {
+  jobVideo: {
+    add: 'Add video (optional)',
+    hint: 'Short clip of the finished work · max 90s, compressed',
+    compressing: 'Compressing video… {pct}%',
+    ready: 'Video ready · {size}',
+    remove: 'Remove',
+    willUpload: 'It will be sent after you finish the job.',
+    uploading: 'Sending video…',
+    uploaded: 'Video sent',
+    uploadFailed: 'Job saved, but the video failed to send: {msg}',
+    tooLarge: 'Video too large. Record a shorter clip (max ~90 seconds).',
+    notVideo: 'This file is not a supported video.',
+    title: 'Video',
+    show: 'Show video',
+    loading: 'Loading video…',
+    none: 'No video',
+    loadFailed: 'Could not load the video',
+  },
   sidebar: {
     ai: 'AI Assistant',
     dashboard: 'Dashboard',
     jobs: 'Jobs',
     employees: 'Employees',
     clients: 'Clients',
+    facility: 'Smart Facility',
     salary: 'Salary',
     payrollClose: 'Payroll Close',
     payments: 'Payments',
@@ -1155,12 +1174,31 @@ export const kuripuroEn = {
 }
 
 export const kuripuroJa = {
+  jobVideo: {
+    add: '動画を追加（任意）',
+    hint: '作業後の短い動画・最大90秒・圧縮して送信',
+    compressing: '動画を圧縮中… {pct}%',
+    ready: '動画の準備完了・{size}',
+    remove: '削除',
+    willUpload: '作業完了後に送信されます。',
+    uploading: '動画を送信中…',
+    uploaded: '動画を送信しました',
+    uploadFailed: '作業は保存されましたが、動画の送信に失敗しました: {msg}',
+    tooLarge: '動画が大きすぎます。短く撮影してください（約90秒まで）。',
+    notVideo: '対応していない動画ファイルです。',
+    title: '動画',
+    show: '動画を見る',
+    loading: '動画を読み込み中…',
+    none: '動画なし',
+    loadFailed: '動画を読み込めませんでした',
+  },
   sidebar: {
     ai: 'AIアシスタント',
     dashboard: 'ダッシュボード',
     jobs: '作業管理',
     employees: '従業員',
     clients: 'クライアント',
+    facility: 'スマートファシリティ',
     salary: '給与',
     payrollClose: '給与締め',
     payments: '支払い',

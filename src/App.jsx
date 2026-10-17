@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import TimeOffCenter from './components/TimeOffCenter'
+import FacilityOffersBell from './components/facility/FacilityOffersBell'
 import { APP_VERSION, APP_BUILD_LABEL } from './version'
 
 // Version stays known to the system only (not shown on screen).
@@ -26,6 +27,7 @@ const Jobs = lazy(() => import('./pages/Jobs'))
 const Employees = lazy(() => import('./pages/Employees'))
 const Salary = lazy(() => import('./pages/Salary'))
 const Clients = lazy(() => import('./pages/Clients'))
+const Facility = lazy(() => import('./pages/Facility'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
@@ -84,6 +86,7 @@ const PAGE_KEYS = {
   '/employees': 'employees',
   '/salary': 'salary',
   '/clients': 'clients',
+  '/facility': 'facility',
   '/client-feedback': 'clientFeedback',
   '/cashflow': 'cashflow',
   '/reports': 'reports',
@@ -252,7 +255,7 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div className="topbar-right"><TimeOffCenter /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <div className="topbar-right"><FacilityOffersBell /><TimeOffCenter /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
@@ -262,6 +265,7 @@ function AppContent() {
               <Route path="/employees" element={<Employees />} />
               <Route path="/salary" element={<Salary />} />
               <Route path="/clients" element={<Clients />} />
+              <Route path="/facility" element={<Facility />} />
               <Route path="/client-feedback" element={<ClientFeedback />} />
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
