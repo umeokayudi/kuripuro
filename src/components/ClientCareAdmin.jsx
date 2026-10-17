@@ -13,9 +13,8 @@ const tone = { overdue: 'badge-red', soon: 'badge-amber', ok: 'badge-green', unk
 
 // Admin side of the client portal: account manager, store details and maintenance plan.
 export default function ClientCareAdmin({ clients, onClientsChanged }) {
-  const { t, lang } = useLang()
+  const { t, lang, tr } = useLang()
   const c = t.client
-  const ja = lang === 'ja'
   const today = tokyoToday()
   const [clientId, setClientId] = useState(clients[0]?.id || '')
   const [manager, setManager] = useState({})
@@ -113,7 +112,7 @@ export default function ClientCareAdmin({ clients, onClientsChanged }) {
     <div className="care-admin">
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="form-group" style={{ maxWidth: 360 }}>
-          <label>{ja ? 'クライアント' : 'Client'}</label>
+          <label>{tr('Client', 'クライアント', 'Cliente')}</label>
           <select value={clientId} onChange={e => setClientId(e.target.value)}>
             {clients.map(x => <option key={x.id} value={x.id}>{x.company_name}</option>)}
           </select>
@@ -124,11 +123,11 @@ export default function ClientCareAdmin({ clients, onClientsChanged }) {
         <div className="card-title">{c.yourManager}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: '0 12px' }}>
           {[
-            ['manager_name', ja ? '担当者名' : 'Name'],
+            ['manager_name', tr('Name', '担当者名', 'Nome')],
             ['manager_email', 'Email'],
-            ['manager_phone', ja ? '電話番号' : 'Phone'],
-            ['manager_line_url', ja ? 'LINEのURL（QRを自動生成）' : 'LINE link (QR is generated)'],
-            ['manager_photo_url', ja ? '写真URL（任意）' : 'Photo URL (optional)'],
+            ['manager_phone', tr('Phone', '電話番号', 'Telefone')],
+            ['manager_line_url', tr('LINE link (QR is generated)', 'LINEのURL（QRを自動生成）', 'Link do LINE (o QR é gerado)')],
+            ['manager_photo_url', tr('Photo URL (optional)', '写真URL（任意）', 'URL da foto (opcional)')],
           ].map(([key, label]) => (
             <div key={key} className="form-group">
               <label>{label}</label>
@@ -150,7 +149,7 @@ export default function ClientCareAdmin({ clients, onClientsChanged }) {
           {stores.map(s => (
             <button key={s} className={`tab-pill${s === store ? ' active' : ''}`} onClick={() => setStore(s)}>{s}</button>
           ))}
-          <input value={newStore} onChange={e => setNewStore(e.target.value)} placeholder={ja ? '店舗を追加' : 'Add store'} style={{ width: 160 }} onKeyDown={e => e.key === 'Enter' && addStore()} />
+          <input value={newStore} onChange={e => setNewStore(e.target.value)} placeholder={tr('Add store', '店舗を追加', 'Adicionar loja')} style={{ width: 160 }} onKeyDown={e => e.key === 'Enter' && addStore()} />
           <button className="btn btn-sm" onClick={addStore}>+</button>
         </div>
         {store && (
@@ -173,16 +172,17 @@ export default function ClientCareAdmin({ clients, onClientsChanged }) {
         <div className="card">
           <div className="card-title">{c.maintenanceTitle} · {store}</div>
           <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
-            {ja ? '前回実施日は完了した深層清掃の仕事から自動で読み取ります。手入力も可能です（新しい方を使用）。'
-              : 'Last done is read automatically from completed deep-clean jobs. You can also type a date; the newer one wins.'}
+            {tr('Last done is read automatically from completed deep-clean jobs. You can also type a date; the newer one wins.',
+              '前回実施日は完了した深層清掃の仕事から自動で読み取ります。手入力も可能です（新しい方を使用）。',
+              'A última vez é lida automaticamente dos trabalhos de limpeza profunda concluídos. Você também pode digitar uma data; vale a mais recente.')}
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>{ja ? '項目' : 'Item'}</th><th>{c.lastDone}</th><th>{ja ? '間隔（日）' : 'Every (days)'}</th><th>{ja ? '次回' : 'Next due'}</th><th /></tr></thead>
+              <thead><tr><th>{tr('Item', '項目', 'Item')}</th><th>{c.lastDone}</th><th>{tr('Every (days)', '間隔（日）', 'A cada (dias)')}</th><th>{tr('Next due', '次回', 'Próxima')}</th><th /></tr></thead>
               <tbody>
                 {rows.map(r => (
                   <tr key={r.key}>
-                    <td>{ja ? r.ja : r.en}</td>
+                    <td>{tr(r.en, r.ja, r.pt)}</td>
                     <td>
                       <input type="date" value={maintDraft[r.key]?.last_done ?? r.lastDone ?? ''} onChange={e => setMaintDraft(d => ({ ...d, [r.key]: { ...d[r.key], last_done: e.target.value } }))} />
                     </td>
@@ -190,7 +190,7 @@ export default function ClientCareAdmin({ clients, onClientsChanged }) {
                       <input type="number" min="1" style={{ width: 90 }} value={maintDraft[r.key]?.interval_days ?? r.interval} onChange={e => setMaintDraft(d => ({ ...d, [r.key]: { ...d[r.key], interval_days: e.target.value } }))} />
                     </td>
                     <td>{r.nextDue || '—'}</td>
-                    <td><span className={`badge ${tone[r.state]}`}>{r.state === 'overdue' ? c.invOverdue : r.state === 'soon' ? (ja ? 'まもなく' : 'Soon') : r.state === 'ok' ? c.upToDate : c.noRecord}</span></td>
+                    <td><span className={`badge ${tone[r.state]}`}>{r.state === 'overdue' ? c.invOverdue : r.state === 'soon' ? tr('Soon', 'まもなく', 'Em breve') : r.state === 'ok' ? c.upToDate : c.noRecord}</span></td>
                   </tr>
                 ))}
               </tbody>

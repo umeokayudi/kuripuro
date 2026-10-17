@@ -1,4 +1,5 @@
 export const mitsumoriEn = {
+  clientQuoteRequests:'Client quote requests',
   companySection:'Restaurant and company', contactSection:'Person in charge', salesSection:'Lead details',
   siteName:'Restaurant / store name', siteHint:'Name shown on the quote', company:'Company', companyKana:'Kana / English name', industry:'Industry', address:'Address', phone:'Phone', email:'Email', website:'Website', locations:'Number of sites',
   contact:'Responsible person', contactTitle:'Title', contactPhone:'Direct phone', contactEmail:'Direct email', contactLine:'LINE ID', decisionMaker:'Decision maker',
@@ -14,6 +15,7 @@ export const mitsumoriEn = {
   items:'Line items',addLine:'+ Add item',description:'Description',subtotal:'Subtotal',tax:'Tax',total:'Total',saveQuote:'Save changes',createQuote:'Create quote',cancel:'Cancel'
 }
 export const mitsumoriJa = {
+  clientQuoteRequests:'お客様からの見積依頼',
   companySection:'店舗・会社情報', contactSection:'担当者情報', salesSection:'営業情報',
   siteName:'店舗名', siteHint:'見積書に表示する店舗名', company:'会社名', companyKana:'会社名（カナ・英語）', industry:'業種', address:'住所', phone:'電話番号', email:'メール', website:'ウェブサイト', locations:'店舗数',
   contact:'担当者', contactTitle:'役職', contactPhone:'担当者電話番号', contactEmail:'担当者メール', contactLine:'LINE ID', decisionMaker:'決裁者',

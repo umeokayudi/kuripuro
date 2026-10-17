@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, localeOf } from '../hooks/useLang'
 import OverviewChart from '../components/OverviewChart'
 import MonthlyKpiCharts from '../components/MonthlyKpiCharts'
 import DateRangeSheet, { presetRange, formatRangeLabel, tokyoToday } from '../components/DateRangeSheet'
@@ -13,10 +13,10 @@ const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUT
 const daysBetween = (from, to) => Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5) + 1
 
 export default function Dashboard() {
-  const { lang, t } = useLang()
+  const { lang, t, tr } = useLang()
   const { user } = useAuth() || {}
   const d = t.dashboard
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = localeOf(lang)
 
   const [clients, setClients] = useState([])
   const [todayJobs, setTodayJobs] = useState([])
@@ -125,15 +125,17 @@ export default function Dashboard() {
   const liveJobs = todayJobs.filter(job => job.status === 'in_progress' && job.started_at)
   const pctText = v => v == null ? '—' : `${v}%`
 
-  const metricLabels = lang === 'ja'
-    ? { completed: '完了した作業', cash: '記録済み純入金', avgService: '平均作業時間', hoursWorked: '実働時間', onTime: '時間どおり開始', gps: 'GPSチェックイン' }
-    : { completed: 'Completed jobs', cash: 'Net cash', avgService: 'Avg. service time', hoursWorked: 'Hours worked', onTime: 'On-time starts', gps: 'GPS check-ins' }
-  const vsPrev = lang === 'ja' ? '前期間比' : 'vs previous period'
+  const metricLabels = tr(
+    { completed: 'Completed jobs', cash: 'Net cash', avgService: 'Avg. service time', hoursWorked: 'Hours worked', onTime: 'On-time starts', gps: 'GPS check-ins' },
+    { completed: '完了した作業', cash: '記録済み純入金', avgService: '平均作業時間', hoursWorked: '実働時間', onTime: '時間どおり開始', gps: 'GPSチェックイン' },
+    { completed: 'Serviços concluídos', cash: 'Caixa líquido', avgService: 'Tempo médio de serviço', hoursWorked: 'Horas trabalhadas', onTime: 'Inícios no horário', gps: 'Check-ins por GPS' }
+  )
+  const vsPrev = tr('vs previous period', '前期間比', 'vs período anterior')
 
   const minutesAgo = lastUpdate ? Math.max(0, Math.floor((clock - lastUpdate) / 60000)) : null
-  const updatedLabel = minutesAgo == null ? '' : lang === 'ja'
-    ? (minutesAgo === 0 ? 'たった今更新' : `${minutesAgo}分前に更新`)
-    : (minutesAgo === 0 ? 'Updated just now' : `Updated ${minutesAgo} min ago`)
+  const updatedLabel = minutesAgo == null ? '' : minutesAgo === 0
+    ? tr('Updated just now', 'たった今更新', 'Atualizado agora mesmo')
+    : tr(`Updated ${minutesAgo} min ago`, `${minutesAgo}分前に更新`, `Atualizado há ${minutesAgo} min`)
 
   return (
     <div>
@@ -141,7 +143,7 @@ export default function Dashboard() {
       <header className="dx-hero">
         <div className="dx-hero-copy">
           <span className="dx-eyebrow">{new Date().toLocaleDateString(dateLocale, { dateStyle: 'full', timeZone: 'Asia/Tokyo' })}</span>
-          <h1>{lang === 'ja' ? <>ダッシュボードへ<br />ようこそ</> : <>Welcome to your<br />Dashboard</>}{user?.name ? <span className="dx-hero-name">{lang === 'ja' ? `${user.name}さん` : `, ${user.name.split(' ')[0]}`}</span> : null}</h1>
+          <h1>{tr(<>Welcome to your<br />Dashboard</>, <>ダッシュボードへ<br />ようこそ</>, <>Bem-vindo ao seu<br />Painel</>)}{user?.name ? <span className="dx-hero-name">{lang === 'ja' ? `${user.name}さん` : `, ${user.name.split(' ')[0]}`}</span> : null}</h1>
         </div>
         <div className="dx-hero-controls">
           <button type="button" className="dx-range" onClick={() => setRangeOpen(true)} aria-haspopup="dialog">
@@ -149,7 +151,7 @@ export default function Dashboard() {
             <span>{formatRangeLabel(range, lang)}</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
-          <div className="dx-updated">{updatedLabel}{updatedLabel && ' · '}<button type="button" onClick={load}>{lang === 'ja' ? '更新' : 'Refresh'}</button></div>
+          <div className="dx-updated">{updatedLabel}{updatedLabel && ' · '}<button type="button" onClick={load}>{tr('Refresh', '更新', 'Atualizar')}</button></div>
         </div>
       </header>
 
@@ -157,15 +159,15 @@ export default function Dashboard() {
 
       <section className="card dx-overview">
         <div className="dx-overview-head">
-          <div><h2>{lang === 'ja' ? '実績の概要' : 'Performance overview'}</h2><p>{formatRangeLabel(range, lang)} · {lang === 'ja' ? (daily ? '日別' : '月別') : (daily ? 'by day' : 'by month')}</p></div>
+          <div><h2>{tr('Performance overview', '実績の概要', 'Visão geral do desempenho')}</h2><p>{formatRangeLabel(range, lang)} · {daily ? tr('by day', '日別', 'por dia') : tr('by month', '月別', 'por mês')}</p></div>
         </div>
-        <OverviewChart data={overviewData} cashLabel={metricLabels.cash} jobsLabel={metricLabels.completed} formatCash={fmt} emptyLabel={lang === 'ja' ? 'データなし' : 'No data'} />
+        <OverviewChart data={overviewData} cashLabel={metricLabels.cash} jobsLabel={metricLabels.completed} formatCash={fmt} emptyLabel={tr('No data', 'データなし', 'Sem dados')} />
       </section>
 
       <section className="card dx-team">
         <div className="dx-overview-head">
-          <div><h2>{lang === 'ja' ? 'チームのパフォーマンス' : 'Team performance'}</h2><p>{formatRangeLabel(range, lang)} · {lang === 'ja' ? '開始・終了時刻とGPSから' : 'from start/finish times and GPS'}</p></div>
-          <Link to="/live" className="dx-link">{lang === 'ja' ? 'ライブ追跡 →' : 'Live tracking →'}</Link>
+          <div><h2>{tr('Team performance', 'チームのパフォーマンス', 'Desempenho da equipe')}</h2><p>{formatRangeLabel(range, lang)} · {tr('from start/finish times and GPS', '開始・終了時刻とGPSから', 'pelos horários de início/fim e GPS')}</p></div>
+          <Link to="/live" className="dx-link">{tr('Live tracking →', 'ライブ追跡 →', 'Rastreamento ao vivo →')}</Link>
         </div>
         {liveJobs.length > 0 && (
           <div className="dx-live">
@@ -175,7 +177,7 @@ export default function Dashboard() {
               return (
                 <div key={job.id} className="dx-live-item">
                   <span className="dx-live-dot" />
-                  <div><strong>{job.employee_name || '—'}</strong><small>{(job.title || '').replace(/ — .*/, '')}{gps === 'away' ? (lang === 'ja' ? ' · ⚠ 現場外' : ' · ⚠ away from site') : gps ? ' · 📍' : ''}</small></div>
+                  <div><strong>{job.employee_name || '—'}</strong><small>{(job.title || '').replace(/ — .*/, '')}{gps === 'away' ? tr(' · ⚠ away from site', ' · ⚠ 現場外', ' · ⚠ fora do local') : gps ? ' · 📍' : ''}</small></div>
                   <b>{String(Math.floor(secs / 3600)).padStart(2, '0')}:{String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</b>
                 </div>
               )
@@ -185,25 +187,25 @@ export default function Dashboard() {
         <div className="dx-team-kpis">
           {[
             [metricLabels.avgService, formatMinutes(team.avgMin), teamPrev.avgMin != null && team.avgMin != null ? `${team.avgMin - teamPrev.avgMin > 0 ? '+' : team.avgMin - teamPrev.avgMin < 0 ? '−' : '±'}${formatMinutes(Math.abs(team.avgMin - teamPrev.avgMin))} ${vsPrev}` : null],
-            [metricLabels.hoursWorked, formatMinutes(team.totalMin), lang === 'ja' ? `計測 ${team.timed}件` : `${team.timed} timed jobs`],
-            [metricLabels.onTime, pctText(team.onTimePct), team.avgDelayMin != null ? (lang === 'ja' ? `平均開始 ${team.avgDelayMin}分` : `avg. start ${team.avgDelayMin > 0 ? '+' : ''}${team.avgDelayMin} min`) : null],
-            [metricLabels.gps, pctText(team.gpsPct), team.gpsAway ? (lang === 'ja' ? `現場外 ${team.gpsAway}件` : `${team.gpsAway} away from site`) : null],
-            [lang === 'ja' ? 'チェックリスト' : 'Checklist', pctText(team.checklistPct), null],
+            [metricLabels.hoursWorked, formatMinutes(team.totalMin), tr(`${team.timed} timed jobs`, `計測 ${team.timed}件`, `${team.timed} serviços cronometrados`)],
+            [metricLabels.onTime, pctText(team.onTimePct), team.avgDelayMin != null ? tr(`avg. start ${team.avgDelayMin > 0 ? '+' : ''}${team.avgDelayMin} min`, `平均開始 ${team.avgDelayMin}分`, `início médio ${team.avgDelayMin > 0 ? '+' : ''}${team.avgDelayMin} min`) : null],
+            [metricLabels.gps, pctText(team.gpsPct), team.gpsAway ? tr(`${team.gpsAway} away from site`, `現場外 ${team.gpsAway}件`, `${team.gpsAway} fora do local`) : null],
+            [tr('Checklist', 'チェックリスト', 'Checklist'), pctText(team.checklistPct), null],
           ].map(([label, value, sub]) => (
             <div key={label} className="dx-team-kpi"><span>{label}</span><strong>{value}</strong>{sub && <small>{sub}</small>}</div>
           ))}
         </div>
-        {people.length === 0 ? <div className="ov-empty">{lang === 'ja' ? 'この期間の完了作業はありません' : 'No completed jobs in this period'}</div> : (
+        {people.length === 0 ? <div className="ov-empty">{tr('No completed jobs in this period', 'この期間の完了作業はありません', 'Nenhum serviço concluído neste período')}</div> : (
           <div className="dx-table-wrap">
             <table className="dx-table">
               <thead><tr>
-                <th>{lang === 'ja' ? 'スタッフ' : 'Employee'}</th>
-                <th>{lang === 'ja' ? '件数' : 'Jobs'}</th>
-                <th>{lang === 'ja' ? '平均時間' : 'Avg. time'}</th>
-                <th>{lang === 'ja' ? '実働' : 'Hours'}</th>
-                <th>{lang === 'ja' ? '時間どおり' : 'On time'}</th>
+                <th>{tr('Employee', 'スタッフ', 'Funcionário')}</th>
+                <th>{tr('Jobs', '件数', 'Serviços')}</th>
+                <th>{tr('Avg. time', '平均時間', 'Tempo médio')}</th>
+                <th>{tr('Hours', '実働', 'Horas')}</th>
+                <th>{tr('On time', '時間どおり', 'No horário')}</th>
                 <th>GPS</th>
-                <th>{lang === 'ja' ? 'チェック' : 'Checklist'}</th>
+                <th>{tr('Checklist', 'チェック', 'Checklist')}</th>
               </tr></thead>
               <tbody>
                 {people.map(p => (
@@ -236,7 +238,7 @@ export default function Dashboard() {
         const byArea = {}
         for (const j of todayJobs) {
           if (j.status === 'cancelled') continue
-          const a = j.area || (lang === 'ja' ? '未設定' : 'No area')
+          const a = j.area || tr('No area', '未設定', 'Sem área')
           byArea[a] = byArea[a] || { total: 0, done: 0, staff: new Set() }
           byArea[a].total++
           if (j.status === 'completed') byArea[a].done++
@@ -244,13 +246,13 @@ export default function Dashboard() {
         }
         return (
           <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ fontWeight: 600, marginBottom: 12 }}>📍 {lang === 'ja' ? '本日のエリア別' : 'Today by area'}</div>
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>📍 {tr('Today by area', '本日のエリア別', 'Hoje por área')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
               {Object.entries(byArea).sort((a, b) => b[1].total - a[1].total).map(([area, v]) => (
                 <Link key={area} to="/jobs" style={{ textDecoration: 'none', color: 'inherit', background: 'var(--surface2)', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{area}</div>
                   <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>{v.done}/{v.total}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{lang === 'ja' ? '完了' : 'done'}{v.staff.size ? ` · ${[...v.staff].join(', ')}` : ''}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{tr('done', '完了', 'concluídos')}{v.staff.size ? ` · ${[...v.staff].join(', ')}` : ''}</div>
                 </Link>
               ))}
             </div>

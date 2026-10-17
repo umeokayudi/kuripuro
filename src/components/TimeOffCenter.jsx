@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { useLang } from '../hooks/useLang'
+import { useLang, pickLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { fetchPendingTimeOff, decideTimeOff, TIME_OFF_CHANGED } from '../lib/timeOff'
 import { fetchAutoClosedPeriods, PAYROLL_CHANGED } from '../lib/payrollAlerts'
@@ -20,8 +20,7 @@ const writeSeen = (ids) => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringi
 // reject each request or open the payroll to review.
 export default function TimeOffCenter() {
   const { lang } = useLang()
-  const ja = lang === 'ja'
-  const L = (en, jaText) => (ja ? jaText : en)
+  const L = (en, jaText, pt) => pickLang(lang, en, jaText, pt)
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
   const [open, setOpen] = useState(false)
@@ -65,7 +64,7 @@ export default function TimeOffCenter() {
     setBusy(row.id + status)
     try {
       await decideTimeOff(row.id, status, notes[row.id])
-      toast.success(status === 'approved' ? L('Day off approved', '休みを承認しました') : L('Request declined', '申請を却下しました'))
+      toast.success(status === 'approved' ? L('Day off approved', '休みを承認しました', 'Folga aprovada') : L('Request declined', '申請を却下しました', 'Pedido recusado'))
       setRows(r => r.filter(x => x.id !== row.id))
       setNoteFor(null)
     } catch (e) {
@@ -81,8 +80,8 @@ export default function TimeOffCenter() {
   return (
     <>
       <button type="button" className={`ref-top-action tor-bell${n ? ' has-items' : ''}`} onClick={openPopup}
-        title={n ? L(`${n} item(s) waiting`, `確認待ち ${n}件`) : L('No requests waiting', '承認待ちはありません')}
-        aria-label={L('Day-off requests', '休み申請')}>
+        title={n ? L(`${n} item(s) waiting`, `確認待ち ${n}件`, `${n} item(ns) aguardando`) : L('No requests waiting', '承認待ちはありません', 'Nenhum pedido aguardando')}
+        aria-label={L('Day-off requests', '休み申請', 'Pedidos de folga')}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
         {n > 0 && <span className="tor-count">{n > 9 ? '9+' : n}</span>}
       </button>
@@ -93,34 +92,34 @@ export default function TimeOffCenter() {
         <div className="tor-toast" role="status">
           <span className="tor-toast-icon" aria-hidden="true">💴</span>
           <div className="tor-toast-text">
-            <strong>{L(`Payroll ${fmtPeriod(payroll[0].period)} closed automatically`, `${fmtPeriod(payroll[0].period)} の給与を自動で締めました`)}</strong>
-            <span>{L('Check the payslips before staff confirm', '従業員の確認前に明細をチェックしてください')}</span>
+            <strong>{L(`Payroll ${fmtPeriod(payroll[0].period)} closed automatically`, `${fmtPeriod(payroll[0].period)} の給与を自動で締めました`, `Folha de ${fmtPeriod(payroll[0].period)} fechada automaticamente`)}</strong>
+            <span>{L('Check the payslips before staff confirm', '従業員の確認前に明細をチェックしてください', 'Confira os holerites antes da equipe confirmar')}</span>
           </div>
-          <button type="button" className="tor-btn tor-btn-primary tor-btn-sm" onClick={() => openPayroll(payroll[0].period)}>{L('Review', '確認')}</button>
-          <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる')}>×</button>
+          <button type="button" className="tor-btn tor-btn-primary tor-btn-sm" onClick={() => openPayroll(payroll[0].period)}>{L('Review', '確認', 'Revisar')}</button>
+          <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる', 'Dispensar')}>×</button>
         </div>
       )}
       {toastOpen && payroll.length === 0 && rows.length > 0 && !open && (
         <div className="tor-toast" role="status">
           <span className="tor-toast-icon" aria-hidden="true">🗓</span>
           <div className="tor-toast-text">
-            <strong>{ja ? `休み申請 ${rows.length}件` : `${rows.length} day-off request${rows.length > 1 ? 's' : ''}`}</strong>
-            <span>{rows.length === 1 ? `${rows[0].employee_name || '—'} · ${fmtDay(rows[0].date, lang, { weekday: 'short', day: 'numeric', month: 'short' })}` : L('Waiting for your decision', '承認待ちです')}</span>
+            <strong>{L(`${rows.length} day-off request${rows.length > 1 ? 's' : ''}`, `休み申請 ${rows.length}件`, `${rows.length} pedido${rows.length > 1 ? 's' : ''} de folga`)}</strong>
+            <span>{rows.length === 1 ? `${rows[0].employee_name || '—'} · ${fmtDay(rows[0].date, lang, { weekday: 'short', day: 'numeric', month: 'short' })}` : L('Waiting for your decision', '承認待ちです', 'Aguardando sua decisão')}</span>
           </div>
-          <button type="button" className="tor-btn tor-btn-primary tor-btn-sm" onClick={openPopup}>{L('Review', '確認')}</button>
-          <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる')}>×</button>
+          <button type="button" className="tor-btn tor-btn-primary tor-btn-sm" onClick={openPopup}>{L('Review', '確認', 'Revisar')}</button>
+          <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる', 'Dispensar')}>×</button>
         </div>
       )}
 
       {open && (
         <div className="tor-backdrop" onClick={() => setOpen(false)}>
-          <section className="tor-modal" role="dialog" aria-modal="true" aria-label={L('Day-off requests', '休み申請')} onClick={e => e.stopPropagation()}>
+          <section className="tor-modal" role="dialog" aria-modal="true" aria-label={L('Day-off requests', '休み申請', 'Pedidos de folga')} onClick={e => e.stopPropagation()}>
             <header className="tor-head">
               <div>
-                <h2>{L('Day-off requests', '休み申請')}</h2>
-                <p>{rows.length ? L(`${rows.length} waiting for approval`, `${rows.length}件が承認待ち`) : L('Nothing waiting. All caught up.', '承認待ちはありません。')}</p>
+                <h2>{L('Day-off requests', '休み申請', 'Pedidos de folga')}</h2>
+                <p>{rows.length ? L(`${rows.length} waiting for approval`, `${rows.length}件が承認待ち`, `${rows.length} aguardando aprovação`) : L('Nothing waiting. All caught up.', '承認待ちはありません。', 'Nada pendente. Tudo em dia.')}</p>
               </div>
-              <button type="button" className="tor-close" onClick={() => setOpen(false)} aria-label={L('Close', '閉じる')}>×</button>
+              <button type="button" className="tor-close" onClick={() => setOpen(false)} aria-label={L('Close', '閉じる', 'Fechar')}>×</button>
             </header>
 
             <div className="tor-list">
@@ -129,13 +128,13 @@ export default function TimeOffCenter() {
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">💴</div>
                     <div className="tor-item-main">
-                      <strong>{L(`Payroll ${fmtPeriod(pr.period)}`, `${fmtPeriod(pr.period)} 給与`)}</strong>
-                      <span>{L(`Closed automatically · staff confirm by ${pr.confirm_deadline} · pay ${pr.pay_date}`, `自動で締めました · 確認期限 ${pr.confirm_deadline} · 支払 ${pr.pay_date}`)}</span>
+                      <strong>{L(`Payroll ${fmtPeriod(pr.period)}`, `${fmtPeriod(pr.period)} 給与`, `Folha ${fmtPeriod(pr.period)}`)}</strong>
+                      <span>{L(`Closed automatically · staff confirm by ${pr.confirm_deadline} · pay ${pr.pay_date}`, `自動で締めました · 確認期限 ${pr.confirm_deadline} · 支払 ${pr.pay_date}`, `Fechada automaticamente · equipe confirma até ${pr.confirm_deadline} · pagamento ${pr.pay_date}`)}</span>
                     </div>
-                    <span className="tor-kind is-extra">{L('Review', '要確認')}</span>
+                    <span className="tor-kind is-extra">{L('Review', '要確認', 'Revisar')}</span>
                   </div>
                   <div className="tor-actions">
-                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openPayroll(pr.period)}>{L('Open payslips', '明細を開く')}</button>
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openPayroll(pr.period)}>{L('Open payslips', '明細を開く', 'Abrir holerites')}</button>
                   </div>
                 </article>
               ))}
@@ -147,29 +146,29 @@ export default function TimeOffCenter() {
                       <strong>{r.employee_name || '—'}</strong>
                       <span>{fmtDay(r.date, lang, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
                     </div>
-                    <span className={`tor-kind is-${r.kind}`}>{r.kind === 'off' ? L('Day off', '休み') : L('Extra work', '追加勤務')}</span>
+                    <span className={`tor-kind is-${r.kind}`}>{r.kind === 'off' ? L('Day off', '休み', 'Folga') : L('Extra work', '追加勤務', 'Trabalho extra')}</span>
                   </div>
                   {r.note && <p className="tor-note">“{r.note}”</p>}
                   <DayContext ctx={dayCtx[r.date]} req={r} L={L} />
                   {noteFor === r.id && (
-                    <input className="tor-input" autoFocus value={notes[r.id] || ''} onChange={e => setNotes(x => ({ ...x, [r.id]: e.target.value }))} placeholder={L('Message to the employee (optional)', 'スタッフへのメッセージ（任意）')} />
+                    <input className="tor-input" autoFocus value={notes[r.id] || ''} onChange={e => setNotes(x => ({ ...x, [r.id]: e.target.value }))} placeholder={L('Message to the employee (optional)', 'スタッフへのメッセージ（任意）', 'Mensagem para o funcionário (opcional)')} />
                   )}
                   <div className="tor-actions">
                     <button type="button" className="tor-btn tor-btn-reject" disabled={!!busy} onClick={() => decide(r, 'rejected')}>
-                      {busy === r.id + 'rejected' ? '…' : <>✕ {L('Decline', '却下')}</>}
+                      {busy === r.id + 'rejected' ? '…' : <>✕ {L('Decline', '却下', 'Recusar')}</>}
                     </button>
                     <button type="button" className="tor-btn tor-btn-approve" disabled={!!busy} onClick={() => decide(r, 'approved')}>
-                      {busy === r.id + 'approved' ? '…' : <>✓ {L('Approve', '承認')}</>}
+                      {busy === r.id + 'approved' ? '…' : <>✓ {L('Approve', '承認', 'Aprovar')}</>}
                     </button>
-                    {noteFor !== r.id && <button type="button" className="tor-link" onClick={() => setNoteFor(r.id)}>{L('+ Add message', '+ メッセージ')}</button>}
+                    {noteFor !== r.id && <button type="button" className="tor-link" onClick={() => setNoteFor(r.id)}>{L('+ Add message', '+ メッセージ', '+ Adicionar mensagem')}</button>}
                   </div>
                 </article>
               ))}
             </div>
 
             <footer className="tor-foot">
-              <button type="button" className="tor-btn tor-btn-ghost" onClick={openCalendar}>🗓 {L('Open calendar', 'カレンダーを開く')}</button>
-              <button type="button" className="tor-btn tor-btn-ghost" onClick={() => setOpen(false)}>{L('Later', 'あとで')}</button>
+              <button type="button" className="tor-btn tor-btn-ghost" onClick={openCalendar}>🗓 {L('Open calendar', 'カレンダーを開く', 'Abrir calendário')}</button>
+              <button type="button" className="tor-btn tor-btn-ghost" onClick={() => setOpen(false)}>{L('Later', 'あとで', 'Depois')}</button>
             </footer>
           </section>
         </div>

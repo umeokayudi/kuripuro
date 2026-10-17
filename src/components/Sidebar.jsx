@@ -1,8 +1,10 @@
 import { NavLink } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { countPendingTimeOff, TIME_OFF_CHANGED } from '../lib/timeOff'
+import { TIME_OFF_CHANGED } from '../lib/timeOff'
+import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
+import { fetchPendingCounts, PENDING_CHANGED } from '../lib/adminPending'
 import { tokyoToday } from '../lib/dates'
-import { useLang } from '../hooks/useLang'
+import { useLang, fill } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
 import LanguageToggle from './LanguageToggle'
@@ -68,20 +70,29 @@ const groups = [
   },
 ]
 
+export function usePendingCounts() {
+  const [counts, setCounts] = useState({})
+  useEffect(() => {
+    let alive = true
+    const load = () => fetchPendingCounts(tokyoToday()).then(c => { if (alive) setCounts(c) }).catch(() => {})
+    load()
+    const id = setInterval(load, 60000)
+    const events = [TIME_OFF_CHANGED, PAYROLL_CHANGED, PENDING_CHANGED]
+    events.forEach(e => window.addEventListener(e, load))
+    window.addEventListener('focus', load)
+    return () => { alive = false; clearInterval(id); events.forEach(e => window.removeEventListener(e, load)); window.removeEventListener('focus', load) }
+  }, [])
+  return counts
+}
+
 export default function Sidebar({ mobileOpen = false, onMobileClose }) {
   const { t } = useLang()
   const { logout } = useAuth()
   const s = t.sidebar
   const [collapsed, setCollapsed] = useState(false)
-  // Pending day-off requests: badge on Employees so the admin sees them from any page
-  const [pendingOff, setPendingOff] = useState(0)
-  useEffect(() => {
-    const load = () => countPendingTimeOff(tokyoToday()).then(setPendingOff)
-    load()
-    const id = setInterval(load, 60000)
-    window.addEventListener(TIME_OFF_CHANGED, load)
-    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load) }
-  }, [])
+  // Unresolved items per menu entry (day-off requests, client quote requests, unread chat…):
+  // the number stays next to the item until it is dealt with, on every page.
+  const counts = usePendingCounts()
 
   return (
     <>
@@ -104,7 +115,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }) {
             {group.items.map(({ to, key, icon: Icon }) => (
               <NavLink key={to} to={to} end={to === '/'} onClick={onMobileClose} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
                 <Icon /><span className="nav-label">{s[key]}</span>
-                {key === 'employees' && pendingOff > 0 && <span className="nav-count" title={`${pendingOff}`}>{pendingOff}</span>}
+                {counts[key] > 0 && <span className="nav-count" title={fill(s.pendingTitle || '{n} waiting', { n: counts[key] })}>{counts[key] > 99 ? '99+' : counts[key]}</span>}
               </NavLink>
             ))}
           </div>

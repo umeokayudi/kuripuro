@@ -5,6 +5,7 @@ import { tokyoToday } from './DateRangeSheet'
 import { avgStars } from '../lib/satisfaction'
 import { summarizeJobs, formatMinutes } from '../lib/workKpis'
 import MonthBars from './MonthBars'
+import { pickLang, localeOf } from '../hooks/useLang'
 
 // v1.0.34 — the editable number tiles at the top of the dashboard, now one roomy
 // month-by-month bar chart per metric (last 6 or 12 months, current month highlighted).
@@ -39,8 +40,8 @@ const yenCompact = v => {
 const yenFull = v => (v < 0 ? '−' : '') + '¥' + Math.abs(Math.round(v)).toLocaleString()
 
 export default function MonthlyKpiCharts({ lang, snapshot = {} }) {
-  const ja = lang === 'ja'
-  const dateLocale = ja ? 'ja-JP' : 'en-GB'
+  const tr = (en, ja, pt) => pickLang(lang, en, ja, pt)
+  const dateLocale = localeOf(lang)
   const [months, setMonths] = useState(6)
   const [rows, setRows] = useState({ jobs: [], cash: [], ratings: [], clients: [] })
   const [loaded, setLoaded] = useState(false)
@@ -97,26 +98,28 @@ export default function MonthlyKpiCharts({ lang, snapshot = {} }) {
     }
   }), [keys, rows, dateLocale])
 
-  const L = ja
-    ? { completed: '完了した作業', cash: '純入金', income: '入金', expenses: '出金', clients: '稼働中の顧客', satisfaction: '顧客満足度', avgService: '平均作業時間', hoursWorked: '実働時間', onTime: '時間どおり開始', gps: 'GPSチェックイン', today: '本日の作業', revenue: '月間契約売上（推定）', profit: '推定利益' }
-    : { completed: 'Completed jobs', cash: 'Net cash', income: 'Money in', expenses: 'Money out', clients: 'Active clients', satisfaction: 'Client satisfaction', avgService: 'Avg. service time', hoursWorked: 'Hours worked', onTime: 'On-time starts', gps: 'GPS check-ins', today: "Today's jobs", revenue: 'Contract revenue', profit: 'Estimated profit' }
+  const L = tr(
+    { completed: 'Completed jobs', cash: 'Net cash', income: 'Money in', expenses: 'Money out', clients: 'Active clients', satisfaction: 'Client satisfaction', avgService: 'Avg. service time', hoursWorked: 'Hours worked', onTime: 'On-time starts', gps: 'GPS check-ins', today: "Today's jobs", revenue: 'Contract revenue', profit: 'Estimated profit' },
+    { completed: '完了した作業', cash: '純入金', income: '入金', expenses: '出金', clients: '稼働中の顧客', satisfaction: '顧客満足度', avgService: '平均作業時間', hoursWorked: '実働時間', onTime: '時間どおり開始', gps: 'GPSチェックイン', today: '本日の作業', revenue: '月間契約売上（推定）', profit: '推定利益' },
+    { completed: 'Serviços concluídos', cash: 'Caixa líquido', income: 'Entradas', expenses: 'Saídas', clients: 'Clientes ativos', satisfaction: 'Satisfação dos clientes', avgService: 'Tempo médio de serviço', hoursWorked: 'Horas trabalhadas', onTime: 'Inícios no horário', gps: 'Check-ins por GPS', today: 'Serviços de hoje', revenue: 'Receita de contratos', profit: 'Lucro estimado' }
+  )
   const pct = v => `${Math.round(v)}%`
   const charts = [
     { id: 'completed', tone: 'green', format: v => String(v) },
     { id: 'cash', tone: 'blue', format: (v, short) => short ? yenCompact(v) : yenFull(v) },
-    { id: 'satisfaction', tone: 'amber', format: (v, short) => short ? v.toFixed(1) : `${v.toFixed(1)} ★`, max: 5, sub: b => b.ratingsCount ? (ja ? `${b.ratingsCount}件の評価` : `${b.ratingsCount} ratings`) : null, link: '/client-feedback' },
+    { id: 'satisfaction', tone: 'amber', format: (v, short) => short ? v.toFixed(1) : `${v.toFixed(1)} ★`, max: 5, sub: b => b.ratingsCount ? tr(`${b.ratingsCount} ratings`, `${b.ratingsCount}件の評価`, `${b.ratingsCount} avaliações`) : null, link: '/client-feedback' },
     { id: 'income', tone: 'purple', format: (v, short) => short ? yenCompact(v) : yenFull(v) },
     { id: 'expenses', tone: 'orange', format: (v, short) => short ? yenCompact(v) : yenFull(v), lowerIsBetter: true },
-    { id: 'clients', tone: 'teal', format: v => String(v), note: ja ? '各月末時点' : 'at the end of each month', link: '/clients' },
+    { id: 'clients', tone: 'teal', format: v => String(v), note: tr('at the end of each month', '各月末時点', 'no fim de cada mês'), link: '/clients' },
     { id: 'avgService', tone: 'sky', format: v => formatMinutes(v) },
     { id: 'hoursWorked', tone: 'navy', format: (v, short) => short ? `${Math.round(v / 60)}h` : formatMinutes(v) },
     { id: 'onTime', tone: 'green', format: pct, max: 100 },
     { id: 'gps', tone: 'teal', format: pct, max: 100 },
   ]
   const snapshots = [
-    { id: 'today', value: snapshot.today ?? '—', note: ja ? '本日' : 'today' },
-    { id: 'revenue', value: snapshot.revenue ?? '—', note: ja ? '契約データに基づく推定・月額' : 'Estimated from contracts, per month' },
-    { id: 'profit', value: snapshot.profit ?? '—', note: ja ? '契約売上 − 推定コスト' : 'Contract revenue − estimated cost' },
+    { id: 'today', value: snapshot.today ?? '—', note: tr('today', '本日', 'hoje') },
+    { id: 'revenue', value: snapshot.revenue ?? '—', note: tr('Estimated from contracts, per month', '契約データに基づく推定・月額', 'Estimativa pelos contratos, por mês') },
+    { id: 'profit', value: snapshot.profit ?? '—', note: tr('Contract revenue − estimated cost', '契約売上 − 推定コスト', 'Receita de contratos − custo estimado') },
   ]
   const toggle = (id, on) => {
     const next = on ? [...visible, id] : visible.filter(x => x !== id)
@@ -125,20 +128,20 @@ export default function MonthlyKpiCharts({ lang, snapshot = {} }) {
   }
   const thisMonth = buckets[buckets.length - 1]
   const lastMonth = buckets[buckets.length - 2]
-  const vsLast = ja ? '先月比' : 'vs last month'
+  const vsLast = tr('vs last month', '先月比', 'vs mês passado')
 
   return (
-    <section className="mk-wrap" aria-label={ja ? '月別の指標' : 'Month by month'}>
+    <section className="mk-wrap" aria-label={tr('Month by month', '月別の指標', 'Mês a mês')}>
       <div className="mk-head">
         <div>
-          <h2>{ja ? '月別の推移' : 'Month by month'}</h2>
-          <p>{ja ? '今月は濃い色。棒をタップすると詳細が見られます。' : 'This month is the dark bar. Tap a bar to see that month.'}</p>
+          <h2>{tr('Month by month', '月別の推移', 'Mês a mês')}</h2>
+          <p>{tr('This month is the dark bar. Tap a bar to see that month.', '今月は濃い色。棒をタップすると詳細が見られます。', 'O mês atual é a barra escura. Toque numa barra para ver aquele mês.')}</p>
         </div>
         <div className="mk-controls">
-          <div className="mk-seg" role="group" aria-label={ja ? '期間' : 'Period'}>
-            {[6, 12].map(n => <button key={n} type="button" className={months === n ? 'is-on' : ''} onClick={() => setMonths(n)}>{ja ? `${n}か月` : `${n} months`}</button>)}
+          <div className="mk-seg" role="group" aria-label={tr('Period', '期間', 'Período')}>
+            {[6, 12].map(n => <button key={n} type="button" className={months === n ? 'is-on' : ''} onClick={() => setMonths(n)}>{tr(`${n} months`, `${n}か月`, `${n} meses`)}</button>)}
           </div>
-          <button type="button" className="mk-edit" onClick={() => setEditing(v => !v)}>{editing ? (ja ? '完了' : 'Done') : (ja ? '表示する指標を編集' : 'Edit charts')}</button>
+          <button type="button" className="mk-edit" onClick={() => setEditing(v => !v)}>{editing ? tr('Done', '完了', 'Concluir') : tr('Edit charts', '表示する指標を編集', 'Editar gráficos')}</button>
         </div>
       </div>
       {editing && (
@@ -152,23 +155,23 @@ export default function MonthlyKpiCharts({ lang, snapshot = {} }) {
           const before = lastMonth?.[c.id]
           const diff = loaded && now != null && before != null ? now - before : null
           const good = diff == null || diff === 0 ? null : (diff > 0) !== !!c.lowerIsBetter
-          const diffText = diff == null ? null : diff === 0 ? (ja ? '先月と同じ' : 'same as last month')
+          const diffText = diff == null ? null : diff === 0 ? tr('same as last month', '先月と同じ', 'igual ao mês passado')
             : `${diff > 0 ? '▲ +' : '▼ −'}${c.format(Math.abs(diff))} ${vsLast}`
           return (
             <article key={c.id} className="mk-card" style={{ '--tone': TONES[c.tone] }}>
               <header>
                 <span className="mk-label">{L[c.id]}</span>
-                {c.link && <Link to={c.link} className="mk-link">{ja ? '詳細 →' : 'Details →'}</Link>}
+                {c.link && <Link to={c.link} className="mk-link">{tr('Details →', '詳細 →', 'Detalhes →')}</Link>}
               </header>
               <div className="mk-now">
                 <strong>{now == null ? '—' : c.format(now)}</strong>
-                <small>{thisMonth?.title}{ja ? '（途中）' : ' · so far'}</small>
+                <small>{thisMonth?.title}{tr(' · so far', '（途中）', ' · até agora')}</small>
               </div>
               {diffText ? <div className={`mk-diff${good == null ? '' : good ? ' is-good' : ' is-bad'}`}>{diffText}</div>
                 : c.note ? <div className="mk-diff">{c.note}</div> : <div className="mk-diff">&nbsp;</div>}
               {loaded
-                ? <MonthBars data={buckets.map(b => ({ key: b.key, label: b.label, title: b.title, value: b[c.id], sub: c.sub?.(b) }))} format={c.format} tone={TONES[c.tone]} max={c.max} emptyLabel={ja ? 'まだデータがありません' : 'No data yet'} />
-                : <div className="mk-empty">{ja ? '読み込み中…' : 'Loading…'}</div>}
+                ? <MonthBars data={buckets.map(b => ({ key: b.key, label: b.label, title: b.title, value: b[c.id], sub: c.sub?.(b) }))} format={c.format} tone={TONES[c.tone]} max={c.max} emptyLabel={tr('No data yet', 'まだデータがありません', 'Ainda sem dados')} />
+                : <div className="mk-empty">{tr('Loading…', '読み込み中…', 'Carregando…')}</div>}
             </article>
           )
         })}

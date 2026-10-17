@@ -16,13 +16,18 @@ const CLEANING_TYPES_JA = {
   deep: { label: '深層清掃', suffix: 'Deep Clean', short: '深層', color: '#fbbf24' },
 }
 
+const CLEANING_TYPES_PT = {
+  basic: { label: 'Limpeza básica', suffix: 'Basic Cleaning', short: 'Básica', color: '#60a5fa' },
+  deep: { label: 'Limpeza pesada', suffix: 'Deep Clean', short: 'Pesada', color: '#fbbf24' },
+}
+
 /** Componentes do deep clean OTP */
 export const DEEP_CLEAN_COMPONENTS = [
-  { id: 'range_hood', label: 'Range Hood', labelJa: 'レンジフード' },
-  { id: 'ac', label: 'AC Cleaning', labelJa: 'エアコン清掃' },
-  { id: 'grating', label: 'Grating', labelJa: 'グレーティング' },
-  { id: 'grease_trap', label: 'Grease Trap', labelJa: 'グリストラップ' },
-  { id: 'other', label: 'Other', labelJa: 'その他' },
+  { id: 'range_hood', label: 'Range Hood', labelJa: 'レンジフード', labelPt: 'Coifa' },
+  { id: 'ac', label: 'AC Cleaning', labelJa: 'エアコン清掃', labelPt: 'Limpeza de ar-condicionado' },
+  { id: 'grating', label: 'Grating', labelJa: 'グレーティング', labelPt: 'Grelhas de piso' },
+  { id: 'grease_trap', label: 'Grease Trap', labelJa: 'グリストラップ', labelPt: 'Caixa de gordura' },
+  { id: 'other', label: 'Other', labelJa: 'その他', labelPt: 'Outro' },
 ]
 
 /** Manutenção no dia de folga (deep-only OTP) */
@@ -37,13 +42,13 @@ export const REST_DAY_MAINTENANCE_COMPONENTS = [
 export const ALL_DEEP_COMPONENT_IDS = DEEP_CLEAN_COMPONENTS.map(c => c.id)
 
 export function cleaningTypesForLang(lang) {
-  return lang === 'ja' ? CLEANING_TYPES_JA : CLEANING_TYPES
+  return lang === 'ja' ? CLEANING_TYPES_JA : lang === 'pt' ? CLEANING_TYPES_PT : CLEANING_TYPES
 }
 
 export function deepComponentLabel(id, lang = 'en') {
   const item = DEEP_CLEAN_COMPONENTS.find(c => c.id === id)
   if (!item) return id
-  return lang === 'ja' ? item.labelJa : item.label
+  return lang === 'ja' ? item.labelJa : lang === 'pt' ? (item.labelPt || item.label) : item.label
 }
 
 export const DEEP_CLEAN_LOCATIONS = OTP_BASIC_LOCATIONS.map(l => l.name)
@@ -362,7 +367,7 @@ export function tuesdaySlotInfo(job, labels) {
 }
 
 export function formatScheduleDate(date, lang = 'en') {
-  const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const locale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
   return new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
 }
 

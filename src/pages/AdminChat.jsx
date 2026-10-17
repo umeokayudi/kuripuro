@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
@@ -93,6 +94,7 @@ export default function AdminChat() {
       await supabase.from('client_messages').update({ read: true }).eq('client_id', selected.client_id).eq('sender', 'client').eq('read', false)
       setUnread(u => ({ ...u, [selected.client_id]: 0 }))
     }
+    pendingChanged()
   }
 
   const prevMsgCount = useRef(0)

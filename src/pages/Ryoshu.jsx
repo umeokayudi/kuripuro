@@ -5,7 +5,7 @@ import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
 
 export default function Ryoshu() {
-  const { t, lang } = useLang()
+  const { t, lang, tr } = useLang()
   const [receipts, setReceipts] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -93,9 +93,9 @@ export default function Ryoshu() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <div>
           <h2 className="page-head" style={{margin:0,fontSize:22}}>{t.sidebar.ryoshu}</h2>
-          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{lang==='ja'?'今月合計':'This month'}: <strong>¥{totalMonth.toLocaleString()}</strong></div>
+          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{tr('This month', '今月合計', 'Este mês')}: <strong>¥{totalMonth.toLocaleString()}</strong></div>
         </div>
-        <button className="btn btn-primary" onClick={()=>setShowForm(!showForm)}>+ {lang==='ja'?'新規作成':'New receipt'}</button>
+        <button className="btn btn-primary" onClick={()=>setShowForm(!showForm)}>+ {tr('New receipt', '新規作成', 'Novo recibo')}</button>
       </div>
 
       {showForm&&(
@@ -143,8 +143,8 @@ export default function Ryoshu() {
             </div>
           </div>
           <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-sm btn-primary" onClick={()=>handlePrint(r)}>🖨️ {lang === 'ja' ? '印刷' : 'Print'}</button>
-            <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(r.id)}>🗑 {lang === 'ja' ? '削除' : 'Delete'}</button>
+            <button className="btn btn-sm btn-primary" onClick={()=>handlePrint(r)}>🖨️ {tr('Print', '印刷', 'Imprimir')}</button>
+            <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(r.id)}>🗑 {tr('Delete', '削除', 'Excluir')}</button>
           </div>
         </div>
       ))}

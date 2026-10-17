@@ -33,7 +33,7 @@ export function ratingMatchesClientUser(rating, user) {
 }
 
 export function fmtVisitTime(job, lang = 'ja') {
-  const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const locale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
   if (job.started_at) {
     return new Date(job.started_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
   }
@@ -41,7 +41,7 @@ export function fmtVisitTime(job, lang = 'ja') {
 }
 
 export function fmtVisitEnd(job, lang = 'ja') {
-  const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const locale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
   if (job.completed_at) {
     return new Date(job.completed_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
   }
