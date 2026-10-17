@@ -12,7 +12,12 @@ import {
   todoElementIds,
   elementHistory,
   mergeLayoutAdditions,
+  elementTasks,
+  careForElement,
+  careSchedule,
+  taskState,
 } from '../src/lib/facilityModel.js'
+import { generatePlan, fillAllRooms, fillRoom, placeItem, PLAN_PRESETS, rotate90, snapToWall, nudge, duplicateItem } from '../src/lib/facilityBuilder.js'
 import { FACILITY_STATEMENTS, FACILITY_SETUP_SQL } from '../src/lib/facilitySetupSql.js'
 
 function assert(cond, msg) {
@@ -145,5 +150,72 @@ assert(r1.added.includes('Storage') && r1.added.includes('Breaker') && r1.update
 const r2 = mergeLayoutAdditions(r1.layout, { elements: [{ name: 'Hood', kind: 'range_hood', x: 7.2, y: 0.1, w: 2, d: 0.8 }] }, 'facility/m1/p1.jpg')
 assert(r2.layout.elements.find(e => e.kind === 'range_hood').photos.length === 1, 'same photo not linked twice')
 assert(mergeLayoutAdditions(start, null, null).layout.elements.length === 1, 'empty AI answer changes nothing')
+
+// --- v1.0.52: cleaning + maintenance tasks ---
+const now52 = new Date('2026-10-17T03:00:00Z')
+const hoodEl = normalizeLayout({ elements: [{ id: 'h', kind: 'range_hood', name: 'Hood', last_serviced_at: '2026-09-01' }] }).elements[0]
+const hoodTasks = elementTasks(hoodEl)
+assert(hoodTasks.length === 2 && hoodTasks[0].type === 'cleaning' && hoodTasks[1].type === 'maintenance', 'hood has default cleaning + maintenance')
+assert(hoodTasks[0].last_done === '2026-09-01', 'legacy last_serviced_at goes to the cleaning task')
+const hoodLogs = [
+  { element_id: 'h', service_date: '2026-10-10', service: 'Hood filter & fan check' },
+  { element_id: 'h', service_date: '2026-10-01', service: 'Some AI name' },
+]
+const hc = careForElement(hoodEl, hoodLogs)
+assert(hc[1].last === '2026-10-10', 'maintenance log matched by task name')
+assert(hc[0].last === '2026-10-01', 'unknown service name counts as main cleaning')
+assert(taskState({ interval_days: 30, last: '2026-09-01' }, now52).status === 'overdue', 'overdue after interval')
+assert(taskState({ interval_days: 30, last: '2026-10-15' }, now52).daysLeft === 28, 'days left')
+assert(taskState({ interval_days: 30, last: null }, now52).status === 'none', 'never done')
+assert(taskState({ interval_days: null, last: null }, now52).status === null, 'no interval = no status')
+const custom = normalizeLayout({ elements: [{ id: 'x', kind: 'table', tasks: [{ type: 'maintenance', name: 'Tighten legs', interval_days: 90, last_done: '2026-01-01' }, { name: '' }] }] }).elements[0]
+assert(custom.tasks.length === 1 && custom.tasks[0].name === 'Tighten legs', 'custom tasks kept, empty dropped')
+const live52 = withServiceLog({ width: 10, depth: 8, areas: [], walls: [], elements: [hoodEl, custom] }, hoodLogs)
+const sched = careSchedule(live52, now52)
+assert(sched[0].status === 'overdue' && sched[0].task.name === 'Tighten legs', 'schedule: most overdue first')
+assert(elementStatus(live52.elements[0], now52) === 'ok', 'hood ok after recent logs')
+assert(ruleRecommendations(live52, now52).some(r => r.service === 'Tighten legs'), 'rules offer overdue maintenance')
+const neverMaint = withServiceLog({ width: 10, depth: 8, areas: [], walls: [], elements: [normalizeLayout({ elements: [{ id: 'b', kind: 'breaker' }] }).elements[0]] }, [])
+assert(ruleRecommendations(neverMaint, now52).length === 0, 'never-recorded maintenance alone does not create an offer')
+
+// --- v1.0.52: easy builder ---
+const ov = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.01 && Math.min(a.y + a.d, b.y + b.d) - Math.max(a.y, b.y) > 0.01
+for (const [W, D] of [[12, 8], [6, 15], [20, 12], [5, 5]]) {
+  for (const preset of PLAN_PRESETS) {
+    const plan = generatePlan({ width: W, depth: D, preset, rooms: { entrance: true, restroom: true, washing: true, storage: true, office: true } })
+    const sum = plan.areas.reduce((s2, a) => s2 + a.w * a.d, 0)
+    assert(Math.abs(sum - W * D) < 0.6, `${preset} ${W}x${D}: rooms cover the store (${sum})`)
+    for (let i = 0; i < plan.areas.length; i++) for (let j = i + 1; j < plan.areas.length; j++) {
+      assert(!ov(plan.areas[i], plan.areas[j]), `${preset} ${W}x${D}: rooms do not overlap`)
+    }
+    assert(plan.areas.some(a => a.kind === 'kitchen') && plan.walls.length >= 4, `${preset}: has kitchen and walls`)
+    const filled = fillAllRooms(plan).layout
+    assert(filled.elements.length > plan.areas.length, `${preset}: rooms filled`)
+    assert(filled.elements.every(e => e.x >= 0 && e.y >= 0 && e.x + e.w <= W + 1e-6 && e.y + e.d <= D + 1e-6), `${preset}: items inside the store`)
+  }
+}
+const base52 = generatePlan({ width: 12, depth: 8, preset: 'side', rooms: { restroom: true } })
+const kitchen52 = base52.areas.find(a => a.kind === 'kitchen')
+const p1 = placeItem(base52, 'stove')
+const stove = p1.layout.elements.find(e => e.id === p1.id)
+assert(p1.areaId === kitchen52.id, 'stove goes to the kitchen')
+assert(Math.abs(stove.y - kitchen52.y) < 0.01, 'stove against the back wall')
+const p2 = placeItem(p1.layout, 'range_hood')
+const hood52 = p2.layout.elements.find(e => e.id === p2.id)
+assert(ov(hood52, stove), 'hood placed over the stove')
+const p3 = placeItem(p2.layout, 'stove')
+assert(!ov(p3.layout.elements.find(e => e.id === p3.id), stove), 'second stove does not overlap the first')
+const p4 = placeItem(p3.layout, 'toilet')
+assert(p4.layout.areas.find(a => a.id === p4.areaId).kind === 'restroom', 'toilet goes to the restroom')
+const dining52 = base52.areas.find(a => a.kind === 'dining')
+const tables = fillRoom(base52, dining52.id).layout.elements.filter(e => e.kind === 'table')
+assert(tables.length >= 3, 'dining gets several tables')
+for (let i = 0; i < tables.length; i++) for (let j = i + 1; j < tables.length; j++) assert(!ov(tables[i], tables[j]), 'tables do not overlap')
+const rot = rotate90(base52, { x: 1, y: 1, w: 2, d: 0.5 })
+assert(rot.w === 0.5 && rot.d === 2 && Math.abs(rot.x + 0.25 - 2) < 0.01, 'rotate keeps the center')
+assert(snapToWall(base52, { x: 0.3, y: 2, w: 1, d: 1 }).x === 0, 'snap to nearest wall')
+assert(nudge(base52, { x: 11.5, y: 0, w: 1, d: 1 }, 1, -1).x === 11, 'nudge stays inside')
+const dup = duplicateItem(p1.layout, stove)
+assert(dup.layout.elements.length === p1.layout.elements.length + 1 && !dup.layout.elements.find(e => e.id === dup.id).photos.length, 'duplicate without photos')
 
 console.log('✅ Smart Facility model tests passed')

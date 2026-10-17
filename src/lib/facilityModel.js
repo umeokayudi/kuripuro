@@ -56,6 +56,105 @@ export const ELEMENT_KINDS = {
 /** Itens que o funcionário mais procura: mostram um pino 📷 no 3D e a foto real fica a um toque. */
 export const IMPORTANT_KINDS = new Set(['light_switch', 'breaker', 'valve', 'grease_trap', 'range_hood'])
 
+/**
+ * Manutenções recorrentes sugeridas por tipo (além da limpeza do ELEMENT_KINDS.service).
+ * Cada equipamento ganha estas tarefas por padrão; o admin pode editar, apagar ou criar outras.
+ */
+export const MAINTENANCE_DEFAULTS = {
+  range_hood: [{ name: 'Hood filter & fan check', interval: 180 }],
+  air_conditioner: [{ name: 'AC full service (inside unit)', interval: 365 }],
+  fridge: [{ name: 'Door seal & temperature check', interval: 180 }],
+  dishwasher: [{ name: 'Dishwasher inspection', interval: 180 }],
+  stove: [{ name: 'Gas burner & hose inspection', interval: 365 }],
+  fryer: [{ name: 'Fryer thermostat check', interval: 365 }],
+  oven: [{ name: 'Oven inspection', interval: 365 }],
+  duct: [{ name: 'Exhaust fan maintenance', interval: 365 }],
+  grease_trap: [{ name: 'Grease trap inspection', interval: 180 }],
+  breaker: [{ name: 'Electrical panel inspection', interval: 365 }],
+  valve: [{ name: 'Valve & leak check', interval: 365 }],
+  light: [{ name: 'Lighting check / bulb replacement', interval: 180 }],
+  sink: [{ name: 'Drain & faucet check', interval: 180 }],
+  toilet: [{ name: 'Plumbing check', interval: 365 }],
+}
+
+export const TASK_TYPES = ['cleaning', 'maintenance']
+
+function normalizeTasks(list) {
+  const ids = new Set()
+  return list.slice(0, 12).map((t, i) => {
+    const name = typeof t?.name === 'string' ? t.name.trim().slice(0, 120) : ''
+    if (!name) return null
+    let id = typeof t?.id === 'string' && t.id ? t.id.slice(0, 40) : `task${i}`
+    while (ids.has(id)) id = `${id}_${i}`
+    ids.add(id)
+    const iv = Number(t?.interval_days)
+    return {
+      id,
+      type: TASK_TYPES.includes(t?.type) ? t.type : 'cleaning',
+      name,
+      interval_days: Number.isFinite(iv) && iv >= 1 ? Math.min(3650, Math.round(iv)) : null,
+      last_done: /^\d{4}-\d{2}-\d{2}/.test(t?.last_done || '') ? t.last_done.slice(0, 10) : null,
+    }
+  }).filter(Boolean)
+}
+
+/**
+ * Limpezas e manutenções do equipamento. Sem lista própria = padrão do tipo
+ * (limpeza do catálogo, que herda last_serviced_at / service_interval_days antigos, + manutenções sugeridas).
+ */
+export function elementTasks(el) {
+  if (Array.isArray(el?.tasks)) return el.tasks
+  const k = ELEMENT_KINDS[el?.kind] || ELEMENT_KINDS.other
+  const out = []
+  if (k.service) {
+    out.push({ id: 'clean', type: 'cleaning', name: k.service, interval_days: el?.service_interval_days || k.intervalDays || null, last_done: el?.last_serviced_at || null })
+  }
+  const maint = MAINTENANCE_DEFAULTS[el?.kind] || []
+  maint.forEach((m, i) => {
+    out.push({ id: `maint${i}`, type: 'maintenance', name: m.name, interval_days: m.interval, last_done: null })
+  })
+  return out
+}
+
+/** Qual tarefa um registro do histórico cumpre: pelo nome do serviço, senão a primeira limpeza. */
+export function taskForLog(tasks, log) {
+  const name = String(log?.service || '').trim().toLowerCase()
+  return (name && tasks.find(t => t.name.toLowerCase() === name))
+    || tasks.find(t => t.type === 'cleaning')
+    || tasks[0]
+    || null
+}
+
+/** Tarefas com a data da última vez (ficha ou histórico, a mais recente). */
+export function careForElement(el, logs = []) {
+  const tasks = elementTasks(el)
+  const last = new Map(tasks.map(t => [t.id, t.last_done || null]))
+  for (const l of logs) {
+    if (l.element_id !== el.id || !l.service_date) continue
+    const task = taskForLog(tasks, l)
+    if (!task) continue
+    const d = String(l.service_date).slice(0, 10)
+    if (!last.get(task.id) || d > last.get(task.id)) last.set(task.id, d)
+  }
+  return tasks.map(t => ({ ...t, last: last.get(t.id) }))
+}
+
+function addDays(iso, n) {
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Situação de uma tarefa: status, próxima data e quantos dias faltam (negativo = atrasada). */
+export function taskState(task, now = new Date()) {
+  if (!task?.interval_days) return { status: null, next: null, daysLeft: null }
+  if (!task.last) return { status: 'none', next: null, daysLeft: null }
+  const days = daysBetween(task.last, now)
+  const daysLeft = task.interval_days - days
+  const status = days >= task.interval_days ? 'overdue' : days >= task.interval_days * 0.85 ? 'due' : 'ok'
+  return { status, next: addDays(task.last, task.interval_days), daysLeft }
+}
+
 const AREA_KEYS = Object.keys(AREA_KINDS)
 const ELEMENT_KEYS = Object.keys(ELEMENT_KINDS)
 
@@ -144,6 +243,7 @@ export function normalizeLayout(raw) {
       service_interval_days: interval == null || interval === '' ? null : num(interval, null, 1, 3650),
       notes: str(e?.notes),
       important: typeof e?.important === 'boolean' ? e.important : IMPORTANT_KINDS.has(kind),
+      ...(Array.isArray(e?.tasks) ? { tasks: normalizeTasks(e.tasks) } : {}),
     }
   })
 
@@ -233,38 +333,19 @@ function daysBetween(fromIso, now) {
  */
 export function ruleRecommendations(layout, now = new Date()) {
   const out = []
-  for (const el of layout.elements || []) {
-    const kind = ELEMENT_KINDS[el.kind] || ELEMENT_KINDS.other
-    if (!kind.service) continue
-    const interval = el.service_interval_days || kind.intervalDays
-    if (!interval) continue
-    if (!el.last_serviced_at) {
-      out.push({
-        element_id: el.id,
-        element_name: el.name,
-        service: kind.service,
-        reason: `No cleaning record for "${el.name}". Recommended every ${interval} days.`,
-        priority: 'medium',
-      })
-      continue
-    }
-    const days = daysBetween(el.last_serviced_at, now)
-    if (days >= interval) {
-      out.push({
-        element_id: el.id,
-        element_name: el.name,
-        service: kind.service,
-        reason: `Last cleaned ${days} days ago (${el.last_serviced_at}). Recommended every ${interval} days.`,
-        priority: days >= interval * 1.5 ? 'high' : 'medium',
-      })
-    } else if (days >= interval * 0.85) {
-      out.push({
-        element_id: el.id,
-        element_name: el.name,
-        service: kind.service,
-        reason: `Due in ${interval - days} days (last cleaned ${el.last_serviced_at}).`,
-        priority: 'low',
-      })
+  for (const row of careSchedule(layout, now)) {
+    const { element: el, task, status, daysLeft } = row
+    const what = task.type === 'maintenance' ? 'maintenance' : 'cleaning'
+    const base = { element_id: el.id, element_name: el.name, service: task.name }
+    if (status === 'none') {
+      // manutenção sem registro não vira oferta sozinha; limpeza sim
+      if (task.type !== 'cleaning') continue
+      out.push({ ...base, reason: `No ${what} record for "${el.name}". Recommended every ${task.interval_days} days.`, priority: 'medium' })
+    } else if (status === 'overdue') {
+      const days = task.interval_days - daysLeft
+      out.push({ ...base, reason: `Last ${what} ${days} days ago (${task.last}). Recommended every ${task.interval_days} days.`, priority: days >= task.interval_days * 1.5 ? 'high' : 'medium' })
+    } else if (status === 'due') {
+      out.push({ ...base, reason: `Due in ${daysLeft} days (last ${what} ${task.last}).`, priority: 'low' })
     }
   }
   return out
@@ -296,31 +377,58 @@ export function lastServicedFromLog(el, logs = []) {
   return best
 }
 
-/** Layout com last_serviced_at atualizado a partir do histórico (facility_service_log). */
+/**
+ * Layout com as tarefas (care) e last_serviced_at calculados a partir do histórico (facility_service_log).
+ * O campo care é só para mostrar; normalizeLayout não o salva.
+ */
 export function withServiceLog(layout, logs = []) {
-  if (!logs.length) return layout
   return {
     ...layout,
     elements: layout.elements.map(el => {
-      const last = lastServicedFromLog(el, logs)
-      return last === el.last_serviced_at ? el : { ...el, last_serviced_at: last }
+      const care = careForElement(el, logs)
+      const clean = care.find(t => t.type === 'cleaning')
+      const last = clean?.last || lastServicedFromLog(el, logs)
+      return { ...el, care, last_serviced_at: last || null }
     }),
   }
 }
 
+const STATUS_RANK = { overdue: 5, due: 4, none_cleaning: 3, ok: 2, none: 1 }
+
 /**
- * Situação de manutenção do elemento para pintar o mapa:
- * 'overdue' (passou do intervalo) · 'due' (vence em breve) · 'ok' · 'none' (sem registro) · null (sem limpeza recorrente).
+ * Situação de manutenção do elemento para pintar o mapa (a pior entre as tarefas):
+ * 'overdue' (passou do intervalo) · 'due' (vence em breve) · 'ok' · 'none' (sem registro) · null (sem tarefa recorrente).
+ * Manutenção nunca registrada não apaga o verde de uma limpeza em dia.
  */
 export function elementStatus(el, now = new Date()) {
-  const kind = ELEMENT_KINDS[el?.kind] || ELEMENT_KINDS.other
-  const interval = el?.service_interval_days || kind.intervalDays
-  if (!interval || !kind.service) return null
-  if (!el.last_serviced_at) return 'none'
-  const days = daysBetween(el.last_serviced_at, now)
-  if (days >= interval) return 'overdue'
-  if (days >= interval * 0.85) return 'due'
-  return 'ok'
+  const care = el?.care || careForElement(el || {}, [])
+  let best = null
+  for (const t of care) {
+    const st = taskState(t, now).status
+    if (!st) continue
+    const key = st === 'none' && t.type === 'cleaning' ? 'none_cleaning' : st
+    if (!best || STATUS_RANK[key] > STATUS_RANK[best]) best = key
+  }
+  return best === 'none_cleaning' ? 'none' : best
+}
+
+/**
+ * Agenda de limpeza e manutenção: uma linha por tarefa com última vez, próxima data e situação.
+ * Ordem: atrasadas (mais atrasada primeiro), vencendo, nunca feitas, em dia.
+ */
+export function careSchedule(layout, now = new Date()) {
+  const rows = []
+  for (const el of layout.elements || []) {
+    for (const task of el.care || careForElement(el, [])) {
+      const st = taskState(task, now)
+      if (!st.status) continue
+      rows.push({ element: el, task, ...st })
+    }
+  }
+  const order = { overdue: 0, due: 1, none: 2, ok: 3 }
+  return rows.sort((a, b) => order[a.status] - order[b.status]
+    || (a.daysLeft ?? 0) - (b.daysLeft ?? 0)
+    || (a.task.type === b.task.type ? 0 : a.task.type === 'cleaning' ? -1 : 1))
 }
 
 export function statusMap(layout, now = new Date()) {

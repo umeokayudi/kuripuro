@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { apiPost } from './apiFetch'
-import { normalizeLayout, ruleRecommendations, dedupeRecommendations, withServiceLog, ELEMENT_KINDS } from './facilityModel'
+import { normalizeLayout, ruleRecommendations, dedupeRecommendations, withServiceLog, elementTasks, taskForLog } from './facilityModel'
 import { uploadJobPhoto } from './uploadPhoto'
 
 export function isMissingFacilityTable(error) {
@@ -203,36 +203,89 @@ export async function listServiceLog({ modelId, clientId, jobId, limit = 300 } =
 }
 
 /**
- * Funcionário (ou admin) registra que limpou um equipamento durante o serviço.
- * Fotos opcionais; recomendações pendentes/aceitas desse equipamento passam a 'done'.
+ * Funcionário (ou admin) registra uma limpeza ou manutenção do equipamento.
+ * service = nome da tarefa (padrão: a primeira limpeza). Fotos opcionais.
+ * Recomendações abertas dessa mesma tarefa passam a 'done'.
  */
-export async function logElementService({ model, element, job, employee, notes, files = [] }) {
+export async function logElementService({ model, element, job, employee, notes, files = [], service = null, date = null }) {
   const photos = []
   for (const [i, file] of [...files].entries()) {
     const base = job?.id ? `jobs/${job.id}/facility_${element.id}_${Date.now()}_${i}.jpg` : `facility/${model.id}/${element.id}_${Date.now()}_${i}.jpg`
     photos.push(await uploadJobPhoto(base, file))
   }
-  const kind = ELEMENT_KINDS[element.kind] || ELEMENT_KINDS.other
-  const { data, error } = await supabase.from('facility_service_log').insert({
+  const tasks = elementTasks(element)
+  const task = taskForLog(tasks, { service })
+  const name = service || task?.name || null
+  const row = {
     model_id: model.id,
     client_id: model.client_id,
     location_name: model.location_name || null,
     element_id: element.id,
     element_name: element.name,
-    service: kind.service || null,
+    service: name,
     job_id: job?.id || null,
     employee_id: employee?.id || null,
     employee_name: employee?.name || null,
     notes: (notes || '').trim() || null,
     photos,
-  }).select('*').single()
+  }
+  if (date) row.service_date = date
+  const { data, error } = await supabase.from('facility_service_log').insert(row).select('*').single()
   if (error) throw error
-  await supabase.from('facility_recommendations')
-    .update({ status: 'done' })
+
+  // fecha as recomendações abertas desta tarefa (as da IA com nome diferente contam como a limpeza principal)
+  const { data: open } = await supabase.from('facility_recommendations')
+    .select('id,service')
     .eq('model_id', model.id)
     .eq('element_id', element.id)
     .in('status', ['pending', 'accepted'])
+  const names = new Set(tasks.map(x => x.name.toLowerCase()))
+  const done = taskForLog(tasks, { service: name })
+  const ids = (open || []).filter(r => {
+    const rs = String(r.service || '').toLowerCase()
+    if (rs === String(name || '').toLowerCase()) return true
+    return !names.has(rs) && done?.type === 'cleaning' && done === tasks.find(x => x.type === 'cleaning')
+  }).map(r => r.id)
+  if (ids.length) await supabase.from('facility_recommendations').update({ status: 'done' }).in('id', ids)
   return data
+}
+
+/** Admin oferece ao cliente uma limpeza/manutenção da agenda (vira recomendação pendente no portal). */
+export async function offerService({ model, element, task, reason, priority = 'medium' }) {
+  const { data: open } = await supabase.from('facility_recommendations')
+    .select('id,service')
+    .eq('model_id', model.id)
+    .eq('element_id', element.id)
+    .eq('status', 'pending')
+  if ((open || []).some(r => String(r.service || '').toLowerCase() === task.name.toLowerCase())) return { duplicate: true }
+  const { error } = await supabase.from('facility_recommendations').insert({
+    model_id: model.id,
+    client_id: model.client_id,
+    location_name: model.location_name || null,
+    element_id: element.id,
+    element_name: element.name,
+    service: task.name,
+    reason,
+    priority,
+    source: 'rule',
+    status: 'pending',
+  })
+  if (error) throw error
+  return { duplicate: false }
+}
+
+/** Todas as lojas de todos os clientes (tela inicial do Smart Facility: um toque abre a loja). */
+export async function listAllModels() {
+  const { data, error } = await supabase.from('facility_models').select('*').order('updated_at', { ascending: false })
+  if (error) return []
+  return (data || []).map(rowToModel)
+}
+
+/** Todos os modelos aprovados (painel "serviços para oferecer" de todas as lojas). */
+export async function listApprovedModels() {
+  const { data, error } = await supabase.from('facility_models').select('*').eq('status', 'approved')
+  if (error) return []
+  return (data || []).map(rowToModel)
 }
 
 export async function deleteServiceLog(id) {

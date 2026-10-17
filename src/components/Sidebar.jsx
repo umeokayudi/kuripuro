@@ -42,6 +42,7 @@ const groups = [
     key: 'navClients',
     items: [
       { to: '/clients', key: 'clients', icon: Icons.building },
+      { to: '/facility', key: 'facility', icon: Icons.building },
       { to: '/contracts', key: 'contracts', icon: Icons.file },
       { to: '/client-feedback', key: 'clientFeedback', icon: Icons.receipt },
       { to: '/partners', key: 'partners', icon: Icons.building },

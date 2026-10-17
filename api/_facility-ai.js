@@ -9,6 +9,7 @@ import { fetchStorageBuffer } from './_storage.js'
 import {
   AREA_KINDS,
   ELEMENT_KINDS,
+  elementTasks,
   normalizeLayout,
 } from '../src/lib/facilityModel.js'
 
@@ -140,12 +141,18 @@ async function recommendServices({ layout, history = [], locationName }) {
   const model = normalizeLayout(layout)
   if (!model.elements.length) return { recommendations: [] }
 
+  // care = tarefas com a última data já calculada pelo navegador a partir do histórico
+  const rawCare = new Map((Array.isArray(layout?.elements) ? layout.elements : []).map(e => [e?.id, Array.isArray(e?.care) ? e.care : null]))
   const elements = model.elements.map(e => ({
     id: e.id,
     name: e.name,
     kind: e.kind,
-    last_serviced_at: e.last_serviced_at,
-    service_interval_days: e.service_interval_days || ELEMENT_KINDS[e.kind]?.intervalDays || null,
+    tasks: (rawCare.get(e.id) || elementTasks(e)).slice(0, 8).map(t => ({
+      type: t.type,
+      name: String(t.name || '').slice(0, 120),
+      every_days: t.interval_days || null,
+      last_done: t.last || t.last_done || null,
+    })),
     notes: e.notes,
   }))
   const recent = (Array.isArray(history) ? history : []).slice(0, 60).map(h => ({
@@ -164,7 +171,7 @@ ${JSON.stringify(recent)}
 Services we sell: ${catalog.join('; ')}
 
 Suggest at most 6 cleaning or maintenance services the client would genuinely benefit from now.
-Prefer elements with no record or overdue intervals, and kitchen grease/ventilation risks. Do not invent elements.
+Each element lists its cleaning and maintenance tasks with the last date done. Prefer tasks never done or past their interval, and kitchen grease/ventilation risks. When a suggestion matches a listed task, use that task name exactly as "service". Do not invent elements.
 Reply ONLY with JSON: {"recommendations": [{"element_id": string, "service": string, "reason": string (one sentence, Japanese then English), "priority": "high"|"medium"|"low"}]}`
 
   const data = await geminiGenerate({

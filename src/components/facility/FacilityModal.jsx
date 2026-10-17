@@ -35,10 +35,10 @@ export default function FacilityModal({ clientId, locationName, title, t, lang, 
 
   const canLog = !!job && !!employee?.id && job.status !== 'cancelled'
 
-  const onLogService = async (el, { notes, files }) => {
+  const onLogService = async (el, { notes, files, service }) => {
     try {
-      await logElementService({ model, element: el, job, employee, notes, files })
-      toast.success(`✅ ${el.name}`)
+      await logElementService({ model, element: el, job, employee, notes, files, service })
+      toast.success(`✅ ${el.name}${service ? ` · ${service}` : ''}`)
       await loadExtras(model)
     } catch (e) {
       toast.error(e.message)

@@ -3,7 +3,8 @@ import FacilityScene from './FacilityScene'
 import FacilityItemPopup from './FacilityItemPopup'
 import PhotoLightbox from '../PhotoLightbox'
 import { viewablePhotoUrl } from '../../lib/photoUrl'
-import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds } from '../../lib/facilityModel'
+import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds, elementTasks, careForElement } from '../../lib/facilityModel'
+import CareList, { rowsForElement } from './CareList'
 
 // three.js só é baixado quando alguém abre o mapa
 const FacilityWorld = lazy(() => import('./FacilityWorld'))
@@ -68,6 +69,8 @@ export function FocusDock({ el, layout, t, lang, status, onDetails, onLog, onClo
   const photos = el.photos || []
   const photo = photos[Math.min(idx, photos.length - 1)]
   const stLabel = { overdue: t.stOverdue, due: t.stDue, ok: t.stOk, none: t.stNone }[st]
+  const RANK = { overdue: 0, due: 1, none: 2, ok: 3 }
+  const careRows = rowsForElement(el, el.care || careForElement(el, [])).sort((a, b) => RANK[a.status] - RANK[b.status])
 
   return (
     <div className="fac-dock" key={el.id}>
@@ -94,6 +97,7 @@ export function FocusDock({ el, layout, t, lang, status, onDetails, onLog, onClo
         </>
       )}
 
+      {careRows.length > 0 && <div style={{ marginTop: 10 }}><CareList rows={careRows} t={t} lang={lang} dark limit={2} /></div>}
       {el.location_hint && <div className="fac-dock-text">🔎 {el.location_hint}</div>}
       {el.instructions && <div className="fac-dock-text">🛠 {el.instructions.length > 220 ? `${el.instructions.slice(0, 220)}…` : el.instructions}</div>}
 
@@ -103,7 +107,7 @@ export function FocusDock({ el, layout, t, lang, status, onDetails, onLog, onClo
           : <span className="fac-muted" style={{ alignSelf: 'center' }}>{t.noPhotoYet}</span>}
         <button type="button" className="fac-btn" onClick={onDetails}>{t.details}</button>
       </div>
-      {onLog && <button type="button" className="fac-btn fac-btn-gold" style={{ width: '100%', marginTop: 8 }} onClick={onLog}>{t.markCleaned}</button>}
+      {onLog && <button type="button" className="fac-btn fac-btn-gold" style={{ width: '100%', marginTop: 8 }} onClick={onLog}>{careRows.length > 1 ? t.markDone : t.markCleaned}</button>}
       {zoom && <PhotoLightbox url={zoom} onClose={() => setZoom(null)} closeLabel={t.close} />}
     </div>
   )
@@ -195,7 +199,7 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
             lang={lang}
             status={status}
             onDetails={() => setPopup({ type: 'element', id: selEl.id })}
-            onLog={onLogService && ((ELEMENT_KINDS[selEl.kind] || ELEMENT_KINDS.other).service || todo.has(selEl.id)) ? () => setPopup({ type: 'element', id: selEl.id, log: true }) : undefined}
+            onLog={onLogService && (elementTasks(selEl).length > 0 || todo.has(selEl.id)) ? () => setPopup({ type: 'element', id: selEl.id, log: true }) : undefined}
             onClose={() => setSelected(null)}
           />
         )}

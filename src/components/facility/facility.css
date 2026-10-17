@@ -277,3 +277,78 @@
 
 @keyframes fac-hint-out { to { opacity: 0; } }
 @media (max-width: 600px) { .fac-minimap { width: 104px; height: auto; } }
+
+/* v1.0.52 — agenda de limpeza e manutenção */
+.fac-care { display: flex; flex-direction: column; gap: 6px; }
+.fac-care-row { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.3); background: rgba(148,163,184,0.06); }
+.fac-care-row.st-overdue { border-color: rgba(239,68,68,0.55); background: rgba(239,68,68,0.07); }
+.fac-care-row.st-due { border-color: rgba(245,158,11,0.55); background: rgba(245,158,11,0.07); }
+.fac-care-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: #94a3b8; }
+.st-overdue .fac-care-dot { background: #ef4444; }
+.st-due .fac-care-dot { background: #f59e0b; }
+.st-ok .fac-care-dot { background: #22c55e; }
+.st-none .fac-care-dot { background: transparent; border: 2px dashed #94a3b8; width: 8px; height: 8px; }
+.fac-care-main { flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; }
+.fac-care-el { background: none; border: none; padding: 0; font-weight: 700; color: inherit; cursor: pointer; font-size: 13px; text-align: left; }
+.fac-care-task { font-weight: 600; }
+.fac-care-type { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-right: 6px; background: rgba(56,189,248,0.16); color: #0369a1; }
+.fac-care-type.maintenance { background: rgba(168,85,247,0.16); color: #7e22ce; }
+.fac-care.dark .fac-care-type { color: #7dd3fc; }
+.fac-care.dark .fac-care-type.maintenance { color: #d8b4fe; }
+.fac-care-dates { font-size: 12px; opacity: 0.8; }
+.st-overdue .fac-care-when { color: #ef4444; font-weight: 700; }
+.st-due .fac-care-when { color: #d97706; font-weight: 700; }
+.fac-care-actions { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.fac-care-actions button { white-space: nowrap; }
+.fac-care-more { background: none; border: 1px dashed rgba(148,163,184,0.5); border-radius: 10px; padding: 7px; color: inherit; cursor: pointer; font-size: 13px; }
+
+/* v1.0.52 — montagem fácil */
+.fac-seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface2, #f1f5f9); margin-bottom: 12px; flex-wrap: wrap; }
+.fac-seg button { border: none; background: none; padding: 7px 14px; border-radius: 9px; font-weight: 600; cursor: pointer; color: inherit; font-size: 13px; }
+.fac-seg button.on { background: #0d1f35; color: #fff; }
+.fac-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.fac-preset { border: 2px solid var(--border, #e2e8f0); border-radius: 12px; padding: 8px; background: var(--surface, #fff); cursor: pointer; text-align: center; font-size: 13px; font-weight: 600; color: inherit; }
+.fac-preset.on { border-color: #c19c56; box-shadow: 0 0 0 3px rgba(193,156,86,0.25); }
+.fac-preset svg { width: 100%; height: auto; display: block; margin-bottom: 6px; border-radius: 6px; background: #0d1f35; }
+.fac-toggles { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.fac-toggle { border: 1.5px solid var(--border, #e2e8f0); background: var(--surface, #fff); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: inherit; }
+.fac-toggle.on { border-color: #0d1f35; background: #0d1f35; color: #fff; }
+.fac-palette-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 8px; }
+.fac-palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.fac-pal-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: 12px; border: 1.5px solid var(--border, #e2e8f0); background: var(--surface, #fff); cursor: pointer; font-size: 12px; line-height: 1.2; text-align: center; color: inherit; }
+.fac-pal-item:hover { border-color: #c19c56; }
+.fac-pal-item span:first-child { font-size: 26px; }
+.fac-quick { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 40px); gap: 4px; }
+.fac-quick button { border: 1.5px solid var(--border, #e2e8f0); background: var(--surface, #fff); border-radius: 10px; cursor: pointer; font-size: 18px; color: inherit; }
+.fac-quick-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; margin: 4px 0 12px; }
+.fac-quick-actions { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 180px; }
+.fac-details { margin: 8px 0; border: 1px solid var(--border, #e2e8f0); border-radius: 10px; padding: 6px 10px; }
+.fac-details > summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 4px 0; }
+.fac-task-edit { display: flex; flex-direction: column; gap: 6px; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-left: 3px solid #0ea5e9; border-radius: 8px; background: var(--surface, transparent); }
+.fac-task-edit.maintenance { border-left-color: #f59e0b; }
+.fac-task-row { display: flex; gap: 6px; align-items: flex-end; }
+.fac-task-row > select { flex: 1; }
+.fac-task-field { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.fac-task-field.small { flex: 0 0 76px; }
+.fac-task-field > span { font-size: 11px; color: var(--text3); }
+.fac-task-edit input, .fac-task-edit select { padding: 5px 7px; font-size: 13px; min-width: 0; width: 100%; box-sizing: border-box; }
+.fac-task-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+/* v1.0.52 tela inicial: todas as lojas em cartões */
+.fac-home-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.fac-home-search, .fac-home-client { min-width: 0; padding: 10px 12px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface, #fff); color: inherit; font-family: inherit; }
+.fac-home-search { flex: 1 1 200px; }
+.fac-home-client { flex: 0 1 200px; }
+.fac-stores { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.fac-store-card { display: flex; flex-direction: column; text-align: left; padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface, #fff); color: inherit; cursor: pointer; overflow: hidden; transition: transform .12s, box-shadow .12s, border-color .12s; font: inherit; }
+.fac-store-card:hover, .fac-store-card:focus-visible { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(15, 23, 42, .12); border-color: #0ea5e9; }
+.fac-store-thumb { height: 120px; display: flex; align-items: center; justify-content: center; background: #0f172a; }
+.fac-store-thumb svg { width: 100%; height: 100%; padding: 8px; box-sizing: border-box; }
+.fac-store-thumb > span { font-size: 40px; opacity: .6; }
+.fac-store-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 3px; }
+.fac-store-name { font-weight: 700; font-size: 15px; }
+.fac-store-client { font-size: 12px; color: var(--text3); }
+.fac-store-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+.fac-store-due { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.fac-store-due.late { background: rgba(239, 68, 68, .14); color: #dc2626; }
+.fac-store-due.soon { background: rgba(245, 158, 11, .16); color: #b45309; }

@@ -21,6 +21,8 @@ import { tokyoToday } from '../lib/dates'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { listModels, listRecommendations, decideRecommendation, listServiceLog } from '../lib/facilityApi'
 import FacilityViewer from '../components/facility/FacilityViewer'
+import CareList from '../components/facility/CareList'
+import { careSchedule, withServiceLog } from '../lib/facilityModel'
 import { RecommendationCard } from '../components/facility/FacilityItemPopup'
 import './client-portal.css'
 
@@ -1076,6 +1078,19 @@ export default function ClientPortal() {
                 ) : (
                   <PortalEmpty icon="🏢" text={tr.facility.noModel} />
                 )}
+                {facilityModel && (() => {
+                  const rows = careSchedule(withServiceLog(facilityModel.layout, facilityLogs.filter(l => l.model_id === facilityModel.id)))
+                  if (!rows.length) return null
+                  return (
+                    <>
+                      <div className="cp-section-title" style={{ marginTop: 18 }}>🧽🔧 {tr.facility.careForClient}</div>
+                      <div className="fac-muted" style={{ fontSize: 12, marginBottom: 8 }}>{tr.facility.careForClientHint}</div>
+                      <div className="fac-dark">
+                        <CareList rows={rows} t={tr.facility} lang={lang} showElement dark limit={8} />
+                      </div>
+                    </>
+                  )
+                })()}
                 {facilityModel && facilityLogs.some(l => l.model_id === facilityModel.id) && (
                   <>
                     <div className="cp-section-title" style={{ marginTop: 18 }}>{tr.facility.recentWork}</div>

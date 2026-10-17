@@ -26,6 +26,7 @@ const Jobs = lazy(() => import('./pages/Jobs'))
 const Employees = lazy(() => import('./pages/Employees'))
 const Salary = lazy(() => import('./pages/Salary'))
 const Clients = lazy(() => import('./pages/Clients'))
+const Facility = lazy(() => import('./pages/Facility'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
@@ -84,6 +85,7 @@ const PAGE_KEYS = {
   '/employees': 'employees',
   '/salary': 'salary',
   '/clients': 'clients',
+  '/facility': 'facility',
   '/client-feedback': 'clientFeedback',
   '/cashflow': 'cashflow',
   '/reports': 'reports',
@@ -262,6 +264,7 @@ function AppContent() {
               <Route path="/employees" element={<Employees />} />
               <Route path="/salary" element={<Salary />} />
               <Route path="/clients" element={<Clients />} />
+              <Route path="/facility" element={<Facility />} />
               <Route path="/client-feedback" element={<ClientFeedback />} />
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
