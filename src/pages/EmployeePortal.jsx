@@ -133,7 +133,6 @@ export default function EmployeePortal() {
   const [retroEval, setRetroEval] = useState(null)
   const [retroBusy, setRetroBusy] = useState(false)
   const [salaryData, setSalaryData] = useState(null)
-  const [makingPayslip, setMakingPayslip] = useState(false)
   const [payments, setPayments] = useState([])
   const [weekDeductions, setWeekDeductions] = useState([])
   const [monthDeductions, setMonthDeductions] = useState([])
@@ -1736,101 +1735,14 @@ export default function EmployeePortal() {
                 </div>
               </div>
             )}
-            <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>{e.earnedThisMonth}</div>
-                <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>{fill(e.netGross, { gross: (salaryData?.total||0).toLocaleString(), deductions: (salaryData?.deductions||0).toLocaleString() })}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>{fill(e.ofMax,{max:(salaryData?.fixedMax||0).toLocaleString()})}</div>
-              <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 14px 5px',overflow:'hidden'}}>
-                <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
-              </div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)'}}>{fill(e.daysRate,{days:salaryData?.workedDays||0,rate:(salaryData?.dailyRate||0).toLocaleString()})}</div>
-              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} {e.spotLabel} ⚡</div>}
-              {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>{fill(e.projectedMonth,{amount:salaryData.projected.toLocaleString()})}</div>}
-            </div>
             <EarningsPanel employeeId={user.id} lang={lang} theme="portal" />
-            {(() => { const w = weekSummary(); return (
-              <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:18,padding:16,marginBottom:14}}>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>📅 {fill(e.weekRange,{start:w.start,end:w.end})}</div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:800,color:'#4ade80'}}>¥{w.gross.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.generated}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:800,color:w.deductions>0?'#f87171':'rgba(255,255,255,0.3)'}}>-¥{w.deductions.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.deductionsLabel}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:800,color:'#c19c56'}}>¥{w.net.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.netLabel}</div>
-                  </div>
-                </div>
-                <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
-                  <div style={{height:'100%',borderRadius:3,background:w.rate>=90?'linear-gradient(90deg,#4ade80,#22c55e)':w.rate>=70?'linear-gradient(90deg,#fbbf24,#f59e0b)':'linear-gradient(90deg,#f87171,#ef4444)',width:w.rate+'%',transition:'width 0.6s'}} />
-                </div>
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginBottom:w.weekJobs.length?10:0}}>{fill(e.checklistItemsDone,{done:w.doneChecklist,total:w.totalChecklist,jobs:w.weekJobs.length})} ({w.rate}%)</div>
-                {w.weekJobs.map(j=>(
-                  <div key={j.id} onClick={()=>setSelectedJob(j)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:'1px solid rgba(255,255,255,0.06)',fontSize:11,cursor:'pointer'}}>
-                    <div style={{color:'rgba(255,255,255,0.6)'}}>{j.scheduled_date} · {j.title}</div>
-                    <div style={{color:(j.checklist_total&&(j.checklist_done??0)<j.checklist_total)?'#f87171':'#4ade80',fontWeight:600}}>
-                      {j.checklist_total?`${j.checklist_done??0}/${j.checklist_total}`:'✓'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )})()}
-            {/* PDF buttons */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
-              <button disabled={makingPayslip} onClick={async()=>{
-                const month = tokyoToday().slice(0,7)
-                setMakingPayslip(true)
-                try {
-                  const [{ downloadPayslipPdf }, monthJobs, pays] = await Promise.all([
-                    import('../lib/payslipPdf'),
-                    Promise.resolve(enrichJobValues(allJobs, serviceContracts).filter(j=>j.status==='completed'&&j.scheduled_date?.startsWith(month)&&j.scheduled_date<=tokyoToday())),
-                    supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('period',month).order('payment_date'),
-                  ])
-                  await downloadPayslipPdf({ employee: empData||{ full_name: user.name }, month, salary: salaryData, deductions: monthDeductions, payments: pays.data||[], jobs: monthJobs.sort((a,b)=>a.scheduled_date.localeCompare(b.scheduled_date)), lang })
-                  toast.success(lang==='ja'?'給与明細ダウンロード完了!':'Payslip downloaded!')
-                } catch (err) { toast.error(err.message||'PDF error') }
-                setMakingPayslip(false)
-              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:13,fontWeight:600,cursor:'pointer',gridColumn:'1/-1',opacity:makingPayslip?0.6:1}}>
-                📄 {e.downloadPayslip}
-              </button>
-            </div>
-            <div style={{marginBottom:14}}>
-              <button onClick={async()=>{
-                const today2 = tokyoToday()
-                const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
-                if (!todayJobsForPDF.length) return toast.error(e.noJobsToday)
-                const { generateDailyReport } = await import('../lib/generatePDF')
-                const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
-                doc.save(`report_${today2}.pdf`)
-                toast.success('Report downloaded!')
-              }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(96,165,250,0.3)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                📋 Download Today's Service Report
-              </button>
-            </div>
-
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
-              {[['📋','Jobs',salaryData?.jobs||0],['⏱','Hours',(salaryData?.hours||0)+'h'],['💴','Base','¥'+(salaryData?.base||0).toLocaleString()],['⚡','Spot','¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 10px'}}>
-                  <div style={{fontSize:20,marginBottom:6}}>{icon}</div>
-                  <div style={{fontSize:18,fontWeight:700,color:'#fff'}}>{v}</div>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2,textTransform:'uppercase',letterSpacing:0.5}}>{l}</div>
-                </div>
-              ))}
-            </div>
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
-              <div style={{background:'rgba(96,165,250,0.08)',border:'1px solid rgba(96,165,250,0.18)',borderRadius:18,padding:16,marginBottom:14}}>
-                <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>💴 Upcoming Payments</div>
-                {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').map((p,i)=>(
-                  <div key={p.id} style={{paddingBottom:i<1?10:0,marginBottom:i<1?10:0,borderBottom:i<1?'1px solid rgba(255,255,255,0.06)':'none'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <div><div style={{fontSize:i===0?26:15,fontWeight:800,color:'#fff'}}>¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{p.payment_date} · {p.description||'Salary'}</div></div>
-                      <span style={{fontSize:9,background:'rgba(96,165,250,0.1)',color:'#60a5fa',border:'1px solid rgba(96,165,250,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600,textTransform:'uppercase'}}>{p.status}</span>
-                    </div>
+              <div className="earn-card">
+                <h4>💴 {lang==='ja'?'支払予定':'Upcoming payments'}</h4>
+                {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').map(p=>(
+                  <div key={p.id} className="earn-card-row">
+                    <div><b>¥{Number(p.amount).toLocaleString()}</b><small>{p.payment_date} · {p.description||'Salary'}</small></div>
+                    <span className="earn-pill">{p.status}</span>
                   </div>
                 ))}
               </div>
@@ -1842,20 +1754,28 @@ export default function EmployeePortal() {
               const received = advances.filter(isReceived)
               const pending = advances.filter(a => !isReceived(a))
               return (<>
-                {received.length>0&&<div style={{marginBottom:14}}>
-                  <span style={S.label}>{e.advancesReceived}</span>
-                  {received.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ {e.received}</span></div>)}
-                  <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>{e.totalReceived}</span>
-                    <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
-                  </div>
+                {received.length>0&&<div className="earn-card">
+                  <h4>{e.advancesReceived}</h4>
+                  {received.map(a=><div key={a.id} className="earn-card-row"><div><b>¥{Number(a.amount).toLocaleString()}</b><small>{a.description}</small></div><span className="earn-pill is-ok">✓ {e.received}</span></div>)}
+                  <div className="earn-card-total"><span>{e.totalReceived}</span><b>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</b></div>
                 </div>}
-                {pending.length>0&&<div style={{marginBottom:14}}>
-                  <span style={S.label}>{e.advancesPending}</span>
-                  {pending.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>{e.pendingAdv}</span></div>)}
+                {pending.length>0&&<div className="earn-card">
+                  <h4>{e.advancesPending}</h4>
+                  {pending.map(a=><div key={a.id} className="earn-card-row"><div><b>¥{Number(a.amount).toLocaleString()}</b><small>{a.description}</small></div><span className="earn-pill">{e.pendingAdv}</span></div>)}
                 </div>}
               </>)
             })()}
+            <button type="button" className="earn-secondary" onClick={async()=>{
+              const today2 = tokyoToday()
+              const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
+              if (!todayJobsForPDF.length) return toast.error(e.noJobsToday)
+              const { generateDailyReport } = await import('../lib/generatePDF')
+              const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
+              doc.save(`report_${today2}.pdf`)
+              toast.success(lang==='ja'?'報告書をダウンロードしました':'Report downloaded!')
+            }}>
+              📋 {lang==='ja'?'今日の作業報告書 (PDF)':"Today's service report (PDF)"}
+            </button>
           </div>
         )}
 

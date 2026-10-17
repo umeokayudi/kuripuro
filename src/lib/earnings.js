@@ -1,63 +1,71 @@
-import { tokyoToday } from './dates'
-import { calcEmployeeMonthlySalary, jobMinutes, jobPay, countWorkedDays } from './salaryCalc'
+import { tokyoToday, workedDayKey } from './dates'
+import { calcEmployeeMonthlySalary, jobMinutes, jobPay } from './salaryCalc'
 
-// Earnings history for the "Ganhos" charts (employee Salary tab + admin Salary page).
-// Months reuse calcEmployeeMonthlySalary so the bars match the payslip exactly.
-// Weeks (Mon–Sun, Tokyo) use the same rules without the monthly fixed-salary cap.
+// Earnings history for the Salary screens (employee Salary tab + admin Salary page).
+// Each worked day gets its own amount, like a driver-app earnings screen. A full calendar
+// month uses calcEmployeeMonthlySalary, so its total matches the payslip exactly.
 
 const pad = n => String(n).padStart(2, '0')
-const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-const parse = s => new Date(`${s}T12:00:00`)
+const parse = s => new Date(`${s}T12:00:00Z`)
+const iso = d => d.toISOString().slice(0, 10)
 
-const MONTHS = {
-  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+export function addDays(day, n) {
+  const d = parse(day)
+  d.setUTCDate(d.getUTCDate() + n)
+  return iso(d)
+}
+
+export const daysBetween = (from, to) => Math.round((parse(to) - parse(from)) / 86400000) + 1
+
+export function weekStart(day) {
+  return addDays(day, -((parse(day).getUTCDay() + 6) % 7))
+}
+
+export function monthEnd(month) {
+  const [y, m] = month.split('-').map(Number)
+  return `${month}-${pad(new Date(Date.UTC(y, m, 0)).getUTCDate())}`
+}
+
+export function shiftMonth(month, n) {
+  const [y, m] = month.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + n, 1))
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const WEEKDAYS = {
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  ja: ['日', '月', '火', '水', '木', '金', '土'],
 }
 
 export function monthLabel(month, lang = 'en', long = false) {
   const [y, m] = month.split('-').map(Number)
   if (lang === 'ja') return long ? `${y}年${m}月` : `${m}月`
-  return long ? `${MONTHS.en[m - 1]} ${y}` : MONTHS.en[m - 1]
+  return long ? `${MONTHS[m - 1]} ${y}` : MONTHS[m - 1]
 }
 
-/** Last `count` months, oldest first, ending with the current Tokyo month. */
-export function recentMonths(count, today = tokyoToday()) {
-  const [y, m] = today.slice(0, 7).split('-').map(Number)
-  const out = []
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(y, m - 1 - i, 1)
-    out.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`)
+export function dayLabel(day, lang = 'en', withWeekday = true) {
+  const d = parse(day)
+  const wd = WEEKDAYS[lang === 'ja' ? 'ja' : 'en'][d.getUTCDay()]
+  if (lang === 'ja') return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日${withWeekday ? `(${wd})` : ''}`
+  return `${withWeekday ? wd + ' ' : ''}${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
+}
+
+export function rangeLabel(from, to, lang = 'en') {
+  const a = parse(from), b = parse(to)
+  if (lang === 'ja') {
+    const left = `${a.getUTCMonth() + 1}/${a.getUTCDate()}`
+    const right = `${b.getUTCMonth() + 1}/${b.getUTCDate()}`
+    return from === to ? left : `${left} – ${right}`
   }
-  return out
+  const left = `${a.getUTCDate()} ${MONTHS[a.getUTCMonth()]}`
+  const right = `${b.getUTCDate()} ${MONTHS[b.getUTCMonth()]}`
+  return from === to ? left : `${left} – ${right}`
 }
 
-/** Last `count` Monday–Sunday weeks, oldest first, ending with the current week. */
-export function recentWeeks(count, today = tokyoToday()) {
-  const t = parse(today)
-  const monday = new Date(t)
-  monday.setDate(t.getDate() - ((t.getDay() + 6) % 7))
-  const out = []
-  for (let i = count - 1; i >= 0; i--) {
-    const s = new Date(monday)
-    s.setDate(monday.getDate() - i * 7)
-    const e = new Date(s)
-    e.setDate(s.getDate() + 6)
-    out.push({ start: iso(s), end: iso(e) })
-  }
-  return out
-}
+const spotPay = j => (j.job_category === 'spot' ? Number(j.spot_value || 0) : 0)
 
-/** First day the charts need data from (covers both views). */
-export function earningsWindowStart(months = 6, weeks = 8, today = tokyoToday()) {
-  const m = recentMonths(months, today)[0] + '-01'
-  const w = recentWeeks(weeks, today)[0].start
-  return m < w ? m : w
-}
-
-const isSpot = j => j.job_category === 'spot'
-const spotPay = j => (isSpot(j) ? Number(j.spot_value || 0) : 0)
-
-/** What one completed job adds on top of a fixed salary (shown in the job list). */
+/** What one completed job pays on its own (fixed salary pays per day, not per job). */
 export function jobEarnings(job, emp) {
   const type = emp?.salary_type || 'fixed'
   const mins = jobMinutes(job)
@@ -71,68 +79,96 @@ export function jobEarnings(job, emp) {
   return pay + spotPay(job)
 }
 
-function weekSalary(emp, jobs) {
-  const fixedMax = Number(emp?.fixed_salary || 0)
-  const dailyRate = fixedMax / (emp?.monthly_work_days || 22)
-  const workedDays = countWorkedDays(jobs)
+/** Daily share of a fixed salary (paid once per worked day). */
+export function dailyFixedRate(emp) {
   const type = emp?.salary_type || 'fixed'
-  const fixedPart = (type === 'fixed' || type === 'mixed') ? Math.round(dailyRate * workedDays) : 0
-  const perJob = jobs.reduce((s, j) => s + jobEarnings(j, emp) - spotPay(j), 0)
-  const spotEarned = jobs.reduce((s, j) => s + spotPay(j), 0)
-  const base = fixedPart + perJob
-  return { base, spotEarned, total: base + spotEarned, workedDays }
+  if (type !== 'fixed' && type !== 'mixed') return 0
+  return Number(emp?.fixed_salary || 0) / (emp?.monthly_work_days || 22)
 }
 
-const inRange = (date, start, end) => date && date >= start && date <= end
+const dayOf = j => workedDayKey(j) || j.scheduled_date
 
 /**
- * One entry per bar: { key, label, title, start, end, total, deductions, net, base, spot,
- * jobs, hours, workedDays, jobList }. `jobs` must be completed, already value-enriched jobs.
+ * Everything the Salary screen shows for one date range.
+ * `jobs`: completed, value-enriched jobs (any dates). `deductions`: salary_payments rows with is_deduction.
+ * When the range is exactly one calendar month, totals come from calcEmployeeMonthlySalary (same as payslip).
  */
-export function buildEarningsSeries({ emp, jobs, deductions = [], mode = 'month', count, lang = 'en', today = tokyoToday() }) {
+export function summarizeRange({ emp, jobs, deductions = [], from, to, today = tokyoToday() }) {
+  const end = to > today ? today : to
   const done = (jobs || []).filter(j => j.status === 'completed' && j.scheduled_date && j.scheduled_date <= today)
-  const deductionDate = d => (d.payment_date || d.created_at || '').slice(0, 10)
+  const inRange = done.filter(j => { const d = dayOf(j); return d >= from && d <= end })
+  const rate = dailyFixedRate(emp)
 
-  if (mode === 'week') {
-    return recentWeeks(count || 8, today).map(({ start, end }, i, all) => {
-      const list = done.filter(j => inRange(j.scheduled_date, start, end))
-      const s = weekSalary(emp, list)
-      const ded = deductions.filter(d => inRange(deductionDate(d), start, end)).reduce((a, d) => a + Number(d.amount || 0), 0)
-      const mins = list.reduce((a, j) => a + jobMinutes(j), 0)
-      const sd = parse(start), ed = parse(end)
-      const short = lang === 'ja' ? `${sd.getMonth() + 1}/${sd.getDate()}` : `${sd.getDate()}/${sd.getMonth() + 1}`
-      return {
-        key: start, start, end,
-        label: i === all.length - 1 ? (lang === 'ja' ? '今週' : 'Now') : short,
-        title: lang === 'ja'
-          ? `${sd.getMonth() + 1}/${sd.getDate()} – ${ed.getMonth() + 1}/${ed.getDate()}`
-          : `${sd.getDate()}/${sd.getMonth() + 1} – ${ed.getDate()}/${ed.getMonth() + 1}`,
-        total: s.total, base: s.base, spot: s.spotEarned, deductions: ded, net: Math.max(0, s.total - ded),
-        jobs: list.length, hours: mins / 60, workedDays: s.workedDays,
-        jobList: list.sort((a, b) => (b.scheduled_date || '').localeCompare(a.scheduled_date || '')),
-      }
+  const byDay = new Map()
+  for (const j of inRange) {
+    const d = dayOf(j)
+    if (!byDay.has(d)) byDay.set(d, [])
+    byDay.get(d).push(j)
+  }
+
+  const days = []
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    const list = (byDay.get(d) || []).sort((a, b) => (a.scheduled_time || '').localeCompare(b.scheduled_time || ''))
+    const fixed = list.length && list.some(j => j.counts_as_work_day !== false) ? Math.round(rate) : 0
+    const perJob = list.reduce((s, j) => s + jobEarnings(j, emp) - spotPay(j), 0)
+    const spot = list.reduce((s, j) => s + spotPay(j), 0)
+    days.push({
+      day: d, future: d > today, jobs: list,
+      total: fixed + perJob + spot, base: fixed + perJob, spot,
+      minutes: list.reduce((s, j) => s + jobMinutes(j), 0),
     })
   }
 
-  return recentMonths(count || 6, today).map(month => {
-    const ded = deductions.filter(d => deductionDate(d).startsWith(month))
-    const s = calcEmployeeMonthlySalary(emp, done, ded, month)
-    const list = done.filter(j => j.scheduled_date.startsWith(month))
-    return {
-      key: month, start: `${month}-01`, end: `${month}-31`, month,
-      label: monthLabel(month, lang), title: monthLabel(month, lang, true),
-      total: s.total, base: s.base, spot: s.spotEarned, deductions: s.deductions, net: s.net,
-      jobs: s.jobs, hours: Number(s.hours), workedDays: s.workedDays, salary: s,
-      jobList: list.sort((a, b) => (b.scheduled_date || '').localeCompare(a.scheduled_date || '')),
-    }
+  const dedRows = deductions.filter(r => {
+    const d = (r.payment_date || r.created_at || '').slice(0, 10)
+    return d >= from && d <= to
   })
+  const dedTotal = dedRows.reduce((s, r) => s + Number(r.amount || 0), 0)
+
+  const month = from.slice(8) === '01' && to === monthEnd(from.slice(0, 7)) ? from.slice(0, 7) : null
+  const salary = month ? calcEmployeeMonthlySalary(emp, done, dedRows, month) : null
+
+  const base = salary ? salary.base : days.reduce((s, d) => s + d.base, 0)
+  const spot = salary ? salary.spotEarned : days.reduce((s, d) => s + d.spot, 0)
+  const total = base + spot
+  const minutes = days.reduce((s, d) => s + d.minutes, 0)
+  return {
+    from, to, month, salary, days,
+    total, base, spot,
+    deductions: dedTotal, deductionRows: dedRows,
+    net: Math.max(0, total - dedTotal),
+    jobs: inRange.length,
+    hours: minutes / 60,
+    workedDays: days.filter(d => d.jobs.length).length,
+  }
 }
 
-/** Change of the selected bar vs the one before it, in % (null when there is nothing to compare). */
-export function trendPercent(series, index) {
-  if (index <= 0) return null
-  const prev = series[index - 1]?.net || 0
-  const cur = series[index]?.net || 0
+/** Bars for the chart: one per day, or one per week when the range is long. */
+export function chartBars(summary, lang = 'en') {
+  const { days } = summary
+  if (days.length <= 42) {
+    return days.map(d => ({
+      key: d.day, from: d.day, to: d.day, value: d.total, future: d.future,
+      label: days.length <= 7
+        ? (lang === 'ja' ? WEEKDAYS.ja : WEEKDAYS.en)[parse(d.day).getUTCDay()]
+        : String(Number(d.day.slice(8))),
+      title: dayLabel(d.day, lang),
+    }))
+  }
+  const weeks = []
+  for (const d of days) {
+    const k = weekStart(d.day)
+    let w = weeks[weeks.length - 1]
+    if (!w || w.key !== k) { w = { key: k, from: d.day, to: d.day, value: 0, future: d.future }; weeks.push(w) }
+    w.to = d.day
+    w.value += d.total
+    w.future = w.future && d.future
+  }
+  return weeks.map(w => ({ ...w, label: rangeLabel(w.from, w.from, lang), title: rangeLabel(w.from, w.to, lang) }))
+}
+
+/** Change vs the previous range of the same length, in % (null when there is nothing to compare). */
+export function trendPercent(cur, prev) {
   if (!prev) return null
   return Math.round(((cur - prev) / prev) * 100)
 }

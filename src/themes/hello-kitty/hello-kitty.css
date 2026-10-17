@@ -344,9 +344,15 @@
   --earn-muted:var(--hk-muted);
   --earn-faint:var(--hk-pink-softer);
   --earn-accent:var(--hk-pink);
-  --earn-bar:var(--hk-pink-soft);
+  --earn-bar:#f8cadb;
+  --earn-cal-1:#ffe3ee;
+  --earn-cal-2:#fbbcd3;
+  --earn-cal-3:#f78fb7;
+  --earn-cal-4:#ec4f8c;
   --earn-pos:#1f9d55;
   --earn-neg:#d23b4f;
   box-shadow:var(--hk-shadow);
 }
 
+.emp-shell.kp-theme-hello-kitty .earn-card{border-color:var(--hk-border);box-shadow:var(--hk-shadow)}
+.emp-shell.kp-theme-hello-kitty .earn-pill{background:var(--hk-pink-soft);color:var(--hk-pink-dark)}
