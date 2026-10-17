@@ -253,7 +253,8 @@
 .fac-minimap { position: absolute; top: 10px; right: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); pointer-events: none; }
 .fac-joy { position: absolute; left: 16px; bottom: 16px; width: 96px; height: 96px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.28); display: flex; align-items: center; justify-content: center; touch-action: none; }
 .fac-joy-knob { width: 40px; height: 40px; border-radius: 50%; background: rgba(245,199,106,0.9); box-shadow: 0 4px 12px rgba(0,0,0,0.4); pointer-events: none; }
-.fac-walk-hint { position: absolute; right: 10px; bottom: 12px; max-width: calc(100% - 140px); font-size: 11px; color: rgba(255,255,255,0.8); background: rgba(13,31,53,0.7); padding: 5px 10px; border-radius: 999px; pointer-events: none; text-align: center; }
+.fac-crosshair { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.75); box-shadow: 0 0 0 2px rgba(0,0,0,0.25); pointer-events: none; }
+.fac-walk-hint { animation: fac-hint-out 1s ease 7s forwards; position: absolute; right: 10px; bottom: 12px; max-width: calc(100% - 140px); font-size: 11px; color: rgba(255,255,255,0.8); background: rgba(13,31,53,0.7); padding: 5px 10px; border-radius: 999px; pointer-events: none; text-align: center; }
 .fac-viewer-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .fac-viewer-grid.has-dock { grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 900px) { .fac-viewer-grid.has-dock { grid-template-columns: minmax(0, 1fr) 300px; } }
@@ -273,3 +274,6 @@
 .fac-build-log { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; }
 .fac-build-log li { padding: 4px 0; border-top: 1px solid var(--border, rgba(0,0,0,0.08)); }
 .fac-thumb .fac-thumb-ai { position: absolute; left: 4px; bottom: 4px; top: auto; right: auto; width: auto; height: auto; padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; background: #c19c56; color: #0b1726; }
+
+@keyframes fac-hint-out { to { opacity: 0; } }
+@media (max-width: 600px) { .fac-minimap { width: 104px; height: auto; } }

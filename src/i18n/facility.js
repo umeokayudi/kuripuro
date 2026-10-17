@@ -129,7 +129,7 @@ export const facilityEn = {
   // v1.0.50 — real 3D, walk inside, real photo, build photo by photo
   walkInside: 'Walk inside',
   loading3d: 'Loading 3D…',
-  walkHint: 'Joystick or W A S D to walk · drag to look around · tap an object',
+  walkHint: 'Tap the floor to walk there · drag to look around · tap an object · joystick or W A S D',
   no3d: '3D is not available on this device. Use 2D.',
   important: 'Important',
   importantToggle: 'Important item (📷 pin in 3D, real photo opens first)',
@@ -272,7 +272,7 @@ export const facilityJa = {
   fromJob: '作業中',
   walkInside: '中を歩く',
   loading3d: '3Dを読み込み中…',
-  walkHint: 'ジョイスティックかWASDで移動・ドラッグで見回す・物をタップ',
+  walkHint: '床をタップでそこへ移動・ドラッグで見回す・物をタップ・ジョイスティック/WASD',
   no3d: 'この端末では3Dを表示できません。2Dをご利用ください。',
   important: '重要',
   importantToggle: '重要な項目（3Dに📷ピン、実物写真を先に表示）',
