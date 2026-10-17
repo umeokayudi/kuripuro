@@ -53,6 +53,9 @@ export const ELEMENT_KINDS = {
   other: { icon: '▫️', en: 'Other', ja: 'その他', service: null, intervalDays: null, h: 0.5 },
 }
 
+/** Itens que o funcionário mais procura: mostram um pino 📷 no 3D e a foto real fica a um toque. */
+export const IMPORTANT_KINDS = new Set(['light_switch', 'breaker', 'valve', 'grease_trap', 'range_hood'])
+
 const AREA_KEYS = Object.keys(AREA_KINDS)
 const ELEMENT_KEYS = Object.keys(ELEMENT_KINDS)
 
@@ -140,6 +143,7 @@ export function normalizeLayout(raw) {
       last_serviced_at: /^\d{4}-\d{2}-\d{2}/.test(e?.last_serviced_at || '') ? e.last_serviced_at.slice(0, 10) : null,
       service_interval_days: interval == null || interval === '' ? null : num(interval, null, 1, 3650),
       notes: str(e?.notes),
+      important: typeof e?.important === 'boolean' ? e.important : IMPORTANT_KINDS.has(kind),
     }
   })
 
@@ -338,4 +342,71 @@ export function elementHistory(elementId, logs = []) {
   return logs
     .filter(l => l.element_id === elementId)
     .sort((a, b) => String(b.service_date).localeCompare(String(a.service_date)) || String(b.created_at || '').localeCompare(String(a.created_at || '')))
+}
+
+function overlapRatio(a, b) {
+  const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x))
+  const iy = Math.max(0, Math.min(a.y + a.d, b.y + b.d) - Math.max(a.y, b.y))
+  const inter = ix * iy
+  return inter / Math.max(0.01, Math.min(a.w * a.d, b.w * b.d))
+}
+
+/**
+ * Construção aos poucos: junta ao modelo o que a IA viu em UMA foto.
+ * - área do mesmo tipo que se sobrepõe a uma existente = a mesma área (não duplica);
+ * - equipamento do mesmo tipo a menos de 1,5 m de um existente = o mesmo (só ganha a foto e textos que faltavam);
+ * - o resto entra como novo. A foto é ligada a cada equipamento que aparece nela.
+ * Retorna { layout, added: [nomes], updated: [nomes], grew: bool }.
+ */
+export function mergeLayoutAdditions(base, additions, photoRef) {
+  const cur = normalizeLayout(base)
+  const add = additions && typeof additions === 'object' ? additions : {}
+  const width = Math.max(cur.width, Number(add.width) || 0)
+  const depth = Math.max(cur.depth, Number(add.depth) || 0)
+  const grew = width > cur.width || depth > cur.depth
+  const incoming = normalizeLayout({ ...add, width, depth })
+  const areas = cur.areas.map(a => ({ ...a }))
+  const elements = cur.elements.map(e => ({ ...e, photos: [...e.photos] }))
+  const walls = [...cur.walls]
+  const added = []
+  const updated = []
+  const areaIdMap = {}
+
+  for (const a of incoming.areas) {
+    const same = areas.find(x => x.kind === a.kind && overlapRatio(x, a) > 0.3)
+    if (same) { areaIdMap[a.id] = same.id; continue }
+    const id = areas.some(x => x.id === a.id) ? newId('area') : a.id
+    areaIdMap[a.id] = id
+    areas.push({ ...a, id })
+    added.push(a.name)
+  }
+
+  for (const e of incoming.elements) {
+    const cx = e.x + e.w / 2
+    const cy = e.y + e.d / 2
+    const same = elements.find(x => x.kind === e.kind && Math.hypot(x.x + x.w / 2 - cx, x.y + x.d / 2 - cy) < 1.5)
+    if (same) {
+      if (photoRef && !same.photos.includes(photoRef)) same.photos.push(photoRef)
+      if (!same.location_hint && e.location_hint) same.location_hint = e.location_hint
+      if (!same.instructions && e.instructions) same.instructions = e.instructions
+      updated.push(same.name)
+      continue
+    }
+    const id = elements.some(x => x.id === e.id) ? newId('el') : e.id
+    elements.push({
+      ...e,
+      id,
+      areaId: e.areaId ? (areaIdMap[e.areaId] || null) : null,
+      photos: photoRef ? [photoRef, ...e.photos.filter(p => p !== photoRef)] : e.photos,
+    })
+    added.push(e.name)
+  }
+
+  for (const w of incoming.walls) {
+    const dup = walls.some(x => Math.hypot(x.x1 - w.x1, x.y1 - w.y1) + Math.hypot(x.x2 - w.x2, x.y2 - w.y2) < 0.8
+      || Math.hypot(x.x1 - w.x2, x.y1 - w.y2) + Math.hypot(x.x2 - w.x1, x.y2 - w.y1) < 0.8)
+    if (!dup) walls.push(w)
+  }
+
+  return { layout: normalizeLayout({ width, depth, areas, walls, elements }), added, updated: [...new Set(updated)], grew }
 }

@@ -16,6 +16,7 @@ import {
   normalizeLayout,
   perimeterWalls,
   restaurantTemplate,
+  mergeLayoutAdditions,
   areaSquareMeters,
   PRIORITY_ORDER,
   withServiceLog,
@@ -36,7 +37,7 @@ import {
   saveModel,
 } from '../lib/facilityApi'
 import FacilityScene from '../components/facility/FacilityScene'
-import { StatusLegend } from '../components/facility/FacilityViewer'
+import { StatusLegend, ViewModeChips, WorldView } from '../components/facility/FacilityViewer'
 import FacilityItemPopup, { RecommendationCard } from '../components/facility/FacilityItemPopup'
 
 const COLLECTION = { area: 'areas', element: 'elements', wall: 'walls' }
@@ -70,7 +71,9 @@ export default function FacilityStudio({ clients, initialClientId }) {
   const [selected, setSelected] = useState(null)
   const [preview, setPreview] = useState(null)
   const [mode, setMode] = useState('3d')
-  const [rotation, setRotation] = useState(-30)
+  const [rotation] = useState(-30)
+  const [caption, setCaption] = useState('')
+  const [buildLog, setBuildLog] = useState([])
   const [hints, setHints] = useState('')
   const [busy, setBusy] = useState('')
   const [recs, setRecs] = useState([])
@@ -300,6 +303,61 @@ export default function FacilityStudio({ clients, initialClientId }) {
     setBusy('')
   }
 
+  // ---- construir aos poucos: cada foto nova, a IA acrescenta o que ela mostra ----
+  const addPhotoToModel = async (photoRef, base = current) => {
+    setBusy(`build:${photoRef}`)
+    try {
+      const resp = await apiPost('/api/admin-ai', {
+        facilityAction: 'add-photo',
+        photo: photoRef,
+        layout: base.layout,
+        caption,
+        name: base.name,
+      })
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`)
+      const merged = mergeLayoutAdditions(base.layout, data.additions, photoRef)
+      const line = `📷 ${data.seen || t.photoAnalyzed}${merged.added.length ? ` → + ${merged.added.join(', ')}` : ''}${merged.updated.length ? ` · 📎 ${merged.updated.join(', ')}` : ''}`
+      const photos = base.photos.includes(photoRef) ? base.photos : [...base.photos, photoRef]
+      const saved = await persist({
+        ...base,
+        photos,
+        layout: merged.layout,
+        ai_notes: [base.ai_notes, line].filter(Boolean).join('\n').slice(-2000),
+        status: 'draft',
+      }, { quiet: true })
+      if (saved) {
+        setBuildLog(l => [{ photo: photoRef, line }, ...l])
+        toast.success(merged.added.length ? fill(t.buildAdded, { n: merged.added.length }) : t.buildNothingNew)
+        setCaption('')
+        if (mode === '2d') setMode('3d')
+      }
+      return saved
+    } catch (e) {
+      toast.error(e.message)
+      return null
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const uploadAndBuild = async (files) => {
+    let base = current
+    for (const [i, file] of [...files].entries()) {
+      setBusy('photos')
+      let ref
+      try {
+        ref = await uploadJobPhoto(`facility/${base.id}/${Date.now()}_${i}.jpg`, file)
+      } catch (e) {
+        toast.error(e.message)
+        continue
+      }
+      const saved = await addPhotoToModel(ref, base)
+      base = saved || { ...base, photos: [...base.photos, ref] }
+    }
+    setBusy('')
+  }
+
   const useTemplate = () => {
     if (hasContent && !confirm(t.replaceConfirm)) return
     updateModel({ layout: restaurantTemplate(current.layout.width, current.layout.depth) })
@@ -473,6 +531,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
             <div key={p} className="fac-thumb">
               <img src={viewablePhotoUrl(p)} alt="" />
               <button type="button" onClick={() => removePhoto(p)} title={t.remove}>✕</button>
+              <button type="button" className="fac-thumb-ai" disabled={busy.startsWith('build')} onClick={() => addPhotoToModel(p)} title={t.addToModel}>{busy === `build:${p}` ? '…' : '🤖 +'}</button>
             </div>
           ))}
         </div>
@@ -480,6 +539,22 @@ export default function FacilityStudio({ clients, initialClientId }) {
           {busy === 'photos' ? t.uploading : t.addPhotos}
           <input type="file" accept="image/*" multiple hidden disabled={busy === 'photos'} onChange={e => { uploadPhotos(e.target.files); e.target.value = '' }} />
         </label>
+        <div className="fac-build">
+          <div style={{ fontWeight: 700, fontSize: 14 }}>🧩 {t.buildTitle}</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 8px' }}>{t.buildHint}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input value={caption} onChange={e => setCaption(e.target.value)} placeholder={t.captionPlaceholder} style={{ flex: '1 1 220px', padding: '7px 10px' }} />
+            <label className="btn btn-sm btn-primary" style={{ cursor: busy ? 'default' : 'pointer' }}>
+              {busy === 'photos' ? t.uploading : busy.startsWith('build') ? t.buildWorking : t.buildButton}
+              <input type="file" accept="image/*" capture="environment" multiple hidden disabled={!!busy} onChange={e => { uploadAndBuild(e.target.files); e.target.value = '' }} />
+            </label>
+          </div>
+          {buildLog.length > 0 && (
+            <ul className="fac-build-log">
+              {buildLog.map(b => <li key={b.photo + b.line}>{b.line}</li>)}
+            </ul>
+          )}
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
@@ -506,28 +581,35 @@ export default function FacilityStudio({ clients, initialClientId }) {
       <div className="fac-studio-grid">
         <div className="card" style={{ marginTop: 0 }}>
           <div className="card-title">{t.step3}</div>
-          <div className="fac-toolbar">
-            <button type="button" className={`fac-chip${mode === '3d' ? ' on' : ''}`} onClick={() => setMode('3d')}>{t.view3d}</button>
-            <button type="button" className={`fac-chip${mode === '2d' ? ' on' : ''}`} onClick={() => setMode('2d')}>{t.view2d}</button>
-            {mode === '3d' && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                {t.rotate}
-                <input type="range" min={-180} max={180} value={rotation} onChange={e => setRotation(Number(e.target.value))} />
-              </label>
-            )}
-          </div>
-          <FacilityScene
-            layout={layout}
-            mode={mode}
-            rotation={rotation}
-            selected={selected}
-            onSelect={setSelected}
-            editable
-            onChange={changeItem}
-            alerts={alerts}
-            status={elStatus}
-            todo={todo}
-          />
+          <ViewModeChips mode={mode} setMode={setMode} t={t} allow2dEdit />
+          {mode === '2d' ? (
+            <FacilityScene
+              layout={layout}
+              mode="2d"
+              rotation={rotation}
+              selected={selected}
+              onSelect={setSelected}
+              editable
+              onChange={changeItem}
+              alerts={alerts}
+              status={elStatus}
+              todo={todo}
+            />
+          ) : (
+            <div className="fac-dark" style={{ padding: 0 }}>
+              <WorldView
+                layout={liveLayout}
+                mode={mode}
+                selectedId={selected?.type === 'element' ? selected.id : null}
+                onSelect={setSelected}
+                status={elStatus}
+                todo={todo}
+                alerts={alerts}
+                height={480}
+                t={t}
+              />
+            </div>
+          )}
           <StatusLegend t={t} />
           {mode === '2d' && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>{t.dragHint}</div>}
           <div className="fac-toolbar">
@@ -623,6 +705,10 @@ export default function FacilityStudio({ clients, initialClientId }) {
                 <NumField label={t.h} value={selEl.h} onChange={v => changeItem('element', selEl.id, { h: Math.max(0.02, v || 0.02) })} />
                 <NumField label={t.intervalDays} value={selEl.service_interval_days} step={1} min={1} onChange={v => changeItem('element', selEl.id, { service_interval_days: v })} />
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '2px 0 10px' }}>
+                <input type="checkbox" checked={!!selEl.important} onChange={e => changeItem('element', selEl.id, { important: e.target.checked })} />
+                ⭐ {t.importantToggle}
+              </label>
               <div className="form-group" style={{ marginBottom: 8 }}><label>{t.lastServiced}</label>
                 <input type="date" value={selEl.last_serviced_at || ''} onChange={e => changeItem('element', selEl.id, { last_serviced_at: e.target.value || null })} />
               </div>

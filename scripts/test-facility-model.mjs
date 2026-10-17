@@ -11,6 +11,7 @@ import {
   statusMap,
   todoElementIds,
   elementHistory,
+  mergeLayoutAdditions,
 } from '../src/lib/facilityModel.js'
 import { FACILITY_STATEMENTS, FACILITY_SETUP_SQL } from '../src/lib/facilitySetupSql.js'
 
@@ -113,5 +114,36 @@ const td = todoElementIds([{ element_id: 'hood', status: 'accepted' }, { element
 assert(td.has('hood') && td.size === 1, 'only accepted recs are to-dos')
 assert(elementHistory('hood', logs)[0].id === 'l1', 'history newest first')
 assert(FACILITY_SETUP_SQL.includes('facility_service_log') && FACILITY_SETUP_SQL.includes("'done'"), 'service log table + done status in SQL')
+
+// v1.0.50: build the model photo by photo without duplicating or erasing corrections
+const start = normalizeLayout({
+  width: 10, depth: 8,
+  areas: [{ id: 'k', name: 'Kitchen (fixed by admin)', kind: 'kitchen', x: 6, y: 0, w: 4, d: 5 }],
+  elements: [{ id: 'hood', name: 'Main hood', kind: 'range_hood', areaId: 'k', x: 7, y: 0.1, w: 2, d: 0.8, location_hint: 'Above the stove' }],
+})
+assert(start.elements[0].important === true, 'range hood is important by default')
+assert(normalizeLayout({ elements: [{ kind: 'table' }] }).elements[0].important === false, 'table not important by default')
+assert(normalizeLayout({ elements: [{ kind: 'breaker', important: false }] }).elements[0].important === false, 'admin can turn important off')
+const r1 = mergeLayoutAdditions(start, {
+  width: 12, depth: 8,
+  areas: [{ id: 'kx', name: 'Kitchen', kind: 'kitchen', x: 6.2, y: 0, w: 3.8, d: 5 }, { id: 'st', name: 'Storage', kind: 'storage', x: 10, y: 0, w: 2, d: 3 }],
+  elements: [
+    { name: 'Hood', kind: 'range_hood', areaId: 'kx', x: 7.3, y: 0.2, w: 2, d: 0.8, instructions: 'Switch on the right' },
+    { name: 'Breaker', kind: 'breaker', areaId: 'st', x: 11, y: 0.2, w: 0.5, d: 0.2 },
+  ],
+}, 'facility/m1/p1.jpg')
+assert(r1.layout.width === 12 && r1.grew, 'plan can grow')
+assert(r1.layout.areas.length === 2 && r1.layout.areas[0].name === 'Kitchen (fixed by admin)', 'same area not duplicated, admin name kept')
+const hood = r1.layout.elements.find(e => e.kind === 'range_hood')
+assert(r1.layout.elements.filter(e => e.kind === 'range_hood').length === 1, 'same hood not duplicated')
+assert(hood.name === 'Main hood' && hood.location_hint === 'Above the stove', 'existing texts kept')
+assert(hood.instructions === 'Switch on the right', 'missing instructions filled')
+assert(hood.photos.includes('facility/m1/p1.jpg'), 'photo linked to existing item')
+const br = r1.layout.elements.find(e => e.kind === 'breaker')
+assert(br && br.photos[0] === 'facility/m1/p1.jpg' && br.areaId === r1.layout.areas[1].id, 'new item added with photo and mapped area')
+assert(r1.added.includes('Storage') && r1.added.includes('Breaker') && r1.updated.includes('Main hood'), 'added/updated lists')
+const r2 = mergeLayoutAdditions(r1.layout, { elements: [{ name: 'Hood', kind: 'range_hood', x: 7.2, y: 0.1, w: 2, d: 0.8 }] }, 'facility/m1/p1.jpg')
+assert(r2.layout.elements.find(e => e.kind === 'range_hood').photos.length === 1, 'same photo not linked twice')
+assert(mergeLayoutAdditions(start, null, null).layout.elements.length === 1, 'empty AI answer changes nothing')
 
 console.log('✅ Smart Facility model tests passed')

@@ -66,8 +66,8 @@ function ServiceHistory({ history, t, lang, onPhoto }) {
 }
 
 /** Funcionário marca o equipamento como limpo durante o serviço (fotos opcionais). */
-function LogServiceForm({ t, onSave }) {
-  const [open, setOpen] = useState(false)
+function LogServiceForm({ t, onSave, startOpen = false }) {
+  const [open, setOpen] = useState(startOpen)
   const [notes, setNotes] = useState('')
   const [files, setFiles] = useState([])
   const [saving, setSaving] = useState(false)
@@ -221,7 +221,7 @@ export default function FacilityItemPopup({ layout, item, t, lang = 'en', recs =
 
         <ServiceHistory history={history} t={t} lang={lang} onPhoto={setLightbox} />
 
-        {onLogService && (k.service || isTodo) && <LogServiceForm t={t} onSave={data => onLogService(el, data)} />}
+        {onLogService && (k.service || isTodo) && <LogServiceForm t={t} startOpen={!!item.log} onSave={data => onLogService(el, data)} />}
 
         {elRecs.map(r => (
           <RecommendationCard key={r.id} rec={r} t={t} onDecide={onDecide} busy={busyId === r.id} showStatus={false} />
