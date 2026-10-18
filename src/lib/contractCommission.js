@@ -34,3 +34,14 @@ export function sellerCommissionSummary(spots = [], fixed = []) {
     monthly: fixed.filter(c => c.is_active !== false).reduce((s, c) => s + Number(c.commission_amount || 0), 0),
   }
 }
+
+/** v1.0.56 · Commission on a client quote request = the extra the seller added on top of the
+ *  company price. none | pending (sent, client deciding) | earned (accepted) | paid | void. */
+export function quoteCommissionState(row) {
+  const markup = Number(row?.seller_markup || 0)
+  if (!row?.salesperson_id || !markup) return 'none'
+  if (row.commission_paid_at) return 'paid'
+  if (row.quote_status === 'accepted') return 'earned'
+  if (row.quote_status === 'quoted') return 'pending'
+  return 'void'
+}
