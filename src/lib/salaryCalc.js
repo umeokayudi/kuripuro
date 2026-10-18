@@ -31,10 +31,12 @@ export function countWorkedDays(jobs) {
 
 /**
  * Employee portal monthly salary breakdown (shared logic).
+ * `month` (YYYY-MM) defaults to the current Tokyo month; past months use the same rules.
  */
-export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = []) {
+export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [], month) {
   const todayStr = tokyoToday()
-  const month = todayStr.slice(0, 7)
+  month = month || todayStr.slice(0, 7)
+  const isCurrentMonth = month === todayStr.slice(0, 7)
   const completed = completedJobsInMonth(allJobs, month, todayStr)
   const totalMins = completed.reduce((s, j) => s + jobMinutes(j), 0)
   const spotEarned = completed
@@ -83,6 +85,25 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [])
     workedDays,
     fixedMax,
     dailyRate: Math.round(dailyRate),
-    projected: Math.min(base + Math.round(dailyRate * remain), fixedMax),
+    projected: isCurrentMonth ? Math.min(base + Math.round(dailyRate * remain), fixedMax) : 0,
+    month,
+    salaryType: empInfo?.salary_type || 'fixed',
+    /** True when nothing in the employee record can produce pay (all rates are 0). */
+    notConfigured: payRatesMissing(empInfo),
+  }
+}
+
+/** No fixed salary, hourly rate or per-job rate that applies to this salary type. */
+export function payRatesMissing(empInfo) {
+  if (!empInfo) return true
+  const fixed = Number(empInfo.fixed_salary || 0)
+  const hourly = Number(empInfo.hourly_rate || 0)
+  const bonus = Number(empInfo.job_bonus_rate || 0)
+  switch (empInfo.salary_type) {
+    case 'fixed': return fixed <= 0
+    case 'hourly': return hourly <= 0
+    case 'per_job': return false
+    case 'mixed': return fixed <= 0 && hourly <= 0 && bonus <= 0
+    default: return fixed <= 0 && hourly <= 0
   }
 }
