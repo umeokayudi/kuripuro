@@ -57,6 +57,8 @@ import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
 import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
+import { quickRoundEnabledFor } from '../lib/quickRound'
+import QuickRound from '../components/QuickRound'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -99,6 +101,7 @@ export default function EmployeePortal() {
   const personalTheme = employeeThemeFor(user)
   const themeClass = personalTheme ? ` kp-theme-${personalTheme}` : ''
   const personalGreeting = employeeGreetingFor(user)
+  const quickRoundOn = quickRoundEnabledFor(user)
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -1444,6 +1447,7 @@ export default function EmployeePortal() {
         {/* HOME */}
         {tab==='home'&&(
           <div className="emp-home ex-home">
+            {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
@@ -1655,6 +1659,7 @@ export default function EmployeePortal() {
         {tab==='shift'&&(
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
+          {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
           <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} labels={e} lang={lang} />
           </section>
         )}
