@@ -6,6 +6,7 @@ import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { fetchPendingTimeOff, decideTimeOff, TIME_OFF_CHANGED } from '../lib/timeOff'
 import { fetchAutoClosedPeriods, PAYROLL_CHANGED } from '../lib/payrollAlerts'
+import { fetchPendingQuoteRequests, QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
 import { fmtPeriod } from '../lib/salaryPeriod'
 import { fmtDay } from './AvailabilityPlanner'
 import { fetchDayContext } from '../lib/dayContext'
@@ -16,8 +17,8 @@ const readSeen = () => { try { return new Set(JSON.parse(sessionStorage.getItem(
 const writeSeen = (ids) => { try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...ids])) } catch { /* private mode */ } }
 
 // Admin topbar: bell with the number of pending day-off requests (plus payroll months the
-// cron closed automatically), a small alert when new ones arrive, and a pop-up to approve /
-// reject each request or open the payroll to review.
+// cron closed automatically and client quote requests waiting for a price), a small alert
+// when new ones arrive, and a pop-up to approve / reject each request or open the page.
 export default function TimeOffCenter() {
   const { lang } = useLang()
   const ja = lang === 'ja'
@@ -31,16 +32,19 @@ export default function TimeOffCenter() {
   const [notes, setNotes] = useState({})
   const [dayCtx, setDayCtx] = useState({})
   const [payroll, setPayroll] = useState([])
+  const [quotes, setQuotes] = useState([])
   const seen = useRef(readSeen())
 
   const load = () => Promise.all([
     fetchPendingTimeOff(tokyoToday()).catch(() => []),
     fetchAutoClosedPeriods().catch(() => []),
-  ]).then(([list, periods]) => {
+    fetchPendingQuoteRequests().catch(() => []),
+  ]).then(([list, periods, quoteRows]) => {
     setRows(list)
     setPayroll(periods)
+    setQuotes(quoteRows)
     // Alert only for items the admin has not been told about in this session
-    if ([...list, ...periods].some(r => !seen.current.has(r.id))) setToastOpen(true)
+    if ([...list, ...periods, ...quoteRows].some(r => !seen.current.has(r.id))) setToastOpen(true)
   })
 
   useEffect(() => {
@@ -48,11 +52,12 @@ export default function TimeOffCenter() {
     const id = setInterval(load, 60000)
     window.addEventListener(TIME_OFF_CHANGED, load)
     window.addEventListener(PAYROLL_CHANGED, load)
-    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load) }
+    window.addEventListener(QUOTE_REQUESTS_CHANGED, load)
+    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load); window.removeEventListener(QUOTE_REQUESTS_CHANGED, load) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const markSeen = () => {
-    rows.concat(payroll).forEach(r => seen.current.add(r.id))
+    rows.concat(payroll, quotes).forEach(r => seen.current.add(r.id))
     writeSeen(seen.current)
     setToastOpen(false)
   }
@@ -76,7 +81,9 @@ export default function TimeOffCenter() {
 
   const openCalendar = () => { setOpen(false); markSeen(); navigate('/employees?tab=availability') }
   const openPayroll = (period) => { setOpen(false); markSeen(); navigate(`/salary-periods?period=${period}`) }
-  const n = rows.length + payroll.length
+  const openQuotes = () => { setOpen(false); markSeen(); navigate('/client-feedback?tab=requests') }
+  const n = rows.length + payroll.length + quotes.length
+  const newQuotes = quotes.filter(q => !seen.current.has(q.id))
 
   return (
     <>
@@ -89,7 +96,18 @@ export default function TimeOffCenter() {
 
       {/* Portal: the topbar uses backdrop-filter, which would trap position:fixed inside it */}
       {createPortal(<>
-      {toastOpen && payroll.length > 0 && !open && (
+      {toastOpen && newQuotes.length > 0 && !open && (
+        <div className="tor-toast" role="status">
+          <span className="tor-toast-icon" aria-hidden="true">📝</span>
+          <div className="tor-toast-text">
+            <strong>{newQuotes.length === 1 ? L('New quote request', '新しい見積もり依頼') : L(`${newQuotes.length} new quote requests`, `新しい見積もり依頼 ${newQuotes.length}件`)}</strong>
+            <span>{[newQuotes[0].client_name, newQuotes[0].location_name, newQuotes[0].category].filter(Boolean).join(' · ') || L('Set the company price', '会社の価格を設定してください')}</span>
+          </div>
+          <button type="button" className="tor-btn tor-btn-primary tor-btn-sm" onClick={openQuotes}>{L('Open', '開く')}</button>
+          <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる')}>×</button>
+        </div>
+      )}
+      {toastOpen && newQuotes.length === 0 && payroll.length > 0 && !open && (
         <div className="tor-toast" role="status">
           <span className="tor-toast-icon" aria-hidden="true">💴</span>
           <div className="tor-toast-text">
@@ -100,7 +118,7 @@ export default function TimeOffCenter() {
           <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる')}>×</button>
         </div>
       )}
-      {toastOpen && payroll.length === 0 && rows.length > 0 && !open && (
+      {toastOpen && newQuotes.length === 0 && payroll.length === 0 && rows.length > 0 && !open && (
         <div className="tor-toast" role="status">
           <span className="tor-toast-icon" aria-hidden="true">🗓</span>
           <div className="tor-toast-text">
@@ -117,13 +135,28 @@ export default function TimeOffCenter() {
           <section className="tor-modal" role="dialog" aria-modal="true" aria-label={L('Day-off requests', '休み申請')} onClick={e => e.stopPropagation()}>
             <header className="tor-head">
               <div>
-                <h2>{L('Day-off requests', '休み申請')}</h2>
-                <p>{rows.length ? L(`${rows.length} waiting for approval`, `${rows.length}件が承認待ち`) : L('Nothing waiting. All caught up.', '承認待ちはありません。')}</p>
+                <h2>{quotes.length && !rows.length ? L('Waiting for you', '確認待ち') : L('Day-off requests', '休み申請')}</h2>
+                <p>{n ? L(`${n} waiting for you`, `${n}件が確認待ち`) : L('Nothing waiting. All caught up.', '承認待ちはありません。')}</p>
               </div>
               <button type="button" className="tor-close" onClick={() => setOpen(false)} aria-label={L('Close', '閉じる')}>×</button>
             </header>
 
             <div className="tor-list">
+              {quotes.map(q => (
+                <article key={q.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">📝</div>
+                    <div className="tor-item-main">
+                      <strong>{L('Quote request', '見積もり依頼')} · {q.client_name || '—'}</strong>
+                      <span>{[q.location_name, q.category || String(q.description || '').slice(0, 60)].filter(Boolean).join(' · ')}</span>
+                    </div>
+                    <span className="tor-kind is-extra">{L('Set price', '価格設定')}</span>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={openQuotes}>{L('Open quote requests', '見積もり依頼を開く')}</button>
+                  </div>
+                </article>
+              ))}
               {payroll.map(pr => (
                 <article key={pr.id} className="tor-item">
                   <div className="tor-item-top">

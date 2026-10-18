@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { sellerCommissionSummary } from '../lib/contractCommission'
+import { sellerCommissionSummary, quoteCommissionState } from '../lib/contractCommission'
 import { funnelCopy, initials, shortDay, yen } from '../lib/salesPhases'
 
 // Seller home blocks: upcoming follow-ups with dates, the numbers that matter
@@ -74,13 +74,15 @@ export function MyNumbers({ data, today, lang }) {
 export function CommissionsCard({ data, metrics, lang, onDetails }) {
   const c = COPY[lang === 'ja' ? 'ja' : 'en']
   const sum = sellerCommissionSummary(data?.contractCommissions?.spot || [], data?.contractCommissions?.fixed || [])
-  const toReceive = sum.earned + Number(metrics?.commission_pending || 0)
+  // v1.0.56 · plus the extra the seller added on client quote requests
+  const quoteSum = state => (data?.quoteRequests || []).filter(r => r.salesperson_id === data?.user?.id && quoteCommissionState(r) === state).reduce((n, r) => n + Number(r.seller_markup || 0), 0)
+  const toReceive = sum.earned + Number(metrics?.commission_pending || 0) + quoteSum('earned')
   return <section className="fa-card sh-comm">
     <div className="fa-card-head"><h2>{c.comm}</h2>{onDetails && <button type="button" className="fa-link" onClick={onDetails}>{c.details} ›</button>}</div>
     <div className="sh-comm-grid">
       <div className="is-main"><span>{c.toReceive}</span><strong>{yen(toReceive)}</strong></div>
-      <div><span>{c.received}</span><strong>{yen(sum.paid)}</strong></div>
-      <div><span>{c.waiting}</span><strong>{yen(sum.pending)}</strong></div>
+      <div><span>{c.received}</span><strong>{yen(sum.paid + quoteSum('paid'))}</strong></div>
+      <div><span>{c.waiting}</span><strong>{yen(sum.pending + quoteSum('pending'))}</strong></div>
       <div><span>{c.monthly}</span><strong>{yen(sum.monthly)}</strong></div>
     </div>
   </section>

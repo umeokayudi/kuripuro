@@ -1,6 +1,6 @@
 import { requireActiveSalesSession, salesDb } from './_salesSession.js'
 import { geminiGenerate } from './_gemini.js'
-import { sellerCommissionSummary } from '../src/lib/contractCommission.js'
+import { sellerCommissionSummary, quoteCommissionState } from '../src/lib/contractCommission.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -190,6 +190,37 @@ async function loadMarketingDashboard(db, user) {
   return { user, today: todayTokyo(), leads, contracts, salespeople: peopleRes.data || [], notifications: notificationsRes.data || [], marketing: { channels: channelsRes.data || [], campaigns, spend, goals: goalsRes.data || [] } }
 }
 
+// Quote requests clients send from their portal (client_requests, request_type 'quote').
+// A seller sees the ones of the clients they look after (clients.salesperson_id) plus the
+// ones they already sent. The company sets the base price, the seller adds an extra on top
+// that becomes their commission (sql/2026-10-17_orcamento_vendedor.sql). Until that SQL
+// runs the list is simply empty.
+const QUOTE_REQUEST_COLUMNS = 'id,client_id,location_name,description,preferred_date,status,ticket_number,created_at,request_type,category,quote_amount,quote_note,quote_status,quoted_at,decided_at,salesperson_id,base_amount,seller_markup,priced_at,commission_paid_at'
+
+async function loadQuoteRequests(db, user, isAdmin) {
+  try {
+    const clientsRes = await db.from('clients').select('id,company_name,salesperson_id')
+    if (clientsRes.error) return []
+    const clients = clientsRes.data || []
+    const mine = new Set(clients.filter(c => c.salesperson_id === user.id).map(c => c.id))
+    let query = db.from('client_requests').select(QUOTE_REQUEST_COLUMNS).eq('request_type', 'quote').order('created_at', { ascending: false }).limit(300)
+    if (!isAdmin) {
+      const ors = [`salesperson_id.eq.${user.id}`]
+      if (mine.size) ors.push(`client_id.in.(${[...mine].join(',')})`)
+      query = query.or(ors.join(','))
+    }
+    const { data, error } = await query
+    if (error) return []
+    const byId = new Map(clients.map(c => [c.id, c]))
+    return (data || [])
+      // A request another seller already sent stays theirs.
+      .filter(row => isAdmin || !row.salesperson_id || row.salesperson_id === user.id)
+      .map(row => ({ ...row, client_name: byId.get(row.client_id)?.company_name || '', account_seller_id: byId.get(row.client_id)?.salesperson_id || null }))
+  } catch {
+    return []
+  }
+}
+
 async function loadDashboard(db, user) {
   if (user.role === 'salesperson' && user.team === 'marketing') return loadMarketingDashboard(db, user)
   const isAdmin = user.role === 'admin'
@@ -213,9 +244,10 @@ async function loadDashboard(db, user) {
     isAdmin ? db.from('marketing_goals').select('*').gte('period_month', `${Number(todayTokyo().slice(0, 4)) - 1}-01`).order('period_month', { ascending: false }) : Promise.resolve({ data: [] }),
   ])
   // Contracts the seller brought in (spot = one-off commission, fixed location = monthly commission).
-  const [spotCommRes, fixedCommRes] = await Promise.all([
+  const [spotCommRes, fixedCommRes, quoteRequests] = await Promise.all([
     scope(db.from('spot_contracts').select('id,contract_number,location_name,client_name,service_date,status,price,tax_rate,price_includes_tax,salesperson_id,salesperson_name,commission_type,commission_value,commission_amount,commission_paid_at').eq('is_active', true).not('salesperson_id', 'is', null).order('service_date', { ascending: false }).limit(1000)),
     scope(db.from('service_contracts').select('id,client_id,location_name,service_type,monthly_revenue,is_active,salesperson_id,commission_type,commission_value,commission_amount').eq('is_active', true).not('salesperson_id', 'is', null).limit(1000)),
+    loadQuoteRequests(db, user, isAdmin),
   ])
   // Missing columns (SQL not applied yet) must not take the whole dashboard down.
   const spotCommissions = spotCommRes.error ? [] : (spotCommRes.data || [])
@@ -253,6 +285,11 @@ async function loadDashboard(db, user) {
         const c = sellerCommissionSummary(spotCommissions.filter(row => row.salesperson_id === person.id), fixedCommissions.filter(row => row.salesperson_id === person.id))
         return { spot_commission_due: c.earned, spot_commission_paid: c.paid, spot_commission_pending: c.pending, fixed_commission_monthly: c.monthly }
       })(),
+      ...(() => {
+        const own = quoteRequests.filter(row => row.salesperson_id === person.id)
+        const sum = state => own.filter(row => quoteCommissionState(row) === state).reduce((n, row) => n + Number(row.seller_markup || 0), 0)
+        return { quote_commission_due: sum('earned'), quote_commission_paid: sum('paid'), quote_commission_pending: sum('pending') }
+      })(),
       commission_pending: ownContracts.filter(row => ['active', 'approved'].includes(row.status)).reduce((sum, row) => sum + Number(row.commission_amount || 0), 0),
       hours_this_month: reports.filter(row => row.salesperson_id === person.id && String(row.work_date || '').startsWith(todayTokyo().slice(0, 7))).reduce((sum, row) => sum + Number(row.hours_worked || 0), 0),
     }
@@ -266,7 +303,7 @@ async function loadDashboard(db, user) {
     const conversions = relatedLeads.filter(row => row.stage === 'won').length
     return { ...campaign, spend: campaignSpend, leads: relatedLeads.length, conversions, cost_per_lead: relatedLeads.length ? campaignSpend / relatedLeads.length : 0, customer_acquisition_cost: conversions ? campaignSpend / conversions : 0 }
   })
-  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions } }
+  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions }, quoteRequests }
 }
 
 async function getAction(db, user, action, query = {}) {
@@ -836,6 +873,57 @@ async function postAction(db, user, body, res) {
     if (error) throw error
     await db.from('sales_notifications').insert({ salesperson_id: own, audience: 'admin', event_type: 'day_report', title: `Relatório do dia · ${user.name || ''}`.trim(), body: `${today} · ${started || '?'}–${time} · ${stats.approaches} abordagens · ${stats.contacts} contatos · ${stats.quotes_sent} orçamentos`, sender_name: String(user.name || '').slice(0, 120), dedupe_key: `admin:day:${own}:${today}:${now.getTime()}` })
     return { report: data }
+  }
+
+  if (action === 'price-client-quote') {
+    // Admin sets the company price. With a seller on the account it goes to the seller,
+    // who adds their extra and sends it; `direct` sends it to the client as is.
+    if (!admin) return jsonError(res, 403, 'Somente admin define o preço da empresa.')
+    const base = num(body.base_amount)
+    if (!base) return jsonError(res, 400, 'Informe o preço da empresa.')
+    const { data: row, error: rowErr } = await db.from('client_requests').select('id,client_id,quote_status,request_type,location_name,category,description').eq('id', String(body.id || '')).maybeSingle()
+    if (rowErr) throw rowErr
+    if (!row || row.request_type !== 'quote') return jsonError(res, 404, 'Pedido de orçamento não encontrado.')
+    if (['accepted', 'declined'].includes(row.quote_status)) return jsonError(res, 409, 'O cliente já respondeu este orçamento.')
+    const { data: client } = await db.from('clients').select('id,company_name,salesperson_id').eq('id', row.client_id).maybeSingle()
+    const sellerId = body.direct ? null : (client?.salesperson_id || null)
+    const note = String(body.note || '').trim().slice(0, 1000) || null
+    const now = new Date().toISOString()
+    const patch = sellerId
+      ? { base_amount: base, priced_at: now, quote_status: 'priced', salesperson_id: sellerId, seller_markup: null, quote_note: note }
+      : { base_amount: base, priced_at: now, quote_status: 'quoted', quoted_at: now, quote_amount: base, seller_markup: 0, quote_note: note }
+    const { data, error } = await db.from('client_requests').update(patch).eq('id', row.id).select().single()
+    if (error) throw error
+    if (sellerId) {
+      const place = [client?.company_name, row.location_name].filter(Boolean).join(' · ')
+      await db.from('sales_notifications').insert({ salesperson_id: sellerId, audience: 'seller', event_type: 'quote_priced', title: 'Orçamento pronto para você enviar', body: `${place} · ${row.category || String(row.description || '').slice(0, 80)} · base ¥${Math.round(base).toLocaleString()}`, sender_name: String(user.name || '').slice(0, 120) })
+    }
+    return { request: data, to_seller: Boolean(sellerId) }
+  }
+
+  if (action === 'send-client-quote') {
+    // Seller sends the quote to the client: company price + their extra (= their commission).
+    if (marketer) return jsonError(res, 403, 'Sem permissão.')
+    const markup = num(body.markup || 0)
+    const { data: row, error: rowErr } = await db.from('client_requests').select('id,client_id,quote_status,request_type,base_amount,salesperson_id,location_name,category').eq('id', String(body.id || '')).maybeSingle()
+    if (rowErr) throw rowErr
+    if (!row || row.request_type !== 'quote') return jsonError(res, 404, 'Pedido de orçamento não encontrado.')
+    const { data: client } = await db.from('clients').select('id,company_name,salesperson_id').eq('id', row.client_id).maybeSingle()
+    const owner = row.salesperson_id || client?.salesperson_id || null
+    if (!admin && owner !== own) return jsonError(res, 403, 'Este cliente é de outro vendedor.')
+    if (row.quote_status !== 'priced' || !Number(row.base_amount)) return jsonError(res, 409, 'A empresa ainda não definiu o preço deste orçamento.')
+    const base = Number(row.base_amount)
+    if (markup > base * 10) return jsonError(res, 400, 'O valor a mais está alto demais. Confira o número.')
+    const sellerId = admin ? owner : own
+    const note = String(body.note || '').trim().slice(0, 1000) || null
+    const { data, error } = await db.from('client_requests').update({
+      seller_markup: markup, quote_amount: base + markup, salesperson_id: sellerId,
+      quote_status: 'quoted', quoted_at: new Date().toISOString(), ...(note ? { quote_note: note } : {}),
+    }).eq('id', row.id).eq('quote_status', 'priced').select().maybeSingle()
+    if (error) throw error
+    if (!data) return jsonError(res, 409, 'Este orçamento já foi enviado.')
+    await db.from('sales_notifications').insert({ salesperson_id: sellerId, audience: 'admin', event_type: 'quote_sent', title: 'Vendedor enviou orçamento ao cliente', body: `${[client?.company_name, row.location_name].filter(Boolean).join(' · ')} · ¥${Math.round(base + markup).toLocaleString()} (empresa ¥${Math.round(base).toLocaleString()} + vendedor ¥${Math.round(markup).toLocaleString()})`, sender_name: String(user.name || '').slice(0, 120) })
+    return { request: data }
   }
 
   if (action === 'read-notification') {
