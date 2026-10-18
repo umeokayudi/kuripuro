@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
-import { locationFromJob } from '../lib/clientPortal'
+import { locationFromJob, storeContact } from '../lib/clientPortal'
 import { LOCATION_FIELDS, maintenanceRows } from '../lib/clientCare'
 import { ManagerCard } from './ClientCare'
 import '../pages/client-portal.css'
@@ -139,7 +139,7 @@ export default function ClientCareAdmin({ clients, onClientsChanged }) {
         <button className="btn btn-primary" onClick={saveManager}>{c.save}</button>
         {manager.manager_name && (
           <div style={{ marginTop: 14, maxWidth: 520 }}>
-            <ManagerCard client={manager} labels={c} />
+            <ManagerCard contact={storeContact({ client: manager })} labels={c} />
           </div>
         )}
       </div>

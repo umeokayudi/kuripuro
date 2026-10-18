@@ -295,7 +295,7 @@ function AppContent() {
           </Suspense>
         </main>
       </div>
-      {location.pathname !== '/' && location.pathname !== '/ai' && <AIFloatingWidget mode="admin" />}
+      {location.pathname !== '/' && location.pathname !== '/ai' && location.pathname !== '/adminchat' && <AIFloatingWidget mode="admin" />}
     </div>
   )
 }
