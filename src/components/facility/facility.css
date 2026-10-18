@@ -374,3 +374,17 @@
 .fac-dossier-map { width: 100%; height: 160px; border: 0; border-radius: 8px; }
 .fac-dossier-link { font-size: 12px; font-weight: 700; }
 .fac-dossier-photos { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* modo mover (estilo The Sims): botão no item tocado + barra com dica, girar e pronto */
+.fac-move-btn { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 3; border: 0; border-radius: 999px; padding: 10px 18px; font-weight: 700; font-size: 14px; color: #0d1f35; background: #f5c76a; box-shadow: 0 6px 18px rgba(0,0,0,0.35); cursor: pointer; animation: fac-move-pop .25s ease; }
+.fac-move-btn:active { transform: translateX(-50%) scale(0.96); }
+.fac-move-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 3; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; pointer-events: none; }
+.fac-move-hint { pointer-events: none; font-size: 12px; color: #fff; background: rgba(13,31,53,0.82); padding: 7px 12px; border-radius: 999px; max-width: 100%; }
+.fac-move-hint.is-bad { background: rgba(185,28,28,0.9); }
+.fac-move-actions { display: flex; gap: 8px; margin-left: auto; pointer-events: auto; }
+.fac-move-actions button { border: 0; border-radius: 999px; padding: 10px 16px; font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+.fac-move-rot { background: #fff; color: #0d1f35; }
+.fac-move-done { background: #22c55e; color: #fff; }
+.fac-world.is-moving .fac-world-canvas canvas { cursor: grab; }
+.fac-world.is-moving .fac-world-canvas canvas:active { cursor: grabbing; }
+@keyframes fac-move-pop { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%); } }

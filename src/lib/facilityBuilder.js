@@ -47,7 +47,7 @@ const AGAINST_WALL = new Set(['stove', 'fryer', 'oven', 'fridge', 'dishwasher', 
 /** Prefere a parede do fundo (y = 0) ou a da frente (vitrine) para estes. */
 const PREFER_EDGE = { window: 'bottom', air_conditioner: 'top', stove: 'top', fryer: 'top', oven: 'top', fridge: 'top', light_switch: 'left' }
 
-function layerOf(kind) {
+export function layerOf(kind) {
   if (CEILING.has(kind)) return 'ceiling'
   if (HIGH_WALL.has(kind)) return 'wall'
   if (FLAT.has(kind)) return 'flat'
