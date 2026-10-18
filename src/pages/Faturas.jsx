@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
+import { dueDateAfter } from '../lib/spotContract'
 import { useLang, fill } from '../hooks/useLang'
 import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAutomation'
 
 export default function Faturas() {
-  const { t } = useLang()
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
+  const { t, lang } = useLang()
+  const ja = lang === 'ja'
   const inv = t.invoices
   const [faturas, setFaturas] = useState([])
   const [clients, setClients] = useState([])
@@ -84,6 +89,10 @@ export default function Faturas() {
         .eq('period_end', end)
         .neq('status', 'cancelled')
 
+      // Spot jobs already billed by their own spot-contract invoice are not billed again here.
+      const { data: spotBilled } = await supabase.from('spot_contracts').select('job_id').not('fatura_id', 'is', null)
+      const spotBilledJobs = new Set((spotBilled || []).map(r => r.job_id).filter(Boolean))
+
       const existingKeys = new Set((existing || []).map(f => `${f.client_id}:${f.period_start}:${f.period_end}`))
       let created = 0
       let skipped = 0
@@ -106,7 +115,7 @@ export default function Faturas() {
           .eq('status', 'completed')
 
         const lines = clientContracts
-          .map(contract => buildContractLine(contract, completedJobs || []))
+          .map(contract => buildContractLine(contract, (completedJobs || []).filter(j => !spotBilledJobs.has(j.id))))
           .filter(Boolean)
 
         if (!lines.length) continue
@@ -116,8 +125,8 @@ export default function Faturas() {
         const includesTax = clientContracts.every(c => c.price_includes_tax !== false)
         const tax = calculateTax(totalAfterDiscount, taxRate, includesTax)
         const subtotal = includesTax ? totalAfterDiscount - tax : totalAfterDiscount
-        const dueDate = new Date()
-        dueDate.setDate(dueDate.getDate() + 30)
+        // Payment day of the contract (default the 10th) in the month after the billed period.
+        const payDay = clientContracts.find(c => c.billing_day)?.billing_day || 10
 
         const { data: fatura, error } = await supabase.from('faturas').insert({
           client_id: clientId,
@@ -125,7 +134,7 @@ export default function Faturas() {
           period_start: start,
           period_end: end,
           issue_date: new Date().toISOString().slice(0,10),
-          due_date: dueDate.toISOString().slice(0,10),
+          due_date: dueDateAfter(start, payDay),
           subtotal,
           tax_amount: tax,
           total: totalAfterDiscount,
@@ -192,7 +201,8 @@ export default function Faturas() {
   }
 
   const handleStatusChange = async (id, status) => {
-    await supabase.from('faturas').update({ status }).eq('id', id)
+    // paid_at drives the client's thank-you message and receipt date
+    await supabase.from('faturas').update({ status, paid_at: status === 'paid' ? new Date().toISOString() : null }).eq('id', id)
     toast.success(`Status: ${status}`); load()
   }
 
@@ -249,7 +259,7 @@ export default function Faturas() {
     w.print()
   }
 
-  const statusBadge = s => ({draft:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
+  const statusBadge = s => ({draft:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red',overdue:'badge-red'}[s]||'badge-navy')
 
   return (
     <div>
@@ -263,26 +273,26 @@ export default function Faturas() {
           <div className="card" style={{marginBottom:14}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
               <div>
-                <div className="card-title" style={{marginBottom:3}}>⚡ Faturamento automático</div>
-                <div style={{fontSize:12,color:'var(--text3)'}}>Contrato → serviços concluídos → desconto → imposto → fatura</div>
+                <div className="card-title" style={{marginBottom:3}}>⚡ {ja ? '自動請求' : 'Automatic billing'}</div>
+                <div style={{fontSize:12,color:'var(--text3)'}}>{ja ? '契約 → 完了した作業 → 割引 → 税 → 請求書' : 'Contract → completed jobs → discount → tax → invoice'}</div>
               </div>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
                 <input type="month" value={autoPeriod} onChange={e=>setAutoPeriod(e.target.value)} />
                 <button className="btn btn-primary" onClick={handleAutoBilling} disabled={autoLoading}>
-                  {autoLoading ? 'Gerando...' : 'Gerar faturas'}
+                  {autoLoading ? (ja ? '作成中...' : 'Generating...') : (ja ? '請求書を作成' : 'Generate invoices')}
                 </button>
               </div>
             </div>
           </div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {faturas.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No faturas yet.</div></div>}
-          {faturas.map(f=>(
+          {(searchId ? faturas.filter(f => f.id === searchId) : faturas).map(f=>(
             <div key={f.id} className="card" style={{marginBottom:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                 <div>
                   <div style={{fontWeight:700,fontSize:15}}>{f.client_name}</div>
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{f.period_start} 〜 {f.period_end}</div>
-                  <div style={{fontSize:12,color:'var(--text3)'}}>発行: {f.issue_date} · 期限: {f.due_date||'—'}</div>
+                  <div style={{fontSize:12,color:'var(--text3)'}}>{ja ? '発行' : 'Issued'}: {f.issue_date} · {ja ? '期限' : 'Due'}: {f.due_date||'—'}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:18,fontWeight:700,color:'var(--green)'}}>¥{Number(f.total||0).toLocaleString()}</div>
@@ -350,7 +360,7 @@ export default function Faturas() {
           </div>
 
           <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-primary" onClick={handleCreate}>✅ Create Fatura</button>
+            <button className="btn btn-primary" onClick={handleCreate}>✅ {ja ? '請求書を作成' : 'Create invoice'}</button>
             <button className="btn" onClick={()=>setTab('list')}>Cancel</button>
           </div>
         </div>

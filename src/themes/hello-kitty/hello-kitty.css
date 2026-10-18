@@ -1,0 +1,338 @@
+/*
+  Hello Kitty theme for one employee account (see src/lib/employeeTheme.js).
+  Every rule is scoped to `.kp-theme-hello-kitty`, a class EmployeePortal puts
+  on its own backdrop/shell only for that account, so no other account, the
+  admin panel or the client portal can ever match these selectors.
+  The background art is configurable: override --hk-bg-image (and
+  --hk-mascot for the illustration) with any local image.
+*/
+.emp-backdrop.kp-theme-hello-kitty,
+.emp-shell.kp-theme-hello-kitty{
+  --hk-pink:#ec4f8c;
+  --hk-pink-dark:#c93a72;
+  --hk-pink-mid:#f78fb7;
+  --hk-pink-soft:#ffe3ee;
+  --hk-pink-softer:#fff3f8;
+  --hk-border:#f8cadb;
+  --hk-text:#3a2430;
+  --hk-muted:#8a6476;
+  --hk-shadow:0 8px 22px rgba(236,79,140,.10);
+  --hk-bg-image:url('./pattern.svg');
+  --hk-mascot:url('./kitty.svg');
+  --hk-bow:url('./bow.svg');
+  --hk-heart:url('./heart.svg');
+}
+.emp-backdrop.kp-theme-hello-kitty{background:#fbe3ee !important}
+.emp-shell.kp-theme-hello-kitty{
+  --emp-blue:var(--hk-pink);
+  --emp-text:var(--hk-text);
+  --emp-muted:var(--hk-muted);
+  --emp-border:var(--hk-border);
+  background:var(--hk-bg-image) 0 0/220px 220px repeat,linear-gradient(180deg,#fff0f6 0%,#ffe6f0 100%) !important;
+  color:var(--hk-text) !important;
+}
+@media(min-width:768px){
+  .emp-shell.kp-theme-hello-kitty{box-shadow:0 0 0 1px var(--hk-border),0 20px 70px rgba(236,79,140,.14) !important}
+}
+
+/* ---------- Header ---------- */
+.emp-shell.kp-theme-hello-kitty .emp-app-header{
+  position:relative;
+  background:rgba(255,246,250,.94) !important;
+  border-bottom:1px solid var(--hk-border) !important;
+  box-shadow:0 6px 18px rgba(236,79,140,.08) !important;
+}
+.emp-shell.kp-theme-hello-kitty .emp-header-identity{position:relative;padding-bottom:4px}
+.emp-shell.kp-theme-hello-kitty .emp-header-identity::after{
+  content:"";position:absolute;left:80px;top:26px;width:56px;height:44px;
+  background:var(--hk-mascot) center/contain no-repeat;pointer-events:none;z-index:0;
+}
+.emp-shell.kp-theme-hello-kitty .emp-brand{position:relative;z-index:1}
+.emp-shell.kp-theme-hello-kitty .emp-app-header .emp-brand{color:var(--hk-pink-dark) !important;font-family:Georgia,"Times New Roman",serif;letter-spacing:.14em}
+.emp-shell.kp-theme-hello-kitty .emp-kp-mark{background:linear-gradient(145deg,#ff7aac,#e2437f) !important;color:#fff !important;box-shadow:0 6px 14px rgba(236,79,140,.28)}
+.emp-shell.kp-theme-hello-kitty .emp-score-card{border-color:var(--hk-border) !important;background:#fff !important;box-shadow:var(--hk-shadow)}
+.emp-shell.kp-theme-hello-kitty .emp-score-label{color:var(--hk-muted) !important}
+.emp-shell.kp-theme-hello-kitty .emp-app-header .kp-lang-dark{border-color:var(--hk-border) !important;background:#fff !important}
+.emp-shell.kp-theme-hello-kitty .emp-app-header .kp-lang-dark .kp-lang-btn{color:var(--hk-muted) !important}
+.emp-shell.kp-theme-hello-kitty .emp-app-header .kp-lang-dark .kp-lang-btn.on{background:var(--hk-pink) !important;color:#fff !important;box-shadow:0 3px 9px rgba(236,79,140,.28) !important}
+.emp-shell.kp-theme-hello-kitty .emp-header-icon-button,
+.emp-shell.kp-theme-hello-kitty .emp-header-menu-button,
+.emp-shell.kp-theme-hello-kitty .emp-menu-close{border-color:var(--hk-border) !important;background:#fff !important;color:var(--hk-pink) !important;box-shadow:var(--hk-shadow) !important}
+.emp-shell.kp-theme-hello-kitty .emp-header-menu-button span{background:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-header-menu-button i{background:var(--hk-pink) !important}
+
+/* Greeting card with the mascot peeking in the corner */
+.emp-shell.kp-theme-hello-kitty .ex-greet{
+  position:relative;align-items:flex-start;
+  margin-top:12px;padding:14px 14px 18px;min-height:96px;
+  border:1px solid var(--hk-border);border-radius:20px;
+  background:#fff;box-shadow:var(--hk-shadow);overflow:hidden;
+}
+.emp-shell.kp-theme-hello-kitty .ex-greet::after{
+  content:"";position:absolute;right:8px;bottom:-14px;width:96px;height:77px;
+  background:var(--hk-mascot) center/contain no-repeat;pointer-events:none;
+}
+.emp-shell.kp-theme-hello-kitty .ex-greet::before{
+  content:"";position:absolute;right:104px;bottom:12px;width:30px;height:19px;
+  background:var(--hk-bow) center/contain no-repeat;opacity:.9;pointer-events:none;
+}
+.emp-shell.kp-theme-hello-kitty .ex-greet>div:first-child{position:relative;z-index:1;padding-right:6px}
+.emp-shell.kp-theme-hello-kitty .ex-greet>div:last-child{position:relative;z-index:1}
+.emp-shell.kp-theme-hello-kitty .ex-greet h1{color:var(--hk-text) !important}
+.emp-shell.kp-theme-hello-kitty .ex-greet p{color:var(--hk-muted) !important}
+.emp-shell.kp-theme-hello-kitty .emp-hello p b{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ex-clock{border-color:var(--hk-border) !important;background:var(--hk-pink-softer) !important;color:var(--hk-pink-dark) !important;box-shadow:none !important}
+.emp-shell.kp-theme-hello-kitty .emp-status-chip{border-color:var(--hk-border) !important;background:#fff !important;color:var(--hk-muted) !important}
+.emp-shell.kp-theme-hello-kitty .emp-status-chip.is-action{color:var(--hk-pink) !important}
+
+/* ---------- Home cards ---------- */
+.emp-shell.kp-theme-hello-kitty .ex-card,
+.emp-shell.kp-theme-hello-kitty .ex-tile,
+.emp-shell.kp-theme-hello-kitty .ex-checkin,
+.emp-shell.kp-theme-hello-kitty .ex-badges,
+.emp-shell.kp-theme-hello-kitty .ex-evo,
+.emp-shell.kp-theme-hello-kitty .ex-access-item,
+.emp-shell.kp-theme-hello-kitty .ex-chip,
+.emp-shell.kp-theme-hello-kitty .emp-timeoff,
+.emp-shell.kp-theme-hello-kitty .emp-no-shift-card,
+.emp-shell.kp-theme-hello-kitty .emp-action-panel,
+.emp-shell.kp-theme-hello-kitty .emp-ai-heading,
+.emp-shell.kp-theme-hello-kitty .svc-timer{
+  border-color:var(--hk-border) !important;
+  background-color:#fff !important;
+  box-shadow:var(--hk-shadow) !important;
+}
+.emp-shell.kp-theme-hello-kitty .ex-card,
+.emp-shell.kp-theme-hello-kitty .ex-tile{border-radius:20px !important}
+.emp-shell.kp-theme-hello-kitty .ex-card-head strong,
+.emp-shell.kp-theme-hello-kitty .ex-card-big,
+.emp-shell.kp-theme-hello-kitty .ex-tile span,
+.emp-shell.kp-theme-hello-kitty .ex-tile strong,
+.emp-shell.kp-theme-hello-kitty .ex-checkin-info strong,
+.emp-shell.kp-theme-hello-kitty .ex-evo-head strong,
+.emp-shell.kp-theme-hello-kitty .ex-ov strong{color:var(--hk-text) !important}
+.emp-shell.kp-theme-hello-kitty .ex-card-sub,
+.emp-shell.kp-theme-hello-kitty .ex-card-big small,
+.emp-shell.kp-theme-hello-kitty .ex-tile small,
+.emp-shell.kp-theme-hello-kitty .ex-ov span,
+.emp-shell.kp-theme-hello-kitty .ex-checkin-info span{color:var(--hk-muted) !important}
+.emp-shell.kp-theme-hello-kitty .ex-card-icon{background:var(--hk-pink-soft) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ex-progress{background:var(--hk-pink-soft) !important}
+.emp-shell.kp-theme-hello-kitty .ex-progress i{background:var(--hk-pink-mid) !important}
+.emp-shell.kp-theme-hello-kitty .ex-progress i.is-green{background:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ex-pill,
+.emp-shell.kp-theme-hello-kitty .ex-primary{background:var(--hk-pink) !important;box-shadow:0 8px 18px rgba(236,79,140,.28) !important}
+.emp-shell.kp-theme-hello-kitty .ex-checkin-btn{background:var(--hk-pink) !important;box-shadow:0 6px 16px rgba(236,79,140,.35) !important}
+.emp-shell.kp-theme-hello-kitty .ex-checkin-info small,
+.emp-shell.kp-theme-hello-kitty .ex-go{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ex-map{background:linear-gradient(135deg,#ffe3ee,#fff5f9) !important}
+
+/* Pending card gets a little bow, the notification tile turns hot pink. */
+.emp-shell.kp-theme-hello-kitty .ex-duo>.ex-tile{position:relative;overflow:hidden}
+.emp-shell.kp-theme-hello-kitty .ex-duo>.ex-tile::after{
+  content:"";position:absolute;top:10px;right:10px;width:30px;height:19px;
+  background:var(--hk-bow) center/contain no-repeat;opacity:.75;pointer-events:none;
+}
+.emp-shell.kp-theme-hello-kitty .ex-tile.is-blue{
+  background:var(--hk-heart) 14px 16px/16px 14px no-repeat,var(--hk-heart) calc(100% - 16px) calc(100% - 18px)/14px 12px no-repeat,linear-gradient(145deg,#f77aa9,#e6457f) !important;
+  border-color:transparent !important;
+  box-shadow:0 10px 22px rgba(236,79,140,.32) !important;
+}
+.emp-shell.kp-theme-hello-kitty .ex-tile.is-blue::after{opacity:.55}
+.emp-shell.kp-theme-hello-kitty .ex-tile.is-blue span,
+.emp-shell.kp-theme-hello-kitty .ex-tile.is-blue small,
+.emp-shell.kp-theme-hello-kitty .ex-tile.is-blue strong{color:#fff !important}
+
+/* Section titles with a bow and a heart on the right */
+.emp-shell.kp-theme-hello-kitty .ex-section-title{
+  display:flex;align-items:center;gap:8px;color:var(--hk-pink-dark) !important;
+}
+.emp-shell.kp-theme-hello-kitty .ex-section-title::before{
+  content:"";width:30px;height:19px;flex:0 0 30px;background:var(--hk-bow) center/contain no-repeat;
+}
+.emp-shell.kp-theme-hello-kitty .ex-section-title::after{
+  content:"";width:14px;height:12px;margin-left:auto;background:var(--hk-heart) center/contain no-repeat;opacity:.8;
+}
+
+.emp-shell.kp-theme-hello-kitty .ex-chip{color:var(--hk-text) !important;border-radius:14px !important}
+.emp-shell.kp-theme-hello-kitty .ex-chip i{border-color:var(--hk-border) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ex-chip.is-gold{border-color:var(--hk-pink-mid) !important;background:var(--hk-pink-softer) !important;color:var(--hk-pink-dark) !important}
+.emp-shell.kp-theme-hello-kitty .ex-chip.is-gold i{border-color:var(--hk-pink-mid) !important}
+.emp-shell.kp-theme-hello-kitty .ex-access-item{color:var(--hk-text) !important;border-radius:18px !important}
+.emp-shell.kp-theme-hello-kitty .ex-access-icon{--soft:var(--hk-pink-soft);--ink:var(--hk-pink)}
+.emp-shell.kp-theme-hello-kitty .ex-access-item.tone-purple .ex-access-icon{--soft:#f3e8ff;--ink:#a855f7}
+.emp-shell.kp-theme-hello-kitty .ex-ov{--soft:#fff;border:1px solid var(--hk-border)}
+.emp-shell.kp-theme-hello-kitty .ex-spot{border-color:var(--hk-pink-mid) !important;background:var(--hk-pink-softer) !important}
+.emp-shell.kp-theme-hello-kitty .ex-spot strong,
+.emp-shell.kp-theme-hello-kitty .ex-spot>span{color:var(--hk-pink-dark) !important}
+.emp-shell.kp-theme-hello-kitty .ex-evo-kpi{background:var(--hk-pink-softer) !important}
+.emp-shell.kp-theme-hello-kitty .ex-evo-col i{background:var(--hk-pink-mid) !important}
+.emp-shell.kp-theme-hello-kitty .ex-evo-col.is-now i{background:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-timeoff-head button{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-bell-all{color:var(--hk-pink) !important}
+
+/* Service timer keeps its warning/overtime colours, normal state goes pink. */
+.emp-shell.kp-theme-hello-kitty .svc-timer:not(.is-warn):not(.is-over){--tone:var(--hk-pink);--tone-soft:var(--hk-pink-soft)}
+
+/* ---------- Shared employee buttons, headings, calendar ---------- */
+.emp-shell.kp-theme-hello-kitty .emp-section-heading>span,
+.emp-shell.kp-theme-hello-kitty .emp-empty-kicker,
+.emp-shell.kp-theme-hello-kitty .emp-menu-kicker{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-empty-icon{border-color:var(--hk-border) !important;background:var(--hk-pink-soft) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-primary-button{border-color:var(--hk-pink) !important;background:var(--hk-pink) !important;color:#fff !important}
+.emp-shell.kp-theme-hello-kitty .emp-outline-button,
+.emp-shell.kp-theme-hello-kitty .emp-add-service-button{border-color:var(--hk-border) !important;background:#fff !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-past-service-button{border-color:var(--hk-border) !important;background:var(--hk-pink-softer) !important;color:var(--hk-pink-dark) !important}
+.emp-shell.kp-theme-hello-kitty .emp-primary-button,
+.emp-shell.kp-theme-hello-kitty .emp-outline-button,
+.emp-shell.kp-theme-hello-kitty .emp-add-service-button,
+.emp-shell.kp-theme-hello-kitty .emp-past-service-button{border-radius:999px !important}
+.emp-shell.kp-theme-hello-kitty .emp-request-product-link{border-color:var(--hk-border) !important;background:var(--hk-pink-softer) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-calendar-toolbar button{border-color:var(--hk-border) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-calendar-day.is-today{border-color:var(--hk-pink-mid) !important;background:var(--hk-pink-softer) !important}
+.emp-shell.kp-theme-hello-kitty .emp-calendar-day.is-selected{border-color:var(--hk-pink) !important;background:var(--hk-pink-soft) !important;box-shadow:0 0 0 2px rgba(236,79,140,.12) !important}
+.emp-shell.kp-theme-hello-kitty .emp-calendar-day.is-today .emp-calendar-day-number{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-action-tile>span{background:var(--hk-pink-soft) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-action-ai>span,
+.emp-shell.kp-theme-hello-kitty .emp-ai-orb{background:linear-gradient(135deg,#f77aa9,#e6457f) !important}
+
+/* Availability planner (status colours stay: green available, red day off) */
+.emp-shell.kp-theme-hello-kitty .av-save{background:var(--hk-pink) !important;box-shadow:0 6px 16px rgba(236,79,140,.28) !important}
+.emp-shell.kp-theme-hello-kitty .av-day.is-changed{box-shadow:0 0 0 2px var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .av-grid th.is-today b{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ex-evo-legend i.is-bar{background:var(--hk-pink) !important}
+
+/* Forms */
+.emp-shell.kp-theme-hello-kitty input,
+.emp-shell.kp-theme-hello-kitty select,
+.emp-shell.kp-theme-hello-kitty textarea{border-color:var(--hk-border) !important;color:var(--hk-text) !important;border-radius:12px}
+.emp-shell.kp-theme-hello-kitty input:focus,
+.emp-shell.kp-theme-hello-kitty select:focus,
+.emp-shell.kp-theme-hello-kitty textarea:focus{border-color:var(--hk-pink-mid) !important;box-shadow:0 0 0 4px rgba(236,79,140,.12) !important}
+.emp-shell.kp-theme-hello-kitty input[type="checkbox"],
+.emp-shell.kp-theme-hello-kitty input[type="radio"],
+.emp-shell.kp-theme-hello-kitty input[type="range"]{accent-color:var(--hk-pink)}
+
+/* Legacy inline palette (gold → blue in index.css) now goes pink here. */
+.emp-shell.kp-theme-hello-kitty [style*="#c19c56"],
+.emp-shell.kp-theme-hello-kitty [style*="#e8c47a"],
+.emp-shell.kp-theme-hello-kitty [style*="color: rgb(193, 156, 86)"],
+.emp-shell.kp-theme-hello-kitty [style*="color: rgb(96, 165, 250)"]{color:var(--hk-pink) !important;border-color:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty [style*="#60a5fa"],
+.emp-shell.kp-theme-hello-kitty [style*="color: rgb(232, 196, 122)"]{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty [style*="linear-gradient(135deg, rgb(193, 156, 86)"],
+.emp-shell.kp-theme-hello-kitty [style*="linear-gradient(135deg, rgb(96, 165, 250)"]{
+  background:linear-gradient(135deg,#f77aa9,#e6457f) !important;color:#fff !important;border-color:transparent !important;
+  box-shadow:0 8px 18px rgba(236,79,140,.24) !important;
+}
+.emp-shell.kp-theme-hello-kitty [style*="linear-gradient(90deg, rgb(193, 156, 86)"],
+.emp-shell.kp-theme-hello-kitty [style*="linear-gradient(90deg, rgb(96, 165, 250)"]{background:linear-gradient(90deg,#f78fb7,#ec4f8c) !important}
+.emp-shell.kp-theme-hello-kitty [style*="background: rgb(193, 156, 86)"]{background:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty [style*="rgba(193,156,86"],
+.emp-shell.kp-theme-hello-kitty [style*="rgba(193, 156, 86"],
+.emp-shell.kp-theme-hello-kitty [style*="background: rgba(96, 165, 250"]{background:var(--hk-pink-softer) !important;border-color:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty [style*="border: 1px solid rgba(255, 255, 255"],
+.emp-shell.kp-theme-hello-kitty [style*="border:1px solid rgba(255,255,255"]{border-color:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty [style*="color: rgb(255, 255, 255)"],
+.emp-shell.kp-theme-hello-kitty [style*="color:#fff"],
+.emp-shell.kp-theme-hello-kitty [style*="color: #fff"]{color:var(--hk-text) !important}
+
+/* ---------- Sheets, modals, quick-add ---------- */
+.emp-shell.kp-theme-hello-kitty .emp-sheet,
+.emp-shell.kp-theme-hello-kitty [style*="background: rgba(13,31,53"],
+.emp-shell.kp-theme-hello-kitty [style*="background:#0d1f35"],
+.emp-shell.kp-theme-hello-kitty [style*="background: rgb(13, 31, 53)"]{
+  background:#fff var(--hk-heart) calc(100% - 22px) 18px/16px 14px no-repeat !important;
+  border-color:var(--hk-border) !important;
+  box-shadow:0 -10px 40px rgba(236,79,140,.16) !important;
+}
+.emp-shell.kp-theme-hello-kitty .emp-sheet-backdrop{background:rgba(92,32,58,.42) !important}
+.emp-shell.kp-theme-hello-kitty .emp-sheet button[style*="linear-gradient(135deg, rgb(96, 165, 250)"],
+.emp-shell.kp-theme-hello-kitty .emp-sheet button[style*="linear-gradient(135deg, rgb(193, 156, 86)"]{background:var(--hk-pink) !important;color:#fff !important}
+.emp-shell.kp-theme-hello-kitty .emp-sheet [style*="color: rgb(193, 156, 86)"],
+.emp-shell.kp-theme-hello-kitty .emp-sheet [style*="color: rgb(232, 196, 122)"],
+.emp-shell.kp-theme-hello-kitty .emp-sheet [style*="color: rgb(96, 165, 250)"]{color:var(--hk-pink-dark) !important}
+.emp-shell.kp-theme-hello-kitty .emp-sheet [style*="background: rgba(193, 156, 86"],
+.emp-shell.kp-theme-hello-kitty .emp-sheet [style*="background: rgba(96, 165, 250"]{background:var(--hk-pink-softer) !important;border-color:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty .ex-quick-overlay{background:rgba(92,32,58,.38) !important}
+.emp-shell.kp-theme-hello-kitty .ex-quick-sheet{
+  position:relative;
+  background:#fff var(--hk-bow) calc(100% - 18px) 14px/34px 21px no-repeat !important;
+  box-shadow:0 -10px 40px rgba(236,79,140,.18);
+}
+.emp-shell.kp-theme-hello-kitty .ex-quick-grip{background:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty .ex-quick-sheet>strong{color:var(--hk-pink-dark) !important}
+.emp-shell.kp-theme-hello-kitty .ex-quick-item{border-color:var(--hk-border) !important;border-radius:16px !important}
+.emp-shell.kp-theme-hello-kitty .ex-quick-item>span{background:var(--hk-pink-soft) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ex-quick-item b{color:var(--hk-text) !important}
+.emp-shell.kp-theme-hello-kitty .ex-quick-item small{color:var(--hk-muted) !important}
+
+/* ---------- Side menu ---------- */
+.emp-shell.kp-theme-hello-kitty .emp-menu-overlay{background:rgba(92,32,58,.36) !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-panel{background:#fff6fa var(--hk-bg-image) 0 0/220px 220px repeat !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-head{position:relative;background:#fff !important;border-bottom-color:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-head h2{color:var(--hk-text) !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-head>div:first-child{position:relative;padding-right:80px}
+.emp-shell.kp-theme-hello-kitty .emp-menu-head>div:first-child::after{
+  content:"";position:absolute;right:0;bottom:-6px;width:70px;height:56px;
+  background:var(--hk-mascot) center/contain no-repeat;pointer-events:none;
+}
+.emp-shell.kp-theme-hello-kitty .emp-menu-item{border-bottom-color:var(--hk-border) !important;color:var(--hk-text)}
+.emp-shell.kp-theme-hello-kitty .emp-menu-item:hover{background:#fff !important;border-color:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-item.is-active{border-color:var(--hk-pink-mid) !important;background:var(--hk-pink-soft) !important;color:var(--hk-pink-dark) !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-item-icon{border-color:var(--hk-border) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-item.is-active .emp-menu-item-icon{background:var(--hk-pink) !important;color:#fff !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-badge{border-color:var(--hk-border) !important;background:var(--hk-pink-soft) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-menu-footer{background:#fff !important;border-top-color:var(--hk-border) !important}
+
+/* ---------- Bottom navigation + centre add button ---------- */
+.emp-shell.kp-theme-hello-kitty .emp-bottom-nav{
+  background:rgba(255,248,251,.97) !important;
+  border-top:1px solid var(--hk-border) !important;
+  box-shadow:0 -6px 22px rgba(236,79,140,.10) !important;
+}
+.emp-shell.kp-theme-hello-kitty .emp-bottom-nav::after{
+  content:"";position:absolute;right:10px;top:-14px;width:34px;height:21px;
+  background:var(--hk-bow) center/contain no-repeat;pointer-events:none;
+}
+.emp-shell.kp-theme-hello-kitty .emp-bottom-item.is-active{background:var(--hk-pink-soft) !important;border-color:var(--hk-pink-mid) !important;box-shadow:none !important}
+.emp-shell.kp-theme-hello-kitty .emp-bottom-item .emp-bottom-icon,
+.emp-shell.kp-theme-hello-kitty .emp-bottom-item .emp-bottom-label{color:#a07a8c !important}
+.emp-shell.kp-theme-hello-kitty .emp-bottom-item.is-active .emp-bottom-icon,
+.emp-shell.kp-theme-hello-kitty .emp-bottom-item.is-active .emp-bottom-label{color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-bottom-item.is-active>div[style*="background"]{background:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ex-fab{background:linear-gradient(145deg,#f77aa9,#e6457f) !important;border-color:#fff !important;box-shadow:0 0 0 4px var(--hk-pink-soft),0 8px 20px rgba(236,79,140,.4) !important}
+
+/* ---------- AI assistant / chat ---------- */
+.emp-shell.kp-theme-hello-kitty .emp-ai-chat{background:linear-gradient(180deg,#fff 0%,#fff6fa 60%,#ffe9f2 100%) !important;border-color:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty .ai-card{border-color:var(--hk-border) !important}
+.emp-shell.kp-theme-hello-kitty .ai-card-icon{background:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ai-msg.is-user .ai-bubble{background:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ai-composer{border-color:var(--hk-border) !important;box-shadow:0 8px 24px rgba(236,79,140,.10) !important}
+.emp-shell.kp-theme-hello-kitty .ai-composer-send:not(:disabled){background:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .emp-ai-chat .ai-chat-header .ai-voice-btn{border-color:var(--hk-border) !important;background:var(--hk-pink-soft) !important;color:var(--hk-pink) !important}
+.emp-shell.kp-theme-hello-kitty .ai-tool-btn.is-on{background:var(--hk-pink-soft) !important;color:var(--hk-pink) !important}
+
+/* AI orb: same glossy sphere, in pink */
+.emp-shell.kp-theme-hello-kitty .ai-orb{background:
+  radial-gradient(circle at 30% 28%,rgba(255,255,255,.9) 0 8%,transparent 30%),
+  radial-gradient(circle at 72% 76%,rgba(255,170,205,.9) 0,transparent 50%),
+  radial-gradient(circle at 25% 80%,#b8326a 0,transparent 55%),
+  linear-gradient(140deg,#ffd0e3 0%,#ec4f8c 50%,#8f1f4f 100%) !important}
+
+/* Loading spinners/skeletons inside the portal */
+.emp-shell.kp-theme-hello-kitty .spinner{border-top-color:var(--hk-pink) !important}
+
+@media(max-width:380px){
+  .emp-shell.kp-theme-hello-kitty .ex-greet::after{width:80px;height:64px;bottom:-12px}
+  .emp-shell.kp-theme-hello-kitty .ex-greet::before{right:86px}
+  .emp-shell.kp-theme-hello-kitty .emp-header-identity::after{display:none}
+}
+@media(prefers-reduced-motion:no-preference){
+  .emp-shell.kp-theme-hello-kitty .ex-fab:not(.is-open):active{transform:scale(.94)}
+}
+.emp-shell.kp-theme-hello-kitty .ai-voice-status{background:rgba(236,79,140,.10);color:var(--hk-pink-dark)}
+.emp-shell.kp-theme-hello-kitty .ai-voice-spinner{border-color:rgba(236,79,140,.25);border-top-color:var(--hk-pink)}
+
+/* Personal greeting line ("Obrigado por tudo") under the title */
+.emp-shell.kp-theme-hello-kitty .ex-greet p.emp-hello-love{margin-top:2px;color:var(--hk-pink-dark) !important;font-weight:700;font-size:13px}

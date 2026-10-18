@@ -66,7 +66,7 @@ export async function fetchStorageBuffer(pathOrUrl) {
 
 export async function uploadStorageObject(path, buffer, contentType = 'image/jpeg') {
   const cleanPath = String(path).replace(/^\/+/, '')
-  if (!/^(jobs|claims)\//.test(cleanPath)) {
+  if (!/^(jobs|claims|facility)\//.test(cleanPath)) {
     throw new Error('Caminho de upload inválido')
   }
 
@@ -93,5 +93,6 @@ function guessType(path) {
   if (ext === 'webp') return 'image/webp'
   if (ext === 'heic' || ext === 'heif') return 'image/heic'
   if (ext === 'gif') return 'image/gif'
+  if (ext === 'pdf') return 'application/pdf'
   return 'image/jpeg'
 }

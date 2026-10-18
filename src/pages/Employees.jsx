@@ -1,18 +1,29 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import AvailabilityAdmin from '../components/AvailabilityAdmin'
+import NfcClockAdmin from '../components/NfcClockAdmin'
+import { RoleBadge, RolePicker } from '../components/EmployeeRole'
+import { useLang } from '../hooks/useLang'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 export default function Employees() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('list')
+  const { lang } = useLang()
+  const location = useLocation()
+  const tabFromUrl = search => { const v = new URLSearchParams(search).get('tab'); return v === 'availability' || v === 'register' ? v : null }
+  const [tab, setTab] = useState(() => tabFromUrl(window.location.search) || 'list')
+  // Opened from the day-off pop-up ("Open calendar") or Users ("+ Add user") while already on this page
+  useEffect(() => { const v = tabFromUrl(location.search); if (v) setTab(v) }, [location.search])
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
+  const [pendingAvail, setPendingAvail] = useState(0)
   const [workDays, setWorkDays] = useState([])
   const [form, setForm] = useState({
-    full_name:'', email:'', password:'', phone:'', address:'',
+    full_name:'', email:'', password:'', phone:'', address:'', job_role:'',
     contract_type:'Full-time', contract_start:'', contract_end:'',
     salary_type:'fixed', hourly_rate:0, fixed_salary:0, job_bonus_rate:0,
     hours_per_shift:0, shifts_per_week:5,
@@ -34,6 +45,10 @@ export default function Employees() {
   ]
 
   useEffect(() => { loadEmployees() }, [])
+  useEffect(() => {
+    supabase.from('employee_availability').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+      .then(({ count }) => setPendingAvail(count || 0))
+  }, [])
 
   const loadEmployees = async () => {
     setLoading(true)
@@ -53,6 +68,7 @@ export default function Employees() {
       password: form.password,
       phone: form.phone,
       address: form.address,
+      job_role: form.job_role.trim() || null,
       contract_type: form.contract_type,
       contract_start: form.contract_start || null,
       contract_end: form.contract_end || null,
@@ -77,7 +93,7 @@ export default function Employees() {
     })
     if (error) return toast.error(error.message)
     toast.success('Employee registered!')
-    setForm({ full_name:'', email:'', password:'', phone:'', address:'', contract_type:'Full-time', contract_start:'', contract_end:'', salary_type:'fixed', hourly_rate:0, fixed_salary:0, job_bonus_rate:0, hours_per_shift:0, shifts_per_week:5, advance_per_week:0, attendance_bonus:0, transport_reimbursed:true, bank_name:'', bank_branch:'', account_type:'普通', account_number:'', account_holder_katakana:'', notes:'' })
+    setForm({ full_name:'', email:'', password:'', phone:'', address:'', job_role:'', contract_type:'Full-time', contract_start:'', contract_end:'', salary_type:'fixed', hourly_rate:0, fixed_salary:0, job_bonus_rate:0, hours_per_shift:0, shifts_per_week:5, advance_per_week:0, attendance_bonus:0, transport_reimbursed:true, bank_name:'', bank_branch:'', account_type:'普通', account_number:'', account_holder_katakana:'', notes:'' })
     setWorkDays([])
     loadEmployees()
     setTab('list')
@@ -131,6 +147,8 @@ export default function Employees() {
         <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>List ({employees.length})</button>
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>+ Add Employee</button>
         <button className={`tab-pill${tab==='complaints'?' active':''}`} onClick={()=>setTab('complaints')}>Complaints</button>
+        <button className={`tab-pill${tab==='availability'?' active':''}`} onClick={()=>setTab('availability')}>🗓 Availability{pendingAvail>0?` (${pendingAvail})`:''}</button>
+        <button className={`tab-pill${tab==='nfc'?' active':''}`} onClick={()=>setTab('nfc')}>📶 NFC clock</button>
       </div>
 
       {tab==='list' && (
@@ -145,7 +163,7 @@ export default function Employees() {
                   {e.full_name?.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:15}}>{e.full_name}</div>
+                  <div style={{fontWeight:600,fontSize:15,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{e.full_name}<RoleBadge value={e.job_role} lang={lang} /></div>
                   <div style={{fontSize:12,color:'var(--text3)'}}>{e.email} · {e.contract_type}</div>
                 </div>
                 <span className={`badge ${e.is_active?'badge-green':'badge-red'}`}>{e.is_active?'Active':'Inactive'}</span>
@@ -206,6 +224,9 @@ export default function Employees() {
             <div className="form-group"><label>Phone</label><input value={form.phone} onChange={e=>upd('phone',e.target.value)} placeholder="090-1234-5678" /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
           </div>
+
+          <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',margin:'16px 0 10px',borderTop:'1px solid var(--border)',paddingTop:14}}>{lang==='ja'?'役割':'Role'}</div>
+          <RolePicker value={form.job_role} onChange={v=>upd('job_role',v)} lang={lang} />
 
           <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',margin:'16px 0 10px',borderTop:'1px solid var(--border)',paddingTop:14}}>Contract</div>
           <div className="grid-2">
@@ -276,6 +297,10 @@ export default function Employees() {
           <button className="btn btn-primary" style={{marginTop:8}} onClick={handleAdd}>✅ Register Employee</button>
         </div>
       )}
+
+      {tab==='nfc' && <NfcClockAdmin employees={employees} />}
+
+      {tab==='availability' && <AvailabilityAdmin employees={employees} onPendingCount={setPendingAvail} />}
 
       {tab==='complaints' && (
         <div className="card">

@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } from '../lib/portalStores'
 import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
+import ClientCareAdmin from '../components/ClientCareAdmin'
 
 export default function Clients() {
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
   const [tab, setTab] = useState('list')
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [portalClientId, setPortalClientId] = useState('')
+  const navigate = useNavigate()
   const [portalUsers, setPortalUsers] = useState([])
   const [portalForm, setPortalForm] = useState({ contact_name: '', email: '', password: '', location_name: '' })
   const [editingPortalUser, setEditingPortalUser] = useState(null)
@@ -24,6 +29,7 @@ export default function Clients() {
   const SERVICE_TYPES = ['Daily cleaning','Weekly cleaning','Night cleaning','Deep cleaning','Spot cleaning','Monthly cleaning']
 
   useEffect(() => { load() }, [])
+  useEffect(() => { if (searchId) setTab('list') }, [searchId])
   useEffect(() => { if (portalClientId) loadPortal(portalClientId) }, [portalClientId])
   useEffect(() => { if (tab === 'portal') checkPortalSchema() }, [tab])
 
@@ -244,13 +250,17 @@ export default function Clients() {
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>{editing?'✏️ Edit':'+ Register'}</button>
         <button className={`tab-pill${tab==='services'?' active':''}`} onClick={()=>setTab('services')}>Services</button>
         <button className={`tab-pill${tab==='portal'?' active':''}`} onClick={()=>setTab('portal')}>🔐 Portal</button>
+        <button className={`tab-pill${tab==='care'?' active':''}`} onClick={()=>setTab('care')}>🤝 Manager &amp; stores</button>
+        <button className="tab-pill" onClick={()=>navigate('/facility')}>🏢 Smart Facility</button>
       </div>
+
+      {tab==='care'&&<ClientCareAdmin clients={clients} onClientsChanged={load} />}
 
       {/* LIST */}
       {tab==='list'&&(
         <div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {clients.map(c=>{
+          {(searchId ? clients.filter(c => c.id === searchId) : clients).map(c=>{
             const profit = Number(c.monthly_revenue||0) - Number(c.monthly_cost||0)
             const margin = c.monthly_revenue ? Math.round(profit/c.monthly_revenue*100) : 0
             return (
@@ -281,6 +291,7 @@ export default function Clients() {
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <button className="btn btn-sm btn-primary" onClick={()=>handleEdit(c)}>✏️ Edit</button>
                   <button className="btn btn-sm" onClick={()=>{setPortalClientId(c.id);setTab('portal')}}>🔐 Portal</button>
+                  <button className="btn btn-sm" onClick={()=>navigate(`/facility?client=${c.id}`)}>🏢 3D</button>
                   <button className="btn btn-sm" onClick={()=>handleToggle(c.id,c.is_active)}>{c.is_active?'Deactivate':'Activate'}</button>
                   <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(c.id,c.company_name)}>🗑 Delete</button>
                 </div>

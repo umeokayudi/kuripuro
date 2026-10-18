@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress } from '../lib/geocode'
 import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
@@ -10,6 +11,18 @@ import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
+import { googleCalendarUrl } from '../lib/calendar'
+import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient, contractStatus } from '../lib/spotContract'
+import { saveSpotContractWithInvoice, generateContractForJob } from '../lib/spotContractOps'
+import { fetchContractSellers } from '../lib/contractSellers'
+import SellerCommissionFields from '../components/SellerCommissionFields'
+import JobsPeriodPanel from '../components/JobsPeriodPanel'
+import { tokyoToday } from '../lib/dates'
+import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
+import { jobDurationMin } from '../lib/workKpis'
+import {
+  periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
+} from '../lib/jobsPeriod'
 
 function applyGeocodeResult(result, setCoords, mapsMsg) {
   if (result?.lat != null && result?.lng != null) {
@@ -89,7 +102,10 @@ function DayScheduleView({ onClose }) {
   const [date, setDate] = useState(toDateStr(new Date()))
   const [calMonth, setCalMonth] = useState(() => toDateStr(new Date()).slice(0, 7))
   const [showCalendar, setShowCalendar] = useState(false)
-  const [jobs, setJobs] = useState([])
+  const [dayJobs, setJobs] = useState([])
+  const [areaFilter, setAreaFilter] = useState('')
+  const dayAreas = useMemo(() => [...new Set(dayJobs.map(j => j.area).filter(Boolean))].sort(), [dayJobs])
+  const jobs = areaFilter ? dayJobs.filter(j => (j.area || '') === areaFilter) : dayJobs
   const [monthJobStats, setMonthJobStats] = useState({})
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(false)
@@ -195,6 +211,7 @@ function DayScheduleView({ onClose }) {
 
   const JobCard = ({ j, idx }) => {
     const stl = statusStyle(j.status, st)
+    const missed = isMissedJob(j)
     const locName = locationNameFromTitle(j.title)
     const ctype = getCleaningType(j)
     const ctypeCfg = CLEANING_TYPES[ctype]
@@ -218,14 +235,15 @@ function DayScheduleView({ onClose }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{locName}</div>
-            <div style={{ fontSize: 13, color: ctypeCfg.color, fontWeight: 600, marginTop: 2 }}>{ctypeCfg.label}</div>
+            <div style={{ fontSize: 13, color: ctypeCfg.color, fontWeight: 600, marginTop: 2 }}>{ctypeCfg.label}{j.area && <span style={{ color: 'var(--text3)', fontWeight: 600 }}> · 📍 {j.area}</span>}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 8 }}>
                 🕐 {j.scheduled_time || '00:30'}
               </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: stl.text, background: stl.bg, padding: '4px 10px', borderRadius: 8 }}>
-                {stl.label}
+              <span style={{ fontSize: 12, fontWeight: 600, color: missed ? '#fca5a5' : stl.text, background: missed ? 'rgba(248,113,113,0.12)' : stl.bg, padding: '4px 10px', borderRadius: 8 }}>
+                {missed ? jt.incomplete : stl.label}
               </span>
+              {isRetroJob(j) && <span className="badge badge-amber" title={jt.retroBadgeHint}>{jt.retroBadge}</span>}
               {j.value > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value).toLocaleString()}</span>}
             </div>
             {j.description && (
@@ -373,6 +391,16 @@ function DayScheduleView({ onClose }) {
           <ProgressBar pct={progressPct} height={12} />
         </div>
 
+        {dayAreas.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>📍 {lang === 'ja' ? 'エリア' : 'Area'}</span>
+            <button type="button" className={`tab-pill${!areaFilter ? ' active' : ''}`} onClick={() => setAreaFilter('')}>{lang === 'ja' ? 'すべて' : 'All'} ({dayJobs.length})</button>
+            {dayAreas.map(a => (
+              <button key={a} type="button" className={`tab-pill${areaFilter === a ? ' active' : ''}`} onClick={() => setAreaFilter(a)}>{a} ({dayJobs.filter(j => j.area === a).length})</button>
+            ))}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
           {[
             [jt.total, jobs.length, 'var(--text)'],
@@ -443,12 +471,17 @@ function DayScheduleView({ onClose }) {
 }
 
 export default function Jobs() {
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
   const { lang, t } = useLang()
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
   const [tab, setTab] = useState('list')
   const [cleaningFilter, setCleaningFilter] = useState('all')
+  const [period, setPeriod] = useState('7d')
+  const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
+  const [people, setPeople] = useState(() => new Set())
   const [jobs, setJobs] = useState([])
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
@@ -464,17 +497,29 @@ export default function Jobs() {
     value:0, description:'', checklist_template:'', photo_required:false,
     location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic'
   })
+  const [contractForm, setContractForm] = useState(emptySpotContractForm)
+  const [spotContracts, setSpotContracts] = useState([])
+  const updContract = (k, v) => setContractForm(f => ({ ...f, [k]: v }))
+  const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll(); fetchContractSellers().then(setSellers) }, [])
+  useEffect(() => {
+    if (!searchId) return
+    const selected = jobs.find(job => job.id === searchId)
+    if (selected) setTab(selected.job_category === 'spot' ? 'spot' : 'list')
+  }, [searchId, jobs])
 
   const loadAll = async () => {
     setLoading(true)
     const [j, e, c, l] = await Promise.all([
       supabase.from('jobs').select('*').order('scheduled_date', { ascending: false }),
       supabase.from('employees').select('id,full_name,salary_type,hourly_rate,fixed_salary').eq('is_active', true),
-      supabase.from('clients').select('id,company_name').eq('is_active', true),
+      supabase.from('clients').select('id,company_name,address,contact_person,contact_name,phone,manager_name,manager_phone').eq('is_active', true),
       supabase.from('locations').select('*').eq('is_active', true).order('name'),
     ])
+    // Table added in v1.0.21; ignore errors so Jobs still loads if it is missing.
+    const sc = await supabase.from('spot_contracts').select('id,job_id,contract_number,status').eq('is_active', true)
+    setSpotContracts(sc.error ? [] : (sc.data || []))
     setJobs(j.data || [])
     setEmployees(e.data || [])
     setClients(c.data || [])
@@ -518,7 +563,7 @@ export default function Jobs() {
       ? form.title
       : applyCleaningTypeToTitle(form.title, form.cleaning_type)
     const checklistTemplate = form.checklist_template || checklistTemplateForJob({ title: jobTitle })
-    const { error } = await supabase.from('jobs').insert({
+    const { data: inserted, error } = await supabase.from('jobs').insert({
       title: jobTitle,
       client_id: form.client_id || null,
       client_name: cli?.company_name || '',
@@ -537,9 +582,21 @@ export default function Jobs() {
       job_category: form.job_category,
       status: 'assigned',
       spot_status: isSpot ? 'pending' : null,
-    })
+    }).select().single()
     if (error) return toast.error(error.message)
     toast.success(isSpot ? 'Spot job sent! Waiting for employee response.' : 'Job created!')
+    if (isSpot && contractForm.enabled) {
+      const row = buildSpotContractRow({ contract: contractForm, job: inserted, form, location: locations.find(l => l.id === form.location_id), client: cli, employee: emp })
+      try {
+        const { contract: saved, invoice, invoiceError } = await saveSpotContractWithInvoice(row)
+        toast.success(`📄 Contract ${saved.contract_number} saved in Contracts → Spot`)
+        if (invoice) toast.success(`💴 Invoice created · payment due ${invoice.due_date}`)
+        if (invoiceError) toast.error(`Invoice not created: ${invoiceError.message}`)
+      } catch (cErr) {
+        toast.error(`Contract not saved: ${cErr.message}`)
+      }
+    }
+    setContractForm(emptySpotContractForm())
     setForm({ title:'', client_id:'', client_name:'', employee_id:'', employee_name:'', scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'', value:0, description:'', checklist_template:'', photo_required:false, location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic' })
     loadAll()
     setTab('list')
@@ -562,11 +619,34 @@ export default function Jobs() {
     loadAll()
   }
 
-  const spotJobs = jobs.filter(j => j.job_category === 'spot')
-  const regularJobs = jobs.filter(j => j.job_category !== 'spot')
+  const matchingJobs = searchId ? jobs.filter(j => j.id === searchId) : jobs
+  const spotJobs = matchingJobs.filter(j => j.job_category === 'spot')
+  const allRegularJobs = matchingJobs.filter(j => j.job_category !== 'spot')
+  // Period + people filters (skipped when opening one job from search).
+  const range = searchId ? null : periodRange(period, tokyoToday(), customRange)
+  const prevRange = previousRange(range)
+  const peopleOptions = (() => {
+    const seen = new Map()
+    for (const j of allRegularJobs) if (!seen.has(j.employee_id || '')) seen.set(j.employee_id || '', j.employee_name || '')
+    for (const e of employees) if (seen.has(e.id)) seen.set(e.id, e.full_name)
+    return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => (!a.id) - (!b.id) || a.name.localeCompare(b.name))
+  })()
+  const byPeople = j => searchId || matchesPeople(j, people)
+  const regularJobs = allRegularJobs.filter(j => inRange(j, range) && byPeople(j))
+  const prevRegularJobs = prevRange ? allRegularJobs.filter(j => inRange(j, prevRange) && byPeople(j)) : []
   const basicJobs = regularJobs.filter(j => getCleaningType(j) === 'basic')
   const deepJobs = regularJobs.filter(j => getCleaningType(j) === 'deep')
   const filteredJobs = cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs
+  const prevFilteredJobs = prevRegularJobs.filter(j => cleaningFilter === 'all' || getCleaningType(j) === cleaningFilter)
+  const periodSummary = summarize(filteredJobs)
+  const prevSummary = prevRange ? summarize(prevFilteredJobs) : null
+  const personRows = summarizeByPerson(filteredJobs, prevFilteredJobs)
+  const dayTotals = {}
+  for (const j of filteredJobs) {
+    const d = (dayTotals[j.scheduled_date] ||= { n: 0, min: 0 })
+    d.n++
+    d.min += jobDurationMin(j) || 0
+  }
   const listCompleted = filteredJobs.filter(j => j.status === 'completed').length
   const listPct = filteredJobs.length ? Math.round((listCompleted / filteredJobs.length) * 100) : 0
 
@@ -587,6 +667,15 @@ export default function Jobs() {
 
       {tab==='list' && (
         <div>
+          {!searchId && (
+            <JobsPeriodPanel
+              period={period} setPeriod={setPeriod}
+              custom={customRange} setCustom={setCustomRange}
+              range={range} prevRange={prevRange}
+              people={people} setPeople={setPeople} peopleOptions={peopleOptions}
+              summary={periodSummary} prevSummary={prevSummary} byPerson={personRows}
+            />
+          )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
             {[
               { key: 'all', label: jt.filterAll, count: regularJobs.length, color: 'var(--navy)' },
@@ -629,12 +718,25 @@ export default function Jobs() {
               </div>
             </div>
           )}
-          {filteredJobs.map(j => {
+          {filteredJobs.map((j, idx) => {
             const ctype = getCleaningType(j)
             const ctypeCfg = CLEANING_TYPES[ctype]
             const locName = locationNameFromTitle(j.title)
+            const dur = jobDurationMin(j)
+            const startEnd = fmtStartEnd(j)
+            const newDay = j.scheduled_date !== filteredJobs[idx - 1]?.scheduled_date
+            const dayInfo = dayTotals[j.scheduled_date]
             return (
-            <div key={j.id} className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${ctypeCfg.color}` }}>
+            <div key={j.id}>
+            {newDay && j.scheduled_date && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, margin: '14px 2px 8px', fontSize: 13, color: 'var(--text2)' }}>
+                <span style={{ fontWeight: 800, color: 'var(--text)' }}>
+                  {new Date(j.scheduled_date + 'T12:00:00').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                </span>
+                <span>{fill(jt.jobsWithJobs, { n: dayInfo.n })}{dayInfo.min > 0 && ` · ⏱ ${fmtMinutes(dayInfo.min)}`}</span>
+              </div>
+            )}
+            <div className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${ctypeCfg.color}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
@@ -646,6 +748,12 @@ export default function Jobs() {
                   <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
                     👤 {j.employee_name || '—'} · 📅 {j.scheduled_date} · 🕐 {j.scheduled_time || '—'}
                   </div>
+                  {(dur != null || startEnd) && (
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>
+                      ⏱ {dur != null ? fmtMinutes(dur) : st.in_progress || '…'}
+                      {startEnd && <span style={{ fontWeight: 500, color: 'var(--text3)' }}> ({startEnd})</span>}
+                    </div>
+                  )}
                   {j.address && (
                     <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {j.address.startsWith('http') ? `🗺 ${jt.maps}` : j.address}
@@ -653,7 +761,10 @@ export default function Jobs() {
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                  <span className={`badge ${statusColor(j.status)}`}>{st[j.status] || j.status}</span>
+                  {isMissedJob(j)
+                    ? <span className="badge badge-red">{jt.incomplete}</span>
+                    : <span className={`badge ${statusColor(j.status)}`}>{st[j.status] || j.status}</span>}
+                  {isRetroJob(j) && <span className="badge badge-amber" title={jt.retroBadgeHint}>{jt.retroBadge}</span>}
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value || j.spot_value || 0).toLocaleString()}</span>
                 </div>
               </div>
@@ -698,6 +809,7 @@ export default function Jobs() {
                 {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>{jt.cancel}</button>}
               </div>
             </div>
+            </div>
           )})}
         </div>
       )}
@@ -720,6 +832,12 @@ export default function Jobs() {
                 </div>
               </div>
               {j.description && <div style={{fontSize:12,color:'var(--text2)',background:'var(--surface2)',borderRadius:6,padding:'7px 10px'}}>{j.description}</div>}
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:8}}>
+                {(() => { const c = spotContracts.find(x => x.job_id === j.id); return c
+                  ? <Link className="btn btn-sm" to={`/contracts?spot=${c.id}`}>📄 {c.contract_number} · {({ draft:'awaiting approval', approved:'approved ✓', rejected:'not approved', cancelled:'cancelled' })[contractStatus(c)]}</Link>
+                  : <button className="btn btn-sm btn-primary" onClick={async()=>{ try { const { contract, invoiceError } = await generateContractForJob(j); toast.success(`📄 ${contract.contract_number}`); if (invoiceError) toast.error(invoiceError.message); loadAll() } catch (err) { toast.error(err.message) } }}>📄 Generate contract</button> })()}
+                <a className="btn btn-sm" href={googleCalendarUrl(j)} target="_blank" rel="noreferrer">📅 Google Calendar</a>
+              </div>
             </div>
           ))}
         </div>
@@ -768,7 +886,7 @@ export default function Jobs() {
               </select>
             </div>
             <div className="form-group"><label>Client</label>
-              <select value={form.client_id} onChange={e=>upd('client_id',e.target.value)}>
+              <select value={form.client_id} onChange={e=>{ upd('client_id',e.target.value); setContractForm(f=>({ ...f, ...contractPrefillFromClient(clients.find(c=>c.id===e.target.value)) })) }}>
                 <option value="">Select client...</option>
                 {clients.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
               </select>
@@ -798,6 +916,36 @@ export default function Jobs() {
             <input type="checkbox" id="photo_req" checked={form.photo_required} onChange={e=>upd('photo_required',e.target.checked)} style={{width:16,height:16,cursor:'pointer'}} />
             <label htmlFor="photo_req" style={{cursor:'pointer',fontSize:13}}>📷 Photo required to complete this job</label>
           </div>
+
+          {form.job_category==='spot' && (
+            <div className="card" style={{border:'1px solid #EF9F27',marginBottom:14,padding:14}}>
+              <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:700,fontSize:14,cursor:'pointer',marginBottom:contractForm.enabled?12:0}}>
+                <input type="checkbox" checked={contractForm.enabled} onChange={e=>updContract('enabled',e.target.checked)} style={{width:16,height:16}} />
+                📄 Create a contract with this location
+              </label>
+              {contractForm.enabled && (<>
+                <div style={{fontSize:12,color:'var(--text3)',marginBottom:10}}>業務委託契約書 · company data of the location (甲) is filled from the client; KuriPuro (乙) data is added automatically.</div>
+                <div className="grid-2">
+                  <div className="form-group" style={{gridColumn:'1/-1'}}><label>Company address (甲)</label><input value={contractForm.client_address} onChange={e=>updContract('client_address',e.target.value)} placeholder="東京都港区…" /></div>
+                  <div className="form-group"><label>Representative (代表者)</label><input value={contractForm.client_representative} onChange={e=>updContract('client_representative',e.target.value)} placeholder="代表取締役 山田 太郎" /></div>
+                  <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="31" value={contractForm.payment_day} onChange={e=>updContract('payment_day',e.target.value)} /></div>
+                  <div className="form-group"><label>Contact person (location)</label><input value={contractForm.contact_name} onChange={e=>updContract('contact_name',e.target.value)} placeholder="山田様 / Store manager" /></div>
+                  <div className="form-group"><label>Contact phone</label><input value={contractForm.contact_phone} onChange={e=>updContract('contact_phone',e.target.value)} placeholder="03-1234-5678" /></div>
+                  <div className="form-group"><label>Price charged to the location (¥)</label><input type="number" value={contractForm.price} onChange={e=>updContract('price',e.target.value)} placeholder="30000" /></div>
+                  <div className="form-group"><label>Tax</label>
+                    <div style={{display:'flex',gap:8}}>
+                      <select value={contractForm.tax_rate} onChange={e=>updContract('tax_rate',e.target.value)}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select>
+                      <select value={String(contractForm.price_includes_tax)} onChange={e=>updContract('price_includes_tax',e.target.value==='true')}><option value="true">incl. tax</option><option value="false">+ tax</option></select>
+                    </div>
+                  </div>
+                  <SellerCommissionFields sellers={sellers.salespeople} rules={sellers.rules} contract={{ ...contractForm, price: contractForm.price || form.value }} value={contractForm} onChange={patch=>setContractForm(f=>({...f,...patch}))} />
+                </div>
+                <div className="form-group"><label>Scope of work (empty = description / checklist)</label><textarea value={contractForm.scope} onChange={e=>updContract('scope',e.target.value)} rows={3} placeholder="Kitchen floor, range hood, grease trap..." /></div>
+                <div className="form-group"><label>Special terms 特記事項 (optional, added after the standard articles)</label><textarea value={contractForm.terms} onChange={e=>updContract('terms',e.target.value)} rows={3} placeholder="例：駐車場は店舗裏を使用可" /></div>
+                <div style={{fontSize:12,color:'var(--text3)'}}>Saved in Contracts → Spot contracts, where you can print it and collect the location's signature.</div>
+              </>)}
+            </div>
+          )}
 
           {form.job_category==='spot' && (
             <div style={{background:'#FAEEDA',border:'1px solid #EF9F27',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:'#854F0B'}}>

@@ -1,7 +1,7 @@
 // api/analyze-reports.js — IA analisa relatórios de serviço (tempo, padrões, metas)
 
 import { geminiGenerate } from './_gemini.js'
-import { requireAdminSecret } from './_auth.js'
+import { requireAdmin } from './_auth.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo'
@@ -21,7 +21,7 @@ function compactJob(j) {
     employee: j.employee_name,
     location: j.title,
     date: j.scheduled_date,
-    type: j.retro_report ? 'retroactive' : 'live',
+    type: j.retro_report != null ? 'retroactive' : 'live',
     duration_min: dur,
     checklist: j.checklist_total ? `${j.checklist_done || 0}/${j.checklist_total}` : null,
     missed_items: j.checklist_missed_items || null,
@@ -74,7 +74,7 @@ const EMPTY = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  if (!requireAdminSecret(req, res)) return
+  if (!(await requireAdmin(req, res))) return
 
   const { days = 30, employeeName, lang = 'en' } = req.body || {}
   const locale = lang === 'ja' ? 'ja' : 'en'

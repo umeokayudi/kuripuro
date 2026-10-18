@@ -14,11 +14,11 @@ import {
   titleMatchesLocation,
   getCleaningType,
   parseDeepComponents,
-  isDeepCleanAllowedOnDate,
   DEFAULT_DEEP_CLEAN_PRICE,
   ALL_DEEP_COMPONENT_IDS,
 } from './cleaningType'
 import { checklistTemplateForJob } from './jobChecklist'
+import { tokyoToday } from './dates'
 
 export { titleMatchesLocation }
 
@@ -264,10 +264,6 @@ export async function employeeAddService(supabase, {
     return { ok: false, error: 'deep_components_required' }
   }
 
-  if (cleaningType === 'deep' && !isDeepCleanAllowedOnDate(location.name, date)) {
-    return { ok: false, error: 'wrong_deep_day' }
-  }
-
   const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })
 
   const { data: myActive } = await supabase
@@ -377,12 +373,13 @@ export async function employeeAddService(supabase, {
 
 export function isJobFullyRegistered(job) {
   if (!job || job.status !== 'completed') return false
-  return !!(job.retro_report || (job.photo_end_url && job.completed_at))
+  return !!(job.retro_report != null || (job.photo_end_url && job.completed_at))
 }
 
 /**
  * Prepare or create a job for retroactive "already completed" registration.
- * Allows past dates and re-opens incomplete completed jobs.
+ * Only for today (Tokyo): once the day turns the job is incomplete and can't be registered.
+ * Re-opens incomplete completed jobs.
  */
 export async function preparePastServiceJob(supabase, {
   employee,
@@ -395,17 +392,16 @@ export async function preparePastServiceJob(supabase, {
     return { ok: false, error: 'invalid_input' }
   }
 
+  if (date !== tokyoToday()) {
+    return { ok: false, error: 'day_closed' }
+  }
+
   if (cleaningType === 'basic' && (location.deepOnly || isOtpDeepOnlyLocation(location.name))) {
     return { ok: false, error: 'basic_not_available' }
   }
 
   if (cleaningType === 'deep' && !deepComponents?.length) {
     return { ok: false, error: 'deep_components_required' }
-  }
-
-  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
-  if (cleaningType === 'deep' && date >= today && !isDeepCleanAllowedOnDate(location.name, date)) {
-    return { ok: false, error: 'wrong_deep_day' }
   }
 
   const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })

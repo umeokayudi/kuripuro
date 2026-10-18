@@ -16,8 +16,9 @@ export function apiFetch(url, options = {}) {
   return fetch(url, { ...options, headers })
 }
 
-export function apiPost(url, body) {
+export function apiPost(url, body, options = {}) {
   return apiFetch(url, {
+    ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

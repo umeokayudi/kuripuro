@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
 import ContractTab from '../components/ContractTab'
+import { RoleBadge, RolePicker } from '../components/EmployeeRole'
+import { useLang } from '../hooks/useLang'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -90,6 +92,7 @@ function RecentDays({ jobs, onDayClick }) {
 export default function EmployeeProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { lang } = useLang()
   const [tab, setTab] = useState('overview')
   const [emp, setEmp] = useState(null)
   const [jobs, setJobs] = useState([])
@@ -113,7 +116,8 @@ export default function EmployeeProfile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ photoUrl: job.photo_end_url, locationName: job.title }),
       })
-      const result = await resp.json()
+      const result = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(result.error || `HTTP ${resp.status}`)
       await supabase.from('jobs').update({
         photo_ai_score: result?.nota ?? null,
         photo_ai_approved: result?.aprovado ?? null,
@@ -134,7 +138,7 @@ export default function EmployeeProfile() {
   const loadAll = async () => {
     setLoading(true)
     const [e, j, ev, p, adv] = await Promise.all([
-      supabase.from('employees').select('id,full_name,email,phone,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active,work_days,notes,hire_date').eq('id', id).maybeSingle(),
+      supabase.from('employees').select('id,full_name,email,phone,contract_type,hourly_rate,fixed_salary,salary_type,score,is_active,work_days,notes,hire_date,job_role').eq('id', id).maybeSingle(),
       supabase.from('jobs').select('*').eq('employee_id', id).order('scheduled_date', { ascending:false }).limit(30),
       supabase.from('evaluations').select('*').eq('employee_id', id).order('created_at', { ascending:false }),
       supabase.from('salary_payments').select('*').eq('employee_id', id).order('payment_date', { ascending:true }),
@@ -154,6 +158,7 @@ export default function EmployeeProfile() {
     const { error } = await supabase.from('employees').update({
       full_name:form.full_name, email:form.email, password:form.password,
       phone:form.phone, address:form.address, contract_type:form.contract_type,
+      job_role:String(form.job_role||'').trim()||null,
       salary_type:form.salary_type, hourly_rate:parseFloat(form.hourly_rate)||0,
       fixed_salary:parseFloat(form.fixed_salary)||0, job_bonus_rate:parseFloat(form.job_bonus_rate)||0,
       contract_start:form.contract_start||null, contract_end:form.contract_end||null,
@@ -209,7 +214,7 @@ export default function EmployeeProfile() {
           {emp.full_name?.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
         </div>
         <div>
-          <h2 style={{fontSize:18,fontWeight:700,margin:0}}>{emp.full_name}</h2>
+          <h2 style={{fontSize:18,fontWeight:700,margin:0,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{emp.full_name}<RoleBadge value={emp.job_role} lang={lang} /></h2>
           <div style={{fontSize:12,color:'var(--text3)'}}>{emp.email} · {emp.contract_type}</div>
         </div>
         <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
@@ -474,6 +479,8 @@ export default function EmployeeProfile() {
             <div className="form-group"><label>Phone</label><input value={form.phone||''} onChange={e=>upd('phone',e.target.value)} /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address||''} onChange={e=>upd('address',e.target.value)} /></div>
           </div>
+          <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:0.5,margin:'14px 0 10px',borderTop:'1px solid var(--border)',paddingTop:12}}>{lang==='ja'?'役割':'Role'}</div>
+          <RolePicker key={emp.id} value={form.job_role||''} onChange={v=>upd('job_role',v)} lang={lang} />
           <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:0.5,margin:'14px 0 10px',borderTop:'1px solid var(--border)',paddingTop:12}}>Contract</div>
           <div className="grid-2">
             <div className="form-group"><label>Contract Type</label><select value={form.contract_type||''} onChange={e=>upd('contract_type',e.target.value)}><option>Full-time</option><option>Part-time</option><option>Fixed-term</option><option>Hourly</option><option>Freelancer</option></select></div>

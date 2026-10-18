@@ -1,4 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import TimeOffCenter from './components/TimeOffCenter'
+import { APP_VERSION, APP_BUILD_LABEL } from './version'
+
+// Version stays known to the system only (not shown on screen).
+if (typeof window !== 'undefined') {
+  window.__KP_VERSION__ = APP_VERSION
+  document.documentElement.dataset.appVersion = APP_VERSION
+  console.info(`[Kuripuro] ${APP_BUILD_LABEL}`)
+}
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { LangProvider, useLang } from './hooks/useLang'
@@ -17,6 +26,7 @@ const Jobs = lazy(() => import('./pages/Jobs'))
 const Employees = lazy(() => import('./pages/Employees'))
 const Salary = lazy(() => import('./pages/Salary'))
 const Clients = lazy(() => import('./pages/Clients'))
+const Facility = lazy(() => import('./pages/Facility'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
@@ -24,6 +34,7 @@ const Evaluations = lazy(() => import('./pages/Evaluations'))
 const ServiceContracts = lazy(() => import('./pages/ServiceContracts'))
 const ScheduleGenerator = lazy(() => import('./pages/ScheduleGenerator'))
 const Faturas = lazy(() => import('./pages/Faturas'))
+const Mitsumori = lazy(() => import('./pages/Mitsumori'))
 const AdminChat = lazy(() => import('./pages/AdminChat'))
 const TransportClaims = lazy(() => import('./pages/TransportClaims'))
 const LiveTracking = lazy(() => import('./pages/LiveTracking'))
@@ -35,6 +46,13 @@ const SalaryComplaints = lazy(() => import('./pages/SalaryComplaints'))
 const EquipmentRequests = lazy(() => import('./pages/EquipmentRequests'))
 const ClientFeedback = lazy(() => import('./pages/ClientFeedback'))
 const AdminAI = lazy(() => import('./pages/AdminAI'))
+const SalespersonPortal = lazy(() => import('./pages/SalespersonPortal'))
+const MarketingPortal = lazy(() => import('./pages/MarketingPortal'))
+const SalesTeam = lazy(() => import('./pages/SalesTeam'))
+const SalesFunnelPage = lazy(() => import('./pages/SalesFunnelPage'))
+const Marketing = lazy(() => import('./pages/Marketing'))
+const Users = lazy(() => import('./pages/Users'))
+const Partners = lazy(() => import('./pages/Partners'))
 
 function PortalLoading() {
   return (
@@ -67,6 +85,7 @@ const PAGE_KEYS = {
   '/employees': 'employees',
   '/salary': 'salary',
   '/clients': 'clients',
+  '/facility': 'facility',
   '/client-feedback': 'clientFeedback',
   '/cashflow': 'cashflow',
   '/reports': 'reports',
@@ -75,6 +94,10 @@ const PAGE_KEYS = {
   '/schedule': 'schedule',
   '/contracts': 'contracts',
   '/faturas': 'faturas',
+  '/mitsumori': 'mitsumori',
+  '/sales-funnel': 'salesFunnel',
+  '/sales-team': 'salesTeam',
+  '/marketing': 'marketing',
   '/payments': 'payments',
   '/adminchat': 'chat',
   '/live': 'liveTrack',
@@ -84,6 +107,8 @@ const PAGE_KEYS = {
   '/salary-complaints': 'salaryIssues',
   '/equipment-requests': 'equipmentRequests',
   '/ai': 'ai',
+  '/users': 'users',
+  '/partners': 'partners',
 }
 
 function pageTitle(pathname, sidebar) {
@@ -99,6 +124,7 @@ function AppContent() {
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [searchResults, setSearchResults] = React.useState([])
   const [searching, setSearching] = React.useState(false)
+  const [searchError, setSearchError] = React.useState(false)
   const location = useLocation()
   const navigate = useNavigate()
   const a = t.app
@@ -109,24 +135,33 @@ function AppContent() {
     if (q.length < 2) {
       setSearchResults([])
       setSearching(false)
+      setSearchError(false)
       return
     }
     let cancelled = false
     const timer = setTimeout(async () => {
       setSearching(true)
-      const pattern = '%' + q.replace(/[%_]/g, '') + '%'
-      const [clientsRes, jobsRes, invoicesRes] = await Promise.all([
-        supabase.from('clients').select('id,company_name,contact_name').or(`company_name.ilike.${pattern},contact_name.ilike.${pattern}`).limit(5),
-        supabase.from('jobs').select('id,title,client_name,scheduled_date,status').or(`title.ilike.${pattern},client_name.ilike.${pattern}`).order('scheduled_date', { ascending:false }).limit(5),
-        supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').or(`client_name.ilike.${pattern},status.ilike.${pattern}`).order('issue_date', { ascending:false }).limit(5),
+      setSearchError(false)
+      const safeQuery = q.replace(/[%,_()]/g, ' ').trim()
+      if (!safeQuery) { setSearchResults([]); setSearching(false); return }
+      const pattern = `%${safeQuery}%`
+      const [clientsRes, clientContactsRes, jobsRes, jobClientsRes, invoicesRes, invoiceStatusesRes] = await Promise.all([
+        supabase.from('clients').select('id,company_name,contact_name').ilike('company_name', pattern).limit(5),
+        supabase.from('clients').select('id,company_name,contact_name').ilike('contact_name', pattern).limit(5),
+        supabase.from('jobs').select('id,title,client_name,scheduled_date,status').ilike('title', pattern).order('scheduled_date', { ascending:false }).limit(5),
+        supabase.from('jobs').select('id,title,client_name,scheduled_date,status').ilike('client_name', pattern).order('scheduled_date', { ascending:false }).limit(5),
+        supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').ilike('client_name', pattern).order('issue_date', { ascending:false }).limit(5),
+        supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').ilike('status', pattern).order('issue_date', { ascending:false }).limit(5),
       ])
       if (cancelled) return
+      const unique = rows => [...new Map(rows.map(row => [row.id, row])).values()]
       const results = [
-        ...(clientsRes.data || []).map(x => ({ type:'client', title:x.company_name || x.contact_name || 'Client', meta:x.contact_name && x.company_name ? x.contact_name : '', to:'/clients', id:x.id })),
-        ...(jobsRes.data || []).map(x => ({ type:'job', title:x.title || x.client_name || 'Job', meta:[x.client_name, x.scheduled_date].filter(Boolean).join(' · '), to:'/jobs', id:x.id })),
-        ...(invoicesRes.data || []).map(x => ({ type:'invoice', title:x.client_name || 'Invoice', meta:[x.status, x.due_date].filter(Boolean).join(' · '), to:'/faturas', id:x.id })),
+        ...unique([...(clientsRes.data || []), ...(clientContactsRes.data || [])]).map(x => ({ type:'client', title:x.company_name || x.contact_name || 'Client', meta:x.contact_name && x.company_name ? x.contact_name : '', to:'/clients', id:x.id })),
+        ...unique([...(jobsRes.data || []), ...(jobClientsRes.data || [])]).map(x => ({ type:'job', title:x.title || x.client_name || 'Job', meta:[x.client_name, x.scheduled_date].filter(Boolean).join(' · '), to:'/jobs', id:x.id })),
+        ...unique([...(invoicesRes.data || []), ...(invoiceStatusesRes.data || [])]).map(x => ({ type:'invoice', title:x.client_name || 'Invoice', meta:[x.status, x.due_date].filter(Boolean).join(' · '), to:'/faturas', id:x.id })),
       ]
       setSearchResults(results)
+      setSearchError([clientsRes, jobsRes, invoicesRes, clientContactsRes, jobClientsRes, invoiceStatusesRes].every(result => result.error))
       setSearching(false)
     }, 220)
     return () => { cancelled = true; clearTimeout(timer) }
@@ -148,7 +183,7 @@ function AppContent() {
   const goSearchResult = result => {
     setSearchOpen(false)
     setSearch('')
-    navigate(result.to)
+    navigate(`${result.to}?search=${encodeURIComponent(result.id)}`)
   }
 
   if (loading) return (
@@ -165,8 +200,17 @@ function AppContent() {
     <PortalErrorBoundary label="Employee portal">
       <Suspense fallback={<PortalLoading />}>
         <EmployeePortal />
-        <AIFloatingWidget mode="employee" employeeId={user.id} employeeName={user.name} dark />
       </Suspense>
+    </PortalErrorBoundary>
+  )
+  if (user.role === 'salesperson' && user.team === 'marketing') return (
+    <PortalErrorBoundary label="Marketing portal">
+      <Suspense fallback={<PortalLoading />}><MarketingPortal /></Suspense>
+    </PortalErrorBoundary>
+  )
+  if (user.role === 'salesperson') return (
+    <PortalErrorBoundary label="Sales portal">
+      <Suspense fallback={<PortalLoading />}><SalespersonPortal /></Suspense>
     </PortalErrorBoundary>
   )
   if (user.role === 'client') return (
@@ -192,10 +236,12 @@ function AppContent() {
               value={search}
               onChange={e => { setSearch(e.target.value); setSearchOpen(true) }}
               onFocus={() => setSearchOpen(true)}
+              onBlur={() => window.setTimeout(() => setSearchOpen(false), 150)}
               placeholder={a.searchPlaceholder}
               aria-label={a.searchPlaceholder}
             />
             {searching ? <span className="ref-search-loading">…</span> : <kbd>⌘K</kbd>}
+            {search && <button type="button" aria-label={a.clearSearch} className="ref-search-clear" onMouseDown={e => e.preventDefault()} onClick={() => { setSearch(''); setSearchResults([]); setSearchError(false); setSearchOpen(false) }}>×</button>}
             {searchOpen && search.trim().length >= 2 && (
               <div className="ref-search-results">
                 {searchResults.length ? searchResults.map((result, i) => (
@@ -204,11 +250,11 @@ function AppContent() {
                     <span className="ref-search-result-main"><strong>{result.title}</strong><small>{result.meta}</small></span>
                     <span>→</span>
                   </button>
-                )) : !searching ? <div className="ref-search-empty">{a.noSearchResults}</div> : null}
+                )) : !searching ? <div className="ref-search-empty">{searchError ? a.searchUnavailable : a.noSearchResults}</div> : null}
               </div>
             )}
           </div>
-          <div className="topbar-right"><button type="button" className="ref-top-action" title={a.notifications}>♧</button><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <div className="topbar-right"><TimeOffCenter /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
@@ -218,6 +264,7 @@ function AppContent() {
               <Route path="/employees" element={<Employees />} />
               <Route path="/salary" element={<Salary />} />
               <Route path="/clients" element={<Clients />} />
+              <Route path="/facility" element={<Facility />} />
               <Route path="/client-feedback" element={<ClientFeedback />} />
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
@@ -226,6 +273,10 @@ function AppContent() {
               <Route path="/schedule" element={<ScheduleGenerator />} />
               <Route path="/contracts" element={<ServiceContracts />} />
               <Route path="/faturas" element={<Faturas />} />
+              <Route path="/mitsumori" element={<Mitsumori />} />
+              <Route path="/sales-funnel" element={<SalesFunnelPage />} />
+              <Route path="/sales-team" element={<SalesTeam />} />
+              <Route path="/marketing" element={<Marketing />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/adminchat" element={<AdminChat />} />
               <Route path="/live" element={<LiveTracking />} />
@@ -236,11 +287,14 @@ function AppContent() {
               <Route path="/salary-complaints" element={<SalaryComplaints />} />
               <Route path="/equipment-requests" element={<EquipmentRequests />} />
               <Route path="/ai" element={<AdminAI />} />
+              <Route path="/users" element={<Users />} />
+              <Route path="/partners" element={<Partners />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Suspense>
         </main>
       </div>
+      {location.pathname !== '/' && location.pathname !== '/ai' && <AIFloatingWidget mode="admin" />}
     </div>
   )
 }

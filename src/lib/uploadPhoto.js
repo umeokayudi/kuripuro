@@ -37,3 +37,22 @@ export async function uploadJobPhoto(path, file) {
   if (error) throw new Error('Falha ao enviar foto: ' + error.message)
   return jpgPath
 }
+
+/** Saves a contract PDF (Blob) under jobs/contracts/… in service-photos. Returns the path. */
+export async function uploadContractPdf(path, blob) {
+  const buf = await blob.arrayBuffer()
+  try {
+    const resp = await fetch('/api/upload-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, data: toBase64(buf), contentType: 'application/pdf' }),
+    })
+    const result = await resp.json()
+    if (resp.ok && result.path) return result.path
+  } catch {
+    // fallback abaixo
+  }
+  const { error } = await supabase.storage.from('service-photos').upload(path, blob, { upsert: true, contentType: 'application/pdf' })
+  if (error) throw new Error('Falha ao salvar PDF: ' + error.message)
+  return path
+}
