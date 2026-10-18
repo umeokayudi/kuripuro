@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { localeOf } from '../hooks/useLang'
 
 // Small chart pieces for the sales and marketing KPI panels.
 // One hue (--kpi-bar) for magnitude; status colors only for good/bad, always with a sign or label.
@@ -10,7 +11,7 @@ export const num = (n, digits = 0) => (n == null ? '—' : Number(n).toLocaleStr
 export function monthLabel(month, lang) {
   const [y, m] = String(month).split('-').map(Number)
   if (!y || !m) return month
-  return new Intl.DateTimeFormat(lang === 'ja' ? 'ja-JP' : 'en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)))
+  return new Intl.DateTimeFormat(lang === 'ja' || lang === 'pt' ? localeOf(lang) : 'en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)))
 }
 
 /** Range pills shared by every panel. */

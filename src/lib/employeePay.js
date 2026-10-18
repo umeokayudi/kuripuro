@@ -46,7 +46,8 @@ export function employeeEarningsForJob(job, empInfo) {
 export function salaryTypeLabel(type, lang = 'en') {
   const en = { fixed: 'Monthly fixed', hourly: 'Hourly', per_job: 'Per job', mixed: 'Mixed' }
   const ja = { fixed: '月給', hourly: '時給', per_job: '件数', mixed: '混合' }
-  const map = lang === 'ja' ? ja : en
+  const pt = { fixed: 'Mensal fixo', hourly: 'Por hora', per_job: 'Por serviço', mixed: 'Misto' }
+  const map = lang === 'ja' ? ja : lang === 'pt' ? pt : en
   return map[type] || type
 }
 
@@ -62,6 +63,7 @@ export function formatShiftElapsed(seconds, lang = 'en') {
     return lang === 'ja' ? `${h}時間${m}分` : `${h}h ${m}m`
   }
   const days = Math.floor(seconds / 86400)
+  if (lang === 'pt') return `Iniciado há ${days} dia${days > 1 ? 's' : ''}`
   return lang === 'ja' ? `${days}日前に開始` : `Started ${days} day${days > 1 ? 's' : ''} ago`
 }
 

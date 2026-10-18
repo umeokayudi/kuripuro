@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
 import { useLang, fill } from '../hooks/useLang'
 import { avgStars, starsDisplay } from '../lib/satisfaction'
@@ -13,7 +15,8 @@ const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 export default function ClientFeedback() {
   const { t } = useLang()
   const f = t.feedback
-  const [tab, setTab] = useState('ratings')
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState(() => ['ratings', 'complaints', 'compliments', 'requests'].includes(params.get('tab')) ? params.get('tab') : 'ratings')
   const [ratings, setRatings] = useState([])
   const [complaints, setComplaints] = useState([])
   const [compliments, setCompliments] = useState([])
@@ -25,6 +28,7 @@ export default function ClientFeedback() {
   const [lightbox, setLightbox] = useState(null)
 
   const load = async () => {
+    pendingChanged()
     const [r, cp, cm, rq, cl] = await Promise.all([
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('client_complaints').select('*').order('created_at', { ascending: false }).limit(100),

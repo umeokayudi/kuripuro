@@ -439,9 +439,9 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
           </div>
         </div>
         <div className="ai-chat-tools">
-          {!compact && voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).length > 0 && (
+          {!compact && voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en')).length > 0 && (
             <select className="ai-voice-select" value={voiceName} onChange={e => setVoiceName(e.target.value)} title="AI voice">
-              {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : 'en')).map(v => (
+              {voices.filter(v => v.lang?.startsWith(lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en')).map(v => (
                 <option key={v.name} value={v.name}>{v.name.split(' ')[0]}</option>
               ))}
             </select>

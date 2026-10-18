@@ -5,7 +5,8 @@
 export const BOARD_STAGES = ['approach', 'followup', 'quote', 'negotiation', 'won', 'lost']
 export const MEDIA_PLATFORMS = ['google_ads', 'meta_ads', 'tiktok_ads', 'line_ads', 'yahoo_ads', 'x_ads', 'youtube_ads', 'seo', 'flyer', 'other']
 const BRAND = { google_ads: 'Google Ads', meta_ads: 'Meta Ads (Facebook / Instagram)', tiktok_ads: 'TikTok Ads', line_ads: 'LINE Ads', yahoo_ads: 'Yahoo! Ads', x_ads: 'X (Twitter) Ads', youtube_ads: 'YouTube Ads' }
-export const platformLabel = (key, lang) => BRAND[key] || ({ seo: lang === 'ja' ? 'SEO・自然検索' : 'SEO / organic', flyer: lang === 'ja' ? 'チラシ' : 'Flyer', total: lang === 'ja' ? '合計' : 'Total' }[key]) || (lang === 'ja' ? 'その他' : 'Other')
+const L3 = (lang, en, ja, pt) => (lang === 'ja' ? ja : lang === 'pt' ? pt : en)
+export const platformLabel = (key, lang) => BRAND[key] || ({ seo: L3(lang, 'SEO / organic', 'SEO・自然検索', 'SEO / orgânico'), flyer: L3(lang, 'Flyer', 'チラシ', 'Panfleto'), total: L3(lang, 'Total', '合計', 'Total') }[key]) || L3(lang, 'Other', 'その他', 'Outros')
 
 const day = value => String(value || '').slice(0, 10)
 const monthOf = value => day(value).slice(0, 7)

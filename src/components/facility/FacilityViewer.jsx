@@ -3,6 +3,7 @@ import FacilityScene from './FacilityScene'
 import FacilityItemPopup from './FacilityItemPopup'
 import PhotoLightbox from '../PhotoLightbox'
 import { viewablePhotoUrl } from '../../lib/photoUrl'
+import { pickLang } from '../../hooks/useLang'
 import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds, elementTasks, careForElement } from '../../lib/facilityModel'
 import CareList, { rowsForElement } from './CareList'
 
@@ -144,7 +145,7 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
   const q = query.trim().toLowerCase()
   const listed = layout.elements.filter(el => !q
     || el.name.toLowerCase().includes(q)
-    || (ELEMENT_KINDS[el.kind]?.[lang === 'ja' ? 'ja' : 'en'] || '').toLowerCase().includes(q))
+    || (pickLang(lang, ELEMENT_KINDS[el.kind]?.en, ELEMENT_KINDS[el.kind]?.ja, ELEMENT_KINDS[el.kind]?.pt) || '').toLowerCase().includes(q))
 
   const chip = el => {
     const st = status.get(el.id)

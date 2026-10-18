@@ -22,6 +22,14 @@ const COPY = {
     comm: 'コミッションと支払い', toReceive: '受取予定', received: '受取済み', waiting: '承認待ち', monthly: '定期 / 月', details: '詳細',
     clients: '自分の顧客', search: '顧客を検索', filters: { all: 'すべて', open: '進行中', approved: '承認済み', active: '稼働中' }, noClients: '顧客はまだいません。', lastContact: '最終連絡',
   },
+  pt: {
+    next: 'Próximos retornos', none: 'Nenhum retorno agendado. Defina uma data em cada lead.', noDate: 'Sem data',
+    overdue: d => `${d}d de atraso`, today: 'Hoje', tomorrow: 'Amanhã', inDays: d => `em ${d}d`,
+    numbers: 'Meus números', week: 'Semana', month: 'Mês', all: 'Tudo',
+    leads: 'Novos leads', approaches: 'Abordagens', responses: 'Respostas', quotes: 'Orçamentos enviados', won: 'Fechados', conv: 'Taxa de resposta', value: 'Valor aprovado',
+    comm: 'Comissões e pagamentos', toReceive: 'A receber', received: 'Recebido', waiting: 'Aguardando aprovação', monthly: 'Fixo / mês', details: 'Detalhes',
+    clients: 'Meus clientes', search: 'Buscar cliente', filters: { all: 'Todos', open: 'Em andamento', approved: 'Aprovados', active: 'Ativos' }, noClients: 'Nenhum cliente ainda.', lastContact: 'Último contato',
+  },
 }
 
 function addDays(day, n) {
@@ -31,7 +39,7 @@ function addDays(day, n) {
 }
 
 export function NextFollowups({ queue, lang, onOpen, onLog, logLabel, limit = 8 }) {
-  const c = COPY[lang === 'ja' ? 'ja' : 'en']
+  const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const rows = queue.filter(r => r.info.next).sort((a, b) => a.info.next.localeCompare(b.info.next)).slice(0, limit)
   const when = info => info.status === 'overdue' ? c.overdue(info.days) : info.days === 0 ? c.today : info.days === 1 ? c.tomorrow : c.inDays(info.days)
   return <section className="fa-card">
@@ -46,7 +54,7 @@ export function NextFollowups({ queue, lang, onOpen, onLog, logLabel, limit = 8 
 }
 
 export function MyNumbers({ data, today, lang }) {
-  const c = COPY[lang === 'ja' ? 'ja' : 'en']
+  const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [period, setPeriod] = useState('month')
   const from = period === 'week' ? addDays(today, -6) : period === 'month' ? `${today.slice(0, 7)}-01` : '0000'
   const inRange = v => { const d = String(v || '').slice(0, 10); return d && d >= from && d <= today }
@@ -72,7 +80,7 @@ export function MyNumbers({ data, today, lang }) {
 }
 
 export function CommissionsCard({ data, metrics, lang, onDetails }) {
-  const c = COPY[lang === 'ja' ? 'ja' : 'en']
+  const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const sum = sellerCommissionSummary(data?.contractCommissions?.spot || [], data?.contractCommissions?.fixed || [])
   const toReceive = sum.earned + Number(metrics?.commission_pending || 0)
   return <section className="fa-card sh-comm">
@@ -87,7 +95,7 @@ export function CommissionsCard({ data, metrics, lang, onDetails }) {
 }
 
 export function ClientList({ deals, lang, onOpen, limit = 0, onSeeAll, seeAllLabel, className = '' }) {
-  const c = COPY[lang === 'ja' ? 'ja' : 'en']
+  const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const t = funnelCopy(lang)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('all')

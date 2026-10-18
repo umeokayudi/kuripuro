@@ -136,7 +136,7 @@ export const INVOICE_PRINT_COPY = {
 }
 
 export function invoicePrintCopy(lang) {
-  return INVOICE_PRINT_COPY[lang === 'en' ? 'en' : 'ja']
+  return INVOICE_PRINT_COPY[lang === 'en' || lang === 'pt' ? 'en' : 'ja']
 }
 
 export function countNeedle(hay, needle) {
@@ -307,7 +307,7 @@ const JP_ADDRESS_EN = [
 
 export function localizePrintText(text, lang = 'ja') {
   let out = String(text || '')
-  if (lang !== 'en' || !out) return out
+  if ((lang !== 'en' && lang !== 'pt') || !out) return out
   for (const [ja, en] of JA_EN_PHRASES) {
     if (out.includes(ja)) out = out.split(ja).join(en)
   }
@@ -316,7 +316,7 @@ export function localizePrintText(text, lang = 'ja') {
 
 export function formatAddressForLang(address, lang = 'ja') {
   let out = String(address || '')
-  if (lang !== 'en' || !out) return out
+  if ((lang !== 'en' && lang !== 'pt') || !out) return out
   for (const [ja, en] of JP_ADDRESS_EN) {
     if (out.includes(ja)) out = out.split(ja).join(en)
   }

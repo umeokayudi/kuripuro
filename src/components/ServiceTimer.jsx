@@ -1,6 +1,7 @@
 import { jobDurationMin, formatMinutes, ON_SITE_METERS } from '../lib/workKpis'
 import { fill } from '../i18n/translations'
 import { formatDistance } from '../lib/geocode'
+import { localeOf } from '../hooks/useLang'
 
 const pad = n => String(n).padStart(2, '0')
 const clockText = secs => `${pad(Math.floor(secs / 3600))}:${pad(Math.floor((secs % 3600) / 60))}:${pad(secs % 60)}`
@@ -17,7 +18,7 @@ export default function ServiceTimer({ job, elapsed, history, labels, lang }) {
   const ratio = Math.min(elapsed / target, 1.5)
   const tone = ratio < 1 ? 'is-good' : ratio < 1.25 ? 'is-warn' : 'is-over'
   const R = 54, C = 2 * Math.PI * R
-  const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const locale = localeOf(lang)
   const time = d => d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
   const started = job.started_at ? new Date(job.started_at) : null
   const end = started && expected ? new Date(started.getTime() + expected * 60000) : null

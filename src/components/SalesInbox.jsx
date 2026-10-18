@@ -15,13 +15,19 @@ const COPY = {
     kind: '種類', kinds: { message: 'メッセージ', alert: '注意', praise: 'おめでとう' }, title: '件名', body: '本文', send: '送信', sent: n => `${n}件送信しました`, pick: '営業を1人以上選んでください。',
     events: { message: 'メッセージ', alert: '注意', praise: 'おめでとう', lead_assigned: '新規リード', day_report: '日報', seller_closed: '成約報告', followup_due: 'フォロー', approach_saved: '営業活動' },
   },
+  pt: {
+    inbox: 'Mensagens e alertas', empty: 'Nada novo.', read: 'Marcar como lida', readAll: 'Marcar todas como lidas', from: 'de',
+    compose: 'Enviar mensagem', to: 'Para', allSellers: 'Todos os vendedores', someSellers: 'Vendedores escolhidos', managers: 'Gestores (admin / marketing)', alsoManagers: 'Copiar gestores',
+    kind: 'Tipo', kinds: { message: 'Mensagem', alert: 'Alerta', praise: 'Parabéns' }, title: 'Assunto', body: 'Mensagem', send: 'Enviar', sent: n => `Enviado para ${n}`, pick: 'Escolha pelo menos um vendedor.',
+    events: { message: 'Mensagem', alert: 'Alerta', praise: 'Parabéns', lead_assigned: 'Novo lead', day_report: 'Relatório do dia', seller_closed: 'Fechamento informado', followup_due: 'Follow-up', approach_saved: 'Abordagem' },
+  },
 }
 
 const blank = { to: 'some', ids: [], kind: 'message', title: '', body: '', include_managers: false }
 
 /** Unread notifications plus, for admins, a composer to message sellers and managers. */
 export default function SalesInbox({ lang, notifications = [], sellers = [], onChanged, canSend = false, preset = null, onOpenLead }) {
-  const t = COPY[lang === 'ja' ? 'ja' : 'en']
+  const t = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [draft, setDraft] = useState(blank)
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(false)

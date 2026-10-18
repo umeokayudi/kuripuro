@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../hooks/useAuth'
-import { useLang } from '../hooks/useLang'
+import { pickLang, useLang } from '../hooks/useLang'
 import FieldAppShell, { Sheet } from '../components/FieldAppShell'
 import { prepareImageForUpload } from '../lib/imageUpload'
 import { ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
@@ -88,6 +88,43 @@ const COPY = {
     menuReports: '訪問・日報', menuContracts: '契約', menuGoals: '目標', menuKpi: 'KPI・推移', menuAi: 'AI営業分析', menuHint: { approaches: '記録した訪問と日報', contracts: '署名済み契約を提出', goals: '今月の目標', kpi: '数字と推移', ai: '次にやることをAIに相談' },
     notifications: 'お知らせ', visitFor: '訪問', visitDetails: '時間・交通費・録音', hoursLog: '過去日の稼働時間',
   },
+  pt: {
+    title: 'Área de vendas', overview: 'Visão geral', leads: 'Leads', followups: 'Retornos', approaches: 'Relatórios', contracts: 'Contratos',
+    today: 'Hoje', month: 'Este mês', approachesN: 'Abordagens', leadsN: 'Leads', quotes: 'Orçamentos', active: 'Contratos ativos', hours: 'Horas no mês', hoursSpent: 'Horas em abordagem',
+    conversion: 'Abordagem → fechado', ticket: 'Orçamento médio', commission: 'Comissão acumulada', due: 'Retornos pendentes',
+    addLead: 'Novo lead', scanCard: 'Escanear cartão de visita', analyze: 'Ler com IA', confirm: 'Confira os dados, corrija o que precisar e salve o lead.',
+    company: 'Empresa / restaurante', site: 'Unidade / loja', contact: 'Responsável', role: 'Cargo', phone: 'Telefone', email: 'E-mail', address: 'Endereço', region: 'Região / província (automático pelo endereço)',
+    followupDate: 'Próximo retorno', followupNote: 'Plano de retorno', source: 'Origem', save: 'Salvar lead', approachLog: 'Registrar abordagem', place: 'Local da reunião / visita',
+    date: 'Data', travel: 'Custo de transporte (¥)', duration: 'Duração da reunião (minutos)', notes: 'Observações / descrição por voz',
+    audio: 'Gravar ou escolher áudio', transcribe: 'Transcrever e resumir com IA', transcript: 'Transcrição da reunião', summary: 'Resumo da IA', nextStep: 'Próximo passo sugerido',
+    saveApproach: 'Salvar relatório', open: 'Abertos', overdue: 'Atrasados', markDone: 'Concluir', activeContracts: 'Contratos ativos',
+    prepare: 'Enviar contrato assinado', lead: 'Lead', service: 'Serviço', billing: 'Tipo de cobrança', monthlyBase: 'Valor mensal base (¥)',
+    commissionType: 'Comissão extra', percent: 'Porcentagem', fixed: 'Valor fixo (¥)', commissionValue: 'Valor da comissão',
+    visits: 'Visitas por mês', priceVisit: 'Valor base por visita (¥)', hoursVisit: 'Horas por visita', signedPdf: 'PDF do contrato assinado',
+    submit: 'Enviar para aprovação', pending: 'Aguardando análise do admin', approved: 'Aprovado', requested: 'Alterações solicitadas', rejected: 'Não aprovado',
+    totalClient: 'Valor mensal para o cliente', aiReview: 'Análise do funil com IA', aiHint: 'As sugestões da IA são para você avaliar; confirme antes de agir.', logout: 'Sair',
+    noLeads: 'Nenhum lead ainda.', noFollowups: 'Nenhum retorno pendente.', noContracts: 'Nenhum contrato ainda.', recording: 'Gravando… toque para parar', record: 'Gravar nota de voz',
+    searchAi: 'Analisar meu funil', saving: 'Salvando…', status: 'Status', companyRequired: 'Informe o nome da empresa ou do restaurante.',
+    audioPermission: 'Permita o acesso ao microfone para gravar uma nota.', submitted: 'Enviado ao admin para análise.',
+    leadSaved: 'Lead salvo', reportSaved: 'Relatório salvo', loading: 'Carregando…', unavailable: 'Os dados de vendas não estão disponíveis agora. Tente de novo em instantes.', sessionExpired: 'Sua sessão expirou. Entre novamente.',
+    monthlyFixed: 'Mensal fixo', perVisit: 'Por visita', campaign: 'Campanha', perMonth: '/ mês', pdfOnly: 'Escolha um arquivo PDF.', linkedLead: 'Lead (opcional)', none: '—',
+    stages: { approach: 'Abordagem', followup: 'Retorno', quote: 'Orçamento', negotiation: 'Negociação', won: 'Fechado', lost: 'Perdido' },
+    statuses: { draft: 'Rascunho', pending_review: 'Aguardando análise', approved: 'Aprovado', changes_requested: 'Alterações solicitadas', active: 'Ativo', rejected: 'Não aprovado' },
+    tooBig: mb => `O arquivo tem mais de ${mb} MB.`,
+    myDay: 'Meu dia de trabalho', startDay: 'Iniciar o dia', endDay: 'Encerrar o dia e enviar relatório', dayNotStarted: 'Inicie o dia quando começar o trabalho de campo. Ao encerrar, um relatório é gerado automaticamente para o gestor.',
+    dayStarted: t => `Trabalhando desde ${t}`, dayEnded: (a, b) => `Dia encerrado ${a}–${b}`, dayNote: 'Algo a acrescentar para o gestor? (opcional)', dayTravel: 'Custo de transporte hoje (¥)', endConfirm: 'Encerrar o dia agora e enviar o relatório?', writing: 'Gerando relatório…', dayReport: 'Relatório do dia', reopen: 'Reabrir o dia',
+    outcome: 'O que aconteceu', outcomes: { talked: 'Conversamos, sem próximo passo ainda', meeting_scheduled: 'Reunião marcada', quote_sent: 'Orçamento enviado', negotiating: 'Em negociação', closed: 'Fechado / assinado', no_interest: 'Sem interesse', absent: 'Ninguém / ausente' },
+    clientSaid: 'O que o cliente respondeu', answerType: 'Tipo de resposta',
+    home: 'Início', more: 'Mais', kicker: 'KURIPURO · VENDAS', newLeadShort: 'Novo lead', logVisit: 'Registrar visita', todo: 'Para fazer hoje', allDone: 'Nada pendente hoje. Bora buscar clientes novos!',
+    monthOverview: 'Este mês', seeAll: 'Ver todos', search: 'Buscar loja, empresa ou responsável', all: 'Todos',
+    cardStep: 'Foto do cartão de visita', cardStepHint: 'Tire uma foto do cartão de visita. A IA preenche os dados e sua localização é salva.', takePhoto: 'Fotografar o cartão', retake: 'Tirar outra foto', reading: 'Lendo o cartão…',
+    gps: 'Localização (GPS)', gpsGetting: 'Obtendo sua localização…', gpsOk: acc => `Localização salva (±${acc} m)`, gpsFail: 'Não foi possível obter sua localização. Ative a localização para este site e tente de novo.', gpsRetry: 'Tentar de novo',
+    mapsLink: 'Link do Google Maps da loja', mapsHint: 'No Google Maps: encontre a loja → Compartilhar → Copiar link e cole aqui.', openMaps: 'Abrir o Google Maps aqui', paste: 'Colar', useGps: 'Usar minha localização', mapsBad: 'Cole um link do Google Maps (google.com/maps ou maps.app.goo.gl).',
+    needCard: 'Tire primeiro a foto do cartão de visita.', needGps: 'A localização é obrigatória para salvar um lead.', required: 'obrigatório', details: 'Mais detalhes', call: 'Ligar', map: 'Mapa', card: 'Cartão',
+    leadInfo: 'Dados', editLead: 'Editar dados', stage: 'Etapa', history: 'Histórico', noCard: 'Sem foto do cartão', workingFor: 'Trabalhando', dayClosed: 'Dia encerrado', endDaySheet: 'Encerrar o dia',
+    menuReports: 'Visitas e relatórios do dia', menuContracts: 'Contratos', menuGoals: 'Minhas metas', menuKpi: 'Meus KPIs', menuAi: 'Análise do funil com IA', menuHint: { approaches: 'Todas as visitas e dias registrados', contracts: 'Enviar um contrato assinado', goals: 'Metas do mês', kpi: 'Números e tendências', ai: 'Pergunte à IA o que fazer agora' },
+    notifications: 'Notificações', visitFor: 'Visita', visitDetails: 'Horário, transporte, gravação', hoursLog: 'Horas de um dia anterior',
+  },
 }
 
 const todayJapan = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())
@@ -121,7 +158,7 @@ const blankApproach = () => ({ lead_id: '', work_date: todayJapan(), place: '', 
 export default function SalespersonPortal() {
   const { user, logout } = useAuth()
   const { lang } = useLang()
-  const c = COPY[lang === 'ja' ? 'ja' : 'en']
+  const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [tab, setTab] = useState('home')
   const [sheet, setSheet] = useState('')
   const [gps, setGps] = useState({ state: 'idle' })
@@ -496,8 +533,8 @@ export default function SalespersonPortal() {
     { key: 'more', label: c.more, icon: 'more' },
   ]
   const menuItems = [
-    { key: 'clients', icon: '👥', label: lang === 'ja' ? '自分の顧客' : 'My clients', hint: lang === 'ja' ? '全顧客と状況' : 'Every client and its stage' },
-    { key: 'commissions', icon: '💴', label: lang === 'ja' ? 'コミッションと支払い' : 'Commissions & payments', hint: lang === 'ja' ? '受取予定・受取済み' : 'To receive and received' },
+    { key: 'clients', icon: '👥', label: pickLang(lang, 'My clients', '自分の顧客', 'Meus clientes'), hint: pickLang(lang, 'Every client and its stage', '全顧客と状況', 'Todos os clientes e a etapa de cada um') },
+    { key: 'commissions', icon: '💴', label: pickLang(lang, 'Commissions & payments', 'コミッションと支払い', 'Comissões e pagamentos'), hint: pickLang(lang, 'To receive and received', '受取予定・受取済み', 'A receber e recebidos') },
     { key: 'approaches', icon: '📝', label: c.menuReports, hint: c.menuHint.approaches },
     { key: 'contracts', icon: '✍️', label: c.menuContracts, hint: c.menuHint.contracts },
     { key: 'goals', icon: '🎯', label: c.menuGoals, hint: c.menuHint.goals },

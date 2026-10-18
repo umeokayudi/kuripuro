@@ -21,7 +21,7 @@ export const QUOTE_ISSUER_EN = {
 }
 
 export function quoteIssuerForLang(lang) {
-  if (lang === 'en') return { ...QUOTE_ISSUER, ...QUOTE_ISSUER_EN }
+  if (lang === 'en' || lang === 'pt') return { ...QUOTE_ISSUER, ...QUOTE_ISSUER_EN }
   return { ...QUOTE_ISSUER }
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import LanguageToggle from './LanguageToggle'
+import { localeOf, pickLang } from '../hooks/useLang'
 
 // Phone-first frame shared by the seller and marketing portals, built like the
 // employee portal: small brand header with bell + menu, a greeting card, the
@@ -27,6 +28,7 @@ function NavIcon({ name }) {
 export function greetingFor(date, lang) {
   const h = date.getHours()
   if (lang === 'ja') return h < 11 ? 'おはようございます' : h < 18 ? 'こんにちは' : 'こんばんは'
+  if (lang === 'pt') return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
 }
 
@@ -71,11 +73,11 @@ export default function FieldAppShell({
       <header className="fa-header">
         <div className="fa-brand"><span className="fa-mark">KP</span><span>{kicker}</span></div>
         <div className="fa-header-actions">
-          <button type="button" className="fa-icon-btn fa-bell" aria-label={lang === 'ja' ? 'お知らせ' : 'Notifications'} onClick={onBell}>
+          <button type="button" className="fa-icon-btn fa-bell" aria-label={pickLang(lang, 'Notifications', 'お知らせ', 'Notificações')} onClick={onBell}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
             {bellCount > 0 && <span className="fa-bell-count">{bellCount > 99 ? '99+' : bellCount}</span>}
           </button>
-          <button type="button" className="fa-icon-btn" aria-label={lang === 'ja' ? 'メニュー' : 'Menu'} aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
+          <button type="button" className="fa-icon-btn" aria-label={pickLang(lang, 'Menu', 'メニュー', 'Menu')} aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           </button>
         </div>
@@ -85,7 +87,7 @@ export default function FieldAppShell({
         <div>
           <span className="fa-hello-kicker">{greetingFor(now, lang)}</span>
           <h1>{first}</h1>
-          <p>{now.toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <p>{now.toLocaleDateString(localeOf(lang), { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         </div>
         <div className="fa-clock">{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
       </div>}
@@ -93,7 +95,7 @@ export default function FieldAppShell({
 
       <main className="fa-content">{children}</main>
 
-      <nav className="fa-bottom-nav" aria-label={lang === 'ja' ? 'メインナビゲーション' : 'Main navigation'}>
+      <nav className="fa-bottom-nav" aria-label={pickLang(lang, 'Main navigation', 'メインナビゲーション', 'Navegação principal')}>
         {left.map(navButton)}
         <button type="button" className="fa-plus" aria-label={plusLabel} title={plusLabel} onClick={onPlus}>
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -101,7 +103,7 @@ export default function FieldAppShell({
         {right.map(navButton)}
       </nav>
 
-      {menuOpen && <Sheet title={lang === 'ja' ? 'メニュー' : 'Menu'} onClose={() => setMenuOpen(false)}>
+      {menuOpen && <Sheet title={pickLang(lang, 'Menu', 'メニュー', 'Menu')} onClose={() => setMenuOpen(false)}>
         <div className="fa-menu-list">
           {menuItems.map(item => (
             <button key={item.key} type="button" className={`fa-menu-item${tab === item.key ? ' is-active' : ''}`} onClick={() => { setMenuOpen(false); item.onClick ? item.onClick() : onTab(item.key) }}>

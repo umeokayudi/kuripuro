@@ -29,7 +29,7 @@ export function fmtDuration(min, lang = 'en') {
 export function fmtTime(iso, lang = 'en') {
   if (!iso) return '—'
   try {
-    const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+    const locale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
     return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
   } catch { return '—' }
 }

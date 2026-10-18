@@ -623,3 +623,8 @@
 .mk-card-plain{justify-content:flex-start}
 @media(max-width:1200px){.mk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:720px){.mk-grid{grid-template-columns:1fr;gap:12px}.mk-head{align-items:flex-start}.mk-now strong{font-size:24px}}
+.mobile-sidebar-toggle{position:relative}
+.mobile-menu-count{position:absolute;top:-6px;right:-6px;margin:0}
+.sidebar .kp-lang-dark{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+.sidebar .kp-lang-dark .kp-lang-btn{white-space:nowrap;padding-inline:4px}
+@media (max-width:720px){.sidebar-footer .kp-lang-dark{flex:1.6 1 0}.sidebar-footer .sidebar-logout{flex:1 1 0}}

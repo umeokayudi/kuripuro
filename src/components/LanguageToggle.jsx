@@ -1,7 +1,7 @@
 import { useLang } from '../hooks/useLang'
 
 export default function LanguageToggle({ variant = 'dark', compact = false }) {
-  const { lang, switchLang } = useLang()
+  const { lang, switchLang, ptAllowed } = useLang()
   const dark = variant === 'dark'
   return (
     <div className={`kp-lang ${dark ? 'kp-lang-dark' : 'kp-lang-light'}`} role="group" aria-label="Language">
@@ -23,6 +23,17 @@ export default function LanguageToggle({ variant = 'dark', compact = false }) {
       >
         {compact ? 'JA' : '日本語'}
       </button>
+      {ptAllowed && (
+        <button
+          type="button"
+          className={`kp-lang-btn${lang === 'pt' ? ' on' : ''}`}
+          aria-pressed={lang === 'pt'}
+          aria-label="Português"
+          onClick={() => switchLang('pt')}
+        >
+          PT
+        </button>
+      )}
     </div>
   )
 }

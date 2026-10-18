@@ -1,6 +1,7 @@
 const DEV_API_HINT = {
   en: 'The project API is not running on this server. Vite serves the interface, but /api routes require `vercel dev` and the server environment variables.',
   ja: 'このサーバーではプロジェクトのAPIが起動していません。Viteは画面のみを配信します。/apiルートには `vercel dev` とサーバー環境変数が必要です。',
+  pt: 'A API do projeto não está rodando neste servidor. O Vite serve só a interface; as rotas /api precisam do `vercel dev` e das variáveis de ambiente do servidor.',
 }
 
 async function readResponse(response, lang) {
@@ -15,8 +16,8 @@ async function readResponse(response, lang) {
 
   if (!result || typeof result !== 'object') {
     throw new Error(contentType.includes('javascript') || raw.trimStart().startsWith('import ')
-      ? DEV_API_HINT[lang === 'ja' ? 'ja' : 'en']
-      : (lang === 'ja' ? 'サーバーから無効な応答が返されました。API設定を確認して、もう一度お試しください。' : 'The server returned an invalid response. Check the API configuration and try again.'))
+      ? DEV_API_HINT[lang === 'ja' || lang === 'pt' ? lang : 'en']
+      : (lang === 'ja' ? 'サーバーから無効な応答が返されました。API設定を確認して、もう一度お試しください。' : lang === 'pt' ? 'O servidor retornou uma resposta inválida. Verifique a configuração da API e tente novamente.' : 'The server returned an invalid response. Check the API configuration and try again.'))
   }
   if (!response.ok) throw new Error(result.error || `Falha na API (${response.status}).`)
   return result

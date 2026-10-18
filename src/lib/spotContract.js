@@ -275,6 +275,7 @@ const yen = n => `${Math.round(Number(n || 0)).toLocaleString('ja-JP')}`
 
 /** The contract articles (第1条…). Edit the wording here; values come from the contract row. */
 export function spotContractArticles(c, lang = 'ja') {
+  if (lang === 'pt') lang = 'en'
   const t = spotContractTotals(c)
   const day = clampDay(c?.payment_day)
   const v = contractView(c, lang)
@@ -355,7 +356,7 @@ function recurringArticles(c, lang, t, day, { place, service, note }) {
 /** Values the articles and the signature boxes print, after contract_details. */
 export function contractView(c, lang = 'ja') {
   const d = contractDetails(c)
-  const en = lang === 'en'
+  const en = lang === 'en' || lang === 'pt'
   const addr = (d.written_address || '').trim() || writtenAddress(c?.location_address)
   const place = [c?.location_name, addr].filter(Boolean).join(en ? ', ' : '（') + (!en && addr ? '）' : '')
   const svcJa = (d.service_label || '').trim() || serviceTypeJa(c?.service_type)
@@ -408,7 +409,7 @@ const multiline = text => escapeHtml(text || '').replace(/\n/g, '<br>')
 
 /** Printable 業務委託契約書 for one spot contract (A4). */
 export function spotContractHtml(c, lang = 'ja', signatureSrc = '') {
-  const L = COPY[lang === 'en' ? 'en' : 'ja']
+  const L = COPY[lang === 'en' || lang === 'pt' ? 'en' : 'ja']
   const issuer = printIssuer({}, L.lang)
   const st = contractStatus(c)
   const stamp = st === 'approved' ? L.signed : st === 'rejected' ? L.rejected : st === 'cancelled' ? L.cancelled : ''
