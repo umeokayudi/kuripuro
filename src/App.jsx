@@ -68,7 +68,7 @@ function Clock() {
   React.useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   return (
-    <span style={{ fontSize:13, fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', color:'var(--text2)' }}>
+    <span className="kp-clock" style={{ fontSize:13, color:'var(--text2)' }}>
       {now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
       <span style={{ marginLeft:8, fontSize:12, color:'var(--text3)' }}>
         {now.toLocaleDateString(dateLocale, { weekday:'short', day:'2-digit', month:'short' })}
@@ -187,10 +187,11 @@ function AppContent() {
   }
 
   if (loading) return (
-    <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <div style={{ minHeight:'100vh', background:'#f5f7fb', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:24, fontWeight:700, color:'#c19c56' }}>KuriPuro</div>
-        <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)', marginTop:8 }}>{a.loading}</div>
+        <div style={{ width:48, height:48, margin:'0 auto 12px', borderRadius:14, background:'linear-gradient(135deg,#1e3fae,#315cf5)', color:'#fff', fontWeight:800, fontSize:17, display:'grid', placeItems:'center', boxShadow:'0 8px 20px rgba(49,92,245,.25)' }}>KP</div>
+        <div style={{ fontSize:20, fontWeight:800, color:'#111827', letterSpacing:'-.02em' }}>KuriPuro</div>
+        <div style={{ fontSize:13, color:'#8a96a7', marginTop:6 }}>{a.loading}</div>
       </div>
     </div>
   )

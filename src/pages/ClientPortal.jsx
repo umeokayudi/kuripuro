@@ -340,11 +340,11 @@ export default function ClientPortal() {
 
   if (!c) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0d2137', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+      <div style={{ minHeight: '100vh', background: '#f5f7fb', color: '#111827', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Client portal unavailable</div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginBottom: 16 }}>Translation bundle failed to load. Please refresh or contact support.</div>
-          <button type="button" onClick={logout} style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: '#c19c56', color: '#0d2137', fontWeight: 700, cursor: 'pointer' }}>Logout</button>
+          <div style={{ fontSize: 13, color: '#6b778c', marginBottom: 16 }}>Translation bundle failed to load. Please refresh or contact support.</div>
+          <button type="button" onClick={logout} style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: '#315cf5', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Logout</button>
         </div>
       </div>
     )

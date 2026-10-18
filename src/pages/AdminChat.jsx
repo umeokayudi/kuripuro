@@ -5,6 +5,7 @@ import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { chatPhoto, chatPreview, chatDayKey, photoMessage } from '../lib/chatContent'
 import PhotoLightbox from '../components/PhotoLightbox'
+import ChatIcon from '../components/ChatIcon'
 import toast from 'react-hot-toast'
 import './admin-chat.css'
 
@@ -290,7 +291,7 @@ export default function AdminChat() {
 
             <div className="ac-compose">
               <button type="button" className="ac-icon-btn" onClick={() => fileRef.current?.click()} disabled={sendingPhoto} aria-label={L.sendPhoto} title={L.sendPhoto}>
-                {sendingPhoto ? '…' : '📷'}
+                {sendingPhoto ? '…' : <ChatIcon name="camera" />}
               </button>
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) sendPhoto(f); e.target.value = '' }} />
               <textarea
