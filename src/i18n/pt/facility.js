@@ -171,6 +171,7 @@ export const facilityPt = {
   roomEmptyKit: 'Nada de novo para adicionar aqui',
   palette: { kitchen: 'Cozinha', dining: 'Salão', restroom: 'Banheiro', controls: 'Interruptores e quadros' },
   moveHint: 'Mover (25 cm por toque)',
+  moveDragHint: 'Arraste qualquer item no chão · ele se encaixa na grade · dois dedos para dar zoom',
   rotate90: '⟳ Girar',
   toWall: '🧲 Encostar na parede',
   centerRoom: '🎯 Centralizar',

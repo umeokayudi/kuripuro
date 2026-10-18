@@ -45,7 +45,7 @@ export function placeTextFromUrl(url) {
   } catch { return '' }
 }
 
-const DASH = /[\-−‐‑–—ー－]/g
+const DASH = /[-−‐‑–—ー－]/g
 
 // Japanese address → "東京都港区新橋3-16-10" for the GSI address search.
 // Google often writes it in English ("〒105-0004 Tokyo, Minato City, Shinbashi, 3 Chome−16−10 2F …"):

@@ -50,7 +50,7 @@ export function WorldView({ layout, mode, selectedId, onSelect, status, todo, al
         todo={todo}
         alerts={alerts}
         height={height}
-        labels={{ walkHint: t.walkHint, no3d: t.no3d, moveTop: t.moveTop, moveHint: t.moveHint, moveBlocked: t.moveBlocked, rotate: t.moveRotate, done: t.moveDone }}
+        labels={{ walkHint: t.walkHint, no3d: t.no3d, moveTop: t.moveTop, moveHint: t.moveDragHint, moveBlocked: t.moveBlocked, rotate: t.moveRotate, done: t.moveDone }}
         editable={editable}
         onMoveItem={onMoveItem}
         onRotateItem={onRotateItem}
