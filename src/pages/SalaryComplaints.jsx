@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { fmtPeriod } from '../lib/salaryPeriod'
@@ -15,6 +16,7 @@ export default function SalaryComplaints() {
   useEffect(() => { load() }, [])
 
   const load = async () => {
+    pendingChanged()
     setLoading(true)
     const { data } = await supabase.from('salary_complaints').select('*').order('created_at', { ascending: false })
     setComplaints(data || [])

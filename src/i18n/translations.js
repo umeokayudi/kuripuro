@@ -1,6 +1,20 @@
 import { kuripuroEn, kuripuroJa } from './kuripuro'
 import { facilityEn, facilityJa } from './facility'
 import { mitsumoriEn, mitsumoriJa } from './mitsumori'
+import { basePt } from './pt/base'
+import { kuripuroPtA } from './pt/kuripuro-a'
+import { kuripuroPtB } from './pt/kuripuro-b'
+import { facilityPt } from './pt/facility'
+import { mitsumoriPt } from './pt/mitsumori'
+
+// Fill missing Portuguese keys with English so a gap never shows a blank or crashes.
+function withFallback(base, over) {
+  if (over === undefined) return base
+  if (!base || typeof base !== 'object' || Array.isArray(base) || typeof over !== 'object' || over === null || Array.isArray(over)) return over
+  const out = { ...base }
+  for (const k of Object.keys(over)) out[k] = withFallback(base[k], over[k])
+  return out
+}
 
 export const translations = {
   en: {
@@ -379,5 +393,13 @@ export const translations = {
     sales: mitsumoriJa,
   },
 }
+
+translations.pt = withFallback(translations.en, {
+  ...basePt,
+  ...kuripuroPtA,
+  ...kuripuroPtB,
+  facility: facilityPt,
+  sales: mitsumoriPt,
+})
 
 export { fill } from './kuripuro'

@@ -5,7 +5,7 @@ import { apiFetch } from '../lib/apiFetch'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, localeOf } from '../hooks/useLang'
 
 const TZ = 'Asia/Tokyo'
 const LATE_AFTER_MIN = 5
@@ -144,7 +144,7 @@ export default function LiveTracking() {
   grouped.upcoming.sort((a, b) => (a.nextIn ?? 9999) - (b.nextIn ?? 9999))
   grouped.working.sort((a, b) => new Date(a.active.started_at || 0) - new Date(b.active.started_at || 0))
 
-  const dateLabel = new Date().toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })
+  const dateLabel = new Date().toLocaleDateString(lang === 'en' ? 'en-US' : localeOf(lang), { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })
   const tiles = [
     { g: 'attention', n: grouped.attention.length, label: L.tileLate, tone: 'red' },
     { g: 'working', n: grouped.working.length, label: L.tileWorking, tone: 'green' },

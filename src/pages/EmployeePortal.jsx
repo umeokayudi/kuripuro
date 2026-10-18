@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
+import { compressVideo } from '../lib/videoCompress'
+import { uploadJobVideo } from '../lib/jobVideo'
+import JobVideoPicker from '../components/JobVideoPicker'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
@@ -10,10 +13,14 @@ import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geoco
 import ServiceTimer from '../components/ServiceTimer'
 import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
-import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
+import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
+import { VOICE_EVERY_SEC, voicePrefOn, setVoicePref, voiceMessage, speak, unlockSpeech, canSpeak } from '../lib/voiceAlert'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
+import EmployeeChat from '../components/EmployeeChat'
+import PhotoLightbox from '../components/PhotoLightbox'
+import { photoMessage, chatPreview } from '../lib/chatContent'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
 import { ContractSignModal } from '../components/SpotContracts'
@@ -51,12 +58,15 @@ import {
 import { tokyoToday } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
+import EarningsPanel from '../components/EarningsPanel'
 import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
 import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
+import { quickRoundEnabledFor } from '../lib/quickRound'
+import QuickRound from '../components/QuickRound'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -99,6 +109,7 @@ export default function EmployeePortal() {
   const personalTheme = employeeThemeFor(user)
   const themeClass = personalTheme ? ` kp-theme-${personalTheme}` : ''
   const personalGreeting = employeeGreetingFor(user)
+  const quickRoundOn = quickRoundEnabledFor(user)
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   const [tab, setTab] = useState('home')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -116,6 +127,9 @@ export default function EmployeePortal() {
   const [checklist, setChecklist] = useState([])
   const [notes, setNotes] = useState('')
   const [jobPhotos, setJobPhotos] = useState([])
+  // Vídeo opcional do serviço: comprimido ao escolher, enviado só depois de finalizar
+  const [jobVideo, setJobVideo] = useState(null)
+  const videoTaskRef = useRef(null)
   const [submitting, setSubmitting] = useState(false)
   const [gpsStatus, setGpsStatus] = useState('')
   const [herePos, setHerePos] = useState(null)
@@ -139,6 +153,8 @@ export default function EmployeePortal() {
   const [claims, setClaims] = useState([])
   const [messages, setMessages] = useState([])
   const [newMsg, setNewMsg] = useState('')
+  const [sendingChatPhoto, setSendingChatPhoto] = useState(false)
+  const [chatLightbox, setChatLightbox] = useState(null)
   const [badges, setBadges] = useState([])
   const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
@@ -185,6 +201,9 @@ export default function EmployeePortal() {
   const timerRef = useRef()
   const clockRef = useRef()
   const hourWarnedRef = useRef(false)
+  const [voiceOn, setVoiceOn] = useState(voicePrefOn)
+  const voiceSlotRef = useRef(0)
+  const voiceCtxRef = useRef({})
   const photoInputRef = useRef()
   const claimPhotoRef = useRef()
   const claimReceiptRef = useRef()
@@ -216,7 +235,7 @@ export default function EmployeePortal() {
       if (navigator.geolocation && working) {
         try {
           const pos = await new Promise((res, rej) =>
-            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 30000 }))
+            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000, maximumAge: 15000, enableHighAccuracy: true }))
           update.last_lat = pos.coords.latitude
           update.last_lng = pos.coords.longitude
           update.last_location_at = new Date().toISOString()
@@ -249,13 +268,48 @@ export default function EmployeePortal() {
     }
   }, [activeJob?.id])
 
+  // Latest values for the 5-minute voice reminder, read inside the timer without restarting it.
+  voiceCtxRef.current = { checklist, allJobs, voiceOn, lang, labels: e }
+
+  const sayReminder = async (job, secs) => {
+    const { checklist: ck, allJobs: history, lang: lg, labels } = voiceCtxRef.current
+    let dist = null
+    try {
+      const [pos, site] = await Promise.all([
+        getCurrentPosition({ maxWait: 6000, goodEnough: 30 }).catch(() => null),
+        siteCoords(job).catch(() => null),
+      ])
+      if (pos && site) dist = Math.round(distanceMeters(pos.lat, pos.lng, site.lat, site.lng))
+    } catch { /* GPS is optional here */ }
+    const text = voiceMessage({
+      place: businessName(job), elapsedSec: secs, expectedMin: expectedJobMinutes(job, history).expected,
+      checklist: resolveChecklistForJob(job, ck), dist, onSiteMeters: ON_SITE_METERS, labels, lang: lg,
+    })
+    speak(text, lg)
+    try { navigator.vibrate?.([200, 100, 200]) } catch { /* no vibration */ }
+  }
+
+  const toggleVoice = () => {
+    const next = !voiceOn
+    setVoiceOn(next)
+    setVoicePref(next)
+    if (next) unlockSpeech()
+  }
+
   useEffect(() => {
     hourWarnedRef.current = false
     if (activeJob?.started_at) {
       const start = new Date(activeJob.started_at)
+      // Reopening the app mid-job does not replay a reminder; the next one comes at the next 5-minute mark.
+      voiceSlotRef.current = Math.floor((Date.now()-start)/1000 / VOICE_EVERY_SEC)
       timerRef.current = setInterval(() => {
         const secs = Math.floor((Date.now()-start)/1000)
         setElapsed(secs)
+        const slot = Math.floor(secs / VOICE_EVERY_SEC)
+        if (slot > voiceSlotRef.current) {
+          voiceSlotRef.current = slot
+          if (voiceCtxRef.current.voiceOn && activeJob.status === 'in_progress') sayReminder(activeJob, slot * VOICE_EVERY_SEC)
+        }
         if (secs === 3600 && !hourWarnedRef.current) {
           hourWarnedRef.current = true
           toast('⏱️ 1 hour on this job — everything ok?', { duration: 8000 })
@@ -387,7 +441,8 @@ export default function EmployeePortal() {
   }
 
   const loadMessages = async () => {
-    const { data } = await supabase.from('messages').select('*').eq('employee_id',user.id).order('created_at').limit(50)
+    const { data: newest } = await supabase.from('messages').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(100)
+    const data = (newest||[]).slice().reverse()
     const newUnread = (data||[]).filter(m=>m.sender==='admin'&&!m.read).length
     setMessages(prev => {
       const prevUnread = prev.filter(m=>m.sender==='admin'&&!m.read).length
@@ -410,10 +465,28 @@ export default function EmployeePortal() {
 
   
 
-  const sendMessage = async () => {
-    if (!newMsg.trim()) return
-    await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:newMsg.trim(), read:false })
-    setNewMsg(''); loadMessages()
+  const sendMessage = async (preset) => {
+    const text = String(preset ?? newMsg).trim()
+    if (!text) return false
+    const { error } = await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:text, read:false })
+    if (error) { toast.error(error.message); return false }
+    if (preset === undefined) setNewMsg('')
+    setUserScrolled(false)
+    loadMessages()
+    return true
+  }
+
+  const sendChatPhoto = async (file) => {
+    if (!file || sendingChatPhoto) return
+    setSendingChatPhoto(true)
+    try {
+      const path = await uploadJobPhoto(`jobs/chat/employee/${user.id}/${crypto.randomUUID()}.jpg`, file)
+      await sendMessage(photoMessage(path))
+    } catch (err) {
+      toast.error(err?.message || 'Upload failed')
+    } finally {
+      setSendingChatPhoto(false)
+    }
   }
 
   const getWeekRange = () => {
@@ -485,13 +558,18 @@ export default function EmployeePortal() {
       setGpsStatus('⚠️ GPS unavailable')
       return { ok: true, dist: null, override: Boolean(job.gps_lat && job.gps_lng), pos: null }
     }
-    if (!job.gps_lat || !job.gps_lng) {
-      setGpsStatus(`✅ GPS${pos.acc ? ` ±${pos.acc}m` : ''}`)
+    // Compare with the store: saved coordinates, else the address / Google Maps link resolved once.
+    let site = null
+    try { site = await siteCoords(job) } catch { /* offline */ }
+    if (!site) {
+      // Without the store's location only the reading itself is known, not whether it is at the store.
+      setGpsStatus(`📍 GPS${pos.acc ? ` ±${pos.acc}m` : ''} · ${e.gpsNoSite}`)
       return { ok: true, dist: null, override: false, pos }
     }
-    const dist = Math.round(distanceMeters(pos.lat, pos.lng, Number(job.gps_lat), Number(job.gps_lng)))
-    setGpsStatus(dist > 100 ? `⚠️ ${dist}m away` : `✅ ${dist}m`)
-    return { ok: true, dist, override: dist > 100, pos }
+    const dist = Math.round(distanceMeters(pos.lat, pos.lng, site.lat, site.lng))
+    const away = dist > ON_SITE_METERS
+    setGpsStatus(away ? `⚠️ ${fill(e.gpsAway, { m: formatDistance(dist) })}` : `✅ ${fill(e.gpsOnSite, { m: formatDistance(dist) })}`)
+    return { ok: true, dist, override: away, pos }
   }
 
   const handleAcceptSpot = async (job) => {
@@ -550,6 +628,7 @@ export default function EmployeePortal() {
       localStorage.removeItem(`kp_ck_${job.id}`)
       setActiveJob(null)
       setJobPhotos([])
+      clearJobVideo()
       setChecklist([])
       setElapsed(0)
       toast.success(e.staleShiftReset)
@@ -754,6 +833,8 @@ export default function EmployeePortal() {
   }
 
   const handleStart = async (job) => {
+    // Speech must be unlocked by this tap so the 5-minute voice reminders can play later.
+    if (voiceOn) unlockSpeech()
     const startPhotos = jobPhotos.filter(p => p.slot === 'start')
     if (startPhotos.length === 0) {
       toast.error('Tire ao menos 1 foto "Before" antes de iniciar')
@@ -789,6 +870,51 @@ export default function EmployeePortal() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const vt = tr.jobVideo || {}
+
+  const clearJobVideo = () => {
+    videoTaskRef.current?.abort.abort()
+    videoTaskRef.current = null
+    setJobVideo(null)
+  }
+
+  const pickJobVideo = (file) => {
+    videoTaskRef.current?.abort.abort()
+    const task = { abort: new AbortController() }
+    videoTaskRef.current = task
+    setJobVideo({ status: 'compressing', progress: 0 })
+    task.promise = compressVideo(file, {
+      signal: task.abort.signal,
+      onProgress: (progress) => { if (videoTaskRef.current === task) setJobVideo(v => v && v.status === 'compressing' ? { ...v, progress } : v) },
+    })
+    task.promise.then(
+      (res) => { if (videoTaskRef.current === task) setJobVideo({ status: 'ready', progress: 1, size: res.size }) },
+      (err) => {
+        if (videoTaskRef.current !== task) return
+        videoTaskRef.current = null
+        setJobVideo(null)
+        if (err?.code === 'aborted') return
+        toast.error(err?.code === 'too_large' ? vt.tooLarge : err?.code === 'not_video' ? vt.notVideo : (err?.message || vt.notVideo))
+      },
+    )
+  }
+
+  // Não bloqueia a finalização: espera a compressão (se ainda rodando) e envia em segundo plano
+  const sendJobVideoAfterComplete = (jobId, task) => {
+    if (!task?.promise) return
+    task.promise
+      .then(async (res) => {
+        const id = toast.loading(vt.uploading || 'Sending video…')
+        try {
+          await uploadJobVideo(jobId, res)
+          toast.success(vt.uploaded || 'Video sent', { id })
+        } catch (err) {
+          toast.error(fill(vt.uploadFailed || 'Video failed: {msg}', { msg: err?.message || '' }), { id, duration: 6000 })
+        }
+      })
+      .catch(() => { /* erro de compressão já foi avisado */ })
   }
 
   const handleCompleteWithSig = async (job) => {
@@ -870,8 +996,10 @@ export default function EmployeePortal() {
       try {
         const endPos = await endPositionPromise
         if (endPos) {
-          // Distance to the site when it has coordinates; otherwise to where the job was started.
-          const refLat = job.gps_lat ?? job.start_lat, refLng = job.gps_lng ?? job.start_lng
+          // Distance to the site when its location is known; otherwise to where the job was started.
+          let site = null
+          try { site = await siteCoords(job) } catch { /* offline */ }
+          const refLat = site?.lat ?? job.start_lat, refLng = site?.lng ?? job.start_lng
           const endDist = refLat != null && refLng != null ? Math.round(distanceMeters(endPos.lat, endPos.lng, Number(refLat), Number(refLng))) : null
           await supabase.from('jobs').update({ end_lat: endPos.lat, end_lng: endPos.lng, end_accuracy: endPos.acc, gps_end_distance: endDist }).eq('id', job.id)
         }
@@ -911,6 +1039,10 @@ export default function EmployeePortal() {
 
       clearInterval(timerRef.current)
       localStorage.removeItem(`kp_ck_${job.id}`)
+      const videoTask = videoTaskRef.current
+      videoTaskRef.current = null
+      setJobVideo(null)
+      sendJobVideoAfterComplete(job.id, videoTask)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
       const scoreMsg = aiScore!=null ? ` · IA: ${aiScore}/10${aiApproved?' ✅':' ⚠️'}` : ''
       if (missed>0) toast(`${fill(e.completePartial, { done, total })}${scoreMsg}`, {icon:'⚠️', duration:5000})
@@ -1066,7 +1198,7 @@ export default function EmployeePortal() {
     {key:'salary',icon:'💴',label:e.salary},
     {key:'transport',icon:'🚃',label:e.transport},
     {key:'equipment',icon:'🧰',label:e.equipment},
-    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
+    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?chatPreview(lastAdminMsg.content, '📷').substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
     {key:'availability',icon:'🗓',label:e.availability,badge:planAlert?1:0},
     {key:'achievements',icon:'🏆',label:e.achievements},
@@ -1173,10 +1305,16 @@ export default function EmployeePortal() {
     }
   }
 
-  // Smart Facility: mapa 3D aprovado do local (só mostra o botão quando existe)
+  // Smart Facility: mapa 3D do local (aprovado ou rascunho) — só mostra o botão quando existe.
+  // Recarrega ao voltar para o app: um mapa criado/aprovado depois de abrir o app aparece sem precisar sair.
   useEffect(() => {
-    supabase.from('facility_models').select('client_id,location_name').eq('status', 'approved')
+    const load = () => supabase.from('facility_models').select('client_id,location_name,status')
       .then(({ data }) => setFacilityIndex(data || []))
+    load()
+    const onVisible = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVisible)
+    const id = setInterval(load, 5 * 60000)
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id) }
   }, [])
   const hasFacility = (job) => !!job?.client_id && facilityIndex.some(m => m.client_id === job.client_id
     && (!m.location_name || m.location_name === locationFromJob(job)))
@@ -1355,7 +1493,7 @@ export default function EmployeePortal() {
             </div>
             <LanguageToggle variant="dark" compact />
             <button aria-label={e.notifications} aria-expanded={bellOpen} onClick={()=>setBellOpen(true)} className="emp-header-icon-button">
-              🔔
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
               {bellCount>0&&<div className="emp-header-notification-count">{bellCount}</div>}
             </button>
             <button aria-label={menuOpen ? e.close : e.more} aria-expanded={menuOpen} onClick={()=>setMenuOpen(!menuOpen)} className="emp-header-menu-button">
@@ -1439,11 +1577,12 @@ export default function EmployeePortal() {
       )}
 
       {/* CONTENT */}
-      <div className={`emp-content${tab==='ai'?' is-ai':''}`} style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+      <div className={`emp-content${tab==='ai'?' is-ai':''}${tab==='chat'?' is-chat':''}`} style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
 
         {/* HOME */}
         {tab==='home'&&(
           <div className="emp-home ex-home">
+            {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
@@ -1655,7 +1794,8 @@ export default function EmployeePortal() {
         {tab==='shift'&&(
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} labels={e} lang={lang} />
+          {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
           </section>
         )}
 
@@ -1734,99 +1874,14 @@ export default function EmployeePortal() {
                 </div>
               </div>
             )}
-            <div style={{background:'linear-gradient(135deg,rgba(193,156,86,0.15),rgba(193,156,86,0.03))',border:'1px solid rgba(193,156,86,0.2)',borderRadius:22,padding:'22px 18px',textAlign:'center',marginBottom:14}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:2,textTransform:'uppercase',marginBottom:5}}>{e.earnedThisMonth}</div>
-                <div style={{fontSize:44,fontWeight:800,color:'#c19c56',letterSpacing:-2,lineHeight:1}}>¥{((salaryData?.net ?? salaryData?.total) || 0).toLocaleString()}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:4}}>{fill(e.netGross, { gross: (salaryData?.total||0).toLocaleString(), deductions: (salaryData?.deductions||0).toLocaleString() })}</div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:2}}>{fill(e.ofMax,{max:(salaryData?.fixedMax||0).toLocaleString()})}</div>
-              <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,margin:'10px 14px 5px',overflow:'hidden'}}>
-                <div style={{height:'100%',borderRadius:3,background:'linear-gradient(90deg,#c19c56,#e8c47a)',width:Math.min(((salaryData?.base||0)/(salaryData?.fixedMax||1))*100,100)+'%',transition:'width 0.6s'}} />
-              </div>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.25)'}}>{fill(e.daysRate,{days:salaryData?.workedDays||0,rate:(salaryData?.dailyRate||0).toLocaleString()})}</div>
-              {(salaryData?.spotEarned||0)>0&&<div style={{fontSize:11,color:'rgba(193,156,86,0.6)',marginTop:5}}>+¥{salaryData.spotEarned.toLocaleString()} {e.spotLabel} ⚡</div>}
-              {salaryData?.projected&&<div style={{fontSize:10,color:'rgba(255,255,255,0.18)',marginTop:3}}>{fill(e.projectedMonth,{amount:salaryData.projected.toLocaleString()})}</div>}
-            </div>
-            {(() => { const w = weekSummary(); return (
-              <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:18,padding:16,marginBottom:14}}>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>📅 {fill(e.weekRange,{start:w.start,end:w.end})}</div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:800,color:'#4ade80'}}>¥{w.gross.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.generated}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:800,color:w.deductions>0?'#f87171':'rgba(255,255,255,0.3)'}}>-¥{w.deductions.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.deductionsLabel}</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:800,color:'#c19c56'}}>¥{w.net.toLocaleString()}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{e.netLabel}</div>
-                  </div>
-                </div>
-                <div style={{height:5,background:'rgba(255,255,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
-                  <div style={{height:'100%',borderRadius:3,background:w.rate>=90?'linear-gradient(90deg,#4ade80,#22c55e)':w.rate>=70?'linear-gradient(90deg,#fbbf24,#f59e0b)':'linear-gradient(90deg,#f87171,#ef4444)',width:w.rate+'%',transition:'width 0.6s'}} />
-                </div>
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginBottom:w.weekJobs.length?10:0}}>{fill(e.checklistItemsDone,{done:w.doneChecklist,total:w.totalChecklist,jobs:w.weekJobs.length})} ({w.rate}%)</div>
-                {w.weekJobs.map(j=>(
-                  <div key={j.id} onClick={()=>setSelectedJob(j)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderTop:'1px solid rgba(255,255,255,0.06)',fontSize:11,cursor:'pointer'}}>
-                    <div style={{color:'rgba(255,255,255,0.6)'}}>{j.scheduled_date} · {j.title}</div>
-                    <div style={{color:(j.checklist_total&&(j.checklist_done??0)<j.checklist_total)?'#f87171':'#4ade80',fontWeight:600}}>
-                      {j.checklist_total?`${j.checklist_done??0}/${j.checklist_total}`:'✓'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )})()}
-            {/* PDF buttons */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
-              <button onClick={async()=>{
-                const month = new Date().toISOString().slice(0,7)
-                const { generatePayslipJP, generatePayslip } = await import('../lib/generatePDF')
-                if (lang==='ja') {
-                  const doc = await generatePayslipJP(empData||{}, month, salaryData, payments, advances)
-                  doc.save('kyuyo_'+user.name.replace(' ','_')+'_'+month+'.pdf')
-                  toast.success('給与明細ダウンロード完了!')
-                } else {
-                  const doc = await generatePayslip(empData||{}, month, salaryData, payments, advances)
-                  doc.save('payslip_'+user.name.replace(' ','_')+'_'+month+'.pdf')
-                  toast.success('Payslip downloaded!')
-                }
-              }} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.08)',color:'#c19c56',fontSize:13,fontWeight:600,cursor:'pointer',gridColumn:'1/-1'}}>
-                📄 {e.downloadPayslip}
-              </button>
-            </div>
-            <div style={{marginBottom:14}}>
-              <button onClick={async()=>{
-                const today2 = tokyoToday()
-                const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
-                if (!todayJobsForPDF.length) return toast.error(e.noJobsToday)
-                const { generateDailyReport } = await import('../lib/generatePDF')
-                const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
-                doc.save(`report_${today2}.pdf`)
-                toast.success('Report downloaded!')
-              }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(96,165,250,0.3)',background:'rgba(96,165,250,0.08)',color:'#60a5fa',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                📋 Download Today's Service Report
-              </button>
-            </div>
-
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
-              {[['📋','Jobs',salaryData?.jobs||0],['⏱','Hours',(salaryData?.hours||0)+'h'],['💴','Base','¥'+(salaryData?.base||0).toLocaleString()],['⚡','Spot','¥'+(salaryData?.spotEarned||0).toLocaleString()]].map(([icon,l,v])=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:14,padding:'12px 10px'}}>
-                  <div style={{fontSize:20,marginBottom:6}}>{icon}</div>
-                  <div style={{fontSize:18,fontWeight:700,color:'#fff'}}>{v}</div>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2,textTransform:'uppercase',letterSpacing:0.5}}>{l}</div>
-                </div>
-              ))}
-            </div>
+            <EarningsPanel employeeId={user.id} lang={lang} theme="portal" />
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
-              <div style={{background:'rgba(96,165,250,0.08)',border:'1px solid rgba(96,165,250,0.18)',borderRadius:18,padding:16,marginBottom:14}}>
-                <div style={{fontSize:9,color:'#60a5fa',fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>💴 Upcoming Payments</div>
-                {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').map((p,i)=>(
-                  <div key={p.id} style={{paddingBottom:i<1?10:0,marginBottom:i<1?10:0,borderBottom:i<1?'1px solid rgba(255,255,255,0.06)':'none'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <div><div style={{fontSize:i===0?26:15,fontWeight:800,color:'#fff'}}>¥{Number(p.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{p.payment_date} · {p.description||'Salary'}</div></div>
-                      <span style={{fontSize:9,background:'rgba(96,165,250,0.1)',color:'#60a5fa',border:'1px solid rgba(96,165,250,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600,textTransform:'uppercase'}}>{p.status}</span>
-                    </div>
+              <div className="earn-card">
+                <h4>💴 {lang==='ja'?'支払予定':'Upcoming payments'}</h4>
+                {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').map(p=>(
+                  <div key={p.id} className="earn-card-row">
+                    <div><b>¥{Number(p.amount).toLocaleString()}</b><small>{p.payment_date} · {p.description||'Salary'}</small></div>
+                    <span className="earn-pill">{p.status}</span>
                   </div>
                 ))}
               </div>
@@ -1838,20 +1893,28 @@ export default function EmployeePortal() {
               const received = advances.filter(isReceived)
               const pending = advances.filter(a => !isReceived(a))
               return (<>
-                {received.length>0&&<div style={{marginBottom:14}}>
-                  <span style={S.label}>{e.advancesReceived}</span>
-                  {received.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(74,222,128,0.1)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>✓ {e.received}</span></div>)}
-                  <div style={{background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.1)',borderRadius:12,padding:'10px 14px',marginTop:4,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>{e.totalReceived}</span>
-                    <span style={{fontSize:14,fontWeight:700,color:'#f87171'}}>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</span>
-                  </div>
+                {received.length>0&&<div className="earn-card">
+                  <h4>{e.advancesReceived}</h4>
+                  {received.map(a=><div key={a.id} className="earn-card-row"><div><b>¥{Number(a.amount).toLocaleString()}</b><small>{a.description}</small></div><span className="earn-pill is-ok">✓ {e.received}</span></div>)}
+                  <div className="earn-card-total"><span>{e.totalReceived}</span><b>-¥{received.reduce((s,a)=>s+Number(a.amount),0).toLocaleString()}</b></div>
                 </div>}
-                {pending.length>0&&<div style={{marginBottom:14}}>
-                  <span style={S.label}>{e.advancesPending}</span>
-                  {pending.map(a=><div key={a.id} style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}><div><div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.5)'}}>¥{Number(a.amount).toLocaleString()}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.25)',marginTop:1}}>{a.description}</div></div><span style={{fontSize:9,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'3px 9px',fontWeight:600}}>{e.pendingAdv}</span></div>)}
+                {pending.length>0&&<div className="earn-card">
+                  <h4>{e.advancesPending}</h4>
+                  {pending.map(a=><div key={a.id} className="earn-card-row"><div><b>¥{Number(a.amount).toLocaleString()}</b><small>{a.description}</small></div><span className="earn-pill">{e.pendingAdv}</span></div>)}
                 </div>}
               </>)
             })()}
+            <button type="button" className="earn-secondary" onClick={async()=>{
+              const today2 = tokyoToday()
+              const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
+              if (!todayJobsForPDF.length) return toast.error(e.noJobsToday)
+              const { generateDailyReport } = await import('../lib/generatePDF')
+              const doc = await generateDailyReport(today2, todayJobsForPDF, user.name)
+              doc.save(`report_${today2}.pdf`)
+              toast.success(lang==='ja'?'報告書をダウンロードしました':'Report downloaded!')
+            }}>
+              📋 {lang==='ja'?'今日の作業報告書 (PDF)':"Today's service report (PDF)"}
+            </button>
           </div>
         )}
 
@@ -1962,37 +2025,24 @@ export default function EmployeePortal() {
 
         {/* CHAT */}
         {tab==='chat'&&(
-          <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 280px)'}}>
-            <div ref={chatContainerRef} onScroll={handleChatScroll} style={{flex:1,overflowY:'auto',marginBottom:12,position:'relative'}}>
-              {userScrolled&&unreadMsgs>0&&(
-                <div onClick={()=>{setUserScrolled(false);msgEndRef.current?.scrollIntoView({behavior:'smooth'})}}
-                  style={{position:'sticky',top:8,zIndex:10,textAlign:'center',marginBottom:8}}>
-                  <div style={{display:'inline-block',background:'#f87171',color:'#fff',borderRadius:20,padding:'4px 14px',fontSize:12,fontWeight:600,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,0,0,0.3)'}}>
-                    ↓ {unreadMsgs} new message{unreadMsgs>1?'s':''}
-                  </div>
-                </div>
-              )}
-              {messages.length===0&&<div style={{textAlign:'center',paddingTop:40,color:'rgba(255,255,255,0.25)',fontSize:13}}>{e.noMessages}</div>}
-              {messages.map(m=>(
-                <div key={m.id} style={{display:'flex',justifyContent:m.sender==='employee'?'flex-end':'flex-start',marginBottom:10}}>
-                  <div style={{maxWidth:'78%',background:m.sender==='employee'?'rgba(193,156,86,0.18)':'rgba(255,255,255,0.08)',border:`1px solid rgba(${m.sender==='employee'?'193,156,86':'255,255,255'},0.12)`,borderRadius:m.sender==='employee'?'18px 18px 4px 18px':'18px 18px 18px 4px',padding:'11px 15px'}}>
-                    {m.sender==='admin'&&<div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3,fontWeight:600}}>Admin</div>}
-                    <div style={{fontSize:14,color:'#fff',lineHeight:1.5}}>{m.content}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginTop:4,textAlign:'right',display:'flex',justifyContent:'flex-end',alignItems:'center',gap:4}}>
-                      {new Date(m.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}
-                      {m.sender==='employee'&&<span style={{color:m.read?'#4ade80':'rgba(255,255,255,0.3)'}}>{m.read?'✓✓':'✓'}</span>}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <div ref={msgEndRef} />
-            </div>
-            <div style={{display:'flex',gap:8}}>
-              <input value={newMsg} onChange={ev=>setNewMsg(ev.target.value)} onKeyDown={ev=>ev.key==='Enter'&&!ev.shiftKey&&sendMessage()} placeholder={e.messageAdmin} style={{...S.input,flex:1,borderRadius:22,padding:'12px 18px'}} />
-              <button onClick={sendMessage} disabled={!newMsg.trim()} style={{width:46,height:46,borderRadius:'50%',border:'none',background:newMsg.trim()?'#c19c56':'rgba(255,255,255,0.07)',color:newMsg.trim()?'#0a1929':'rgba(255,255,255,0.3)',fontSize:22,cursor:newMsg.trim()?'pointer':'default',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>›</button>
-            </div>
-          </div>
+          <EmployeeChat
+            messages={messages}
+            labels={e}
+            lang={lang}
+            value={newMsg}
+            onChange={setNewMsg}
+            onSend={sendMessage}
+            onPhoto={sendChatPhoto}
+            sendingPhoto={sendingChatPhoto}
+            onPhotoClick={setChatLightbox}
+            containerRef={chatContainerRef}
+            endRef={msgEndRef}
+            onScroll={handleChatScroll}
+            unreadBelow={userScrolled ? unreadMsgs : 0}
+            onJumpDown={()=>{setUserScrolled(false);msgEndRef.current?.scrollIntoView({behavior:'smooth'})}}
+          />
         )}
+        {chatLightbox&&<PhotoLightbox url={chatLightbox} onClose={()=>setChatLightbox(null)} closeLabel={e.close} />}
 
         {/* CALENDAR */}
         {tab==='calendar'&&(
@@ -2095,7 +2145,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2130,7 +2180,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               {formatShiftElapsed(elapsed, lang)}
             </div>}
           </div>
-          {!activeIsStale&&<ServiceTimer job={activeJob} elapsed={elapsed} history={allJobs} labels={labels} lang={lang} />}
+          {!activeIsStale&&<ServiceTimer job={activeJob} elapsed={elapsed} history={allJobs} voiceOn={voiceOn} onToggleVoice={onToggleVoice} labels={labels} lang={lang} />}
           {activeInstructions && (
             <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
               <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
@@ -2169,6 +2219,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </label>
             </div>
           </div>
+          {onPickVideo && <JobVideoPicker video={jobVideo} onPick={onPickVideo} onRemove={onRemoveVideo} labels={videoLabels} />}
           {activeIsStale && (
             <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginBottom:8,lineHeight:1.4}}>
               {labels.staleChecklistScroll || 'Scroll to see all checklist items'} · {labels.staleChecklistMin || `min ${activeChecklistRequired}/${activeChecklist.length}`}
@@ -2348,6 +2399,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                     </label>
                   </div>
                 </div>
+                {onPickVideo && <JobVideoPicker video={jobVideo} onPick={onPickVideo} onRemove={onRemoveVideo} labels={videoLabels} />}
 
                 <ChecklistPicker checklist={jobChecklist} setChecklist={setChecklist} labels={labels} lang={lang} />
 

@@ -6,6 +6,7 @@ import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } f
 import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 import ClientCareAdmin from '../components/ClientCareAdmin'
+import { fetchContractSellers } from '../lib/contractSellers'
 
 export default function Clients() {
   const [searchParams] = useSearchParams()
@@ -24,11 +25,12 @@ export default function Clients() {
   const [portalSchemaOk, setPortalSchemaOk] = useState(true)
   const [portalSchemaChecking, setPortalSchemaChecking] = useState(false)
   const [contracts, setContracts] = useState([])
+  const [sellers, setSellers] = useState([])
   const [form, setForm] = useState({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })
 
   const SERVICE_TYPES = ['Daily cleaning','Weekly cleaning','Night cleaning','Deep cleaning','Spot cleaning','Monthly cleaning']
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); fetchContractSellers().then(r => setSellers(r.salespeople || [])).catch(() => {}) }, [])
   useEffect(() => { if (searchId) setTab('list') }, [searchId])
   useEffect(() => { if (portalClientId) loadPortal(portalClientId) }, [portalClientId])
   useEffect(() => { if (tab === 'portal') checkPortalSchema() }, [tab])
@@ -234,6 +236,15 @@ export default function Clients() {
     load()
   }
 
+  // v1.0.56 · Seller responsible for the account: gets this client's quote requests and
+  // earns the extra they add on top of the company price.
+  const assignSeller = async (c, salespersonId) => {
+    const { error } = await supabase.from('clients').update({ salesperson_id: salespersonId || null }).eq('id', c.id)
+    if (error) return toast.error(/salesperson_id/.test(error.message) ? 'Run sql/2026-10-17_orcamento_vendedor.sql first' : error.message)
+    setClients(list => list.map(x => x.id === c.id ? { ...x, salesperson_id: salespersonId || null } : x))
+    toast.success(salespersonId ? `Seller: ${sellers.find(p => p.id === salespersonId)?.full_name || ''}` : 'Seller removed')
+  }
+
   const handleToggle = async (id, current) => {
     await supabase.from('clients').update({ is_active:!current }).eq('id', id)
     load()
@@ -288,6 +299,14 @@ export default function Clients() {
                   </div>
                 </div>
                 {c.notes&&<div style={{fontSize:12,color:'var(--text2)',background:'var(--surface2)',borderRadius:8,padding:'8px 10px',marginBottom:10}}>{c.notes}</div>}
+                <label className="client-seller-row">
+                  <span>👤 Seller</span>
+                  <select value={c.salesperson_id || ''} onChange={e => assignSeller(c, e.target.value)}>
+                    <option value="">— No seller —</option>
+                    {sellers.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                    {c.salesperson_id && !sellers.some(p => p.id === c.salesperson_id) && <option value={c.salesperson_id}>…</option>}
+                  </select>
+                </label>
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <button className="btn btn-sm btn-primary" onClick={()=>handleEdit(c)}>✏️ Edit</button>
                   <button className="btn btn-sm" onClick={()=>{setPortalClientId(c.id);setTab('portal')}}>🔐 Portal</button>
@@ -466,7 +485,7 @@ export default function Clients() {
           )}
 
           {editingPortalUser && (
-            <div className="card" style={{ marginTop: 14, border: '2px solid var(--gold, #c19c56)' }}>
+            <div className="card" style={{ marginTop: 14, border: '2px solid #315cf5' }}>
               <div className="card-title">✏️ Editar conta — {editingPortalUser.contact_name}</div>
               <div className="grid-2" style={{ marginTop: 12 }}>
                 <div className="form-group"><label>Nome / contato</label><input value={editPortalForm.contact_name} onChange={e=>setEditPortalForm(f=>({...f,contact_name:e.target.value}))} /></div>

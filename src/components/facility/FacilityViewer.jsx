@@ -3,6 +3,7 @@ import FacilityScene from './FacilityScene'
 import FacilityItemPopup from './FacilityItemPopup'
 import PhotoLightbox from '../PhotoLightbox'
 import { viewablePhotoUrl } from '../../lib/photoUrl'
+import { pickLang } from '../../hooks/useLang'
 import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds, elementTasks, careForElement } from '../../lib/facilityModel'
 import CareList, { rowsForElement } from './CareList'
 
@@ -37,7 +38,7 @@ export function ViewModeChips({ mode, setMode, t, allow2dEdit = false }) {
   )
 }
 
-export function WorldView({ layout, mode, selectedId, onSelect, status, todo, alerts, height, t }) {
+export function WorldView({ layout, mode, selectedId, onSelect, status, todo, alerts, height, t, editable = false, onMoveItem, onRotateItem }) {
   return (
     <Suspense fallback={<div className="fac-world" style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)' }}>{t.loading3d}</div>}>
       <FacilityWorld
@@ -49,7 +50,10 @@ export function WorldView({ layout, mode, selectedId, onSelect, status, todo, al
         todo={todo}
         alerts={alerts}
         height={height}
-        labels={{ walkHint: t.walkHint, no3d: t.no3d }}
+        labels={{ walkHint: t.walkHint, no3d: t.no3d, moveTop: t.moveTop, moveHint: t.moveDragHint, moveBlocked: t.moveBlocked, rotate: t.moveRotate, done: t.moveDone }}
+        editable={editable}
+        onMoveItem={onMoveItem}
+        onRotateItem={onRotateItem}
       />
     </Suspense>
   )
@@ -144,7 +148,7 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
   const q = query.trim().toLowerCase()
   const listed = layout.elements.filter(el => !q
     || el.name.toLowerCase().includes(q)
-    || (ELEMENT_KINDS[el.kind]?.[lang === 'ja' ? 'ja' : 'en'] || '').toLowerCase().includes(q))
+    || (pickLang(lang, ELEMENT_KINDS[el.kind]?.en, ELEMENT_KINDS[el.kind]?.ja, ELEMENT_KINDS[el.kind]?.pt) || '').toLowerCase().includes(q))
 
   const chip = el => {
     const st = status.get(el.id)

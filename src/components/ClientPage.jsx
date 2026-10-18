@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { translations } from '../i18n/translations'
 import toast from 'react-hot-toast'
 import { salesGet, salesPost } from '../lib/salesApi'
 import { ContactLogForm, followupCopy } from './SalesFollowupParts'
 import { contractPdfBlob, downloadBlob } from '../lib/contractPdf'
 import { toCsv, zipFiles } from '../lib/zipStore'
 import { escapeHtml } from '../lib/escapeHtml'
+import { pickLang } from '../hooks/useLang'
 import { STEP_PHASES, day, funnelCopy, initials, mapUrlOf, phaseOf, serviceFromQuote, shortDay, timeOf, yen } from '../lib/salesPhases'
 
 // One page per client: the funnel steps (each clickable, with date, who, notes,
@@ -41,11 +43,14 @@ function contractFromQuote(lead, quote, submission, rule) {
 }
 
 function contractHtml(c, lead, seller, t, lang) {
+  // The contract goes to Japanese clients: a Portuguese admin prints the English version.
+  if (lang === 'pt') { lang = 'en'; t = translations.en }
   const base = c.billing_type === 'per_visit' ? Number(c.price_per_visit || 0) * Number(c.visits_per_month || 0) : Number(c.base_monthly_amount || 0)
   const extra = c.commission_type === 'percent' ? base * Number(c.commission_value || 0) / 100 : Number(c.commission_value || 0)
   const monthly = base + extra
   const tax = Math.round(monthly * Number(c.tax_rate || 0) / 100)
   const ja = lang === 'ja'
+  const L = (en, jaText, pt) => pickLang(lang, en, jaText, pt)
   const row = (k, v) => `<tr><th>${html(k)}</th><td>${html(v)}</td></tr>`
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body{font-family:"Hiragino Sans","Noto Sans JP",sans-serif;color:#111;padding:28px 34px;font-size:13px;line-height:1.6}
@@ -57,22 +62,22 @@ function contractHtml(c, lead, seller, t, lang) {
     <h1>業務委託契約書</h1><div class="sub">Cleaning service agreement</div>
     <p>${html(lead.company_name)}（以下「甲」）とKURIPURO by JBM（以下「乙」）は、以下の条件で清掃業務の委託契約を締結する。</p>
     <table>
-      ${row(ja ? '店舗・場所' : 'Location', c.site_name || lead.site_name || lead.company_name)}
-      ${row(ja ? '住所' : 'Address', c.address || lead.address || '')}
-      ${row(ja ? '担当者' : 'Contact', c.contact_name || lead.contact_name || '')}
-      ${row(ja ? '業務内容' : 'Service', c.service_type)}
-      ${row(ja ? '請求方法' : 'Billing', c.billing_type === 'per_visit' ? `${t.perVisit} · ${yen(c.price_per_visit)} × ${c.visits_per_month || 0}` : t.monthlyFixed)}
-      ${row(ja ? '作業日' : 'Days', (c.days_of_week || []).join(' / ') || '—')}
-      ${row(ja ? '1回の作業時間' : 'Hours per visit', `${c.hours_per_visit || 0} h`)}
-      ${row(ja ? '月額（税抜）' : 'Monthly (before tax)', yen(monthly))}
-      ${row(ja ? '消費税' : 'Tax', `${c.tax_rate || 0}% · ${yen(tax)}`)}
-      ${row(ja ? '月額（税込）' : 'Monthly (with tax)', yen(monthly + tax))}
-      ${row(ja ? '請求日' : 'Billing day', `${ja ? '毎月' : 'Every month on day '}${c.billing_day || 10}${ja ? '日' : ''}`)}
-      ${row(ja ? '営業担当' : 'Sales representative', seller || '')}
+      ${row(L('Location', '店舗・場所', 'Local'), c.site_name || lead.site_name || lead.company_name)}
+      ${row(L('Address', '住所', 'Endereço'), c.address || lead.address || '')}
+      ${row(L('Contact', '担当者', 'Contato'), c.contact_name || lead.contact_name || '')}
+      ${row(L('Service', '業務内容', 'Serviço'), c.service_type)}
+      ${row(L('Billing', '請求方法', 'Cobrança'), c.billing_type === 'per_visit' ? `${t.perVisit} · ${yen(c.price_per_visit)} × ${c.visits_per_month || 0}` : t.monthlyFixed)}
+      ${row(L('Days', '作業日', 'Dias'), (c.days_of_week || []).join(' / ') || '—')}
+      ${row(L('Hours per visit', '1回の作業時間', 'Horas por visita'), `${c.hours_per_visit || 0} h`)}
+      ${row(L('Monthly (before tax)', '月額（税抜）', 'Mensal (sem imposto)'), yen(monthly))}
+      ${row(L('Tax', '消費税', 'Imposto'), `${c.tax_rate || 0}% · ${yen(tax)}`)}
+      ${row(L('Monthly (with tax)', '月額（税込）', 'Mensal (com imposto)'), yen(monthly + tax))}
+      ${row(L('Billing day', '請求日', 'Dia de cobrança'), `${L('Every month on day ', '毎月', 'Todo mês no dia ')}${c.billing_day || 10}${ja ? '日' : ''}`)}
+      ${row(L('Sales representative', '営業担当', 'Vendedor responsável'), seller || '')}
     </table>
-    <p>${ja ? '本契約の有効期間は締結日より1年間とし、双方から申し出がない場合は同条件で自動更新する。' : 'This agreement is valid for one year from signing and renews automatically on the same terms unless either party gives notice.'}</p>
-    <div class="sign"><div><b>甲 / Client</b>${html(lead.company_name)}<br>${ja ? '署名・捺印' : 'Signature'}:</div><div><b>乙 / KURIPURO by JBM</b>${ja ? '署名・捺印' : 'Signature'}:</div></div>
-    <p style="margin-top:18px;color:#666">${ja ? '締結日' : 'Date'}: ______年____月____日</p>
+    <p>${L('This agreement is valid for one year from signing and renews automatically on the same terms unless either party gives notice.', '本契約の有効期間は締結日より1年間とし、双方から申し出がない場合は同条件で自動更新する。', 'Este contrato vale por um ano a partir da assinatura e é renovado automaticamente nas mesmas condições, salvo aviso de qualquer das partes.')}</p>
+    <div class="sign"><div><b>甲 / Client</b>${html(lead.company_name)}<br>${L('Signature', '署名・捺印', 'Assinatura')}:</div><div><b>乙 / KURIPURO by JBM</b>${L('Signature', '署名・捺印', 'Assinatura')}:</div></div>
+    <p style="margin-top:18px;color:#666">${L('Date', '締結日', 'Data')}: ______年____月____日</p>
   </body></html>`
 }
 

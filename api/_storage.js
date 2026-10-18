@@ -87,6 +87,60 @@ export async function uploadStorageObject(path, buffer, contentType = 'image/jpe
   return cleanPath
 }
 
+// Vídeos do serviço: o arquivo vai direto do navegador para o Storage (URL de upload assinada),
+// porque o corpo de uma função da Vercel é limitado a ~4,5 MB.
+const VIDEO_NAME = /^video_(\d+)\.(webm|mp4|mov)$/
+
+export async function listJobVideos(jobId) {
+  const resp = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${DEFAULT_BUCKET}`, {
+    method: 'POST',
+    headers: storageHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ prefix: `jobs/${jobId}`, limit: 1000, sortBy: { column: 'name', order: 'asc' } }),
+  })
+  if (!resp.ok) throw new Error(`Storage error ${resp.status}`)
+  const rows = await resp.json()
+  return (Array.isArray(rows) ? rows : [])
+    .filter(r => VIDEO_NAME.test(r.name || ''))
+    .map(r => ({
+      path: `jobs/${jobId}/${r.name}`,
+      index: Number(r.name.match(VIDEO_NAME)[1]),
+      size: r.metadata?.size ?? null,
+      created_at: r.created_at || null,
+    }))
+    .sort((a, b) => a.index - b.index)
+}
+
+export async function createSignedUploadUrl(path) {
+  const cleanPath = String(path).replace(/^\/+/, '')
+  if (!/^jobs\/[\w-]+\/video_\d+\.(webm|mp4|mov)$/.test(cleanPath)) throw new Error('Caminho de upload inválido')
+  const resp = await fetch(`${SUPABASE_URL}/storage/v1/object/upload/sign/${DEFAULT_BUCKET}/${cleanPath}`, {
+    method: 'POST',
+    headers: storageHeaders({ 'Content-Type': 'application/json' }),
+    body: '{}',
+  })
+  const data = await resp.json().catch(() => ({}))
+  if (!resp.ok) throw new Error(`Upload assinado falhou (${resp.status}): ${data.message || data.error || ''}`)
+  const token = data.url ? new URL(`${SUPABASE_URL}/storage/v1${data.url}`).searchParams.get('token') : null
+  if (!token) throw new Error('Storage não devolveu token de upload')
+  return { path: cleanPath, token }
+}
+
+export async function createSignedUrls(paths, expiresIn = 3600) {
+  if (!paths.length) return {}
+  const resp = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${DEFAULT_BUCKET}`, {
+    method: 'POST',
+    headers: storageHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ expiresIn, paths }),
+  })
+  if (!resp.ok) throw new Error(`Storage error ${resp.status}`)
+  const rows = await resp.json()
+  const out = {}
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (r.signedURL && r.path) out[r.path] = `${SUPABASE_URL}/storage/v1${r.signedURL}`
+  }
+  return out
+}
+
 function guessType(path) {
   const ext = (path.split('.').pop() || '').toLowerCase()
   if (ext === 'png') return 'image/png'
@@ -94,5 +148,8 @@ function guessType(path) {
   if (ext === 'heic' || ext === 'heif') return 'image/heic'
   if (ext === 'gif') return 'image/gif'
   if (ext === 'pdf') return 'application/pdf'
+  if (ext === 'webm') return 'video/webm'
+  if (ext === 'mp4') return 'video/mp4'
+  if (ext === 'mov') return 'video/quicktime'
   return 'image/jpeg'
 }

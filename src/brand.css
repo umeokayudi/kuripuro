@@ -1,0 +1,85 @@
+/* v1.0.59 — one look everywhere, taken from the v1.0.58 chat:
+   white cards with soft borders, blue (#315cf5) for anything selected or primary,
+   Plus Jakarta Sans for every heading and number, light-grey rounded inputs.
+   Loaded last so it wins over the older navy/gold rules without touching them. */
+
+:root{
+  --kp-blue:#315cf5;
+  --kp-blue-dark:#2449dc;
+  --kp-blue-soft:#eef3ff;
+  --kp-ink:#111827;
+  --kp-muted:#6b778c;
+  --kp-line:#e7ebf2;
+  --kp-field:#f7f9fc;
+  --kp-field-line:#e3e8ef;
+  --kp-track:#f2f5f9;
+  --kp-red:#e5484d;
+  --kp-card-shadow:0 4px 18px rgba(24,39,75,.045);
+  /* Old serif display font -> same sans as the chat. */
+  --font-display:var(--font);
+}
+
+/* Inside the admin pages "gold" and gold-tinted accents become the chat blue.
+   (The sidebar keeps its own colors.) */
+.main{--gold:#315cf5;--gold2:#5b7cfa;--accent:#315cf5}
+
+/* Native controls follow the page font (month/date inputs used to render monospace). */
+input,select,textarea,button{font-family:inherit}
+
+/* ───────── Tabs and filter pills: selected = blue, like the chat tabs ───────── */
+.tab-pill{height:36px;padding:0 15px;border-radius:18px;border:1px solid var(--kp-field-line);background:#fff;color:#5b6678;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.tab-pill:hover{background:#f5f7fb;color:var(--kp-ink)}
+.tab-pill.active,
+.sales-tabs button.active,
+.sales-filter-pills .btn.active,
+.sales-quick-dates .btn.active,
+.sales-tag-picker .btn.active,
+.kp-users-tab.active,
+.cpx-store-tabs button.is-active{background:var(--kp-blue)!important;border-color:var(--kp-blue)!important;color:#fff!important;box-shadow:0 4px 12px rgba(49,92,245,.18)}
+.kp-users-kpi.active{border-color:var(--kp-blue);box-shadow:0 0 0 1px var(--kp-blue) inset}
+/* Pills and day buttons that paint their selected state inline with the old navy. */
+.page-content [style*="background: var(--navy)"]{background:var(--kp-blue)!important;border-color:var(--kp-blue)!important;color:#fff!important}
+
+/* ───────── Cards ───────── */
+.main .card,.main .metric-card{border-radius:16px;border-color:var(--kp-line);box-shadow:var(--kp-card-shadow)}
+.card-title,.form-section-title{text-transform:none;letter-spacing:-.01em;font-size:15px;font-weight:800;color:var(--kp-ink)}
+.form-section-title{border-bottom-color:#eef1f5}
+.metric-label{text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;color:var(--kp-muted)}
+.metric-value{font-family:var(--font);font-weight:800;letter-spacing:-.03em}
+.page-head h2,.dash-hero h2{font-weight:800;letter-spacing:-.03em;color:var(--kp-ink)}
+.eyebrow,.finance-eyebrow,.sales-kicker{color:var(--kp-blue)}
+.empty-state{background:#fff;border:1px dashed #dfe5ee;border-radius:14px;color:#8a96a7}
+
+/* ───────── Inputs: same field as the chat composer ───────── */
+.main .form-group input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+.main .form-group select,
+.main .form-group textarea,
+.page-content input[type=month],
+.page-content input[type=date],
+.page-content select{min-height:40px;border:1px solid var(--kp-field-line);border-radius:10px;background-color:var(--kp-field);color:var(--kp-ink);font-size:14px;padding:8px 12px;outline:0;transition:border-color .15s,background-color .15s,box-shadow .15s}
+.main .form-group textarea{padding:10px 12px;line-height:1.45}
+.main .form-group input:focus,.main .form-group select:focus,.main .form-group textarea:focus,
+.page-content input[type=month]:focus,.page-content input[type=date]:focus,.page-content select:focus{border-color:var(--kp-blue);background-color:#fff;box-shadow:0 0 0 3px rgba(49,92,245,.12)}
+.page-content select{-webkit-appearance:none;appearance:none;padding-right:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b778c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.form-group label{font-size:12.5px;font-weight:600;color:#4b5567}
+
+/* ───────── Buttons ───────── */
+.btn{border-radius:10px;font-weight:700;border-color:var(--kp-field-line)}
+.btn-primary,.main .btn-primary{background:var(--kp-blue);border-color:var(--kp-blue);color:#fff}
+.btn-primary:hover,.main .btn-primary:hover{background:var(--kp-blue-dark);border-color:var(--kp-blue-dark)}
+.btn-gold{background:var(--kp-blue);border-color:var(--kp-blue);color:#fff}
+.btn-gold:hover{background:var(--kp-blue-dark)}
+.btn-danger{background:var(--kp-red);border-color:var(--kp-red)}
+.btn-success{background:#16a34a;border-color:#16a34a}
+
+/* ───────── Badges: softer, like the chat's day chips ───────── */
+.badge{border-radius:10px;font-weight:700}
+.badge-blue{background:var(--kp-blue-soft);color:var(--kp-blue)}
+
+/* ───────── Brand: no serif logo, no monospace clock ───────── */
+.sidebar-logo .brand,.brand-mark{font-family:var(--font);font-weight:800;letter-spacing:-.03em}
+.topbar-right .kp-clock{font-family:var(--font)!important;font-variant-numeric:tabular-nums;font-weight:700}
+.emp-brand,.emp-menu-kicker,.emp-name,.emp-kp-mark{font-family:var(--font)!important}
+
+/* ───────── Selected language button: blue everywhere ───────── */
+.kp-lang-btn.on{background:var(--kp-blue)!important;color:#fff!important}

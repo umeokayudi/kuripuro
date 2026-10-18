@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { salesPost } from '../lib/salesApi'
 import { FollowupChip, followupCopy } from './SalesFollowupParts'
@@ -40,6 +40,21 @@ export function buildDeals(data, today) {
   })
 }
 
+// Phones get one phase at a time (tap a phase, read its clients top to bottom, move a card
+// with "Move to") instead of a board that scrolls sideways.
+function useIsPhone() {
+  const query = '(max-width: 700px)'
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(query).matches)
+  useEffect(() => {
+    const mq = window.matchMedia?.(query)
+    if (!mq) return undefined
+    const on = () => setPhone(mq.matches)
+    mq.addEventListener?.('change', on)
+    return () => mq.removeEventListener?.('change', on)
+  }, [])
+  return Boolean(phone)
+}
+
 export default function SalesFunnel({ data, lang, today, isAdmin = false, onChanged, onAddLead, onEditLead, onLogVisit, openLeadId, onOpenLead }) {
   const t = funnelCopy(lang)
   const f = followupCopy(lang)
@@ -50,6 +65,9 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
   const [openId, setOpenId] = useState('')
   const [dragId, setDragId] = useState('')
   const [dropPhase, setDropPhase] = useState('')
+  const [focus, setFocus] = useState('')
+  const [listPhase, setListPhase] = useState('')
+  const phone = useIsPhone()
   const deals = useMemo(() => buildDeals(data, today), [data, today])
   const activeId = openLeadId ?? openId
   const setActive = id => (onOpenLead ? onOpenLead(id) : setOpenId(id))
@@ -60,6 +78,10 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
   const byPhase = Object.fromEntries(PHASES.map(p => [p, visible.filter(d => d.phase === p).sort((a, b) => String(b.last).localeCompare(String(a.last)))]))
   const total = visible.filter(d => d.phase !== 'lost').length || 1
   const open = deals.find(d => d.lead.id === activeId)
+  // List: every client (or only the stage picked above), newest contact first.
+  const listRows = visible.filter(d => (showLost || d.phase !== 'lost') && (!listPhase || d.phase === listPhase))
+  // Phone: the phase on screen (the first one with clients until the seller picks one).
+  const focused = phases.includes(focus) ? focus : (phases.find(p => byPhase[p].length) || 'lead')
 
   const canDrop = phase => Boolean(DROP_STAGE[phase]) || (isAdmin && (phase === 'approved' || phase === 'lost'))
   const moveTo = async (deal, phase) => {
@@ -82,7 +104,7 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
     </div>
 
     <div className="fn-kpis">
-      {phases.map((p, i) => <button type="button" key={p} className={`fn-kpi is-${p}`} onClick={() => { setView('board'); setTimeout(() => document.getElementById(`fn-col-${p}`)?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }), 30) }}>
+      {phases.map((p, i) => <button type="button" key={p} aria-pressed={view === 'list' ? listPhase === p : phone && focused === p} className={`fn-kpi is-${p}${(view === 'list' ? listPhase === p : phone && focused === p) ? ' is-focus' : ''}`} onClick={() => { if (view === 'list') return setListPhase(cur => cur === p ? '' : p); setFocus(p); if (!phone) setTimeout(() => document.getElementById(`fn-col-${p}`)?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }), 30) }}>
         <span className="fn-num">{p === 'lost' ? '×' : i + 1}</span>
         <span className="fn-kpi-text"><strong>{t.phases[p]}</strong><small>{t.clients(byPhase[p].length)}</small></span>
         <span className="fn-kpi-foot"><b>{yen(byPhase[p].reduce((s, d) => s + d.value, 0))}</b><em>{p === 'lost' ? '' : `${Math.round(byPhase[p].length / total * 100)}%`}</em></span>
@@ -90,25 +112,37 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
     </div>
 
     {view === 'board' ? <>
-      <div className="fn-board">
-        {phases.map((p, i) => <section key={p} id={`fn-col-${p}`} className={`fn-col is-${p}${dropPhase === p ? ' is-drop' : ''}${dragId && !canDrop(p) ? ' is-locked' : ''}`}
+      <div className={`fn-board${phone ? ' is-phone' : ''}`}>
+        {(phone ? [focused] : phases).map(p => ({ p, i: phases.indexOf(p) })).map(({ p, i }) => <section key={p} id={`fn-col-${p}`} className={`fn-col is-${p}${dropPhase === p ? ' is-drop' : ''}${dragId && !canDrop(p) ? ' is-locked' : ''}`}
           onDragOver={e => { if (dragId && canDrop(p)) { e.preventDefault(); setDropPhase(p) } }} onDragLeave={() => setDropPhase('')}
           onDrop={e => { e.preventDefault(); setDropPhase(''); moveTo(deals.find(d => d.lead.id === dragId), p); setDragId('') }}>
           <header className="fn-col-head"><span className="fn-num">{p === 'lost' ? '×' : i + 1}</span><strong>{t.phases[p]}</strong><b>{byPhase[p].length}</b></header>
           <div className="fn-col-body">
-            {byPhase[p].map(d => <button type="button" key={d.lead.id} className={`fn-card${activeId === d.lead.id ? ' is-open' : ''}`} draggable onDragStart={() => setDragId(d.lead.id)} onDragEnd={() => { setDragId(''); setDropPhase('') }} onClick={() => setActive(d.lead.id)}>
+            {byPhase[p].map(d => <div key={d.lead.id} className="fn-card-wrap"><button type="button" className={`fn-card${activeId === d.lead.id ? ' is-open' : ''}`} draggable onDragStart={() => setDragId(d.lead.id)} onDragEnd={() => { setDragId(''); setDropPhase('') }} onClick={() => setActive(d.lead.id)}>
               <span className="fn-card-top"><span className="fn-avatar" aria-hidden="true">{initials(d.lead.site_name || d.lead.company_name)}</span><span className="fn-card-text"><strong>{d.lead.site_name || d.lead.company_name}</strong><small>{[d.lead.region, isAdmin ? d.seller : d.lead.contact_name].filter(Boolean).join(' · ')}</small></span></span>
               <span className="fn-card-foot"><span>{t.contacts(d.contactsCount)}</span>{d.value > 0 && <b>{yen(d.value)}</b>}<span>{shortDay(d.last)}</span></span>
               {d.phase === 'approved' ? <span className="fn-badge is-approved">✓ {t.quoteApproved}</span> : d.phase === 'contract' ? <span className="fn-badge is-contract">{t.contractStatus[d.submissions[0]?.status] || ''}</span> : d.info && !['active', 'lost'].includes(d.phase) && ['overdue', 'today'].includes(d.info.status) && <FollowupChip info={d.info} f={f} />}
-            </button>)}
+            </button>
+              {phone && phases.some(x => x !== d.phase && canDrop(x)) && <div className="fn-move">
+                <select aria-label={t.moveTo} value="" onChange={e => moveTo(d, e.target.value)}>
+                  <option value="">{t.moveTo} ›</option>
+                  {phases.filter(x => x !== d.phase && canDrop(x)).map(x => <option key={x} value={x}>{t.phases[x]}</option>)}
+                </select>
+              </div>}
+            </div>)}
             {byPhase[p].length === 0 && <p className="fn-empty">{t.empty}</p>}
           </div>
           {p === 'lead' && onAddLead && <button type="button" className="fn-col-add" onClick={onAddLead}>+ {t.addLead}</button>}
         </section>)}
       </div>
-      <p className="fn-hint">{t.dragHint}</p>
+      <p className="fn-hint">{phone ? t.moveHint : t.dragHint}</p>
     </> : <div className="fn-list">
-      {visible.filter(d => showLost || d.phase !== 'lost').sort((a, b) => String(b.last).localeCompare(String(a.last))).map(d => <button type="button" key={d.lead.id} className="fn-list-row" onClick={() => setActive(d.lead.id)}>
+      {listRows.length === 0 && <div className="fn-list-empty">
+        <p className="fn-empty">{listPhase ? `${t.phases[listPhase]} · ${t.empty}` : t.empty}</p>
+        {listPhase && <button type="button" className="fn-col-add is-list" onClick={() => setListPhase('')}>{t.showAll}</button>}
+        {onAddLead && <button type="button" className="fn-col-add is-list" onClick={onAddLead}>+ {t.addLead}</button>}
+      </div>}
+      {listRows.sort((a, b) => String(b.last).localeCompare(String(a.last))).map(d => <button type="button" key={d.lead.id} className="fn-list-row" onClick={() => setActive(d.lead.id)}>
         <span className="fn-avatar" aria-hidden="true">{initials(d.lead.site_name || d.lead.company_name)}</span>
         <span className="fn-card-text"><strong>{d.lead.site_name || d.lead.company_name}</strong><small>{[d.seller || d.lead.contact_name, `${t.lastContact} ${shortDay(d.last)}`].filter(Boolean).join(' · ')}</small></span>
         <span className={`fn-badge is-${d.phase}`}>{t.phases[d.phase]}</span>

@@ -352,3 +352,39 @@
 .fac-store-due { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
 .fac-store-due.late { background: rgba(239, 68, 68, .14); color: #dc2626; }
 .fac-store-due.soon { background: rgba(245, 158, 11, .16); color: #b45309; }
+
+/* v1.0.53 há quantos dias */
+.fac-care-since { margin-left: 8px; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(100, 116, 139, .14); color: #475569; white-space: nowrap; }
+.st-overdue .fac-care-since { background: rgba(239, 68, 68, .14); color: #dc2626; }
+.st-due .fac-care-since { background: rgba(245, 158, 11, .16); color: #b45309; }
+.fac-care.dark .fac-care-since { background: rgba(255, 255, 255, .12); color: #e2e8f0; }
+
+/* v1.0.53 ficha da loja junto do orçamento */
+.fac-dossier { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--surface2, #f8fafc); margin: 8px 0 10px; }
+.fac-dossier-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.fac-dossier-title { font-weight: 800; font-size: 15px; }
+.fac-dossier-sub { font-size: 12px; color: var(--text3); }
+.fac-dossier-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fac-dossier-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.fac-dossier-box { background: var(--surface, #fff); border: 1px solid var(--border); border-radius: 10px; padding: 10px; min-width: 0; }
+.fac-dossier-label { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+.fac-dossier-big { font-size: 16px; font-weight: 800; margin-bottom: 6px; }
+.fac-dossier-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+.fac-dossier-eq { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--surface2, #f1f5f9); }
+.fac-dossier-map { width: 100%; height: 160px; border: 0; border-radius: 8px; }
+.fac-dossier-link { font-size: 12px; font-weight: 700; }
+.fac-dossier-photos { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* modo mover (estilo The Sims): botão no item tocado + barra com dica, girar e pronto */
+.fac-move-btn { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 3; border: 0; border-radius: 999px; padding: 10px 18px; font-weight: 700; font-size: 14px; color: #0d1f35; background: #f5c76a; box-shadow: 0 6px 18px rgba(0,0,0,0.35); cursor: pointer; animation: fac-move-pop .25s ease; }
+.fac-move-btn:active { transform: translateX(-50%) scale(0.96); }
+.fac-move-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 3; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; pointer-events: none; }
+.fac-move-hint { pointer-events: none; font-size: 12px; color: #fff; background: rgba(13,31,53,0.82); padding: 7px 12px; border-radius: 999px; max-width: 100%; }
+.fac-move-hint.is-bad { background: rgba(185,28,28,0.9); }
+.fac-move-actions { display: flex; gap: 8px; margin-left: auto; pointer-events: auto; }
+.fac-move-actions button { border: 0; border-radius: 999px; padding: 10px 16px; font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+.fac-move-rot { background: #fff; color: #0d1f35; }
+.fac-move-done { background: #22c55e; color: #fff; }
+.fac-world.is-moving .fac-world-canvas canvas { cursor: grab; }
+.fac-world.is-moving .fac-world-canvas canvas:active { cursor: grabbing; }
+@keyframes fac-move-pop { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%); } }

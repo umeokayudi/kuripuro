@@ -252,10 +252,11 @@ export const QUOTE_PRINT_COPY = {
 }
 
 export function quotePrintCopy(lang) {
-  return QUOTE_PRINT_COPY[lang === 'en' ? 'en' : 'ja']
+  return QUOTE_PRINT_COPY[lang === 'en' || lang === 'pt' ? 'en' : 'ja']
 }
 
 export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') {
+  if (lang === 'pt') lang = 'en'
   const L = quotePrintCopy(lang)
   const loc = printIssuer(issuer, lang)
   const restaurant = localizePrintText(quoteRestaurantName(quote), lang)

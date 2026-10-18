@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -11,6 +12,7 @@ export default function TransportClaims() {
   useEffect(() => { load() }, [])
 
   const load = async () => {
+    pendingChanged()
     setLoading(true)
     const { data } = await supabase.from('transport_claims').select('*').order('created_at', { ascending: false })
     setClaims(data || [])

@@ -47,7 +47,7 @@ const AGAINST_WALL = new Set(['stove', 'fryer', 'oven', 'fridge', 'dishwasher', 
 /** Prefere a parede do fundo (y = 0) ou a da frente (vitrine) para estes. */
 const PREFER_EDGE = { window: 'bottom', air_conditioner: 'top', stove: 'top', fryer: 'top', oven: 'top', fridge: 'top', light_switch: 'left' }
 
-function layerOf(kind) {
+export function layerOf(kind) {
   if (CEILING.has(kind)) return 'ceiling'
   if (HIGH_WALL.has(kind)) return 'wall'
   if (FLAT.has(kind)) return 'flat'
@@ -185,10 +185,10 @@ export const ROOM_KITS = {
   dining: [{ kind: 'table', auto: true }, { kind: 'air_conditioner' }, { kind: 'light_switch' }, { kind: 'window' }],
   restroom: [{ kind: 'toilet' }, { kind: 'sink' }, { kind: 'light_switch' }],
   washing: [{ kind: 'sink' }, { kind: 'dishwasher' }, { kind: 'grease_trap' }, { kind: 'grating' }],
-  storage: [{ kind: 'breaker' }, { kind: 'other', name: { en: 'Shelf', ja: '棚' } }, { kind: 'light_switch' }],
+  storage: [{ kind: 'breaker' }, { kind: 'other', name: { en: 'Shelf', ja: '棚', pt: 'Prateleira' } }, { kind: 'light_switch' }],
   bar: [{ kind: 'counter' }, { kind: 'fridge' }, { kind: 'sink' }],
-  office: [{ kind: 'other', name: { en: 'Desk', ja: '机' } }, { kind: 'breaker' }],
-  entrance: [{ kind: 'light_switch' }, { kind: 'window' }, { kind: 'floor', name: { en: 'Entrance mat', ja: '玄関マット' } }],
+  office: [{ kind: 'other', name: { en: 'Desk', ja: '机', pt: 'Mesa de escritório' } }, { kind: 'breaker' }],
+  entrance: [{ kind: 'light_switch' }, { kind: 'window' }, { kind: 'floor', name: { en: 'Entrance mat', ja: '玄関マット', pt: 'Tapete de entrada' } }],
   ventilation: [{ kind: 'duct' }],
   other: [{ kind: 'light_switch' }],
 }

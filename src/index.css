@@ -1964,3 +1964,9 @@ body { background: var(--hq-bg); }
 .kp-users-section-head{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
 .kp-users-section-head .kp-type-badge{font-size:13px;padding:4px 12px}
 .kp-users-section-count{font-size:13px;font-weight:700;color:var(--text3)}
+
+/* v1.0.56 · Client feedback → quote request price form */
+.fb-quote-form { display: grid; grid-template-columns: 160px 1fr auto; gap: 8px; align-items: end; }
+@media (max-width: 640px) { .fb-quote-form { grid-template-columns: 1fr; } }
+.client-seller-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: var(--text2); }
+.client-seller-row select { flex: 1; min-width: 0; max-width: 260px; }

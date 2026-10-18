@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { AREA_KINDS, ELEMENT_KINDS } from '../../lib/facilityModel'
+import { layerOf } from '../../lib/facilityBuilder'
 import { AREA_FLOOR, floorTexture } from './world/textures'
 import { buildProp, SOLID_KINDS, WALL_KINDS } from './world/props'
 import './facility.css'
@@ -24,6 +25,7 @@ const RADIUS = 0.26
 const LIFT = 0.4
 const WALL_T = 0.14
 const LABEL_RANGE = 4.2
+const SNAP = 0.25
 
 const STATUS_COLORS = { overdue: '#ef4444', due: '#f59e0b', ok: '#22c55e', none: '#94a3b8' }
 // tipos encostados na parede que viram a frente para dentro da sala
@@ -92,6 +94,60 @@ function frameOrbit(ctx) {
   camera.position.copy(dir.multiplyScalar(dist))
   controls.target.set(0, 0, 0.2)
   controls.update()
+}
+
+/** Câmera reta de cima (modo mover), enquadrando a loja inteira. */
+function topDownPose(ctx) {
+  const { camera, W, D } = ctx
+  const fit = Math.max(W / Math.max(0.6, camera.aspect), D) * 0.5 + 0.9
+  const dist = fit / Math.tan((camera.fov * Math.PI) / 360)
+  return { pos: new THREE.Vector3(0, dist, 0.001), target: new THREE.Vector3(0, 0, 0) }
+}
+
+/** Grade do chão (modo mover): uma linha a cada 50 cm, mais forte a cada metro. */
+function buildGrid(W, D) {
+  const pts = []
+  const strong = []
+  for (let x = 0; x <= W + 1e-6; x += 0.5) (Math.abs(x - Math.round(x)) < 1e-6 ? strong : pts).push(x - W / 2, 0, -D / 2, x - W / 2, 0, D / 2)
+  for (let y = 0; y <= D + 1e-6; y += 0.5) (Math.abs(y - Math.round(y)) < 1e-6 ? strong : pts).push(-W / 2, 0, y - D / 2, W / 2, 0, y - D / 2)
+  const g = new THREE.Group()
+  const mk = (arr, opacity) => {
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3))
+    const l = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity, depthWrite: false }))
+    l.renderOrder = 3
+    return l
+  }
+  g.add(mk(pts, 0.16), mk(strong, 0.34))
+  g.position.y = 0.03
+  return g
+}
+
+/** Itens da mesma camada (chão, parede alta, teto...) que ficariam um em cima do outro. Mesa e cadeira podem encostar. */
+function overlapsOther(elements, el, x, y) {
+  const layer = layerOf(el.kind)
+  const pair = k => k === 'chair' || k === 'table'
+  return elements.some(o => o.id !== el.id && layerOf(o.kind) === layer && !(pair(o.kind) && pair(el.kind) && o.kind !== el.kind)
+    && x < o.x + o.w - 0.03 && x + el.w > o.x + 0.03 && y < o.y + o.d - 0.03 && y + el.d > o.y + 0.03)
+}
+
+/** Segmento de parede cortando o retângulo (encolhido um pouco, para encostar na parede ser permitido). */
+function crossesWall(walls, x, y, w, d) {
+  const m = 0.1
+  const x0 = x + m, y0 = y + m, x1 = x + w - m, y1 = y + d - m
+  if (x1 <= x0 || y1 <= y0) return false
+  return walls.some(s => {
+    let t0 = 0
+    let t1 = 1
+    const dx = s.x2 - s.x1
+    const dy = s.y2 - s.y1
+    for (const [p, q] of [[-dx, s.x1 - x0], [dx, x1 - s.x1], [-dy, s.y1 - y0], [dy, y1 - s.y1]]) {
+      if (Math.abs(p) < 1e-9) { if (q < 0) return false; continue }
+      const r = q / p
+      if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r } else { if (r < t0) return false; if (r < t1) t1 = r }
+    }
+    return true
+  })
 }
 
 function disposeTree(obj) {
@@ -168,6 +224,9 @@ export default function FacilityWorld({
   alerts,
   height = 440,
   labels = {},
+  editable = false,
+  onMoveItem,
+  onRotateItem,
 }) {
   const hostRef = useRef(null)
   const miniRef = useRef(null)
@@ -178,8 +237,17 @@ export default function FacilityWorld({
   const joyRef = useRef({ x: 0, y: 0 })
   const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 })
   const [failed, setFailed] = useState(false)
+  const [moving, setMoving] = useState(false)
+  const [dragInfo, setDragInfo] = useState(null)
+  const movingRef = useRef(false)
+  const onMoveRef = useRef(onMoveItem)
 
   onSelectRef.current = onSelect
+  onMoveRef.current = onMoveItem
+  // a tela de montar recria a planta/os mapas a cada render: só remonta a loja quando o conteúdo muda de verdade
+  const buildKey = JSON.stringify([layout, status ? [...status] : null, todo ? [...todo] : null, alerts ? [...alerts] : null])
+  const buildRef = useRef({ layout, status, todo, alerts })
+  buildRef.current = { layout, status, todo, alerts }
   selectedRef.current = selectedId
 
   // ---- renderer, câmera, luz e laço de animação (uma vez) ----
@@ -246,6 +314,15 @@ export default function FacilityWorld({
       pickables: [], floorPicks: [], elementNodes: new Map(), walls: [], wallMeshes: [], solids: [], walkOnly: [], orbitOnly: [],
       W: 10, D: 8, bounce: [], signs: [], marker: null,
     }
+    const footprint = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ color: '#22c55e', transparent: true, opacity: 0.42, depthWrite: false, depthTest: false, side: THREE.DoubleSide }),
+    )
+    footprint.rotation.x = -Math.PI / 2
+    footprint.renderOrder = 10
+    footprint.visible = false
+    scene.add(footprint)
+    ctx.footprint = footprint
     ctxRef.current = ctx
     if (import.meta.env.DEV) window.__facWorld = ctx
 
@@ -286,7 +363,86 @@ export default function FacilityWorld({
       else onSelectRef.current?.(null)
     }
 
+    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    const floorAt = (clientX, clientY) => {
+      raycaster.setFromCamera(ndc(clientX, clientY), camera)
+      const p = new THREE.Vector3()
+      return raycaster.ray.intersectPlane(floorPlane, p) ? p : null
+    }
+    // modo mover: segura o item, arrasta pelo chão com encaixe na grade; vermelho = bateria em outro item
+    const startDrag = (clientX, clientY) => {
+      raycaster.setFromCamera(ndc(clientX, clientY), camera)
+      const p = raycaster.intersectObjects(ctx.pickables, false)[0]?.object?.userData?.pick
+      if (p?.type !== 'element') return false
+      const el = (ctx.elements || []).find(e => e.id === p.id)
+      const node = ctx.elementNodes.get(p.id)
+      const at = floorAt(clientX, clientY)
+      if (!el || !node || !at) return false
+      onSelectRef.current?.(p)
+      const holder = node.group.parent
+      ctx.drag = {
+        el, node, holder,
+        home: holder.position.clone(),
+        halo: node.halo?.position.clone(),
+        offX: el.x + el.w / 2 - ctx.W / 2 - at.x,
+        offZ: el.y + el.d / 2 - ctx.D / 2 - at.z,
+        x: el.x, y: el.y, free: { x: el.x, y: el.y }, moved: false,
+      }
+      const fp = ctx.footprint
+      fp.scale.set(el.w, el.d, 1)
+      fp.position.set(el.x + el.w / 2 - ctx.W / 2, 0.035, el.y + el.d / 2 - ctx.D / 2)
+      fp.material.color.set('#22c55e')
+      fp.visible = true
+      controls.enabled = false
+      return true
+    }
+    const dragTo = (clientX, clientY) => {
+      const d = ctx.drag
+      const at = floorAt(clientX, clientY)
+      if (!at) return
+      const { el } = d
+      const snap = v => Math.round(v / SNAP) * SNAP
+      const x = Math.max(0, Math.min(ctx.W - el.w, snap(at.x + d.offX + ctx.W / 2 - el.w / 2)))
+      const y = Math.max(0, Math.min(ctx.D - el.d, snap(at.z + d.offZ + ctx.D / 2 - el.d / 2)))
+      if (x === d.x && y === d.y) return
+      d.x = x
+      d.y = y
+      d.moved = true
+      const onFloor = ['floor', 'flat'].includes(layerOf(el.kind))
+      const bad = overlapsOther(ctx.elements, el, x, y) || (onFloor && crossesWall(ctx.walls, x, y, el.w, el.d))
+      if (!bad) d.free = { x, y }
+      const dx = x - el.x
+      const dz = y - el.y
+      d.holder.position.set(d.home.x + dx, 0, d.home.z + dz)
+      if (d.halo) d.node.halo.position.set(d.halo.x + dx, d.halo.y, d.halo.z + dz)
+      ctx.footprint.position.set(x + el.w / 2 - ctx.W / 2, 0.035, y + el.d / 2 - ctx.D / 2)
+      ctx.footprint.material.color.set(bad ? '#ef4444' : '#22c55e')
+      setDragInfo({ x, y, bad })
+    }
+    const endDrag = () => {
+      const d = ctx.drag
+      ctx.drag = null
+      ctx.footprint.visible = false
+      controls.enabled = true
+      setDragInfo(null)
+      if (!d.moved) return
+      const { x, y } = d.free
+      if (x === d.el.x && y === d.el.y) {
+        // voltou ao lugar (ou só tinha lugar ocupado): devolve sem salvar nada
+        d.holder.position.copy(d.home)
+        if (d.halo) d.node.halo.position.copy(d.halo)
+        return
+      }
+      onMoveRef.current?.(d.el.id, { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 })
+    }
+
     const onDown = (e) => {
+      if (movingRef.current && modeRef.current !== 'walk' && e.button === 0 && !ctx.drag && startDrag(e.clientX, e.clientY)) {
+        pointer.down = true
+        pointer.id = e.pointerId
+        pointer.moved = true
+        return
+      }
       pointer.down = true
       pointer.id = e.pointerId
       pointer.sx = pointer.lx = e.clientX
@@ -295,6 +451,7 @@ export default function FacilityWorld({
     }
     const onMove = (e) => {
       if (!pointer.down || e.pointerId !== pointer.id) return
+      if (ctx.drag) { dragTo(e.clientX, e.clientY); return }
       if (Math.hypot(e.clientX - pointer.sx, e.clientY - pointer.sy) > 6) pointer.moved = true
       if (modeRef.current === 'walk' && pointer.moved) {
         const k = e.pointerType === 'touch' ? 0.006 : 0.0045
@@ -307,10 +464,12 @@ export default function FacilityWorld({
     const onUp = (e) => {
       if (!pointer.down || e.pointerId !== pointer.id) return
       pointer.down = false
+      if (ctx.drag) { endDrag(); return }
       if (!pointer.moved) pick(e.clientX, e.clientY)
     }
     const el = renderer.domElement
-    el.addEventListener('pointerdown', onDown)
+    // fase de captura: o modo mover pega o toque antes do OrbitControls (que fica desligado durante o arrasto)
+    el.addEventListener('pointerdown', onDown, true)
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
@@ -354,6 +513,7 @@ export default function FacilityWorld({
       for (const w of ctx.wallMeshes) {
         let want = CUT
         if (walking) want = w.full
+        else if (movingRef.current) want = CUT * 0.6
         else if (w.outward) {
           const toCam = (camera.position.x - w.mx) * w.outward.x + (camera.position.z - w.mz) * w.outward.z
           if (toCam < 0) want = w.full
@@ -479,7 +639,7 @@ export default function FacilityWorld({
     return () => {
       cancelAnimationFrame(raf)
       ro?.disconnect()
-      el.removeEventListener('pointerdown', onDown)
+      el.removeEventListener('pointerdown', onDown, true)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
@@ -500,7 +660,9 @@ export default function FacilityWorld({
   useEffect(() => {
     const ctx = ctxRef.current
     if (!ctx) return
+    const { layout, status, todo, alerts } = buildRef.current
     const { world, sun } = ctx
+    if (ctx.drag) { ctx.drag = null; ctx.footprint.visible = false; ctx.controls.enabled = modeRef.current !== 'walk' }
     disposeTree(world)
     world.clear()
     ctx.pickables = []
@@ -787,7 +949,7 @@ export default function FacilityWorld({
         group.add(pin)
         ctx.bounce.push({ sprite: pin, base: pin.position.y, phase: Math.random() * 6 })
       }
-      ctx.elementNodes.set(e.id, { group, mats: nodeMats, outline, halo, nameTag, lift: 0, glow: 0, popOut: isWall || e.kind === 'range_hood' || e.kind === 'duct' || e.kind === 'light' })
+      ctx.elementNodes.set(e.id, { group, mats: nodeMats, outline, halo, nameTag, lift: e.id === selectedRef.current ? 1 : 0, glow: 0, popOut: isWall || e.kind === 'range_hood' || e.kind === 'duct' || e.kind === 'light' })
     }
 
     const span = Math.max(W, D)
@@ -803,7 +965,7 @@ export default function FacilityWorld({
       frameOrbit(ctx)
       ctx.framed = true
     }
-  }, [layout, status, todo, alerts])
+  }, [buildKey, height]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- troca de modo ----
   useEffect(() => {
@@ -827,10 +989,64 @@ export default function FacilityWorld({
     ctx.camera.updateProjectionMatrix()
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- modo mover (estilo The Sims): câmera reta de cima, grade no chão, arrastar item por item ----
+  useEffect(() => {
+    movingRef.current = moving
+    const ctx = ctxRef.current
+    if (!ctx) return
+    const c = ctx.controls
+    if (moving) {
+      c.autoRotate = false
+      c.enableRotate = false
+      c.screenSpacePanning = true
+      c.minPolarAngle = 0
+      c.maxPolarAngle = 0.02
+      ctx.grid?.removeFromParent()
+      ctx.grid = buildGrid(ctx.W, ctx.D)
+      ctx.scene.add(ctx.grid)
+      const { pos, target } = topDownPose(ctx)
+      const camFrom = ctx.camera.position.clone()
+      const tFrom = c.target.clone()
+      let f = 0
+      const id = setInterval(() => {
+        f = Math.min(1, f + 0.06)
+        const k = 1 - Math.pow(1 - f, 3)
+        c.target.lerpVectors(tFrom, target, k)
+        ctx.camera.position.lerpVectors(camFrom, pos, k)
+        if (f >= 1) clearInterval(id)
+      }, 16)
+      return () => clearInterval(id)
+    }
+    if (!ctx.grid) return
+    ctx.grid.removeFromParent()
+    disposeTree(ctx.grid)
+    ctx.grid = null
+    c.enableRotate = true
+    c.screenSpacePanning = false
+    c.minPolarAngle = Math.PI * 0.08
+    c.maxPolarAngle = Math.PI * 0.44
+    if (modeRef.current !== 'walk') frameOrbit(ctx)
+  }, [moving])
+
+  useEffect(() => { if (mode === 'walk' || !editable) setMoving(false) }, [mode, editable])
+
+  // atalhos no computador: R gira, Esc / Enter termina
+  useEffect(() => {
+    if (!moving) return
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+      if (e.key === 'Escape' || e.key === 'Enter') setMoving(false)
+      else if ((e.key === 'r' || e.key === 'R') && selectedId) onRotateItem?.(selectedId)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [moving, selectedId, onRotateItem])
+
   // ---- vista de cima: a câmera desliza até o item escolhido ----
   useEffect(() => {
     const ctx = ctxRef.current
-    if (!ctx || mode === 'walk' || !selectedId) return
+    if (!ctx || mode === 'walk' || !selectedId || movingRef.current) return
     const el = layout.elements.find(e => e.id === selectedId)
     if (!el) return
     ctx.controls.autoRotate = false
@@ -849,7 +1065,7 @@ export default function FacilityWorld({
       if (f >= 1) clearInterval(id)
     }, 16)
     return () => clearInterval(id)
-  }, [selectedId, mode, layout])
+  }, [selectedId, mode, buildKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const joyStart = (e) => {
     e.preventDefault()
@@ -879,8 +1095,22 @@ export default function FacilityWorld({
   if (failed) return <div className="fac-block">{labels.no3d || '3D is not available on this device.'}</div>
 
   return (
-    <div className={`fac-world${mode === 'walk' ? ' is-walk' : ''}`} style={{ height }}>
+    <div className={`fac-world${mode === 'walk' ? ' is-walk' : ''}${moving ? ' is-moving' : ''}`} style={{ height }}>
       <div ref={hostRef} className="fac-world-canvas" style={{ height }} />
+      {editable && mode !== 'walk' && !moving && selectedId && layout.elements.some(e => e.id === selectedId) && (
+        <button type="button" className="fac-move-btn" onClick={() => setMoving(true)}>✥ {labels.moveTop || 'Move (top view)'}</button>
+      )}
+      {editable && moving && (
+        <div className="fac-move-bar">
+          <div className={`fac-move-hint${dragInfo?.bad ? ' is-bad' : ''}`}>
+            {dragInfo?.bad ? (labels.moveBlocked || 'Spot taken — drop it on a free (green) spot') : (labels.moveHint || 'Drag items on the floor · two fingers to zoom')}
+          </div>
+          <div className="fac-move-actions">
+            {selectedId && onRotateItem && <button type="button" className="fac-move-rot" onClick={() => onRotateItem(selectedId)}>⟳ {labels.rotate || 'Rotate'}</button>}
+            <button type="button" className="fac-move-done" onClick={() => setMoving(false)}>✓ {labels.done || 'Done'}</button>
+          </div>
+        </div>
+      )}
       {mode === 'walk' && (
         <>
           <div className="fac-crosshair" />

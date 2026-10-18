@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import TimeOffCenter from './components/TimeOffCenter'
+import FacilityOffersBell from './components/facility/FacilityOffersBell'
 import { APP_VERSION, APP_BUILD_LABEL } from './version'
 
 // Version stays known to the system only (not shown on screen).
@@ -10,9 +11,9 @@ if (typeof window !== 'undefined') {
 }
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
-import { LangProvider, useLang } from './hooks/useLang'
+import { LangProvider, useLang, localeOf } from './hooks/useLang'
 import { AuthProvider, useAuth } from './hooks/useAuth'
-import Sidebar from './components/Sidebar'
+import Sidebar, { usePendingCounts } from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
@@ -62,13 +63,20 @@ function PortalLoading() {
   )
 }
 
+// Phone: the side menu is hidden, so the menu button shows the total of unresolved items.
+function MobileMenuCount() {
+  const counts = usePendingCounts()
+  const n = Object.values(counts).reduce((a, b) => a + (b || 0), 0)
+  return n > 0 ? <span className="nav-count mobile-menu-count">{n > 99 ? '99+' : n}</span> : null
+}
+
 function Clock() {
   const { lang } = useLang()
   const [now, setNow] = React.useState(new Date())
   React.useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = localeOf(lang)
   return (
-    <span style={{ fontSize:13, fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', color:'var(--text2)' }}>
+    <span className="kp-clock" style={{ fontSize:13, color:'var(--text2)' }}>
       {now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
       <span style={{ marginLeft:8, fontSize:12, color:'var(--text3)' }}>
         {now.toLocaleDateString(dateLocale, { weekday:'short', day:'2-digit', month:'short' })}
@@ -187,10 +195,11 @@ function AppContent() {
   }
 
   if (loading) return (
-    <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <div style={{ minHeight:'100vh', background:'#f5f7fb', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:24, fontWeight:700, color:'#c19c56' }}>KuriPuro</div>
-        <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)', marginTop:8 }}>{a.loading}</div>
+        <div style={{ width:48, height:48, margin:'0 auto 12px', borderRadius:14, background:'linear-gradient(135deg,#1e3fae,#315cf5)', color:'#fff', fontWeight:800, fontSize:17, display:'grid', placeItems:'center', boxShadow:'0 8px 20px rgba(49,92,245,.25)' }}>KP</div>
+        <div style={{ fontSize:20, fontWeight:800, color:'#111827', letterSpacing:'-.02em' }}>KuriPuro</div>
+        <div style={{ fontSize:13, color:'#8a96a7', marginTop:6 }}>{a.loading}</div>
       </div>
     </div>
   )
@@ -227,7 +236,7 @@ function AppContent() {
 
       <div className="main">
         <header className="topbar">
-          <button type="button" className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} aria-label={sidebarOpen ? a.closeMenu : a.openMenu} aria-expanded={sidebarOpen}>☰</button>
+          <button type="button" className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} aria-label={sidebarOpen ? a.closeMenu : a.openMenu} aria-expanded={sidebarOpen}>☰<MobileMenuCount /></button>
           <div className="mobile-kp-brand">KP</div>
           <div className="ref-topbar-search">
             <span>⌕</span>
@@ -254,7 +263,7 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div className="topbar-right"><TimeOffCenter /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <div className="topbar-right"><FacilityOffersBell /><TimeOffCenter /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>

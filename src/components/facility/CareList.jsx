@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ELEMENT_KINDS, taskState } from '../../lib/facilityModel'
-import { fill } from '../../hooks/useLang'
+import { fill, localeOf } from '../../hooks/useLang'
 
 /** "3 dias atrasado" / "em 12 dias" / "nunca registrado" para uma linha da agenda. */
 export function careWhen(row, t) {
@@ -13,7 +13,7 @@ export function careWhen(row, t) {
 
 export function fmtDay(iso, lang) {
   if (!iso) return '—'
-  return new Date(iso + 'T00:00:00+09:00').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Tokyo' })
+  return new Date(iso + 'T00:00:00+09:00').toLocaleDateString(localeOf(lang), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Tokyo' })
 }
 
 /** Linhas de uma tarefa avulsa (popup de um item): junta a situação calculada. */
@@ -45,6 +45,7 @@ export default function CareList({ rows, t, lang, showElement = false, onElement
               <div className="fac-care-task">
                 <span className={`fac-care-type ${r.task.type}`}>{r.task.type === 'maintenance' ? '🔧' : '🧽'} {r.task.type === 'maintenance' ? t.maintenance : t.cleaning}</span>
                 {r.task.name}
+                {r.daysSince != null && <span className="fac-care-since">🕒 {fill(t.daysSince, { n: r.daysSince })}</span>}
               </div>
               <div className="fac-care-dates">
                 {t.lastDone}: <b>{r.task.last ? fmtDay(r.task.last, lang) : t.never}</b>

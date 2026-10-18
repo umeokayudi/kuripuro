@@ -34,13 +34,28 @@ const COPY = {
     weekday: '連絡に良い曜日', weekdays: ['日', '月', '火', '水', '木', '金', '土'], positive: '好反応',
     ai: 'AI営業分析', aiSub: '数値とお客様の返答をAIが読み、成約・失注の理由、売れる価格、地域、タイミング、よくある断り文句への返し方を説明します。', ask: 'AIで分析', asking: '分析中…', aiNote: '提案は担当者が確認してください。',
   },
+  pt: {
+    board: 'Funil por cliente', boardSub: 'Onde cada cliente está agora. Fechados e perdidos mostram negócios encerrados no período.',
+    stages: { approach: 'Abordagem', followup: 'Follow-up', quote: 'Orçamento enviado', negotiation: 'Negociação', won: 'Fechado', lost: 'Perdido' },
+    days: d => `${d}d nesta etapa`, next: 'Próximo', overdue: 'atrasado', none: 'Nenhum cliente aqui.', more: n => `+${n} mais`,
+    quotes: 'Orçamentos: aprovação e preço', sent: 'Orçamentos enviados', accepted: 'Aprovados', declined: 'Recusados', open: 'Aguardando resposta', acceptance: 'Taxa de aprovação',
+    avgTotal: 'Orçamento médio', avgAcc: 'Média dos aprovados', avgDec: 'Média dos recusados', itemPrice: 'Preço médio por item', itemAcc: 'Por item (aprovado)', itemDec: 'Por item (recusado)', answerDays: 'Dias até a resposta', itemsPerQuote: 'Itens por orçamento',
+    byItem: 'Preço por item', item: 'Item', timesQuoted: 'Orçado', avgPrice: 'Preço médio', avgPriceAcc: 'Quando aprovado', avgPriceDec: 'Quando recusado', approval: 'Aprovação',
+    bands: 'Qual faixa de orçamento vende mais', band: 'Faixa do orçamento', declineReasons: 'Por que os orçamentos foram recusados', noQuotes: 'Nenhum orçamento enviado neste período.',
+    regions: 'Por região', region: 'Região', leads: 'Leads', wins: 'Fechados', losses: 'Perdidos', winRate: 'Taxa de fechamento', noRegions: 'Adicione endereço ou região aos leads para ver isto.',
+    answers: 'O que os clientes mais respondem', answersSub: 'Pelo tipo de resposta escolhido ao registrar cada contato.', share: 'das respostas', winAfter: 'fechados depois', noAnswers: 'Escolha o tipo de resposta ao registrar um contato para preencher isto.',
+    tags: { interested: 'Interessado', asked_quote: 'Pediu orçamento', price_high: 'Preço alto demais', has_vendor: 'Já tem fornecedor', timing: 'Agora não / momento', need_approval: 'Precisa de aprovação do chefe', no_need: 'Não precisa', no_answer: 'Sem resposta / ausente', other: 'Outro' },
+    mood: 'Clima dos contatos', moods: { positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo' },
+    weekday: 'Melhor dia para contato', weekdays: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'], positive: 'positivo',
+    ai: 'Análise de vendas com IA', aiSub: 'A IA lê estes números e as respostas dos clientes e explica por que os negócios fecham ou não, qual preço vende, onde, quando e como responder às objeções mais comuns.', ask: 'Analisar com IA', asking: 'Analisando…', aiNote: 'Sugestões para uma pessoa revisar.',
+  },
 }
 
 const CARD_LIMIT = 8
 const kYen = n => (n >= 10000 ? `¥${Math.round(n / 1000).toLocaleString()}k` : yen(n))
 
 export default function SalesInsightsPanel({ scoped, range, today, lang, sellers = [], totals, closing, board = [], showSeller }) {
-  const t = COPY[lang === 'ja' ? 'ja' : 'en']
+  const t = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [aiText, setAiText] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
   const [aiError, setAiError] = useState('')

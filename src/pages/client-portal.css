@@ -67,7 +67,7 @@
 }
 
 .cp-brand-tag {
-  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -76,7 +76,7 @@
 }
 
 .cp-brand-name {
-  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 18px;
   font-weight: 700;
   margin-top: 6px;
@@ -182,7 +182,7 @@
 }
 
 .cp-header-title {
-  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -257,7 +257,7 @@
 .cp-stat:hover { border-color: rgba(212, 168, 83, 0.28); background: rgba(255, 255, 255, 0.055); }
 
 .cp-stat-val {
-  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 22px;
   font-weight: 700;
   color: var(--cp-gold);
@@ -885,7 +885,7 @@
 }
 
 .cp-deep-progress-title {
-  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -938,7 +938,7 @@
 }
 
 .cp-deep-donut-pct {
-  font-family: 'Fraunces', 'Noto Sans JP', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 26px;
   font-weight: 700;
   color: #4ade80;

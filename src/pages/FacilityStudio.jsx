@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { apiFetch, apiPost } from '../lib/apiFetch'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, localeOf } from '../hooks/useLang'
 import { FACILITY_SETUP_SQL } from '../lib/facilitySetupSql'
 import { SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import {
@@ -938,6 +938,12 @@ export default function FacilityStudio({ clients, initialClientId }) {
                 alerts={alerts}
                 height={480}
                 t={t}
+                editable
+                onMoveItem={(id, pos) => changeItem('element', id, pos)}
+                onRotateItem={(id) => {
+                  const el = current.layout.elements.find(e => e.id === id)
+                  if (el) changeItem('element', id, rotate90(current.layout, el))
+                }}
               />
             </div>
           )}
@@ -1172,7 +1178,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
                 busy={busy === r.id}
               />
               <div style={{ fontSize: 11, opacity: 0.5, marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
-                <span>{r.source === 'ai' ? t.sourceAi : t.sourceRule} · {new Date(r.created_at).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB')}{r.decided_by ? ` · ${r.decided_by}` : ''}</span>
+                <span>{r.source === 'ai' ? t.sourceAi : t.sourceRule} · {new Date(r.created_at).toLocaleDateString(localeOf(lang))}{r.decided_by ? ` · ${r.decided_by}` : ''}</span>
                 <button type="button" onClick={() => removeRec(r)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
               </div>
             </div>

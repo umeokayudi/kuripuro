@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, localeOf } from '../hooks/useLang'
 import {
   DEFAULT_LOCATIONS, SCHEDULE_ROUTES, SCHEDULE_COLORS, buildMonthSchedule, assignEmployees,
   availabilityIndex, defaultScheduleEmployees, scheduleStats, jobsToRows,
@@ -30,10 +30,10 @@ const MARK_STYLE = {
 }
 
 export default function ScheduleGenerator() {
-  const { lang, t } = useLang()
+  const { lang, t, tr } = useLang()
   const s = t.schedule
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
-  const dowLabels = lang === 'ja' ? DOW_JA : DOW_EN
+  const dateLocale = localeOf(lang)
+  const dowLabels = tr(DOW_EN, DOW_JA, ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'])
 
   const [month, setMonth] = useState(() => {
     const d = new Date()

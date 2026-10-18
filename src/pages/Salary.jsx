@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { useLang } from '../hooks/useLang'
+import EarningsPanel from '../components/EarningsPanel'
 
 export default function Salary() {
+  const { lang } = useLang()
   const [employees, setEmployees] = useState([])
   const [selected, setSelected] = useState(null)
   const [period, setPeriod] = useState(new Date().toISOString().slice(0,7))
@@ -134,6 +137,7 @@ export default function Salary() {
           {!selected && <div className="card"><div style={{color:'var(--text3)',fontSize:13}}>Select an employee to view salary</div></div>}
 
           {selected && <>
+            <EarningsPanel key={selected.id} employeeId={selected.id} employee={selected} lang={lang} theme="admin" />
             <div className="card" style={{ marginBottom:14 }}>
               <div className="card-title">📋 Contract — {selected.full_name}</div>
               <div className="grid-2" style={{ gap:8 }}>

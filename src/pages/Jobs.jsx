@@ -6,9 +6,10 @@ import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
 } from '../lib/cleaningType'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, localeOf } from '../hooks/useLang'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
+import JobVideos from '../components/JobVideos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl } from '../lib/calendar'
@@ -94,11 +95,11 @@ function statusStyle(status, labels) {
 }
 
 function DayScheduleView({ onClose }) {
-  const { lang, t } = useLang()
+  const { lang, t, tr } = useLang()
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = localeOf(lang)
   const [date, setDate] = useState(toDateStr(new Date()))
   const [calMonth, setCalMonth] = useState(() => toDateStr(new Date()).slice(0, 7))
   const [showCalendar, setShowCalendar] = useState(false)
@@ -153,9 +154,11 @@ function DayScheduleView({ onClose }) {
   }
 
   const calendarDays = useMemo(() => buildCalendarDays(calMonth), [calMonth])
-  const weekDays = lang === 'ja'
-    ? ['月', '火', '水', '木', '金', '土', '日']
-    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const weekDays = tr(
+    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    ['月', '火', '水', '木', '金', '土', '日'],
+    ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+  )
   const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
   const todayStr = toDateStr(new Date())
 
@@ -393,8 +396,8 @@ function DayScheduleView({ onClose }) {
 
         {dayAreas.length > 0 && (
           <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>📍 {lang === 'ja' ? 'エリア' : 'Area'}</span>
-            <button type="button" className={`tab-pill${!areaFilter ? ' active' : ''}`} onClick={() => setAreaFilter('')}>{lang === 'ja' ? 'すべて' : 'All'} ({dayJobs.length})</button>
+            <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>📍 {tr('Area', 'エリア', 'Área')}</span>
+            <button type="button" className={`tab-pill${!areaFilter ? ' active' : ''}`} onClick={() => setAreaFilter('')}>{tr('All', 'すべて', 'Todos')} ({dayJobs.length})</button>
             {dayAreas.map(a => (
               <button key={a} type="button" className={`tab-pill${areaFilter === a ? ' active' : ''}`} onClick={() => setAreaFilter(a)}>{a} ({dayJobs.filter(j => j.area === a).length})</button>
             ))}
@@ -731,7 +734,7 @@ export default function Jobs() {
             {newDay && j.scheduled_date && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, margin: '14px 2px 8px', fontSize: 13, color: 'var(--text2)' }}>
                 <span style={{ fontWeight: 800, color: 'var(--text)' }}>
-                  {new Date(j.scheduled_date + 'T12:00:00').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  {new Date(j.scheduled_date + 'T12:00:00').toLocaleDateString(localeOf(lang), { weekday: 'short', day: 'numeric', month: 'short' })}
                 </span>
                 <span>{fill(jt.jobsWithJobs, { n: dayInfo.n })}{dayInfo.min > 0 && ` · ⏱ ${fmtMinutes(dayInfo.min)}`}</span>
               </div>
@@ -786,6 +789,7 @@ export default function Jobs() {
                     variant="full"
                     onPhotoClick={setLightbox}
                   />
+                  <JobVideos jobId={j.id} lazy style={{ marginTop: 8 }} />
                 </div>
               )}
 

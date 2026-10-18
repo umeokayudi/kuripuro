@@ -6,8 +6,9 @@ import SignatureImage from '../components/SignatureImage'
 import { tokyoToday } from '../lib/dates'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
+import JobVideos from '../components/JobVideos'
 import PhotoLightbox from '../components/PhotoLightbox'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, pickLang } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
 import { formatDistance } from '../lib/geocode'
 import { useAuth } from '../hooks/useAuth'
@@ -230,7 +231,7 @@ export default function Reports() {
       const order = new Map(ids.map((id, i) => [id, i]))
       const sorted = (dayJobs || []).sort((a, b) => order.get(a.id) - order.get(b.id))
       const { generateDailyReport } = await import('../lib/generatePDF')
-      const doc = await generateDailyReport(filterDay, sorted, filterEmp || (lang === 'ja' ? '全スタッフ' : 'All staff'), { showEmployee: !filterEmp, adminName: user?.name || '', adminSignature: sig || null })
+      const doc = await generateDailyReport(filterDay, sorted, filterEmp || pickLang(lang, 'All staff', '全スタッフ', 'Todos os funcionários'), { showEmployee: !filterEmp, adminName: user?.name || '', adminSignature: sig || null })
       doc.save(`report_${filterDay}${filterEmp ? '_' + filterEmp.replace(/\s+/g, '_') : ''}.pdf`)
       toast.success(tr.dayPdfReady)
     } catch (e) {
@@ -315,7 +316,7 @@ export default function Reports() {
             <input type="date" value={filterDay} onChange={e => setFilterDay(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)' }} />
             {filterDay
               ? <button className="btn btn-sm" onClick={() => setFilterDay('')}>{tr.anyDay}</button>
-              : <button className="btn btn-sm" onClick={() => setFilterDay(tokyoToday())}>{lang === 'ja' ? '今日' : 'Today'}</button>}
+              : <button className="btn btn-sm" onClick={() => setFilterDay(tokyoToday())}>{pickLang(lang, 'Today', '今日', 'Hoje')}</button>}
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -345,7 +346,7 @@ export default function Reports() {
       <ReportsAnalytics reports={filtered} />
 
       {aiAnalysis && (
-        <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #c19c56' }}>
+        <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #315cf5' }}>
           <div className="card-title">{tr.aiTitle}</div>
           <div style={{ fontSize: 13.5, lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{aiAnalysis}</div>
         </div>
@@ -457,7 +458,7 @@ export default function Reports() {
             {selected.retro_ai_summary && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.aiRetro}</div>
-                <div style={{ fontSize: 13, background: 'rgba(193,156,86,0.1)', borderRadius: 8, padding: '10px 12px' }}>{selected.retro_ai_summary}</div>
+                <div style={{ fontSize: 13, background: '#eef3ff', borderRadius: 8, padding: '10px 12px' }}>{selected.retro_ai_summary}</div>
               </div>
             )}
 
@@ -488,6 +489,7 @@ export default function Reports() {
                     <a href={viewablePhotoUrl(selected.photo_after_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ flex: 1 }}>{tr.openFullscreen} ({tr.after})</a>
                   )}
                 </div>
+                {selected.job_id && <JobVideos jobId={selected.job_id} style={{ marginTop: 10 }} />}
               </div>
             )}
 

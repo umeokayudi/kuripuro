@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { usePendingCounts } from '../components/Sidebar'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { lineTotal, yen } from '../lib/quoteMath'
@@ -26,6 +27,7 @@ import {
   notesForPrint,
 } from '../lib/sales'
 import SalesLeadFields from '../components/SalesLeadFields'
+import StoreDossier from '../components/facility/StoreDossier'
 
 const QUOTE_FILTERS = ['all', 'draft', 'sent', 'accepted', 'declined']
 
@@ -46,6 +48,8 @@ export default function Mitsumori() {
   const inv = t.invoices
   const today = tokyoToday()
   const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const pending = usePendingCounts()
   const leadId = params.get('lead')
   const [quotes, setQuotes] = useState([])
   const [leads, setLeads] = useState([])
@@ -56,6 +60,12 @@ export default function Mitsumori() {
   const [editingStatus, setEditingStatus] = useState('draft')
   const [editingLeadId, setEditingLeadId] = useState(null)
   const [form, setForm] = useState(() => blankForm(today))
+  // ficha da loja (3D, fotos, local, medidas): espera parar de digitar o nome antes de buscar
+  const [dossierKey, setDossierKey] = useState({ company: '', site: '' })
+  useEffect(() => {
+    const id = setTimeout(() => setDossierKey({ company: form.company_name || '', site: form.site_name || '' }), 600)
+    return () => clearTimeout(id)
+  }, [form.company_name, form.site_name])
   const [items, setItems] = useState([emptyQuoteItem()])
   const [saving, setSaving] = useState(false)
 
@@ -325,6 +335,11 @@ export default function Mitsumori() {
       <div className="tab-pills">
         <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => setTab('list')}>{fill(s.quoteList, { n: quotes.length })}</button>
         <button type="button" className={`tab-pill${tab === 'form' ? ' active' : ''}`} onClick={startNew}>{s.quoteNew}</button>
+        {pending.mitsumori > 0 && (
+          <button type="button" className="tab-pill" onClick={() => navigate('/client-feedback?tab=requests')}>
+            {fill(s.clientQuoteRequests || 'Client quote requests', { n: pending.mitsumori })} <span className="nav-count" style={{ marginLeft: 6 }}>{pending.mitsumori}</span>
+          </button>
+        )}
       </div>
 
       {tab === 'list' && (
@@ -381,6 +396,10 @@ export default function Mitsumori() {
               </div>
             )}
             <SalesLeadFields form={form} onChange={setForm} s={s} locked={locked} />
+            {dossierKey.company.trim().length >= 2 && (
+              <StoreDossier companyName={dossierKey.company} locationName={dossierKey.site || null}
+                onUseSummary={locked ? undefined : text => setForm(f => ({ ...f, notes: f.notes ? `${f.notes}\n\n${text}` : text }))} />
+            )}
             <div className="grid-2" style={{ marginTop: 8 }}>
               <div className="form-group"><label>{s.validUntil}</label><input type="date" value={form.valid_until || ''} disabled={locked} onChange={e => setForm({ ...form, valid_until: e.target.value })} /></div>
               <div className="form-group"><label>{inv.taxRate}</label>

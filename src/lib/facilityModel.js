@@ -13,16 +13,16 @@
  */
 
 export const AREA_KINDS = {
-  dining: { color: '#60a5fa', icon: '🍽', en: 'Dining hall', ja: '客席' },
-  kitchen: { color: '#f97316', icon: '🔥', en: 'Kitchen', ja: '厨房' },
-  bar: { color: '#a78bfa', icon: '🍸', en: 'Bar counter', ja: 'バー' },
-  restroom: { color: '#22d3ee', icon: '🚻', en: 'Restroom', ja: 'トイレ' },
-  storage: { color: '#a3a3a3', icon: '📦', en: 'Storage', ja: '倉庫' },
-  washing: { color: '#38bdf8', icon: '🫧', en: 'Dishwashing', ja: '洗い場' },
-  ventilation: { color: '#94a3b8', icon: '🌀', en: 'Ventilation', ja: '換気' },
-  entrance: { color: '#4ade80', icon: '🚪', en: 'Entrance', ja: '入口' },
-  office: { color: '#fbbf24', icon: '🗂', en: 'Office / staff', ja: '事務所' },
-  other: { color: '#cbd5e1', icon: '▫️', en: 'Other', ja: 'その他' },
+  dining: { color: '#60a5fa', icon: '🍽', en: 'Dining hall', ja: '客席', pt: 'Salão' },
+  kitchen: { color: '#f97316', icon: '🔥', en: 'Kitchen', ja: '厨房', pt: 'Cozinha' },
+  bar: { color: '#a78bfa', icon: '🍸', en: 'Bar counter', ja: 'バー', pt: 'Balcão do bar' },
+  restroom: { color: '#22d3ee', icon: '🚻', en: 'Restroom', ja: 'トイレ', pt: 'Banheiro' },
+  storage: { color: '#a3a3a3', icon: '📦', en: 'Storage', ja: '倉庫', pt: 'Depósito' },
+  washing: { color: '#38bdf8', icon: '🫧', en: 'Dishwashing', ja: '洗い場', pt: 'Área de lavagem' },
+  ventilation: { color: '#94a3b8', icon: '🌀', en: 'Ventilation', ja: '換気', pt: 'Ventilação' },
+  entrance: { color: '#4ade80', icon: '🚪', en: 'Entrance', ja: '入口', pt: 'Entrada' },
+  office: { color: '#fbbf24', icon: '🗂', en: 'Office / staff', ja: '事務所', pt: 'Escritório / equipe' },
+  other: { color: '#cbd5e1', icon: '▫️', en: 'Other', ja: 'その他', pt: 'Outro' },
 }
 
 /**
@@ -30,27 +30,27 @@ export const AREA_KINDS = {
  * intervalDays: intervalo recomendado de manutenção (null = sem recomendação automática).
  */
 export const ELEMENT_KINDS = {
-  range_hood: { icon: '🌀', en: 'Range hood', ja: 'レンジフード', service: 'Range hood deep clean', intervalDays: 90, h: 0.6, z: 1.6 },
-  grease_trap: { icon: '🛢', en: 'Grease trap', ja: 'グリストラップ', service: 'Grease trap cleaning', intervalDays: 15, h: 0.3 },
-  air_conditioner: { icon: '❄️', en: 'Air conditioner', ja: 'エアコン', service: 'AC filter cleaning', intervalDays: 90, h: 0.4, z: 2.2 },
-  stove: { icon: '🔥', en: 'Stove / grill', ja: 'コンロ', service: 'Stove degreasing', intervalDays: 30, h: 0.9 },
-  fryer: { icon: '🍟', en: 'Fryer', ja: 'フライヤー', service: 'Fryer degreasing', intervalDays: 30, h: 0.9 },
-  oven: { icon: '♨️', en: 'Oven', ja: 'オーブン', service: 'Oven deep clean', intervalDays: 60, h: 1.2 },
-  fridge: { icon: '🧊', en: 'Refrigerator', ja: '冷蔵庫', service: 'Refrigerator & coil cleaning', intervalDays: 120, h: 1.8 },
-  dishwasher: { icon: '🫧', en: 'Dishwasher', ja: '食洗機', service: 'Dishwasher descaling', intervalDays: 60, h: 1.0 },
-  sink: { icon: '🚰', en: 'Sink', ja: 'シンク', service: null, intervalDays: null, h: 0.9 },
-  duct: { icon: '🌬', en: 'Exhaust duct', ja: 'ダクト', service: 'Exhaust duct cleaning', intervalDays: 180, h: 0.4, z: 2.4 },
-  grating: { icon: '🔲', en: 'Floor grating / drain', ja: 'グレーチング', service: 'Drain & grating cleaning', intervalDays: 30, h: 0.05 },
-  table: { icon: '🪑', en: 'Table', ja: 'テーブル', service: null, intervalDays: null, h: 0.75 },
-  counter: { icon: '🟫', en: 'Counter', ja: 'カウンター', service: null, intervalDays: null, h: 1.0 },
-  toilet: { icon: '🚽', en: 'Toilet', ja: '便器', service: 'Restroom deep clean', intervalDays: 30, h: 0.5 },
-  light_switch: { icon: '💡', en: 'Light switch', ja: '照明スイッチ', service: null, intervalDays: null, h: 0.1, z: 1.2 },
-  breaker: { icon: '⚡', en: 'Breaker panel', ja: '分電盤', service: null, intervalDays: null, h: 0.5, z: 1.4 },
-  valve: { icon: '🔧', en: 'Gas / water valve', ja: 'バルブ', service: null, intervalDays: null, h: 0.2, z: 0.5 },
-  light: { icon: '🔆', en: 'Light', ja: '照明', service: null, intervalDays: null, h: 0.1, z: 2.6 },
-  floor: { icon: '🧽', en: 'Floor', ja: '床', service: 'Floor deep scrub & wax', intervalDays: 60, h: 0.02 },
-  window: { icon: '🪟', en: 'Window / glass', ja: '窓', service: 'Window & glass cleaning', intervalDays: 30, h: 1.5 },
-  other: { icon: '▫️', en: 'Other', ja: 'その他', service: null, intervalDays: null, h: 0.5 },
+  range_hood: { icon: '🌀', en: 'Range hood', ja: 'レンジフード', pt: 'Coifa', service: 'Range hood deep clean', intervalDays: 90, h: 0.6, z: 1.6 },
+  grease_trap: { icon: '🛢', en: 'Grease trap', ja: 'グリストラップ', pt: 'Caixa de gordura', service: 'Grease trap cleaning', intervalDays: 15, h: 0.3 },
+  air_conditioner: { icon: '❄️', en: 'Air conditioner', ja: 'エアコン', pt: 'Ar-condicionado', service: 'AC filter cleaning', intervalDays: 90, h: 0.4, z: 2.2 },
+  stove: { icon: '🔥', en: 'Stove / grill', ja: 'コンロ', pt: 'Fogão / chapa', service: 'Stove degreasing', intervalDays: 30, h: 0.9 },
+  fryer: { icon: '🍟', en: 'Fryer', ja: 'フライヤー', pt: 'Fritadeira', service: 'Fryer degreasing', intervalDays: 30, h: 0.9 },
+  oven: { icon: '♨️', en: 'Oven', ja: 'オーブン', pt: 'Forno', service: 'Oven deep clean', intervalDays: 60, h: 1.2 },
+  fridge: { icon: '🧊', en: 'Refrigerator', ja: '冷蔵庫', pt: 'Geladeira', service: 'Refrigerator & coil cleaning', intervalDays: 120, h: 1.8 },
+  dishwasher: { icon: '🫧', en: 'Dishwasher', ja: '食洗機', pt: 'Lava-louças', service: 'Dishwasher descaling', intervalDays: 60, h: 1.0 },
+  sink: { icon: '🚰', en: 'Sink', ja: 'シンク', pt: 'Pia', service: null, intervalDays: null, h: 0.9 },
+  duct: { icon: '🌬', en: 'Exhaust duct', ja: 'ダクト', pt: 'Duto de exaustão', service: 'Exhaust duct cleaning', intervalDays: 180, h: 0.4, z: 2.4 },
+  grating: { icon: '🔲', en: 'Floor grating / drain', ja: 'グレーチング', pt: 'Grelha de piso / ralo', service: 'Drain & grating cleaning', intervalDays: 30, h: 0.05 },
+  table: { icon: '🪑', en: 'Table', ja: 'テーブル', pt: 'Mesa', service: null, intervalDays: null, h: 0.75 },
+  counter: { icon: '🟫', en: 'Counter', ja: 'カウンター', pt: 'Balcão', service: null, intervalDays: null, h: 1.0 },
+  toilet: { icon: '🚽', en: 'Toilet', ja: '便器', pt: 'Vaso sanitário', service: 'Restroom deep clean', intervalDays: 30, h: 0.5 },
+  light_switch: { icon: '💡', en: 'Light switch', ja: '照明スイッチ', pt: 'Interruptor', service: null, intervalDays: null, h: 0.1, z: 1.2 },
+  breaker: { icon: '⚡', en: 'Breaker panel', ja: '分電盤', pt: 'Quadro de disjuntores', service: null, intervalDays: null, h: 0.5, z: 1.4 },
+  valve: { icon: '🔧', en: 'Gas / water valve', ja: 'バルブ', pt: 'Registro de gás / água', service: null, intervalDays: null, h: 0.2, z: 0.5 },
+  light: { icon: '🔆', en: 'Light', ja: '照明', pt: 'Luminária', service: null, intervalDays: null, h: 0.1, z: 2.6 },
+  floor: { icon: '🧽', en: 'Floor', ja: '床', pt: 'Piso', service: 'Floor deep scrub & wax', intervalDays: 60, h: 0.02 },
+  window: { icon: '🪟', en: 'Window / glass', ja: '窓', pt: 'Janela / vidro', service: 'Window & glass cleaning', intervalDays: 30, h: 1.5 },
+  other: { icon: '▫️', en: 'Other', ja: 'その他', pt: 'Outro', service: null, intervalDays: null, h: 0.5 },
 }
 
 /** Itens que o funcionário mais procura: mostram um pino 📷 no 3D e a foto real fica a um toque. */
@@ -148,11 +148,11 @@ function addDays(iso, n) {
 /** Situação de uma tarefa: status, próxima data e quantos dias faltam (negativo = atrasada). */
 export function taskState(task, now = new Date()) {
   if (!task?.interval_days) return { status: null, next: null, daysLeft: null }
-  if (!task.last) return { status: 'none', next: null, daysLeft: null }
+  if (!task.last) return { status: 'none', next: null, daysLeft: null, daysSince: null }
   const days = daysBetween(task.last, now)
   const daysLeft = task.interval_days - days
   const status = days >= task.interval_days ? 'overdue' : days >= task.interval_days * 0.85 ? 'due' : 'ok'
-  return { status, next: addDays(task.last, task.interval_days), daysLeft }
+  return { status, next: addDays(task.last, task.interval_days), daysLeft, daysSince: days }
 }
 
 const AREA_KEYS = Object.keys(AREA_KINDS)
@@ -160,7 +160,7 @@ const ELEMENT_KEYS = Object.keys(ELEMENT_KINDS)
 
 export function kindLabel(kind, lang = 'en', table = ELEMENT_KINDS) {
   const k = table[kind] || table.other
-  return lang === 'ja' ? k.ja : k.en
+  return lang === 'ja' ? k.ja : lang === 'pt' ? (k.pt || k.en) : k.en
 }
 
 let idCounter = 0
@@ -429,6 +429,40 @@ export function careSchedule(layout, now = new Date()) {
   return rows.sort((a, b) => order[a.status] - order[b.status]
     || (a.daysLeft ?? 0) - (b.daysLeft ?? 0)
     || (a.task.type === b.task.type ? 0 : a.task.type === 'cleaning' ? -1 : 1))
+}
+
+/**
+ * Serviços para oferecer (admin e vendedor): lojas aprovadas, tarefas atrasadas ou que vencem em até `horizon` dias.
+ * Objetos simples (vão pela API do vendedor). key = modelo:item:tarefa, estável para "já avisei".
+ */
+export function serviceOffers(models = [], logs = [], { now = new Date(), horizon = 14 } = {}) {
+  const rows = []
+  for (const m of models) {
+    if (m.status !== 'approved') continue
+    const layout = withServiceLog(normalizeLayout(m.layout), logs.filter(l => l.model_id === m.id))
+    for (const r of careSchedule(layout, now)) {
+      if (!(r.status === 'overdue' || r.status === 'due' || (r.daysLeft != null && r.daysLeft <= horizon))) continue
+      rows.push({
+        key: `${m.id}:${r.element.id}:${r.task.id}`,
+        model_id: m.id,
+        client_id: m.client_id,
+        location: m.location_name || m.name,
+        element_id: r.element.id,
+        element_name: r.element.name,
+        element_kind: r.element.kind,
+        task_id: r.task.id,
+        task_name: r.task.name,
+        task_type: r.task.type,
+        interval_days: r.task.interval_days,
+        last: r.task.last,
+        next: r.next,
+        status: r.status,
+        daysLeft: r.daysLeft,
+        daysSince: r.daysSince,
+      })
+    }
+  }
+  return rows.sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0))
 }
 
 export function statusMap(layout, now = new Date()) {

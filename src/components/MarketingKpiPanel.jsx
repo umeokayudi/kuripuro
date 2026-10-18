@@ -31,13 +31,26 @@ const COPY = {
     media: '媒体別の広告成果', mediaSub: 'CPM＝1,000表示あたり費用・CPC＝クリック単価・CTR＝クリック率・CPL＝リード単価・CPA＝契約1件あたり費用・ROIは契約初年度で計算。',
     platform: '媒体', impressions: '表示回数', clicks: 'クリック', cpm: 'CPM', cpc: 'CPC', ctr: 'CTR', cpa: 'CPA', clickToLead: 'クリック→リード', leadToWin: 'リード→契約', platformConv: '媒体CV', noMedia: '表示回数とクリックを入力すると媒体別KPIが表示されます。',
   },
+  pt: {
+    title: 'KPIs de marketing', sub: 'Gastos, leads e contratos por canal. Marque cada lead com um canal ou campanha para medir.',
+    ranges: { month: 'Este mês', '3m': '3 meses', '6m': '6 meses', year: 'Este ano', '12m': '12 meses' }, vsPrev: 'vs período anterior',
+    spend: 'Gasto com anúncios', leads: 'Leads do marketing', wins: 'Contratos fechados', cpl: 'Custo por lead', cac: 'Custo por cliente', revenue: 'Faturamento fechado / mês', roi: 'Retorno no 1º ano', coverage: 'Leads com origem',
+    evolution: 'Evolução por mês', empty: 'Nenhuma atividade de marketing neste período ainda.', goal: 'Meta', actual: 'Realizado',
+    metrics: { spend: 'Gasto', leads: 'Leads', wins: 'Fechados', cpl: 'CPL', cac: 'CAC', revenue: 'Faturamento' },
+    channels: 'Desempenho por canal', channel: 'Canal', conversion: 'Lead → fechado', payback: 'Retorno do investimento', months: m => `${m} meses`, noChannels: 'Crie um canal para começar a medir.',
+    pacing: 'Ritmo do orçamento', pacingSub: 'Orçamento usado vs parte do período da campanha que já passou. Marcador = tempo decorrido.', overPace: 'gastando antes do previsto', noBudgets: 'Nenhuma campanha com orçamento.',
+    goals: 'Metas mensais de marketing', goalsSub: 'Salvas para todos. O progresso usa gastos, leads e contratos registrados.', month: 'Mês', save: 'Salvar metas', done: 'Atingida',
+    goalKeys: { leads: 'Leads', won: 'Contratos', revenue: 'Faturamento / mês', spend: 'Limite de gasto', max_cpl: 'Custo máximo por lead' },
+    media: 'Mídia paga por plataforma', mediaSub: 'CPM = custo por 1.000 impressões · CPC = custo por clique · CTR = cliques ÷ impressões · CPL = custo por lead · CPA = custo por contrato assinado · ROI sobre o primeiro ano do contrato.',
+    platform: 'Plataforma', impressions: 'Impressões', clicks: 'Cliques', cpm: 'CPM', cpc: 'CPC', ctr: 'CTR', cpa: 'CPA', clickToLead: 'Clique → lead', leadToWin: 'Lead → contrato', platformConv: 'Conv. da plataforma', noMedia: 'Registre gastos com impressões e cliques para ver os KPIs por plataforma.',
+  },
 }
 
 const FORMAT = { spend: yen, cpl: yen, cac: yen, revenue: yen }
 const GOAL_FOR = { spend: 'spend', leads: 'leads', wins: 'won', revenue: 'revenue', cpl: 'max_cpl' }
 
 export default function MarketingKpiPanel({ data, lang, today, onSaveGoal, busy }) {
-  const t = COPY[lang === 'ja' ? 'ja' : 'en']
+  const t = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [rangeKey, setRangeKey] = useState('3m')
   const [metric, setMetric] = useState('leads')
   const [goalMonth, setGoalMonth] = useState(String(today).slice(0, 7))
