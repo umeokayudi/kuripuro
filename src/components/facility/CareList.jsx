@@ -45,6 +45,7 @@ export default function CareList({ rows, t, lang, showElement = false, onElement
               <div className="fac-care-task">
                 <span className={`fac-care-type ${r.task.type}`}>{r.task.type === 'maintenance' ? '🔧' : '🧽'} {r.task.type === 'maintenance' ? t.maintenance : t.cleaning}</span>
                 {r.task.name}
+                {r.daysSince != null && <span className="fac-care-since">🕒 {fill(t.daysSince, { n: r.daysSince })}</span>}
               </div>
               <div className="fac-care-dates">
                 {t.lastDone}: <b>{r.task.last ? fmtDay(r.task.last, lang) : t.never}</b>

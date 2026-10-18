@@ -69,15 +69,17 @@ export async function deleteModel(id) {
  * Modelo aprovado para um local (cliente/funcionário só veem modelos revisados pelo admin).
  * Sem location_name → primeiro modelo aprovado do cliente.
  */
-export async function loadApprovedModel(clientId, locationName) {
+export async function loadApprovedModel(clientId, locationName, { allowDraft = false } = {}) {
   if (!clientId) return null
-  const { data, error } = await supabase
+  let q = supabase
     .from('facility_models')
     .select('*')
     .eq('client_id', clientId)
-    .eq('status', 'approved')
+  if (!allowDraft) q = q.eq('status', 'approved')
+  const { data, error } = await q
   if (error) return null
-  const rows = data || []
+  // funcionário: aprovado primeiro; rascunho só se ainda não houver aprovado
+  const rows = (data || []).sort((a, b) => (a.status === 'approved' ? 0 : 1) - (b.status === 'approved' ? 0 : 1))
   const exact = locationName ? rows.find(r => r.location_name === locationName) : null
   const fallback = rows.find(r => !r.location_name) || (!locationName ? rows[0] : null)
   return rowToModel(exact || fallback || null)

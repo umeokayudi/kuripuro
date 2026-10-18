@@ -9,6 +9,7 @@ import {
 import { useLang, fill } from '../hooks/useLang'
 import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
+import JobVideos from '../components/JobVideos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl } from '../lib/calendar'
@@ -786,6 +787,7 @@ export default function Jobs() {
                     variant="full"
                     onPhotoClick={setLightbox}
                   />
+                  <JobVideos jobId={j.id} lazy style={{ marginTop: 8 }} />
                 </div>
               )}
 

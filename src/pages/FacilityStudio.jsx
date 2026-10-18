@@ -938,6 +938,12 @@ export default function FacilityStudio({ clients, initialClientId }) {
                 alerts={alerts}
                 height={480}
                 t={t}
+                editable
+                onMoveItem={(id, pos) => changeItem('element', id, pos)}
+                onRotateItem={(id) => {
+                  const el = current.layout.elements.find(e => e.id === id)
+                  if (el) changeItem('element', id, rotate90(current.layout, el))
+                }}
               />
             </div>
           )}

@@ -12,6 +12,7 @@ import { salesPost } from '../lib/salesApi'
 import { quoteCommissionState } from '../lib/contractCommission'
 import { QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
 import toast from 'react-hot-toast'
+import StoreDossier from '../components/facility/StoreDossier'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
@@ -25,6 +26,7 @@ export default function ClientFeedback() {
   const [complaints, setComplaints] = useState([])
   const [compliments, setCompliments] = useState([])
   const [requests, setRequests] = useState([])
+  const [dossierFor, setDossierFor] = useState(null)
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [responseDraft, setResponseDraft] = useState({})
@@ -46,6 +48,8 @@ export default function ClientFeedback() {
     setComplaints(complaintsData)
     setCompliments(complimentsData)
     setRequests(rq.data || [])
+    // pedido de orçamento aberto: a ficha da loja já vem aberta no primeiro
+    setDossierFor(d => d ?? (rq.data || []).find(r => r.request_type === 'quote' && r.status === 'pending')?.id ?? null)
     setClients(cl.data || [])
 
     const jobIds = [...new Set([
@@ -312,6 +316,13 @@ export default function ClientFeedback() {
                 {row.preferred_date ? ` · ${fill(f.preferredDate, { date: row.preferred_date })}` : ''}
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>
+              <button type="button" className="btn btn-sm" style={{ marginBottom: 8 }} onClick={() => setDossierFor(v => (v === row.id ? null : row.id))}>
+                🏢 {t.facility.dossierTitle} {dossierFor === row.id ? '▲' : '▼'}
+              </button>
+              {dossierFor === row.id && (
+                <StoreDossier clientId={row.client_id} locationName={row.location_name}
+                  onUseSummary={row.request_type === 'quote' ? text => setQuoteDraft(d => ({ ...d, [row.id]: { ...d[row.id], note: text.replace(/\n/g, ' / ') } })) : undefined} />
+              )}
               {row.request_type === 'quote' && (() => {
                 const qs = row.quote_status || 'requested'
                 const accountSeller = clients.find(c => c.id === row.client_id)?.salesperson_id || null

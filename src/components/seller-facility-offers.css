@@ -1,0 +1,16 @@
+/* Área do vendedor: serviços do Smart Facility para oferecer (aba própria, separada do funil) */
+.sfo-hint { margin: 0 0 10px; font-size: 13px; }
+.sfo-pill-late { background: #fee2e2 !important; color: #b91c1c !important; }
+.sfo-list { display: flex; flex-direction: column; gap: 8px; }
+.sfo-row { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--fa-line, #e6eaf2); border-left: 4px solid #f59e0b; border-radius: 12px; background: #fff; }
+.sfo-row.st-overdue { border-left-color: #ef4444; background: #fff8f8; }
+.sfo-row.is-offered { opacity: .7; }
+.sfo-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sfo-main strong { font-size: 14px; color: var(--fa-text, #111b2e); }
+.sfo-main small { font-size: 12px; color: var(--fa-muted, #6b768a); }
+.sfo-when { font-size: 12.5px; font-weight: 700; color: #334155; margin-top: 2px; }
+.sfo-row.st-overdue .sfo-when { color: #b91c1c; }
+.sfo-offered { font-size: 11.5px; color: #15803d; font-weight: 700; }
+.sfo-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.sfo-tag { font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: #fffbeb; color: #b45309; white-space: nowrap; }
+.sfo-tag.st-overdue { background: #fef2f2; color: #b91c1c; }

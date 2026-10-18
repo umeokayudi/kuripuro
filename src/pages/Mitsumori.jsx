@@ -26,6 +26,7 @@ import {
   notesForPrint,
 } from '../lib/sales'
 import SalesLeadFields from '../components/SalesLeadFields'
+import StoreDossier from '../components/facility/StoreDossier'
 
 const QUOTE_FILTERS = ['all', 'draft', 'sent', 'accepted', 'declined']
 
@@ -56,6 +57,12 @@ export default function Mitsumori() {
   const [editingStatus, setEditingStatus] = useState('draft')
   const [editingLeadId, setEditingLeadId] = useState(null)
   const [form, setForm] = useState(() => blankForm(today))
+  // ficha da loja (3D, fotos, local, medidas): espera parar de digitar o nome antes de buscar
+  const [dossierKey, setDossierKey] = useState({ company: '', site: '' })
+  useEffect(() => {
+    const id = setTimeout(() => setDossierKey({ company: form.company_name || '', site: form.site_name || '' }), 600)
+    return () => clearTimeout(id)
+  }, [form.company_name, form.site_name])
   const [items, setItems] = useState([emptyQuoteItem()])
   const [saving, setSaving] = useState(false)
 
@@ -381,6 +388,10 @@ export default function Mitsumori() {
               </div>
             )}
             <SalesLeadFields form={form} onChange={setForm} s={s} locked={locked} />
+            {dossierKey.company.trim().length >= 2 && (
+              <StoreDossier companyName={dossierKey.company} locationName={dossierKey.site || null}
+                onUseSummary={locked ? undefined : text => setForm(f => ({ ...f, notes: f.notes ? `${f.notes}\n\n${text}` : text }))} />
+            )}
             <div className="grid-2" style={{ marginTop: 8 }}>
               <div className="form-group"><label>{s.validUntil}</label><input type="date" value={form.valid_until || ''} disabled={locked} onChange={e => setForm({ ...form, valid_until: e.target.value })} /></div>
               <div className="form-group"><label>{inv.taxRate}</label>

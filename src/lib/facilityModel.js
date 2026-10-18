@@ -148,11 +148,11 @@ function addDays(iso, n) {
 /** Situação de uma tarefa: status, próxima data e quantos dias faltam (negativo = atrasada). */
 export function taskState(task, now = new Date()) {
   if (!task?.interval_days) return { status: null, next: null, daysLeft: null }
-  if (!task.last) return { status: 'none', next: null, daysLeft: null }
+  if (!task.last) return { status: 'none', next: null, daysLeft: null, daysSince: null }
   const days = daysBetween(task.last, now)
   const daysLeft = task.interval_days - days
   const status = days >= task.interval_days ? 'overdue' : days >= task.interval_days * 0.85 ? 'due' : 'ok'
-  return { status, next: addDays(task.last, task.interval_days), daysLeft }
+  return { status, next: addDays(task.last, task.interval_days), daysLeft, daysSince: days }
 }
 
 const AREA_KEYS = Object.keys(AREA_KINDS)
@@ -429,6 +429,40 @@ export function careSchedule(layout, now = new Date()) {
   return rows.sort((a, b) => order[a.status] - order[b.status]
     || (a.daysLeft ?? 0) - (b.daysLeft ?? 0)
     || (a.task.type === b.task.type ? 0 : a.task.type === 'cleaning' ? -1 : 1))
+}
+
+/**
+ * Serviços para oferecer (admin e vendedor): lojas aprovadas, tarefas atrasadas ou que vencem em até `horizon` dias.
+ * Objetos simples (vão pela API do vendedor). key = modelo:item:tarefa, estável para "já avisei".
+ */
+export function serviceOffers(models = [], logs = [], { now = new Date(), horizon = 14 } = {}) {
+  const rows = []
+  for (const m of models) {
+    if (m.status !== 'approved') continue
+    const layout = withServiceLog(normalizeLayout(m.layout), logs.filter(l => l.model_id === m.id))
+    for (const r of careSchedule(layout, now)) {
+      if (!(r.status === 'overdue' || r.status === 'due' || (r.daysLeft != null && r.daysLeft <= horizon))) continue
+      rows.push({
+        key: `${m.id}:${r.element.id}:${r.task.id}`,
+        model_id: m.id,
+        client_id: m.client_id,
+        location: m.location_name || m.name,
+        element_id: r.element.id,
+        element_name: r.element.name,
+        element_kind: r.element.kind,
+        task_id: r.task.id,
+        task_name: r.task.name,
+        task_type: r.task.type,
+        interval_days: r.task.interval_days,
+        last: r.task.last,
+        next: r.next,
+        status: r.status,
+        daysLeft: r.daysLeft,
+        daysSince: r.daysSince,
+      })
+    }
+  }
+  return rows.sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0))
 }
 
 export function statusMap(layout, now = new Date()) {
