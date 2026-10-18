@@ -345,7 +345,7 @@ export default function Reports() {
       <ReportsAnalytics reports={filtered} />
 
       {aiAnalysis && (
-        <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #c19c56' }}>
+        <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #315cf5' }}>
           <div className="card-title">{tr.aiTitle}</div>
           <div style={{ fontSize: 13.5, lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{aiAnalysis}</div>
         </div>
@@ -457,7 +457,7 @@ export default function Reports() {
             {selected.retro_ai_summary && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.aiRetro}</div>
-                <div style={{ fontSize: 13, background: 'rgba(193,156,86,0.1)', borderRadius: 8, padding: '10px 12px' }}>{selected.retro_ai_summary}</div>
+                <div style={{ fontSize: 13, background: '#eef3ff', borderRadius: 8, padding: '10px 12px' }}>{selected.retro_ai_summary}</div>
               </div>
             )}
 

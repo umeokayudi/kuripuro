@@ -33,7 +33,7 @@ export default function ClientSatisfactionPanel() {
   const atRisk = byClient.filter(x => x.avg != null && x.avg < 3.5)
 
   return (
-    <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #c19c56' }}>
+    <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #315cf5' }}>
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontWeight: 700, fontSize: 16 }}>{d.satisfactionTitle}</div>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{d.satisfactionSubtitle}</div>

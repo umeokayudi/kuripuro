@@ -86,9 +86,9 @@ export default function Payments() {
 
       {/* Employee filter */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        <button onClick={()=>setSelected(null)} style={{padding:'6px 14px',borderRadius:20,border:'1px solid',borderColor:!selected?'var(--gold)':'var(--border)',background:!selected?'rgba(193,156,86,0.1)':'none',color:!selected?'var(--gold)':'var(--text3)',fontSize:12,cursor:'pointer'}}>All</button>
+        <button onClick={()=>setSelected(null)} style={{padding:'6px 14px',borderRadius:20,border:'1px solid',borderColor:!selected?'var(--gold)':'var(--border)',background:!selected?'#eef3ff':'none',color:!selected?'var(--gold)':'var(--text3)',fontSize:12,cursor:'pointer'}}>All</button>
         {employees.map(e=>(
-          <button key={e.id} onClick={()=>setSelected(e.id)} style={{padding:'6px 14px',borderRadius:20,border:'1px solid',borderColor:selected===e.id?'var(--gold)':'var(--border)',background:selected===e.id?'rgba(193,156,86,0.1)':'none',color:selected===e.id?'var(--gold)':'var(--text3)',fontSize:12,cursor:'pointer'}}>{e.full_name.split(' ')[0]}</button>
+          <button key={e.id} onClick={()=>setSelected(e.id)} style={{padding:'6px 14px',borderRadius:20,border:'1px solid',borderColor:selected===e.id?'var(--gold)':'var(--border)',background:selected===e.id?'#eef3ff':'none',color:selected===e.id?'var(--gold)':'var(--text3)',fontSize:12,cursor:'pointer'}}>{e.full_name.split(' ')[0]}</button>
         ))}
       </div>
 
@@ -103,7 +103,7 @@ export default function Payments() {
       </div>
 
       {showForm&&(
-        <div className="card" style={{marginBottom:16,border:'1px solid rgba(193,156,86,0.2)'}}>
+        <div className="card" style={{marginBottom:16,border:'1px solid #d7e0ff'}}>
           <div style={{fontWeight:600,fontSize:15,marginBottom:14,color:'var(--gold)'}}>{editingId?'Edit Payment':'New Payment'}</div>
           <div className="grid-2">
             <div className="form-group"><label>Employee *</label>
