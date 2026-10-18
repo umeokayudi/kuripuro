@@ -66,6 +66,7 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
   const [dragId, setDragId] = useState('')
   const [dropPhase, setDropPhase] = useState('')
   const [focus, setFocus] = useState('')
+  const [listPhase, setListPhase] = useState('')
   const phone = useIsPhone()
   const deals = useMemo(() => buildDeals(data, today), [data, today])
   const activeId = openLeadId ?? openId
@@ -77,6 +78,8 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
   const byPhase = Object.fromEntries(PHASES.map(p => [p, visible.filter(d => d.phase === p).sort((a, b) => String(b.last).localeCompare(String(a.last)))]))
   const total = visible.filter(d => d.phase !== 'lost').length || 1
   const open = deals.find(d => d.lead.id === activeId)
+  // List: every client (or only the stage picked above), newest contact first.
+  const listRows = visible.filter(d => (showLost || d.phase !== 'lost') && (!listPhase || d.phase === listPhase))
   // Phone: the phase on screen (the first one with clients until the seller picks one).
   const focused = phases.includes(focus) ? focus : (phases.find(p => byPhase[p].length) || 'lead')
 
@@ -101,7 +104,7 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
     </div>
 
     <div className="fn-kpis">
-      {phases.map((p, i) => <button type="button" key={p} aria-pressed={phone && view === 'board' && focused === p} className={`fn-kpi is-${p}${phone && view === 'board' && focused === p ? ' is-focus' : ''}`} onClick={() => { setView('board'); setFocus(p); if (!phone) setTimeout(() => document.getElementById(`fn-col-${p}`)?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }), 30) }}>
+      {phases.map((p, i) => <button type="button" key={p} aria-pressed={view === 'list' ? listPhase === p : phone && focused === p} className={`fn-kpi is-${p}${(view === 'list' ? listPhase === p : phone && focused === p) ? ' is-focus' : ''}`} onClick={() => { if (view === 'list') return setListPhase(cur => cur === p ? '' : p); setFocus(p); if (!phone) setTimeout(() => document.getElementById(`fn-col-${p}`)?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }), 30) }}>
         <span className="fn-num">{p === 'lost' ? '×' : i + 1}</span>
         <span className="fn-kpi-text"><strong>{t.phases[p]}</strong><small>{t.clients(byPhase[p].length)}</small></span>
         <span className="fn-kpi-foot"><b>{yen(byPhase[p].reduce((s, d) => s + d.value, 0))}</b><em>{p === 'lost' ? '' : `${Math.round(byPhase[p].length / total * 100)}%`}</em></span>
@@ -134,7 +137,12 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
       </div>
       <p className="fn-hint">{phone ? t.moveHint : t.dragHint}</p>
     </> : <div className="fn-list">
-      {visible.filter(d => showLost || d.phase !== 'lost').sort((a, b) => String(b.last).localeCompare(String(a.last))).map(d => <button type="button" key={d.lead.id} className="fn-list-row" onClick={() => setActive(d.lead.id)}>
+      {listRows.length === 0 && <div className="fn-list-empty">
+        <p className="fn-empty">{listPhase ? `${t.phases[listPhase]} · ${t.empty}` : t.empty}</p>
+        {listPhase && <button type="button" className="fn-col-add is-list" onClick={() => setListPhase('')}>{t.showAll}</button>}
+        {onAddLead && <button type="button" className="fn-col-add is-list" onClick={onAddLead}>+ {t.addLead}</button>}
+      </div>}
+      {listRows.sort((a, b) => String(b.last).localeCompare(String(a.last))).map(d => <button type="button" key={d.lead.id} className="fn-list-row" onClick={() => setActive(d.lead.id)}>
         <span className="fn-avatar" aria-hidden="true">{initials(d.lead.site_name || d.lead.company_name)}</span>
         <span className="fn-card-text"><strong>{d.lead.site_name || d.lead.company_name}</strong><small>{[d.seller || d.lead.contact_name, `${t.lastContact} ${shortDay(d.last)}`].filter(Boolean).join(' · ')}</small></span>
         <span className={`fn-badge is-${d.phase}`}>{t.phases[d.phase]}</span>

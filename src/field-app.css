@@ -517,3 +517,14 @@ body.fa-sheet-open { overflow: hidden; }
 .fn-move { align-self: stretch; }
 .fn-move select { width: 100%; min-height: 36px; border: 1px solid #dde2ec; border-radius: 10px; padding: 0 10px; background: #f8f9fc; font: 600 13px inherit; color: var(--fn-color, #3557f5); }
 .fn-card-wrap { display: flex; flex-direction: column; gap: 4px; }
+/* v1.0.59 · List view: empty state, and stage chips filter the list */
+.fn-list-empty { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; }
+.fn-list-empty .fn-col-add.is-list { margin: 0; --fn-color: var(--fa-blue); }
+.fn-kpi.is-focus { border-color: var(--fn-color); box-shadow: 0 0 0 2px var(--fn-color) inset; }
+@media (max-width: 700px) {
+  .fn-kpi-text strong { white-space: normal; overflow: visible; line-height: 1.2; word-break: keep-all; overflow-wrap: anywhere; }
+}
+@media (max-width: 700px) {
+  .fn-kpi-text { flex-direction: column; align-items: flex-start; gap: 0; }
+  .fn-kpi { align-items: start; }
+}
