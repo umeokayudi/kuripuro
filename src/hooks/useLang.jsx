@@ -4,8 +4,11 @@ import { useAuth } from './useAuth'
 
 const LangContext = createContext()
 
-// Portuguese is offered only in the admin portal; everyone else keeps English / Japanese.
-export const canUsePt = (user) => user?.role === 'admin'
+// Portuguese is offered to the admin portal and to the owner's own seller login;
+// everyone else keeps English / Japanese.
+const PT_ACCOUNTS = ['alexandresales']
+const loginName = (user) => String(user?.email || '').toLowerCase().split('@')[0]
+export const canUsePt = (user) => user?.role === 'admin' || PT_ACCOUNTS.includes(loginName(user))
 
 const normalize = (l) => (l === 'jp' ? 'ja' : l)
 const valid = (l, allowPt) => l === 'en' || l === 'ja' || (allowPt && l === 'pt')
