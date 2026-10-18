@@ -43,13 +43,29 @@ export function distanceMeters(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-export function getCurrentPosition() {
+// Phones often hand back an old or Wi-Fi/cell-based fix first. Watch for a few seconds and keep
+// the most accurate reading, stopping early once it is good enough.
+export function getCurrentPosition({ maxWait = 9000, goodEnough = 25 } = {}) {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('GPS not available'))
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }),
-      err => reject(err),
-      { timeout: 10000, enableHighAccuracy: true }
+    let best = null
+    let id = null
+    let timer = null
+    const finish = (err) => {
+      if (id != null) navigator.geolocation.clearWatch(id)
+      clearTimeout(timer)
+      if (best) resolve(best)
+      else reject(err || new Error('GPS timeout'))
+    }
+    timer = setTimeout(() => finish(), maxWait)
+    id = navigator.geolocation.watchPosition(
+      pos => {
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }
+        if (!best || (p.acc ?? Infinity) <= (best.acc ?? Infinity)) best = p
+        if ((p.acc ?? Infinity) <= goodEnough) finish()
+      },
+      err => { if (err?.code === 1 || !best) finish(err) },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: maxWait },
     )
   })
 }

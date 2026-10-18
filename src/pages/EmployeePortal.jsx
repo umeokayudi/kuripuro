@@ -13,7 +13,8 @@ import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geoco
 import ServiceTimer from '../components/ServiceTimer'
 import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
-import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
+import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
+import { VOICE_EVERY_SEC, voicePrefOn, setVoicePref, voiceMessage, speak, unlockSpeech, canSpeak } from '../lib/voiceAlert'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
@@ -200,6 +201,9 @@ export default function EmployeePortal() {
   const timerRef = useRef()
   const clockRef = useRef()
   const hourWarnedRef = useRef(false)
+  const [voiceOn, setVoiceOn] = useState(voicePrefOn)
+  const voiceSlotRef = useRef(0)
+  const voiceCtxRef = useRef({})
   const photoInputRef = useRef()
   const claimPhotoRef = useRef()
   const claimReceiptRef = useRef()
@@ -231,7 +235,7 @@ export default function EmployeePortal() {
       if (navigator.geolocation && working) {
         try {
           const pos = await new Promise((res, rej) =>
-            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 30000 }))
+            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000, maximumAge: 15000, enableHighAccuracy: true }))
           update.last_lat = pos.coords.latitude
           update.last_lng = pos.coords.longitude
           update.last_location_at = new Date().toISOString()
@@ -264,13 +268,48 @@ export default function EmployeePortal() {
     }
   }, [activeJob?.id])
 
+  // Latest values for the 5-minute voice reminder, read inside the timer without restarting it.
+  voiceCtxRef.current = { checklist, allJobs, voiceOn, lang, labels: e }
+
+  const sayReminder = async (job, secs) => {
+    const { checklist: ck, allJobs: history, lang: lg, labels } = voiceCtxRef.current
+    let dist = null
+    try {
+      const [pos, site] = await Promise.all([
+        getCurrentPosition({ maxWait: 6000, goodEnough: 30 }).catch(() => null),
+        siteCoords(job).catch(() => null),
+      ])
+      if (pos && site) dist = Math.round(distanceMeters(pos.lat, pos.lng, site.lat, site.lng))
+    } catch { /* GPS is optional here */ }
+    const text = voiceMessage({
+      place: businessName(job), elapsedSec: secs, expectedMin: expectedJobMinutes(job, history).expected,
+      checklist: resolveChecklistForJob(job, ck), dist, onSiteMeters: ON_SITE_METERS, labels, lang: lg,
+    })
+    speak(text, lg)
+    try { navigator.vibrate?.([200, 100, 200]) } catch { /* no vibration */ }
+  }
+
+  const toggleVoice = () => {
+    const next = !voiceOn
+    setVoiceOn(next)
+    setVoicePref(next)
+    if (next) unlockSpeech()
+  }
+
   useEffect(() => {
     hourWarnedRef.current = false
     if (activeJob?.started_at) {
       const start = new Date(activeJob.started_at)
+      // Reopening the app mid-job does not replay a reminder; the next one comes at the next 5-minute mark.
+      voiceSlotRef.current = Math.floor((Date.now()-start)/1000 / VOICE_EVERY_SEC)
       timerRef.current = setInterval(() => {
         const secs = Math.floor((Date.now()-start)/1000)
         setElapsed(secs)
+        const slot = Math.floor(secs / VOICE_EVERY_SEC)
+        if (slot > voiceSlotRef.current) {
+          voiceSlotRef.current = slot
+          if (voiceCtxRef.current.voiceOn && activeJob.status === 'in_progress') sayReminder(activeJob, slot * VOICE_EVERY_SEC)
+        }
         if (secs === 3600 && !hourWarnedRef.current) {
           hourWarnedRef.current = true
           toast('⏱️ 1 hour on this job — everything ok?', { duration: 8000 })
@@ -519,13 +558,18 @@ export default function EmployeePortal() {
       setGpsStatus('⚠️ GPS unavailable')
       return { ok: true, dist: null, override: Boolean(job.gps_lat && job.gps_lng), pos: null }
     }
-    if (!job.gps_lat || !job.gps_lng) {
-      setGpsStatus(`✅ GPS${pos.acc ? ` ±${pos.acc}m` : ''}`)
+    // Compare with the store: saved coordinates, else the address / Google Maps link resolved once.
+    let site = null
+    try { site = await siteCoords(job) } catch { /* offline */ }
+    if (!site) {
+      // Without the store's location only the reading itself is known, not whether it is at the store.
+      setGpsStatus(`📍 GPS${pos.acc ? ` ±${pos.acc}m` : ''} · ${e.gpsNoSite}`)
       return { ok: true, dist: null, override: false, pos }
     }
-    const dist = Math.round(distanceMeters(pos.lat, pos.lng, Number(job.gps_lat), Number(job.gps_lng)))
-    setGpsStatus(dist > 100 ? `⚠️ ${dist}m away` : `✅ ${dist}m`)
-    return { ok: true, dist, override: dist > 100, pos }
+    const dist = Math.round(distanceMeters(pos.lat, pos.lng, site.lat, site.lng))
+    const away = dist > ON_SITE_METERS
+    setGpsStatus(away ? `⚠️ ${fill(e.gpsAway, { m: formatDistance(dist) })}` : `✅ ${fill(e.gpsOnSite, { m: formatDistance(dist) })}`)
+    return { ok: true, dist, override: away, pos }
   }
 
   const handleAcceptSpot = async (job) => {
@@ -789,6 +833,8 @@ export default function EmployeePortal() {
   }
 
   const handleStart = async (job) => {
+    // Speech must be unlocked by this tap so the 5-minute voice reminders can play later.
+    if (voiceOn) unlockSpeech()
     const startPhotos = jobPhotos.filter(p => p.slot === 'start')
     if (startPhotos.length === 0) {
       toast.error('Tire ao menos 1 foto "Before" antes de iniciar')
@@ -950,8 +996,10 @@ export default function EmployeePortal() {
       try {
         const endPos = await endPositionPromise
         if (endPos) {
-          // Distance to the site when it has coordinates; otherwise to where the job was started.
-          const refLat = job.gps_lat ?? job.start_lat, refLng = job.gps_lng ?? job.start_lng
+          // Distance to the site when its location is known; otherwise to where the job was started.
+          let site = null
+          try { site = await siteCoords(job) } catch { /* offline */ }
+          const refLat = site?.lat ?? job.start_lat, refLng = site?.lng ?? job.start_lng
           const endDist = refLat != null && refLng != null ? Math.round(distanceMeters(endPos.lat, endPos.lng, Number(refLat), Number(refLng))) : null
           await supabase.from('jobs').update({ end_lat: endPos.lat, end_lng: endPos.lng, end_accuracy: endPos.acc, gps_end_distance: endDist }).eq('id', job.id)
         }
@@ -1747,7 +1795,7 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
           {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
           </section>
         )}
 
@@ -2097,7 +2145,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, jobVideo, onPickVideo, onRemoveVideo, videoLabels, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2132,7 +2180,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               {formatShiftElapsed(elapsed, lang)}
             </div>}
           </div>
-          {!activeIsStale&&<ServiceTimer job={activeJob} elapsed={elapsed} history={allJobs} labels={labels} lang={lang} />}
+          {!activeIsStale&&<ServiceTimer job={activeJob} elapsed={elapsed} history={allJobs} voiceOn={voiceOn} onToggleVoice={onToggleVoice} labels={labels} lang={lang} />}
           {activeInstructions && (
             <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
               <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
