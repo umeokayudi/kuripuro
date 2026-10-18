@@ -45,7 +45,8 @@
     "test:nfc-clock": "node scripts/test-nfc-clock.mjs",
     "test:jobs-period": "node scripts/test-jobs-period.mjs",
     "test:maps-link": "node scripts/test-maps-link.mjs",
-    "test:facility": "npx vite-node scripts/test-facility-model.mjs"
+    "test:facility": "npx vite-node scripts/test-facility-model.mjs",
+    "test:quick-round": "npx vite-node scripts/test-quick-round.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
