@@ -51,7 +51,7 @@ export default function NfcScanSheet({ phase, job, tags, labels: l, onDone, onCa
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 14 }}>{l.nfcLogged}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
             <button onClick={() => { setWarn(null); setAttempt(a => a + 1) }} style={btn}>↻ {l.nfcTryAgain}</button>
-            <button onClick={() => onDone(warn)} style={{ ...btn, border: 'none', background: 'linear-gradient(135deg,#c19c56,#e8c47a)', color: '#0a1929', fontWeight: 700 }}>{l.nfcContinueAnyway}</button>
+            <button onClick={() => onDone(warn)} style={{ ...btn, border: 'none', background: '#315cf5', color: '#fff', fontWeight: 700 }}>{l.nfcContinueAnyway}</button>
           </div>
         </>}
 

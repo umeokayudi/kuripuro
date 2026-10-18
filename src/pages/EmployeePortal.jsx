@@ -14,6 +14,9 @@ import { summarizeJobs, weeklyEvolution, formatMinutes } from '../lib/workKpis'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
+import EmployeeChat from '../components/EmployeeChat'
+import PhotoLightbox from '../components/PhotoLightbox'
+import { photoMessage, chatPreview } from '../lib/chatContent'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
 import { ContractSignModal } from '../components/SpotContracts'
@@ -143,6 +146,8 @@ export default function EmployeePortal() {
   const [claims, setClaims] = useState([])
   const [messages, setMessages] = useState([])
   const [newMsg, setNewMsg] = useState('')
+  const [sendingChatPhoto, setSendingChatPhoto] = useState(false)
+  const [chatLightbox, setChatLightbox] = useState(null)
   const [badges, setBadges] = useState([])
   const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
@@ -391,7 +396,8 @@ export default function EmployeePortal() {
   }
 
   const loadMessages = async () => {
-    const { data } = await supabase.from('messages').select('*').eq('employee_id',user.id).order('created_at').limit(50)
+    const { data: newest } = await supabase.from('messages').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(100)
+    const data = (newest||[]).slice().reverse()
     const newUnread = (data||[]).filter(m=>m.sender==='admin'&&!m.read).length
     setMessages(prev => {
       const prevUnread = prev.filter(m=>m.sender==='admin'&&!m.read).length
@@ -414,10 +420,28 @@ export default function EmployeePortal() {
 
   
 
-  const sendMessage = async () => {
-    if (!newMsg.trim()) return
-    await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:newMsg.trim(), read:false })
-    setNewMsg(''); loadMessages()
+  const sendMessage = async (preset) => {
+    const text = String(preset ?? newMsg).trim()
+    if (!text) return false
+    const { error } = await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:text, read:false })
+    if (error) { toast.error(error.message); return false }
+    if (preset === undefined) setNewMsg('')
+    setUserScrolled(false)
+    loadMessages()
+    return true
+  }
+
+  const sendChatPhoto = async (file) => {
+    if (!file || sendingChatPhoto) return
+    setSendingChatPhoto(true)
+    try {
+      const path = await uploadJobPhoto(`jobs/chat/employee/${user.id}/${crypto.randomUUID()}.jpg`, file)
+      await sendMessage(photoMessage(path))
+    } catch (err) {
+      toast.error(err?.message || 'Upload failed')
+    } finally {
+      setSendingChatPhoto(false)
+    }
   }
 
   const getWeekRange = () => {
@@ -1070,7 +1094,7 @@ export default function EmployeePortal() {
     {key:'salary',icon:'💴',label:e.salary},
     {key:'transport',icon:'🚃',label:e.transport},
     {key:'equipment',icon:'🧰',label:e.equipment},
-    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?lastAdminMsg.content.substring(0,30):null},
+    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?chatPreview(lastAdminMsg.content, '📷').substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
     {key:'availability',icon:'🗓',label:e.availability,badge:planAlert?1:0},
     {key:'achievements',icon:'🏆',label:e.achievements},
@@ -1359,7 +1383,7 @@ export default function EmployeePortal() {
             </div>
             <LanguageToggle variant="dark" compact />
             <button aria-label={e.notifications} aria-expanded={bellOpen} onClick={()=>setBellOpen(true)} className="emp-header-icon-button">
-              🔔
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
               {bellCount>0&&<div className="emp-header-notification-count">{bellCount}</div>}
             </button>
             <button aria-label={menuOpen ? e.close : e.more} aria-expanded={menuOpen} onClick={()=>setMenuOpen(!menuOpen)} className="emp-header-menu-button">
@@ -1443,7 +1467,7 @@ export default function EmployeePortal() {
       )}
 
       {/* CONTENT */}
-      <div className={`emp-content${tab==='ai'?' is-ai':''}`} style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+      <div className={`emp-content${tab==='ai'?' is-ai':''}${tab==='chat'?' is-chat':''}`} style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
 
         {/* HOME */}
         {tab==='home'&&(
@@ -1891,37 +1915,24 @@ export default function EmployeePortal() {
 
         {/* CHAT */}
         {tab==='chat'&&(
-          <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 280px)'}}>
-            <div ref={chatContainerRef} onScroll={handleChatScroll} style={{flex:1,overflowY:'auto',marginBottom:12,position:'relative'}}>
-              {userScrolled&&unreadMsgs>0&&(
-                <div onClick={()=>{setUserScrolled(false);msgEndRef.current?.scrollIntoView({behavior:'smooth'})}}
-                  style={{position:'sticky',top:8,zIndex:10,textAlign:'center',marginBottom:8}}>
-                  <div style={{display:'inline-block',background:'#f87171',color:'#fff',borderRadius:20,padding:'4px 14px',fontSize:12,fontWeight:600,cursor:'pointer',boxShadow:'0 2px 8px rgba(0,0,0,0.3)'}}>
-                    ↓ {unreadMsgs} new message{unreadMsgs>1?'s':''}
-                  </div>
-                </div>
-              )}
-              {messages.length===0&&<div style={{textAlign:'center',paddingTop:40,color:'rgba(255,255,255,0.25)',fontSize:13}}>{e.noMessages}</div>}
-              {messages.map(m=>(
-                <div key={m.id} style={{display:'flex',justifyContent:m.sender==='employee'?'flex-end':'flex-start',marginBottom:10}}>
-                  <div style={{maxWidth:'78%',background:m.sender==='employee'?'rgba(193,156,86,0.18)':'rgba(255,255,255,0.08)',border:`1px solid rgba(${m.sender==='employee'?'193,156,86':'255,255,255'},0.12)`,borderRadius:m.sender==='employee'?'18px 18px 4px 18px':'18px 18px 18px 4px',padding:'11px 15px'}}>
-                    {m.sender==='admin'&&<div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3,fontWeight:600}}>Admin</div>}
-                    <div style={{fontSize:14,color:'#fff',lineHeight:1.5}}>{m.content}</div>
-                    <div style={{fontSize:9,color:'rgba(255,255,255,0.25)',marginTop:4,textAlign:'right',display:'flex',justifyContent:'flex-end',alignItems:'center',gap:4}}>
-                      {new Date(m.created_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}
-                      {m.sender==='employee'&&<span style={{color:m.read?'#4ade80':'rgba(255,255,255,0.3)'}}>{m.read?'✓✓':'✓'}</span>}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <div ref={msgEndRef} />
-            </div>
-            <div style={{display:'flex',gap:8}}>
-              <input value={newMsg} onChange={ev=>setNewMsg(ev.target.value)} onKeyDown={ev=>ev.key==='Enter'&&!ev.shiftKey&&sendMessage()} placeholder={e.messageAdmin} style={{...S.input,flex:1,borderRadius:22,padding:'12px 18px'}} />
-              <button onClick={sendMessage} disabled={!newMsg.trim()} style={{width:46,height:46,borderRadius:'50%',border:'none',background:newMsg.trim()?'#c19c56':'rgba(255,255,255,0.07)',color:newMsg.trim()?'#0a1929':'rgba(255,255,255,0.3)',fontSize:22,cursor:newMsg.trim()?'pointer':'default',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>›</button>
-            </div>
-          </div>
+          <EmployeeChat
+            messages={messages}
+            labels={e}
+            lang={lang}
+            value={newMsg}
+            onChange={setNewMsg}
+            onSend={sendMessage}
+            onPhoto={sendChatPhoto}
+            sendingPhoto={sendingChatPhoto}
+            onPhotoClick={setChatLightbox}
+            containerRef={chatContainerRef}
+            endRef={msgEndRef}
+            onScroll={handleChatScroll}
+            unreadBelow={userScrolled ? unreadMsgs : 0}
+            onJumpDown={()=>{setUserScrolled(false);msgEndRef.current?.scrollIntoView({behavior:'smooth'})}}
+          />
         )}
+        {chatLightbox&&<PhotoLightbox url={chatLightbox} onClose={()=>setChatLightbox(null)} closeLabel={e.close} />}
 
         {/* CALENDAR */}
         {tab==='calendar'&&(

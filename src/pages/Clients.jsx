@@ -466,7 +466,7 @@ export default function Clients() {
           )}
 
           {editingPortalUser && (
-            <div className="card" style={{ marginTop: 14, border: '2px solid var(--gold, #c19c56)' }}>
+            <div className="card" style={{ marginTop: 14, border: '2px solid #315cf5' }}>
               <div className="card-title">✏️ Editar conta — {editingPortalUser.contact_name}</div>
               <div className="grid-2" style={{ marginTop: 12 }}>
                 <div className="form-group"><label>Nome / contato</label><input value={editPortalForm.contact_name} onChange={e=>setEditPortalForm(f=>({...f,contact_name:e.target.value}))} /></div>
