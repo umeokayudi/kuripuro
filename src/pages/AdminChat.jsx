@@ -1,246 +1,312 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
+import { uploadJobPhoto } from '../lib/uploadPhoto'
+import { viewablePhotoUrl } from '../lib/photoUrl'
+import { chatPhoto, chatPreview, chatDayKey, photoMessage } from '../lib/chatContent'
+import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
+import './admin-chat.css'
+
+const initials = name => String(name || '?').split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+const timeOf = iso => new Date(iso).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
 
 export default function AdminChat() {
-  const { t } = useLang()
+  const { t, lang } = useLang()
+  const ja = lang === 'ja'
+  const L = {
+    search: ja ? '名前で検索' : 'Search by name',
+    noMessagesYet: ja ? 'まだメッセージはありません' : 'No messages yet',
+    pick: ja ? '左の一覧から会話を選んでください' : 'Pick a conversation from the list',
+    noPeople: ja ? '該当なし' : 'Nobody found',
+    write: ja ? 'メッセージを入力…' : 'Write a message…',
+    today: ja ? '今日' : 'Today',
+    photo: ja ? '📷 写真' : '📷 Photo',
+    back: ja ? '戻る' : 'Back',
+    sendPhoto: ja ? '写真を送る' : 'Send photo',
+    newBelow: ja ? '件の新着' : 'new',
+  }
   const [mode, setMode] = useState('employees')
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
+  const [lastByKey, setLastByKey] = useState({})
   const [selected, setSelected] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMsg, setNewMsg] = useState('')
   const [unread, setUnread] = useState({})
-  const pollRef = useRef()
-  const msgPollRef = useRef()
-  const msgEndRef = useRef()
+  const [unreadOther, setUnreadOther] = useState(0)
+  const [query, setQuery] = useState('')
+  const [sendingPhoto, setSendingPhoto] = useState(false)
+  const [lightbox, setLightbox] = useState(null)
   const [userScrolled, setUserScrolled] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(0)
-  const chatContainerRef = useRef()
+  const msgEndRef = useRef()
+  const fileRef = useRef()
 
-  useEffect(() => {
-    loadList()
-    pollRef.current = setInterval(loadList, 10000)
-    return () => clearInterval(pollRef.current)
-  }, [mode])
+  const isEmp = mode === 'employees'
+  // A client conversation is one store: messages of that client for that location (or with no location).
+  const keyOf = row => (isEmp ? row.id : `${row.client_id}|${row.location_name || ''}`)
+  const msgKey = m => (isEmp ? m.employee_id : `${m.client_id}|${m.location_name || ''}`)
 
   useEffect(() => {
     setSelected(null)
     setMessages([])
+    setQuery('')
+    loadList()
+    const poll = setInterval(loadList, 10000)
+    return () => clearInterval(poll)
   }, [mode])
 
   useEffect(() => {
-    if (selected) {
-      loadMessages()
-      markRead()
-      clearInterval(msgPollRef.current)
-      msgPollRef.current = setInterval(loadMessages, 5000)
-    }
-    return () => clearInterval(msgPollRef.current)
+    if (!selected) return undefined
+    setMessages([])
+    setUserScrolled(false)
+    setNewMsgCount(0)
+    loadMessages()
+    markRead()
+    const poll = setInterval(loadMessages, 5000)
+    return () => clearInterval(poll)
   }, [selected, mode])
 
-  useEffect(() => {
-    if (!userScrolled) {
-      setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-    } else {
-      setNewMsgCount(prev => prev + 1)
-    }
-  }, [messages])
-
-  const handleChatScroll = (e) => {
-    const el = e.target
-    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-    if (isAtBottom) { setUserScrolled(false); setNewMsgCount(0) }
-    else setUserScrolled(true)
-  }
-
   const loadList = async () => {
-    if (mode === 'employees') {
-      const { data: emps } = await supabase.from('employees').select('id,full_name,is_active,last_seen').eq('is_active', true).order('full_name')
-      const { data: msgs } = await supabase.from('messages').select('employee_id,read,sender').eq('sender', 'employee').eq('read', false)
-      const unreadMap = {}
-      ;(msgs || []).forEach(m => { unreadMap[m.employee_id] = (unreadMap[m.employee_id] || 0) + 1 })
-      setEmployees(emps || [])
-      setUnread(unreadMap)
-    } else {
-      const { data: cls } = await supabase.from('client_users').select('id,client_id,client_name,location_name,contact_name,email,last_seen,is_active').eq('is_active', true).order('client_name')
-      const { data: msgs } = await supabase.from('client_messages').select('client_id,read,sender').eq('sender', 'client').eq('read', false)
-      const unreadMap = {}
-      ;(msgs || []).forEach(m => { unreadMap[m.client_id] = (unreadMap[m.client_id] || 0) + 1 })
-      setClients(cls || [])
-      setUnread(unreadMap)
+    const table = isEmp ? 'messages' : 'client_messages'
+    const idCol = isEmp ? 'employee_id' : 'client_id'
+    const other = isEmp ? 'employee' : 'client'
+    const [peopleRes, recentRes, otherRes] = await Promise.all([
+      isEmp
+        ? supabase.from('employees').select('id,full_name,is_active').eq('is_active', true).order('full_name')
+        : supabase.from('client_users').select('id,client_id,client_name,location_name,contact_name,is_active').eq('is_active', true).order('client_name'),
+      supabase.from(table).select(`${idCol},${isEmp ? '' : 'location_name,'}sender,content,read,created_at`).order('created_at', { ascending: false }).limit(400),
+      supabase.from(isEmp ? 'client_messages' : 'messages').select('id', { count: 'exact', head: true }).eq('sender', isEmp ? 'client' : 'employee').eq('read', false),
+    ])
+    const last = {}
+    const unreadMap = {}
+    for (const m of recentRes.data || []) {
+      const k = msgKey(m)
+      if (!last[k]) last[k] = m
+      if (m.sender === other && !m.read) unreadMap[k] = (unreadMap[k] || 0) + 1
     }
+    if (isEmp) setEmployees(peopleRes.data || [])
+    else setClients(peopleRes.data || [])
+    setLastByKey(last)
+    setUnread(unreadMap)
+    setUnreadOther(otherRes.count || 0)
   }
 
   const loadMessages = async () => {
     if (!selected) return
-    if (mode === 'employees') {
+    if (isEmp) {
       const { data } = await supabase.from('messages').select('*').eq('employee_id', selected.id).order('created_at')
       setMessages(data || [])
-    } else {
-      const { data } = await supabase.from('client_messages').select('*').eq('client_id', selected.client_id).order('created_at')
-      setMessages(data || [])
+      return
     }
+    const { data } = await supabase.from('client_messages').select('*').eq('client_id', selected.client_id).order('created_at')
+    const loc = selected.location_name
+    setMessages((data || []).filter(m => !loc || !m.location_name || m.location_name === loc))
   }
 
   const markRead = async () => {
     if (!selected) return
-    if (mode === 'employees') {
-      await supabase.from('messages').update({ read: true }).eq('employee_id', selected.id).eq('sender', 'employee').eq('read', false)
-      setUnread(u => ({ ...u, [selected.id]: 0 }))
-    } else {
-      await supabase.from('client_messages').update({ read: true }).eq('client_id', selected.client_id).eq('sender', 'client').eq('read', false)
-      setUnread(u => ({ ...u, [selected.client_id]: 0 }))
+    if (isEmp) await supabase.from('messages').update({ read: true }).eq('employee_id', selected.id).eq('sender', 'employee').eq('read', false)
+    else {
+      let q = supabase.from('client_messages').update({ read: true }).eq('client_id', selected.client_id).eq('sender', 'client').eq('read', false)
+      if (selected.location_name) q = q.eq('location_name', selected.location_name)
+      await q
     }
+    setUnread(u => ({ ...u, [keyOf(selected)]: 0 }))
   }
 
-  const prevMsgCount = useRef(0)
+  // Follow new messages unless the admin scrolled up to read older ones.
+  const prevCount = useRef(0)
   useEffect(() => {
-    if (messages.length > prevMsgCount.current && prevMsgCount.current > 0) {
+    const grew = messages.length > prevCount.current
+    const first = prevCount.current === 0
+    if (grew && !first) {
       const lastMsg = messages[messages.length - 1]
-      const fromOther = mode === 'employees' ? lastMsg?.sender === 'employee' : lastMsg?.sender === 'client'
-      if (fromOther) {
-        const name = mode === 'employees' ? lastMsg.employee_name : lastMsg.client_name
-        toast(`💬 ${name?.split(' ')[0]}: ${lastMsg.content.substring(0, 40)}`, { duration: 4000 })
-      }
+      const fromOther = lastMsg?.sender !== 'admin'
+      if (fromOther) markRead()
+      if (userScrolled) setNewMsgCount(n => n + 1)
     }
-    prevMsgCount.current = messages.length
-  }, [messages, mode])
+    if (grew && (first || !userScrolled)) setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: first ? 'auto' : 'smooth', block: 'end' }), 60)
+    prevCount.current = messages.length
+  }, [messages])
+  useEffect(() => { prevCount.current = 0 }, [selected])
 
-  const sendMessage = async () => {
-    if (!newMsg.trim() || !selected) return
-    if (mode === 'employees') {
-      const { error } = await supabase.from('messages').insert({
-        employee_id: selected.id,
-        employee_name: selected.full_name,
-        sender: 'admin',
-        content: newMsg.trim(),
-        read: false,
-      })
-      if (error) return toast.error(error.message)
-    } else {
-      const { error } = await supabase.from('client_messages').insert({
-        client_id: selected.client_id,
-        client_user_id: selected.id,
-        client_name: selected.client_name,
-        location_name: selected.location_name,
-        sender: 'admin',
-        content: newMsg.trim(),
-        read: false,
-      })
-      if (error) return toast.error(error.message)
-    }
-    setNewMsg('')
-    loadMessages()
+  const handleChatScroll = (e) => {
+    const el = e.currentTarget
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+    setUserScrolled(!atBottom)
+    if (atBottom) setNewMsgCount(0)
   }
+
+  const send = async (content) => {
+    if (!content || !selected) return false
+    const row = isEmp
+      ? { employee_id: selected.id, employee_name: selected.full_name, sender: 'admin', content, read: false }
+      : { client_id: selected.client_id, client_user_id: selected.id, client_name: selected.client_name, location_name: selected.location_name, sender: 'admin', content, read: false }
+    const { error } = await supabase.from(isEmp ? 'messages' : 'client_messages').insert(row)
+    if (error) { toast.error(error.message); return false }
+    setUserScrolled(false)
+    loadMessages()
+    loadList()
+    return true
+  }
+
+  const sendText = async () => {
+    const text = newMsg.trim()
+    if (!text) return
+    if (await send(text)) setNewMsg('')
+  }
+
+  const sendPhoto = async (file) => {
+    if (!file || !selected || sendingPhoto) return
+    setSendingPhoto(true)
+    try {
+      const folder = isEmp ? `employee/${selected.id}` : `client/${selected.client_id}`
+      const path = await uploadJobPhoto(`jobs/chat/${folder}/${crypto.randomUUID()}.jpg`, file)
+      await send(photoMessage(path))
+    } catch (err) {
+      toast.error(err?.message || 'Upload failed')
+    } finally {
+      setSendingPhoto(false)
+    }
+  }
+
+  const rows = useMemo(() => {
+    const list = (isEmp ? employees : clients).map(r => ({
+      row: r,
+      key: keyOf(r),
+      name: isEmp ? r.full_name : (r.location_name || r.client_name || r.contact_name),
+      sub: isEmp ? null : [r.client_name, r.contact_name].filter(Boolean).filter(v => v !== (r.location_name || '')).join(' · '),
+    }))
+    const q = query.trim().toLowerCase()
+    const filtered = q ? list.filter(r => `${r.name} ${r.sub || ''}`.toLowerCase().includes(q)) : list
+    // Unread first, then most recent conversation, then name.
+    return filtered.sort((a, b) => {
+      const ua = unread[a.key] ? 1 : 0
+      const ub = unread[b.key] ? 1 : 0
+      if (ua !== ub) return ub - ua
+      const la = lastByKey[a.key]?.created_at || ''
+      const lb = lastByKey[b.key]?.created_at || ''
+      if (la !== lb) return lb.localeCompare(la)
+      return String(a.name).localeCompare(String(b.name))
+    })
+  }, [isEmp, employees, clients, query, unread, lastByKey])
 
   const totalUnread = Object.values(unread).reduce((s, v) => s + v, 0)
-  const list = mode === 'employees' ? employees : clients
-  const selectedName = mode === 'employees' ? selected?.full_name : selected?.contact_name
-  const selectedKey = mode === 'employees' ? selected?.id : selected?.client_id
+  const selectedName = selected ? (isEmp ? selected.full_name : (selected.location_name || selected.client_name || selected.contact_name)) : ''
+  const selectedSub = selected && !isEmp ? [selected.client_name, selected.contact_name].filter(Boolean).join(' · ') : ''
+  const todayKey = chatDayKey(new Date().toISOString())
+  const dayLabel = key => key === todayKey ? L.today
+    : new Date(`${key}T12:00:00+09:00`).toLocaleDateString(ja ? 'ja-JP' : 'en-GB', { month: 'short', day: 'numeric', weekday: 'short', timeZone: 'Asia/Tokyo' })
+  let lastDay = ''
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 80px)', gap: 14 }}>
-      <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-          💬 {t.sidebar.chat} {totalUnread > 0 && <span className="badge badge-red" style={{ marginLeft: 6 }}>{totalUnread}</span>}
-        </div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-          <button className={`btn btn-sm${mode === 'employees' ? ' btn-primary' : ''}`} onClick={() => setMode('employees')}>{t.sidebar.employees}</button>
-          <button className={`btn btn-sm${mode === 'clients' ? ' btn-primary' : ''}`} onClick={() => setMode('clients')}>{t.sidebar.clients}</button>
-        </div>
-        {list.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{mode === 'employees' ? 'No employees.' : 'No client accounts.'}</div>}
-        {mode === 'employees' && employees.map(e => (
-          <div key={e.id} onClick={() => setSelected(e)}
-            style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-              background: selected?.id === e.id ? 'var(--navy)' : 'var(--surface2)',
-              border: `1px solid ${selected?.id === e.id ? 'var(--navy)' : 'var(--border)'}`,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: selected?.id === e.id ? '#fff' : 'var(--text)' }}>{e.full_name.split(' ')[0]}</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1 }}>employee</div>
-            </div>
-            {unread[e.id] > 0 && <span className="badge badge-red">{unread[e.id]}</span>}
-          </div>
-        ))}
-        {mode === 'clients' && clients.map(cl => (
-          <div key={cl.id} onClick={() => setSelected(cl)}
-            style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-              background: selected?.id === cl.id ? 'var(--navy)' : 'var(--surface2)',
-              border: `1px solid ${selected?.id === cl.id ? 'var(--navy)' : 'var(--border)'}`,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: selected?.id === cl.id ? '#fff' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cl.client_name || cl.contact_name}</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1 }}>{cl.location_name || cl.contact_name}</div>
-            </div>
-            {unread[cl.client_id] > 0 && <span className="badge badge-red">{unread[cl.client_id]}</span>}
-          </div>
-        ))}
-      </div>
+    <div className={`ac-wrap${selected ? ' has-selection' : ''}`}>
+      {lightbox && <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} />}
 
-      <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
-        {!selected ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text3)', fontSize: 13 }}>
-            {mode === 'employees' ? 'Select an employee' : 'Select a client'}
+      <aside className="ac-list">
+        <div className="ac-list-head">
+          <h1>💬 {t.sidebar.chat}</h1>
+          <div className="ac-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={isEmp} className={isEmp ? 'is-on' : ''} onClick={() => setMode('employees')}>
+              {t.sidebar.employees}{isEmp ? (totalUnread > 0 && <b>{totalUnread}</b>) : (unreadOther > 0 && <b>{unreadOther}</b>)}
+            </button>
+            <button type="button" role="tab" aria-selected={!isEmp} className={!isEmp ? 'is-on' : ''} onClick={() => setMode('clients')}>
+              {t.sidebar.clients}{!isEmp ? (totalUnread > 0 && <b>{totalUnread}</b>) : (unreadOther > 0 && <b>{unreadOther}</b>)}
+            </button>
           </div>
+          <input className="ac-search" value={query} onChange={e => setQuery(e.target.value)} placeholder={L.search} />
+        </div>
+        <div className="ac-people">
+          {rows.length === 0 && <div className="ac-empty">{L.noPeople}</div>}
+          {rows.map(({ row, key, name, sub }) => {
+            const last = lastByKey[key]
+            const active = selected?.id === row.id
+            return (
+              <button key={row.id} type="button" className={`ac-person${active ? ' is-active' : ''}${unread[key] ? ' is-unread' : ''}`} onClick={() => setSelected(row)}>
+                <span className="ac-avatar">{initials(name)}</span>
+                <span className="ac-person-text">
+                  <span className="ac-person-top">
+                    <strong>{name}</strong>
+                    {last && <time>{chatDayKey(last.created_at) === todayKey ? timeOf(last.created_at) : chatDayKey(last.created_at).slice(5).replace('-', '/')}</time>}
+                  </span>
+                  {sub && <small className="ac-person-sub">{sub}</small>}
+                  <span className="ac-person-last">
+                    <span>{last ? `${last.sender === 'admin' ? '✓ ' : ''}${chatPreview(last.content, L.photo)}` : L.noMessagesYet}</span>
+                    {unread[key] > 0 && <b>{unread[key]}</b>}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </aside>
+
+      <section className="ac-conv">
+        {!selected ? (
+          <div className="ac-placeholder">{L.pick}</div>
         ) : (
           <>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div className="avatar" style={{ width: 34, height: 34, fontSize: 13, background: '#E6F1FB', color: '#185FA5', fontWeight: 700 }}>
-                {(selectedName || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-              </div>
+            <header className="ac-conv-head">
+              <button type="button" className="ac-back" onClick={() => setSelected(null)} aria-label={L.back}>‹</button>
+              <span className="ac-avatar">{initials(selectedName)}</span>
               <div>
-                <div>{selectedName}</div>
-                {mode === 'clients' && <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>{selected.client_name}{selected.location_name ? ` · ${selected.location_name}` : ''}</div>}
+                <strong>{selectedName}</strong>
+                {selectedSub && <small>{selectedSub}</small>}
               </div>
-            </div>
+            </header>
 
-            <div ref={chatContainerRef} onScroll={handleChatScroll} style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
-              {userScrolled && newMsgCount > 0 && (
-                <div onClick={() => { setUserScrolled(false); setNewMsgCount(0); msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
-                  style={{ position: 'sticky', top: 0, zIndex: 10, textAlign: 'center', marginBottom: 8 }}>
-                  <div style={{ display: 'inline-block', background: '#f87171', color: '#fff', borderRadius: 20, padding: '4px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                    ↓ {newMsgCount} new
-                  </div>
-                </div>
-              )}
-              {messages.length === 0 && <div style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12, paddingTop: 20 }}>No messages yet.</div>}
+            <div className="ac-msgs" onScroll={handleChatScroll}>
+              {messages.length === 0 && <div className="ac-empty">{L.noMessagesYet}</div>}
               {messages.map(m => {
-                const isAdmin = m.sender === 'admin'
+                const day = chatDayKey(m.created_at)
+                const showDay = day !== lastDay
+                lastDay = day
+                const mine = m.sender === 'admin'
+                const photo = chatPhoto(m.content)
                 return (
-                  <div key={m.id} style={{ display: 'flex', justifyContent: isAdmin ? 'flex-end' : 'flex-start' }}>
-                    <div style={{
-                      maxWidth: '70%',
-                      background: isAdmin ? 'var(--navy)' : 'var(--surface)',
-                      borderRadius: isAdmin ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                      padding: '10px 14px',
-                    }}>
-                      <div style={{ fontSize: 13, color: isAdmin ? '#fff' : 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>{m.content}</div>
-                      <div style={{ fontSize: 10, color: isAdmin ? 'rgba(255,255,255,0.4)' : 'var(--text3)', marginTop: 3, textAlign: 'right' }}>
-                        {new Date(m.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                        {isAdmin && <span style={{ marginLeft: 4, color: m.read ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>{m.read ? '✓✓' : '✓'}</span>}
-                      </div>
+                  <div key={m.id} className="ac-item">
+                    {showDay && <div className="ac-day"><span>{dayLabel(day)}</span></div>}
+                    <div className={`ac-bubble ${mine ? 'is-mine' : 'is-them'}${photo ? ' is-photo' : ''}`}>
+                      {photo
+                        ? <button type="button" onClick={() => setLightbox(photo)}><img src={viewablePhotoUrl(photo)} alt="" loading="lazy" /></button>
+                        : m.content}
+                      <time>
+                        {timeOf(m.created_at)}
+                        {mine && <span className={m.read ? 'is-read' : ''}>{m.read ? ' ✓✓' : ' ✓'}</span>}
+                      </time>
                     </div>
                   </div>
                 )
               })}
               <div ref={msgEndRef} />
             </div>
+            {userScrolled && newMsgCount > 0 && (
+              <button type="button" className="ac-new-pill" onClick={() => { setUserScrolled(false); setNewMsgCount(0); msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }}>
+                ↓ {newMsgCount} {L.newBelow}
+              </button>
+            )}
 
-            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-              <input
+            <div className="ac-compose">
+              <button type="button" className="ac-icon-btn" onClick={() => fileRef.current?.click()} disabled={sendingPhoto} aria-label={L.sendPhoto} title={L.sendPhoto}>
+                {sendingPhoto ? '…' : '📷'}
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) sendPhoto(f); e.target.value = '' }} />
+              <textarea
+                rows={1}
                 value={newMsg}
                 onChange={e => setNewMsg(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={`Message ${selectedName?.split(' ')[0]}...`}
-                style={{ flex: 1, padding: '9px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit' }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendText() } }}
+                placeholder={L.write}
               />
-              <button onClick={sendMessage} disabled={!newMsg.trim()} className="btn btn-primary" style={{ borderRadius: 20, padding: '9px 20px' }}>Send</button>
+              <button type="button" className="ac-send" onClick={sendText} disabled={!newMsg.trim()} aria-label="Send">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 12l16-8-6 16-2.5-6.5z" /></svg>
+              </button>
             </div>
           </>
         )}
-      </div>
+      </section>
     </div>
   )
 }
