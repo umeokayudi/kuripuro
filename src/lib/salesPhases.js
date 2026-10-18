@@ -92,8 +92,42 @@ const COPY = {
     outcomes: { talked: '話せた', meeting_scheduled: '面談設定', quote_sent: '見積送付', negotiating: '交渉中', closed: '成約・署名', no_interest: '興味なし', absent: '不在' },
     loading: '読み込み中…', seller: '営業担当', area: '地域', source: '流入元', value: '金額', gps: '登録場所', mapsLink: 'Googleマップ',
   },
+  pt: {
+    title: 'Funil de vendas', sub: 'Todos os clientes, do primeiro contato ao contrato ativo.', search: 'Buscar cliente, loja, contato…', allSellers: 'Todos os vendedores', showLost: 'Mostrar perdidos',
+    phases: { lead: 'Lead', contact: 'Contato', visit: 'Visita marcada', proposal: 'Orçamento enviado', negotiation: 'Negociação', approved: 'Aprovado', contract: 'Contrato', active: 'Ativo', lost: 'Perdido' },
+    clients: n => `${n} cliente${n === 1 ? '' : 's'}`, contacts: n => `${n} contato${n === 1 ? '' : 's'}`, empty: 'Nenhum cliente aqui.', lastContact: 'Último contato',
+    addLead: 'Adicionar lead', board: 'Quadro', list: 'Lista', moved: s => `Movido para ${s}`, dragHint: 'Arraste um card para outra coluna para mudar a etapa. Aprovado, Contrato e Ativo seguem o orçamento e o contrato.',
+    quoteApproved: 'Orçamento aprovado', contractStatus: { draft: 'Contrato em rascunho', pending_review: 'Aguardando aprovação', changes_requested: 'Alterações solicitadas', approved: 'Aprovado', active: 'Ativo', rejected: 'Não aprovado' },
+    tabs: { steps: 'Funil e etapas', quote: 'Orçamento', contract: 'Contrato', active: 'Cliente ativo', contacts: 'Contatos', files: 'Arquivos', history: 'Histórico' },
+    edit: 'Editar', call: 'Ligar', email: 'E-mail', line: 'LINE', map: 'Mapa', logContact: 'Registrar contato', logVisit: 'Registrar visita', followup: 'Agendar retorno', responsible: 'Responsável',
+    currentStep: 'Etapa atual', stepDetails: 'Detalhes da etapa', date: 'Data', notDone: 'Ainda não alcançada', nextStep: 'Próxima etapa', quickActions: 'Ações rápidas',
+    advance: 'Avançar para contrato', openQuote: 'Ver orçamento', newQuote: 'Novo orçamento', saveQuote: 'Salvar orçamento', markSent: 'Marcar como enviado', markAccepted: 'Cliente aprovou', markDeclined: 'Cliente recusou', openInQuotes: 'Abrir em Orçamentos',
+    stepHelp: {
+      lead: 'Cliente cadastrado com cartão de visita, GPS e link do Maps.', contact: 'Fale com o cliente e registre cada contato.', visit: 'Uma visita ou reunião está marcada.',
+      proposal: 'Orçamento criado e enviado ao cliente.', negotiation: 'Ajustando preço e escopo com o cliente.', approved: 'O cliente aprovou o orçamento. Próximo passo: gerar o contrato.',
+      contract: 'Contrato gerado a partir do orçamento, assinado pelo cliente e aprovado pelo escritório.', active: 'Serviços em andamento, visitas agendadas e faturas emitidas.', lost: 'O cliente não seguiu em frente.',
+    },
+    quoteInfo: 'Orçamento', total: 'Total', created: 'Criado em', sentOn: 'Enviado em', approvedOn: 'Aprovado em', validUntil: 'Válido até', items: 'Itens', frequency: 'Frequência', hours: 'Horas / visita', noQuote: 'Ainda não há orçamento.',
+    status: 'Status', quoteStatus: { draft: 'Rascunho', pending: 'Rascunho', sent: 'Enviado', accepted: 'Aprovado', declined: 'Recusado', expired: 'Expirado' },
+    contractSteps: { generate: 'Gerar contrato a partir do orçamento', review: 'Revisar e ajustar as condições', send: 'Enviar para assinatura (PDF)', signed: 'Anexar o contrato assinado', activate: 'Escritório aprova e ativa' },
+    contractForm: 'Contrato', fromQuote: q => `Preenchido a partir do orçamento ${q}`, service: 'Serviço', billing: 'Cobrança', monthlyFixed: 'Mensal fixo', perVisit: 'Por visita', base: 'Valor mensal base (¥)', priceVisit: 'Valor por visita (¥)', visits: 'Visitas por mês',
+    days: 'Dias da semana', billingDay: 'Dia da cobrança', tax: 'Imposto %', commission: 'Comissão do vendedor', percent: 'Percentual', fixed: 'Fixo (¥)', commissionValue: 'Valor da comissão', clientTotal: 'Valor mensal para o cliente', perMonth: '/ mês',
+    saveDraft: 'Salvar contrato', downloadForSign: 'Baixar contrato para assinar (PDF)', attachSigned: 'Anexar contrato assinado (PDF)', sendApproval: 'Enviar para aprovação', approveActivate: 'Aprovar e ativar', requestChanges: 'Pedir alterações',
+    draftSaved: 'Contrato salvo. Baixe, peça a assinatura e depois anexe o PDF assinado.', sentForApproval: 'Enviado ao escritório para aprovação.', activated: 'Contrato aprovado. O cliente agora está ativo.', adminNote: 'Observação do escritório',
+    noContract: 'Ainda não há contrato.', needApproved: 'Aprove um orçamento primeiro e depois avance para o contrato.', pdfOnly: 'Escolha um arquivo PDF.',
+    services: 'Serviços contratados', schedule: 'Visitas', upcoming: 'Próximas visitas', done: 'Concluídas', invoices: 'Pagamentos', paid: 'Pago', open: 'Em aberto', overdue: 'Atrasado', noJobs: 'Ainda não há visitas agendadas.', noInvoices: 'Ainda não há faturas.', notActive: 'Fica disponível quando o contrato estiver ativo.',
+    jobStatus: { scheduled: 'Agendado', in_progress: 'Em andamento', completed: 'Concluído', cancelled: 'Cancelado' }, invoiceStatus: { draft: 'Rascunho', issued: 'Emitida', sent: 'Enviada', paid: 'Paga', overdue: 'Atrasada', cancelled: 'Cancelada' },
+    mainContact: 'Contato principal', otherContacts: 'Também falou com', clientManager: 'Responsável da loja', noContacts: 'Nenhum contato salvo.',
+    files: { card: 'Cartão de visita', signed: 'Contrato assinado', audio: 'Gravação da reunião' }, noFiles: 'Ainda não há arquivos.', openFile: 'Abrir',
+    ev: { created: 'Cliente adicionado ao funil', contact: 'Contato', visit: 'Visita', quoteDraft: 'Orçamento criado', quoteSent: 'Orçamento enviado', quoteAccepted: 'Orçamento aprovado', quoteDeclined: 'Orçamento recusado', contractDraft: 'Contrato gerado', contractSent: 'Contrato assinado enviado para aprovação', contractActive: 'Contrato aprovado · cliente ativo', contractBack: 'Escritório pediu alterações', job: 'Serviço concluído', invoicePaid: 'Pagamento recebido' },
+    by: n => `por ${n}`, nextFollowup: 'Próximo retorno', noHistory: 'Nada registrado ainda.',
+    download: 'Baixar', dl: { contacts: 'Contatos (CSV)', docs: 'Todos os documentos (ZIP)', history: 'Histórico de atividades (CSV)', summary: 'Resumo do cliente (PDF)' }, preparing: 'Preparando…',
+    channels: { visit: 'Visita', phone: 'Telefone', line: 'LINE', email: 'E-mail', meeting: 'Reunião', other: 'Outro' },
+    outcomes: { talked: 'Conversamos', meeting_scheduled: 'Reunião marcada', quote_sent: 'Orçamento enviado', negotiating: 'Negociando', closed: 'Fechado / assinado', no_interest: 'Sem interesse', absent: 'Ausente' },
+    loading: 'Carregando…', seller: 'Vendedor', area: 'Região', source: 'Origem', value: 'Valor', gps: 'Cadastrado em', mapsLink: 'Google Maps',
+  },
 }
-export const funnelCopy = lang => COPY[lang === 'ja' ? 'ja' : 'en']
+export const funnelCopy = lang => COPY[lang === 'ja' || lang === 'pt' ? lang : 'en']
 
 // Best guess of the contract's service from the quote lines (seller can change it).
 export function serviceFromQuote(quote) {

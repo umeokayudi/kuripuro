@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, localeOf } from '../hooks/useLang'
 
 // On The Planet deep-cleaning contract tracker. Lived on the admin dashboard until
 // v1.0.34; now a tab of the Contracts page.
@@ -9,7 +9,7 @@ export default function DeepCleanTracker() {
   const { lang, t } = useLang()
   const d = t.dashboard
   const slotLabels = { ...d, status: t.status }
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = localeOf(lang)
   const [progressMonth, setProgressMonth] = useState(currentYearMonth())
   const [monthJobs, setMonthJobs] = useState([])
   const [detailLoc, setDetailLoc] = useState(null)

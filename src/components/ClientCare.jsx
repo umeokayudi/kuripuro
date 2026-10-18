@@ -3,18 +3,18 @@ import QRCode from 'qrcode'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
-import { fill } from '../hooks/useLang'
+import { fill, pickLang, localeOf } from '../hooks/useLang'
 import {
   MAINTENANCE_ITEMS, QUOTE_CATEGORIES, LOCATION_FIELDS, maintenanceRows, invoiceState, billingSummary, receiptNumber,
 } from '../lib/clientCare'
 
 const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString('ja-JP')}`
 const fmtDate = (iso, lang) => iso
-  ? new Date(String(iso).slice(0, 10) + 'T12:00:00Z').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  ? new Date(String(iso).slice(0, 10) + 'T12:00:00Z').toLocaleDateString(localeOf(lang), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
   : '—'
 export const itemLabel = (key, lang) => {
   const item = MAINTENANCE_ITEMS.find(i => i.key === key)
-  return item ? (lang === 'ja' ? item.ja : item.en) : key
+  return item ? pickLang(lang, item.en, item.ja, item.pt) : key
 }
 
 /* ───────── Who looks after the store ───────── */
@@ -124,14 +124,14 @@ function DueCalendar({ invoices, today, labels, lang }) {
     if (inv.due_date?.startsWith(view)) (byDay[Number(inv.due_date.slice(8))] ||= []).push(inv)
   }
   const move = d => setView(new Date(Date.UTC(y, m - 1 + d, 1)).toISOString().slice(0, 7))
-  const weekdays = lang === 'ja' ? ['月', '火', '水', '木', '金', '土', '日'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const weekdays = pickLang(lang, ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], ['月', '火', '水', '木', '金', '土', '日'], ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'])
   return (
     <div className="cpx-cal">
       <div className="cpx-cal-head">
         <strong>{labels.paymentCalendar}</strong>
         <div className="cpx-month">
           <button type="button" onClick={() => move(-1)} aria-label={labels.prevMonth}>‹</button>
-          <span>{new Date(first + 'T12:00:00Z').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</span>
+          <span>{new Date(first + 'T12:00:00Z').toLocaleDateString(localeOf(lang), { month: 'long', year: 'numeric', timeZone: 'UTC' })}</span>
           <button type="button" onClick={() => move(1)} aria-label={labels.nextMonth}>›</button>
         </div>
       </div>
@@ -307,7 +307,7 @@ export function MaintenanceList({ rows, labels, lang, onQuote }) {
         <div key={r.key} className={`cpx-maint-row is-${r.state}`}>
           <i />
           <div className="cpx-maint-text">
-            <strong>{lang === 'ja' ? r.ja : r.en}</strong>
+            <strong>{pickLang(lang, r.en, r.ja, r.pt)}</strong>
             <small>
               {r.lastDone ? `${labels.lastDone}: ${fmtDate(r.lastDone, lang)}` : labels.neverRecorded}
               {' · '}{fill(labels.everyNDays, { n: r.interval })}

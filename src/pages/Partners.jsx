@@ -7,12 +7,12 @@ import { useLang } from '../hooks/useLang'
 // Companies and people the business works with that are not clients, employees or sellers.
 
 const CATEGORIES = [
-  { key: 'supplier', en: 'Supplier', ja: '仕入先', color: '#1d6fd8', bg: '#e8f1fd' },
-  { key: 'subcontractor', en: 'Subcontractor', ja: '協力会社', color: '#0f7a52', bg: '#e6f6ee' },
-  { key: 'referral', en: 'Referral partner', ja: '紹介パートナー', color: '#a8640a', bg: '#fdf1df' },
-  { key: 'real_estate', en: 'Real estate / property manager', ja: '不動産・管理会社', color: '#7a3fc4', bg: '#f1e9fb' },
-  { key: 'reseller', en: 'Reseller', ja: '販売代理店', color: '#b42358', bg: '#fbe8ef' },
-  { key: 'other', en: 'Other', ja: 'その他', color: '#3d4a5c', bg: '#eef1f5' },
+  { key: 'supplier', en: 'Supplier', ja: '仕入先', pt: 'Fornecedor', color: '#1d6fd8', bg: '#e8f1fd' },
+  { key: 'subcontractor', en: 'Subcontractor', ja: '協力会社', pt: 'Empresa parceira (terceirizada)', color: '#0f7a52', bg: '#e6f6ee' },
+  { key: 'referral', en: 'Referral partner', ja: '紹介パートナー', pt: 'Parceiro de indicação', color: '#a8640a', bg: '#fdf1df' },
+  { key: 'real_estate', en: 'Real estate / property manager', ja: '不動産・管理会社', pt: 'Imobiliária / administradora', color: '#7a3fc4', bg: '#f1e9fb' },
+  { key: 'reseller', en: 'Reseller', ja: '販売代理店', pt: 'Revendedor', color: '#b42358', bg: '#fbe8ef' },
+  { key: 'other', en: 'Other', ja: 'その他', pt: 'Outro', color: '#3d4a5c', bg: '#eef1f5' },
 ]
 
 const TXT = {
@@ -34,13 +34,22 @@ const TXT = {
     saved: '保存しました', deleted: '削除しました', needName: '名前を入力してください', confirmDelete: n => `${n} を削除しますか？`,
     inactive: '取引停止', showInactive: '停止中も表示', commissionShort: '手数料', newTitle: '新しいパートナー', editTitle: 'パートナーを編集',
   },
+  pt: {
+    title: 'Parceiros de negócio', hint: 'Fornecedores, empresas terceirizadas, parceiros de indicação e outras empresas com quem você trabalha.',
+    add: '+ Adicionar parceiro', edit: 'Editar', save: 'Salvar', cancel: 'Cancelar', remove: 'Excluir', all: 'Todos',
+    name: 'Nome da empresa / parceiro *', category: 'Tipo', contact: 'Pessoa de contato', phone: 'Telefone', email: 'E-mail',
+    website: 'Site', address: 'Endereço', commission: 'Comissão de indicação (%)', notes: 'Observações', active: 'Parceiro ativo',
+    search: 'Buscar parceiros…', empty: 'Nenhum parceiro ainda. Adicione o primeiro.', noMatch: 'Nenhum parceiro encontrado.', loading: 'Carregando…',
+    saved: 'Parceiro salvo', deleted: 'Parceiro excluído', needName: 'Digite o nome do parceiro', confirmDelete: n => `Excluir ${n}?`,
+    inactive: 'Inativo', showInactive: 'Mostrar inativos', commissionShort: 'comissão', newTitle: 'Novo parceiro', editTitle: 'Editar parceiro',
+  },
 }
 
 const EMPTY = { name: '', category: 'supplier', contact_name: '', phone: '', email: '', website: '', address: '', commission_rate: '', notes: '', is_active: true }
 
 function categoryInfo(key, lang) {
   const c = CATEGORIES.find(x => x.key === key) || CATEGORIES[CATEGORIES.length - 1]
-  return { ...c, label: c[lang === 'ja' ? 'ja' : 'en'] }
+  return { ...c, label: c[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en'] }
 }
 
 function websiteHref(url) {
@@ -51,7 +60,7 @@ function websiteHref(url) {
 
 export default function Partners() {
   const { lang } = useLang()
-  const t = TXT[lang === 'ja' ? 'ja' : 'en']
+  const t = TXT[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [partners, setPartners] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(null)
@@ -130,7 +139,7 @@ export default function Partners() {
             <div className="form-group"><label>{t.name}</label><input value={form.name} onChange={e => upd('name', e.target.value)} autoFocus /></div>
             <div className="form-group"><label>{t.category}</label>
               <select value={form.category} onChange={e => upd('category', e.target.value)}>
-                {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c[lang === 'ja' ? 'ja' : 'en']}</option>)}
+                {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']}</option>)}
               </select>
             </div>
             <div className="form-group"><label>{t.contact}</label><input value={form.contact_name} onChange={e => upd('contact_name', e.target.value)} /></div>
@@ -161,7 +170,7 @@ export default function Partners() {
           if (c.key !== 'all' && !n) return null
           return (
             <button key={c.key} type="button" className={`tab-pill${filter === c.key ? ' active' : ''}`} onClick={() => setFilter(c.key)}>
-              {c.key === 'all' ? t.all : c[lang === 'ja' ? 'ja' : 'en']} ({n})
+              {c.key === 'all' ? t.all : c[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']} ({n})
             </button>
           )
         })}

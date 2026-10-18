@@ -28,6 +28,14 @@ const TXT = {
     shortPassword: n => `パスワードは${n}文字以上必要です`,
     tellUser: '新しいパスワードを本人に伝えてください。再表示はされません。', storeHint: '店舗ログインは店舗名でもログインできます。',
   },
+  pt: {
+    title: 'Editar login', newTitle: 'Novo login', created: 'Login criado', needPassword: n => `Defina uma senha com pelo menos ${n} caracteres`, newPasswordLabel: 'Senha', name: 'Nome', contact: 'Nome do contato', email: 'E-mail (login)', phone: 'Telefone', role: 'Função', team: 'Portal', teamSales: 'Vendas (portal do vendedor)', teamMarketing: 'Marketing (portal de marketing)',
+    password: 'Nova senha', passwordHint: n => `Deixe em branco para manter a senha atual. Pelo menos ${n} caracteres.`,
+    generate: 'Gerar', copy: 'Copiar', copied: 'Copiado', active: 'Pode entrar (ativo)', save: 'Salvar', cancel: 'Cancelar',
+    saved: 'Salvo', saving: 'Salvando…', needName: 'Digite o nome', badEmail: 'Digite um e-mail válido', emailUsed: 'Este e-mail já tem um login',
+    shortPassword: n => `A senha precisa ter pelo menos ${n} caracteres`,
+    tellUser: 'Envie a nova senha para a pessoa; ela não será exibida de novo.', storeHint: 'Logins de loja também podem entrar com o nome da loja.',
+  },
 }
 
 function randomPassword(length) {
@@ -38,7 +46,7 @@ function randomPassword(length) {
 }
 
 export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, onClose, onSaved }) {
-  const t = TXT[lang === 'ja' ? 'ja' : 'en']
+  const t = TXT[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const min = MIN_PASSWORD[user.type] || 8
   const [form, setForm] = useState(() => ({
     name: user.type === 'client' ? (user.contact_name || '') : (user.name || ''),

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AREA_KINDS, ELEMENT_KINDS, areaForElement, areaSquareMeters, kindLabel, elementHistory, careForElement } from '../../lib/facilityModel'
 import CareList, { rowsForElement } from './CareList'
 import { viewablePhotoUrl } from '../../lib/photoUrl'
-import { fill } from '../../hooks/useLang'
+import { fill, localeOf } from '../../hooks/useLang'
 import PhotoLightbox from '../PhotoLightbox'
 
 export function RecommendationCard({ rec, t, onDecide, busy, showStatus = true }) {
@@ -38,7 +38,7 @@ function ServiceHistory({ history, t, lang, onPhoto }) {
       <div className="fac-hist">
         {shown.map(h => (
           <div key={h.id} className="fac-hist-row">
-            <span className="fac-hist-date">{new Date(h.service_date + 'T00:00:00+09:00').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Tokyo' })}</span>
+            <span className="fac-hist-date">{new Date(h.service_date + 'T00:00:00+09:00').toLocaleDateString(localeOf(lang), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Tokyo' })}</span>
             <span style={{ flex: 1 }}>
               {h.service || t.cleaned}{h.employee_name ? ` · ${h.employee_name.split(' ')[0]}` : ''}
               {h.notes && <div className="fac-muted">{h.notes}</div>}

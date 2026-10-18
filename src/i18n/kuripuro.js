@@ -58,6 +58,7 @@ export const kuripuroEn = {
     salesTeam: 'Sales Team',
     marketing: 'Marketing',
     navBilling: 'Billing',
+    pendingTitle: '{n} waiting for you',
   },
   app: {
     admin: 'KuriPuro Admin',
@@ -1276,6 +1277,7 @@ export const kuripuroJa = {
     mitsumori: '見積書',
     navSales: '営業',
     navBilling: '請求',
+    pendingTitle: '対応待ち {n}件',
     salesFunnel: '営業ファネル',
     salesTeam: '営業チーム',
     marketing: 'マーケティング',

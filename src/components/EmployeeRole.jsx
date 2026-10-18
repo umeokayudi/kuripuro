@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { EMPLOYEE_ROLES, isPresetRole, roleInfo } from '../lib/employeeRoles'
+import { pickLang } from '../hooks/useLang'
 
 export function RoleBadge({ value, lang = 'en', size = 'md' }) {
   const info = roleInfo(value, lang)
@@ -17,11 +18,12 @@ export function RoleBadge({ value, lang = 'en', size = 'md' }) {
 const PICKER_TXT = {
   en: { none: 'No role', other: 'Other…', custom: 'Write the role', hint: 'Shown as a highlighted badge on the employee.' },
   ja: { none: '役割なし', other: 'その他…', custom: '役割を入力', hint: '従業員の名前の横に目立つバッジで表示されます。' },
+  pt: { none: 'Sem função', other: 'Outra…', custom: 'Digite a função', hint: 'Aparece como um selo destacado no funcionário.' },
 }
 
 // Chips for the preset roles plus "Other…" with a free-text box.
 export function RolePicker({ value, onChange, lang = 'en' }) {
-  const t = PICKER_TXT[lang === 'ja' ? 'ja' : 'en']
+  const t = PICKER_TXT[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const current = String(value || '')
   const [customOpen, setCustomOpen] = useState(Boolean(current) && !isPresetRole(current))
   const chip = (active, color, bg) => ({
@@ -35,7 +37,7 @@ export function RolePicker({ value, onChange, lang = 'en' }) {
         <button type="button" style={chip(!current && !customOpen, '#3d4a5c', '#eef1f5')} onClick={() => { setCustomOpen(false); onChange('') }}>{t.none}</button>
         {EMPLOYEE_ROLES.map(r => (
           <button key={r.key} type="button" aria-pressed={current === r.key} style={chip(current === r.key, r.color, r.bg)} onClick={() => { setCustomOpen(false); onChange(r.key) }}>
-            {r[lang === 'ja' ? 'ja' : 'en']}
+            {pickLang(lang, r.en, r.ja, r.pt)}
           </button>
         ))}
         <button type="button" style={chip(customOpen, '#3d4a5c', '#eef1f5')} onClick={() => { setCustomOpen(true); if (isPresetRole(current)) onChange('') }}>{t.other}</button>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { usePendingCounts } from '../components/Sidebar'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { lineTotal, yen } from '../lib/quoteMath'
@@ -47,6 +48,8 @@ export default function Mitsumori() {
   const inv = t.invoices
   const today = tokyoToday()
   const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const pending = usePendingCounts()
   const leadId = params.get('lead')
   const [quotes, setQuotes] = useState([])
   const [leads, setLeads] = useState([])
@@ -332,6 +335,11 @@ export default function Mitsumori() {
       <div className="tab-pills">
         <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => setTab('list')}>{fill(s.quoteList, { n: quotes.length })}</button>
         <button type="button" className={`tab-pill${tab === 'form' ? ' active' : ''}`} onClick={startNew}>{s.quoteNew}</button>
+        {pending.mitsumori > 0 && (
+          <button type="button" className="tab-pill" onClick={() => navigate('/client-feedback?tab=requests')}>
+            {fill(s.clientQuoteRequests || 'Client quote requests', { n: pending.mitsumori })} <span className="nav-count" style={{ marginLeft: 6 }}>{pending.mitsumori}</span>
+          </button>
+        )}
       </div>
 
       {tab === 'list' && (

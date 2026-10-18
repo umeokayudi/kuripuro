@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { localeOf } from '../hooks/useLang'
 
 // Dates are plain 'YYYY-MM-DD' strings in Tokyo time, like the rest of the app.
 export const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
@@ -26,12 +27,14 @@ export const RANGE_PRESETS = ['today', 'week', 'month', 'lastMonth', 'year']
 
 export const rangeCopy = lang => lang === 'ja'
   ? { today: '今日', week: '今週', month: '今月', lastMonth: '先月', year: '今年', custom: '期間を指定', title: '期間を選択', from: '開始', to: '終了', orPreset: 'またはよく使う期間', cancel: 'キャンセル', save: '保存', weekdays: ['月', '火', '水', '木', '金', '土', '日'], prev: '前の月', next: '次の月' }
+  : lang === 'pt'
+  ? { today: 'Hoje', week: 'Esta semana', month: 'Este mês', lastMonth: 'Mês passado', year: 'Este ano', custom: 'Período personalizado', title: 'Selecionar data', from: 'De', to: 'Até', orPreset: 'Ou escolha um período', cancel: 'Cancelar', save: 'Salvar', weekdays: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'], prev: 'Mês anterior', next: 'Próximo mês' }
   : { today: 'Today', week: 'This week', month: 'This month', lastMonth: 'Last month', year: 'This year', custom: 'Custom range', title: 'Select date', from: 'From', to: 'To', orPreset: 'Or select a time frame', cancel: 'Cancel', save: 'Save', weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], prev: 'Previous month', next: 'Next month' }
 
 export function formatRangeLabel(range, lang) {
   const copy = rangeCopy(lang)
   if (range.preset && copy[range.preset]) return copy[range.preset]
-  const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const locale = localeOf(lang)
   const fmt = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
   return range.from === range.to ? fmt(range.from) : `${fmt(range.from)} – ${fmt(range.to)}`
 }
@@ -40,7 +43,7 @@ const CalendarIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill=
 
 export default function DateRangeSheet({ value, onSave, onClose, lang }) {
   const copy = rangeCopy(lang)
-  const locale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const locale = localeOf(lang)
   const [draft, setDraft] = useState({ from: value.from, to: value.to, preset: value.preset || null })
   const [picking, setPicking] = useState('from')
   const [view, setView] = useState(value.to.slice(0, 7))

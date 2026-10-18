@@ -639,3 +639,8 @@
 .fob-kind.st-due,.fob-kind.st-ok{background:#fffbeb;color:#b45309}
 .fob-when{margin:10px 0 0;font-size:13px;font-weight:600;color:#334155}
 .fob-item .tor-item-main strong{white-space:normal}
+.mobile-sidebar-toggle{position:relative}
+.mobile-menu-count{position:absolute;top:-6px;right:-6px;margin:0}
+.sidebar .kp-lang-dark{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+.sidebar .kp-lang-dark .kp-lang-btn{white-space:nowrap;padding-inline:4px}
+@media (max-width:720px){.sidebar-footer .kp-lang-dark{flex:1.6 1 0}.sidebar-footer .sidebar-logout{flex:1 1 0}}

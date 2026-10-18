@@ -9,6 +9,7 @@ import MarketingKpiPanel from '../components/MarketingKpiPanel'
 const COPY = {
   en: { title:'Marketing & acquisition', channels:'Channels', campaigns:'Campaigns', spend:'Ad spend', leads:'Leads', won:'Won contracts', cpl:'Cost per lead', cac:'Cost per acquisition', newChannel:'New channel', channelName:'Channel name', type:'Channel type', platform:'Platform', add:'Save channel', newCampaign:'New campaign', campaignName:'Campaign name', objective:'Objective / audience', channel:'Channel', budget:'Budget (¥)', starts:'Start date', ends:'End date', saveCampaign:'Save campaign', recordSpend:'Record ad spend', amount:'Amount (¥)', date:'Date', details:'Note', saveSpend:'Record spend', noData:'No activity yet.', paid:'Paid ads', organic:'Organic social', referral:'Referral', website:'Website', event:'Event', outbound:'Outbound', other:'Other', status:'Status', active:'Active', paused:'Paused', completed:'Completed', channelPerf:'Campaigns', selectCampaign:'Select campaign', periodSpend:'Recorded spend', tips:'Use one channel/campaign on every lead so acquisition cost and conversion can be measured.', period:'Period', today:'Today', month:'This month', year:'This year', all:'All time', goals:'Marketing KPI targets', goalHint:'Set goals and compare them with tracked activity for the selected period.', target:'Target', savedHere:'Targets are saved in this browser.', impressions:'Impressions', clicks:'Clicks', conversions:'Platform conversions', platformHint:'Copy impressions, clicks and conversions from the ad platform report (TikTok, Meta, Google…) to get CPM, CPC and CTR.' },
   ja: { title:'マーケティング・集客', channels:'チャネル', campaigns:'キャンペーン', spend:'広告費', leads:'リード', won:'成約', cpl:'リード単価', cac:'顧客獲得単価', newChannel:'チャネル追加', channelName:'チャネル名', type:'種類', platform:'媒体', add:'保存', newCampaign:'キャンペーン追加', campaignName:'キャンペーン名', objective:'目的・対象', channel:'チャネル', budget:'予算 (¥)', starts:'開始日', ends:'終了日', saveCampaign:'保存', recordSpend:'広告費を記録', amount:'金額 (¥)', date:'日付', details:'メモ', saveSpend:'記録', noData:'活動はありません。', paid:'有料広告', organic:'SNS投稿', referral:'紹介', website:'ウェブサイト', event:'イベント', outbound:'営業活動', other:'その他', status:'状態', active:'実施中', paused:'停止', completed:'完了', channelPerf:'キャンペーン', selectCampaign:'キャンペーンを選択', periodSpend:'記録済み費用', tips:'各リードにチャネルとキャンペーンを設定すると、集客単価と成約率を測定できます。', period:'期間', today:'今日', month:'今月', year:'今年', all:'全期間', goals:'マーケティングKPI目標', goalHint:'目標を設定し、選択期間の実績と比較します。', target:'目標', savedHere:'目標はこのブラウザーに保存されます。', impressions:'表示回数', clicks:'クリック数', conversions:'媒体コンバージョン', platformHint:'広告管理画面（TikTok・Meta・Googleなど）の表示回数・クリック・CVを入力するとCPM・CPC・CTRが計算されます。' },
+  pt: { title:'Marketing e captação', channels:'Canais', campaigns:'Campanhas', spend:'Gasto com anúncios', leads:'Leads', won:'Contratos fechados', cpl:'Custo por lead', cac:'Custo por aquisição', newChannel:'Novo canal', channelName:'Nome do canal', type:'Tipo de canal', platform:'Plataforma', add:'Salvar canal', newCampaign:'Nova campanha', campaignName:'Nome da campanha', objective:'Objetivo / público', channel:'Canal', budget:'Orçamento (¥)', starts:'Data de início', ends:'Data de término', saveCampaign:'Salvar campanha', recordSpend:'Registrar gasto com anúncios', amount:'Valor (¥)', date:'Data', details:'Observação', saveSpend:'Registrar gasto', noData:'Nenhuma atividade ainda.', paid:'Anúncios pagos', organic:'Redes sociais (orgânico)', referral:'Indicação', website:'Site', event:'Evento', outbound:'Prospecção ativa', other:'Outro', status:'Status', active:'Ativa', paused:'Pausada', completed:'Concluída', channelPerf:'Campanhas', selectCampaign:'Selecionar campanha', periodSpend:'Gasto registrado', tips:'Defina um canal/campanha em cada lead para medir o custo de captação e a conversão.', period:'Período', today:'Hoje', month:'Este mês', year:'Este ano', all:'Todo o período', goals:'Metas de KPI de marketing', goalHint:'Defina metas e compare com a atividade registrada no período selecionado.', target:'Meta', savedHere:'As metas ficam salvas neste navegador.', impressions:'Impressões', clicks:'Cliques', conversions:'Conversões da plataforma', platformHint:'Copie impressões, cliques e conversões do relatório da plataforma de anúncios (TikTok, Meta, Google…) para calcular CPM, CPC e CTR.' },
 }
 const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString()}`
 import { MEDIA_PLATFORMS, normalizePlatform, platformLabel } from '../lib/salesInsights'
@@ -16,9 +17,9 @@ import SalesInbox from '../components/SalesInbox'
 const TYPES = ['paid_ads', 'organic_social', 'referral', 'website', 'event', 'outbound', 'other']
 
 export default function Marketing() {
-  const { lang } = useLang()
+  const { lang, tr } = useLang()
   const { logout } = useAuth()
-  const t = COPY[lang === 'ja' ? 'ja' : 'en']
+  const t = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [data, setData] = useState(null)
   const [channel, setChannel] = useState({ name:'', channel_type:'paid_ads', platform:'google_ads' })
   const [campaign, setCampaign] = useState({ channel_id:'', name:'', objective:'', budget:'', starts_on:'', ends_on:'', status:'active' })
@@ -41,13 +42,13 @@ export default function Marketing() {
       await salesPost('/api/sales-data', body, lang)
       reset()
       await load()
-      toast.success(lang === 'ja' ? '保存しました' : 'Saved')
+      toast.success(tr('Saved', '保存しました', 'Salvo'))
     } catch (e) { toast.error(e.message) }
   }
 
   const saveGoal = async (month, goal) => {
     setBusy(true)
-    try { await salesPost('/api/sales-data', { action:'save-marketing-goal', period_month:month, goal }, lang); await load(); toast.success(lang === 'ja' ? '保存しました' : 'Saved') }
+    try { await salesPost('/api/sales-data', { action:'save-marketing-goal', period_month:month, goal }, lang); await load(); toast.success(tr('Saved', '保存しました', 'Salvo')) }
     catch (e) { toast.error(e.message) }
     finally { setBusy(false) }
   }
@@ -72,7 +73,7 @@ export default function Marketing() {
 
   return <div className="marketing-page">
     <div className="sales-kicker">KURIPURO · GROWTH</div><h1>{t.title}</h1>
-    {error && <div className="card sales-setup-note"><p>{error}</p><button type="button" className="btn btn-sm" onClick={logout}>{lang === 'ja' ? 'もう一度ログイン' : 'Sign in again'}</button></div>}
+    {error && <div className="card sales-setup-note"><p>{error}</p><button type="button" className="btn btn-sm" onClick={logout}>{tr('Sign in again', 'もう一度ログイン', 'Entrar novamente')}</button></div>}
     {data && <>
       <SalesInbox lang={lang} notifications={data.notifications || []} sellers={data.salespeople || []} onChanged={load} canSend />
       <MarketingKpiPanel data={data} lang={lang} today={data.today || today} busy={busy} onSaveGoal={saveGoal} />

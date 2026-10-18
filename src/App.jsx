@@ -11,9 +11,9 @@ if (typeof window !== 'undefined') {
 }
 import React, { lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
-import { LangProvider, useLang } from './hooks/useLang'
+import { LangProvider, useLang, localeOf } from './hooks/useLang'
 import { AuthProvider, useAuth } from './hooks/useAuth'
-import Sidebar from './components/Sidebar'
+import Sidebar, { usePendingCounts } from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import Login from './pages/Login'
@@ -63,11 +63,18 @@ function PortalLoading() {
   )
 }
 
+// Phone: the side menu is hidden, so the menu button shows the total of unresolved items.
+function MobileMenuCount() {
+  const counts = usePendingCounts()
+  const n = Object.values(counts).reduce((a, b) => a + (b || 0), 0)
+  return n > 0 ? <span className="nav-count mobile-menu-count">{n > 99 ? '99+' : n}</span> : null
+}
+
 function Clock() {
   const { lang } = useLang()
   const [now, setNow] = React.useState(new Date())
   React.useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = localeOf(lang)
   return (
     <span className="kp-clock" style={{ fontSize:13, color:'var(--text2)' }}>
       {now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
@@ -229,7 +236,7 @@ function AppContent() {
 
       <div className="main">
         <header className="topbar">
-          <button type="button" className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} aria-label={sidebarOpen ? a.closeMenu : a.openMenu} aria-expanded={sidebarOpen}>☰</button>
+          <button type="button" className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} aria-label={sidebarOpen ? a.closeMenu : a.openMenu} aria-expanded={sidebarOpen}>☰<MobileMenuCount /></button>
           <div className="mobile-kp-brand">KP</div>
           <div className="ref-topbar-search">
             <span>⌕</span>

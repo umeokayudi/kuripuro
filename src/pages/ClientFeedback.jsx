@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
 import { useLang, fill } from '../hooks/useLang'
 import { avgStars, starsDisplay } from '../lib/satisfaction'
@@ -6,7 +8,6 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import ClientSatisfactionPanel from '../components/ClientSatisfactionPanel'
 import { viewablePhotoUrl } from '../lib/photoUrl'
-import { useSearchParams } from 'react-router-dom'
 import { fetchContractSellers } from '../lib/contractSellers'
 import { salesPost } from '../lib/salesApi'
 import { quoteCommissionState } from '../lib/contractCommission'
@@ -34,6 +35,7 @@ export default function ClientFeedback() {
   const [lightbox, setLightbox] = useState(null)
 
   const load = async () => {
+    pendingChanged()
     const [r, cp, cm, rq, cl] = await Promise.all([
       supabase.from('client_ratings').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('client_complaints').select('*').order('created_at', { ascending: false }).limit(100),

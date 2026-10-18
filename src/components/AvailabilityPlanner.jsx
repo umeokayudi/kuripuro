@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
-import { fill } from '../hooks/useLang'
+import { fill, localeOf } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { plannerWeeks, weekDays, isLocked, byDate, nextKind, diffWeek, addDays, planningAlert } from '../lib/availability'
 
@@ -51,7 +51,7 @@ export function TimeOffList({ rows, e, lang }) {
 }
 
 export function fmtDay(iso, lang, opts = { day: 'numeric', month: 'short' }) {
-  return new Date(iso + 'T12:00:00Z').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { ...opts, timeZone: 'UTC' })
+  return new Date(iso + 'T12:00:00Z').toLocaleDateString(localeOf(lang), { ...opts, timeZone: 'UTC' })
 }
 
 // Employee planner: tap days to switch between available / day off / extra work.

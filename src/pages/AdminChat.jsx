@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
-import { useLang } from '../hooks/useLang'
+import { useLang, pickLang } from '../hooks/useLang'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { chatPhoto, chatPreview, chatDayKey, photoMessage } from '../lib/chatContent'
@@ -16,16 +17,16 @@ export default function AdminChat() {
   const { t, lang } = useLang()
   const ja = lang === 'ja'
   const L = {
-    search: ja ? '名前で検索' : 'Search by name',
-    noMessagesYet: ja ? 'まだメッセージはありません' : 'No messages yet',
-    pick: ja ? '左の一覧から会話を選んでください' : 'Pick a conversation from the list',
-    noPeople: ja ? '該当なし' : 'Nobody found',
-    write: ja ? 'メッセージを入力…' : 'Write a message…',
-    today: ja ? '今日' : 'Today',
-    photo: ja ? '📷 写真' : '📷 Photo',
-    back: ja ? '戻る' : 'Back',
-    sendPhoto: ja ? '写真を送る' : 'Send photo',
-    newBelow: ja ? '件の新着' : 'new',
+    search: pickLang(lang, 'Search by name', '名前で検索', 'Buscar por nome'),
+    noMessagesYet: pickLang(lang, 'No messages yet', 'まだメッセージはありません', 'Ainda não há mensagens'),
+    pick: pickLang(lang, 'Pick a conversation from the list', '左の一覧から会話を選んでください', 'Escolha uma conversa na lista'),
+    noPeople: pickLang(lang, 'Nobody found', '該当なし', 'Ninguém encontrado'),
+    write: pickLang(lang, 'Write a message…', 'メッセージを入力…', 'Escreva uma mensagem…'),
+    today: pickLang(lang, 'Today', '今日', 'Hoje'),
+    photo: pickLang(lang, '📷 Photo', '📷 写真', '📷 Foto'),
+    back: pickLang(lang, 'Back', '戻る', 'Voltar'),
+    sendPhoto: pickLang(lang, 'Send photo', '写真を送る', 'Enviar foto'),
+    newBelow: pickLang(lang, 'new', '件の新着', 'novas'),
   }
   const [mode, setMode] = useState('employees')
   const [employees, setEmployees] = useState([])
@@ -115,6 +116,7 @@ export default function AdminChat() {
       await q
     }
     setUnread(u => ({ ...u, [keyOf(selected)]: 0 }))
+    pendingChanged()
   }
 
   // Follow new messages unless the admin scrolled up to read older ones.
@@ -199,7 +201,7 @@ export default function AdminChat() {
   const selectedSub = selected && !isEmp ? [selected.client_name, selected.contact_name].filter(Boolean).join(' · ') : ''
   const todayKey = chatDayKey(new Date().toISOString())
   const dayLabel = key => key === todayKey ? L.today
-    : new Date(`${key}T12:00:00+09:00`).toLocaleDateString(ja ? 'ja-JP' : 'en-GB', { month: 'short', day: 'numeric', weekday: 'short', timeZone: 'Asia/Tokyo' })
+    : new Date(`${key}T12:00:00+09:00`).toLocaleDateString(ja ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB', { month: 'short', day: 'numeric', weekday: 'short', timeZone: 'Asia/Tokyo' })
   let lastDay = ''
 
   return (

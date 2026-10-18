@@ -47,40 +47,41 @@ const ATOMIC_BAR_ITEMS = [
 ]
 
 const CHECKLIST_DISPLAY = {
-  'Lixo banheiro': { en: 'Bathroom trash', ja: 'トイレのゴミ' },
-  'Limpeza vaso (sem marca, sujeira borda)': { en: 'Toilet clean (no marks on rim)', ja: '便器（縁の汚れなし）' },
-  'Limpar tapete (lixo)': { en: 'Clean mat (trash)', ja: 'マットのゴミ' },
-  'Piso sem marca alcool': { en: 'Floor with no alcohol marks', ja: '床にアルコール跡なし' },
-  'Ventilacao ligada': { en: 'Ventilation on', ja: '換気オン' },
-  'Ventilacao desligada': { en: 'Ventilation off', ja: '換気オフ' },
-  'Lixo pas retirado': { en: 'Trash taken out', ja: 'ゴミを出した' },
+  'Lixo banheiro': { en: 'Bathroom trash', ja: 'トイレのゴミ', pt: 'Lixo do banheiro' },
+  'Limpeza vaso (sem marca, sujeira borda)': { en: 'Toilet clean (no marks on rim)', ja: '便器（縁の汚れなし）', pt: 'Limpeza do vaso (sem marcas, sem sujeira na borda)' },
+  'Limpar tapete (lixo)': { en: 'Clean mat (trash)', ja: 'マットのゴミ', pt: 'Limpar tapete (lixo)' },
+  'Piso sem marca alcool': { en: 'Floor with no alcohol marks', ja: '床にアルコール跡なし', pt: 'Piso sem marca de álcool' },
+  'Ventilacao ligada': { en: 'Ventilation on', ja: '換気オン', pt: 'Ventilação ligada' },
+  'Ventilacao desligada': { en: 'Ventilation off', ja: '換気オフ', pt: 'Ventilação desligada' },
+  'Lixo pas retirado': { en: 'Trash taken out', ja: 'ゴミを出した', pt: 'Lixo retirado' },
   'Chave no keybox': { en: 'Key back in keybox', ja: 'キーボックスに鍵' },
-  'Verificacao pos-video (sujeira piso)': { en: 'Post-video floor check', ja: '動画後の床確認' },
-  'Coisas retiradas no lugar': { en: 'Moved items put back', ja: '動かした物を戻す' },
+  'Verificacao pos-video (sujeira piso)': { en: 'Post-video floor check', ja: '動画後の床確認', pt: 'Verificação pós-vídeo (sujeira no piso)' },
+  'Coisas retiradas no lugar': { en: 'Moved items put back', ja: '動かした物を戻す', pt: 'Coisas retiradas de volta no lugar' },
   'Luzes apagadas': { en: 'Lights off', ja: '消灯' },
   'Cadeiras abaixadas': { en: 'Chairs down', ja: '椅子を下ろす' },
   'Porta segundo andar fechada': { en: '2nd floor door closed', ja: '2階のドアを閉める' },
-  'Retirar TODO o lixo (bar, salao, banheiro, cozinha)': { en: 'Remove ALL trash (bar, floor, restroom, kitchen)', ja: 'ゴミを全部出す（バー・フロア・トイレ・厨房）' },
+  'Retirar TODO o lixo (bar, salao, banheiro, cozinha)': { en: 'Remove ALL trash (bar, floor, restroom, kitchen)', ja: 'ゴミを全部出す（バー・フロア・トイレ・厨房）', pt: 'Retirar TODO o lixo (bar, salão, banheiro, cozinha)' },
   'Esvaziar todas as lixeiras e sacos de lixo': { en: 'Empty every bin and trash bag', ja: 'ゴミ箱と袋を空にする' },
   'Limpar vidros, espelhos e portas de vidro': { en: 'Clean glass, mirrors, and glass doors', ja: 'ガラス・鏡・ガラス扉' },
-  'Limpar balcao e area do bar (sem manchas)': { en: 'Clean bar counter (no stains)', ja: 'バーカウンター（シミなし）' },
+  'Limpar balcao e area do bar (sem manchas)': { en: 'Clean bar counter (no stains)', ja: 'バーカウンター（シミなし）', pt: 'Limpar balcão e área do bar (sem manchas)' },
   'Limpar mesas, banquetas e cadeiras': { en: 'Clean tables, stools, and chairs', ja: 'テーブル・スツール・椅子' },
-  'Piso sem marca alcool (salao inteiro)': { en: 'Floor with no alcohol marks (whole room)', ja: 'フロア全体にアルコール跡なし' },
-  'Limpeza vaso banheiro (sem marca, sujeira borda)': { en: 'Restroom toilet (no marks on rim)', ja: 'トイレ便器（縁の汚れなし）' },
+  'Piso sem marca alcool (salao inteiro)': { en: 'Floor with no alcohol marks (whole room)', ja: 'フロア全体にアルコール跡なし', pt: 'Piso sem marca de álcool (salão inteiro)' },
+  'Limpeza vaso banheiro (sem marca, sujeira borda)': { en: 'Restroom toilet (no marks on rim)', ja: 'トイレ便器（縁の汚れなし）', pt: 'Limpeza do vaso do banheiro (sem marcas, sem sujeira na borda)' },
   'Limpar pia e torneiras do banheiro': { en: 'Clean restroom sink and taps', ja: '洗面台と水栓' },
-  'Organizar copos, garrafas e utensilios no lugar': { en: 'Put glasses, bottles, and tools back', ja: 'グラス・ボトル・用具を戻す' },
-  'Ventilacao / ar-condicionado ligado conforme padrao': { en: 'Ventilation / AC on as usual', ja: '換気・エアコンを通常どおり' },
-  'Verificacao pos-video (sujeira piso e vidros)': { en: 'Post-video check (floor and glass)', ja: '動画後の床とガラス確認' },
-  'Range Hood — limpeza completa (filtros, duto, superficie)': { en: 'Range Hood — full clean (filters, duct, surface)', ja: 'レンジフード — フィルター・ダクト・表面' },
-  'AC Cleaning — filtros e unidade interna': { en: 'AC Cleaning — filters and indoor unit', ja: 'エアコン — フィルターと室内機' },
-  'Grating — grelha limpa sem gordura': { en: 'Grating — clean, no grease', ja: 'グレーティング — 油なし' },
-  'Grease Trap — esvaziado e higienizado': { en: 'Grease Trap — emptied and sanitized', ja: 'グリストラップ — 空にして清掃' },
-  'Stove — fogões limpos e sem gordura': { en: 'Stove — clean, no grease', ja: 'コンロ — 油なし' },
+  'Organizar copos, garrafas e utensilios no lugar': { en: 'Put glasses, bottles, and tools back', ja: 'グラス・ボトル・用具を戻す', pt: 'Organizar copos, garrafas e utensílios no lugar' },
+  'Ventilacao / ar-condicionado ligado conforme padrao': { en: 'Ventilation / AC on as usual', ja: '換気・エアコンを通常どおり', pt: 'Ventilação / ar-condicionado ligado conforme o padrão' },
+  'Verificacao pos-video (sujeira piso e vidros)': { en: 'Post-video check (floor and glass)', ja: '動画後の床とガラス確認', pt: 'Verificação pós-vídeo (sujeira no piso e vidros)' },
+  'Range Hood — limpeza completa (filtros, duto, superficie)': { en: 'Range Hood — full clean (filters, duct, surface)', ja: 'レンジフード — フィルター・ダクト・表面', pt: 'Coifa — limpeza completa (filtros, duto, superfície)' },
+  'AC Cleaning — filtros e unidade interna': { en: 'AC Cleaning — filters and indoor unit', ja: 'エアコン — フィルターと室内機', pt: 'Ar-condicionado — filtros e unidade interna' },
+  'Grating — grelha limpa sem gordura': { en: 'Grating — clean, no grease', ja: 'グレーティング — 油なし', pt: 'Grelha de piso — limpa, sem gordura' },
+  'Grease Trap — esvaziado e higienizado': { en: 'Grease Trap — emptied and sanitized', ja: 'グリストラップ — 空にして清掃', pt: 'Caixa de gordura — esvaziada e higienizada' },
+  'Stove — fogões limpos e sem gordura': { en: 'Stove — clean, no grease', ja: 'コンロ — 油なし', pt: 'Fogão — limpo e sem gordura' },
 }
 
 export function checklistDisplayLabel(label, lang = 'en') {
   const row = CHECKLIST_DISPLAY[label]
   if (!row) return label
+  if (lang === 'pt') return row.pt || label
   return lang === 'ja' ? row.ja : row.en
 }
 

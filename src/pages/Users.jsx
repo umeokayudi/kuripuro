@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { salesPost } from '../lib/salesApi'
-import { useLang } from '../hooks/useLang'
+import { useLang, localeOf } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { RoleBadge } from '../components/EmployeeRole'
 import UserEditDialog from '../components/UserEditDialog'
@@ -39,6 +39,19 @@ const TXT = {
     created: '管理者を作成しました', emailUsed: 'このメールはすでに使われています', fillAll: '氏名・メール・8文字以上のパスワードを入力してください',
     empty: '該当するユーザーはいません。', loading: '読み込み中…', you: 'あなた', partners: 'ビジネスパートナー →', saved: '保存しました',
   },
+  pt: {
+    title: 'Usuários', hint: 'Todos os logins do KuriPuro: administradores, funcionários, vendedores e logins de clientes.',
+    all: 'Todos', admin: 'Administradores', employee: 'Funcionários', salesperson: 'Vendedores', client: 'Clientes',
+    typeOne: { admin: 'Administrador', employee: 'Funcionário', salesperson: 'Vendedor', client: 'Cliente' },
+    sector: { admin: 'Administradores', employee: 'Funcionários', salesperson: 'Vendas / Marketing', client: 'Clientes' },
+    addOne: { admin: '+ Novo administrador', employee: '+ Novo funcionário', salesperson: '+ Novo vendedor', client: '+ Novo login de cliente' },
+    search: 'Buscar nome, e-mail, função ou loja…', showInactive: 'Mostrar inativos',
+    active: 'Ativo', inactive: 'Inativo', open: 'Abrir', edit: 'Editar', activate: 'Ativar', deactivate: 'Desativar',
+    lastSeen: 'Último acesso', never: 'nunca', add: '+ Adicionar usuário', addAdmin: 'Novo administrador', addEmployee: 'Funcionário', addSeller: 'Vendedor', addClient: 'Login de cliente',
+    whichType: 'Que tipo de login?', name: 'Nome', email: 'E-mail', password: 'Senha (8+ caracteres)', create: 'Criar administrador', cancel: 'Cancelar',
+    created: 'Administrador criado', emailUsed: 'Este e-mail já tem um login', fillAll: 'Preencha nome, e-mail e uma senha com 8+ caracteres',
+    empty: 'Nenhum usuário encontrado.', loading: 'Carregando…', you: 'você', partners: 'Parceiros de negócio →', saved: 'Salvo',
+  },
 }
 
 const TYPES = ['admin', 'employee', 'salesperson', 'client']
@@ -50,10 +63,10 @@ function initials(name) {
 }
 
 export default function Users() {
-  const { lang } = useLang()
+  const { lang, tr } = useLang()
   const { user: me, updateSession } = useAuth()
   const navigate = useNavigate()
-  const t = TXT[lang === 'ja' ? 'ja' : 'en']
+  const t = TXT[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -101,7 +114,7 @@ export default function Users() {
 
   const fmtSeen = iso => {
     if (!iso) return t.never
-    return new Date(iso).toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-GB', { timeZone: 'Asia/Tokyo', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    return new Date(iso).toLocaleString(localeOf(lang), { timeZone: 'Asia/Tokyo', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
   }
 
   const open = r => {
@@ -145,7 +158,7 @@ export default function Users() {
           {r.name}
           {me?.role === 'admin' && r.type === 'admin' && r.id === me.id && <span style={{ fontSize: 11, color: 'var(--text3)' }}>({t.you})</span>}
           {r.type === 'employee' && <RoleBadge value={r.role} lang={lang} size="sm" />}
-          {r.type === 'salesperson' && <span className={`kp-team-badge is-${r.team}`}>{r.team === 'marketing' ? (lang === 'ja' ? 'マーケティング' : 'Marketing') : (lang === 'ja' ? '営業' : 'Sales')}</span>}
+          {r.type === 'salesperson' && <span className={`kp-team-badge is-${r.team}`}>{r.team === 'marketing' ? tr('Marketing', 'マーケティング', 'Marketing') : tr('Sales', '営業', 'Vendas')}</span>}
           {!r.active && <span className="badge badge-red">{t.inactive}</span>}
         </div>
         <div className="kp-users-meta">

@@ -52,9 +52,33 @@ export const FOLLOWUP_COPY = {
     pace: p => `今月は${p}%経過`, done: '達成',
     goalLabels: { approaches: '営業活動', contacts: '連絡数', leads: '新規リード', quotes: '見積', contracts: '成約', revenue: '月間契約額' },
   },
+  pt: {
+    overdue: d => `Atrasado ${d} dia${d === 1 ? '' : 's'}`,
+    today: () => 'Fazer follow-up hoje',
+    soon: d => `Em ${d} dia${d === 1 ? '' : 's'}`,
+    scheduled: d => `Em ${d} dias`,
+    stale: d => `Sem contato há ${d} dias`,
+    missing: () => 'Sem próximo follow-up definido',
+    alertTitle: 'Alertas de follow-up',
+    alertOverdue: 'atrasados', alertToday: 'para hoje', alertStale: 'sem contato há 14+ dias', alertMissing: 'sem próxima data',
+    allClear: 'Todos os clientes estão em dia.',
+    seeAll: 'Ver follow-ups',
+    lastContact: 'Último contato', firstContact: 'Primeiro contato', never: 'nunca', daysAgo: d => (d === 0 ? 'hoje' : `há ${d} dia${d === 1 ? '' : 's'}`),
+    logContact: 'Registrar contato', contactDate: 'Data do contato', channel: 'Como', nextFollowup: 'Próximo follow-up',
+    noNext: 'Sem próximo follow-up', saveContact: 'Salvar contato', cancel: 'Cancelar', saved: 'Contato salvo',
+    history: 'Histórico de contatos', noHistory: 'Nenhum contato registrado ainda.',
+    channels: { visit: 'Visita', phone: 'Telefone', line: 'LINE', email: 'E-mail', meeting: 'Reunião', other: 'Outro' },
+    note: 'O que aconteceu', clientResponse: 'O que o cliente respondeu', responseTag: 'Tipo de resposta', sentiment: 'Clima',
+    responseTags: { interested: 'Interessado', asked_quote: 'Pediu orçamento', price_high: 'Preço alto demais', has_vendor: 'Já tem fornecedor', timing: 'Agora não / momento', need_approval: 'Precisa de aprovação do chefe', no_need: 'Não precisa', no_answer: 'Sem resposta / ausente', other: 'Outro' },
+    sentiments: { positive: 'Positivo', neutral: 'Neutro', negative: 'Negativo' },
+    quick: [['+3d', 3], ['+1sem', 7], ['+2sem', 14], ['+1m', 30]],
+    goals: 'Metas', goalsMonth: 'Metas deste mês', noGoals: 'Seu gestor ainda não definiu as metas deste mês.',
+    pace: p => `${p}% do mês já passou`, done: 'Atingida',
+    goalLabels: { approaches: 'Abordagens', contacts: 'Contatos', leads: 'Novos leads', quotes: 'Orçamentos', contracts: 'Contratos fechados', revenue: 'Valor mensal de contratos' },
+  },
 }
 
-export const followupCopy = lang => FOLLOWUP_COPY[lang === 'ja' ? 'ja' : 'en']
+export const followupCopy = lang => FOLLOWUP_COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
 const yen = value => `¥${Math.round(Number(value || 0)).toLocaleString()}`
 
 export function FollowupChip({ info, f }) {

@@ -3,7 +3,7 @@ import { isHeicUrl, viewablePhotoUrl } from '../lib/photoUrl'
 import { useLang } from '../hooks/useLang'
 
 export default function StorageImage({ url, alt = 'foto', style, onClick }) {
-  const { lang } = useLang()
+  const { tr } = useLang()
   const [src, setSrc] = useState(null)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -19,7 +19,7 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
   if (!url) return null
 
   if (failed && style?.width && Number(style.width) <= 100) {
-    const label = lang === 'ja' ? '写真を開く' : 'Open photo'
+    const label = tr('Open photo', '写真を開く', 'Abrir foto')
     return (
       <a href={displayUrl} target="_blank" rel="noreferrer" className="storage-image-failed-compact"
         title={label} aria-label={label}
@@ -37,8 +37,8 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
         height: 'auto', minHeight: 92, flexShrink: 0,
       }}>
         <span aria-hidden="true" className="storage-image-failed-icon">▧</span>
-        <div className="storage-image-failed-copy">{lang === 'ja' ? '写真をプレビューできません' : 'Photo preview unavailable'}</div>
-        <a href={displayUrl} target="_blank" rel="noreferrer" className="storage-image-failed-link">{lang === 'ja' ? '写真を開く ↗' : 'Open photo ↗'}</a>
+        <div className="storage-image-failed-copy">{tr('Photo preview unavailable', '写真をプレビューできません', 'Pré-visualização da foto indisponível')}</div>
+        <a href={displayUrl} target="_blank" rel="noreferrer" className="storage-image-failed-link">{tr('Open photo ↗', '写真を開く ↗', 'Abrir foto ↗')}</a>
       </div>
     )
   }
