@@ -26,7 +26,7 @@ export async function runGeminiToolLoop({
     if (callTimeout() < MIN_CALL_MS) { outOfTime = true; break }
     let data
     try {
-      data = await geminiGenerate({ contents, tools, systemInstruction }, { timeoutMs: callTimeout() })
+      data = await geminiGenerate({ contents, tools, systemInstruction }, { timeoutMs: callTimeout(), lowThinking: true })
     } catch (err) {
       // Lookups already done are worth an answer; with nothing done yet, report the error.
       if (!toolLog.length) throw err
@@ -81,7 +81,7 @@ ${outOfTime ? 'O tempo para esta resposta acabou antes de terminar. Diga o que j
           },
         ],
         systemInstruction,
-      }, { timeoutMs: callTimeout() })
+      }, { timeoutMs: callTimeout(), lowThinking: true })
       finalText = synth?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || ''
     } catch {}
   }
