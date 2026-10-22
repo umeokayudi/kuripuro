@@ -1360,3 +1360,32 @@
 .cpx-chat.is-desktop .cpx-chat-compose{position:static;transform:none;max-width:none;padding:0;background:none}
 .cpx-stepper b.is-empty{color:#b3bdcc;font-weight:600}
 .cpx-bubble.is-photo img{min-width:160px;min-height:120px;background:#dbe3f0}
+
+/* v1.0.66 — store list first, no sideways lists, sidebar footer fits */
+.cp-period-stats.is-two{grid-template-columns:repeat(2,1fr)}
+.cpx-store-list{display:flex;flex-direction:column;gap:8px}
+.cpx-store-list button{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:10px 14px;border-radius:14px;border:1px solid #e4eaf2;background:#fff;color:#0c1c30;font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
+.cpx-store-list button:hover{border-color:#cbd7f5;background:#f8faff}
+.cpx-store-list button.is-alert{border-color:#fde2e2}
+.cpx-store-ico{flex:0 0 36px;width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:#eef3ff;color:#2a4fd4;font-size:15px;font-weight:800}
+.cpx-store-list button.is-alert .cpx-store-ico{background:#fff1f1;color:#c2263a}
+.cpx-store-name{flex:1;min-width:0}
+.cpx-store-name strong{display:block;font-size:14.5px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cpx-store-name small{display:block;margin-top:2px;font-size:12px;color:#6b788c}
+.cpx-store-list button.is-alert .cpx-store-name small{color:#c2263a}
+.cpx-store-list b{min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#dc2626;color:#fff;font-size:11.5px;display:grid;place-items:center}
+.cpx-store-chev{font-size:22px;line-height:1;color:#a3afc2}
+.cpx-store-back{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;height:34px;padding:0 14px 0 10px;margin-bottom:10px;border-radius:17px;border:1px solid #dbe4ff;background:#fff;color:#2747c8;font:inherit;font-size:13px;font-weight:750;cursor:pointer}
+.cpx-store-back:hover{background:#f3f6ff}
+.cpx-chat-quick{flex-wrap:wrap;overflow-x:visible}
+.cpx-more>button.is-active{border-color:#315cf5;background:#f3f6ff}
+.cpx-more-sep{height:1px;background:#e9edf3;margin:4px 2px}
+.cp-shell.cp-desktop .cp-sidebar{overflow-y:auto;overscroll-behavior:contain}
+.cp-side-nav{flex:1 0 auto}
+.cp-side-btn{padding:10px 14px}
+.cp-side-footer{margin-top:16px;gap:8px}
+.cp-side-logout{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid #f3d3d7;background:#fff;color:#b83240;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.cp-side-logout .cpx-ico{width:17px;height:17px}
+.cp-side-logout:hover{background:#fff2f2;border-color:#eab8bf}
+.cp-view-toggle{font-size:12.5px}
+.cp-shell.cp-desktop .cpx-store-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}

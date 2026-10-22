@@ -48,10 +48,14 @@ export function fmtVisitEnd(job, lang = 'ja') {
   return '—'
 }
 
+// Words that name a service, not a store ("グリストラップ – Ibushio - Deep Clean").
+const SERVICE_PART = /deep\s*clean|grease|trap|duskin|hood|exhaust|duct|air\s*con|window|floor|wax|regular|spot|maintenance|cleaning|グリスト|清掃|クリーニング|ダスキン|フード|ダクト|エアコン|窓|床|ワックス|定期|スポット|メンテ/i
+
 // Contracts are named per service ("Ibushio — Grease Trap", "Tooda - Deep Clean");
-// the client thinks in stores, so everything after the dash is dropped.
+// the client thinks in stores, so the service parts around the dashes are dropped.
 export function storeBaseName(name) {
-  return String(name || '').split(/\s+[-—–]\s+/)[0].trim()
+  const parts = String(name || '').split(/\s+[-—–]\s+/).map(p => p.trim()).filter(Boolean)
+  return parts.find(p => !SERVICE_PART.test(p)) || parts[0] || ''
 }
 
 /** Unique store names for this portal user; a store login only ever sees its own store. */
