@@ -19,6 +19,7 @@ import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
 import EmployeeChat from '../components/EmployeeChat'
+import { OFFICE_KEY, buildChatSections, officeThread, threadWith, teamUnreadTotal } from '../lib/teamChat'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { photoMessage, chatPreview } from '../lib/chatContent'
 import toast from 'react-hot-toast'
@@ -155,6 +156,13 @@ export default function EmployeePortal() {
   const [newMsg, setNewMsg] = useState('')
   const [sendingChatPhoto, setSendingChatPhoto] = useState(false)
   const [chatLightbox, setChatLightbox] = useState(null)
+  // v1.0.65 · chat with coworkers / own leader (team_messages); office chat stays in messages
+  const [teamReady, setTeamReady] = useState(false)
+  const [coworkers, setCoworkers] = useState([])
+  const [teamMessages, setTeamMessages] = useState([])
+  const [chatKey, setChatKey] = useState(null)
+  const coworkersRef = useRef([])
+  coworkersRef.current = coworkers
   const [badges, setBadges] = useState([])
   const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
@@ -185,7 +193,7 @@ export default function EmployeePortal() {
   const nfcEndRef = useRef(null)
   useEffect(() => { if (user?.id) loadNfcConfig(supabase, user.id).then(setNfcConfig) }, [user?.id])
   const [retroSignOpen, setRetroSignOpen] = useState(false)
-  const [unreadMsgs, setUnreadMsgs] = useState(0)
+  const [officeUnread, setOfficeUnread] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [serviceContracts, setServiceContracts] = useState([])
   const [trainingModal, setTrainingModal] = useState(null)
@@ -197,6 +205,9 @@ export default function EmployeePortal() {
   const [overdueBusy, setOverdueBusy] = useState(null)
   const [todayAllJobs, setTodayAllJobs] = useState([])
   const [userScrolled, setUserScrolled] = useState(false)
+  const teamUnread = teamUnreadTotal(teamMessages, user.id)
+  const unreadMsgs = officeUnread + teamUnread
+  const chatOnOffice = !teamReady || chatKey === OFFICE_KEY
 
   const timerRef = useRef()
   const clockRef = useRef()
@@ -226,7 +237,7 @@ export default function EmployeePortal() {
   useEffect(() => {
     loadAll()
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
-    const msgPoll = setInterval(loadMessages, 10000)
+    const msgPoll = setInterval(() => { loadMessages(); loadTeamMessages() }, 10000)
     // Ping presence every 60s
     const pingPresence = async () => {
       const update = { last_seen: new Date().toISOString(), is_online: true }
@@ -321,13 +332,22 @@ export default function EmployeePortal() {
 
   useEffect(() => {
     if (tab==='chat') {
-      markRead()
+      if (chatOnOffice) { if (officeUnread > 0) markRead() }
+      else if (chatKey && teamMessages.some(m=>m.from_employee_id===chatKey&&m.to_employee_id===user.id&&!m.read)) markTeamRead(chatKey)
       // Only auto-scroll if user hasn't scrolled up
       if (!userScrolled) {
         setTimeout(()=>msgEndRef.current?.scrollIntoView({behavior:'smooth'}),100)
       }
     }
-  }, [tab, messages])
+  }, [tab, messages, teamMessages, chatKey])
+
+  // Phones open the people list first; wider screens open the leader (or the office) beside it.
+  useEffect(() => {
+    if (tab!=='chat' || !teamReady || chatKey) return
+    if (window.matchMedia('(min-width: 821px)').matches) setChatKey(coworkers.find(c=>c.id===user.id)?.leader_id || OFFICE_KEY)
+  }, [tab, teamReady])
+
+  const openChat = (key) => { setChatKey(key); setNewMsg(''); setUserScrolled(false) }
 
   const handleChatScroll = (e) => {
     const el = e.target
@@ -381,6 +401,7 @@ export default function EmployeePortal() {
     }
     calcSalary(enrichJobValues(allVisible, contractsRes.data || []), emp.data, monthPay.data||[])
     loadMessages()
+    loadTeam()
     awardBadges(allVisible, bdg.data||[])
     loadStatement()
     loadWeekPlans()
@@ -451,12 +472,42 @@ export default function EmployeePortal() {
       }
       return data||[]
     })
-    setUnreadMsgs(newUnread)
+    setOfficeUnread(newUnread)
   }
 
   const markRead = async () => {
     await supabase.from('messages').update({read:true}).eq('employee_id',user.id).eq('sender','admin').eq('read',false)
-    setUnreadMsgs(0)
+    setOfficeUnread(0)
+  }
+
+  const loadTeam = async () => {
+    const { data, error } = await supabase.from('employees').select('id,full_name,job_role,leader_id,is_active').eq('is_active', true).order('full_name')
+    if (error) { setTeamReady(false); return }
+    setCoworkers(data || [])
+    const ok = await loadTeamMessages()
+    setTeamReady(ok)
+  }
+
+  const loadTeamMessages = async () => {
+    const { data, error } = await supabase.from('team_messages').select('*')
+      .or(`from_employee_id.eq.${user.id},to_employee_id.eq.${user.id}`)
+      .order('created_at', { ascending:false }).limit(400)
+    if (error) return false
+    setTeamMessages(prev => {
+      const known = new Set(prev.map(m=>m.id))
+      const fresh = prev.length > 0 ? (data||[]).filter(m=>!known.has(m.id)&&m.to_employee_id===user.id) : []
+      if (fresh.length) {
+        const name = coworkersRef.current.find(c=>c.id===fresh[0].from_employee_id)?.full_name
+        toast(fill(e.chatNewFrom, { name: name || '…' }), { icon:'💬', duration:4000 })
+      }
+      return data || []
+    })
+    return true
+  }
+
+  const markTeamRead = async (fromId) => {
+    setTeamMessages(prev => prev.map(m => m.from_employee_id===fromId&&m.to_employee_id===user.id ? { ...m, read:true } : m))
+    await supabase.from('team_messages').update({ read:true }).eq('from_employee_id', fromId).eq('to_employee_id', user.id).eq('read', false)
   }
 
   const markEmployeeMsgRead = async (msgId) => {
@@ -468,11 +519,14 @@ export default function EmployeePortal() {
   const sendMessage = async (preset) => {
     const text = String(preset ?? newMsg).trim()
     if (!text) return false
-    const { error } = await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:text, read:false })
+    const toOffice = chatOnOffice
+    const { error } = toOffice
+      ? await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:text, read:false })
+      : await supabase.from('team_messages').insert({ from_employee_id:user.id, to_employee_id:chatKey, content:text })
     if (error) { toast.error(error.message); return false }
     if (preset === undefined) setNewMsg('')
     setUserScrolled(false)
-    loadMessages()
+    if (toOffice) loadMessages(); else loadTeamMessages()
     return true
   }
 
@@ -480,7 +534,8 @@ export default function EmployeePortal() {
     if (!file || sendingChatPhoto) return
     setSendingChatPhoto(true)
     try {
-      const path = await uploadJobPhoto(`jobs/chat/employee/${user.id}/${crypto.randomUUID()}.jpg`, file)
+      const folder = chatOnOffice ? 'employee' : 'team'
+      const path = await uploadJobPhoto(`jobs/chat/${folder}/${user.id}/${crypto.randomUUID()}.jpg`, file)
       await sendMessage(photoMessage(path))
     } catch (err) {
       toast.error(err?.message || 'Upload failed')
@@ -1189,6 +1244,9 @@ export default function EmployeePortal() {
 
   const planAlert = planningAlert(weekPlans, today)
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
+  const chatSections = teamReady ? buildChatSections({ me:user, employees:coworkers, teamMessages, officeMessages:messages, teamReady }) : null
+  const lastTeamUnread = teamMessages.find(m=>m.to_employee_id===user.id&&!m.read)
+  const chatMenuPreview = officeUnread>0&&lastAdminMsg ? lastAdminMsg.content : lastTeamUnread ? lastTeamUnread.content : null
   const menuItems = [
     {key:'home',icon:'🏠',label:e.dashboard},
     {key:'shift',icon:'🗺',label:e.todayShift},
@@ -1198,7 +1256,7 @@ export default function EmployeePortal() {
     {key:'salary',icon:'💴',label:e.salary},
     {key:'transport',icon:'🚃',label:e.transport},
     {key:'equipment',icon:'🧰',label:e.equipment},
-    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?chatPreview(lastAdminMsg.content, '📷').substring(0,30):null},
+    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
     {key:'availability',icon:'🗓',label:e.availability,badge:planAlert?1:0},
     {key:'achievements',icon:'🏆',label:e.achievements},
@@ -2026,7 +2084,12 @@ export default function EmployeePortal() {
         {/* CHAT */}
         {tab==='chat'&&(
           <EmployeeChat
-            messages={messages}
+            messages={chatOnOffice ? officeThread(messages) : threadWith(teamMessages, user.id, chatKey)}
+            teamReady={teamReady}
+            sections={chatSections}
+            activeKey={teamReady ? chatKey : OFFICE_KEY}
+            onOpen={openChat}
+            onBack={()=>setChatKey(null)}
             labels={e}
             lang={lang}
             value={newMsg}
@@ -2038,7 +2101,7 @@ export default function EmployeePortal() {
             containerRef={chatContainerRef}
             endRef={msgEndRef}
             onScroll={handleChatScroll}
-            unreadBelow={userScrolled ? unreadMsgs : 0}
+            unreadBelow={userScrolled ? (chatOnOffice ? officeUnread : teamMessages.filter(m=>m.from_employee_id===chatKey&&m.to_employee_id===user.id&&!m.read).length) : 0}
             onJumpDown={()=>{setUserScrolled(false);msgEndRef.current?.scrollIntoView({behavior:'smooth'})}}
           />
         )}

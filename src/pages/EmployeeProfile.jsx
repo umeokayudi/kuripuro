@@ -5,7 +5,7 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
 import ContractTab from '../components/ContractTab'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
-import { useLang } from '../hooks/useLang'
+import { useLang, pickLang } from '../hooks/useLang'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -106,6 +106,9 @@ export default function EmployeeProfile() {
   const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
   const [addingEval, setAddingEval] = useState(false)
   const [analyzingId, setAnalyzingId] = useState(null)
+  // v1.0.65 · leader of this employee (employees.leader_id). Hidden until the team chat SQL is applied.
+  const [people, setPeople] = useState(null)
+  const [leaderId, setLeaderId] = useState('')
 
   const analyzePhoto = async (job) => {
     if (!job.photo_end_url) return
@@ -144,6 +147,9 @@ export default function EmployeeProfile() {
       supabase.from('salary_payments').select('*').eq('employee_id', id).order('payment_date', { ascending:true }),
       supabase.from('salary_payments').select('*').eq('employee_id', id).eq('payment_type', 'advance').order('payment_date', { ascending:false }),
     ])
+    const team = await supabase.from('employees').select('id,full_name,leader_id,is_active').order('full_name')
+    if (team.error) setPeople(null)
+    else { setPeople(team.data || []); setLeaderId((team.data || []).find(x => x.id === id)?.leader_id || '') }
     setEmp(e.data); setForm(e.data||{})
     setWorkDays(e.data?.work_days ? JSON.parse(e.data.work_days) : [])
     setJobs(j.data||[]); setEvals(ev.data||[])
@@ -174,6 +180,10 @@ export default function EmployeeProfile() {
       monthly_work_days:parseInt(form.monthly_work_days)||22,
     }).eq('id', id)
     if (error) return toast.error(error.message)
+    if (people) {
+      const { error: leaderErr } = await supabase.from('employees').update({ leader_id: leaderId || null }).eq('id', id)
+      if (leaderErr) return toast.error(leaderErr.message)
+    }
     toast.success('Saved!')
     setEditing(false); loadAll()
   }
@@ -216,6 +226,16 @@ export default function EmployeeProfile() {
         <div>
           <h2 style={{fontSize:18,fontWeight:700,margin:0,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{emp.full_name}<RoleBadge value={emp.job_role} lang={lang} /></h2>
           <div style={{fontSize:12,color:'var(--text3)'}}>{emp.email} · {emp.contract_type}</div>
+          {people && (() => {
+            const leader = people.find(p => p.id === leaderId)
+            const led = people.filter(p => p.leader_id === id && p.is_active !== false).length
+            if (!leader && !led) return null
+            return <div style={{fontSize:12,color:'var(--text2)',marginTop:2}}>
+              {leader && <>{pickLang(lang, 'Leader', 'リーダー', 'Líder')}: <b>{leader.full_name}</b></>}
+              {leader && led > 0 && ' · '}
+              {led > 0 && pickLang(lang, `Leads ${led}`, `${led}人のリーダー`, `Lidera ${led}`)}
+            </div>
+          })()}
         </div>
         <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
           <div style={{fontSize:28,fontWeight:800,color:scoreColor(emp.score||100)}}>{emp.score||100}</div>
@@ -481,6 +501,16 @@ export default function EmployeeProfile() {
           </div>
           <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:0.5,margin:'14px 0 10px',borderTop:'1px solid var(--border)',paddingTop:12}}>{lang==='ja'?'役割':'Role'}</div>
           <RolePicker key={emp.id} value={form.job_role||''} onChange={v=>upd('job_role',v)} lang={lang} />
+          {people && (
+            <div className="form-group" style={{marginTop:12,maxWidth:420}}>
+              <label>{pickLang(lang, 'Leader', 'リーダー', 'Líder')}</label>
+              <select value={leaderId} onChange={ev=>setLeaderId(ev.target.value)}>
+                <option value="">{pickLang(lang, 'No leader (talks to management)', 'リーダーなし（経営陣に連絡）', 'Sem líder (fala com a diretoria)')}</option>
+                {people.filter(p => p.id !== id && (p.is_active !== false || p.id === leaderId)).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+              </select>
+              <small style={{display:'block',marginTop:4,color:'var(--text3)',fontSize:12}}>{pickLang(lang, 'In the chat this person appears first. Management is only for what the leader can\'t solve.', 'チャットで最初に表示されます。経営陣への連絡はリーダーで解決できない時だけ。', 'No chat essa pessoa aparece primeiro. A diretoria fica só para o que o líder não conseguir resolver.')}</small>
+            </div>
+          )}
           <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:0.5,margin:'14px 0 10px',borderTop:'1px solid var(--border)',paddingTop:12}}>Contract</div>
           <div className="grid-2">
             <div className="form-group"><label>Contract Type</label><select value={form.contract_type||''} onChange={e=>upd('contract_type',e.target.value)}><option>Full-time</option><option>Part-time</option><option>Fixed-term</option><option>Hourly</option><option>Freelancer</option></select></div>
