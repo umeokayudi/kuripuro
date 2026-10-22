@@ -39,3 +39,40 @@ assert.equal(fmtMinutes(45), '45min')
 assert.equal(fmtMinutes(125), '2h 05min')
 assert.equal(fmtMinutes(120), '2h')
 console.log('jobs period: ok')
+
+// v1.0.69 — upcoming periods, next job per employee, location frequency
+import { nextJobsByEmployee, locationStats, contractDaysByLocation, jobLocationName } from '../src/lib/jobsBoard.js'
+assert.deepEqual(periodRange('tomorrow', today), { from: '2026-10-12', to: '2026-10-12' })
+assert.deepEqual(periodRange('next7', today), { from: today, to: '2026-10-17' })
+{
+  const J = (o) => ({ status: 'assigned', title: 'Tooda — Basic Cleaning', scheduled_time: '00:30', ...o })
+  const list = [
+    J({ id: 1, employee_id: 'a', scheduled_date: '2026-10-10' }), // past: ignored
+    J({ id: 2, employee_id: 'a', scheduled_date: '2026-10-13' }),
+    J({ id: 3, employee_id: 'a', scheduled_date: today, status: 'completed' }), // done: ignored
+    J({ id: 4, employee_id: 'a', scheduled_date: today, scheduled_time: '21:00' }),
+    J({ id: 5, employee_id: null, scheduled_date: '2026-10-12' }),
+    J({ id: 6, employee_id: 'b', scheduled_date: '2026-10-30' }),
+  ]
+  const { rows, unassigned } = nextJobsByEmployee(list, [{ id: 'b', full_name: 'Bia' }, { id: 'a', full_name: 'Ana' }, { id: 'c', full_name: 'Caio' }], today)
+  assert.equal(rows[0].id, 'a')
+  assert.equal(rows[0].next.id, 4)
+  assert.equal(rows[0].today, 1)
+  assert.equal(rows[0].week, 2)
+  assert.equal(rows[1].next.id, 6)
+  assert.equal(rows[1].week, 0)
+  assert.equal(rows[2].next, null)
+  assert.deepEqual(unassigned.map(j => j.id), [5])
+
+  assert.equal(jobLocationName({ title: 'Kodama Shinbashi — Deep Clean' }), 'Kodama Shinbashi')
+  const cd = contractDaysByLocation([{ location_name: 'Tooda', days_of_week: ['Mon', 'Wed', 'Fri'] }])
+  assert.deepEqual(cd.Tooda, [1, 3, 5])
+  const ls = locationStats([...list, J({ title: 'Ibushio — Deep Clean', scheduled_date: '2026-10-12' }), J({ title: 'Ibushio — Deep Clean', scheduled_date: '2026-10-14' })], cd, 7)
+  const tooda = ls.find(r => r.name === 'Tooda')
+  assert.equal(tooda.perWeek, 3)
+  assert.equal(tooda.fromContract, true)
+  const ibu = ls.find(r => r.name === 'Ibushio')
+  assert.equal(ibu.perWeek, 2)
+  assert.deepEqual(ibu.dows, [1, 3])
+}
+console.log('jobs board ok')

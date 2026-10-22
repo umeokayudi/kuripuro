@@ -50,3 +50,17 @@ assert.ok(manual.filter(j => j.groupKey === key).every(j => j.employeeId === 'b'
 const dbRows = jobsToRows(nobody.slice(0, 3))
 assert.ok(dbRows.every(r => 'employee_id' in r && 'employee_name' in r))
 console.log(`schedule generator ok · ${base.length} jobs em ${MONTH}`)
+
+// v1.0.69 — location names per route + date range
+{
+  const { routeLocations, scheduleInRange, buildMonthSchedule: build } = await import('../src/lib/scheduleGenerator.js')
+  const rl = routeLocations()
+  const tooda = rl.otp_basic.find(l => l.name === 'Tooda')
+  if (!tooda || tooda.perWeek !== 6) throw new Error('Tooda should be 6x/week')
+  if (rl.otp_basic[0].name !== 'Atomic Bar') throw new Error('Atomic first')
+  if (rl.otp_deep_only.length !== 4) throw new Error('4 deep-only')
+  const jobs = build('2026-11')
+  const week = scheduleInRange(jobs, '2026-11-02', '2026-11-08')
+  if (!week.length || week.some(j => j.date < '2026-11-02' || j.date > '2026-11-08')) throw new Error('range filter')
+  console.log('schedule route locations ok')
+}

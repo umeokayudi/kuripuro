@@ -18,6 +18,9 @@ import { saveSpotContractWithInvoice, generateContractForJob } from '../lib/spot
 import { fetchContractSellers } from '../lib/contractSellers'
 import SellerCommissionFields from '../components/SellerCommissionFields'
 import JobsPeriodPanel from '../components/JobsPeriodPanel'
+import JobsTeamPanel from '../components/JobsTeamPanel'
+import JobEditModal from '../components/JobEditModal'
+import { nextJobsByEmployee, locationStats, contractDaysByLocation, jobLocationName } from '../lib/jobsBoard'
 import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
@@ -110,6 +113,7 @@ function DayScheduleView({ onClose }) {
   const [monthJobStats, setMonthJobStats] = useState({})
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(false)
+  const [editJob, setEditJob] = useState(null)
 
   useEffect(() => { loadEmps() }, [])
   useEffect(() => { loadJobs() }, [date])
@@ -162,26 +166,28 @@ function DayScheduleView({ onClose }) {
   const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
   const todayStr = toDateStr(new Date())
 
-  const handleReassign = async (jobId, empId) => {
-    if (!empId) {
-      await supabase.from('jobs').update({ employee_id: null, employee_name: null }).eq('id', jobId)
-      loadJobs()
-      return
-    }
-    const emp = employees.find(e => e.id === empId)
-    await supabase.from('jobs').update({ employee_id: empId, employee_name: emp?.full_name }).eq('id', jobId)
+  // Every change shows an error if the database refuses it (before, failures were silent).
+  const saveJob = async (jobId, patch, okMsg) => {
+    const { error } = await supabase.from('jobs').update(patch).eq('id', jobId)
+    if (error) { toast.error(error.message); return false }
+    if (okMsg) toast.success(okMsg)
     loadJobs()
+    return true
+  }
+
+  const handleReassign = async (jobId, empId) => {
+    const emp = employees.find(e => e.id === empId)
+    await saveJob(jobId, { employee_id: empId || null, employee_name: emp?.full_name || null }, emp ? `👤 ${emp.full_name}` : jt.unassigned)
   }
 
   const handleStatusChange = async (jobId, status) => {
-    await supabase.from('jobs').update({ status }).eq('id', jobId)
-    loadJobs()
-    loadMonthStats(calMonth)
+    if (await saveJob(jobId, { status })) loadMonthStats(calMonth)
   }
 
   const handleTimeChange = async (jobId, time) => {
-    await supabase.from('jobs').update({ scheduled_time: time }).eq('id', jobId)
-    loadJobs()
+    const job = dayJobs.find(j => j.id === jobId)
+    if (!time || (job?.scheduled_time || '').slice(0, 5) === time) return
+    await saveJob(jobId, { scheduled_time: time }, `🕐 ${time}`)
   }
 
   const handleDelete = async (jobId, title) => {
@@ -212,6 +218,7 @@ function DayScheduleView({ onClose }) {
   const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })
   const dateShort = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
 
+  // Called as a plain function (not <JobCard/>) so inputs are not re-mounted on every render.
   const JobCard = ({ j, idx }) => {
     const stl = statusStyle(j.status, st)
     const missed = isMissedJob(j)
@@ -265,7 +272,7 @@ function DayScheduleView({ onClose }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
           <label style={{ fontSize: 11, color: 'var(--text3)' }}>
             {jt.time}
-            <input type="time" defaultValue={j.scheduled_time || '00:30'} onBlur={e => handleTimeChange(j.id, e.target.value)}
+            <input key={`${j.id}-${j.scheduled_time}`} type="time" defaultValue={(j.scheduled_time || '00:30').slice(0, 5)} onBlur={e => handleTimeChange(j.id, e.target.value)}
               style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }} />
           </label>
           <label style={{ fontSize: 11, color: 'var(--text3)' }}>
@@ -294,9 +301,12 @@ function DayScheduleView({ onClose }) {
               <option value="cancelled">{st.cancelled}</option>
             </select>
           </label>
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button className="btn btn-danger" onClick={() => handleDelete(j.id, locName)} style={{ width: '100%', fontSize: 13, padding: '9px 12px' }}>
-              🗑 {jt.deleteJob}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
+            <button className="btn btn-primary" onClick={() => setEditJob(j)} style={{ flex: 1, fontSize: 13, padding: '9px 12px' }}>
+              ✏️ {tr('Edit', '編集', 'Editar')}
+            </button>
+            <button className="btn btn-danger" onClick={() => handleDelete(j.id, locName)} style={{ fontSize: 13, padding: '9px 12px' }} title={jt.deleteJob}>
+              🗑
             </button>
           </div>
         </div>
@@ -456,7 +466,7 @@ function DayScheduleView({ onClose }) {
               </div>
               <ProgressBar pct={empPct} height={6} />
             </div>
-            {empJobs.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
+            {empJobs.map((j, idx) => <div key={j.id}>{JobCard({ j, idx })}</div>)}
           </div>
         )})}
 
@@ -465,10 +475,15 @@ function DayScheduleView({ onClose }) {
             <div style={{ fontSize: 15, fontWeight: 800, color: '#fbbf24', marginBottom: 12, padding: '10px 14px', background: 'rgba(251,191,36,0.1)', borderRadius: 12, border: '1px solid rgba(251,191,36,0.25)' }}>
               ⚠️ {jt.noEmployee} ({unassigned.length})
             </div>
-            {unassigned.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
+            {unassigned.map((j, idx) => <div key={j.id}>{JobCard({ j, idx })}</div>)}
           </div>
         )}
       </div>
+      {editJob && (
+        <JobEditModal job={editJob} employees={employees} jobs={dayJobs}
+          onClose={() => setEditJob(null)}
+          onSaved={() => { setEditJob(null); loadJobs(); loadMonthStats(calMonth) }} />
+      )}
     </div>
   )
 }
@@ -476,13 +491,16 @@ function DayScheduleView({ onClose }) {
 export default function Jobs() {
   const [searchParams] = useSearchParams()
   const searchId = searchParams.get('search')
-  const { lang, t } = useLang()
+  const { lang, t, tr } = useLang()
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
   const [tab, setTab] = useState('list')
   const [cleaningFilter, setCleaningFilter] = useState('all')
-  const [period, setPeriod] = useState('7d')
+  const [period, setPeriod] = useState('next7')
+  const [places, setPlaces] = useState(() => new Set())
+  const [editJob, setEditJob] = useState(null)
+  const [contractDays, setContractDays] = useState({})
   const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
   const [people, setPeople] = useState(() => new Set())
   const [jobs, setJobs] = useState([])
@@ -522,6 +540,8 @@ export default function Jobs() {
     ])
     // Table added in v1.0.21; ignore errors so Jobs still loads if it is missing.
     const sc = await supabase.from('spot_contracts').select('id,job_id,contract_number,status').eq('is_active', true)
+    const svc = await supabase.from('service_contracts').select('location_name,days_of_week').eq('is_active', true)
+    setContractDays(svc.error ? {} : contractDaysByLocation(svc.data))
     setSpotContracts(sc.error ? [] : (sc.data || []))
     setJobs(j.data || [])
     setEmployees(e.data || [])
@@ -608,18 +628,13 @@ export default function Jobs() {
   const statusColor = s => ({ assigned:'badge-blue', in_progress:'badge-amber', completed:'badge-green', cancelled:'badge-red' }[s] || 'badge-navy')
   const spotStatusColor = s => ({ pending:'badge-amber', accepted:'badge-green', declined:'badge-red' }[s] || 'badge-navy')
 
-  const handleCleaningTypeChange = async (job, type) => {
-    const loc = locationNameFromTitle(job.title)
-    const newTitle = applyCleaningTypeToTitle(loc, type)
-    const { error } = await supabase.from('jobs').update({ title: newTitle }).eq('id', job.id)
+  const quickAssign = async (job, empId) => {
+    const emp = employees.find(e => e.id === empId)
+    const patch = { employee_id: empId || null, employee_name: emp?.full_name || null }
+    const { error } = await supabase.from('jobs').update(patch).eq('id', job.id)
     if (error) return toast.error(error.message)
-    toast.success(type === 'deep' ? jt.deep : jt.simple)
-    loadAll()
-  }
-
-  const handleCancel = async (id) => {
-    await supabase.from('jobs').update({ status: 'cancelled' }).eq('id', id)
-    loadAll()
+    setJobs(list => list.map(x => (x.id === job.id ? { ...x, ...patch } : x)))
+    toast.success(emp ? `👤 ${emp.full_name} · ${locationNameFromTitle(job.title)}` : jt.unassigned)
   }
 
   const matchingJobs = searchId ? jobs.filter(j => j.id === searchId) : jobs
@@ -635,8 +650,25 @@ export default function Jobs() {
     return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => (!a.id) - (!b.id) || a.name.localeCompare(b.name))
   })()
   const byPeople = j => searchId || matchesPeople(j, people)
-  const regularJobs = allRegularJobs.filter(j => inRange(j, range) && byPeople(j))
-  const prevRegularJobs = prevRange ? allRegularJobs.filter(j => inRange(j, prevRange) && byPeople(j)) : []
+  const byPlace = j => searchId || places.size === 0 || places.has(jobLocationName(j))
+  const today = tokyoToday()
+  const rangeDays = range ? Math.round((new Date(range.to) - new Date(range.from)) / 86400000) + 1 : 30
+  const locationOptions = searchId ? [] : locationStats(allRegularJobs.filter(j => inRange(j, range) && byPeople(j)), contractDays, rangeDays)
+  // Upcoming periods read top-down from the nearest job; past periods newest first.
+  const ascending = range && range.from >= today
+  const regularJobs = allRegularJobs.filter(j => inRange(j, range) && byPeople(j) && byPlace(j))
+    .sort((a, b) => {
+      const c = `${a.scheduled_date} ${a.scheduled_time || ''}`.localeCompare(`${b.scheduled_date} ${b.scheduled_time || ''}`)
+      return ascending ? c : -c
+    })
+  const prevRegularJobs = prevRange ? allRegularJobs.filter(j => inRange(j, prevRange) && byPeople(j) && byPlace(j)) : []
+  const team = nextJobsByEmployee(jobs, employees, today)
+  const showPerson = (id) => {
+    setPeople(new Set([id]))
+    setPeriod('next7')
+    setPlaces(new Set())
+    setTab('list')
+  }
   const basicJobs = regularJobs.filter(j => getCleaningType(j) === 'basic')
   const deepJobs = regularJobs.filter(j => getCleaningType(j) === 'deep')
   const filteredJobs = cleaningFilter === 'basic' ? basicJobs : cleaningFilter === 'deep' ? deepJobs : regularJobs
@@ -670,13 +702,19 @@ export default function Jobs() {
 
       {tab==='list' && (
         <div>
+          {!searchId && !loading && (
+            <JobsTeamPanel rows={team.rows} unassigned={team.unassigned} today={today}
+              onOpenJob={setEditJob} onShowPerson={showPerson} />
+          )}
           {!searchId && (
             <JobsPeriodPanel
+              locationOptions={locationOptions} places={places} setPlaces={setPlaces}
               period={period} setPeriod={setPeriod}
               custom={customRange} setCustom={setCustomRange}
               range={range} prevRange={prevRange}
               people={people} setPeople={setPeople} peopleOptions={peopleOptions}
               summary={periodSummary} prevSummary={prevSummary} byPerson={personRows}
+              upcoming={!!ascending}
             />
           )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
@@ -739,48 +777,40 @@ export default function Jobs() {
                 <span>{fill(jt.jobsWithJobs, { n: dayInfo.n })}{dayInfo.min > 0 && ` · ⏱ ${fmtMinutes(dayInfo.min)}`}</span>
               </div>
             )}
-            <div className="card" style={{ marginBottom: 12, borderLeft: `4px solid ${ctypeCfg.color}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{locName}</div>
-                    <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: `${ctypeCfg.color}20`, color: ctypeCfg.color, border: `1px solid ${ctypeCfg.color}50` }}>
+            {/* v1.0.69: one compact row per job — time, place, who does it (changeable right here), status, edit. */}
+            <div className="card" style={{ marginBottom: 8, padding: '10px 12px', borderLeft: `4px solid ${ctypeCfg.color}` }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px' }}>
+                <div style={{ fontSize: 15, fontWeight: 800, minWidth: 48, color: 'var(--text)' }}>{(j.scheduled_time || '—').slice(0, 5)}</div>
+                <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => setEditJob(j)} style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>{locName}</button>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 20, background: `${ctypeCfg.color}20`, color: ctypeCfg.color }}>
                       {ctype === 'deep' ? jt.filterDeep : jt.filterBasic}
                     </span>
-                  </div>
-                  <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
-                    👤 {j.employee_name || '—'} · 📅 {j.scheduled_date} · 🕐 {j.scheduled_time || '—'}
+                    {j.photo_required && <span title={jt.photoRequired}>📷</span>}
+                    {hasMapsLink(j.address, locName) && <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" title={jt.maps} style={{ textDecoration: 'none' }}>🗺</a>}
                   </div>
                   {(dur != null || startEnd) && (
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>
-                      ⏱ {dur != null ? fmtMinutes(dur) : st.in_progress || '…'}
-                      {startEnd && <span style={{ fontWeight: 500, color: 'var(--text3)' }}> ({startEnd})</span>}
-                    </div>
-                  )}
-                  {j.address && (
-                    <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {j.address.startsWith('http') ? `🗺 ${jt.maps}` : j.address}
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+                      ⏱ {dur != null ? fmtMinutes(dur) : st.in_progress || '…'}{startEnd && <span style={{ color: 'var(--text3)' }}> ({startEnd})</span>}
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                <select value={j.employee_id || ''} onChange={e => quickAssign(j, e.target.value)} aria-label={jt.employee}
+                  style={{ flex: '0 1 220px', minWidth: 150, fontSize: 13, fontWeight: 600, padding: '7px 10px', borderRadius: 8, border: `2px solid ${j.employee_id ? 'var(--border)' : 'rgba(220,38,38,0.5)'}`, background: j.employee_id ? 'var(--surface2)' : 'rgba(248,113,113,0.08)', color: j.employee_id ? 'var(--text)' : '#dc2626' }}>
+                  <option value="">⚠️ {jt.unassigned}</option>
+                  {employees.map(e => <option key={e.id} value={e.id}>👤 {e.full_name}</option>)}
+                </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {isMissedJob(j)
                     ? <span className="badge badge-red">{jt.incomplete}</span>
                     : <span className={`badge ${statusColor(j.status)}`}>{st[j.status] || j.status}</span>}
                   {isRetroJob(j) && <span className="badge badge-amber" title={jt.retroBadgeHint}>{jt.retroBadge}</span>}
-                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value || j.spot_value || 0).toLocaleString()}</span>
+                  <button className="btn btn-sm btn-primary" onClick={() => setEditJob(j)}>✏️ {tr('Edit', '編集', 'Editar')}</button>
                 </div>
               </div>
-
-              {j.description && (
-                <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }}>
-                  🔑 {j.description.split('\n')[0]}
-                </div>
-              )}
-
               {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{jt.servicePhotos}</div>
+                <div style={{ marginTop: 10 }}>
                   <JobPhotos
                     photoStartUrl={j.photo_start_url}
                     photoEndUrl={j.photo_end_url}
@@ -792,26 +822,6 @@ export default function Jobs() {
                   <JobVideos jobId={j.id} lazy style={{ marginTop: 8 }} />
                 </div>
               )}
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {jt.type}:
-                  <select
-                    value={ctype}
-                    onChange={e => handleCleaningTypeChange(j, e.target.value)}
-                    style={{ fontSize: 13, fontWeight: 600, padding: '6px 10px', borderRadius: 8, border: `2px solid ${ctypeCfg.color}`, background: `${ctypeCfg.color}15`, color: ctypeCfg.color }}
-                  >
-                    <option value="basic">{jt.filterBasic}</option>
-                    <option value="deep">{jt.filterDeep}</option>
-                  </select>
-                </label>
-                {j.photo_required && <span className="badge badge-amber">📷 {jt.photoRequired}</span>}
-                {j.gps_lat && <span className="badge badge-navy">📍 GPS</span>}
-                {hasMapsLink(j.address, locName) && (
-                  <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" className="btn btn-sm">🗺 {jt.maps}</a>
-                )}
-                {j.status === 'assigned' && <button className="btn btn-sm btn-danger" onClick={() => handleCancel(j.id)}>{jt.cancel}</button>}
-              </div>
             </div>
             </div>
           )})}
@@ -841,6 +851,7 @@ export default function Jobs() {
                   ? <Link className="btn btn-sm" to={`/contracts?spot=${c.id}`}>📄 {c.contract_number} · {({ draft:'awaiting approval', approved:'approved ✓', rejected:'not approved', cancelled:'cancelled' })[contractStatus(c)]}</Link>
                   : <button className="btn btn-sm btn-primary" onClick={async()=>{ try { const { contract, invoiceError } = await generateContractForJob(j); toast.success(`📄 ${contract.contract_number}`); if (invoiceError) toast.error(invoiceError.message); loadAll() } catch (err) { toast.error(err.message) } }}>📄 Generate contract</button> })()}
                 <a className="btn btn-sm" href={googleCalendarUrl(j)} target="_blank" rel="noreferrer">📅 Google Calendar</a>
+                <button className="btn btn-sm btn-primary" onClick={() => setEditJob(j)}>✏️ {tr('Edit', '編集', 'Editar')}</button>
               </div>
             </div>
           ))}
@@ -964,6 +975,12 @@ export default function Jobs() {
       )}
 
       {tab==='locations' && <LocationsTab />}
+
+      {editJob && (
+        <JobEditModal job={editJob} employees={employees} locations={locations} jobs={jobs}
+          onClose={() => setEditJob(null)}
+          onSaved={() => { setEditJob(null); loadAll() }} />
+      )}
 
       <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={t.reports?.close || 'Close'} />
     </div>

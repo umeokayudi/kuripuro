@@ -484,3 +484,32 @@ export function jobsToRows(jobs) {
     ...(j.completed_at ? { completed_at: j.completed_at } : { completed_at: null }),
   }))
 }
+
+/**
+ * Which locations each route visits, on which weekdays and how many times per
+ * week (v1.0.69 — shown in the Schedule Generator so the admin sees names, not
+ * just route labels). `locations` = locationsFromContracts() / DEFAULT_LOCATIONS.
+ */
+export function routeLocations(locations = DEFAULT_LOCATIONS) {
+  const basic = locations
+    .filter(l => l.name !== 'Atomic Bar' && !/deep/i.test(l.serviceType || '') && !isOtpDeepOnlyLocation(l.name))
+    .map(l => ({ name: l.name, dows: [...l.days].sort(), perWeek: l.days.length, note: '' }))
+  const atomic = locations.find(l => l.name === 'Atomic Bar') || ATOMIC_LOCATION
+  const deepOnly = otpDeepOnlyLocations().map(l => ({
+    name: l.name, dows: [1, 3], perWeek: 2, note: 'deep + grease trap 2x/mês + manutenção 1x/mês',
+  }))
+  const duskin = Object.values(DUSKIN_SITES).map(s => ({ name: s.name, dows: [0], perWeek: null, note: s.notes }))
+  return {
+    otp_basic: [
+      { name: atomic.name, dows: [1], perWeek: 1, note: '21:00' },
+      ...basic,
+    ],
+    otp_deep_only: deepOnly,
+    duskin_sunday: duskin,
+  }
+}
+
+/** Jobs of a month schedule that fall inside [from, to] (inclusive date strings). */
+export function scheduleInRange(jobs, from, to) {
+  return (jobs || []).filter(j => (!from || j.date >= from) && (!to || j.date <= to))
+}

@@ -5,7 +5,7 @@ import { useLang, fill, localeOf } from '../hooks/useLang'
 import {
   DEFAULT_LOCATIONS, SCHEDULE_ROUTES, SCHEDULE_COLORS, buildMonthSchedule, assignEmployees,
   availabilityIndex, defaultScheduleEmployees, scheduleStats, jobsToRows,
-  locationsFromContracts, DOW_EN, DOW_JA,
+  locationsFromContracts, routeLocations, scheduleInRange, DOW_EN, DOW_JA,
 } from '../lib/scheduleGenerator'
 
 const OWNERS_KEY = 'kp_schedule_route_owners'
@@ -22,6 +22,19 @@ function monthDays(month) {
   const [y, m] = month.split('-').map(Number)
   const last = new Date(y, m, 0).getDate()
   return Array.from({ length: last }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)
+}
+
+/** Mon–Sun weeks that touch the month, clipped to the month: [{ from, to }]. */
+function monthWeeks(month) {
+  const days = monthDays(month)
+  const weeks = []
+  let cur = null
+  days.forEach(d => {
+    const dow = new Date(d + 'T12:00:00').getDay()
+    if (!cur || dow === 1) { cur = { from: d, to: d }; weeks.push(cur) }
+    cur.to = d
+  })
+  return weeks
 }
 
 const MARK_STYLE = {
@@ -51,9 +64,19 @@ export default function ScheduleGenerator() {
   const [availRows, setAvailRows] = useState([])
   const [locations, setLocations] = useState(DEFAULT_LOCATIONS)
   const [expandedDay, setExpandedDay] = useState(null)
+  // v1.0.69: generate only part of the month (one week, a few days) when needed.
+  const [range, setRange] = useState(() => ({ from: '', to: '' }))
+  const fullMonth = useMemo(() => { const d = monthDays(month); return { from: d[0], to: d[d.length - 1] } }, [month])
+  const from = range.from && range.from.startsWith(month) ? range.from : fullMonth.from
+  const to = range.to && range.to.startsWith(month) && range.to >= from ? range.to : fullMonth.to
+  const isFullMonth = from === fullMonth.from && to === fullMonth.to
+  const weeks = useMemo(() => monthWeeks(month), [month])
+  const fmtDay = (d) => new Date(d + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })
+  const rangeText = isFullMonth ? month : `${fmtDay(from)} – ${fmtDay(to)}`
 
   useEffect(() => { loadData() }, [])
-  useEffect(() => { loadExisting(); loadAvailability(); setBaseJobs([]); setOverrides({}) }, [month])
+  useEffect(() => { loadAvailability(); setRange({ from: '', to: '' }) }, [month])
+  useEffect(() => { loadExisting(); setBaseJobs([]); setOverrides({}) }, [month, from, to])
 
   const loadData = async () => {
     const [{ data: emps }, { data: serviceContracts }] = await Promise.all([
@@ -73,12 +96,11 @@ export default function ScheduleGenerator() {
   }
 
   const loadExisting = async () => {
-    const days = monthDays(month)
     const { count } = await supabase
       .from('jobs')
       .select('id', { count: 'exact', head: true })
-      .gte('scheduled_date', days[0])
-      .lte('scheduled_date', days[days.length - 1])
+      .gte('scheduled_date', from)
+      .lte('scheduled_date', to)
     setExistingCount(count || 0)
   }
 
@@ -117,7 +139,7 @@ export default function ScheduleGenerator() {
 
   const runPreview = () => {
     if (!teamEmployees.length) { toast.error(s.noTeam); return }
-    const jobs = buildMonthSchedule(month, { locations })
+    const jobs = scheduleInRange(buildMonthSchedule(month, { locations }), from, to)
     setOverrides({})
     setBaseJobs(jobs)
     toast.success(fill(s.previewToast, { count: jobs.length, employees: teamEmployees.length }))
@@ -137,14 +159,14 @@ export default function ScheduleGenerator() {
     if (!preview.length) { toast.error(s.previewFirst); return }
     const summary = Object.entries(stats.byEmployee)
       .map(([id, c]) => `${id ? nameOf(id) : s.nobody}: ${c}`).join(', ')
-    const days = monthDays(month)
     if (existingCount > 0) {
-      if (!confirm(fill(s.confirmReplace, { existing: existingCount, month, count: preview.length, summary }))) return
-      await supabase.from('jobs').delete()
-        .gte('scheduled_date', days[0])
-        .lte('scheduled_date', days[days.length - 1])
+      if (!confirm(fill(s.confirmReplace, { existing: existingCount, month: rangeText, count: preview.length, summary }))) return
+      const { error: delError } = await supabase.from('jobs').delete()
+        .gte('scheduled_date', from)
+        .lte('scheduled_date', to)
         .eq('status', 'assigned')
         .neq('job_category', 'spot')
+      if (delError) { toast.error(delError.message); return }
     } else if (!confirm(fill(s.confirmCreate, { count: preview.length, summary }))) return
 
     setLoading(true)
@@ -159,6 +181,7 @@ export default function ScheduleGenerator() {
   }
 
   const days = monthDays(month)
+  const routeLocs = useMemo(() => routeLocations(locations), [locations])
   const routeLabel = (key) => SCHEDULE_ROUTES.find(r => r.key === key)?.label || key
 
   return (
@@ -173,9 +196,30 @@ export default function ScheduleGenerator() {
           <div className="form-group">
             <label>{s.existingJobs}</label>
             <div style={{ padding: '10px 12px', background: existingCount ? 'rgba(251,191,36,0.1)' : 'var(--surface2)', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
-              {existingCount > 0 ? fill(s.jobsInMonth, { count: existingCount, month }) : s.noJobsMonth}
+              {existingCount > 0 ? fill(s.jobsInMonth, { count: existingCount, month: rangeText }) : s.noJobsMonth}
             </div>
           </div>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 6 }}>📅 {tr('Which days', '対象の日', 'Quais dias gerar')}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          <button type="button" className={`tab-pill${isFullMonth ? ' active' : ''}`} onClick={() => setRange({ from: '', to: '' })}>
+            {tr('Whole month', '1か月', 'Mês inteiro')}
+          </button>
+          {weeks.map((w, i) => (
+            <button key={w.from} type="button" className={`tab-pill${!isFullMonth && from === w.from && to === w.to ? ' active' : ''}`} onClick={() => setRange(w)}>
+              {tr(`Week ${i + 1}`, `第${i + 1}週`, `Semana ${i + 1}`)} · {fmtDay(w.from)}–{fmtDay(w.to)}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 150px' }}>
+            {tr('From', '開始', 'De')}
+            <input type="date" value={from} min={fullMonth.from} max={fullMonth.to} onChange={e => e.target.value && setRange({ from: e.target.value, to: e.target.value > to ? e.target.value : to })} />
+          </label>
+          <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 150px' }}>
+            {tr('To', '終了', 'Até')}
+            <input type="date" value={to} min={from} max={fullMonth.to} onChange={e => e.target.value && setRange({ from, to: e.target.value })} />
+          </label>
         </div>
       </div>
 
@@ -246,6 +290,21 @@ export default function ScheduleGenerator() {
               <div style={{ flex: '1 1 240px', minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>{r.label}</div>
                 <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{r.detail}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {(routeLocs[r.key] || []).map(l => (
+                    <span key={l.name} title={l.note || ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 999, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                      <b>{l.name}</b>
+                      {l.perWeek != null && (
+                        <span style={{ fontSize: 11, fontWeight: 800, color: '#2563eb', background: 'rgba(59,130,246,0.12)', borderRadius: 999, padding: '0 6px' }}>
+                          {l.perWeek}×/{tr('wk', '週', 'sem')}
+                        </span>
+                      )}
+                      <span style={{ color: 'var(--text3)', fontSize: 11 }}>
+                        {l.perWeek == null ? tr('some Sundays', '特定の日曜', 'alguns domingos') : l.dows.length === 7 ? tr('every day', '毎日', 'todo dia') : l.dows.map(d => dowLabels[d]).join(' ')}
+                      </span>
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="form-group" style={{ margin: 0, flex: '0 1 220px', minWidth: 160 }}>
                 <label style={{ fontSize: 11 }}>{s.owner}</label>

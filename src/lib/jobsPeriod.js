@@ -2,9 +2,9 @@
 // Pure helpers so they can be tested without React or Supabase.
 import { jobDurationMin } from './workKpis.js'
 
-export const PERIOD_KEYS = ['today', 'yesterday', '7d', '30d', 'all', 'custom']
+export const PERIOD_KEYS = ['today', 'tomorrow', 'next7', 'yesterday', '7d', '30d', 'all', 'custom']
 
-function addDays(dateStr, days) {
+export function addDays(dateStr, days) {
   const [y, m, d] = dateStr.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
@@ -18,6 +18,8 @@ function daysBetween(from, to) {
 /** { from, to } inclusive date strings for a period, or null for "all". */
 export function periodRange(key, today, custom = {}) {
   if (key === 'today') return { from: today, to: today }
+  if (key === 'tomorrow') { const t = addDays(today, 1); return { from: t, to: t } }
+  if (key === 'next7') return { from: today, to: addDays(today, 6) }
   if (key === 'yesterday') { const y = addDays(today, -1); return { from: y, to: y } }
   if (key === '7d') return { from: addDays(today, -6), to: today }
   if (key === '30d') return { from: addDays(today, -29), to: today }

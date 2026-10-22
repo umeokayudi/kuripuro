@@ -2,10 +2,14 @@
 import { useLang, fill } from '../hooks/useLang'
 import { changePct, fmtMinutes } from '../lib/jobsPeriod'
 
+// v1.0.69: upcoming periods first (what is coming is what the admin plans), then the past.
 const PERIODS = [
-  ['today', 'periodToday'], ['yesterday', 'periodYesterday'], ['7d', 'period7d'],
-  ['30d', 'period30d'], ['all', 'periodAll'], ['custom', 'periodCustom'],
+  ['today', 'periodToday'], ['tomorrow', null, ['Tomorrow', '明日', 'Amanhã']],
+  ['next7', null, ['Next 7 days', '今後7日', 'Próximos 7 dias']],
+  ['yesterday', 'periodYesterday'], ['7d', null, ['Last 7 days', '過去7日', 'Últimos 7 dias']],
+  ['30d', 'period30d'], ['all', 'periodAll'],
 ]
+const DOW = { en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], ja: ['日', '月', '火', '水', '木', '金', '土'], pt: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'] }
 
 export function rangeLabel(range) {
   if (!range) return ''
@@ -36,8 +40,20 @@ function Chip({ active, onClick, children }) {
 export default function JobsPeriodPanel({
   period, setPeriod, custom, setCustom, range, prevRange,
   people, setPeople, peopleOptions, summary, prevSummary, byPerson,
+  locationOptions = [], places, setPlaces, upcoming = false,
 }) {
-  const { t } = useLang()
+  const { t, tr, lang } = useLang()
+  const dowNames = DOW[lang] || DOW.en
+  const togglePlace = (name) => {
+    const next = new Set(places)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    setPlaces(next)
+  }
+  const setDate = (k, v) => {
+    const base = range || custom
+    setCustom({ from: base?.from || v, to: base?.to || v, [k]: v })
+    setPeriod('custom')
+  }
   const jt = t.jobs
 
   const togglePerson = (id) => {
@@ -61,22 +77,46 @@ export default function JobsPeriodPanel({
 
   return (
     <div className="card" style={{ marginBottom: 16, padding: 14 }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: period === 'custom' ? 10 : 12 }}>
-        {PERIODS.map(([key, label]) => (
-          <Chip key={key} active={period === key} onClick={() => setPeriod(key)}>{jt[label]}</Chip>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+        {PERIODS.map(([key, label, own]) => (
+          <Chip key={key} active={period === key} onClick={() => setPeriod(key)}>{own ? tr(...own) : jt[label]}</Chip>
         ))}
       </div>
 
-      {period === 'custom' && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-          <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 140px' }}>
-            {jt.periodFrom}
-            <input type="date" value={custom.from || ''} onChange={e => setCustom(c => ({ ...c, from: e.target.value }))} />
-          </label>
-          <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 140px' }}>
-            {jt.periodTo}
-            <input type="date" value={custom.to || ''} min={custom.from || undefined} onChange={e => setCustom(c => ({ ...c, to: e.target.value }))} />
-          </label>
+      {/* Dates are always visible: picking one switches to a custom range. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12, alignItems: 'flex-end' }}>
+        <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 140px' }}>
+          📅 {jt.periodFrom}
+          <input type="date" value={(range || custom)?.from || ''} onChange={e => e.target.value && setDate('from', e.target.value)} />
+        </label>
+        <label style={{ fontSize: 12, color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 140px' }}>
+          📅 {jt.periodTo}
+          <input type="date" value={(range || custom)?.to || ''} min={(range || custom)?.from || undefined} onChange={e => e.target.value && setDate('to', e.target.value)} />
+        </label>
+      </div>
+
+      {locationOptions.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+            📍 {tr('Locations · times per week', '場所 · 週の回数', 'Locais · vezes por semana')}
+            {places.size > 0 && (
+              <button type="button" onClick={() => setPlaces(new Set())} style={{ border: 'none', background: 'none', color: 'var(--navy)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+                {jt.clearPeople}
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {locationOptions.map(l => (
+              <label key={l.name} style={personStyle(places.has(l.name))} title={l.dows.map(d => dowNames[d]).join(' ')}>
+                <input type="checkbox" checked={places.has(l.name)} onChange={() => togglePlace(l.name)} style={boxStyle} />
+                <span style={{ whiteSpace: 'nowrap' }}>{l.name}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#2563eb', background: 'rgba(59,130,246,0.12)', borderRadius: 999, padding: '1px 7px' }}>
+                  {l.perWeek}×/{tr('wk', '週', 'sem')}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text3)' }}>{l.dows.length === 7 ? tr('every day', '毎日', 'todo dia') : l.dows.map(d => dowNames[d]).join(' ')}</span>
+              </label>
+            ))}
+          </div>
         </div>
       )}
 
@@ -105,6 +145,8 @@ export default function JobsPeriodPanel({
         </div>
       )}
 
+      {/* Time totals only make sense for days already worked. */}
+      {!upcoming && (<>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
         {stat(jt.sumJobs, fill(jt.jobsShort, { done: summary.done, total: summary.total }), summary.done, prevSummary?.done, prevSummary ? `${prevSummary.done}` : '')}
         {stat(jt.sumTime, fmtMinutes(summary.minutes), summary.minutes, prevSummary?.minutes, prevSummary ? fmtMinutes(prevSummary.minutes) : '')}
@@ -133,6 +175,7 @@ export default function JobsPeriodPanel({
           {rangeLabel(range)} {fill(jt.vsPrev, { range: prevLabel })}
         </div>
       )}
+      </>)}
     </div>
   )
 }
