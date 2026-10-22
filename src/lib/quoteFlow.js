@@ -4,7 +4,7 @@ import { saveSpotContractWithInvoice } from './spotContractOps'
 import { salesPost } from './salesApi'
 import { tokyoToday } from './dates'
 
-// v1.0.67 · What happens after a client says yes to a quote.
+// v1.0.70 · What happens after a client says yes to a quote.
 //
 // accepted → admin books one or more sessions (date, worker, price). Each session is a spot job
 // (the worker gets it as a spot offer), its 業務委託契約書 and a draft invoice dated on the session

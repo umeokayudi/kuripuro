@@ -61,7 +61,7 @@ export default function Mitsumori() {
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState(leadId ? 'form' : params.get('tab') === 'requests' ? 'requests' : 'list')
-  // v1.0.67 · client quote requests live here too (they were only in Client feedback → Requests)
+  // v1.0.70 · client quote requests live here too (they were only in Client feedback → Requests)
   const [requests, setRequests] = useState([])
   const [reqClients, setReqClients] = useState([])
   const [reqContracts, setReqContracts] = useState([])

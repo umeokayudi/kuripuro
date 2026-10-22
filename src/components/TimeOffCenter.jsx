@@ -34,7 +34,7 @@ export default function TimeOffCenter() {
   const [dayCtx, setDayCtx] = useState({})
   const [payroll, setPayroll] = useState([])
   const [quotes, setQuotes] = useState([])
-  // v1.0.67 · accepted quotes with no date yet + quote jobs just finished (invoice sent)
+  // v1.0.70 · accepted quotes with no date yet + quote jobs just finished (invoice sent)
   const [toBook, setToBook] = useState([])
   const [flowDone, setFlowDone] = useState([])
   const [newFlow, setNewFlow] = useState([])

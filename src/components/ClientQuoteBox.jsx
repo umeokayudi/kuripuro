@@ -11,7 +11,7 @@ const yen = (n) => `¥${Math.round(Number(n || 0)).toLocaleString()}`
 
 /**
  * Admin box of one client quote request (price → seller → client, commission, follow-up).
- * Used in Client feedback → Requests and in Quotes → Client requests (v1.0.67).
+ * Used in Client feedback → Requests and in Quotes → Client requests (v1.0.70).
  * contracts: service_contracts rows with salesperson_id, to find the store's seller.
  * presetNote: text for the note field (StoreDossier "use summary").
  */
@@ -61,7 +61,7 @@ export default function ClientQuoteBox({ row, clients, contracts, sellers, onCha
     done()
   }
 
-  // v1.0.67 · Pick the seller when the store has none yet (so the seller sees the request).
+  // v1.0.70 · Pick the seller when the store has none yet (so the seller sees the request).
   const assignSeller = async () => {
     if (!assign.id) return
     setBusy(true)

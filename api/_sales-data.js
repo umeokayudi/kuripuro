@@ -211,7 +211,7 @@ async function loadQuoteRequests(db, user, isAdmin) {
     const { data, error } = await db.from('client_requests').select(QUOTE_REQUEST_COLUMNS).eq('request_type', 'quote').order('created_at', { ascending: false }).limit(300)
     if (error) return []
     const byId = new Map(clients.map(c => [c.id, c]))
-    // v1.0.67 · The seller is found the same way everywhere (request → client → store contract),
+    // v1.0.70 · The seller is found the same way everywhere (request → client → store contract),
     // so a store whose seller is only on its contract still reaches that seller.
     return (data || [])
       .map(row => ({ ...row, client_name: byId.get(row.client_id)?.company_name || '', account_seller_id: quoteSellerFor(row, byId.get(row.client_id), contracts) }))
@@ -937,7 +937,7 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'assign-client-quote') {
-    // v1.0.67 · Admin picks the seller of a client quote request (and, if asked, of the whole client).
+    // v1.0.70 · Admin picks the seller of a client quote request (and, if asked, of the whole client).
     if (!admin) return jsonError(res, 403, 'Somente admin escolhe o vendedor.')
     const sellerId = String(body.salesperson_id || '') || null
     const { data: row, error: rowErr } = await db.from('client_requests').select('id,client_id,quote_status,request_type,location_name,category,description').eq('id', String(body.id || '')).maybeSingle()
@@ -958,7 +958,7 @@ async function postAction(db, user, body, res) {
   }
 
   if (action === 'quote-flow-notice') {
-    // v1.0.67 · Accepted quote → scheduled / done + invoice sent: tells the seller of that client.
+    // v1.0.70 · Accepted quote → scheduled / done + invoice sent: tells the seller of that client.
     if (!admin) return jsonError(res, 403, 'Sem permissão.')
     const sellerId = String(body.salesperson_id || '')
     const title = String(body.title || '').slice(0, 160)

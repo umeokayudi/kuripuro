@@ -1,4 +1,4 @@
-// v1.0.67 · Who is the seller of a client quote request.
+// v1.0.70 · Who is the seller of a client quote request.
 // Used by the API (seller list, price → seller) and by the admin screens, so no imports here.
 //
 // Order: the seller already on the request (sent it, or the admin assigned it) → the account

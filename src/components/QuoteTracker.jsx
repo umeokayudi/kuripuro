@@ -10,7 +10,7 @@ import './quote-tracker.css'
 
 const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString()}`
 
-// v1.0.67 · Accepted quote → book sessions → worker does it → invoice sent.
+// v1.0.70 · Accepted quote → book sessions → worker does it → invoice sent.
 // Opens from Quotes (mitsumori accepted), Client requests (client accepted) and the admin bell.
 export default function QuoteTracker({ quote, onClose }) {
   const { lang } = useLang()

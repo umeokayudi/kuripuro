@@ -80,7 +80,7 @@ export default function Cashflow() {
   const expense = thisMonth.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount||0),0)
   const balance = income - expense
   const issued = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status !== 'cancelled').reduce((s,f)=>s+Number(f.total||0),0)
-  // v1.0.67 · accepted quotes booked this month: draft invoice dated on the job day, sent when the job is done
+  // v1.0.70 · accepted quotes booked this month: draft invoice dated on the job day, sent when the job is done
   const confirmedToDo = invoices.filter(f=>f.status === 'draft' && f.issue_date?.startsWith(month)).reduce((s,f)=>s+Number(f.total||0),0)
   const receivable = invoices.filter(f=>f.status === 'sent' || f.status === 'draft').reduce((s,f)=>s+Number(f.total||0),0)
   const today = new Date().toISOString().slice(0,10)
