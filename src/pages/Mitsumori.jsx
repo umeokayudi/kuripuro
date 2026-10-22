@@ -34,6 +34,7 @@ import { quoteFromMitsumori, quoteFromRequest, fetchQuoteSessions, quoteStage, q
 import { QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
 import { fetchContractSellers } from '../lib/contractSellers'
 import { quoteSellerFor } from '../lib/quoteSeller'
+import { ClientLink } from '../components/ClientSheetHost'
 
 const QUOTE_FILTERS = ['all', 'draft', 'sent', 'accepted', 'declined']
 
@@ -67,6 +68,7 @@ export default function Mitsumori() {
   const [reqContracts, setReqContracts] = useState([])
   const [sellers, setSellers] = useState([])
   const [reqFilter, setReqFilter] = useState('open')
+  const [reqDossier, setReqDossier] = useState(null)
   const [tracking, setTracking] = useState(null)
   const [flow, setFlow] = useState({})
   const [statusFilter, setStatusFilter] = useState('all')
@@ -414,7 +416,7 @@ export default function Mitsumori() {
             <div key={q.id} className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{q.site_name || q.company_name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}><ClientLink name={q.company_name}>{q.site_name || q.company_name}</ClientLink></div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{q.quote_number} · {q.site_name ? `${q.company_name} · ` : ''}{s.contact}: {q.contact_name || '—'}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.firstContact}: {q.first_contact_date || '—'} · {s.validUntil}: {q.valid_until || '—'}</div>
                   {q.needs && <div style={{ fontSize: 12, marginTop: 4 }}>{s.needs}: {q.needs}</div>}
@@ -455,7 +457,7 @@ export default function Mitsumori() {
             <div key={row.id} className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{reqClients.find(c => c.id === row.client_id)?.company_name || '—'}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}><ClientLink id={row.client_id} name={reqClients.find(c => c.id === row.client_id)?.company_name} /></div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>
                     {row.location_name || '—'} · {String(row.created_at || '').slice(0, 10)}
                     {row.preferred_date ? ` · ${L('wanted', '希望日', 'quer em')} ${row.preferred_date}` : ''}
@@ -464,6 +466,10 @@ export default function Mitsumori() {
                 {row.quote_amount != null && <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--green)' }}>{yen(row.quote_amount)}</div>}
               </div>
               {row.description && <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>}
+              <button type="button" className="btn btn-sm" style={{ marginBottom: 8 }} onClick={() => setReqDossier(v => (v === row.id ? null : row.id))}>
+                📷 {L('Store: photos, cleanings, size', '店舗：写真・清掃・広さ', 'Loja: fotos, limpezas e tamanho')} {reqDossier === row.id ? '▲' : '▼'}
+              </button>
+              {reqDossier === row.id && <StoreDossier clientId={row.client_id} locationName={row.location_name} />}
               <ClientQuoteBox row={row} clients={reqClients} contracts={reqContracts} sellers={sellers} onChanged={loadRequests}
                 onTrack={(rq, client) => setTracking(quoteFromRequest(rq, client))} />
             </div>

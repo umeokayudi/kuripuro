@@ -528,3 +528,31 @@ body.fa-sheet-open { overflow: hidden; }
   .fn-kpi-text { flex-direction: column; align-items: flex-start; gap: 0; }
   .fn-kpi { align-items: start; }
 }
+
+/* v1.0.73 · desktop funnel: every stage fits one row, clients in a grouped list */
+@media (min-width: 701px) {
+  .fn-kpis.is-fit { grid-auto-flow: row; grid-template-columns: repeat(var(--fn-n, 8), minmax(0, 1fr)); overflow: visible; }
+  .fn-kpis.is-fit .fn-kpi { padding: 9px 10px; }
+}
+.fn-glist { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--fa-line); border-radius: 16px; overflow: hidden; }
+.fn-grow { display: grid; grid-template-columns: minmax(220px, 2.2fr) 110px minmax(120px, 1.3fr) 100px 150px; gap: 12px; align-items: center; padding: 9px 16px; border-top: 1px solid #f0f2f7; cursor: pointer; text-align: left; }
+.fn-grow.has-seller { grid-template-columns: minmax(220px, 2.2fr) minmax(90px, 1fr) 110px minmax(120px, 1.3fr) 100px 150px; }
+.fn-grow:hover { background: #f8fafc; }
+.fn-grow.is-open { background: #eef3ff; }
+.fn-ghead { cursor: default; background: #f8fafc; border-top: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--fa-muted); padding-top: 10px; padding-bottom: 10px; }
+.fn-ghead:hover { background: #f8fafc; }
+.fn-grow .is-num { text-align: right; }
+.fn-gname { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fn-gname .fn-card-text { min-width: 0; flex: 1; }
+.fn-gname .fn-card-text strong, .fn-gname .fn-card-text small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.fn-cell { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fn-muted { color: var(--fa-muted); font-size: 12.5px; }
+.fn-sheet { flex: 0 0 auto; border: 1px solid var(--fa-line); background: #fff; border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 14px; }
+.fn-sheet:hover { border-color: var(--fa-blue); }
+.fn-stage { width: 100%; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--fa-line); background: var(--fn-tint, #f4f6fa); color: var(--fn-color, inherit); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.fn-group { border-top: 1px solid var(--fa-line); }
+.fn-group-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 16px; border: 0; background: var(--fn-tint, #f8fafc); cursor: pointer; font: inherit; color: inherit; text-align: left; }
+.fn-group-head strong { font-size: 14px; color: var(--fn-color, inherit); }
+.fn-group-head small { color: var(--fa-muted); font-size: 12.5px; }
+.fn-caret { width: 14px; color: var(--fa-muted); }
+.fn-glist > .fn-col-add.is-list { margin: 10px 16px 12px; align-self: flex-start; }

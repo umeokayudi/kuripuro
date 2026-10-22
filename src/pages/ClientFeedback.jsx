@@ -14,6 +14,7 @@ import QuoteTracker from '../components/QuoteTracker'
 import { quoteFromRequest, QUOTE_FLOW_CHANGED } from '../lib/quoteFlow'
 import toast from 'react-hot-toast'
 import StoreDossier from '../components/facility/StoreDossier'
+import { ClientLink } from '../components/ClientSheetHost'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
@@ -277,7 +278,7 @@ export default function ClientFeedback() {
             <div key={row.id} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ fontWeight: 600 }}>
-                  {row.ticket_number || `#${row.id.slice(0, 8)}`} · {clientName(row.client_id)}
+                  {row.ticket_number || `#${row.id.slice(0, 8)}`} · <ClientLink id={row.client_id} name={clientName(row.client_id)} />
                 </div>
                 <span className={`badge ${row.status === 'completed' ? 'badge-green' : 'badge-amber'}`}>{row.status}</span>
               </div>
