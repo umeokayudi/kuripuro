@@ -51,7 +51,7 @@ const dbRows = jobsToRows(nobody.slice(0, 3))
 assert.ok(dbRows.every(r => 'employee_id' in r && 'employee_name' in r))
 console.log(`schedule generator ok · ${base.length} jobs em ${MONTH}`)
 
-// v1.0.67 — location names per route + date range
+// v1.0.69 — location names per route + date range
 {
   const { routeLocations, scheduleInRange, buildMonthSchedule: build } = await import('../src/lib/scheduleGenerator.js')
   const rl = routeLocations()

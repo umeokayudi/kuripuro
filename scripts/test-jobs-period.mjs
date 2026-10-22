@@ -40,7 +40,7 @@ assert.equal(fmtMinutes(125), '2h 05min')
 assert.equal(fmtMinutes(120), '2h')
 console.log('jobs period: ok')
 
-// v1.0.67 — upcoming periods, next job per employee, location frequency
+// v1.0.69 — upcoming periods, next job per employee, location frequency
 import { nextJobsByEmployee, locationStats, contractDaysByLocation, jobLocationName } from '../src/lib/jobsBoard.js'
 assert.deepEqual(periodRange('tomorrow', today), { from: '2026-10-12', to: '2026-10-12' })
 assert.deepEqual(periodRange('next7', today), { from: today, to: '2026-10-17' })

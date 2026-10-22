@@ -64,7 +64,7 @@ export default function ScheduleGenerator() {
   const [availRows, setAvailRows] = useState([])
   const [locations, setLocations] = useState(DEFAULT_LOCATIONS)
   const [expandedDay, setExpandedDay] = useState(null)
-  // v1.0.67: generate only part of the month (one week, a few days) when needed.
+  // v1.0.69: generate only part of the month (one week, a few days) when needed.
   const [range, setRange] = useState(() => ({ from: '', to: '' }))
   const fullMonth = useMemo(() => { const d = monthDays(month); return { from: d[0], to: d[d.length - 1] } }, [month])
   const from = range.from && range.from.startsWith(month) ? range.from : fullMonth.from
