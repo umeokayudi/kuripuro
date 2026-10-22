@@ -1,6 +1,5 @@
-import { expectedJobMinutes, formatMinutes, ON_SITE_METERS } from '../lib/workKpis'
+import { expectedJobMinutes, formatMinutes } from '../lib/workKpis'
 import { fill } from '../i18n/translations'
-import { formatDistance } from '../lib/geocode'
 import { localeOf } from '../hooks/useLang'
 
 const pad = n => String(n).padStart(2, '0')
@@ -18,13 +17,6 @@ export default function ServiceTimer({ job, elapsed, history, labels, lang, voic
   const started = job.started_at ? new Date(job.started_at) : null
   const end = started && expected ? new Date(started.getTime() + expected * 60000) : null
   const overMin = expected ? Math.floor(elapsed / 60) - expected : 0
-
-  let gps = null
-  if (job.gps_start_distance != null) gps = job.gps_start_distance <= ON_SITE_METERS
-    ? { cls: 'is-good', text: fill(labels.gpsOnSite, { m: formatDistance(job.gps_start_distance) }) }
-    : { cls: 'is-warn', text: fill(labels.gpsAway, { m: formatDistance(job.gps_start_distance) }) }
-  else if (job.start_lat != null) gps = { cls: 'is-good', text: labels.gpsSaved + (job.start_accuracy ? ` ±${job.start_accuracy}m` : '') }
-  else gps = { cls: 'is-muted', text: labels.gpsMissing }
 
   return (
     <div className={`svc-timer ${tone}`}>
@@ -45,7 +37,6 @@ export default function ServiceTimer({ job, elapsed, history, labels, lang, voic
         {end && (overMin > 0
           ? <span className="svc-over">{fill(labels.overTime, { time: formatMinutes(overMin) })}</span>
           : <span>{fill(labels.expectedEnd, { time: time(end) })}</span>)}
-        <span className={`svc-gps ${gps.cls}`}>📍 {gps.text}</span>
         {onToggleVoice && (
           <button type="button" className={`svc-voice ${voiceOn ? 'is-on' : ''}`} onClick={onToggleVoice} aria-pressed={voiceOn}>
             {voiceOn ? '🔊' : '🔇'} {voiceOn ? labels.voiceOn : labels.voiceOff}
