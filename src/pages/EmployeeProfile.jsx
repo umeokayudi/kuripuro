@@ -106,7 +106,7 @@ export default function EmployeeProfile() {
   const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
   const [addingEval, setAddingEval] = useState(false)
   const [analyzingId, setAnalyzingId] = useState(null)
-  // v1.0.65 · leader of this employee (employees.leader_id). Hidden until the team chat SQL is applied.
+  // v1.0.72 · leader of this employee (employees.leader_id). Hidden until the team chat SQL is applied.
   const [people, setPeople] = useState(null)
   const [leaderId, setLeaderId] = useState('')
 

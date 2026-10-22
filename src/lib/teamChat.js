@@ -1,4 +1,4 @@
-// v1.0.65 · Employee chat contacts: own leader, own team (when I lead someone), coworkers and the office.
+// v1.0.72 · Employee chat contacts: own leader, own team (when I lead someone), coworkers and the office.
 // Employee ↔ employee messages live in team_messages; the office chat stays in messages.
 
 export const OFFICE_KEY = 'office'

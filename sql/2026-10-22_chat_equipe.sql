@@ -1,4 +1,4 @@
--- v1.0.65 · Chat between employees, their leader and the office (diretoria).
+-- v1.0.72 · Chat between employees, their leader and the office (diretoria).
 -- Adds only: one nullable column on employees + one new table. Nothing is deleted or rewritten.
 
 -- Leader of each employee, chosen by the admin (Employees > profile > Edit).

@@ -156,7 +156,7 @@ export default function EmployeePortal() {
   const [newMsg, setNewMsg] = useState('')
   const [sendingChatPhoto, setSendingChatPhoto] = useState(false)
   const [chatLightbox, setChatLightbox] = useState(null)
-  // v1.0.65 · chat with coworkers / own leader (team_messages); office chat stays in messages
+  // v1.0.72 · chat with coworkers / own leader (team_messages); office chat stays in messages
   const [teamReady, setTeamReady] = useState(false)
   const [coworkers, setCoworkers] = useState([])
   const [teamMessages, setTeamMessages] = useState([])

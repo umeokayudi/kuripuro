@@ -10,7 +10,7 @@ import ChatIcon from './ChatIcon'
 
 /**
  * Employee chat, same look as the v1.0.58 client and admin chats.
- * v1.0.65: list of people (own leader, own team, coworkers) + the office (diretoria) for when the leader can't help.
+ * v1.0.72: list of people (own leader, own team, coworkers) + the office (diretoria) for when the leader can't help.
  * Without the team chat tables (teamReady false) it is the office chat only, as before.
  */
 export default function EmployeeChat({
