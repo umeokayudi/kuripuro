@@ -1,2 +1,2 @@
-export const APP_VERSION = 'v1.0.65'
+export const APP_VERSION = 'v1.0.71'
 export const APP_BUILD_LABEL = `REBUILD · ${APP_VERSION} · SMART FACILITY: LOJAS PRONTAS + 2º ANDAR · 22 OUT 2026`
