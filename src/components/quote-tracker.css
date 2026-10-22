@@ -1,0 +1,53 @@
+/* v1.0.67 · Accepted quote tracker (QuoteTracker.jsx) */
+.qt-overlay{position:fixed;inset:0;z-index:320;background:rgba(15,27,47,.45);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px}
+.qt-sheet{width:min(720px,100%);max-height:92vh;overflow-y:auto;background:var(--surface);border-radius:18px;box-shadow:0 24px 60px rgba(12,28,48,.25);padding:22px 22px 18px}
+.qt-head{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:start;margin-bottom:16px}
+.qt-eyebrow{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue)}
+.qt-head h3{margin:2px 0 2px;font-size:20px;font-weight:800;color:var(--text)}
+.qt-head p{margin:0;font-size:13px;color:var(--text2)}
+.qt-total{text-align:right}
+.qt-total strong{display:block;font-size:22px;font-weight:800;color:var(--green)}
+.qt-total span{font-size:11px;font-weight:700;color:var(--green);background:var(--green-bg);padding:2px 8px;border-radius:999px}
+.qt-x{border:0;background:var(--surface2);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px;color:var(--text2)}
+.qt-steps{list-style:none;margin:0 0 16px;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.qt-steps li{display:flex;gap:8px;align-items:flex-start;padding:10px;border-radius:12px;background:var(--surface2);min-width:0}
+.qt-steps li i{flex:0 0 24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:800;background:#fff;color:var(--text3);border:1px solid var(--border)}
+.qt-steps li b{display:block;font-size:12px;color:var(--text)}
+.qt-steps li small{display:block;font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qt-steps li.is-done{background:var(--green-bg)}
+.qt-steps li.is-done i{background:var(--green);border-color:var(--green);color:#fff}
+.qt-steps li.is-next{background:var(--blue-bg);box-shadow:inset 0 0 0 1.5px var(--blue)}
+.qt-steps li.is-next i{background:var(--blue);border-color:var(--blue);color:#fff}
+.qt-block{border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+.qt-block-title{font-size:13px;font-weight:800;color:var(--text);margin-bottom:10px}
+.qt-muted{font-size:12px;color:var(--text3);margin-top:6px;line-height:1.5}
+.qt-session{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--border)}
+.qt-session:first-of-type{border-top:0}
+.qt-session-n{flex:0 0 28px;height:28px;border-radius:8px;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:800}
+.qt-session-main{flex:1;min-width:0}
+.qt-session-main b{display:block;font-size:14px}
+.qt-session-main span{display:block;font-size:12px;color:var(--text2)}
+.qt-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.qt-pills em{font-style:normal;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--surface2);color:var(--text2)}
+.qt-pills em.is-done,.qt-pills em.is-ok{background:var(--green-bg);color:var(--green)}
+.qt-pills em.is-wait{background:var(--amber-bg);color:var(--amber)}
+.qt-pills em.is-now{background:var(--blue-bg);color:var(--blue)}
+.qt-pills em.is-off{background:var(--red-bg);color:var(--red)}
+.qt-session-act{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.qt-sum{font-size:12px;font-weight:700;color:var(--text2);margin-top:8px;text-align:right}
+.qt-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.qt-form label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;color:var(--text2);min-width:0}
+.qt-form input,.qt-form select{width:100%;min-width:0}
+.qt-form .qt-wide{grid-column:1/-1}
+.qt-book{width:100%;margin-top:12px}
+@media (max-width:640px){
+  .qt-overlay{padding:0;align-items:flex-end}
+  .qt-sheet{border-radius:18px 18px 0 0;max-height:94vh;padding:18px 16px}
+  .qt-head{grid-template-columns:1fr auto}
+  .qt-total{grid-row:2;grid-column:1/-1;text-align:left;display:flex;gap:8px;align-items:center}
+  .qt-x{grid-row:1;grid-column:2}
+  .qt-steps{grid-template-columns:1fr 1fr}
+  .qt-session{flex-wrap:wrap}
+  .qt-session-act{width:100%;justify-content:flex-start;padding-left:38px}
+  .qt-form{grid-template-columns:1fr}
+}

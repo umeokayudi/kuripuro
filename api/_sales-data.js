@@ -2,6 +2,7 @@ import { requireActiveSalesSession, salesDb } from './_salesSession.js'
 import { geminiGenerate } from './_gemini.js'
 import { sellerCommissionSummary, quoteCommissionState } from '../src/lib/contractCommission.js'
 import { serviceOffers } from '../src/lib/facilityModel.js'
+import { quoteSellerFor } from '../src/lib/quoteSeller.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -200,26 +201,33 @@ const QUOTE_REQUEST_COLUMNS = 'id,client_id,location_name,description,preferred_
 
 async function loadQuoteRequests(db, user, isAdmin) {
   try {
-    const clientsRes = await db.from('clients').select('id,company_name,salesperson_id')
+    const [clientsRes, contractsRes] = await Promise.all([
+      db.from('clients').select('id,company_name,salesperson_id'),
+      db.from('service_contracts').select('client_id,location_name,salesperson_id').not('salesperson_id', 'is', null),
+    ])
     if (clientsRes.error) return []
     const clients = clientsRes.data || []
-    const mine = new Set(clients.filter(c => c.salesperson_id === user.id).map(c => c.id))
-    let query = db.from('client_requests').select(QUOTE_REQUEST_COLUMNS).eq('request_type', 'quote').order('created_at', { ascending: false }).limit(300)
-    if (!isAdmin) {
-      const ors = [`salesperson_id.eq.${user.id}`]
-      if (mine.size) ors.push(`client_id.in.(${[...mine].join(',')})`)
-      query = query.or(ors.join(','))
-    }
-    const { data, error } = await query
+    const contracts = contractsRes.error ? [] : (contractsRes.data || [])
+    const { data, error } = await db.from('client_requests').select(QUOTE_REQUEST_COLUMNS).eq('request_type', 'quote').order('created_at', { ascending: false }).limit(300)
     if (error) return []
     const byId = new Map(clients.map(c => [c.id, c]))
+    // v1.0.67 · The seller is found the same way everywhere (request → client → store contract),
+    // so a store whose seller is only on its contract still reaches that seller.
     return (data || [])
-      // A request another seller already sent stays theirs.
-      .filter(row => isAdmin || !row.salesperson_id || row.salesperson_id === user.id)
-      .map(row => ({ ...row, client_name: byId.get(row.client_id)?.company_name || '', account_seller_id: byId.get(row.client_id)?.salesperson_id || null }))
+      .map(row => ({ ...row, client_name: byId.get(row.client_id)?.company_name || '', account_seller_id: quoteSellerFor(row, byId.get(row.client_id), contracts) }))
+      .filter(row => isAdmin || row.account_seller_id === user.id)
   } catch {
     return []
   }
+}
+
+/** Seller of one request (request → client account → store contract). */
+async function sellerOfRequest(db, row) {
+  const [{ data: client }, { data: contracts }] = await Promise.all([
+    db.from('clients').select('id,company_name,salesperson_id').eq('id', row.client_id).maybeSingle(),
+    db.from('service_contracts').select('client_id,location_name,salesperson_id').eq('client_id', row.client_id).not('salesperson_id', 'is', null),
+  ])
+  return { client, sellerId: quoteSellerFor(row, client, contracts || []) }
 }
 
 async function loadDashboard(db, user) {
@@ -883,12 +891,13 @@ async function postAction(db, user, body, res) {
     if (!admin) return jsonError(res, 403, 'Somente admin define o preço da empresa.')
     const base = num(body.base_amount)
     if (!base) return jsonError(res, 400, 'Informe o preço da empresa.')
-    const { data: row, error: rowErr } = await db.from('client_requests').select('id,client_id,quote_status,request_type,location_name,category,description').eq('id', String(body.id || '')).maybeSingle()
+    const { data: row, error: rowErr } = await db.from('client_requests').select('id,client_id,quote_status,request_type,location_name,category,description,salesperson_id').eq('id', String(body.id || '')).maybeSingle()
     if (rowErr) throw rowErr
     if (!row || row.request_type !== 'quote') return jsonError(res, 404, 'Pedido de orçamento não encontrado.')
     if (['accepted', 'declined'].includes(row.quote_status)) return jsonError(res, 409, 'O cliente já respondeu este orçamento.')
-    const { data: client } = await db.from('clients').select('id,company_name,salesperson_id').eq('id', row.client_id).maybeSingle()
-    const sellerId = body.direct ? null : (client?.salesperson_id || null)
+    const found = await sellerOfRequest(db, row)
+    const client = found.client
+    const sellerId = body.direct ? null : found.sellerId
     const note = String(body.note || '').trim().slice(0, 1000) || null
     const now = new Date().toISOString()
     const patch = sellerId
@@ -910,8 +919,7 @@ async function postAction(db, user, body, res) {
     const { data: row, error: rowErr } = await db.from('client_requests').select('id,client_id,quote_status,request_type,base_amount,salesperson_id,location_name,category').eq('id', String(body.id || '')).maybeSingle()
     if (rowErr) throw rowErr
     if (!row || row.request_type !== 'quote') return jsonError(res, 404, 'Pedido de orçamento não encontrado.')
-    const { data: client } = await db.from('clients').select('id,company_name,salesperson_id').eq('id', row.client_id).maybeSingle()
-    const owner = row.salesperson_id || client?.salesperson_id || null
+    const { client, sellerId: owner } = await sellerOfRequest(db, row)
     if (!admin && owner !== own) return jsonError(res, 403, 'Este cliente é de outro vendedor.')
     if (row.quote_status !== 'priced' || !Number(row.base_amount)) return jsonError(res, 409, 'A empresa ainda não definiu o preço deste orçamento.')
     const base = Number(row.base_amount)
@@ -926,6 +934,37 @@ async function postAction(db, user, body, res) {
     if (!data) return jsonError(res, 409, 'Este orçamento já foi enviado.')
     await db.from('sales_notifications').insert({ salesperson_id: sellerId, audience: 'admin', event_type: 'quote_sent', title: 'Vendedor enviou orçamento ao cliente', body: `${[client?.company_name, row.location_name].filter(Boolean).join(' · ')} · ¥${Math.round(base + markup).toLocaleString()} (empresa ¥${Math.round(base).toLocaleString()} + vendedor ¥${Math.round(markup).toLocaleString()})`, sender_name: String(user.name || '').slice(0, 120) })
     return { request: data }
+  }
+
+  if (action === 'assign-client-quote') {
+    // v1.0.67 · Admin picks the seller of a client quote request (and, if asked, of the whole client).
+    if (!admin) return jsonError(res, 403, 'Somente admin escolhe o vendedor.')
+    const sellerId = String(body.salesperson_id || '') || null
+    const { data: row, error: rowErr } = await db.from('client_requests').select('id,client_id,quote_status,request_type,location_name,category,description').eq('id', String(body.id || '')).maybeSingle()
+    if (rowErr) throw rowErr
+    if (!row || row.request_type !== 'quote') return jsonError(res, 404, 'Pedido de orçamento não encontrado.')
+    if (['quoted', 'accepted', 'declined'].includes(row.quote_status)) return jsonError(res, 409, 'Este orçamento já foi enviado ao cliente.')
+    const { data, error } = await db.from('client_requests').update({ salesperson_id: sellerId }).eq('id', row.id).select().single()
+    if (error) throw error
+    if (body.whole_client && row.client_id) {
+      const { error: clientErr } = await db.from('clients').update({ salesperson_id: sellerId }).eq('id', row.client_id)
+      if (clientErr) throw clientErr
+    }
+    if (sellerId) {
+      const { data: client } = await db.from('clients').select('company_name').eq('id', row.client_id).maybeSingle()
+      await db.from('sales_notifications').insert({ salesperson_id: sellerId, audience: 'seller', event_type: 'quote_assigned', title: 'Novo pedido de orçamento de cliente', body: `${[client?.company_name, row.location_name].filter(Boolean).join(' · ')} · ${row.category || String(row.description || '').slice(0, 80)}`, sender_name: String(user.name || '').slice(0, 120) })
+    }
+    return { request: data }
+  }
+
+  if (action === 'quote-flow-notice') {
+    // v1.0.67 · Accepted quote → scheduled / done + invoice sent: tells the seller of that client.
+    if (!admin) return jsonError(res, 403, 'Sem permissão.')
+    const sellerId = String(body.salesperson_id || '')
+    const title = String(body.title || '').slice(0, 160)
+    if (!sellerId || !title) return { skipped: true }
+    await db.from('sales_notifications').insert({ salesperson_id: sellerId, audience: 'seller', event_type: String(body.event_type || 'quote_flow').slice(0, 40), title, body: String(body.body || '').slice(0, 500), sender_name: String(user.name || '').slice(0, 120) })
+    return { success: true }
   }
 
   if (action === 'read-notification') {
