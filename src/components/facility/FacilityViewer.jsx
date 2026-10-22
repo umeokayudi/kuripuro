@@ -4,7 +4,7 @@ import FacilityItemPopup from './FacilityItemPopup'
 import PhotoLightbox from '../PhotoLightbox'
 import { viewablePhotoUrl } from '../../lib/photoUrl'
 import { pickLang } from '../../hooks/useLang'
-import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds, elementTasks, careForElement } from '../../lib/facilityModel'
+import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds, elementTasks, careForElement, levelCount, levelLayout, levelOf } from '../../lib/facilityModel'
 import CareList, { rowsForElement } from './CareList'
 
 // three.js só é baixado quando alguém abre o mapa
@@ -126,7 +126,11 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
   const [selected, setSelected] = useState(null)
   const [popup, setPopup] = useState(null)
   const [query, setQuery] = useState('')
+  const [level, setLevel] = useState(0)
   const layout = useMemo(() => withServiceLog(model.layout, logs), [model.layout, logs])
+  const floors = levelCount(layout)
+  const shownLevel = Math.min(level, floors - 1)
+  const floorLayout = useMemo(() => levelLayout(layout, shownLevel), [layout, shownLevel])
 
   const alerts = useMemo(
     () => new Set(recs.filter(r => r.status === 'pending' && r.element_id).map(r => r.element_id)),
@@ -142,6 +146,9 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
   const select = (item) => {
     if (!item) { setSelected(null); return }
     if (item.type === 'area') { setPopup(item); return }
+    // item de outro andar (lista / pendências): a tela vai para o andar dele
+    const el = layout.elements.find(e => e.id === item.id)
+    if (el && levelOf(el) !== shownLevel) setLevel(levelOf(el))
     setSelected(item)
   }
 
@@ -177,11 +184,20 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
         </div>
       )}
       <ViewModeChips mode={mode} setMode={setMode} t={t} />
+      {floors > 1 && (
+        <div className="fac-floorbar">
+          {Array.from({ length: floors }, (_, i) => (
+            <button key={i} type="button" className={`fac-toggle${shownLevel === i ? ' on' : ''}`} onClick={() => { setLevel(i); setSelected(null) }}>
+              {i === 0 ? `🏠 ${t.groundFloor}` : `⬆️ ${String(t.upperFloorN || 'Floor {n}').replace('{n}', i + 1)}`}
+            </button>
+          ))}
+        </div>
+      )}
       <div className={`fac-viewer-grid${selEl ? ' has-dock' : ''}`}>
         <div style={{ minWidth: 0 }}>
           {mode === '2d' ? (
             <FacilityScene
-              layout={layout}
+              layout={floorLayout}
               mode="2d"
               selected={selected}
               onSelect={select}
@@ -191,7 +207,7 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
               maxHeight={stageH}
             />
           ) : (
-            <WorldView layout={layout} mode={mode} selectedId={selEl?.id || null} onSelect={select} status={status} todo={todo} alerts={alerts} height={stageH} t={t} />
+            <WorldView layout={floorLayout} mode={mode} selectedId={selEl?.id || null} onSelect={select} status={status} todo={todo} alerts={alerts} height={stageH} t={t} />
           )}
         </div>
         {selEl && (

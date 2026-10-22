@@ -25,13 +25,16 @@ import {
   todoElementIds,
   elementTasks,
   careSchedule,
+  levelCount,
+  levelLayout,
+  levelOf,
+  mergeLevel,
 } from '../lib/facilityModel'
 import {
   PALETTE,
   PLAN_PRESETS,
   OPTIONAL_ROOMS,
   generatePlan,
-  fillAllRooms,
   fillRoom,
   placeItem,
   nudge,
@@ -39,6 +42,12 @@ import {
   snapToWall,
   centerInArea,
   duplicateItem,
+  STORE_TEMPLATES,
+  UPPER_FLOORS,
+  buildTemplate,
+  addUpperFloor,
+  removeUpperFloors,
+  fillLevel,
 } from '../lib/facilityBuilder'
 import {
   checkFacilitySchema,
@@ -79,7 +88,9 @@ function NumField({ label, value, onChange, step = 0.1, min }) {
 }
 
 /** Miniatura da planta (cômodos coloridos + paredes) para escolher o modelo pronto. */
-function PlanThumb({ layout }) {
+function PlanThumb({ layout: full }) {
+  const layout = levelLayout(full, 0)
+  const floors = levelCount(full)
   const W = layout.width
   const D = layout.depth
   const s = 140 / Math.max(W, D * 1.4)
@@ -92,6 +103,8 @@ function PlanThumb({ layout }) {
       {layout.areas.map(a => (
         <text key={`t${a.id}`} x={(a.x + a.w / 2) * s} y={(a.y + a.d / 2) * s + 4} fontSize="11" textAnchor="middle">{(AREA_KINDS[a.kind] || AREA_KINDS.other).icon}</text>
       ))}
+      {layout.elements.filter(e => e.kind === 'stairs').map(e => <rect key={e.id} x={e.x * s} y={e.y * s} width={e.w * s} height={e.d * s} fill="#f5c76a" />)}
+      {floors > 1 && <text x={W * s - 3} y={12} fontSize="11" fontWeight="700" textAnchor="end" fill="#f5c76a">{floors}F</text>}
     </svg>
   )
 }
@@ -174,10 +187,18 @@ export default function FacilityStudio({ clients, initialClientId }) {
   const [addAreaKind, setAddAreaKind] = useState('kitchen')
   const [addElKind, setAddElKind] = useState('range_hood')
   const [buildTab, setBuildTab] = useState('quick')
-  const [plan, setPlan] = useState({ width: 12, depth: 8, preset: 'side', rooms: { entrance: true, restroom: true, washing: true, storage: true }, fill: true })
+  const [plan, setPlan] = useState({ width: 12, depth: 8, preset: 'side', rooms: { entrance: true, restroom: true, washing: true, storage: true }, fill: true, upper: null })
   const [palTab, setPalTab] = useState('kitchen')
   const [putIn, setPutIn] = useState('')
   const [dueAll, setDueAll] = useState(null)
+  const [level, setLevel] = useState(0)
+  const [upperKind, setUpperKind] = useState('dining')
+
+  // tocou num item de outro andar (lista, agenda, aviso): a tela vai para o andar dele
+  useEffect(() => {
+    const it = selected && current?.layout[COLLECTION[selected.type]]?.find(x => x.id === selected.id)
+    if (it && levelOf(it) !== level) setLevel(levelOf(it))
+  }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
   const [allModels, setAllModels] = useState(null)
   const [storeQuery, setStoreQuery] = useState('')
   const [showNew, setShowNew] = useState(false)
@@ -329,6 +350,10 @@ export default function FacilityStudio({ clients, initialClientId }) {
     const key = COLLECTION[type]
     updateLayout(l => ({ ...l, [key]: l[key].map(it => (it.id === id ? { ...it, ...patch } : it)) }))
   }
+  // andar que está na tela: as ferramentas de montar só enxergam (e mexem) nele
+  const onFloor = () => levelLayout(current.layout, level)
+  const updateFloor = (fn) => updateLayout(l => mergeLevel(l, level, fn(levelLayout(l, level))))
+  const tagLevel = level ? { level } : {}
 
   const persist = async (model = current, { quiet = false } = {}) => {
     setBusy('save')
@@ -348,7 +373,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
   }
 
   const center = () => {
-    const sel = selected?.type === 'area' ? current.layout.areas.find(a => a.id === selected.id) : null
+    const sel = selected?.type === 'area' ? current.layout.areas.find(a => a.id === selected.id && levelOf(a) === level) : null
     if (sel) return { x: sel.x + sel.w / 2, y: sel.y + sel.d / 2, areaId: sel.id }
     return { x: current.layout.width / 2, y: current.layout.depth / 2, areaId: null }
   }
@@ -360,7 +385,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
     const d = Math.min(3, depth)
     updateLayout(l => ({
       ...l,
-      areas: [...l.areas, { id, name: kindLabel(addAreaKind, lang, AREA_KINDS), kind: addAreaKind, x: (width - w) / 2, y: (depth - d) / 2, w, d, notes: '' }],
+      areas: [...l.areas, { id, name: kindLabel(addAreaKind, lang, AREA_KINDS), kind: addAreaKind, x: (width - w) / 2, y: (depth - d) / 2, w, d, notes: '', ...tagLevel }],
     }))
     setSelected({ type: 'area', id })
     setMode('2d')
@@ -374,7 +399,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
       ...l,
       elements: [...l.elements, {
         id, name: kindLabel(addElKind, lang), kind: addElKind, areaId: c.areaId,
-        x: c.x - 0.4, y: c.y - 0.3, w: 0.8, d: 0.6, h: k.h,
+        x: c.x - 0.4, y: c.y - 0.3, w: 0.8, d: 0.6, h: k.h, ...tagLevel,
       }],
     }))
     setSelected({ type: 'element', id })
@@ -383,32 +408,62 @@ export default function FacilityStudio({ clients, initialClientId }) {
   const addWall = () => {
     const id = newId('wall')
     const { width, depth } = current.layout
-    updateLayout(l => ({ ...l, walls: [...l.walls, { id, x1: width * 0.3, y1: depth / 2, x2: width * 0.7, y2: depth / 2, h: 2.4 }] }))
+    updateLayout(l => ({ ...l, walls: [...l.walls, { id, x1: width * 0.3, y1: depth / 2, x2: width * 0.7, y2: depth / 2, h: 2.4, ...tagLevel }] }))
     setSelected({ type: 'wall', id })
     setMode('2d')
   }
 
   const addOuterWalls = () => {
-    updateLayout(l => ({ ...l, walls: [...l.walls, ...perimeterWalls(l.width, l.depth)] }))
+    updateFloor(l => ({ ...l, walls: [...l.walls, ...perimeterWalls(l.width, l.depth)] }))
   }
 
   // ---- montagem fácil ----
+  const templateThumbs = useMemo(() => Object.fromEntries(STORE_TEMPLATES.map(tpl => [tpl.id, buildTemplate(tpl, { lang, fill: false })])), [lang])
   const previews = useMemo(() => Object.fromEntries(PLAN_PRESETS.map(p => [p, generatePlan({ width: plan.width, depth: plan.depth, preset: p, rooms: plan.rooms, lang })])), [plan.width, plan.depth, plan.rooms, lang])
 
   const buildPlan = () => {
     if (hasContent && !confirm(t.replaceConfirm)) return
     let l = generatePlan({ width: plan.width, depth: plan.depth, preset: plan.preset, rooms: plan.rooms, lang })
-    if (plan.fill) l = fillAllRooms(l, lang).layout
+    if (plan.upper) l = addUpperFloor(l, plan.upper, { lang, fill: plan.fill })
+    if (plan.fill) l = fillLevel(l, 0, lang)
     updateModel({ layout: l })
     setSelected(null)
+    setLevel(0)
     setMode('3d')
     toast.success(fill(t.planBuilt, { rooms: l.areas.length, items: l.elements.length }))
   }
 
+  /** Modelo pronto: um toque e a loja inteira já aparece (cômodos, equipamentos e andar de cima). */
+  const buildFromTemplate = (tpl) => {
+    if (hasContent && !confirm(t.replaceConfirm)) return
+    const l = buildTemplate(tpl, { lang })
+    updateModel({ layout: l })
+    setPlan(p => ({ ...p, width: tpl.width, depth: tpl.depth, preset: tpl.preset, rooms: { ...tpl.rooms }, upper: tpl.upper || null }))
+    setSelected(null)
+    setLevel(0)
+    setMode('3d')
+    toast.success(fill(t.planBuilt, { rooms: l.areas.length, items: l.elements.length }))
+    setTimeout(() => document.querySelector('.fac-studio-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+  }
+
+  const addFloor = () => {
+    const l = addUpperFloor(current.layout, upperKind, { lang })
+    updateModel({ layout: l })
+    setSelected(null)
+    setLevel(1)
+    toast.success(t.floorAdded)
+  }
+  const removeFloor = () => {
+    if (!confirm(t.removeFloorConfirm)) return
+    updateModel({ layout: removeUpperFloors(current.layout) })
+    setSelected(null)
+    setLevel(0)
+  }
+
   const addFromPalette = (kind) => {
     const target = putIn || (selected?.type === 'area' ? selected.id : null)
-    const res = placeItem(current.layout, kind, { areaId: target, lang })
-    updateLayout(() => res.layout)
+    const res = placeItem(onFloor(), kind, { areaId: target, lang })
+    updateFloor(() => res.layout)
     setSelected({ type: 'element', id: res.id })
     const area = res.layout.areas.find(a => a.id === res.areaId)
     toast.success(fill(t.itemAdded, { item: kindLabel(kind, lang), room: area?.name || '—' }))
@@ -416,16 +471,16 @@ export default function FacilityStudio({ clients, initialClientId }) {
 
   const fillSelectedRoom = () => {
     if (selected?.type !== 'area') return
-    const res = fillRoom(current.layout, selected.id, lang)
+    const res = fillRoom(onFloor(), selected.id, lang)
     if (!res.added.length) return toast(t.roomEmptyKit)
-    updateLayout(() => res.layout)
+    updateFloor(() => res.layout)
     toast.success(fill(t.roomFilled, { n: res.added.length }))
   }
 
   const quick = (fn) => {
     if (selected?.type !== 'element') return
     const el = current.layout.elements.find(e => e.id === selected.id)
-    if (el) changeItem('element', el.id, fn(current.layout, el))
+    if (el) changeItem('element', el.id, fn(onFloor(), el))
   }
 
   const resizeSel = (factor) => quick((l, el) => {
@@ -437,15 +492,16 @@ export default function FacilityStudio({ clients, initialClientId }) {
   const duplicateSel = () => {
     const el = current.layout.elements.find(e => e.id === selected?.id)
     if (!el) return
-    const res = duplicateItem(current.layout, el, lang)
-    updateLayout(() => res.layout)
+    const res = duplicateItem(onFloor(), el, lang)
+    updateFloor(() => res.layout)
     setSelected({ type: 'element', id: res.id })
   }
 
   const moveToRoom = (areaId) => {
     const el = current.layout.elements.find(e => e.id === selected?.id)
     if (!el || !areaId) return
-    const others = { ...current.layout, elements: current.layout.elements.filter(e => e.id !== el.id) }
+    const floor = onFloor()
+    const others = { ...floor, elements: floor.elements.filter(e => e.id !== el.id) }
     const res = placeItem(others, el.kind, { areaId, lang })
     const spot = res.layout.elements.find(e => e.id === res.id)
     changeItem('element', el.id, { x: spot.x, y: spot.y, w: spot.w, d: spot.d, areaId })
@@ -783,6 +839,10 @@ export default function FacilityStudio({ clients, initialClientId }) {
 
   const layout = current.layout
   const liveLayout = withServiceLog(layout, logs)
+  const floors = levelCount(layout)
+  const shownLevel = Math.min(level, floors - 1)
+  const floorLayout = levelLayout(layout, shownLevel)
+  const liveFloor = levelLayout(liveLayout, shownLevel)
   const elStatus = statusMap(liveLayout)
   const todo = todoElementIds(recs)
   const schedule = careSchedule(liveLayout)
@@ -850,7 +910,20 @@ export default function FacilityStudio({ clients, initialClientId }) {
         </div>
         {buildTab === 'quick' ? (
           <div>
-            <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 10 }}>{t.quickHint}</div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>⚡ {t.templatesTitle}</div>
+            <div style={{ fontSize: 13, color: 'var(--text3)', margin: '2px 0 4px' }}>{t.templatesHint}</div>
+            <div className="fac-presets fac-templates">
+              {STORE_TEMPLATES.map(tpl => (
+                <button key={tpl.id} type="button" className="fac-preset" onClick={() => buildFromTemplate(tpl)}>
+                  <PlanThumb layout={templateThumbs[tpl.id]} />
+                  <span className="fac-tpl-name">{tpl.icon} {t.tpl[tpl.id]}</span>
+                  <span className="fac-tpl-size">{tpl.width}×{tpl.depth} m{tpl.upper ? ` · ${t.twoFloorsShort}` : ''}</span>
+                </button>
+              ))}
+            </div>
+            <details className="fac-details fac-custom">
+            <summary>{t.customBuild}</summary>
+            <div style={{ fontSize: 13, color: 'var(--text3)', margin: '6px 0 10px' }}>{t.quickHint}</div>
             <div style={{ fontWeight: 600, fontSize: 13 }}>{t.storeSize}</div>
             <div className="fac-toggles">
               {SIZES.map(z => (
@@ -884,7 +957,16 @@ export default function FacilityStudio({ clients, initialClientId }) {
               <input type="checkbox" checked={plan.fill} onChange={e => setPlan(p => ({ ...p, fill: e.target.checked }))} />
               {t.fillTypical}
             </label>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>{t.secondFloor}</div>
+            <div className="fac-toggles">
+              {[null, ...UPPER_FLOORS].map(k => (
+                <button key={k || 'none'} type="button" className={`fac-toggle${plan.upper === k ? ' on' : ''}`} onClick={() => setPlan(p => ({ ...p, upper: k }))}>
+                  {k ? t.upper[k] : t.noUpper}
+                </button>
+              ))}
+            </div>
             <button type="button" className="btn btn-primary" onClick={buildPlan}>{t.buildPlan}</button>
+            </details>
           </div>
         ) : (
           <div>
@@ -913,9 +995,26 @@ export default function FacilityStudio({ clients, initialClientId }) {
         <div className="card" style={{ marginTop: 0 }}>
           <div className="card-title">{t.step3}</div>
           <ViewModeChips mode={mode} setMode={setMode} t={t} allow2dEdit />
+          <div className="fac-floorbar">
+            {floors > 1 && Array.from({ length: floors }, (_, i) => (
+              <button key={i} type="button" className={`fac-toggle${shownLevel === i ? ' on' : ''}`} onClick={() => { setLevel(i); setSelected(null) }}>
+                {i === 0 ? `🏠 ${t.groundFloor}` : `⬆️ ${fill(t.upperFloorN, { n: i + 1 })}`}
+              </button>
+            ))}
+            {floors < 2 ? (
+              <span className="fac-floor-add">
+                <select value={upperKind} onChange={e => setUpperKind(e.target.value)} aria-label={t.upperKind}>
+                  {UPPER_FLOORS.map(k => <option key={k} value={k}>{t.upper[k]}</option>)}
+                </select>
+                <button type="button" className="btn btn-sm" onClick={addFloor}>➕ {t.addFloor}</button>
+              </span>
+            ) : (
+              <button type="button" className="btn btn-sm" onClick={removeFloor}>🗑 {t.removeFloor}</button>
+            )}
+          </div>
           {mode === '2d' ? (
             <FacilityScene
-              layout={layout}
+              layout={floorLayout}
               mode="2d"
               rotation={rotation}
               selected={selected}
@@ -929,7 +1028,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
           ) : (
             <div className="fac-dark" style={{ padding: 0 }}>
               <WorldView
-                layout={liveLayout}
+                layout={liveFloor}
                 mode={mode}
                 selectedId={selected?.type === 'element' ? selected.id : null}
                 onSelect={setSelected}
@@ -965,11 +1064,11 @@ export default function FacilityStudio({ clients, initialClientId }) {
                 </button>
               ))}
             </div>
-            {layout.areas.length > 0 && (
+            {floorLayout.areas.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
                 <span style={{ color: 'var(--text3)' }}>{t.putIn}:</span>
                 <button type="button" className={`fac-chip${!putIn ? ' on' : ''}`} onClick={() => setPutIn('')}>✨ {t.autoRoom}</button>
-                {layout.areas.filter((a, i, all) => all.findIndex(b => b.name === a.name) === i).map(a => (
+                {floorLayout.areas.filter((a, i, all) => all.findIndex(b => b.name === a.name) === i).map(a => (
                   <button key={a.id} type="button" className={`fac-chip${putIn === a.id ? ' on' : ''}`} onClick={() => setPutIn(a.id)}>
                     {(AREA_KINDS[a.kind] || AREA_KINDS.other).icon} {a.name}
                   </button>
@@ -994,7 +1093,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
           </details>
           <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{t.areas}</div>
           <div className="fac-toolbar" style={{ marginTop: 4 }}>
-            {layout.areas.map(a => (
+            {floorLayout.areas.map(a => (
               <button key={a.id} type="button" className={`fac-chip${selected?.id === a.id ? ' on' : ''}`} onClick={() => setSelected({ type: 'area', id: a.id })}>
                 {(AREA_KINDS[a.kind] || AREA_KINDS.other).icon} {a.name} · {areaSquareMeters(a)}㎡
               </button>
@@ -1002,7 +1101,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>{t.elements}</div>
           <div className="fac-toolbar" style={{ marginTop: 4 }}>
-            {layout.elements.map(el => (
+            {floorLayout.elements.map(el => (
               <button key={el.id} type="button" className={`fac-chip${selected?.id === el.id ? ' on' : ''}${alerts.has(el.id) ? ' alert' : ''}`} onClick={() => setSelected({ type: 'element', id: el.id })}>
                 {(ELEMENT_KINDS[el.kind] || ELEMENT_KINDS.other).icon} {el.name}
               </button>
@@ -1089,7 +1188,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
                 <div className="form-group" style={{ marginBottom: 8 }}><label>{t.moveToRoom}</label>
                   <select value={selEl.areaId || ''} onChange={e => (e.target.value ? moveToRoom(e.target.value) : changeItem('element', selEl.id, { areaId: null }))}>
                     <option value="">{t.autoArea}</option>
-                    {layout.areas.map(a => <option key={a.id} value={a.id}>{(AREA_KINDS[a.kind] || AREA_KINDS.other).icon} {a.name}</option>)}
+                    {floorLayout.areas.map(a => <option key={a.id} value={a.id}>{(AREA_KINDS[a.kind] || AREA_KINDS.other).icon} {a.name}</option>)}
                   </select>
                 </div>
               </div>
