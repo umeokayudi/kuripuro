@@ -1,5 +1,5 @@
 /* v1.0.70 · Accepted quote tracker (QuoteTracker.jsx) */
-.qt-overlay{position:fixed;inset:0;z-index:320;background:rgba(15,27,47,.45);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px}
+.qt-overlay{position:fixed;inset:0;z-index:450;background:rgba(15,27,47,.45);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px}
 .qt-sheet{width:min(720px,100%);max-height:92vh;overflow-y:auto;background:var(--surface);border-radius:18px;box-shadow:0 24px 60px rgba(12,28,48,.25);padding:22px 22px 18px}
 .qt-head{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:start;margin-bottom:16px}
 .qt-eyebrow{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue)}
@@ -37,7 +37,8 @@
 .qt-sum{font-size:12px;font-weight:700;color:var(--text2);margin-top:8px;text-align:right}
 .qt-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .qt-form label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;color:var(--text2);min-width:0}
-.qt-form input,.qt-form select{width:100%;min-width:0}
+.qt-form input,.qt-form select{width:100%;min-width:0;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:#fff;font:inherit;font-size:14px;font-weight:500;color:var(--text)}
+.qt-form input:focus,.qt-form select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-bg)}
 .qt-form .qt-wide{grid-column:1/-1}
 .qt-book{width:100%;margin-top:12px}
 @media (max-width:640px){

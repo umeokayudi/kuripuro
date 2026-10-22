@@ -169,7 +169,7 @@ export default function QuoteTracker({ quote, onClose }) {
           {!!live.length && <div className="qt-sum">{L('Booked', '予約済み', 'Marcado')} {yen(booked)} / {yen(quote.total)}{left ? ` · ${L('left', '残り', 'falta')} ${yen(left)}` : ''}</div>}
         </section>
 
-        {stage !== 'done' || left > 0 ? (
+        {!live.length || left > 0 ? (
           <section className="qt-block">
             <div className="qt-block-title">{live.length ? L('Add another session', '次回を追加', 'Adicionar outra sessão') : L('Book the service', '作業日を予約', 'Marcar o serviço')}</div>
             <div className="qt-form">
