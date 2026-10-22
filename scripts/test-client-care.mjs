@@ -46,6 +46,8 @@ const { chatPhoto, photoMessage, chatPreview } = await import('../src/lib/chatCo
 assert.equal(storeBaseName('Nyu Sakana Yakio - Deep Clean'), 'Nyu Sakana Yakio')
 assert.equal(storeBaseName('Ibushio — Grease Trap'), 'Ibushio')
 assert.equal(storeBaseName('Tooda'), 'Tooda')
+assert.equal(storeBaseName('グリストラップ – Ibushio - Deep Clean'), 'Ibushio')
+assert.equal(lastDoneFromJobs([{ status: 'completed', scheduled_date: '2026-10-01', location_name: 'Ibushio - Deep Clean', title: 'Ibushio - Deep Clean Grease Trap' }], 'Ibushio').grease_trap, '2026-10-01')
 assert.deepEqual(clientStoreNames(['Tooda', 'Tooda - Deep Clean', 'Ibushio — AC Cleaning'], { location_name: null }), ['Tooda', 'Ibushio'])
 assert.deepEqual(clientStoreNames(['Tooda', 'Ibushio'], { location_name: 'Ibushio' }), ['Ibushio'])
 const sellers = [{ id: 's1', full_name: 'Carlos' }, { id: 's2', full_name: 'Ana' }]

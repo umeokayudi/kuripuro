@@ -339,10 +339,42 @@ export function maintenanceAlertsFor({ locations, jobs, records, today }) {
   return out.sort((a, b) => a.daysLeft - b.daysLeft)
 }
 
+/** Vertical list of the client's stores: with many restaurants the client picks one first. */
+export function StorePicker({ stores, labels, onPick }) {
+  return (
+    <section className="cpx-panel cpx-store-pick">
+      <header><h2>{labels.chooseStore}</h2><small>{stores.length} {labels.storesCount}</small></header>
+      <div className="cpx-store-list">
+        {stores.map(st => (
+          <button key={st.key} type="button" className={st.alerts > 0 ? 'is-alert' : ''} onClick={() => onPick(st.key)}>
+            <span className="cpx-store-ico" aria-hidden="true">{st.name.trim().charAt(0).toUpperCase()}</span>
+            <span className="cpx-store-name">
+              <strong>{st.name}</strong>
+              {st.sub !== undefined
+                ? <small>{st.sub}</small>
+                : <small>{st.alerts > 0 ? `${st.alerts} ${labels.storeOverdue}` : labels.storeAllGood}</small>}
+            </span>
+            {st.alerts > 0 && <b>{st.alerts}</b>}
+            <span className="cpx-store-chev" aria-hidden="true">›</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+export function StoreBack({ labels, onBack }) {
+  return <button type="button" className="cpx-store-back" onClick={onBack}>‹ {labels.allStores}</button>
+}
+
 export function StoresView({ clientId, locations, jobs, profiles, records, today, labels, lang, onChanged, onQuote, userName, contactFor, crewFor, onChat }) {
-  const [active, setActive] = useState(locations[0] || '')
+  // One store: open it straight away. Many: show the list first.
+  const [active, setActive] = useState(locations.length === 1 ? locations[0] : '')
   const [saving, setSaving] = useState(false)
-  useEffect(() => { if (!locations.includes(active)) setActive(locations[0] || '') }, [locations, active])
+  useEffect(() => {
+    if (locations.length === 1) setActive(locations[0])
+    else if (active && !locations.includes(active)) setActive('')
+  }, [locations, active])
   const profile = profiles.find(p => p.location_name === active) || null
   const rows = useMemo(() => maintenanceRows({ jobs, locationName: active, records, today }), [jobs, active, records, today])
 
@@ -362,20 +394,16 @@ export function StoresView({ clientId, locations, jobs, profiles, records, today
   }
 
   if (!locations.length) return <div className="cpx-empty">{labels.noStores}</div>
+  if (!active) {
+    const stores = locations.map(loc => ({
+      key: loc, name: loc,
+      alerts: maintenanceRows({ jobs, locationName: loc, records, today }).filter(r => r.state === 'overdue').length,
+    }))
+    return <StorePicker stores={stores} labels={labels} onPick={setActive} />
+  }
   return (
     <div className="cpx-stack">
-      {locations.length > 1 && (
-        <div className="cpx-store-tabs">
-          {locations.map(loc => {
-            const alerts = maintenanceRows({ jobs, locationName: loc, records, today }).filter(r => r.state === 'overdue').length
-            return (
-              <button key={loc} type="button" className={loc === active ? 'is-active' : ''} onClick={() => setActive(loc)}>
-                {loc}{alerts > 0 && <b>{alerts}</b>}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {locations.length > 1 && <StoreBack labels={labels} onBack={() => setActive('')} />}
       {contactFor && (
         <ManagerCard contact={contactFor(active)} crew={crewFor?.(active) || []} storeName={active} labels={labels} compact onChat={onChat} />
       )}

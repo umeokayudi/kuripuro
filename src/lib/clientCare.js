@@ -1,5 +1,5 @@
 import { parseDeepComponents, isDeepCleanJob } from './cleaningType'
-import { locationFromJob } from './clientPortal'
+import { locationFromJob, storeBaseName } from './clientPortal'
 
 // Items we track per store, with how often each should be done by default.
 export const MAINTENANCE_ITEMS = [
@@ -35,7 +35,8 @@ export function lastDoneFromJobs(jobs, locationName) {
   const out = {}
   for (const j of jobs || []) {
     if (j.status !== 'completed' || !j.scheduled_date) continue
-    if (locationName && locationFromJob(j) !== locationName) continue
+    // Jobs carry the contract name ("Ibushio - Deep Clean"); stores are base names.
+    if (locationName && storeBaseName(locationFromJob(j)) !== storeBaseName(locationName)) continue
     if (!isDeepCleanJob(j)) continue
     const items = [...parseDeepComponents(j).filter(k => k !== 'other'), 'deep_clean']
     for (const key of items) if (!out[key] || j.scheduled_date > out[key]) out[key] = j.scheduled_date

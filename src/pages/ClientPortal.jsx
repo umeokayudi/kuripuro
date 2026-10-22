@@ -10,12 +10,12 @@ import { fmtDuration, jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import JobVideos from '../components/JobVideos'
-import { ManagerCard, BillingView, BillingAlerts, StoresView, QuoteForm, RequestCard, MaintenanceList, maintenanceAlertsFor, itemLabel } from '../components/ClientCare'
+import { ManagerCard, BillingView, BillingAlerts, StoresView, StorePicker, StoreBack, QuoteForm, RequestCard, MaintenanceList, maintenanceAlertsFor, itemLabel } from '../components/ClientCare'
 import { summarizeCleaningMonth, deepSummaryFromPlan, weeklyCompleted, shiftMonth } from '../lib/clientProgress'
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
   jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
-  clientStoreNames, storeContact, storeCrew,
+  clientStoreNames, storeContact, storeCrew, storeBaseName,
 } from '../lib/clientPortal'
 import { chatPhoto, chatDayKey, photoMessage } from '../lib/chatContent'
 import { updateClientCredentials } from '../lib/clientCredentials'
@@ -119,6 +119,8 @@ export default function ClientPortal() {
 
   const [facilityModels, setFacilityModels] = useState([])
   const [facilityModelId, setFacilityModelId] = useState('')
+  // With several stores the map tab starts on the store list.
+  const [facilityPicked, setFacilityPicked] = useState(false)
   const [facilityRecs, setFacilityRecs] = useState([])
   const [facilityLogs, setFacilityLogs] = useState([])
   const [facilityBusy, setFacilityBusy] = useState('')
@@ -318,16 +320,11 @@ export default function ClientPortal() {
 
   const visitStats = useMemo(() => {
     let minutes = 0
-    let withDuration = 0
     for (const job of filteredVisits) {
       const min = jobDurationMin(job)
-      if (min != null) {
-        minutes += min
-        withDuration += 1
-      }
+      if (min != null) minutes += min
     }
-    const avg = withDuration ? Math.round(minutes / withDuration) : null
-    return { count: filteredVisits.length, minutes, avg }
+    return { count: filteredVisits.length, minutes }
   }, [filteredVisits])
 
   const isOtpClient = user?.client_id === ONTHEPLANET_CLIENT_ID
@@ -583,16 +580,16 @@ export default function ClientPortal() {
     { key: 'home', icon: <NavIcon name="home" />, label: c.home },
     { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits, badge: unratedVisits.length },
     { key: 'stores', icon: <NavIcon name="store" />, label: c.storesTab, badge: maintOverdue },
-    { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
-    { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
-    { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab, badge: quotesWaiting },
-    { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
     ...(facilityModels.length || pendingFacilityRecs.length
-      ? [{ key: 'facility', icon: <NavIcon name="store" />, label: tr.facility.storeModel, badge: pendingFacilityRecs.length }]
+      ? [{ key: 'facility', icon: <NavIcon name="map" />, label: tr.facility.storeModel, badge: pendingFacilityRecs.length }]
       : []),
+    { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
+    { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
+    { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab, badge: quotesWaiting },
+    { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
     { key: 'settings', icon: <NavIcon name="settings" />, label: c.settings },
   ]
-  // Bottom bar keeps the everyday screens; payments and quotes live at the top of the menu.
+  // Services and checks come first in the menu; billing sits lower, above the account.
   const bottomKeys = ['home', 'visits', 'stores', 'chat']
   const moreItems = navItems.filter(n => !bottomKeys.includes(n.key))
   const moreBadge = moreItems.reduce((sum, n) => sum + (n.badge || 0), 0)
@@ -707,9 +704,9 @@ export default function ClientPortal() {
             <div className="cp-side-footer">
               <div style={{ marginBottom: 10 }}><LanguageToggle variant="light" /></div>
               <button type="button" className="cp-view-toggle" onClick={toggleView} style={{ width: '100%' }}>
-                📱 {c.mobileView}
+                {c.mobileView}
               </button>
-              <button type="button" className="cp-logout" onClick={logout} style={{ width: '100%' }}>{c.logout}</button>
+              <button type="button" className="cp-side-logout" onClick={logout}><NavIcon name="logout" />{c.logout}</button>
             </div>
           </aside>
         )}
@@ -928,7 +925,7 @@ export default function ClientPortal() {
                   </div>
                 </div>
 
-                <div className="cp-period-stats">
+                <div className="cp-period-stats is-two">
                   <div className="cp-period-stat">
                     <div className="cp-period-stat-val">{visitStats.count}</div>
                     <div className="cp-period-stat-lbl">{c.visitTotalVisits}</div>
@@ -936,10 +933,6 @@ export default function ClientPortal() {
                   <div className="cp-period-stat">
                     <div className="cp-period-stat-val">{fmtDuration(visitStats.minutes, lang)}</div>
                     <div className="cp-period-stat-lbl">{c.visitTotalHours}</div>
-                  </div>
-                  <div className="cp-period-stat">
-                    <div className="cp-period-stat-val">{fmtDuration(visitStats.avg, lang)}</div>
-                    <div className="cp-period-stat-lbl">{c.visitAvgDuration}</div>
                   </div>
                 </div>
 
@@ -1116,16 +1109,18 @@ export default function ClientPortal() {
                     </div>
                   </>
                 )}
-                <div className="cp-section-title">{tr.facility.storeModel}</div>
-                {facilityModels.length > 1 && (
-                  <div className="fac-toolbar">
-                    {facilityModels.map(m => (
-                      <button key={m.id} type="button" className={`fac-chip${m.id === facilityModelId ? ' on' : ''}`} onClick={() => setFacilityModelId(m.id)}>
-                        {m.location_name || m.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {facilityModels.length > 1 && !facilityPicked ? (
+                  <StorePicker
+                    labels={c}
+                    stores={facilityModels.map(m => {
+                      const recs = facilityRecs.filter(r => r.model_id === m.id && r.status === 'pending').length
+                      return { key: m.id, name: storeBaseName(m.location_name) || m.name, alerts: recs, sub: recs > 0 ? `${recs} ${tr.facility.recommendedForYou}` : undefined }
+                    })}
+                    onPick={id => { setFacilityModelId(id); setFacilityPicked(true) }}
+                  />
+                ) : <>
+                {facilityModels.length > 1 && <StoreBack labels={c} onBack={() => setFacilityPicked(false)} />}
+                <div className="cp-section-title">{tr.facility.storeModel}{facilityModel && facilityModels.length > 1 ? ` · ${storeBaseName(facilityModel.location_name) || facilityModel.name}` : ''}</div>
                 {facilityModel ? (
                   <div className="fac-dark">
                     <FacilityViewer
@@ -1172,6 +1167,7 @@ export default function ClientPortal() {
                     </div>
                   </>
                 )}
+                </>}
               </>
             )}
 
@@ -1238,21 +1234,12 @@ export default function ClientPortal() {
               <div className="cp-overlay" onClick={() => setMoreOpen(false)}>
                 <div className="cp-sheet cpx-more" onClick={e => e.stopPropagation()}>
                   <strong>{c.menuTab}</strong>
-                  <div className="cpx-more-tiles">
-                    {moreItems.filter(n => n.key === 'billing' || n.key === 'requests').map(n => (
-                      <button key={n.key} type="button" className={tab === n.key ? 'is-active' : ''} onClick={() => { setTab(n.key); setMoreOpen(false) }}>
-                        <span>{n.icon}</span>
-                        <strong>{n.label}</strong>
-                        <small>{n.key === 'billing' ? c.menuBillingHint : c.menuQuotesHint}</small>
-                        {n.badge > 0 && <b>{n.badge}</b>}
-                      </button>
-                    ))}
-                  </div>
-                  {moreItems.filter(n => n.key !== 'billing' && n.key !== 'requests').map(n => (
-                    <button key={n.key} type="button" onClick={() => { setTab(n.key); setMoreOpen(false) }}>
+                  {moreItems.map(n => (
+                    <button key={n.key} type="button" className={tab === n.key ? 'is-active' : ''} onClick={() => { setTab(n.key); setMoreOpen(false) }}>
                       <span>{n.icon}</span>{n.label}{n.badge > 0 && <b>{n.badge}</b>}
                     </button>
                   ))}
+                  <div className="cpx-more-sep" />
                   <button type="button" onClick={logout} className="is-logout"><span><NavIcon name="logout" /></span>{c.logout}</button>
                 </div>
               </div>
@@ -1325,6 +1312,7 @@ const ICON_PATHS = {
   calendar: 'M4 6h16v15H4zM4 10h16M8 3v4M16 3v4',
   billing: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3',
   store: 'M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6',
+  map: 'M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   menu: 'M4 7h16M4 12h16M4 17h16',
   camera: 'M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
