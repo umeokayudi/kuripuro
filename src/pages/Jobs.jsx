@@ -777,7 +777,7 @@ export default function Jobs() {
                 <span>{fill(jt.jobsWithJobs, { n: dayInfo.n })}{dayInfo.min > 0 && ` · ⏱ ${fmtMinutes(dayInfo.min)}`}</span>
               </div>
             )}
-            {/* v1.0.66: one compact row per job — time, place, who does it (changeable right here), status, edit. */}
+            {/* v1.0.67: one compact row per job — time, place, who does it (changeable right here), status, edit. */}
             <div className="card" style={{ marginBottom: 8, padding: '10px 12px', borderLeft: `4px solid ${ctypeCfg.color}` }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px' }}>
                 <div style={{ fontSize: 15, fontWeight: 800, minWidth: 48, color: 'var(--text)' }}>{(j.scheduled_time || '—').slice(0, 5)}</div>

@@ -2,7 +2,7 @@
 import { useLang, fill } from '../hooks/useLang'
 import { changePct, fmtMinutes } from '../lib/jobsPeriod'
 
-// v1.0.66: upcoming periods first (what is coming is what the admin plans), then the past.
+// v1.0.67: upcoming periods first (what is coming is what the admin plans), then the past.
 const PERIODS = [
   ['today', 'periodToday'], ['tomorrow', null, ['Tomorrow', '明日', 'Amanhã']],
   ['next7', null, ['Next 7 days', '今後7日', 'Próximos 7 dias']],

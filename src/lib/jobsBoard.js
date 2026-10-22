@@ -1,4 +1,4 @@
-// Admin Jobs board helpers (v1.0.66): next job per employee and how often each
+// Admin Jobs board helpers (v1.0.67): next job per employee and how often each
 // location is cleaned. Pure functions so they can be tested without React.
 import { addDays } from './jobsPeriod.js'
 

@@ -1,4 +1,4 @@
-// Admin Jobs: one card per employee with their next job (v1.0.66).
+// Admin Jobs: one card per employee with their next job (v1.0.67).
 import { useLang, localeOf } from '../hooks/useLang'
 import { jobLocationName } from '../lib/jobsBoard'
 import { addDays } from '../lib/jobsPeriod'

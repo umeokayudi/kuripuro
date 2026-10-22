@@ -487,7 +487,7 @@ export function jobsToRows(jobs) {
 
 /**
  * Which locations each route visits, on which weekdays and how many times per
- * week (v1.0.66 — shown in the Schedule Generator so the admin sees names, not
+ * week (v1.0.67 — shown in the Schedule Generator so the admin sees names, not
  * just route labels). `locations` = locationsFromContracts() / DEFAULT_LOCATIONS.
  */
 export function routeLocations(locations = DEFAULT_LOCATIONS) {

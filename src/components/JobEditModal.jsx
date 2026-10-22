@@ -1,4 +1,4 @@
-// Admin: edit any job after it was created / assigned (v1.0.66).
+// Admin: edit any job after it was created / assigned (v1.0.67).
 // Location, service, employee, date, time, address, value, notes and status in one place,
 // with the chosen employee's other jobs that day so double bookings are easy to see.
 import { useMemo, useState } from 'react'
