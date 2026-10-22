@@ -1,4 +1,4 @@
-import { tokyoNow, tokyoToday, workedDayKey } from './dates'
+import { tokyoNow, tokyoToday, workedDayKey } from './dates.js'
 
 export function jobMinutes(job) {
   if (job?.started_at && job?.completed_at) {
