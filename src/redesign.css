@@ -644,3 +644,8 @@
 .sidebar .kp-lang-dark{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
 .sidebar .kp-lang-dark .kp-lang-btn{white-space:nowrap;padding-inline:4px}
 @media (max-width:720px){.sidebar-footer .kp-lang-dark{flex:1.6 1 0}.sidebar-footer .sidebar-logout{flex:1 1 0}}
+.ex-upcoming{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#eff6ff;border-bottom:1px solid #bfdbfe;color:#1e3a8a}
+.ex-upcoming>span{font-size:18px}
+.ex-upcoming>div{min-width:0;flex:1;display:flex;flex-direction:column}
+.ex-upcoming small{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#2563eb}
+.ex-upcoming strong{font-size:14px}

@@ -2,7 +2,7 @@
 // One Start button saves the start time; then each restaurant is ticked as done.
 // No checklist, photo, GPS or signature. Each job gets started_at = previous tick
 // (or the round start) and completed_at = the tick, so durations add up.
-// Keyed only by employees.id, like employeeTheme.js, so nobody else can match it.
+// Keyed by employees.id (like employeeTheme.js) or the owner's login e-mail, so nobody else can match it.
 import { manualAddLocations, employeeAddService } from './employeeAddJob'
 import { jobMatchesLocationAndType, locationNameFromTitle } from './cleaningType'
 import { syncServiceReport } from './jobReport'
@@ -11,11 +11,14 @@ import { tokyoToday } from './dates'
 export const ALEXANDRE_EMPLOYEE_ID = '4c064fb5-e39d-4086-a798-f6e670730bac' // Alexandre Umeoka
 
 const QUICK_ROUND_IDS = new Set([ALEXANDRE_EMPLOYEE_ID])
+const QUICK_ROUND_EMAILS = new Set(['alexandre@kuripuro.com'])
 
 export const QUICK_ROUND_NOTE = '⚡ Rodada rápida (sem checklist, foto ou GPS)'
 
 export function quickRoundEnabledFor(user) {
-  return !!user && user.role === 'employee' && typeof user.id === 'string' && QUICK_ROUND_IDS.has(user.id)
+  if (!user || user.role !== 'employee') return false
+  if (typeof user.id === 'string' && QUICK_ROUND_IDS.has(user.id)) return true
+  return QUICK_ROUND_EMAILS.has(String(user.email || '').trim().toLowerCase())
 }
 
 const storageKey = (employeeId) => `kp_quick_round_${employeeId}`
@@ -41,7 +44,7 @@ export function newRound() {
   return { date: tokyoToday(), startedAt: new Date().toISOString(), endedAt: null, done: [] }
 }
 
-// Where the next job's time starts: the last tick, or the round start.
+// Where the next job's time starts: the end of the last place added, or the round start.
 export function segmentStart(round) {
   const last = round.done[round.done.length - 1]
   return last?.at || round.startedAt
@@ -76,10 +79,28 @@ async function findMyJobAtLocation(supabase, employeeId, locationName, date) {
   return (data || []).find(j => jobMatchesLocationAndType(j, locationName, 'basic')) || null
 }
 
+/** Minutes since `fromIso`, rounded to 5 (at least 5): the suggested time for the place being added. */
+export function suggestedMinutes(fromIso, nowMs = Date.now()) {
+  const m = Math.round((nowMs - new Date(fromIso).getTime()) / 60000 / 5) * 5
+  return Math.min(Math.max(m, 5), 600)
+}
+
+/**
+ * Start and end of a place added with an approximate time: it begins where the last one ended,
+ * and when that would end in the future it is moved back so it ends now.
+ */
+export function placeWindow(segmentStartIso, minutes, nowMs = Date.now()) {
+  const len = Math.max(1, Number(minutes) || 0) * 60000
+  let start = new Date(segmentStartIso).getTime()
+  let end = start + len
+  if (end > nowMs) { end = nowMs; start = nowMs - len }
+  return { startedAt: new Date(start).toISOString(), completedAt: new Date(end).toISOString() }
+}
+
 /**
  * Marks one row as done. Returns { ok, job } or { ok:false, error, detail }.
  */
-export async function completeQuickRow(supabase, { employee, row, startedAt }) {
+export async function completeQuickRow(supabase, { employee, row, startedAt, completedAt }) {
   const date = tokyoToday()
   let job = row.job
   if (!job) {
@@ -93,12 +114,12 @@ export async function completeQuickRow(supabase, { employee, row, startedAt }) {
   }
   if (job.status === 'completed') return { ok: true, job, already: true }
 
-  const now = new Date().toISOString()
-  const start = job.started_at && job.started_at < now ? job.started_at : startedAt
+  const end = completedAt || new Date().toISOString()
+  const start = startedAt && startedAt < end ? startedAt : (job.started_at && job.started_at < end ? job.started_at : end)
   const { data, error } = await supabase.from('jobs').update({
     status: 'completed',
     started_at: start,
-    completed_at: now,
+    completed_at: end,
     notes_employee: [job.notes_employee, QUICK_ROUND_NOTE].filter(Boolean).join('\n'),
   }).eq('id', job.id).select().maybeSingle()
   if (error || !data) return { ok: false, error: 'update_failed', detail: error?.message }

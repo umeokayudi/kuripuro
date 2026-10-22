@@ -257,6 +257,13 @@ export default function EmployeePortal() {
 
   }, [user?.id])
 
+  // The GPS result is shown only at the moment of the check, then it goes away.
+  useEffect(() => {
+    if (!gpsStatus || gpsStatus.startsWith('📍 Checking')) return undefined
+    const t = setTimeout(() => setGpsStatus(''), 8000)
+    return () => clearTimeout(t)
+  }, [gpsStatus])
+
   useEffect(() => {
     document.body.setAttribute('data-working', activeJob ? 'yes' : 'no')
     return () => document.body.setAttribute('data-working', 'no')
@@ -1135,29 +1142,39 @@ export default function EmployeePortal() {
     .filter(j => j.scheduled_date >= today && ['assigned','in_progress'].includes(j.status))
     .sort((a,b) => `${a.scheduled_date} ${a.scheduled_time||'00:00'}`.localeCompare(`${b.scheduled_date} ${b.scheduled_time||'00:00'}`))[0] || null
 
+  // Time left until a job's scheduled start (Tokyo time), or null once it has passed.
+  const untilStart = (job) => {
+    const at = new Date(`${job.scheduled_date}T${(job.scheduled_time||'00:30').slice(0,5)}:00+09:00`)
+    const ms = at - clock
+    if (!(ms > 0)) return null
+    return { d: Math.floor(ms/86400000), h: Math.floor((ms%86400000)/3600000), m: Math.floor((ms%3600000)/60000) }
+  }
+
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayPendingJobs = todayJobs.filter(j=>['assigned','in_progress'].includes(j.status))
 
-  // GPS on the home map: where the employee is now, where today's sites are, and the nearest one.
-  const pendingKey = todayPendingJobs.map(j=>j.id).join(',')
+  const nextShiftJob = getNextShiftJob(allJobs)
+  // With nothing left today, the home map shows the next service even if it is days away.
+  const mapCoordJobs = todayPendingJobs.length ? todayPendingJobs : (nextShiftJob ? [nextShiftJob] : [])
+
+  // GPS on the home map: where the employee is now, where the sites are, and the nearest one.
+  // One reading when the home opens, no repeated GPS while it stays open.
+  const pendingKey = mapCoordJobs.map(j=>j.id).join(',')
   useEffect(() => {
-    if (tab !== 'home' || !todayPendingJobs.length) return
+    if (tab !== 'home' || !mapCoordJobs.length) return
     let alive = true
-    const tick = async () => { const p = await capturePosition(); if (alive && p) setHerePos(p) }
-    tick()
-    const id = setInterval(tick, 60000)
+    if (todayPendingJobs.length) capturePosition().then(p => { if (alive && p) setHerePos(p) })
     ;(async () => {
       const found = {}
-      for (const j of todayPendingJobs) {
+      for (const j of mapCoordJobs) {
         try { const c = await siteCoords(j); if (c) found[j.id] = c } catch { /* no coords */ }
       }
       if (alive) setSiteCoordsById(found)
     })()
-    return () => { alive = false; clearInterval(id) }
+    return () => { alive = false }
   }, [tab, pendingKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const nearby = activeJob ? null : nearestJob(todayPendingJobs, siteCoordsById, herePos)
   const todayAllDone = todayJobs.length>0 && todayPendingJobs.length===0
-  const nextShiftJob = getNextShiftJob(allJobs)
 
   const S = {
     card: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:16, marginBottom:12 },
@@ -1586,15 +1603,23 @@ export default function EmployeePortal() {
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
-              const mapJob = activeJob || nearby?.job || todayPendingJobs[0] || null
+              const mapJob = activeJob || nearby?.job || todayPendingJobs[0] || nextShiftJob || null
               if (!mapJob) return null
+              const upcoming = !activeJob && mapJob.scheduled_date > today
+              const wait = untilStart(mapJob)
               const place = businessName(mapJob)
               const coords = siteCoordsById[mapJob.id]
               const query = mapQuery(mapJob, coords)
               const distNow = herePos && coords ? Math.round(distanceMeters(herePos.lat, herePos.lng, coords.lat, coords.lng)) : null
               const stale = activeJob && isStaleActiveJob(activeJob,today,elapsed)
               return (
-                <section className={`ex-checkin${activeJob?' is-active':''}${stale?' is-stale':''}`}>
+                <section className={`ex-checkin${activeJob?' is-active':''}${stale?' is-stale':''}${upcoming?' is-upcoming':''}`}>
+                  {upcoming&&wait&&(
+                    <div className="ex-upcoming" role="status">
+                      <span aria-hidden="true">⏳</span>
+                      <div><small>{todayJobs.length===0?e.noShiftToday:e.nextService}</small><strong>{fill(wait.d>1?e.startsInLong:wait.d===1?e.startsInOneDay:e.startsInHours,{d:wait.d,h:wait.h,m:wait.m})}</strong></div>
+                    </div>
+                  )}
                   {nearby&&!activeJob&&(
                     <div className="ex-nearby" role="status">
                       <span aria-hidden="true">📍</span>
@@ -1605,30 +1630,28 @@ export default function EmployeePortal() {
                   <div className="ex-map">
                     <iframe title={place} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`} />
                     <div className="ex-map-label"><strong>{place}</strong>{(mapJob.area||distNow!=null)&&<span>{[mapJob.area, distNow!=null?`${distNow} m`:null].filter(Boolean).join(' · ')}</span>}</div>
-                    <button type="button" className="ex-checkin-btn" onClick={()=>goToTab('shift')}>
-                      <span className="ex-checkin-icon" aria-hidden="true">{activeJob?'■':'⌖'}</span>{activeJob?e.checkOut:e.checkIn}
-                    </button>
+                    {upcoming
+                      ? <button type="button" className="ex-checkin-btn" onClick={()=>setSelectedJob(mapJob)}><span className="ex-checkin-icon" aria-hidden="true">ⓘ</span>{e.seeDetails}</button>
+                      : <button type="button" className="ex-checkin-btn" onClick={()=>goToTab('shift')}>
+                          <span className="ex-checkin-icon" aria-hidden="true">{activeJob?'■':'⌖'}</span>{activeJob?e.checkOut:e.checkIn}
+                        </button>}
                   </div>
-                  <button type="button" className="ex-checkin-info" onClick={()=>goToTab('shift')}>
+                  <button type="button" className="ex-checkin-info" onClick={()=>upcoming?setSelectedJob(mapJob):goToTab('shift')}>
                     <div>
-                      <small>{activeJob?(stale?e.staleShiftTitle:e.activeShiftTitle):e.nextLocation}</small>
+                      <small>{activeJob?(stale?e.staleShiftTitle:e.activeShiftTitle):upcoming?e.nextService:e.nextLocation}</small>
                       <strong>{place}</strong>
-                      <span>{activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${mapJob.scheduled_time||'—'} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
+                      <span>{upcoming?`${fmtDay(mapJob.scheduled_date, lang, { weekday:'short', day:'numeric', month:'short' })} · ${mapJob.scheduled_time?.slice(0,5)||'—'}`:activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${mapJob.scheduled_time||'—'} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
                     </div>
-                    {activeJob?<b className="ex-timer">{stale?formatShiftElapsed(elapsed,lang):fmt(elapsed)}</b>:(()=>{
-                      const nd=new Date(mapJob.scheduled_date+'T'+(mapJob.scheduled_time||'00:30')+':00')
-                      const diffMs=nd-new Date()
-                      if(diffMs<0) return <b className="ex-go">›</b>
-                      const diffH=Math.floor(diffMs/3600000), diffM=Math.floor((diffMs%3600000)/60000)
-                      return <b className="ex-countdown">{diffH>0?diffH+'h ':''}{diffM}m<small>{e.toStart}</small></b>
-                    })()}
+                    {activeJob?<b className="ex-timer">{stale?formatShiftElapsed(elapsed,lang):fmt(elapsed)}</b>
+                      :!wait?<b className="ex-go">›</b>
+                      :<b className="ex-countdown">{wait.d>0?fill(e.daysHoursShort,{d:wait.d,h:wait.h}):`${wait.h>0?wait.h+'h ':''}${wait.m}m`}<small>{e.toStart}</small></b>}
                   </button>
                 </section>
               )
             })()}
 
             {/* No shift today */}
-            {todayJobs.length===0&&!activeJob&&(
+            {todayJobs.length===0&&!activeJob&&!nextShiftJob&&(
               <div className="emp-no-shift-card">
                 <div className="emp-empty-icon">☀</div>
                 <div className="emp-empty-kicker">{e.todayShift}</div>
