@@ -1,10 +1,10 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
 import FacilityScene from './FacilityScene'
 import FacilityItemPopup from './FacilityItemPopup'
-import PhotoLightbox from '../PhotoLightbox'
-import { viewablePhotoUrl } from '../../lib/photoUrl'
+import CleaningTimeline from '../CleaningTimeline'
+import { entriesFromLogs } from '../../lib/cleaningTimeline'
 import { pickLang } from '../../hooks/useLang'
-import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds, elementTasks, careForElement } from '../../lib/facilityModel'
+import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds, elementTasks, careForElement, elementHistory } from '../../lib/facilityModel'
 import CareList, { rowsForElement } from './CareList'
 
 // three.js só é baixado quando alguém abre o mapa
@@ -60,21 +60,17 @@ export function WorldView({ layout, mode, selectedId, onSelect, status, todo, al
 }
 
 /**
- * Painel do item tocado: foto real ao lado (computador) ou embaixo (celular).
- * Itens importantes já abrem com a foto; nos outros a pessoa aperta "Ver foto real".
+ * Painel do item tocado: foto do local, últimas limpezas com fotos e calendário,
+ * ao lado (computador) ou embaixo (celular).
  */
-export function FocusDock({ el, layout, t, lang, status, onDetails, onLog, onClose }) {
-  const [showPhoto, setShowPhoto] = useState(!!el.important)
-  const [idx, setIdx] = useState(0)
-  const [zoom, setZoom] = useState(null)
+export function FocusDock({ el, layout, t, lang, status, logs = [], onDetails, onLog, onClose }) {
   const k = ELEMENT_KINDS[el.kind] || ELEMENT_KINDS.other
   const area = areaForElement(layout, el)
   const st = status?.get?.(el.id)
-  const photos = el.photos || []
-  const photo = photos[Math.min(idx, photos.length - 1)]
   const stLabel = { overdue: t.stOverdue, due: t.stDue, ok: t.stOk, none: t.stNone }[st]
   const RANK = { overdue: 0, due: 1, none: 2, ok: 3 }
   const careRows = rowsForElement(el, el.care || careForElement(el, [])).sort((a, b) => RANK[a.status] - RANK[b.status])
+  const entries = useMemo(() => entriesFromLogs(elementHistory(el.id, logs)), [el.id, logs])
 
   return (
     <div className="fac-dock" key={el.id}>
@@ -90,29 +86,18 @@ export function FocusDock({ el, layout, t, lang, status, onDetails, onLog, onClo
         <button type="button" className="fac-chip" onClick={onClose} aria-label={t.close}>✕</button>
       </div>
 
-      {photos.length > 0 && showPhoto && (
-        <>
-          <img className="fac-dock-photo" src={viewablePhotoUrl(photo)} alt={el.name} onClick={() => setZoom(photo)} />
-          {photos.length > 1 && (
-            <div className="fac-dock-strip">
-              {photos.map((p, i) => <img key={p} src={viewablePhotoUrl(p)} alt="" className={i === idx ? 'on' : ''} onClick={() => setIdx(i)} />)}
-            </div>
-          )}
-        </>
-      )}
+      <div style={{ marginTop: 10 }}>
+        <CleaningTimeline key={el.id} entries={entries} placePhotos={el.photos || []} dark compact />
+      </div>
 
       {careRows.length > 0 && <div style={{ marginTop: 10 }}><CareList rows={careRows} t={t} lang={lang} dark limit={2} /></div>}
       {el.location_hint && <div className="fac-dock-text">🔎 {el.location_hint}</div>}
       {el.instructions && <div className="fac-dock-text">🛠 {el.instructions.length > 220 ? `${el.instructions.slice(0, 220)}…` : el.instructions}</div>}
 
       <div className="fac-dock-actions">
-        {photos.length > 0
-          ? <button type="button" className={`fac-btn${showPhoto ? '' : ' fac-btn-gold'}`} onClick={() => setShowPhoto(v => !v)}>{showPhoto ? t.hidePhoto : `📷 ${t.realPhoto}`}</button>
-          : <span className="fac-muted" style={{ alignSelf: 'center' }}>{t.noPhotoYet}</span>}
         <button type="button" className="fac-btn" onClick={onDetails}>{t.details}</button>
       </div>
       {onLog && <button type="button" className="fac-btn fac-btn-gold" style={{ width: '100%', marginTop: 8 }} onClick={onLog}>{careRows.length > 1 ? t.markDone : t.markCleaned}</button>}
-      {zoom && <PhotoLightbox url={zoom} onClose={() => setZoom(null)} closeLabel={t.close} />}
     </div>
   )
 }
@@ -202,6 +187,7 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
             t={t}
             lang={lang}
             status={status}
+            logs={logs}
             onDetails={() => setPopup({ type: 'element', id: selEl.id })}
             onLog={onLogService && (elementTasks(selEl).length > 0 || todo.has(selEl.id)) ? () => setPopup({ type: 'element', id: selEl.id, log: true }) : undefined}
             onClose={() => setSelected(null)}

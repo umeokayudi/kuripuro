@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { AREA_KINDS, ELEMENT_KINDS, areaForElement, areaSquareMeters, kindLabel, elementHistory, careForElement } from '../../lib/facilityModel'
 import CareList, { rowsForElement } from './CareList'
-import { viewablePhotoUrl } from '../../lib/photoUrl'
-import { fill, localeOf } from '../../hooks/useLang'
-import PhotoLightbox from '../PhotoLightbox'
+import { useLang, fill } from '../../hooks/useLang'
+import CleaningTimeline from '../CleaningTimeline'
+import { entriesFromLogs } from '../../lib/cleaningTimeline'
 
 export function RecommendationCard({ rec, t, onDecide, busy, showStatus = true }) {
   return (
@@ -27,38 +27,12 @@ export function RecommendationCard({ rec, t, onDecide, busy, showStatus = true }
   )
 }
 
-/** Pop-up ao tocar num elemento/área: fotos, localização, instruções e recomendações. */
-/** Histórico de limpezas do equipamento: data, quem fez, notas e fotos do serviço. */
-function ServiceHistory({ history, t, lang, onPhoto }) {
-  if (!history.length) return null
-  const shown = history.slice(0, 6)
-  return (
-    <div className="fac-block" style={{ whiteSpace: 'normal' }}>
-      <div className="fac-block-title">📋 {t.history}</div>
-      <div className="fac-hist">
-        {shown.map(h => (
-          <div key={h.id} className="fac-hist-row">
-            <span className="fac-hist-date">{new Date(h.service_date + 'T00:00:00+09:00').toLocaleDateString(localeOf(lang), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Tokyo' })}</span>
-            <span style={{ flex: 1 }}>
-              {h.service || t.cleaned}{h.employee_name ? ` · ${h.employee_name.split(' ')[0]}` : ''}
-              {h.notes && <div className="fac-muted">{h.notes}</div>}
-              {h.photos?.length > 0 && (
-                <div className="fac-hist-thumbs">
-                  {h.photos.map(p => <img key={p} src={viewablePhotoUrl(p)} alt="" onClick={() => onPhoto(p)} />)}
-                </div>
-              )}
-            </span>
-          </div>
-        ))}
-      </div>
-      {history.length > shown.length && <div className="fac-muted" style={{ marginTop: 6 }}>{fill(t.moreHistory, { n: history.length - shown.length })}</div>}
-    </div>
-  )
-}
-
 /** Funcionário marca o equipamento como limpo durante o serviço (fotos opcionais). */
-function LogServiceForm({ t, onSave, startOpen = false, tasks = [], defaultTask = '' }) {
+function LogServiceForm({ t, onSave, startOpen = false, tasks = [], defaultTask = '', defaultDate = '' }) {
+  const { tr } = useLang()
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
   const [open, setOpen] = useState(startOpen)
+  const [date, setDate] = useState(defaultDate || today)
   const [service, setService] = useState(defaultTask || tasks[0]?.name || '')
   const [notes, setNotes] = useState('')
   const [files, setFiles] = useState([])
@@ -78,6 +52,10 @@ function LogServiceForm({ t, onSave, startOpen = false, tasks = [], defaultTask 
           ))}
         </div>
       )}
+      <label className="fac-muted" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        📅 {tr('Day of the cleaning', '清掃日', 'Dia da limpeza')}
+        <input type="date" value={date} max={today} onChange={e => setDate(e.target.value || today)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.08)', color: 'inherit', font: 'inherit' }} />
+      </label>
       <label className="fac-btn" style={{ textAlign: 'center', cursor: 'pointer' }}>
         📷 {files.length ? fill(t.photosSelected, { n: files.length }) : t.addPhotoOptional}
         <input type="file" accept="image/*" capture="environment" multiple hidden onChange={e => setFiles([...e.target.files].slice(0, 4))} />
@@ -93,7 +71,7 @@ function LogServiceForm({ t, onSave, startOpen = false, tasks = [], defaultTask 
           onClick={async () => {
             setSaving(true)
             try {
-              await onSave({ notes, files, service: service || null })
+              await onSave({ notes, files, service: service || null, date: date && date !== today ? date : null })
               setOpen(false); setNotes(''); setFiles([])
             } finally {
               setSaving(false)
@@ -107,8 +85,9 @@ function LogServiceForm({ t, onSave, startOpen = false, tasks = [], defaultTask 
   )
 }
 
+/** Pop-up ao tocar num elemento/área: foto do local, últimas limpezas e calendário, instruções e recomendações. */
 export default function FacilityItemPopup({ layout, item, t, lang = 'en', recs = [], logs = [], todo, onLogService, onDecide, busyId, onClose, onSelectItem }) {
-  const [lightbox, setLightbox] = useState(null)
+  const [logDate, setLogDate] = useState('')
   if (!item) return null
 
   if (item.type === 'area') {
@@ -125,6 +104,15 @@ export default function FacilityItemPopup({ layout, item, t, lang = 'en', recs =
               <div className="fac-muted">{kindLabel(area.kind, lang, AREA_KINDS)} · {areaSquareMeters(area)} ㎡ ({area.w} × {area.d} m)</div>
             </div>
             <button type="button" className="fac-chip" onClick={onClose}>✕</button>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <CleaningTimeline
+              key={area.id}
+              dark
+              entries={entriesFromLogs(logs.filter(l => inside.some(el => el.id === l.element_id)))}
+              placePhotos={inside.flatMap(el => el.photos || [])}
+              size={`${areaSquareMeters(area)} m² (${area.w} × ${area.d} m)`}
+            />
           </div>
           {area.notes && <div className="fac-block">{area.notes}</div>}
           {inside.length > 0 && (
@@ -199,13 +187,15 @@ export default function FacilityItemPopup({ layout, item, t, lang = 'en', recs =
           </div>
         )}
 
-        {el.photos?.length > 0 && (
-          <div className="fac-photos">
-            {el.photos.map(p => (
-              <img key={p} src={viewablePhotoUrl(p)} alt={el.name} onClick={() => setLightbox(p)} />
-            ))}
-          </div>
-        )}
+        <div style={{ marginTop: 12 }}>
+          <CleaningTimeline
+            key={el.id}
+            dark
+            entries={entriesFromLogs(history)}
+            placePhotos={el.photos || []}
+            onLogDay={onLogService ? d => setLogDate(d) : undefined}
+          />
+        </div>
 
         {careRows.length > 0 && (
           <div className="fac-block" style={{ whiteSpace: 'normal' }}>
@@ -216,12 +206,12 @@ export default function FacilityItemPopup({ layout, item, t, lang = 'en', recs =
 
         {el.notes && <div className="fac-block">{el.notes}</div>}
 
-        <ServiceHistory history={history} t={t} lang={lang} onPhoto={setLightbox} />
-
-        {onLogService && (care.length > 0 || isTodo) && (
+        {onLogService && (care.length > 0 || isTodo || logDate) && (
           <LogServiceForm
+            key={logDate || 'today'}
             t={t}
-            startOpen={!!item.log}
+            startOpen={!!item.log || !!logDate}
+            defaultDate={logDate}
             tasks={care}
             defaultTask={(acceptedRec && care.find(c => c.name.toLowerCase() === String(acceptedRec.service || '').toLowerCase())?.name) || careRows.find(r => r.status === 'overdue' || r.status === 'due')?.task.name || care.find(c => c.type === 'cleaning')?.name || ''}
             onSave={data => onLogService(el, data)}
@@ -234,11 +224,6 @@ export default function FacilityItemPopup({ layout, item, t, lang = 'en', recs =
 
         <button type="button" className="fac-btn" style={{ width: '100%', marginTop: 14 }} onClick={onClose}>{t.close}</button>
       </div>
-      {lightbox && (
-        <div onClick={e => e.stopPropagation()}>
-          <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={t.close} />
-        </div>
-      )}
     </div>
   )
 }
