@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import TimeOffCenter from './components/TimeOffCenter'
+import ClientSheetHost from './components/ClientSheetHost'
 import FacilityOffersBell from './components/facility/FacilityOffersBell'
 import { APP_VERSION, APP_BUILD_LABEL } from './version'
 
@@ -263,7 +264,7 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div className="topbar-right"><FacilityOffersBell /><TimeOffCenter /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <div className="topbar-right"><FacilityOffersBell /><TimeOffCenter /><ClientSheetHost /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <main className="page-content">
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
