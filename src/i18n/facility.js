@@ -1,4 +1,17 @@
 export const facilityEn = {
+  build: {
+    back: 'Store', undo: 'Undo', redo: 'Redo', saved: 'Saved', saving: 'Saving…', unsaved: 'Not saved yet', saveError: 'Could not save. Trying again…',
+    catalog: 'Catalog', rooms: 'Rooms', move: 'Move', rotate: 'Rotate', duplicate: 'Copy', remove: 'Delete', details: 'Details', fillRoom: 'Fill room',
+    approve: 'Publish', approved: 'Published', draft: 'Draft', advanced: 'Advanced', aiHelp: 'AI help (beta)',
+    addTo: 'Goes into', autoRoom: 'Best room', name: 'Name', kind: 'Type', important: 'Important (switch, valve, breaker…)',
+    photos: 'Real photos', addPhoto: '+ Photo', where: 'Where to find it', how: 'How to use it', size: 'Size (m)', width: 'Width', depth: 'Depth',
+    tapHint: 'Tap an item to move, rotate or delete it · pick from the catalog to add',
+    newTitle: 'New store', q1: 'Which client?', q1b: 'Store / branch name (optional)', q2: 'What kind of business?', q3: 'What size?', q4: 'How many floors?',
+    oneFloor: '1 floor', twoFloors: '2 floors', blank: 'Blank', create: 'Create store', creating: 'Creating…', chooseClient: '— choose a client —',
+    next: 'Next', prev: 'Back', addFloor: '+ Floor', removeFloor: 'Remove top floor', removed: 'Deleted · tap Undo to bring it back',
+    newRoom: 'New room', close: 'Close', done: 'Done', loading: 'Opening the editor…', notFound: 'Store not found.',
+    publishedHint: 'Clients and staff see the published plan.', draftHint: 'Only the office sees a draft.',
+  },
   world: {
     brand: 'Kuripuro World',
     stores: '{n} stores',
@@ -302,6 +315,19 @@ export const facilityEn = {
 }
 
 export const facilityJa = {
+  build: {
+    back: '店舗', undo: '元に戻す', redo: 'やり直す', saved: '保存済み', saving: '保存中…', unsaved: '未保存', saveError: '保存できませんでした。再試行中…',
+    catalog: 'カタログ', rooms: '部屋', move: '移動', rotate: '回転', duplicate: 'コピー', remove: '削除', details: '詳細', fillRoom: '部屋を埋める',
+    approve: '公開', approved: '公開中', draft: '下書き', advanced: '詳細設定', aiHelp: 'AIで作成（ベータ）',
+    addTo: '置く部屋', autoRoom: '自動', name: '名前', kind: '種類', important: '重要（スイッチ・バルブ・ブレーカー等）',
+    photos: '実際の写真', addPhoto: '＋写真', where: '場所', how: '使い方', size: 'サイズ (m)', width: '幅', depth: '奥行',
+    tapHint: '設備をタップして移動・回転・削除 · カタログから追加',
+    newTitle: '新しい店舗', q1: 'どの顧客？', q1b: '店舗名（任意）', q2: '業態は？', q3: '広さは？', q4: '何階建て？',
+    oneFloor: '1階', twoFloors: '2階建て', blank: '空白', create: '店舗を作成', creating: '作成中…', chooseClient: '— 顧客を選択 —',
+    next: '次へ', prev: '戻る', addFloor: '＋階', removeFloor: '上の階を削除', removed: '削除しました · 元に戻すで復元',
+    newRoom: '新しい部屋', close: '閉じる', done: '完了', loading: 'エディタを開いています…', notFound: '店舗が見つかりません。',
+    publishedHint: '公開中の図面は顧客とスタッフに表示されます。', draftHint: '下書きは事務所だけが見られます。',
+  },
   world: {
     brand: 'クリプロ・ワールド',
     stores: '{n}店舗',

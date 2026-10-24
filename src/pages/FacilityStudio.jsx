@@ -88,7 +88,7 @@ function NumField({ label, value, onChange, step = 0.1, min }) {
 }
 
 /** Miniatura da planta (cômodos coloridos + paredes) para escolher o modelo pronto. */
-function PlanThumb({ layout: full }) {
+export function PlanThumb({ layout: full }) {
   const layout = levelLayout(full, 0)
   const floors = levelCount(full)
   const W = layout.width
@@ -116,7 +116,7 @@ const SIZES = [
 ]
 
 /** Editor das limpezas e manutenções de um equipamento (nome, tipo, a cada X dias, última vez). */
-function TaskEditor({ el, care, t, onChange }) {
+export function TaskEditor({ el, care, t, onChange }) {
   const tasks = elementTasks(el)
   const set = (next) => onChange(next)
   const patch = (id, p) => set(tasks.map(x => (x.id === id ? { ...x, ...p } : x)))

@@ -29,6 +29,7 @@ const Salary = lazy(() => import('./pages/Salary'))
 const Clients = lazy(() => import('./pages/Clients'))
 const Facility = lazy(() => import('./pages/Facility'))
 const FacilityEdit = lazy(() => import('./pages/FacilityEdit'))
+const FacilityBuilder = lazy(() => import('./pages/FacilityBuilder'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
@@ -96,6 +97,7 @@ const PAGE_KEYS = {
   '/clients': 'clients',
   '/facility': 'facility',
   '/facility/edit': 'facility',
+  '/facility/studio': 'facility',
   '/client-feedback': 'clientFeedback',
   '/cashflow': 'cashflow',
   '/reports': 'reports',
@@ -242,7 +244,7 @@ function AppContent() {
     <div className="app-shell">
       <Sidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
 
-      <div className={`main${location.pathname === '/facility' ? ' kw-full' : ''}`}>
+      <div className={`main${location.pathname === '/facility' || location.pathname === '/facility/edit' ? ' kw-full' : ''}`}>
         <header className="topbar">
           <button type="button" className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} aria-label={sidebarOpen ? a.closeMenu : a.openMenu} aria-expanded={sidebarOpen}>☰<MobileMenuCount /></button>
           <div className="mobile-kp-brand">KP</div>
@@ -283,7 +285,8 @@ function AppContent() {
               <Route path="/salary" element={<Salary />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/facility" element={<Facility />} />
-              <Route path="/facility/edit" element={<FacilityEdit />} />
+              <Route path="/facility/edit" element={<FacilityBuilder />} />
+              <Route path="/facility/studio" element={<FacilityEdit />} />
               <Route path="/client-feedback" element={<ClientFeedback />} />
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
@@ -313,7 +316,7 @@ function AppContent() {
           </Suspense>
         </main>
       </div>
-      {location.pathname !== '/' && location.pathname !== '/ai' && location.pathname !== '/adminchat' && <AIFloatingWidget mode="admin" />}
+      {location.pathname !== '/' && location.pathname !== '/ai' && location.pathname !== '/adminchat' && location.pathname !== '/facility/edit' && <AIFloatingWidget mode="admin" />}
     </div>
   )
 }

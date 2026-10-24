@@ -1,4 +1,17 @@
 export const facilityPt = {
+  build: {
+    back: 'Loja', undo: 'Desfazer', redo: 'Refazer', saved: 'Salvo', saving: 'Salvando…', unsaved: 'Ainda não salvo', saveError: 'Não deu para salvar. Tentando de novo…',
+    catalog: 'Catálogo', rooms: 'Cômodos', move: 'Mover', rotate: 'Girar', duplicate: 'Duplicar', remove: 'Apagar', details: 'Detalhes', fillRoom: 'Encher cômodo',
+    approve: 'Publicar', approved: 'Publicada', draft: 'Rascunho', advanced: 'Avançado', aiHelp: 'Ajuda da IA (beta)',
+    addTo: 'Vai para', autoRoom: 'Melhor cômodo', name: 'Nome', kind: 'Tipo', important: 'Importante (interruptor, registro, disjuntor…)',
+    photos: 'Fotos reais', addPhoto: '+ Foto', where: 'Onde fica', how: 'Como usar', size: 'Tamanho (m)', width: 'Largura', depth: 'Fundo',
+    tapHint: 'Toque num item para mover, girar ou apagar · escolha no catálogo para pôr',
+    newTitle: 'Nova loja', q1: 'De qual cliente?', q1b: 'Nome da loja / filial (opcional)', q2: 'Que tipo de negócio?', q3: 'Qual o tamanho?', q4: 'Quantos andares?',
+    oneFloor: '1 andar', twoFloors: '2 andares', blank: 'Em branco', create: 'Criar loja', creating: 'Criando…', chooseClient: '— escolha o cliente —',
+    next: 'Próximo', prev: 'Voltar', addFloor: '+ Andar', removeFloor: 'Tirar andar de cima', removed: 'Apagado · toque em Desfazer para voltar',
+    newRoom: 'Novo cômodo', close: 'Fechar', done: 'Pronto', loading: 'Abrindo o editor…', notFound: 'Loja não encontrada.',
+    publishedHint: 'Clientes e funcionários veem a planta publicada.', draftHint: 'Rascunho só o escritório vê.',
+  },
   world: {
     brand: 'Mundo Kuripuro',
     stores: '{n} lojas',
