@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import TimeOffCenter from './components/TimeOffCenter'
 import ClientSheetHost from './components/ClientSheetHost'
-import FacilityOffersBell from './components/facility/FacilityOffersBell'
 import { APP_VERSION, APP_BUILD_LABEL } from './version'
 
 // Version stays known to the system only (not shown on screen).
@@ -29,6 +28,7 @@ const Employees = lazy(() => import('./pages/Employees'))
 const Salary = lazy(() => import('./pages/Salary'))
 const Clients = lazy(() => import('./pages/Clients'))
 const Facility = lazy(() => import('./pages/Facility'))
+const FacilityEdit = lazy(() => import('./pages/FacilityEdit'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
@@ -95,6 +95,7 @@ const PAGE_KEYS = {
   '/salary': 'salary',
   '/clients': 'clients',
   '/facility': 'facility',
+  '/facility/edit': 'facility',
   '/client-feedback': 'clientFeedback',
   '/cashflow': 'cashflow',
   '/reports': 'reports',
@@ -138,6 +139,12 @@ function AppContent() {
   const navigate = useNavigate()
   const a = t.app
   const title = pageTitle(location.pathname, t.sidebar)
+  // tela cheia (Mundo Kuripuro) abre o menu pelo próprio botão ☰
+  React.useEffect(() => {
+    const open = () => setSidebarOpen(true)
+    window.addEventListener('kp:open-menu', open)
+    return () => window.removeEventListener('kp:open-menu', open)
+  }, [])
 
   React.useEffect(() => {
     const q = search.trim()
@@ -235,7 +242,7 @@ function AppContent() {
     <div className="app-shell">
       <Sidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
 
-      <div className="main">
+      <div className={`main${location.pathname === '/facility' ? ' kw-full' : ''}`}>
         <header className="topbar">
           <button type="button" className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} aria-label={sidebarOpen ? a.closeMenu : a.openMenu} aria-expanded={sidebarOpen}>☰<MobileMenuCount /></button>
           <div className="mobile-kp-brand">KP</div>
@@ -264,8 +271,9 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div className="topbar-right"><FacilityOffersBell /><TimeOffCenter /><ClientSheetHost /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <div className="topbar-right"><TimeOffCenter /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
+        <ClientSheetHost />
         <main className="page-content">
           <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
             <Routes>
@@ -275,6 +283,7 @@ function AppContent() {
               <Route path="/salary" element={<Salary />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/facility" element={<Facility />} />
+              <Route path="/facility/edit" element={<FacilityEdit />} />
               <Route path="/client-feedback" element={<ClientFeedback />} />
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />

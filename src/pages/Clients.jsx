@@ -263,7 +263,7 @@ export default function Clients() {
         <button className={`tab-pill${tab==='services'?' active':''}`} onClick={()=>setTab('services')}>Services</button>
         <button className={`tab-pill${tab==='portal'?' active':''}`} onClick={()=>setTab('portal')}>🔐 Portal</button>
         <button className={`tab-pill${tab==='care'?' active':''}`} onClick={()=>setTab('care')}>🤝 Manager &amp; stores</button>
-        <button className="tab-pill" onClick={()=>navigate('/facility')}>🏢 Smart Facility</button>
+        <button className="tab-pill" onClick={()=>navigate('/facility')}>🌏 Kuripuro World</button>
       </div>
 
       {tab==='care'&&<ClientCareAdmin clients={clients} onClientsChanged={load} />}
