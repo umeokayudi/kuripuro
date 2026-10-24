@@ -2,27 +2,43 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
+import { fmtPeriod } from '../lib/salaryPeriod'
+import '../components/SalaryPopups.css'
+
+// What the employee did with the payslip of a salary row's period.
+function statementState(st) {
+  if (!st) return 'none'
+  if (st.employee_confirmed_at) return 'confirmed'
+  if (st.employee_disputed_at || st.status === 'disputed') return 'disputed'
+  return 'waiting'
+}
 
 export default function Payments() {
-  const { t } = useLang()
+  const { t, tr, locale } = useLang()
   const [employees, setEmployees] = useState([])
   const [payments, setPayments] = useState([])
+  const [statements, setStatements] = useState([])
+  const [ask, setAsk] = useState(null) // { kind: 'pay' | 'delete', p }
+  const [busy, setBusy] = useState(false)
   const [selected, setSelected] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({ employee_id:'', employee_name:'', amount:'', payment_date:'', description:'', payment_type:'salary', is_deduction:false, status:'scheduled' })
 
-  const TYPES = ['salary','advance','bonus','transport','deduction','other']
+  // Same list as the salary_payments check constraint.
+  const TYPES = ['salary','advance','bonus','deduction','extra']
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
-    const [e, p] = await Promise.all([
+    const [e, p, st] = await Promise.all([
       supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days').eq('is_active',true).order('full_name'),
       supabase.from('salary_payments').select('*').order('payment_date',{ascending:true}),
+      supabase.from('salary_statements').select('id,employee_id,period,status,net_total,employee_confirmed_at,employee_disputed_at'),
     ])
     setEmployees(e.data||[])
     setPayments(p.data||[])
+    setStatements(st.data||[])
   }
 
   const upd = (k,v) => setForm(f=>({...f,[k]:v}))
@@ -30,7 +46,10 @@ export default function Payments() {
   const handleSave = async () => {
     if (!form.employee_id||!form.amount||!form.payment_date) return toast.error('Fill required fields')
     const emp = employees.find(e=>e.id===form.employee_id)
-    const payload = { ...form, employee_name:emp?.full_name||form.employee_name, amount:parseFloat(form.amount), period:form.payment_date.slice(0,7) }
+    // A salary row belongs to the month worked, not the month it is paid in: keep its period on edit.
+    const before = editingId ? payments.find(p=>p.id===editingId) : null
+    const period = before?.period && form.payment_type==='salary' ? before.period : form.payment_date.slice(0,7)
+    const payload = { ...form, employee_name:emp?.full_name||form.employee_name, amount:parseFloat(form.amount), period }
     if (editingId) {
       const { error } = await supabase.from('salary_payments').update(payload).eq('id',editingId)
       if (error) return toast.error(error.message)
@@ -50,15 +69,33 @@ export default function Payments() {
     setEditingId(p.id); setShowForm(true)
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete?')) return
-    await supabase.from('salary_payments').delete().eq('id',id)
-    toast('Deleted.'); load()
+  const statementFor = (p) => statements.find(st=>st.employee_id===p.employee_id&&st.period===(p.period||p.payment_date?.slice(0,7)))
+
+  // Both actions go through the pop-up below; salary rows cannot be deleted at all.
+  const doConfirmed = async () => {
+    if (!ask) return
+    setBusy(true)
+    const { kind, p } = ask
+    const { error } = kind==='pay'
+      ? await supabase.from('salary_payments').update({status:'paid'}).eq('id',p.id)
+      : await supabase.from('salary_payments').delete().eq('id',p.id)
+    setBusy(false)
+    if (error) return toast.error(error.message)
+    toast.success(kind==='pay' ? tr('Marked as paid','支払済みにしました','Marcado como pago') : tr('Deleted','削除しました','Apagado'))
+    setAsk(null); load()
   }
 
-  const handleMarkPaid = async (id) => {
-    await supabase.from('salary_payments').update({status:'paid'}).eq('id',id)
-    toast.success('Marked as paid!'); load()
+  const stateLabel = {
+    confirmed: tr('Employee confirmed the payslip','従業員が明細を確認済み','Funcionário confirmou o holerite'),
+    disputed: tr('Employee disputed the payslip','従業員が明細に異議あり','Funcionário contestou o holerite'),
+    waiting: tr('Employee has not confirmed yet','従業員はまだ確認していません','Funcionário ainda não confirmou'),
+    none: tr('No payslip sent for this month','この月の明細は未送付','Holerite deste mês não foi enviado'),
+  }
+  const stateShort = {
+    confirmed: tr('✓ Confirmed','✓ 確認済','✓ Confirmado'),
+    disputed: tr('⚠ Disputed','⚠ 異議','⚠ Contestado'),
+    waiting: tr('⏳ Not confirmed','⏳ 未確認','⏳ Não confirmou'),
+    none: tr('No payslip','明細なし','Sem holerite'),
   }
 
   const handleAutoGenerate = async (emp) => {
@@ -158,9 +195,10 @@ export default function Payments() {
                 </div>
                 <div style={{display:'flex',gap:6,alignItems:'center'}}>
                   <span style={{fontSize:9,padding:'2px 8px',borderRadius:20,fontWeight:600,background:p.status==='paid'?'rgba(74,222,128,0.1)':p.is_deduction?'rgba(248,113,113,0.1)':'rgba(251,191,36,0.1)',color:p.status==='paid'?'var(--green)':p.is_deduction?'var(--red)':'var(--amber)',border:'1px solid rgba(255,255,255,0.06)'}}>{p.payment_type||p.status}</span>
-                  {p.status!=='paid'&&!p.is_deduction&&<button className="btn btn-sm" style={{fontSize:10,background:'rgba(74,222,128,0.1)',color:'var(--green)',borderColor:'rgba(74,222,128,0.2)'}} onClick={()=>handleMarkPaid(p.id)}>✓ Pay</button>}
+                  {p.payment_type==='salary'&&(()=>{const k=statementState(statementFor(p));return <span className={`pay-st is-${k}`} title={stateLabel[k]}>{stateShort[k]}</span>})()}
+                  {p.status!=='paid'&&!p.is_deduction&&<button className="btn btn-sm" style={{fontSize:10,background:'rgba(74,222,128,0.1)',color:'var(--green)',borderColor:'rgba(74,222,128,0.2)'}} onClick={()=>setAsk({kind:'pay',p})}>✓ {tr('Pay','支払','Pagar')}</button>}
                   <button className="btn btn-sm" style={{fontSize:10}} onClick={()=>handleEdit(p)}>✏️</button>
-                  <button className="btn btn-sm btn-danger" style={{fontSize:10}} onClick={()=>handleDelete(p.id)}>✕</button>
+                  {p.payment_type!=='salary'&&<button className="btn btn-sm btn-danger" style={{fontSize:10}} aria-label={tr('Delete','削除','Apagar')} onClick={()=>setAsk({kind:'delete',p})}>✕</button>}
                 </div>
               </div>
             ))}
@@ -168,6 +206,41 @@ export default function Payments() {
           </div>
         )
       })}
+
+      {ask&&(()=>{
+        const { kind, p } = ask
+        const st = p.payment_type==='salary' ? statementFor(p) : null
+        const k = statementState(st)
+        const isPay = kind==='pay'
+        return (
+          <div className="sp-overlay" onClick={()=>!busy&&setAsk(null)}>
+            <section className="sp-modal is-admin" role="dialog" aria-modal="true" onClick={ev=>ev.stopPropagation()}>
+              <h3>{isPay ? tr('Confirm this payment was made?','この支払いを完了にしますか？','Confirmar que este pagamento foi feito?') : tr('Delete this entry?','この項目を削除しますか？','Apagar este lançamento?')}</h3>
+              <dl className="sp-rows">
+                <div><dt>{tr('Employee','従業員','Funcionário')}</dt><dd>{p.employee_name}</dd></div>
+                <div><dt>{tr('Amount','金額','Valor')}</dt><dd className="sp-big">{p.is_deduction?'-':''}{fmt(p.amount)}</dd></div>
+                <div><dt>{tr('Type','種別','Tipo')}</dt><dd>{p.payment_type}{p.description?` · ${p.description}`:''}</dd></div>
+                {p.period&&<div><dt>{tr('Month worked','対象月','Mês trabalhado')}</dt><dd>{fmtPeriod(p.period)}</dd></div>}
+                <div><dt>{tr('Payment date','支払日','Data do pagamento')}</dt><dd>{p.payment_date}</dd></div>
+              </dl>
+              {p.payment_type==='salary'&&(
+                <div className={`sp-state is-${k}`}>
+                  <b>{stateLabel[k]}</b>
+                  {k==='confirmed'&&<small>{new Date(st.employee_confirmed_at).toLocaleString(locale,{timeZone:'Asia/Tokyo'})}{Number(st.net_total||0)!==Number(p.amount||0)?` · ${tr('payslip','明細','holerite')} ${fmt(st.net_total)}`:''}</small>}
+                  {k==='disputed'&&<small>{tr('Answer the dispute in Salary issues before paying.','支払う前に「給与の問題」で回答してください。','Responda a contestação em Problemas de salário antes de pagar.')}</small>}
+                  {k==='waiting'&&<small>{tr('You can still pay, but the employee has not checked the amount.','支払いは可能ですが、従業員は金額を確認していません。','Dá para pagar, mas o funcionário ainda não conferiu o valor.')}</small>}
+                </div>
+              )}
+              <div className="sp-actions">
+                <button className="btn" disabled={busy} onClick={()=>setAsk(null)}>{tr('Cancel','キャンセル','Cancelar')}</button>
+                <button className={`btn ${isPay?(k==='confirmed'||k==='none'&&p.payment_type!=='salary'?'btn-primary':'sp-warn-btn'):'btn-danger'}`} disabled={busy} onClick={doConfirmed}>
+                  {isPay ? (k==='confirmed'||p.payment_type!=='salary' ? tr('Yes, it was paid','はい、支払済み','Sim, foi pago') : tr('Pay anyway','それでも支払う','Pagar mesmo assim')) : tr('Delete','削除','Apagar')}
+                </button>
+              </div>
+            </section>
+          </div>
+        )
+      })()}
     </div>
   )
 }
