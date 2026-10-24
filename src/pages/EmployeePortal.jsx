@@ -9,6 +9,7 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
+import { finishQuoteJob } from '../lib/quoteFlow'
 import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geocode'
 import ServiceTimer from '../components/ServiceTimer'
 import NfcScanSheet from '../components/NfcScanSheet'
@@ -801,6 +802,7 @@ export default function EmployeePortal() {
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id', retroJob.id)
       if (error) throw error
+      finishQuoteJob(retroJob.id) // job from an accepted quote → its invoice goes to the client
       setRetroEval(ev)
       const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).maybeSingle()
       if (completedRetro) {
@@ -991,6 +993,7 @@ export default function EmployeePortal() {
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      finishQuoteJob(job.id) // job from an accepted quote → its invoice goes to the client
       await saveNfcResult(supabase, job.id, 'end', nfcEndRef.current)
       nfcEndRef.current = null
       try {

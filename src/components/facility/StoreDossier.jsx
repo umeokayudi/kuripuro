@@ -4,7 +4,8 @@ import { supabase } from '../../lib/supabase'
 import { useLang, fill } from '../../hooks/useLang'
 import { AREA_KINDS, ELEMENT_KINDS, areaSquareMeters, careSchedule, kindLabel, totalSquareMeters, withServiceLog } from '../../lib/facilityModel'
 import { loadApprovedModel, listServiceLog } from '../../lib/facilityApi'
-import StorageImage from '../StorageImage'
+import CleaningTimeline from '../CleaningTimeline'
+import { loadStoreTimeline, placePhotosOf, sizeLabel } from '../../lib/cleaningTimeline'
 import CareList from './CareList'
 import FacilityViewer from './FacilityViewer'
 
@@ -69,7 +70,8 @@ export default function StoreDossier({ clientId, companyName, locationName, onUs
       const live = model ? { ...model, layout: withServiceLog(model.layout, logs) } : null
       const loc = locationName || contract?.location_name
       const recent = (jobs || []).filter(j => !loc || String(j.title || '').startsWith(loc)).slice(0, 5)
-      if (!off) setState({ loading: false, client, contract, model: live, logs, recent })
+      const cleanings = await loadStoreTimeline({ clientId: client.id, locationName: loc, model: live, logs }).catch(() => [])
+      if (!off) setState({ loading: false, client, contract, model: live, logs, recent, cleanings })
     })().catch(() => { if (!off) setState({ loading: false, client: null }) })
     return () => { off = true }
   }, [clientId, companyName, locationName])
@@ -77,11 +79,10 @@ export default function StoreDossier({ clientId, companyName, locationName, onUs
   if (state.loading) return <div className="fac-dossier fac-muted">…</div>
   if (!state.client) return <div className="fac-dossier fac-muted">{t.dossierNoClient}</div>
 
-  const { client, contract, model, logs, recent } = state
+  const { client, contract, model, logs, recent, cleanings = [] } = state
   const schedule = model ? careSchedule(model.layout) : []
   const due = schedule.filter(r => r.status === 'overdue' || r.status === 'due')
   const address = contract?.location_address || client.address
-  const photos = model ? [...(model.photos || []), ...model.layout.elements.flatMap(e => e.photos || [])].slice(0, 8) : []
   const counts = {}
   for (const el of model?.layout.elements || []) counts[el.kind] = (counts[el.kind] || 0) + 1
   const summary = dossierSummary({ client, contract, model, schedule, t, lang })
@@ -137,14 +138,10 @@ export default function StoreDossier({ clientId, companyName, locationName, onUs
         </div>
       )}
 
-      {photos.length > 0 && (
-        <div className="fac-dossier-box" style={{ marginTop: 10 }}>
-          <div className="fac-dossier-label">📷 {t.dossierPhotos}</div>
-          <div className="fac-dossier-photos">
-            {photos.map(p => <StorageImage key={p} url={p} alt="" style={{ width: 92, height: 92, objectFit: 'cover', borderRadius: 8 }} />)}
-          </div>
-        </div>
-      )}
+      <div className="fac-dossier-box" style={{ marginTop: 10 }}>
+        <div className="fac-dossier-label">📷 {t.dossierPhotos}</div>
+        <CleaningTimeline entries={cleanings} placePhotos={placePhotosOf(model, cleanings)} size={sizeLabel(model?.layout)} />
+      </div>
 
       {due.length > 0 && (
         <div className="fac-dossier-box" style={{ marginTop: 10 }}>

@@ -17,6 +17,13 @@ function rowToModel(row) {
   return row ? { ...row, layout: normalizeLayout(row.layout), photos: Array.isArray(row.photos) ? row.photos : [] } : null
 }
 
+/** Uma loja pelo id (editor em tela cheia). */
+export async function getModel(id) {
+  const { data, error } = await supabase.from('facility_models').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return rowToModel(data)
+}
+
 export async function listModels(clientId) {
   const { data, error } = await supabase
     .from('facility_models')
@@ -80,7 +87,9 @@ export async function loadApprovedModel(clientId, locationName, { allowDraft = f
   if (error) return null
   // funcionário: aprovado primeiro; rascunho só se ainda não houver aprovado
   const rows = (data || []).sort((a, b) => (a.status === 'approved' ? 0 : 1) - (b.status === 'approved' ? 0 : 1))
-  const exact = locationName ? rows.find(r => r.location_name === locationName) : null
+  // contratos às vezes têm o serviço no nome ("Ibushio - Deep Clean"); o mapa é da loja ("Ibushio")
+  const base = name => String(name || '').split(/\s+[-—–]\s+/)[0].trim().toLowerCase()
+  const exact = locationName ? (rows.find(r => r.location_name === locationName) || rows.find(r => r.location_name && base(r.location_name) === base(locationName))) : null
   const fallback = rows.find(r => !r.location_name) || (!locationName ? rows[0] : null)
   return rowToModel(exact || fallback || null)
 }

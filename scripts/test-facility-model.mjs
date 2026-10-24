@@ -17,8 +17,11 @@ import {
   careSchedule,
   serviceOffers,
   taskState,
+  levelCount,
+  levelLayout,
+  mergeLevel,
 } from '../src/lib/facilityModel.js'
-import { generatePlan, fillAllRooms, fillRoom, placeItem, PLAN_PRESETS, rotate90, snapToWall, nudge, duplicateItem } from '../src/lib/facilityBuilder.js'
+import { generatePlan, fillAllRooms, fillRoom, placeItem, PLAN_PRESETS, rotate90, snapToWall, nudge, duplicateItem, STORE_TEMPLATES, buildTemplate, addUpperFloor, removeUpperFloors } from '../src/lib/facilityBuilder.js'
 import { FACILITY_STATEMENTS, FACILITY_SETUP_SQL } from '../src/lib/facilitySetupSql.js'
 
 function assert(cond, msg) {
@@ -201,7 +204,7 @@ for (const [W, D] of [[12, 8], [6, 15], [20, 12], [5, 5]]) {
     for (let i = 0; i < plan.areas.length; i++) for (let j = i + 1; j < plan.areas.length; j++) {
       assert(!ov(plan.areas[i], plan.areas[j]), `${preset} ${W}x${D}: rooms do not overlap`)
     }
-    assert(plan.areas.some(a => a.kind === 'kitchen') && plan.walls.length >= 4, `${preset}: has kitchen and walls`)
+    assert(plan.areas.some(a => a.kind === (preset === 'shop' ? 'sales' : 'kitchen')) && plan.walls.length >= 4, `${preset}: has kitchen and walls`)
     const filled = fillAllRooms(plan).layout
     assert(filled.elements.length > plan.areas.length, `${preset}: rooms filled`)
     assert(filled.elements.every(e => e.x >= 0 && e.y >= 0 && e.x + e.w <= W + 1e-6 && e.y + e.d <= D + 1e-6), `${preset}: items inside the store`)
@@ -230,5 +233,30 @@ assert(snapToWall(base52, { x: 0.3, y: 2, w: 1, d: 1 }).x === 0, 'snap to neares
 assert(nudge(base52, { x: 11.5, y: 0, w: 1, d: 1 }, 1, -1).x === 11, 'nudge stays inside')
 const dup = duplicateItem(p1.layout, stove)
 assert(dup.layout.elements.length === p1.layout.elements.length + 1 && !dup.layout.elements.find(e => e.id === dup.id).photos.length, 'duplicate without photos')
+
+// v1.0.65: lojas prontas e 2º andar
+for (const tpl of STORE_TEMPLATES) {
+  const l = buildTemplate(tpl)
+  assert(l.areas.length >= 2 && l.elements.length >= 5, `${tpl.id}: template has rooms and items`)
+  assert(l.elements.every(e => e.x >= 0 && e.y >= 0 && e.x + e.w <= l.width + 1e-6 && e.y + e.d <= l.depth + 1e-6), `${tpl.id}: items inside`)
+  if (tpl.upper) {
+    assert(levelCount(l) === 2, `${tpl.id}: two floors`)
+    const [s0, s1] = [0, 1].map(i => levelLayout(l, i).elements.find(e => e.kind === 'stairs'))
+    assert(s0 && s1 && s0.x === s1.x && s0.y === s1.y, `${tpl.id}: same stairs spot on both floors`)
+    const g = levelLayout(l, 0).elements
+    assert(!g.some(e => e !== s0 && ['table', 'counter'].includes(e.kind) && ov(e, s0)), `${tpl.id}: no table on the stairs`)
+    const rt = normalizeLayout(JSON.parse(JSON.stringify(l)))
+    assert(levelCount(rt) === 2 && rt.elements.filter(e => e.level === 1).length === l.elements.filter(e => e.level === 1).length, `${tpl.id}: floors survive save`)
+  }
+}
+const one = buildTemplate(STORE_TEMPLATES[0])
+const two = addUpperFloor(one, 'rooms')
+assert(levelCount(two) === 2 && levelLayout(two, 0).elements.length === one.elements.length + 1, 'add floor keeps ground items + stairs')
+assert(levelLayout(two, 1).areas.filter(a => a.kind === 'dining').length >= 2, 'private rooms upstairs')
+const back = removeUpperFloors(two)
+assert(levelCount(back) === 1 && back.elements.length === one.elements.length, 'remove floor restores the ground floor')
+const edited = mergeLevel(two, 1, { ...levelLayout(two, 1), elements: [] })
+assert(levelLayout(edited, 1).elements.length === 0 && levelLayout(edited, 0).elements.length === levelLayout(two, 0).elements.length, 'editing one floor leaves the other alone')
+assert(normalizeLayout({ width: 5, depth: 5, areas: [], walls: [], elements: [] }).levels === undefined, 'single floor has no levels key')
 
 console.log('✅ Smart Facility model tests passed')

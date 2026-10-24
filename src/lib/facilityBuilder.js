@@ -1,4 +1,4 @@
-import { AREA_KINDS, ELEMENT_KINDS, kindLabel, newId, normalizeLayout, perimeterWalls } from './facilityModel'
+import { AREA_KINDS, ELEMENT_KINDS, kindLabel, levelLayout, mergeLevel, newId, normalizeLayout, perimeterWalls } from './facilityModel'
 
 /**
  * Montagem fácil da planta: modelos prontos de divisão dos cômodos, itens com tamanho real
@@ -16,7 +16,7 @@ export const DEFAULT_SIZE = {
   fryer: [0.45, 0.75], oven: [0.9, 0.8], fridge: [1.2, 0.8], dishwasher: [0.65, 0.65], sink: [1.2, 0.6],
   duct: [0.5, 2.0], grating: [1.2, 0.3], table: [1.2, 0.75], counter: [2.4, 0.6], toilet: [0.45, 0.7],
   light_switch: [0.12, 0.05], breaker: [0.6, 0.15], valve: [0.2, 0.2], light: [0.6, 0.6],
-  floor: [1.5, 1.0], window: [1.8, 0.1], other: [0.9, 0.6],
+  floor: [1.5, 1.0], window: [1.8, 0.1], stairs: [1.0, 2.8], other: [0.9, 0.6],
 }
 
 /** Grupos da paleta (ordem = como aparecem no editor). */
@@ -24,7 +24,7 @@ export const PALETTE = [
   { id: 'kitchen', icon: '🔥', kinds: ['stove', 'range_hood', 'fryer', 'oven', 'fridge', 'sink', 'dishwasher', 'grease_trap', 'grating', 'duct'] },
   { id: 'dining', icon: '🍽', kinds: ['table', 'counter', 'air_conditioner', 'window', 'light'] },
   { id: 'restroom', icon: '🚻', kinds: ['toilet', 'sink', 'floor'] },
-  { id: 'controls', icon: '⚡', kinds: ['light_switch', 'breaker', 'valve', 'other'] },
+  { id: 'controls', icon: '⚡', kinds: ['light_switch', 'breaker', 'valve', 'stairs', 'other'] },
 ]
 
 /** Cômodo onde cada item costuma ficar (o primeiro que existir na planta). */
@@ -34,7 +34,7 @@ const HOME_AREA = {
   grating: ['kitchen', 'washing'], duct: ['kitchen', 'ventilation'], table: ['dining'], counter: ['bar', 'dining', 'kitchen'],
   toilet: ['restroom'], light_switch: ['entrance', 'dining'], breaker: ['storage', 'office', 'kitchen'],
   valve: ['kitchen', 'washing'], light: ['dining'], floor: ['restroom', 'kitchen'], window: ['dining', 'entrance'],
-  air_conditioner: ['dining'], other: ['storage'],
+  air_conditioner: ['dining', 'sales', 'office'], stairs: ['dining', 'sales', 'office', 'entrance'], other: ['storage'],
 }
 
 // camadas: o que está no chão não bate com o que está no teto ou preso alto na parede
@@ -187,7 +187,8 @@ export const ROOM_KITS = {
   washing: [{ kind: 'sink' }, { kind: 'dishwasher' }, { kind: 'grease_trap' }, { kind: 'grating' }],
   storage: [{ kind: 'breaker' }, { kind: 'other', name: { en: 'Shelf', ja: '棚', pt: 'Prateleira' } }, { kind: 'light_switch' }],
   bar: [{ kind: 'counter' }, { kind: 'fridge' }, { kind: 'sink' }],
-  office: [{ kind: 'other', name: { en: 'Desk', ja: '机', pt: 'Mesa de escritório' } }, { kind: 'breaker' }],
+  office: [{ kind: 'other', name: { en: 'Desk', ja: '机', pt: 'Mesa de escritório' } }, { kind: 'other', name: { en: 'Desk', ja: '机', pt: 'Mesa de escritório' } }, { kind: 'air_conditioner' }, { kind: 'light_switch' }, { kind: 'breaker' }],
+  sales: [{ kind: 'counter', name: { en: 'Cash counter', ja: 'レジカウンター', pt: 'Caixa' } }, { kind: 'other', name: { en: 'Display shelf', ja: '陳列棚', pt: 'Gôndola / prateleira' } }, { kind: 'other', name: { en: 'Display shelf', ja: '陳列棚', pt: 'Gôndola / prateleira' } }, { kind: 'air_conditioner' }, { kind: 'light_switch' }, { kind: 'window' }],
   entrance: [{ kind: 'light_switch' }, { kind: 'window' }, { kind: 'floor', name: { en: 'Entrance mat', ja: '玄関マット', pt: 'Tapete de entrada' } }],
   ventilation: [{ kind: 'duct' }],
   other: [{ kind: 'light_switch' }],
@@ -232,7 +233,119 @@ export function fillAllRooms(layout, lang = 'en') {
 // Modelos prontos de planta
 // ---------------------------------------------------------------------------
 
-export const PLAN_PRESETS = ['side', 'back', 'bar', 'open']
+export const PLAN_PRESETS = ['side', 'back', 'bar', 'open', 'office', 'shop']
+
+/**
+ * Modelos prontos de negócio inteiro: um toque monta a loja já com os cômodos e os equipamentos.
+ * upper = o que vai no 2º andar (null = só térreo).
+ */
+export const STORE_TEMPLATES = [
+  { id: 'restaurant', icon: '🍽', width: 12, depth: 8, preset: 'side', rooms: { entrance: true, restroom: true, washing: true, storage: true } },
+  { id: 'izakaya', icon: '🏮', width: 10, depth: 7, preset: 'bar', rooms: { entrance: true, restroom: true, washing: true } },
+  { id: 'ramen', icon: '🍜', width: 8, depth: 5, preset: 'bar', rooms: { restroom: true } },
+  { id: 'cafe', icon: '☕', width: 8, depth: 6, preset: 'open', rooms: { entrance: true, restroom: true } },
+  { id: 'family', icon: '👨‍👩‍👧', width: 16, depth: 10, preset: 'back', rooms: { entrance: true, restroom: true, washing: true, storage: true, office: true } },
+  { id: 'twoFloors', icon: '🏢', width: 10, depth: 7, preset: 'back', rooms: { entrance: true, restroom: true, washing: true }, upper: 'dining' },
+  { id: 'office', icon: '🗂', width: 10, depth: 7, preset: 'office', rooms: { entrance: true, restroom: true, storage: true } },
+  { id: 'shop', icon: '🛍', width: 9, depth: 7, preset: 'shop', rooms: { entrance: true, restroom: true } },
+]
+
+export const UPPER_FLOORS = ['dining', 'rooms', 'office']
+
+/** Onde a escada fica: num canto livre do salão (ou da área principal) do térreo; deitada se o cômodo for raso. */
+function stairsSpot(ground) {
+  const [a1, a2] = DEFAULT_SIZE.stairs
+  const mains = ground.areas.filter(a => ['dining', 'sales', 'office', 'entrance'].includes(a.kind)).sort((p, q) => q.w * q.d - p.w * p.d)
+  const free = (x, y, w, d) => !ground.elements.some(e => e.x < x + w + 0.2 && e.x + e.w > x - 0.2 && e.y < y + d + 0.2 && e.y + e.d > y - 0.2)
+  for (const a of mains) {
+    for (const [w, d] of [[a1, a2], [a2, a1]]) {
+      if (a.w < w + 0.2 || a.d < d + 0.2) continue
+      for (const [x, y] of [[a.x + 0.1, a.y + 0.1], [a.x + a.w - w - 0.1, a.y + 0.1], [a.x + 0.1, a.y + a.d - d - 0.1], [a.x + a.w - w - 0.1, a.y + a.d - d - 0.1]]) {
+        if (free(x, y, w, d)) return { x: r2(x), y: r2(y), w, d }
+      }
+    }
+  }
+  return { x: 0.1, y: 0.1, w: a1, d: a2 }
+}
+
+/** Cômodos do andar de cima (sem itens). */
+function upperAreas(W, D, kind, lang) {
+  const raw = []
+  const rrW = r1(Math.min(2.2, W * 0.25))
+  const sideD = r1(Math.min(2.4, D * 0.35))
+  if (kind === 'office') {
+    raw.push({ kind: 'office', x: 0, y: 0, w: r1(W - rrW), d: D })
+    raw.push({ kind: 'restroom', x: r1(W - rrW), y: 0, w: rrW, d: sideD })
+    raw.push({ kind: 'storage', x: r1(W - rrW), y: sideD, w: rrW, d: r1(D - sideD) })
+  } else if (kind === 'rooms') {
+    // salas privadas (ozashiki) no fundo, corredor na frente, banheiro no canto
+    const rD = r1(Math.min(3.2, D * 0.55))
+    const n = Math.max(2, Math.min(4, Math.floor((W - rrW) / 2.6)))
+    const rw = r1((W - rrW) / n)
+    for (let i = 0; i < n; i++) raw.push({ kind: 'dining', x: r1(i * rw), y: 0, w: i === n - 1 ? r1(W - rrW - i * rw) : rw, d: rD, room: i + 1 })
+    raw.push({ kind: 'restroom', x: r1(W - rrW), y: 0, w: rrW, d: rD })
+    raw.push({ kind: 'entrance', x: 0, y: rD, w: W, d: r1(D - rD), hall: true })
+  } else {
+    raw.push({ kind: 'dining', x: 0, y: 0, w: r1(W - rrW), d: D })
+    raw.push({ kind: 'restroom', x: r1(W - rrW), y: 0, w: rrW, d: sideD })
+    raw.push({ kind: 'storage', x: r1(W - rrW), y: sideD, w: rrW, d: r1(D - sideD) })
+  }
+  const roomName = { en: 'Private room', ja: '個室', pt: 'Sala privada' }
+  const hallName = { en: 'Hallway', ja: '廊下', pt: 'Corredor' }
+  return raw.map(a => ({
+    id: newId('area'), kind: a.kind, x: a.x, y: a.y, w: a.w, d: a.d, notes: '', level: 1,
+    name: a.room ? `${roomName[lang] || roomName.en} ${a.room}` : a.hall ? hallName[lang] || hallName.en : kindLabel(a.kind, lang, AREA_KINDS),
+  }))
+}
+
+/**
+ * Põe (ou troca) o 2º andar: cômodos do andar de cima + a mesma escada embaixo e em cima.
+ * kind = 'dining' | 'rooms' | 'office'; fill = já colocar os equipamentos típicos lá em cima.
+ */
+export function addUpperFloor(layout, kind = 'dining', { lang = 'en', fill = true } = {}) {
+  const W = layout.width
+  const D = layout.depth
+  let ground = levelLayout(layout, 0)
+  const hasStairs = ground.elements.find(e => e.kind === 'stairs')
+  const stairsName = kindLabel('stairs', lang)
+  if (!hasStairs) {
+    const spot = stairsSpot(ground)
+    const area = ground.areas.find(a => spot.x + spot.w / 2 >= a.x && spot.x + spot.w / 2 <= a.x + a.w && spot.y + spot.d / 2 >= a.y && spot.y + spot.d / 2 <= a.y + a.d)
+    ground = { ...ground, elements: [...ground.elements, { id: newId('el'), kind: 'stairs', name: stairsName, areaId: area?.id || null, ...spot }] }
+  }
+  const stairs = hasStairs || ground.elements[ground.elements.length - 1]
+  const areas = upperAreas(W, D, kind, lang)
+  const upArea = areas.find(a => stairs.x + stairs.w / 2 >= a.x && stairs.x + stairs.w / 2 <= a.x + a.w && stairs.y + stairs.d / 2 >= a.y && stairs.y + stairs.d / 2 <= a.y + a.d)
+  let upper = normalizeLayout({
+    width: W, depth: D, areas,
+    walls: [...perimeterWalls(W, D, 2.6), ...roomWalls(areas)],
+    elements: [{ id: newId('el'), kind: 'stairs', name: stairsName, areaId: upArea?.id || null, x: stairs.x, y: stairs.y, w: stairs.w, d: stairs.d }],
+  })
+  if (fill) upper = fillAllRooms(upper, lang).layout
+  const withGround = mergeLevel({ ...layout, levels: 2 }, 0, ground)
+  return mergeLevel({ ...withGround, levels: 2 }, 1, upper)
+}
+
+/** Tira o 2º andar inteiro (e a escada do térreo). */
+export function removeUpperFloors(layout) {
+  const ground = levelLayout(layout, 0)
+  return normalizeLayout({ ...ground, elements: ground.elements.filter(e => e.kind !== 'stairs'), levels: 1 })
+}
+
+/** Monta um modelo pronto inteiro (cômodos + equipamentos + 2º andar se tiver). */
+export function buildTemplate(tpl, { lang = 'en', fill = true, upper } = {}) {
+  let l = generatePlan({ width: tpl.width, depth: tpl.depth, preset: tpl.preset, rooms: tpl.rooms, lang })
+  const up = upper === undefined ? tpl.upper : upper
+  // escada primeiro: as mesas do térreo se ajeitam em volta dela
+  if (up) l = addUpperFloor(l, up, { lang, fill })
+  if (fill) l = fillLevel(l, 0, lang)
+  return l
+}
+
+/** Equipamentos típicos em todos os cômodos de um andar. */
+export function fillLevel(layout, level, lang = 'en') {
+  return mergeLevel(layout, level, fillAllRooms(levelLayout(layout, level), lang).layout)
+}
 export const OPTIONAL_ROOMS = ['entrance', 'restroom', 'washing', 'storage', 'office', 'bar']
 
 function row(x, y, w, d, items) {
@@ -306,6 +419,22 @@ export function generatePlan({ width = 12, depth = 8, preset = 'side', rooms = {
       y += bD
     }
     raw.push(...diningBlock(0, r1(y), W, r1(D - y)))
+  } else if (preset === 'office') {
+    // escritório: sala grande na frente; copa, banheiro e depósito numa faixa no fundo
+    const bD = r1(Math.min(2.6, D * 0.35))
+    const back = [{ kind: 'kitchen', weight: 1 }, ...(on('restroom') ? [{ kind: 'restroom', weight: 1 }] : []), ...(on('storage') ? [{ kind: 'storage', weight: 1 }] : [])]
+    raw.push(...row(0, 0, W, bD, back))
+    const eD = on('entrance') ? r1(Math.min(1.6, (D - bD) / 3)) : 0
+    raw.push({ kind: 'office', x: 0, y: bD, w: W, d: r1(D - bD - eD) })
+    if (eD) raw.push({ kind: 'entrance', x: 0, y: r1(D - eD), w: r1(Math.min(3, W)), d: eD }, ...(W > 3.5 ? [{ kind: 'office', x: 3, y: r1(D - eD), w: r1(W - 3), d: eD, same: true }] : []))
+  } else if (preset === 'shop') {
+    // loja: área de vendas na frente, depósito e banheiro no fundo
+    const bD = r1(Math.min(2.6, D * 0.3))
+    const back = [{ kind: 'storage', weight: 2 }, ...(on('restroom') ? [{ kind: 'restroom', weight: 1 }] : []), ...(on('office') ? [{ kind: 'office', weight: 1 }] : [])]
+    raw.push(...row(0, 0, W, bD, back))
+    const eD = on('entrance') ? r1(Math.min(1.6, (D - bD) / 3)) : 0
+    raw.push({ kind: 'sales', x: 0, y: bD, w: W, d: r1(D - bD - eD) })
+    if (eD) raw.push({ kind: 'entrance', x: 0, y: r1(D - eD), w: r1(Math.min(3, W)), d: eD }, ...(W > 3.5 ? [{ kind: 'sales', x: 3, y: r1(D - eD), w: r1(W - 3), d: eD, same: true }] : []))
   } else {
     // 'side': salão à esquerda, cozinha à direita, serviço embaixo da cozinha
     const kW = r1(Math.min(W * 0.4, 6))
@@ -335,7 +464,7 @@ export function generatePlan({ width = 12, depth = 8, preset = 'side', rooms = {
 }
 
 // cômodos que se ligam sem parede (mesmo ambiente)
-const OPEN_PAIRS = new Set(['dining|entrance', 'bar|dining', 'kitchen|washing', 'kitchen|ventilation', 'bar|entrance', 'dining|dining'])
+const OPEN_PAIRS = new Set(['dining|entrance', 'bar|dining', 'kitchen|washing', 'kitchen|ventilation', 'bar|entrance', 'dining|dining', 'entrance|office', 'office|office', 'entrance|sales', 'sales|sales'])
 const DOOR = 0.9
 
 /** Paredes entre cômodos vizinhos, com um vão de porta no meio do trecho em comum. */

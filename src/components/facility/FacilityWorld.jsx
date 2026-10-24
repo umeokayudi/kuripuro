@@ -227,6 +227,9 @@ export default function FacilityWorld({
   editable = false,
   onMoveItem,
   onRotateItem,
+  moveSignal = 0,
+  hideMoveButton = false,
+  onMovingChange,
 }) {
   const hostRef = useRef(null)
   const miniRef = useRef(null)
@@ -286,7 +289,7 @@ export default function FacilityWorld({
     controls.minPolarAngle = Math.PI * 0.08
     controls.minDistance = 2.5
     controls.maxDistance = 45
-    controls.autoRotate = true
+    controls.autoRotate = !editable
     controls.autoRotateSpeed = 0.55
     controls.screenSpacePanning = false
     controls.addEventListener('start', () => { controls.autoRotate = false })
@@ -654,7 +657,7 @@ export default function FacilityWorld({
       el.remove()
       ctxRef.current = null
     }
-  }, [height])
+  }, [height]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- monta a loja sempre que a planta muda ----
   useEffect(() => {
@@ -1029,6 +1032,9 @@ export default function FacilityWorld({
   }, [moving])
 
   useEffect(() => { if (mode === 'walk' || !editable) setMoving(false) }, [mode, editable])
+  // editor em tela cheia: o botão "Mover" fica na barra dele e liga o modo por aqui
+  useEffect(() => { if (moveSignal && editable && mode !== 'walk') setMoving(true) }, [moveSignal]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onMovingChange?.(moving) }, [moving]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // atalhos no computador: R gira, Esc / Enter termina
   useEffect(() => {
@@ -1044,9 +1050,13 @@ export default function FacilityWorld({
   }, [moving, selectedId, onRotateItem])
 
   // ---- vista de cima: a câmera desliza até o item escolhido ----
+  // (só quando a escolha muda: editar a planta com o item escolhido não pode ir aproximando a câmera a cada mudança)
+  const focusedRef = useRef(null)
   useEffect(() => {
     const ctx = ctxRef.current
-    if (!ctx || mode === 'walk' || !selectedId || movingRef.current) return
+    const again = focusedRef.current === `${selectedId}:${mode}`
+    focusedRef.current = `${selectedId}:${mode}`
+    if (!ctx || mode === 'walk' || !selectedId || movingRef.current || again) return
     const el = layout.elements.find(e => e.id === selectedId)
     if (!el) return
     ctx.controls.autoRotate = false
@@ -1097,7 +1107,7 @@ export default function FacilityWorld({
   return (
     <div className={`fac-world${mode === 'walk' ? ' is-walk' : ''}${moving ? ' is-moving' : ''}`} style={{ height }}>
       <div ref={hostRef} className="fac-world-canvas" style={{ height }} />
-      {editable && mode !== 'walk' && !moving && selectedId && layout.elements.some(e => e.id === selectedId) && (
+      {editable && !hideMoveButton && mode !== 'walk' && !moving && selectedId && layout.elements.some(e => e.id === selectedId) && (
         <button type="button" className="fac-move-btn" onClick={() => setMoving(true)}>✥ {labels.moveTop || 'Move (top view)'}</button>
       )}
       {editable && moving && (

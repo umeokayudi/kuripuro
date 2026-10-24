@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { usePendingCounts } from '../components/Sidebar'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { lineTotal, yen } from '../lib/quoteMath'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, pickLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { QUOTE_ISSUER } from '../lib/quoteIssuer'
 import { openPrintHtml } from '../lib/openPrintHtml'
@@ -28,6 +28,13 @@ import {
 } from '../lib/sales'
 import SalesLeadFields from '../components/SalesLeadFields'
 import StoreDossier from '../components/facility/StoreDossier'
+import ClientQuoteBox from '../components/ClientQuoteBox'
+import QuoteTracker from '../components/QuoteTracker'
+import { quoteFromMitsumori, quoteFromRequest, fetchQuoteSessions, quoteStage, quoteRef, QUOTE_FLOW_CHANGED } from '../lib/quoteFlow'
+import { QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
+import { fetchContractSellers } from '../lib/contractSellers'
+import { quoteSellerFor } from '../lib/quoteSeller'
+import { ClientLink } from '../components/ClientSheetHost'
 
 const QUOTE_FILTERS = ['all', 'draft', 'sent', 'accepted', 'declined']
 
@@ -43,18 +50,27 @@ function blankForm(today) {
 }
 
 export default function Mitsumori() {
-  const { t } = useLang()
+  const { t, lang } = useLang()
+  const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
   const s = t.sales
   const inv = t.invoices
   const today = tokyoToday()
   const [params] = useSearchParams()
-  const navigate = useNavigate()
   const pending = usePendingCounts()
   const leadId = params.get('lead')
   const [quotes, setQuotes] = useState([])
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState(leadId ? 'form' : 'list')
+  const [tab, setTab] = useState(leadId ? 'form' : params.get('tab') === 'requests' ? 'requests' : 'list')
+  // v1.0.70 · client quote requests live here too (they were only in Client feedback → Requests)
+  const [requests, setRequests] = useState([])
+  const [reqClients, setReqClients] = useState([])
+  const [reqContracts, setReqContracts] = useState([])
+  const [sellers, setSellers] = useState([])
+  const [reqFilter, setReqFilter] = useState('open')
+  const [reqDossier, setReqDossier] = useState(null)
+  const [tracking, setTracking] = useState(null)
+  const [flow, setFlow] = useState({})
   const [statusFilter, setStatusFilter] = useState('all')
   const [editingId, setEditingId] = useState(null)
   const [editingStatus, setEditingStatus] = useState('draft')
@@ -93,7 +109,51 @@ export default function Mitsumori() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  const loadRequests = async () => {
+    const [rq, cl, sc] = await Promise.all([
+      supabase.from('client_requests').select('*').eq('request_type', 'quote').order('created_at', { ascending: false }).limit(200),
+      supabase.from('clients').select('id,company_name,salesperson_id,address'),
+      supabase.from('service_contracts').select('client_id,location_name,salesperson_id').not('salesperson_id', 'is', null),
+    ])
+    setRequests(rq.data || [])
+    setReqClients(cl.data || [])
+    setReqContracts(sc.data || [])
+  }
+
+  useEffect(() => {
+    load(); loadRequests()
+    fetchContractSellers().then(r => setSellers(r.salespeople || [])).catch(() => {})
+    const reload = () => { load(); loadRequests() }
+    window.addEventListener(QUOTE_FLOW_CHANGED, reload)
+    window.addEventListener(QUOTE_REQUESTS_CHANGED, loadRequests)
+    return () => { window.removeEventListener(QUOTE_FLOW_CHANGED, reload); window.removeEventListener(QUOTE_REQUESTS_CHANGED, loadRequests) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // stage of each accepted quote (approved / scheduled / done) for its button
+  useEffect(() => {
+    const accepted = quotes.filter(q => q.status === 'accepted')
+    if (!accepted.length) return
+    Promise.all(accepted.map(q => fetchQuoteSessions(quoteRef('mitsumori', q.id)).then(rows => [q.id, quoteStage(rows)]).catch(() => [q.id, 'approved'])))
+      .then(pairs => setFlow(Object.fromEntries(pairs)))
+  }, [quotes])
+
+  // ?track=req:<id> | mit:<id> (from the bell) opens the follow-up of that accepted quote
+  const trackParam = params.get('track')
+  useEffect(() => {
+    if (!trackParam || tracking) return
+    const [kind, id] = trackParam.split(':')
+    if (kind === 'mit') {
+      const q = quotes.find(x => x.id === id)
+      if (q) { setTab('list'); setTracking(quoteFromMitsumori(q)) }
+    } else {
+      const rq = requests.find(x => x.id === id)
+      if (rq) { setTab('requests'); setTracking(quoteFromRequest({ ...rq, account_seller_id: quoteSellerFor(rq, reqClients.find(c => c.id === rq.client_id), reqContracts) }, reqClients.find(c => c.id === rq.client_id))) }
+    }
+  }, [trackParam, quotes, requests]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reqOpen = r => !['declined'].includes(r.quote_status) && r.status !== 'completed'
+  const reqVisible = requests.filter(r => reqFilter === 'all' ? true : reqFilter === 'accepted' ? r.quote_status === 'accepted' : reqOpen(r))
+  const reqWaiting = requests.filter(r => !r.quote_status || r.quote_status === 'requested').length
 
   useEffect(() => {
     if (!leadId || loading) return
@@ -335,11 +395,10 @@ export default function Mitsumori() {
       <div className="tab-pills">
         <button type="button" className={`tab-pill${tab === 'list' ? ' active' : ''}`} onClick={() => setTab('list')}>{fill(s.quoteList, { n: quotes.length })}</button>
         <button type="button" className={`tab-pill${tab === 'form' ? ' active' : ''}`} onClick={startNew}>{s.quoteNew}</button>
-        {pending.mitsumori > 0 && (
-          <button type="button" className="tab-pill" onClick={() => navigate('/client-feedback?tab=requests')}>
-            {fill(s.clientQuoteRequests || 'Client quote requests', { n: pending.mitsumori })} <span className="nav-count" style={{ marginLeft: 6 }}>{pending.mitsumori}</span>
-          </button>
-        )}
+        <button type="button" className={`tab-pill${tab === 'requests' ? ' active' : ''}`} onClick={() => setTab('requests')}>
+          {L('Client requests', 'お客様からの依頼', 'Pedidos de clientes')} ({requests.length})
+          {(reqWaiting || pending.mitsumori) > 0 && <span className="nav-count" style={{ marginLeft: 6 }}>{reqWaiting || pending.mitsumori}</span>}
+        </button>
       </div>
 
       {tab === 'list' && (
@@ -357,7 +416,7 @@ export default function Mitsumori() {
             <div key={q.id} className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{q.site_name || q.company_name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}><ClientLink name={q.company_name}>{q.site_name || q.company_name}</ClientLink></div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{q.quote_number} · {q.site_name ? `${q.company_name} · ` : ''}{s.contact}: {q.contact_name || '—'}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.firstContact}: {q.first_contact_date || '—'} · {s.validUntil}: {q.valid_until || '—'}</div>
                   {q.needs && <div style={{ fontSize: 12, marginTop: 4 }}>{s.needs}: {q.needs}</div>}
@@ -373,9 +432,46 @@ export default function Mitsumori() {
                 <button type="button" className="btn btn-sm" onClick={() => openPrint(q, false, 'en')}>{s.printEn}</button>
                 {q.status === 'draft' && <button type="button" className="btn btn-sm btn-primary" onClick={() => handleStatus(q, 'sent')}>{s.markSent}</button>}
                 {q.status === 'sent' && <button type="button" className="btn btn-sm" style={{ background: 'var(--green)', color: '#fff' }} onClick={() => handleStatus(q, 'accepted')}>{s.markAccepted}</button>}
+                {q.status === 'accepted' && (
+                  <button type="button" className={`btn btn-sm${flow[q.id] && flow[q.id] !== 'approved' ? '' : ' btn-primary'}`} onClick={() => setTracking(quoteFromMitsumori(q))}>
+                    📅 {flow[q.id] === 'done' ? L('Done · see invoice', '完了・請求書を見る', 'Feito · ver nota') : flow[q.id] === 'scheduled' ? L('Scheduled · follow up', '予約済み・進捗を見る', 'Agendado · acompanhar') : L('Book the date and follow up', '日程を決めて進める', 'Marcar a data e acompanhar')}
+                  </button>
+                )}
                 {q.status !== 'declined' && q.status !== 'accepted' && <button type="button" className="btn btn-sm btn-danger" onClick={() => handleStatus(q, 'declined')}>{s.markDeclined}</button>}
                 <button type="button" className="btn btn-sm btn-danger" onClick={() => handleDelete(q.id)}>{s.delete}</button>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'requests' && (
+        <div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+            {[['open', L('Open', '対応中', 'Em aberto')], ['accepted', L('Accepted', '承認済み', 'Aceitos')], ['all', s.filterAll]].map(([k, label]) => (
+              <button key={k} type="button" className={`tab-pill${reqFilter === k ? ' active' : ''}`} onClick={() => setReqFilter(k)}>{label}</button>
+            ))}
+          </div>
+          {!reqVisible.length && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>{L('No client requests here.', '依頼はありません。', 'Nenhum pedido de cliente aqui.')}</div></div>}
+          {reqVisible.map(row => (
+            <div key={row.id} className="card" style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}><ClientLink id={row.client_id} name={reqClients.find(c => c.id === row.client_id)?.company_name} /></div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                    {row.location_name || '—'} · {String(row.created_at || '').slice(0, 10)}
+                    {row.preferred_date ? ` · ${L('wanted', '希望日', 'quer em')} ${row.preferred_date}` : ''}
+                  </div>
+                </div>
+                {row.quote_amount != null && <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--green)' }}>{yen(row.quote_amount)}</div>}
+              </div>
+              {row.description && <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>}
+              <button type="button" className="btn btn-sm" style={{ marginBottom: 8 }} onClick={() => setReqDossier(v => (v === row.id ? null : row.id))}>
+                📷 {L('Store: photos, cleanings, size', '店舗：写真・清掃・広さ', 'Loja: fotos, limpezas e tamanho')} {reqDossier === row.id ? '▲' : '▼'}
+              </button>
+              {reqDossier === row.id && <StoreDossier clientId={row.client_id} locationName={row.location_name} />}
+              <ClientQuoteBox row={row} clients={reqClients} contracts={reqContracts} sellers={sellers} onChanged={loadRequests}
+                onTrack={(rq, client) => setTracking(quoteFromRequest(rq, client))} />
             </div>
           ))}
         </div>
@@ -454,6 +550,7 @@ export default function Mitsumori() {
           </div>
         </div>
       )}
+      {tracking && <QuoteTracker quote={tracking} onClose={() => { setTracking(null); load(); loadRequests() }} />}
     </div>
   )
 }

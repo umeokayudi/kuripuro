@@ -9,16 +9,17 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import ClientSatisfactionPanel from '../components/ClientSatisfactionPanel'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { fetchContractSellers } from '../lib/contractSellers'
-import { salesPost } from '../lib/salesApi'
-import { quoteCommissionState } from '../lib/contractCommission'
-import { QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
+import ClientQuoteBox from '../components/ClientQuoteBox'
+import QuoteTracker from '../components/QuoteTracker'
+import { quoteFromRequest, QUOTE_FLOW_CHANGED } from '../lib/quoteFlow'
 import toast from 'react-hot-toast'
 import StoreDossier from '../components/facility/StoreDossier'
+import { ClientLink } from '../components/ClientSheetHost'
 
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
 export default function ClientFeedback() {
-  const { t, lang } = useLang()
+  const { t } = useLang()
   const f = t.feedback
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState(TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'ratings')
@@ -33,6 +34,8 @@ export default function ClientFeedback() {
   const [responseDraft, setResponseDraft] = useState({})
   const [jobPhotos, setJobPhotos] = useState({})
   const [lightbox, setLightbox] = useState(null)
+  const [sellerContracts, setSellerContracts] = useState([])
+  const [tracking, setTracking] = useState(null)
 
   const load = async () => {
     pendingChanged()
@@ -43,6 +46,8 @@ export default function ClientFeedback() {
       supabase.from('client_requests').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('clients').select('*'),
     ])
+    supabase.from('service_contracts').select('client_id,location_name,salesperson_id').not('salesperson_id', 'is', null)
+      .then(r => setSellerContracts(r.data || []))
     const ratingsData = r.data || []
     const complaintsData = cp.data || []
     const complimentsData = cm.data || []
@@ -73,11 +78,13 @@ export default function ClientFeedback() {
   }
 
   useEffect(() => { load(); fetchContractSellers().then(r => setSellers(r.salespeople || [])).catch(() => {}) }, [])
+  useEffect(() => {
+    window.addEventListener(QUOTE_FLOW_CHANGED, load)
+    return () => window.removeEventListener(QUOTE_FLOW_CHANGED, load)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const q = searchParams.get('tab'); if (TABS.includes(q)) setTab(q) }, [searchParams])
 
   const clientName = (id) => clients.find(c => c.id === id)?.company_name || '—'
-  const sellerName = (id) => sellers.find(p => p.id === id)?.full_name || '—'
-  const yen = (n) => `¥${Math.round(Number(n || 0)).toLocaleString()}`
   const draft = (id) => responseDraft[id] ?? ''
   const [quoteDraft, setQuoteDraft] = useState({})
 
@@ -100,44 +107,6 @@ export default function ClientFeedback() {
       admin_response,
       status: admin_response ? 'read' : 'new',
     }).eq('id', row.id)
-    if (error) return toast.error(error.message)
-    toast.success(f.saved)
-    load()
-  }
-
-  const sendQuote = async (row) => {
-    const d = quoteDraft[row.id] || {}
-    const amount = Number(d.amount ?? row.quote_amount)
-    if (!amount) return toast.error(f.quoteAmount)
-    const { error } = await supabase.from('client_requests').update({
-      quote_amount: amount, quote_note: (d.note ?? row.quote_note ?? '').trim() || null,
-      quote_status: 'quoted', quoted_at: new Date().toISOString(),
-    }).eq('id', row.id)
-    if (error) return toast.error(error.message)
-    toast.success(f.quoteSentAdmin)
-    window.dispatchEvent(new Event(QUOTE_REQUESTS_CHANGED))
-    load()
-  }
-
-  // v1.0.56 · Company price → seller (adds their extra = commission) → client.
-  const priceQuote = async (row, direct) => {
-    const d = quoteDraft[row.id] || {}
-    const base = Number(d.amount ?? row.base_amount ?? row.quote_amount)
-    if (!base) return toast.error(f.companyPrice)
-    try {
-      const r = await salesPost('/api/sales-data', { action: 'price-client-quote', id: row.id, base_amount: base, note: d.note ?? row.quote_note ?? '', direct }, lang)
-      toast.success(r.to_seller ? f.sentToSeller : f.quoteSentAdmin)
-    } catch (e) {
-      // Without the admin server session (or before the v1.0.56 SQL) the client still gets the quote.
-      if (!direct && clients.find(c => c.id === row.client_id)?.salesperson_id) return toast.error(e.message)
-      return sendQuote(row)
-    }
-    window.dispatchEvent(new Event(QUOTE_REQUESTS_CHANGED))
-    load()
-  }
-
-  const markCommissionPaid = async (row) => {
-    const { error } = await supabase.from('client_requests').update({ commission_paid_at: new Date().toISOString() }).eq('id', row.id)
     if (error) return toast.error(error.message)
     toast.success(f.saved)
     load()
@@ -309,7 +278,7 @@ export default function ClientFeedback() {
             <div key={row.id} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ fontWeight: 600 }}>
-                  {row.ticket_number || `#${row.id.slice(0, 8)}`} · {clientName(row.client_id)}
+                  {row.ticket_number || `#${row.id.slice(0, 8)}`} · <ClientLink id={row.client_id} name={clientName(row.client_id)} />
                 </div>
                 <span className={`badge ${row.status === 'completed' ? 'badge-green' : 'badge-amber'}`}>{row.status}</span>
               </div>
@@ -325,49 +294,10 @@ export default function ClientFeedback() {
                 <StoreDossier clientId={row.client_id} locationName={row.location_name}
                   onUseSummary={row.request_type === 'quote' ? text => setQuoteDraft(d => ({ ...d, [row.id]: { ...d[row.id], note: text.replace(/\n/g, ' / ') } })) : undefined} />
               )}
-              {row.request_type === 'quote' && (() => {
-                const qs = row.quote_status || 'requested'
-                const accountSeller = clients.find(c => c.id === row.client_id)?.salesperson_id || null
-                const markup = Number(row.seller_markup || 0)
-                const commState = quoteCommissionState(row)
-                const open = qs === 'requested' || qs === 'priced' || (qs === 'quoted' && !markup)
-                return (
-                <div style={{ padding: 12, borderRadius: 10, background: 'var(--blue-bg)', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8, fontSize: 12, fontWeight: 700 }}>
-                    <span>{f.quoteRequest}{row.category ? ` · ${row.category}` : ''}</span>
-                    <span className={`badge ${qs === 'accepted' ? 'badge-green' : qs === 'declined' ? 'badge-red' : qs === 'priced' ? 'badge-amber' : 'badge-blue'}`}>{f[`qs_${qs}`] || qs}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>
-                    {accountSeller ? `${f.accountSeller}: ${sellerName(accountSeller)}` : f.noSeller}
-                  </div>
-                  {qs === 'priced' && <div style={{ fontSize: 12, marginBottom: 8 }}>{fill(f.withSeller, { name: sellerName(row.salesperson_id), base: yen(row.base_amount) })}</div>}
-                  {row.base_amount != null && ['quoted', 'accepted', 'declined'].includes(qs) && (
-                    <div style={{ fontSize: 12, marginBottom: 8 }}>{fill(f.priceSplit, { base: yen(row.base_amount), markup: yen(markup), total: yen(row.quote_amount) })}{row.salesperson_id ? ` · ${sellerName(row.salesperson_id)}` : ''}</div>
-                  )}
-                  {commState !== 'none' && commState !== 'void' && (
-                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12, marginBottom: 8 }}>
-                      <span>{f.commission}: <b>{yen(markup)}</b> · {commState === 'paid' ? f.commissionPaid : commState === 'pending' ? f.commissionWaiting : ''}</span>
-                      {commState === 'earned' && <button className="btn btn-sm" onClick={() => markCommissionPaid(row)}>{f.markCommissionPaid}</button>}
-                    </div>
-                  )}
-                  {open && (
-                    <div className="fb-quote-form">
-                      <label style={{ fontSize: 11 }}>{accountSeller ? f.companyPrice : f.quoteAmount}
-                        <input type="number" min="0" value={quoteDraft[row.id]?.amount ?? row.base_amount ?? row.quote_amount ?? ''} onChange={e => setQuoteDraft(d => ({ ...d, [row.id]: { ...d[row.id], amount: e.target.value } }))} style={{ width: '100%' }} />
-                      </label>
-                      <label style={{ fontSize: 11 }}>{f.quoteNote}
-                        <input value={quoteDraft[row.id]?.note ?? row.quote_note ?? ''} onChange={e => setQuoteDraft(d => ({ ...d, [row.id]: { ...d[row.id], note: e.target.value } }))} style={{ width: '100%' }} />
-                      </label>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {accountSeller && qs === 'requested' && <button className="btn btn-sm btn-primary" title={f.toSellerHint} onClick={() => priceQuote(row, false)}>{f.toSeller}</button>}
-                        <button className={`btn btn-sm${accountSeller && qs === 'requested' ? '' : ' btn-primary'}`} onClick={() => priceQuote(row, true)}>{accountSeller ? f.sendDirect : f.sendQuote}</button>
-                      </div>
-                    </div>
-                  )}
-                  {accountSeller && qs === 'requested' && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>{f.toSellerHint}</div>}
-                </div>
-                )
-              })()}
+              {row.request_type === 'quote' && (
+                <ClientQuoteBox row={row} clients={clients} contracts={sellerContracts} sellers={sellers} onChanged={load}
+                  presetNote={quoteDraft[row.id]?.note} onTrack={(rq, client) => setTracking(quoteFromRequest(rq, client))} />
+              )}
               <textarea value={draft(row.id) || row.admin_notes || ''} onChange={e => setResponseDraft(d => ({ ...d, [row.id]: e.target.value }))} placeholder={f.adminNotes} rows={2} style={{ width: '100%', marginBottom: 8 }} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-sm btn-primary" onClick={() => saveRequest(row, row.status)}>{f.saveNotes}</button>
@@ -381,6 +311,7 @@ export default function ClientFeedback() {
       )}
 
       <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} />
+      {tracking && <QuoteTracker quote={tracking} onClose={() => { setTracking(null); load() }} />}
     </div>
   )
 }
