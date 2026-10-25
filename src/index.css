@@ -1237,7 +1237,7 @@ body { background: var(--hq-bg); }
 .emp-bottom-item.is-active>div:last-child,.emp-bottom-item.is-active .emp-bottom-label{color:#1f46ad!important;font-weight:750!important}
 .emp-content{padding-bottom:calc(94px + env(safe-area-inset-bottom,0px))!important}
 .kp-build-stamp{display:flex;justify-content:flex-end;margin:-8px 0 10px;color:#8290a3;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
-.kp-ai-trigger{position:fixed;right:22px;bottom:22px;z-index:999;display:flex;align-items:center;gap:9px;padding:12px 17px;border:0;border-radius:999px;background:linear-gradient(135deg,#315cf5,#244bd6);color:#fff;box-shadow:0 10px 28px rgba(33,75,210,.32);font:650 13px/1 inherit;cursor:pointer;transition:transform .16s,box-shadow .16s}
+.kp-ai-trigger{position:fixed;right:22px;bottom:22px;z-index:999;display:flex;align-items:center;gap:9px;padding:12px 17px;border:0;border-radius:999px;background:linear-gradient(135deg,#315cf5,#244bd6);color:#fff;box-shadow:0 10px 28px rgba(33,75,210,.32);font-family:inherit;font-weight:650;font-size:13px;line-height:1;cursor:pointer;transition:transform .16s,box-shadow .16s}
 .kp-ai-trigger:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(33,75,210,.38)}
 .kp-ai-trigger-icon{font-size:16px;line-height:1}
 .kp-ai-popover{position:fixed;right:22px;bottom:82px;z-index:998;width:min(390px,calc(100vw - 28px));height:min(560px,calc(100dvh - 110px));overflow:hidden;border:1px solid #dfe6f0;border-radius:22px;background:#f7f9fc;box-shadow:0 18px 60px rgba(14,31,57,.22)}
@@ -1363,7 +1363,7 @@ body { background: var(--hq-bg); }
 .emp-clock-seconds{color:#8793a5;font-size:14px;font-weight:650;font-variant-numeric:tabular-nums}
 .emp-offline-banner{margin-top:8px;padding:7px 11px;border:1px solid #f2cdcd;border-radius:10px;background:#fff3f3;color:#bc3939;font-size:11px;font-weight:700}
 .emp-header-status{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.emp-status-chip{display:inline-flex;align-items:center;min-height:25px;padding:4px 9px;border:1px solid #dfe6f0;border-radius:999px;background:#f7f9fc;color:#58677f;font:600 10px/1.2 inherit}
+.emp-status-chip{display:inline-flex;align-items:center;min-height:25px;padding:4px 9px;border:1px solid #dfe6f0;border-radius:999px;background:#f7f9fc;color:#58677f;font-family:inherit;font-weight:600;font-size:10px;line-height:1.2}
 .emp-status-chip.is-good{border-color:#c9ebdb;background:#eff9f3;color:#16845c}
 .emp-status-chip.is-bad,.emp-status-chip.is-alert{border-color:#f2d1d1;background:#fff4f4;color:#c24141}
 .emp-status-chip.is-action{border-color:#d6e1ff;background:#f2f5ff;color:#315cf5;cursor:pointer}
