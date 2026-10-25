@@ -52,11 +52,12 @@ export const ELEMENT_KINDS = {
   floor: { icon: '🧽', en: 'Floor', ja: '床', pt: 'Piso', service: 'Floor deep scrub & wax', intervalDays: 60, h: 0.02 },
   window: { icon: '🪟', en: 'Window / glass', ja: '窓', pt: 'Janela / vidro', service: 'Window & glass cleaning', intervalDays: 30, h: 1.5 },
   stairs: { icon: '🪜', en: 'Stairs', ja: '階段', pt: 'Escada', service: 'Stair cleaning', intervalDays: 30, h: 2.6 },
+  supplies: { icon: '🧴', en: 'Cleaning supplies', ja: '清掃用具', pt: 'Materiais de limpeza', service: null, intervalDays: null, h: 1.2 },
   other: { icon: '▫️', en: 'Other', ja: 'その他', pt: 'Outro', service: null, intervalDays: null, h: 0.5 },
 }
 
 /** Itens que o funcionário mais procura: mostram um pino 📷 no 3D e a foto real fica a um toque. */
-export const IMPORTANT_KINDS = new Set(['light_switch', 'breaker', 'valve', 'grease_trap', 'range_hood'])
+export const IMPORTANT_KINDS = new Set(['light_switch', 'breaker', 'valve', 'grease_trap', 'range_hood', 'supplies'])
 
 /**
  * Manutenções recorrentes sugeridas por tipo (além da limpeza do ELEMENT_KINDS.service).

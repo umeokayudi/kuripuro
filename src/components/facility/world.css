@@ -232,3 +232,5 @@ body:has(.kw-root) .kp-ai-trigger { bottom: 18px; }
 @media (max-width: 760px) { .kw-inspect.sheet { width: auto; } }
 .kw-mapbtn { height: 48px; font-size: 14px; }
 .kw-mapbtn.on { border-color: var(--kw-gold); color: #fde68a; }
+.kw-store.has-sel .fac-campad { right: 404px; }
+@media (max-width: 760px) { .kw-store.has-sel .fac-campad { display: none; } }

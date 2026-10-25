@@ -12,6 +12,13 @@ export const facilityPt = {
     newRoom: 'Novo cômodo', close: 'Fechar', done: 'Pronto', loading: 'Abrindo o editor…', notFound: 'Loja não encontrada.',
     publishedHint: 'Clientes e funcionários veem a planta publicada.', draftHint: 'Rascunho só o escritório vê.',
   },
+  whereIs: {
+    title: 'Onde fica', light_switch: 'Luz', supplies: 'Materiais de limpeza', breaker: 'Disjuntor',
+    addPhoto: 'Pôr foto de onde fica', noHint: 'Toque para ver no mapa', whereQ: 'Onde fica a {x}?', q_light_switch: 'Onde fica a luz?', q_supplies: 'Onde ficam os materiais de limpeza?', q_breaker: 'Onde fica o disjuntor?',
+    takePhoto: 'Tirar ou escolher foto', hintLabel: 'Onde exatamente? (uma frase)', room: 'Cômodo', autoRoom: 'Escolher sozinho',
+    light_switchPh: 'ex.: à esquerda da porta de entrada, atrás da cortina', suppliesPh: 'ex.: armário embaixo da pia, caixa azul',
+    breakerPh: 'ex.: depósito do fundo, em cima à direita', cancel: 'Cancelar', save: 'Salvar', saved: 'Salvo', photoBtn: 'Foto de onde fica',
+  },
   world: {
     brand: 'Mundo Kuripuro',
     stores: '{n} lojas',
@@ -33,7 +40,7 @@ export const facilityPt = {
     openList: 'Ver em lista', openWorld: 'Ver o mundo',
     item: 'Item', lastClean: 'Última limpeza', firstClean: 'Primeira limpeza', cleanings: 'Vezes', viewCards: 'Cartões', viewList: 'Lista',
     cityMap: {
-      open: 'Mapa da cidade', world3d: 'Mundo 3D', search: 'Procurar local…', places: 'Locais', route: 'Rota', loading: 'Carregando locais…',
+      open: 'Mapa da cidade', world3d: 'Mundo 3D', satellite: 'Satélite', googleNote: 'Tempos do Google Maps (carro com o trânsito de agora). Toque no ↗ para abrir o trecho no Google Maps.', search: 'Procurar local…', places: 'Locais', route: 'Rota', loading: 'Carregando locais…',
       noMatch: 'Nenhum local encontrado.', locating: 'Localizando endereços {n}/{total}…', measure: 'Medir', me: 'Eu', all: 'Todos',
       myLocation: 'Minha localização', fitAll: 'Mostrar todos', measureHint: 'Toque em dois locais ou dois pontos do mapa', close: 'Fechar',
       last: 'Última', next: 'Próxima', visits: 'Serviços', days180: 'últimos 6 meses', noLocation: 'sem localização (cadastre o endereço)',

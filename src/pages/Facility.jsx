@@ -15,6 +15,8 @@ import { viewablePhotoUrl } from '../lib/photoUrl'
 import { offerWhen } from '../components/facility/FacilityOffersBell'
 import { WorldView } from '../components/facility/FacilityViewer'
 import ItemSheet from '../components/facility/ItemSheet'
+import WhereIs, { WherePlaceForm } from '../components/facility/WhereIs'
+import { saveWherePlace } from '../lib/wherePlace'
 import FacilityItemPopup from '../components/facility/FacilityItemPopup'
 import CleaningTimeline from '../components/CleaningTimeline'
 import { rowsForElement } from '../components/facility/CareList'
@@ -186,6 +188,17 @@ export default function Facility() {
     }
   }
 
+  const onSaveWhere = async (model, data) => {
+    try {
+      const saved = await saveWherePlace({ model, lang, ...data })
+      setModels(ms => ms.map(m => (m.id === saved.id ? saved : m)))
+      toast.success(`✅ ${t.whereIs?.saved || 'Saved'}`)
+    } catch (e) {
+      toast.error(e.message)
+      throw e
+    }
+  }
+
   const q = query.trim().toLowerCase()
   const found = q ? stores.filter(s => `${s.name} ${s.sub}`.toLowerCase().includes(q)).slice(0, 6) : []
   const shownMissions = missionTab === 'late' ? late : soon
@@ -214,6 +227,7 @@ export default function Facility() {
           onDetails={(item) => setPopup({ modelId: store.id, ...item })}
           onEdit={() => navigate(`/facility/edit?model=${store.id}`)}
           onQuote={() => navigate('/mitsumori')}
+          onSaveWhere={data => onSaveWhere(store.model, data)}
         />
       ) : (
         <>
@@ -349,7 +363,7 @@ export default function Facility() {
 }
 
 /** Dentro de uma loja: Mapa (3D) | Itens (inventário) | Histórico (fotos reais), painel do item tocado. */
-function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, mobile, initialSel, busy, onBack, onOffer, onDone, onDetails, onEdit, onQuote }) {
+function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, mobile, initialSel, busy, onBack, onOffer, onDone, onDetails, onEdit, onQuote, onSaveWhere }) {
   const [tab, setTab] = useState('map')
   const [mode, setMode] = useState('3d')
   const [level, setLevel] = useState(0)
@@ -357,6 +371,7 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
   const [filter, setFilter] = useState('all')
   const [view, setView] = useState('list')
   const [timeline, setTimeline] = useState(null)
+  const [whereForm, setWhereForm] = useState(null)
   const layout = store.full
   const floors = store.levels
   const shown = Math.min(level, floors - 1)
@@ -496,6 +511,29 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
         </div>
       )}
 
+      {/* onde fica: luz, materiais de limpeza, disjuntor (foto real) */}
+      {tab === 'map' && mode !== 'walk' && (
+        <WhereIs
+          className="kw-where"
+          layout={floorLayout}
+          wi={t.whereIs}
+          defaultOpen={!mobile}
+          onOpen={el => setSelId(el.id)}
+          onAdd={onSaveWhere ? kind => setWhereForm({ kind }) : undefined}
+          onAddPhoto={onSaveWhere ? el => setWhereForm({ el }) : undefined}
+        />
+      )}
+      {whereForm && (
+        <WherePlaceForm
+          kind={whereForm.kind}
+          el={whereForm.el}
+          layout={floorLayout}
+          wi={t.whereIs}
+          onSave={data => onSaveWhere({ ...data, level: shown })}
+          onClose={() => setWhereForm(null)}
+        />
+      )}
+
       {/* painel do item: fotos reais + o que fazer */}
       {sel && tab !== 'history' && (
         <div className={`kw-inspect${mobile ? ' sheet' : ''}`}>
@@ -511,6 +549,7 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
             onOffer={selMission && busy !== selMission.key ? () => onOffer(selMission) : undefined}
             offered={!!selMission?.offered}
             onLog={rowsForElement(sel, sel.care || careForElement(sel, [])).length > 0 ? () => onDone(sel) : undefined}
+            extraActions={onSaveWhere && <button type="button" onClick={() => setWhereForm({ el: sel })}>📷 {t.whereIs?.photoBtn}</button>}
           />
         </div>
       )}

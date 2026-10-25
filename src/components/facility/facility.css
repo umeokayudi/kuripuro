@@ -400,3 +400,9 @@
 .fac-floorbar .fac-toggle { margin: 0; }
 .fac-floor-add { display: inline-flex; gap: 6px; align-items: center; }
 .fac-floor-add select { padding: 5px 8px; border-radius: 8px; }
+/* botões de câmera do 3D (aproximar, afastar, girar, ver tudo) */
+.fac-campad { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 3; display: flex; flex-direction: column; gap: 6px; }
+.fac-campad button { width: 42px; height: 42px; border-radius: 12px; border: 1px solid rgba(148,163,184,0.3); background: rgba(10,22,40,0.78); color: #f1f5f9; font-size: 19px; font-weight: 700; cursor: pointer; backdrop-filter: blur(8px); box-shadow: 0 4px 14px rgba(0,0,0,0.3); }
+.fac-campad button:hover { border-color: #f5c76a; }
+.fac-campad button:active { transform: scale(0.94); }
+@media (max-width: 760px) { .fac-campad { top: 150px; bottom: auto; transform: none; right: 10px; } .fac-campad button { width: 40px; height: 40px; } }

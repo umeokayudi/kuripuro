@@ -16,7 +16,7 @@ export const DEFAULT_SIZE = {
   fryer: [0.45, 0.75], oven: [0.9, 0.8], fridge: [1.2, 0.8], dishwasher: [0.65, 0.65], sink: [1.2, 0.6],
   duct: [0.5, 2.0], grating: [1.2, 0.3], table: [1.2, 0.75], counter: [2.4, 0.6], toilet: [0.45, 0.7],
   light_switch: [0.12, 0.05], breaker: [0.6, 0.15], valve: [0.2, 0.2], light: [0.6, 0.6],
-  floor: [1.5, 1.0], window: [1.8, 0.1], stairs: [1.0, 2.8], other: [0.9, 0.6],
+  floor: [1.5, 1.0], window: [1.8, 0.1], stairs: [1.0, 2.8], supplies: [0.8, 0.45], other: [0.9, 0.6],
 }
 
 /** Grupos da paleta (ordem = como aparecem no editor). */
@@ -24,7 +24,7 @@ export const PALETTE = [
   { id: 'kitchen', icon: '🔥', kinds: ['stove', 'range_hood', 'fryer', 'oven', 'fridge', 'sink', 'dishwasher', 'grease_trap', 'grating', 'duct'] },
   { id: 'dining', icon: '🍽', kinds: ['table', 'counter', 'air_conditioner', 'window', 'light'] },
   { id: 'restroom', icon: '🚻', kinds: ['toilet', 'sink', 'floor'] },
-  { id: 'controls', icon: '⚡', kinds: ['light_switch', 'breaker', 'valve', 'stairs', 'other'] },
+  { id: 'controls', icon: '⚡', kinds: ['light_switch', 'breaker', 'valve', 'supplies', 'stairs', 'other'] },
 ]
 
 /** Cômodo onde cada item costuma ficar (o primeiro que existir na planta). */
@@ -34,7 +34,7 @@ const HOME_AREA = {
   grating: ['kitchen', 'washing'], duct: ['kitchen', 'ventilation'], table: ['dining'], counter: ['bar', 'dining', 'kitchen'],
   toilet: ['restroom'], light_switch: ['entrance', 'dining'], breaker: ['storage', 'office', 'kitchen'],
   valve: ['kitchen', 'washing'], light: ['dining'], floor: ['restroom', 'kitchen'], window: ['dining', 'entrance'],
-  air_conditioner: ['dining', 'sales', 'office'], stairs: ['dining', 'sales', 'office', 'entrance'], other: ['storage'],
+  air_conditioner: ['dining', 'sales', 'office'], stairs: ['dining', 'sales', 'office', 'entrance'], supplies: ['storage', 'washing', 'kitchen', 'office'], other: ['storage'],
 }
 
 // camadas: o que está no chão não bate com o que está no teto ou preso alto na parede
@@ -42,7 +42,7 @@ const CEILING = new Set(['range_hood', 'duct', 'light'])
 const HIGH_WALL = new Set(['air_conditioner', 'light_switch', 'breaker', 'window', 'valve'])
 const FLAT = new Set(['grease_trap', 'grating', 'floor'])
 /** Itens que vão encostados na parede (com a frente para dentro). */
-const AGAINST_WALL = new Set(['stove', 'fryer', 'oven', 'fridge', 'dishwasher', 'sink', 'counter', 'toilet', 'other',
+const AGAINST_WALL = new Set(['stove', 'fryer', 'oven', 'fridge', 'dishwasher', 'sink', 'counter', 'toilet', 'other', 'supplies',
   'air_conditioner', 'light_switch', 'breaker', 'window', 'valve'])
 /** Prefere a parede do fundo (y = 0) ou a da frente (vitrine) para estes. */
 const PREFER_EDGE = { window: 'bottom', air_conditioner: 'top', stove: 'top', fryer: 'top', oven: 'top', fridge: 'top', light_switch: 'left' }

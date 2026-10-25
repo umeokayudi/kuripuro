@@ -8,6 +8,7 @@ import { loadCityPlaces, placeCoords, storeForPlace } from '../../lib/cityPlaces
 import {
   bestOrder, carRoute, estimateMinutes, fmtMinutes, legMeters, mapsLegUrl, mapsRouteUrl, minutesMatrix, routeLegs,
 } from '../../lib/cityRoute'
+import { GOOGLE_MAPS_KEY, googleRoute, loadGoogleMaps } from '../../lib/googleMaps'
 import './city-map.css'
 
 const TOKYO = [35.6812, 139.7671]
@@ -37,6 +38,8 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
   const [me, setMe] = useState(null)
   const [day, setDay] = useState(tokyoDay(0))
   const [road, setRoad] = useState(null)
+  const [gReady, setGReady] = useState(false)
+  const [satellite, setSatellite] = useState(false)
   const [measuring, setMeasuring] = useState(false)
   const [measure, setMeasure] = useState([])
 
@@ -69,28 +72,54 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
   const routePoints = [fromMe ? pointOf(ME) : null, ...stops.map(pointOf)].filter(Boolean)
   const routeKey = `${mode}|${routePoints.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join(';')}`
 
-  // carro: rota pelas ruas (se o serviço grátis responder); trem: estimativa
+  // com Google: carro com trânsito de agora e trem/metrô de verdade (quando o Google tiver o trecho);
+  // sem Google: carro pelas ruas (OpenStreetMap) e trem estimado
   useEffect(() => {
     setRoad(null)
-    if (mode !== 'car' || routePoints.length < 2) return
+    if (routePoints.length < 2) return
     let off = false
     const pts = routePoints
-    carRoute(pts).then(r => { if (!off && r) setRoad({ key: routeKey, ...r }) })
+    const go = async () => {
+      const g = gReady ? await googleRoute(pts, mode) : null
+      if (g) return { ...g, source: 'google' }
+      if (mode !== 'car') return null
+      const r = await carRoute(pts)
+      return r ? { ...r, source: 'osm' } : null
+    }
+    go().then(r => { if (!off && r) setRoad({ key: routeKey, ...r }) })
     return () => { off = true }
-  }, [routeKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [routeKey, gReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const estLegs = routeLegs(routePoints, mode)
-  const legs = road?.key === routeKey ? estLegs.map((l, i) => ({ ...l, ...road.legs[i], real: true })) : estLegs
+  const legs = road?.key === routeKey
+    ? estLegs.map((l, i) => {
+      const r = road.legs[i]
+      return r && r.minutes != null ? { ...l, minutes: r.minutes, meters: r.meters ?? l.meters, lines: r.lines || [], real: true } : l
+    })
+    : estLegs
   const totalMin = legs.reduce((s, l) => s + l.minutes, 0)
   const totalM = legs.reduce((s, l) => s + l.meters, 0)
 
   // ---- mapa ----
   useEffect(() => {
     const map = L.map(mapEl.current, { zoomControl: false, attributionControl: true }).setView(TOKYO, 12)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    const osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd', maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
     }).addTo(map)
+    // com a chave do Google, o fundo vira o Google Maps (o OpenStreetMap fica se o Google não carregar)
+    if (GOOGLE_MAPS_KEY) {
+      loadGoogleMaps(lang).then(async gm => {
+        if (!gm || mapRef.current !== map) return
+        const { default: GoogleMutant } = await import('leaflet.gridlayer.googlemutant')
+        if (mapRef.current !== map) return
+        layers.current.GoogleMutant = GoogleMutant
+        layers.current.google = new GoogleMutant({ type: 'roadmap', maxZoom: 21 }).addTo(map)
+        layers.current.google.bringToBack()
+        osm.remove()
+        setGReady(true)
+      })
+    }
     layers.current = { pins: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map), measure: L.layerGroup().addTo(map) }
     map.on('click', e => {
       if (!measuringRef.current) { setSelKey(null); return }
@@ -101,7 +130,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
     const ro = new ResizeObserver(() => map.invalidateSize())
     ro.observe(mapEl.current)
     return () => { ro.disconnect(); map.remove(); mapRef.current = null }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { measuringRef.current = measuring }, [measuring])
 
   const statusOf = p => {
@@ -169,6 +198,16 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
     g.addLayer(L.polyline(line, { color: mode === 'train' ? '#7c3aed' : '#2563eb', weight: 5, opacity: 0.9, dashArray: real ? null : '8 10' }))
   }, [routeKey, road]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Google: mapa ou satélite
+  useEffect(() => {
+    const { google, GoogleMutant } = layers.current
+    const map = mapRef.current
+    if (!gReady || !google || !map) return
+    google.remove()
+    layers.current.google = new GoogleMutant({ type: satellite ? 'hybrid' : 'roadmap', maxZoom: 21 }).addTo(map)
+    layers.current.google.bringToBack()
+  }, [satellite]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // régua
   useEffect(() => {
     const g = layers.current.measure
@@ -228,6 +267,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
         <button type="button" className={measuring ? 'on' : ''} onClick={() => { setMeasuring(v => !v); setMeasure([]) }} title={m.measure}>📏<span>{m.measure}</span></button>
         <button type="button" onClick={locateMe} title={m.myLocation}>📍<span>{m.me}</span></button>
         <button type="button" onClick={fitAll} title={m.fitAll}>🗾<span>{m.all}</span></button>
+        {gReady && <button type="button" className={satellite ? 'on' : ''} onClick={() => setSatellite(v => !v)} title={m.satellite}>🛰️<span>{m.satellite}</span></button>}
       </div>}
 
       {locating.total > 0 && locating.done < locating.total && (
@@ -261,6 +301,18 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
             <span><em>{m.next}</em><b>{fmtDay(sel.next?.date)}</b>{sel.next?.who && <small>{sel.next.who}</small>}</span>
             <span><em>{m.visits}</em><b>{sel.count}</b><small>{m.days180}</small></span>
           </div>
+          {selStore && (() => {
+            const where = ['light_switch', 'supplies', 'breaker']
+              .map(kind => selStore.model.layout.elements.find(e => e.kind === kind && (e.location_hint || e.photos?.length)))
+              .filter(Boolean)
+            return where.length > 0 && (
+              <div className="cm-where">
+                {where.map(e => (
+                  <span key={e.id}>{{ light_switch: '💡', supplies: '🧴', breaker: '⚡' }[e.kind]} {e.location_hint || e.name}{e.photos?.length ? ' 📷' : ''}</span>
+                ))}
+              </div>
+            )
+          })()}
           {!coords[sel.key] && <div className="cm-warn">📍 {m.noLocation}</div>}
           {me && coords[sel.key] && (
             <div className="cm-from-me">
@@ -341,7 +393,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
                         {leg && (
                           <div className="cm-leg">
                             <span>{mode === 'train' ? '🚆' : '🚗'} {leg.real ? '' : '≈ '}{fmtMinutes(leg.minutes, lang)}</span>
-                            <small>{formatDistance(leg.meters)}</small>
+                            <small>{formatDistance(leg.meters)}{leg.lines?.length ? ` · ${leg.lines.join(' → ')}` : ''}</small>
                             <a href={mapsLegUrl(leg.from, leg.to, mode)} target="_blank" rel="noreferrer" title={m.exactTime}>↗</a>
                           </div>
                         )}
@@ -370,7 +422,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
                     <button type="button" className="cm-clear" onClick={() => setStops([])}>🗑 {m.clear}</button>
                   </div>
                 )}
-                {legs.length > 0 && <p className="cm-note">{mode === 'train' ? m.trainNote : legs.every(l => l.real) ? m.carNoteReal : m.carNote}</p>}
+                {legs.length > 0 && <p className="cm-note">{road?.key === routeKey && road.source === 'google' && legs.every(l => l.real) ? m.googleNote : mode === 'train' ? m.trainNote : legs.every(l => l.real) ? m.carNoteReal : m.carNote}</p>}
               </div>
             )}
           </>

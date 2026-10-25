@@ -2,6 +2,7 @@ import { Suspense, lazy, useMemo, useState } from 'react'
 import FacilityScene from './FacilityScene'
 import FacilityItemPopup from './FacilityItemPopup'
 import ItemSheet from './ItemSheet'
+import WhereIs from './WhereIs'
 import { pickLang } from '../../hooks/useLang'
 import { ELEMENT_KINDS, withServiceLog, statusMap, todoElementIds, elementTasks, levelCount, levelLayout, levelOf } from '../../lib/facilityModel'
 
@@ -124,6 +125,8 @@ export default function FacilityViewer({ model, t, lang, recs = [], logs = [], o
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{attention.map(chip)}</div>
         </div>
       )}
+      <WhereIs layout={layout} wi={t.whereIs} onOpen={el => select({ type: 'element', id: el.id })} />
+      <div style={{ height: 10 }} />
       <ViewModeChips mode={mode} setMode={setMode} t={t} />
       {floors > 1 && (
         <div className="fac-floorbar">

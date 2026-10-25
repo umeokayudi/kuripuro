@@ -86,14 +86,32 @@ function floorLabel(text, width) {
 }
 
 /** Câmera da vista de cima enquadrando a loja inteira (em pé ou deitada, celular ou computador). */
-function frameOrbit(ctx) {
-  const { camera, controls, W, D } = ctx
+function framePose(ctx) {
+  const { camera, W, D } = ctx
   const fit = Math.max(W / Math.max(0.6, camera.aspect), D) * 0.5 + 0.6
   const dist = fit / Math.tan((camera.fov * Math.PI) / 360) * 1.02
   const dir = new THREE.Vector3(0.35, 0.82, 0.78).normalize()
-  camera.position.copy(dir.multiplyScalar(dist))
-  controls.target.set(0, 0, 0.2)
-  controls.update()
+  return { pos: dir.multiplyScalar(dist), target: new THREE.Vector3(0, 0, 0.2) }
+}
+function frameOrbit(ctx) {
+  const { pos, target } = framePose(ctx)
+  ctx.camera.position.copy(pos)
+  ctx.controls.target.copy(target)
+  ctx.controls.update()
+}
+
+/** Leva a câmera suavemente até pos/target (botões ＋ − ↺ ↻ ⌂ e toque duplo). */
+function startCamAnim(ctx, pos, target, ms = 380) {
+  ctx.camAnim = { fromPos: ctx.camera.position.clone(), fromTarget: ctx.controls.target.clone(), pos, target, t0: performance.now(), ms }
+}
+function stepCamAnim(ctx) {
+  const a = ctx.camAnim
+  if (!a) return
+  const f = Math.min(1, (performance.now() - a.t0) / a.ms)
+  const k = 1 - Math.pow(1 - f, 3)
+  ctx.controls.target.lerpVectors(a.fromTarget, a.target, k)
+  ctx.camera.position.lerpVectors(a.fromPos, a.pos, k)
+  if (f >= 1) ctx.camAnim = null
 }
 
 /** Câmera reta de cima (modo mover), enquadrando a loja inteira. */
@@ -283,16 +301,23 @@ export default function FacilityWorld({
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 200)
     const controls = new OrbitControls(camera, renderer.domElement)
+    // movimento mais calmo: girar com 1 dedo / botão esquerdo, arrastar com 2 dedos / botão direito,
+    // zoom vai para onde o dedo/mouse está, sem girar sozinho
     controls.enableDamping = true
-    controls.dampingFactor = 0.08
-    controls.maxPolarAngle = Math.PI * 0.44
-    controls.minPolarAngle = Math.PI * 0.08
-    controls.minDistance = 2.5
+    controls.dampingFactor = 0.12
+    controls.rotateSpeed = 0.55
+    controls.zoomSpeed = 1.1
+    controls.panSpeed = 0.9
+    controls.zoomToCursor = true
+    controls.maxPolarAngle = Math.PI * 0.46
+    controls.minPolarAngle = Math.PI * 0.04
+    controls.minDistance = 2
     controls.maxDistance = 45
-    controls.autoRotate = !editable
-    controls.autoRotateSpeed = 0.55
+    controls.autoRotate = false
     controls.screenSpacePanning = false
-    controls.addEventListener('start', () => { controls.autoRotate = false })
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }
+    controls.addEventListener('start', () => { controls.autoRotate = false; if (ctxRef.current) ctxRef.current.camAnim = null })
 
     const hemi = new THREE.HemisphereLight('#f1f5ff', '#3a3226', 0.75)
     scene.add(hemi)
@@ -470,6 +495,18 @@ export default function FacilityWorld({
       if (ctx.drag) { endDrag(); return }
       if (!pointer.moved) pick(e.clientX, e.clientY)
     }
+    const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    const onDbl = (e) => {
+      if (modeRef.current === 'walk' || movingRef.current) return
+      const r = renderer.domElement.getBoundingClientRect()
+      raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera)
+      const hit = new THREE.Vector3()
+      if (!raycaster.ray.intersectPlane(ground, hit)) return
+      const off = camera.position.clone().sub(controls.target)
+      const len = Math.max(controls.minDistance, off.length() * 0.6)
+      startCamAnim(ctx, hit.clone().add(off.setLength(len)), hit)
+    }
+    renderer.domElement.addEventListener('dblclick', onDbl)
     const el = renderer.domElement
     // fase de captura: o modo mover pega o toque antes do OrbitControls (que fica desligado durante o arrasto)
     el.addEventListener('pointerdown', onDown, true)
@@ -586,7 +623,20 @@ export default function FacilityWorld({
         camera.position.set(walk.x, EYE + bobY, walk.z)
         camera.rotation.set(walk.pitch, walk.yaw, Math.sin(walk.bob) * 0.004, 'YXZ')
       } else {
+        stepCamAnim(ctx)
         controls.update()
+        // o alvo não sai de cima da loja (não dá para "perder" a loja arrastando)
+        const lx = ctx.W / 2 + 1
+        const lz = ctx.D / 2 + 1
+        const tg = controls.target
+        const cx = Math.max(-lx, Math.min(lx, tg.x))
+        const cz = Math.max(-lz, Math.min(lz, tg.z))
+        if (cx !== tg.x || cz !== tg.z) {
+          camera.position.x += cx - tg.x
+          camera.position.z += cz - tg.z
+          tg.x = cx
+          tg.z = cz
+        }
       }
 
       // alto relevo: o selecionado sobe (ou sai da parede), cresce um pouco e brilha
@@ -643,6 +693,7 @@ export default function FacilityWorld({
       cancelAnimationFrame(raf)
       ro?.disconnect()
       el.removeEventListener('pointerdown', onDown, true)
+      el.removeEventListener('dblclick', onDbl)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
@@ -1102,6 +1153,23 @@ export default function FacilityWorld({
     window.addEventListener('pointercancel', end)
   }
 
+  // botões de câmera: aproximar, afastar, girar 45° e voltar à vista inteira
+  const camBtn = (kind) => {
+    const ctx = ctxRef.current
+    if (!ctx) return
+    const { camera, controls } = ctx
+    const target = controls.target.clone()
+    const off = camera.position.clone().sub(target)
+    if (kind === 'home') { const p = framePose(ctx); startCamAnim(ctx, p.pos, p.target); return }
+    if (kind === 'in' || kind === 'out') {
+      const len = Math.max(controls.minDistance, Math.min(controls.maxDistance, off.length() * (kind === 'in' ? 0.7 : 1.4)))
+      startCamAnim(ctx, target.clone().add(off.setLength(len)), target)
+      return
+    }
+    off.applyAxisAngle(new THREE.Vector3(0, 1, 0), (kind === 'left' ? 1 : -1) * Math.PI / 4)
+    startCamAnim(ctx, target.clone().add(off), target)
+  }
+
   if (failed) return <div className="fac-block">{labels.no3d || '3D is not available on this device.'}</div>
 
   return (
@@ -1119,6 +1187,15 @@ export default function FacilityWorld({
             {selectedId && onRotateItem && <button type="button" className="fac-move-rot" onClick={() => onRotateItem(selectedId)}>⟳ {labels.rotate || 'Rotate'}</button>}
             <button type="button" className="fac-move-done" onClick={() => setMoving(false)}>✓ {labels.done || 'Done'}</button>
           </div>
+        </div>
+      )}
+      {mode !== 'walk' && !moving && (
+        <div className="fac-campad" onPointerDown={e => e.stopPropagation()}>
+          <button type="button" onClick={() => camBtn('in')} aria-label={labels.zoomIn || 'Zoom in'}>＋</button>
+          <button type="button" onClick={() => camBtn('out')} aria-label={labels.zoomOut || 'Zoom out'}>−</button>
+          <button type="button" onClick={() => camBtn('left')} aria-label={labels.turnLeft || 'Turn left'}>↺</button>
+          <button type="button" onClick={() => camBtn('right')} aria-label={labels.turnRight || 'Turn right'}>↻</button>
+          <button type="button" onClick={() => camBtn('home')} aria-label={labels.viewAll || 'Whole store'}>⌂</button>
         </div>
       )}
       {mode === 'walk' && (

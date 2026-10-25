@@ -149,13 +149,19 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
-    controls.dampingFactor = 0.08
+    controls.dampingFactor = 0.12
+    controls.rotateSpeed = 0.55
+    controls.zoomSpeed = 1.1
+    controls.panSpeed = 0.9
+    controls.zoomToCursor = true
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }
     controls.maxPolarAngle = Math.PI * 0.42
     controls.minPolarAngle = Math.PI * 0.12
     controls.minDistance = 8
     controls.maxDistance = 140
     controls.autoRotate = true
-    controls.autoRotateSpeed = 0.35
+    controls.autoRotateSpeed = 0.2
     controls.screenSpacePanning = false
     controls.addEventListener('start', () => { controls.autoRotate = false })
 

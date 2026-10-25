@@ -67,7 +67,7 @@ function chair(m, x, z, faceAngle) {
 /** Tipos presos na parede: o chamador vira o item para o lado de dentro da sala. */
 export const WALL_KINDS = new Set(['air_conditioner', 'light_switch', 'breaker', 'window'])
 /** Tipos que a pessoa não atravessa no modo andar. */
-export const SOLID_KINDS = new Set(['table', 'counter', 'stove', 'fryer', 'oven', 'fridge', 'dishwasher', 'sink', 'toilet', 'stairs', 'other'])
+export const SOLID_KINDS = new Set(['table', 'counter', 'stove', 'fryer', 'oven', 'fridge', 'dishwasher', 'sink', 'toilet', 'stairs', 'supplies', 'other'])
 
 export function buildProp(el) {
   const m = mats()
@@ -260,6 +260,19 @@ export function buildProp(el) {
       rail.position.y = 1.9
       rail.rotation[along ? 'x' : 'z'] = Math.atan2(2.6, run)
       g.add(rail)
+      break
+    }
+    case 'supplies': {
+      // estante com frascos coloridos e um balde: dá para reconhecer de longe
+      const sh = Math.max(1.0, h)
+      for (const y of [0.02, sh * 0.5, sh - 0.02]) g.add(box(w, 0.03, d, m.cabinet, 0, y, 0))
+      for (const x of [-w / 2 + 0.02, w / 2 - 0.02]) g.add(box(0.03, sh, d, m.cabinet, x, sh / 2, 0))
+      const colors = ['#38bdf8', '#f472b6', '#facc15', '#4ade80']
+      for (let i = 0; i < 4; i++) {
+        const mat = new THREE.MeshStandardMaterial({ color: colors[i], roughness: 0.4 })
+        g.add(cyl(0.05, 0.05, 0.22, mat, -w / 2 + 0.12 + i * ((w - 0.24) / 3), sh * 0.5 + 0.13, 0, 10))
+      }
+      g.add(cyl(0.13, 0.11, 0.24, new THREE.MeshStandardMaterial({ color: '#2563eb', roughness: 0.5 }), w / 4, 0.15, 0, 14))
       break
     }
     case 'floor': {

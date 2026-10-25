@@ -12,6 +12,13 @@ export const facilityEn = {
     newRoom: 'New room', close: 'Close', done: 'Done', loading: 'Opening the editor…', notFound: 'Store not found.',
     publishedHint: 'Clients and staff see the published plan.', draftHint: 'Only the office sees a draft.',
   },
+  whereIs: {
+    title: 'Where is it', light_switch: 'Lights', supplies: 'Cleaning supplies', breaker: 'Breaker',
+    addPhoto: 'Add a photo of where it is', noHint: 'Tap to see it on the map', whereQ: 'Where is the {x}?', q_light_switch: 'Where are the light switches?', q_supplies: 'Where are the cleaning supplies?', q_breaker: 'Where is the breaker panel?',
+    takePhoto: 'Take or choose a photo', hintLabel: 'Where exactly? (one sentence)', room: 'Room', autoRoom: 'Choose for me',
+    light_switchPh: 'e.g. left of the entrance door, behind the curtain', suppliesPh: 'e.g. cabinet under the sink, blue box',
+    breakerPh: 'e.g. back storage, top right', cancel: 'Cancel', save: 'Save', saved: 'Saved', photoBtn: 'Photo of where it is',
+  },
   world: {
     brand: 'Kuripuro World',
     stores: '{n} stores',
@@ -33,7 +40,7 @@ export const facilityEn = {
     openList: 'List view', openWorld: 'World view',
     item: 'Item', lastClean: 'Last cleaning', firstClean: 'First cleaning', cleanings: 'Times', viewCards: 'Cards', viewList: 'List',
     cityMap: {
-      open: 'City map', world3d: '3D world', search: 'Find a place…', places: 'Places', route: 'Route', loading: 'Loading places…',
+      open: 'City map', world3d: '3D world', satellite: 'Satellite', googleNote: 'Times from Google Maps (car with current traffic). Tap ↗ to open a leg in Google Maps.', search: 'Find a place…', places: 'Places', route: 'Route', loading: 'Loading places…',
       noMatch: 'No place found.', locating: 'Finding addresses {n}/{total}…', measure: 'Measure', me: 'Me', all: 'All',
       myLocation: 'My location', fitAll: 'Show all places', measureHint: 'Tap two places or two points on the map', close: 'Close',
       last: 'Last', next: 'Next', visits: 'Services', days180: 'last 6 months', noLocation: 'no location (add an address)',
@@ -342,6 +349,13 @@ export const facilityJa = {
     newRoom: '新しい部屋', close: '閉じる', done: '完了', loading: 'エディタを開いています…', notFound: '店舗が見つかりません。',
     publishedHint: '公開中の図面は顧客とスタッフに表示されます。', draftHint: '下書きは事務所だけが見られます。',
   },
+  whereIs: {
+    title: 'どこにある？', light_switch: '照明', supplies: '清掃用具', breaker: '分電盤',
+    addPhoto: '場所の写真を追加', noHint: 'タップで地図に表示', whereQ: '{x}はどこ？', q_light_switch: '照明スイッチはどこ？', q_supplies: '清掃用具はどこ？', q_breaker: '分電盤はどこ？',
+    takePhoto: '写真を撮る・選ぶ', hintLabel: '具体的な場所（ひとこと）', room: '部屋', autoRoom: 'おまかせ',
+    light_switchPh: '例：入口ドアの左、カーテンの裏', suppliesPh: '例：シンク下の棚、青い箱',
+    breakerPh: '例：奥の倉庫の右上', cancel: 'キャンセル', save: '保存', saved: '保存しました', photoBtn: '場所の写真',
+  },
   world: {
     brand: 'クリプロ・ワールド',
     stores: '{n}店舗',
@@ -363,7 +377,7 @@ export const facilityJa = {
     openList: 'リスト表示', openWorld: 'ワールド表示',
     item: '設備', lastClean: '前回の清掃', firstClean: '初回の清掃', cleanings: '回数', viewCards: 'カード', viewList: 'リスト',
     cityMap: {
-      open: '地図', world3d: '3Dワールド', search: '場所を探す…', places: '場所', route: 'ルート', loading: '場所を読み込み中…',
+      open: '地図', world3d: '3Dワールド', satellite: '航空写真', googleNote: 'Googleマップの所要時間（車は現在の交通状況）。↗で区間をGoogleマップで開く。', search: '場所を探す…', places: '場所', route: 'ルート', loading: '場所を読み込み中…',
       noMatch: '見つかりません。', locating: '住所を検索中 {n}/{total}…', measure: '距離', me: '現在地', all: '全体',
       myLocation: '現在地', fitAll: 'すべて表示', measureHint: '2つの場所か地図上の2点をタップ', close: '閉じる',
       last: '前回', next: '次回', visits: '作業回数', days180: '過去6か月', noLocation: '位置なし（住所を登録）',
