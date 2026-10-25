@@ -41,17 +41,68 @@ export function voiceMessage({ place, elapsedSec, expectedMin, checklist, dist, 
   return parts.join(lang === 'ja' ? '' : ' ')
 }
 
+const SPEECH_LANG = { ja: 'ja-JP', pt: 'pt-BR', en: 'en-US' }
+const langOf = (v) => String(v?.lang || '').toLowerCase().replace('_', '-')
+
+// Female voices by name on iPhone/Mac, Android/Chrome and Windows. The first match wins over
+// the platform default, which on iPhone is often a male or novelty voice.
+const FEMALE = {
+  ja: ['kyoko', 'o-ren', 'nanami', 'ayumi', 'haruka', 'sayaka', 'mayu', 'shiori', 'google 日本語', 'ja-jp-x-htm', 'ja-jp-x-jab'],
+  en: ['samantha', 'ava', 'allison', 'susan', 'zoe', 'nicky', 'karen', 'serena', 'kate', 'tessa', 'moira', 'victoria', 'aria', 'jenny', 'zira', 'michelle', 'google us english', 'google uk english female', 'en-us-x-sfg', 'en-us-x-tpc'],
+  pt: ['luciana', 'fernanda', 'francisca', 'thalita', 'maria', 'joana', 'catarina', 'raquel', 'google português', 'pt-br-x-afs', 'pt-br-x-pte'],
+}
+const MALE = /\b(male|otoya|hattori|ichiro|keita|daniel|alex|fred|aaron|arthur|oliver|tom|evan|nathan|david|mark|guy|ryan|felipe|antonio|duarte|reed|eddy|rocko|grandpa|ralph|junior)\b/i
+// Apple's joke and robotic voices sound "very strange" — never use them.
+const NOVELTY = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|deranged|hysterical|pipe organ|flo|grandma|sandy|shelley)\b/i
+
+/** Best female voice for the app language from a voice list (exported for tests). */
+export function pickAlertVoice(voices, lang) {
+  const code = lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en'
+  const region = SPEECH_LANG[code].toLowerCase()
+  const score = (v) => {
+    const name = `${v.name || ''} ${v.voiceURI || ''}`.toLowerCase()
+    if (NOVELTY.test(name)) return -Infinity
+    let s = 1
+    const fem = FEMALE[code].findIndex(n => name.includes(n))
+    if (fem >= 0) s += 100 - fem
+    else if (/female|woman|feminin/.test(name)) s += 60
+    if (MALE.test(name)) s -= 80
+    if (langOf(v) === region) s += 10
+    if (/premium|enhanced|natural|neural|online/.test(name)) s += 5
+    return s
+  }
+  return (voices || [])
+    .filter(v => langOf(v).startsWith(code))
+    .map(v => ({ v, s: score(v) }))
+    .filter(x => x.s > -Infinity)
+    .sort((a, b) => b.s - a.s)[0]?.v || null
+}
+
+// Phones load the voice list late; keep it fresh so the first reminder already has the right voice.
+let voiceList = []
+if (canSpeak()) {
+  const refresh = () => { try { voiceList = window.speechSynthesis.getVoices() || [] } catch { /* not supported */ } }
+  refresh()
+  try { window.speechSynthesis.addEventListener?.('voiceschanged', refresh) } catch { /* old browser */ }
+}
+
 export function speak(text, lang) {
   if (!canSpeak() || !text) return
   const synth = window.speechSynthesis
-  const u = new SpeechSynthesisUtterance(text)
-  const code = lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en'
-  u.lang = { ja: 'ja-JP', pt: 'pt-BR', en: 'en-US' }[code]
-  const voice = synth.getVoices().find(v => v.lang?.toLowerCase().startsWith(code))
-  if (voice) u.voice = voice
-  u.rate = lang === 'ja' ? 1 : 0.95
-  synth.cancel()
-  synth.speak(u)
+  const say = () => {
+    const code = lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en'
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = SPEECH_LANG[code]
+    const voice = pickAlertVoice(voiceList.length ? voiceList : synth.getVoices(), code)
+    if (voice) { u.voice = voice; u.lang = voice.lang || u.lang }
+    u.rate = code === 'ja' ? 1 : 0.95
+    u.pitch = 1.05
+    synth.cancel()
+    synth.speak(u)
+  }
+  if (!voiceList.length) voiceList = synth.getVoices() || []
+  if (voiceList.length) say()
+  else setTimeout(() => { voiceList = synth.getVoices() || []; say() }, 400)
 }
 
 // Mobile browsers only allow speech after a tap; call this from the tap that starts the job

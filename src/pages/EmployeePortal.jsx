@@ -311,7 +311,8 @@ export default function EmployeePortal() {
     const next = !voiceOn
     setVoiceOn(next)
     setVoicePref(next)
-    if (next) unlockSpeech()
+    // Say it once so the worker hears the voice and language the reminders will use.
+    if (next) { unlockSpeech(); speak(e.voiceOn, lang) }
   }
 
   useEffect(() => {
