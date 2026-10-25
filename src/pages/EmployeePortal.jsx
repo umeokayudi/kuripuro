@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
@@ -17,6 +17,8 @@ import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
 import { VOICE_EVERY_SEC, voicePrefOn, setVoicePref, voiceMessage, speak, unlockSpeech, canSpeak } from '../lib/voiceAlert'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { dueAlertJobs, dueAlertSlot, acceptSpotUpdate, isBrokenRunningJob, isPendingSpot } from '../lib/jobDueAlert'
+import JobDueAlert, { ringDueAlert } from '../components/JobDueAlert'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
 import EmployeeChat from '../components/EmployeeChat'
@@ -380,6 +382,19 @@ export default function EmployeePortal() {
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
     let inProgress = regular.find(j=>j.status==='in_progress')
     if (!inProgress) inProgress = allVisible.find(j => j.status === 'in_progress')
+    if (!inProgress) {
+      // A running job that was put back on 'assigned' (old Accept button) still has its start: reopen it.
+      const broken = allVisible.find(j => isBrokenRunningJob(j))
+      if (broken) {
+        const { data: reopened } = await supabase.from('jobs').update({ status: 'in_progress' })
+          .eq('id', broken.id).eq('status', 'assigned').not('started_at', 'is', null).select().maybeSingle()
+        if (reopened) {
+          inProgress = reopened
+          const i = allVisible.findIndex(j => j.id === reopened.id)
+          if (i >= 0) allVisible[i] = reopened
+        }
+      }
+    }
     if (inProgress && !allVisible.some(j => j.id === inProgress.id)) allVisible.unshift(inProgress)
     setJobs(regular); setSpotJobs(spots); setAllJobs(allVisible)
     if (inProgress) {
@@ -564,8 +579,14 @@ export default function EmployeePortal() {
   }
 
   const handleAcceptSpot = async (job) => {
-    await supabase.from('jobs').update({ spot_status:'accepted',status:'assigned',spot_responded_at:new Date().toISOString() }).eq('id',job.id)
-    toast.success(`Accepted! +¥${Number(job.spot_value||0).toLocaleString()}`); loadAll()
+    // Read the job again: if it was already started, accepting must not touch its status or timer.
+    const { data: fresh } = await supabase.from('jobs').select('id,status,started_at').eq('id', job.id).maybeSingle()
+    const fields = acceptSpotUpdate(fresh || job)
+    let q = supabase.from('jobs').update(fields).eq('id', job.id)
+    if (fields.status) q = q.neq('status', 'in_progress')
+    const { error } = await q
+    if (error) { toast.error(error.message); return }
+    toast.success(`${e.spotAccepted || 'Accepted!'} +¥${Number(job.spot_value||0).toLocaleString()}`); loadAll()
   }
   const handleDeclineSpot = async (job) => {
     await supabase.from('jobs').update({ spot_status:'declined',status:'cancelled',spot_responded_at:new Date().toISOString() }).eq('id',job.id)
@@ -847,7 +868,10 @@ export default function EmployeePortal() {
         if (!proceed) { setGpsStatus(''); return }
       }
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
-      const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
+      const startFields = { status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }
+      // Starting a spot offer means taking it: it is accepted at the same time.
+      if (isPendingSpot(job)) Object.assign(startFields, { spot_status:'accepted', spot_responded_at:startFields.started_at })
+      const { data, error } = await supabase.from('jobs').update(startFields).eq('id',job.id).select().maybeSingle()
       if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
       const gpsFields = {
         start_lat: gpsResult.pos?.lat ?? null, start_lng: gpsResult.pos?.lng ?? null, start_accuracy: gpsResult.pos?.acc ?? null,
@@ -1225,7 +1249,7 @@ export default function EmployeePortal() {
   const timeOffNotices = unseenDecisions(myTimeOff, seenTimeOff)
   const salaryNotices = salaryAnswers.filter(c => !seenAnswers.has(answerKey(c)))
   const payslipPending = !!statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period)
-  const bellCount = unreadMsgs + timeOffNotices.length + salaryNotices.length + (payslipPending ? 1 : 0)
+  const bellCount = unreadMsgs + timeOffNotices.length + salaryNotices.length + (payslipPending ? 1 : 0) + spotJobs.length
 
   // Home opens the salary pop-up by itself once per visit: an answer first, then the payslip to confirm.
   useEffect(() => {
@@ -1318,6 +1342,44 @@ export default function EmployeePortal() {
     const id = setInterval(load, 5 * 60000)
     return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id) }
   }, [])
+  // Job due / spot to accept: pop-up + sound + voice now, then again every 5 minutes until answered.
+  const [dueAlert, setDueAlert] = useState(null)
+  const dueSeenRef = useRef({})
+  const dueMinute = Math.floor(clock.getTime() / 60000)
+  const dueList = useMemo(() => {
+    const list = dueAlertJobs(allJobs, { activeJobId: activeJob?.id, hasActiveJob: !!activeJob })
+    // Quick round (Alexandre) ticks places off its own list: only spot offers alert there.
+    return quickRoundOn ? list.filter(x => x.kind === 'accept') : list
+  }, [allJobs, activeJob, quickRoundOn, dueMinute]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!dueList.length) { setDueAlert(null); return }
+    const next = dueList.find(x => dueSeenRef.current[x.job.id] !== dueAlertSlot(x.past))
+    if (next) {
+      dueSeenRef.current[next.job.id] = dueAlertSlot(next.past)
+      setDueAlert(next)
+      ringDueAlert(next, { labels: e, lang, voiceOn })
+    } else {
+      setDueAlert(cur => cur ? dueList.find(x => x.job.id === cur.job.id) || null : null)
+    }
+  }, [dueList]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Jobs the admin adds or offers while the app is open show up without reopening it.
+  const activeJobRef = useRef(null)
+  activeJobRef.current = activeJob
+  useEffect(() => {
+    const refresh = () => { if (!activeJobRef.current && document.visibilityState === 'visible') loadAll() }
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    document.addEventListener('visibilitychange', onVisible)
+    const id = setInterval(refresh, 3 * 60000)
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goStartDueJob = (job) => {
+    setDueAlert(null)
+    setTab('shift')
+    setTimeout(() => document.getElementById(`job-card-${job.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+  }
+
   const hasFacility = (job) => !!job?.client_id && facilityIndex.some(m => m.client_id === job.client_id
     && (!m.location_name || m.location_name === locationFromJob(job)))
 
@@ -1395,6 +1457,11 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {dueAlert&&<JobDueAlert item={dueAlert} others={Math.max(0, dueList.length - 1)} labels={e}
+        onAccept={async job=>{ await handleAcceptSpot(job); setDueAlert(null) }}
+        onDecline={async job=>{ await handleDeclineSpot(job); setDueAlert(null) }}
+        onGoStart={goStartDueJob}
+        onLater={()=>setDueAlert(null)} />}
       {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} job={facilityJob} employee={{ id: user?.id, name: user?.name }} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
@@ -1701,7 +1768,7 @@ export default function EmployeePortal() {
             {(()=>{
               const pendingClaims=claims.filter(c=>c.status==='pending').length
               const pendingEquipment=equipmentRequests.filter(r=>['pending','requested'].includes(r.status)).length
-              const notifications=bellCount+spotJobs.length
+              const notifications=bellCount
               return (
                 <div className="ex-duo">
                   <button type="button" className="ex-tile" onClick={()=>goToTab(pendingClaims||!pendingEquipment?'transport':'equipment')}>
@@ -1813,7 +1880,7 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
           {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
           </section>
         )}
 
@@ -2143,7 +2210,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2281,7 +2348,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         const hasTraining = trainingContract?.training_video_url
 
         return (
-          <div key={job.id} id={isActive?'active-job-card':undefined}
+          <div key={job.id} id={isActive?'active-job-card':`job-card-${job.id}`}
             onClick={()=>{ if(isDone&&setSelectedJob) setSelectedJob(job) }}
             style={{...S.card,marginBottom:10,opacity:isDone?0.85:1,cursor:isDone?'pointer':'default',border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(74,222,128,0.2)':'1px solid rgba(255,255,255,0.08)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isActive||isNext||isDone?8:0}}>
@@ -2407,7 +2474,17 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </div>
             )})()}
 
-            {isNext&&(
+            {isNext&&isPendingSpot(job)&&onAcceptSpot&&(
+              <div style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.35)',borderRadius:12,padding:12}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#c19c56',marginBottom:10,lineHeight:1.5}}>⚡ {labels.spotAcceptFirst}</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <button type="button" onClick={()=>onDeclineSpot?.(job)} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.55)',fontSize:14,fontWeight:700,cursor:'pointer'}}>✕ {labels.decline}</button>
+                  <button type="button" onClick={()=>onAcceptSpot(job)} style={{padding:'13px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer'}}>✅ {labels.accept}</button>
+                </div>
+              </div>
+            )}
+
+            {isNext&&!(isPendingSpot(job)&&onAcceptSpot)&&(
               <div>
                 {hasTraining&&(
                   <button type="button" onClick={()=>onOpenTraining({ job, contract: trainingContract })} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>

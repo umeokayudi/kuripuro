@@ -1,0 +1,36 @@
+/* Job due / spot to accept: pop-up that comes back every 5 minutes until answered. */
+.jda-overlay {
+  position: fixed; inset: 0; z-index: 2600; background: rgba(10, 16, 30, .6);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+@media (min-width: 640px) { .jda-overlay { align-items: center; padding: 24px; } }
+.jda-sheet {
+  background: var(--emp-card, #fff); color: var(--emp-text, #111827);
+  width: 100%; max-width: 480px; border-radius: 24px 24px 0 0;
+  padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 40px rgba(0,0,0,.22); border-top: 5px solid #f59e0b;
+  animation: jda-in .25s ease-out;
+}
+.jda-sheet.is-late { border-top-color: #ef4444; }
+@media (min-width: 640px) { .jda-sheet { border-radius: 24px; } }
+@keyframes jda-in { from { transform: translateY(24px); opacity: 0 } to { transform: none; opacity: 1 } }
+.jda-sheet button { font-family: inherit; }
+.jda-kicker { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #b45309; }
+.jda-sheet.is-late .jda-kicker { color: #dc2626; }
+.jda-bell { font-size: 20px; animation: jda-ring 1.2s ease-in-out infinite; transform-origin: 50% 10%; }
+@keyframes jda-ring { 0%,60%,100% { transform: rotate(0) } 10%,30%,50% { transform: rotate(14deg) } 20%,40% { transform: rotate(-14deg) } }
+.jda-sheet h2 { margin: 8px 0 4px; font-size: 21px; font-weight: 800; letter-spacing: -.3px; line-height: 1.25; overflow-wrap: anywhere; }
+.jda-when { font-size: 15px; font-weight: 700; color: var(--emp-text, #111827); }
+.jda-sheet.is-late .jda-when { color: #dc2626; }
+.jda-meta { font-size: 13px; color: var(--emp-muted, #68778d); margin-top: 4px; }
+.jda-value { display: inline-block; margin-top: 8px; font-weight: 800; color: #0f766e; background: #ecfdf5; border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+.jda-more { font-size: 12.5px; color: var(--emp-muted, #68778d); margin-top: 10px; }
+.jda-btns { display: grid; gap: 8px; margin-top: 16px; }
+.jda-btns .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.jda-btn { border: 0; border-radius: 14px; padding: 15px 12px; font-size: 15px; font-weight: 800; cursor: pointer; }
+.jda-btn.is-go { background: linear-gradient(135deg, #0f766e, #16a37e); color: #fff; }
+.jda-btn.is-start { background: linear-gradient(135deg, #3b82f6, #315cf5); color: #fff; }
+.jda-btn.is-soft { background: #f3f5f9; color: var(--emp-text, #111827); font-weight: 700; }
+.jda-btn.is-ghost { background: transparent; color: var(--emp-muted, #68778d); font-weight: 600; font-size: 13.5px; padding: 10px; }
+.jda-btn:disabled { opacity: .6; cursor: not-allowed; }
+.jda-hint { text-align: center; font-size: 11.5px; color: var(--emp-muted, #68778d); margin-top: 6px; }
