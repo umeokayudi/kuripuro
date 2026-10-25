@@ -595,7 +595,7 @@ export default function SalespersonPortal() {
         {tab === 'offers' && <div className="fa-stack"><SellerFacilityOffers offers={offers} lang={lang} /></div>}
         {tab === 'clients' && <div className="fa-stack"><ClientList deals={deals} lang={lang} onOpen={row => openDeal(row)} /></div>}
         {tab === 'quotes' && <div className="fa-stack">
-          <div className="fa-screen-head"><h2>{lang === 'ja' ? '見積もり依頼' : 'Quote requests'}</h2></div>
+          <div className="fa-screen-head"><h2>{lang === 'ja' ? '見積もり依頼' : lang === 'pt' ? 'Pedidos de orçamento' : 'Quote requests'}</h2></div>
           <SellerQuoteRequests data={data} lang={lang} onChanged={load} />
         </div>}
         {tab === 'commissions' && <div className="fa-stack">

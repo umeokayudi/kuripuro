@@ -3,6 +3,7 @@ import { geminiGenerate } from './_gemini.js'
 import { sellerCommissionSummary, quoteCommissionState } from '../src/lib/contractCommission.js'
 import { serviceOffers } from '../src/lib/facilityModel.js'
 import { quoteSellerFor } from '../src/lib/quoteSeller.js'
+import { estimateMinimum, signMinimum, readMinimum } from './_quoteMinimum.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -221,6 +222,30 @@ async function loadQuoteRequests(db, user, isAdmin) {
   }
 }
 
+/**
+ * v1.0.77 · Clients (and their stores) a seller can send a new quote to: the ones they look after
+ * on the client account or on a store contract. Admin gets every active client.
+ */
+async function loadQuoteClients(db, user, isAdmin) {
+  try {
+    const [clientsRes, contractsRes] = await Promise.all([
+      db.from('clients').select('id,company_name,salesperson_id,is_active').order('company_name'),
+      db.from('service_contracts').select('client_id,location_name,salesperson_id,is_active'),
+    ])
+    if (clientsRes.error) return []
+    const contracts = contractsRes.error ? [] : (contractsRes.data || [])
+    const base = name => String(name || '').split(/\s+[-—–]\s+/)[0].trim()
+    return (clientsRes.data || []).filter(c => c.is_active !== false).map(c => {
+      const own = contracts.filter(k => k.client_id === c.id && k.is_active !== false)
+      const stores = [...new Set(own.map(k => base(k.location_name)).filter(Boolean))]
+      const mine = isAdmin || c.salesperson_id === user.id || own.some(k => k.salesperson_id === user.id)
+      return mine ? { id: c.id, company_name: c.company_name, stores } : null
+    }).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 /** Seller of one request (request → client account → store contract). */
 async function sellerOfRequest(db, row) {
   const [{ data: client }, { data: contracts }] = await Promise.all([
@@ -253,10 +278,11 @@ async function loadDashboard(db, user) {
     isAdmin ? db.from('marketing_goals').select('*').gte('period_month', `${Number(todayTokyo().slice(0, 4)) - 1}-01`).order('period_month', { ascending: false }) : Promise.resolve({ data: [] }),
   ])
   // Contracts the seller brought in (spot = one-off commission, fixed location = monthly commission).
-  const [spotCommRes, fixedCommRes, quoteRequests] = await Promise.all([
+  const [spotCommRes, fixedCommRes, quoteRequests, quoteClients] = await Promise.all([
     scope(db.from('spot_contracts').select('id,contract_number,location_name,client_name,service_date,status,price,tax_rate,price_includes_tax,salesperson_id,salesperson_name,commission_type,commission_value,commission_amount,commission_paid_at').eq('is_active', true).not('salesperson_id', 'is', null).order('service_date', { ascending: false }).limit(1000)),
     scope(db.from('service_contracts').select('id,client_id,location_name,service_type,monthly_revenue,is_active,salesperson_id,commission_type,commission_value,commission_amount').eq('is_active', true).not('salesperson_id', 'is', null).limit(1000)),
     loadQuoteRequests(db, user, isAdmin),
+    loadQuoteClients(db, user, isAdmin),
   ])
   // Missing columns (SQL not applied yet) must not take the whole dashboard down.
   const spotCommissions = spotCommRes.error ? [] : (spotCommRes.data || [])
@@ -313,7 +339,7 @@ async function loadDashboard(db, user) {
     const conversions = relatedLeads.filter(row => row.stage === 'won').length
     return { ...campaign, spend: campaignSpend, leads: relatedLeads.length, conversions, cost_per_lead: relatedLeads.length ? campaignSpend / relatedLeads.length : 0, customer_acquisition_cost: conversions ? campaignSpend / conversions : 0 }
   })
-  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions }, quoteRequests, facilityOffers }
+  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions }, quoteRequests, quoteClients, facilityOffers }
 }
 
 async function getAction(db, user, action, query = {}) {
@@ -921,18 +947,85 @@ async function postAction(db, user, body, res) {
     if (!row || row.request_type !== 'quote') return jsonError(res, 404, 'Pedido de orçamento não encontrado.')
     const { client, sellerId: owner } = await sellerOfRequest(db, row)
     if (!admin && owner !== own) return jsonError(res, 403, 'Este cliente é de outro vendedor.')
-    if (row.quote_status !== 'priced' || !Number(row.base_amount)) return jsonError(res, 409, 'A empresa ainda não definiu o preço deste orçamento.')
-    const base = Number(row.base_amount)
+    // v1.0.77 · Without the company price yet, the seller may send with the AI minimum (signed).
+    const waiting = !row.quote_status || row.quote_status === 'requested'
+    const aiMin = waiting && body.min_token ? readMinimum(body.min_token, own) : null
+    if (waiting && body.min_token && (!aiMin || aiMin.k !== 'req' || aiMin.id !== row.id)) return jsonError(res, 409, 'O valor mínimo expirou. Calcule de novo.')
+    if (!aiMin && (row.quote_status !== 'priced' || !Number(row.base_amount))) return jsonError(res, 409, 'A empresa ainda não definiu o preço deste orçamento.')
+    const base = aiMin ? Number(aiMin.min) : Number(row.base_amount)
     if (markup > base * 10) return jsonError(res, 400, 'O valor a mais está alto demais. Confira o número.')
     const sellerId = admin ? owner : own
     const note = String(body.note || '').trim().slice(0, 1000) || null
-    const { data, error } = await db.from('client_requests').update({
+    const now = new Date().toISOString()
+    let update = db.from('client_requests').update({
+      ...(aiMin ? { base_amount: base, priced_at: now } : {}),
       seller_markup: markup, quote_amount: base + markup, salesperson_id: sellerId,
-      quote_status: 'quoted', quoted_at: new Date().toISOString(), ...(note ? { quote_note: note } : {}),
-    }).eq('id', row.id).eq('quote_status', 'priced').select().maybeSingle()
+      quote_status: 'quoted', quoted_at: now, ...(note ? { quote_note: note } : {}),
+    }).eq('id', row.id)
+    update = aiMin ? update.or('quote_status.is.null,quote_status.eq.requested') : update.eq('quote_status', 'priced')
+    const { data, error } = await update.select().maybeSingle()
     if (error) throw error
     if (!data) return jsonError(res, 409, 'Este orçamento já foi enviado.')
-    await db.from('sales_notifications').insert({ salesperson_id: sellerId, audience: 'admin', event_type: 'quote_sent', title: 'Vendedor enviou orçamento ao cliente', body: `${[client?.company_name, row.location_name].filter(Boolean).join(' · ')} · ¥${Math.round(base + markup).toLocaleString()} (empresa ¥${Math.round(base).toLocaleString()} + vendedor ¥${Math.round(markup).toLocaleString()})`, sender_name: String(user.name || '').slice(0, 120) })
+    await db.from('sales_notifications').insert({ salesperson_id: sellerId, audience: 'admin', event_type: 'quote_sent', title: aiMin ? 'Vendedor enviou orçamento direto (mínimo da IA)' : 'Vendedor enviou orçamento ao cliente', body: `${[client?.company_name, row.location_name].filter(Boolean).join(' · ')} · ¥${Math.round(base + markup).toLocaleString()} (empresa ¥${Math.round(base).toLocaleString()}${aiMin ? ' pela IA' : ''} + vendedor ¥${Math.round(markup).toLocaleString()})`, sender_name: String(user.name || '').slice(0, 120) })
+    return { request: data }
+  }
+
+  if (action === 'quote-ai-minimum') {
+    // v1.0.77 · AI minimum company price, for a client request (id) or a new quote (client + store + service).
+    if (marketer) return jsonError(res, 403, 'Sem permissão.')
+    let job, ref
+    if (body.id) {
+      const { data: row, error: rowErr } = await db.from('client_requests').select('id,client_id,quote_status,request_type,location_name,category,description,salesperson_id').eq('id', String(body.id)).maybeSingle()
+      if (rowErr) throw rowErr
+      if (!row || row.request_type !== 'quote') return jsonError(res, 404, 'Pedido de orçamento não encontrado.')
+      if (['quoted', 'accepted', 'declined'].includes(row.quote_status)) return jsonError(res, 409, 'Este orçamento já foi enviado.')
+      const { sellerId } = await sellerOfRequest(db, row)
+      if (!admin && sellerId !== own) return jsonError(res, 403, 'Este cliente é de outro vendedor.')
+      job = { clientId: row.client_id, locationName: row.location_name, category: row.category, description: [row.description, body.details].filter(Boolean).join(' · ') }
+      ref = { k: 'req', id: row.id }
+    } else {
+      const clientId = String(body.client_id || '')
+      const category = String(body.category || '').trim().slice(0, 120)
+      if (!clientId || !category) return jsonError(res, 400, 'Escolha o cliente e o serviço.')
+      const location = String(body.location_name || '').trim().slice(0, 200) || null
+      const { sellerId } = await sellerOfRequest(db, { client_id: clientId, location_name: location })
+      if (!admin && sellerId !== own) {
+        const { data: mine } = await db.from('service_contracts').select('id').eq('client_id', clientId).eq('salesperson_id', own).limit(1)
+        if (!mine?.length) return jsonError(res, 403, 'Este cliente é de outro vendedor.')
+      }
+      job = { clientId, locationName: location, category, description: String(body.description || '').slice(0, 1000) }
+      ref = { k: 'new', cid: clientId, loc: location, cat: category }
+    }
+    const estimate = await estimateMinimum(db, job)
+    return { ...estimate, token: signMinimum({ ...ref, min: estimate.min, uid: own }) }
+  }
+
+  if (action === 'create-client-quote') {
+    // v1.0.77 · Seller creates a quote for one of their clients and sends it at once:
+    // AI minimum (company) + seller's extra (commission). The client accepts it in the portal.
+    if (marketer) return jsonError(res, 403, 'Sem permissão.')
+    const aiMin = readMinimum(body.min_token, own)
+    const clientId = String(body.client_id || '')
+    const location = String(body.location_name || '').trim().slice(0, 200) || null
+    const category = String(body.category || '').trim().slice(0, 120)
+    if (!aiMin || aiMin.k !== 'new' || aiMin.cid !== clientId || (aiMin.loc || null) !== location || aiMin.cat !== category) return jsonError(res, 409, 'O valor mínimo expirou ou o pedido mudou. Calcule de novo.')
+    const markup = num(body.markup || 0)
+    const base = Number(aiMin.min)
+    if (markup > base * 10) return jsonError(res, 400, 'O valor a mais está alto demais. Confira o número.')
+    const { client, sellerId: owner } = await sellerOfRequest(db, { client_id: clientId, location_name: location })
+    const sellerId = admin ? owner : own
+    const now = new Date().toISOString()
+    const note = String(body.note || '').trim().slice(0, 1000) || null
+    const { data, error } = await db.from('client_requests').insert({
+      client_id: clientId, location_name: location, category,
+      description: String(body.description || '').trim().slice(0, 1000) || category,
+      preferred_date: isDay(body.preferred_date) ? body.preferred_date : null,
+      status: 'pending', ticket_number: `KP-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+      request_type: 'quote', quote_status: 'quoted', salesperson_id: sellerId,
+      base_amount: base, seller_markup: markup, quote_amount: base + markup, priced_at: now, quoted_at: now, quote_note: note,
+    }).select().single()
+    if (error) throw error
+    await db.from('sales_notifications').insert({ salesperson_id: sellerId, audience: 'admin', event_type: 'quote_sent', title: 'Vendedor criou e enviou orçamento (mínimo da IA)', body: `${[client?.company_name, location].filter(Boolean).join(' · ')} · ${category} · ¥${Math.round(base + markup).toLocaleString()} (empresa ¥${Math.round(base).toLocaleString()} pela IA + vendedor ¥${Math.round(markup).toLocaleString()})`, sender_name: String(user.name || '').slice(0, 120) })
     return { request: data }
   }
 
