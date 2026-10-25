@@ -7,6 +7,7 @@ import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 import ClientCareAdmin from '../components/ClientCareAdmin'
 import { fetchContractSellers } from '../lib/contractSellers'
+import { ClientLink } from '../components/ClientSheetHost'
 
 export default function Clients() {
   const [searchParams] = useSearchParams()
@@ -262,7 +263,7 @@ export default function Clients() {
         <button className={`tab-pill${tab==='services'?' active':''}`} onClick={()=>setTab('services')}>Services</button>
         <button className={`tab-pill${tab==='portal'?' active':''}`} onClick={()=>setTab('portal')}>🔐 Portal</button>
         <button className={`tab-pill${tab==='care'?' active':''}`} onClick={()=>setTab('care')}>🤝 Manager &amp; stores</button>
-        <button className="tab-pill" onClick={()=>navigate('/facility')}>🏢 Smart Facility</button>
+        <button className="tab-pill" onClick={()=>navigate('/facility')}>🌏 Kuripuro World</button>
       </div>
 
       {tab==='care'&&<ClientCareAdmin clients={clients} onClientsChanged={load} />}
@@ -278,7 +279,7 @@ export default function Clients() {
               <div key={c.id} className="card" style={{marginBottom:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
                   <div>
-                    <div style={{fontWeight:700,fontSize:16}}>{c.company_name}</div>
+                    <div style={{fontWeight:700,fontSize:16}}><ClientLink id={c.id} name={c.company_name} /></div>
                     <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{c.contact_name} · {c.phone}</div>
                     <div style={{fontSize:12,color:'var(--text3)'}}>{c.service_type}</div>
                   </div>
@@ -360,7 +361,7 @@ export default function Clients() {
                 const margin = c.monthly_revenue?Math.round(profit/c.monthly_revenue*100):0
                 return (
                   <tr key={c.id}>
-                    <td style={{fontWeight:500}}>{c.company_name}</td>
+                    <td style={{fontWeight:500}}><ClientLink id={c.id} name={c.company_name} /></td>
                     <td>{c.service_type}</td>
                     <td>¥{Number(c.monthly_revenue||0).toLocaleString()}</td>
                     <td style={{color:'var(--red)'}}>¥{Number(c.monthly_cost||0).toLocaleString()}</td>

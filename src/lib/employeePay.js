@@ -69,6 +69,14 @@ export function formatShiftElapsed(seconds, lang = 'en') {
 
 export function isStaleActiveJob(job, today, elapsedSeconds) {
   if (!job || job.status !== 'in_progress') return false
-  if (job.scheduled_date && job.scheduled_date !== today) return true
+  // A night job started yesterday (e.g. 23:00) keeps running normally after midnight;
+  // only a job from before yesterday, or one open for 12h+, is a forgotten shift.
+  if (job.scheduled_date && today && job.scheduled_date < dayBefore(today)) return true
   return elapsedSeconds >= 12 * 3600
+}
+
+function dayBefore(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
@@ -7,8 +7,9 @@ import { uploadJobVideo } from '../lib/jobVideo'
 import JobVideoPicker from '../components/JobVideoPicker'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, pickLang } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
+import { finishQuoteJob } from '../lib/quoteFlow'
 import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geocode'
 import ServiceTimer from '../components/ServiceTimer'
 import NfcScanSheet from '../components/NfcScanSheet'
@@ -16,6 +17,8 @@ import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
 import { VOICE_EVERY_SEC, voicePrefOn, setVoicePref, voiceMessage, speak, unlockSpeech, canSpeak } from '../lib/voiceAlert'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { dueAlertJobs, dueAlertSlot, acceptSpotUpdate, isBrokenRunningJob, isPendingSpot } from '../lib/jobDueAlert'
+import JobDueAlert, { ringDueAlert } from '../components/JobDueAlert'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
 import EmployeeChat from '../components/EmployeeChat'
@@ -59,6 +62,8 @@ import { tokyoToday } from '../lib/dates'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
 import EarningsPanel from '../components/EarningsPanel'
+import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
+import { monthLabel } from '../lib/earnings'
 import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
@@ -99,6 +104,17 @@ function JobPhoto({ url, label }) {
       )}
     </div>
   )
+}
+
+// Answers to salary disputes pop up once; a new answer on the same request shows again.
+const answerKey = c => `${c.id}:${c.resolved_at}`
+const seenAnswersKey = id => `kp_salary_answers_seen:${id}`
+function loadSeenAnswers(id) {
+  try { return new Set(JSON.parse(localStorage.getItem(seenAnswersKey(id)) || '[]')) } catch { return new Set() }
+}
+function saveSeenAnswers(id, set) {
+  try { localStorage.setItem(seenAnswersKey(id), JSON.stringify([...set].slice(-50))) } catch { /* private mode */ }
+  return set
 }
 
 export default function EmployeePortal() {
@@ -166,7 +182,6 @@ export default function EmployeePortal() {
   const [claimReceipt, setClaimReceipt] = useState(null)
   const [claimPhotoPreview, setClaimPhotoPreview] = useState(null)
   const [claimReceiptPreview, setClaimReceiptPreview] = useState(null)
-  const [submittingComplaint, setSubmittingComplaint] = useState(false)
   const [submittingClaim, setSubmittingClaim] = useState(false)
   const [equipmentRequests, setEquipmentRequests] = useState([])
   const [equipmentForm, setEquipmentForm] = useState({ category: 'supplies', item_name: '', quantity: '1', reason: '', product_url: '' })
@@ -174,9 +189,12 @@ export default function EmployeePortal() {
   const [equipmentPhotoPreview, setEquipmentPhotoPreview] = useState(null)
   const [submittingEquipment, setSubmittingEquipment] = useState(false)
   const [statement, setStatement] = useState(null)
-  const [complaintText, setComplaintText] = useState('')
-  const [complaintCategory, setComplaintCategory] = useState('hours')
-  const [showComplaintForm, setShowComplaintForm] = useState(false)
+  // Payslip to confirm + admin answers to salary disputes, both shown as home pop-ups
+  const [salaryAnswers, setSalaryAnswers] = useState([])
+  const [seenAnswers, setSeenAnswers] = useState(() => loadSeenAnswers(user?.id))
+  const [payslipOpen, setPayslipOpen] = useState(false)
+  const [answerOpen, setAnswerOpen] = useState(null)
+  const salaryPopupShown = useRef(false)
   const [showSignature, setShowSignature] = useState(false)
   const [signatureJob, setSignatureJob] = useState(null)
   // Ponto por NFC (off unless the admin turned it on for everyone or for this worker)
@@ -364,6 +382,19 @@ export default function EmployeePortal() {
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
     let inProgress = regular.find(j=>j.status==='in_progress')
     if (!inProgress) inProgress = allVisible.find(j => j.status === 'in_progress')
+    if (!inProgress) {
+      // A running job that was put back on 'assigned' (old Accept button) still has its start: reopen it.
+      const broken = allVisible.find(j => isBrokenRunningJob(j))
+      if (broken) {
+        const { data: reopened } = await supabase.from('jobs').update({ status: 'in_progress' })
+          .eq('id', broken.id).eq('status', 'assigned').not('started_at', 'is', null).select().maybeSingle()
+        if (reopened) {
+          inProgress = reopened
+          const i = allVisible.findIndex(j => j.id === reopened.id)
+          if (i >= 0) allVisible[i] = reopened
+        }
+      }
+    }
     if (inProgress && !allVisible.some(j => j.id === inProgress.id)) allVisible.unshift(inProgress)
     setJobs(regular); setSpotJobs(spots); setAllJobs(allVisible)
     if (inProgress) {
@@ -400,45 +431,20 @@ export default function EmployeePortal() {
 
   const loadStatement = async () => {
     const period = getConfirmablePeriod()
-    const { data } = await supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle()
+    const [{ data }, answers] = await Promise.all([
+      supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle(),
+      supabase.from('salary_complaints').select('*').eq('employee_id', user.id).in('status', ['resolved', 'rejected'])
+        .not('resolved_at', 'is', null).order('resolved_at', { ascending: false }).limit(20),
+    ])
     setStatement(data)
+    setSalaryAnswers(answers.data || [])
   }
 
-  const confirmStatement = async () => {
-    if (!statement) return
-    const { error } = await supabase.from('salary_statements').update({
-      employee_confirmed_at: new Date().toISOString(), status: 'confirmed',
-    }).eq('id', statement.id)
-    if (error) return toast.error(error.message)
-    toast.success(e.salaryConfirmedToast)
-    loadStatement()
+  const markAnswerSeen = (c) => {
+    if (!c) return
+    setSeenAnswers(prev => saveSeenAnswers(user.id, new Set([...prev, answerKey(c)])))
   }
-
-  const submitSalaryComplaint = async () => {
-    if (!complaintText.trim()) return toast.error('Descreva o problema')
-    setSubmittingComplaint(true)
-    try {
-      const { error } = await supabase.from('salary_complaints').insert({
-        employee_id: user.id, employee_name: user.name,
-        period: statement?.period || getConfirmablePeriod(),
-        statement_id: statement?.id || null,
-        category: complaintCategory,
-        description: complaintText.trim(),
-        status: 'pending',
-      })
-      if (error) throw error
-      if (statement) {
-        await supabase.from('salary_statements').update({
-          employee_disputed_at: new Date().toISOString(), status: 'disputed',
-        }).eq('id', statement.id)
-      }
-      toast.success(e.complaintSentToast)
-      setComplaintText('')
-      setShowComplaintForm(false)
-      loadStatement()
-    } catch (e) { toast.error(e.message) }
-    setSubmittingComplaint(false)
-  }
+  const closeAnswer = () => { markAnswerSeen(answerOpen); setAnswerOpen(null) }
 
   const loadMessages = async () => {
     const { data: newest } = await supabase.from('messages').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(100)
@@ -573,8 +579,14 @@ export default function EmployeePortal() {
   }
 
   const handleAcceptSpot = async (job) => {
-    await supabase.from('jobs').update({ spot_status:'accepted',status:'assigned',spot_responded_at:new Date().toISOString() }).eq('id',job.id)
-    toast.success(`Accepted! +¥${Number(job.spot_value||0).toLocaleString()}`); loadAll()
+    // Read the job again: if it was already started, accepting must not touch its status or timer.
+    const { data: fresh } = await supabase.from('jobs').select('id,status,started_at').eq('id', job.id).maybeSingle()
+    const fields = acceptSpotUpdate(fresh || job)
+    let q = supabase.from('jobs').update(fields).eq('id', job.id)
+    if (fields.status) q = q.neq('status', 'in_progress')
+    const { error } = await q
+    if (error) { toast.error(error.message); return }
+    toast.success(`${e.spotAccepted || 'Accepted!'} +¥${Number(job.spot_value||0).toLocaleString()}`); loadAll()
   }
   const handleDeclineSpot = async (job) => {
     await supabase.from('jobs').update({ spot_status:'declined',status:'cancelled',spot_responded_at:new Date().toISOString() }).eq('id',job.id)
@@ -801,6 +813,7 @@ export default function EmployeePortal() {
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id', retroJob.id)
       if (error) throw error
+      finishQuoteJob(retroJob.id) // job from an accepted quote → its invoice goes to the client
       setRetroEval(ev)
       const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).maybeSingle()
       if (completedRetro) {
@@ -855,7 +868,10 @@ export default function EmployeePortal() {
         if (!proceed) { setGpsStatus(''); return }
       }
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
-      const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
+      const startFields = { status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }
+      // Starting a spot offer means taking it: it is accepted at the same time.
+      if (isPendingSpot(job)) Object.assign(startFields, { spot_status:'accepted', spot_responded_at:startFields.started_at })
+      const { data, error } = await supabase.from('jobs').update(startFields).eq('id',job.id).select().maybeSingle()
       if (error || !data) { toast.error(error?.message || 'Could not start job'); return }
       const gpsFields = {
         start_lat: gpsResult.pos?.lat ?? null, start_lng: gpsResult.pos?.lng ?? null, start_accuracy: gpsResult.pos?.acc ?? null,
@@ -991,6 +1007,7 @@ export default function EmployeePortal() {
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      finishQuoteJob(job.id) // job from an accepted quote → its invoice goes to the client
       await saveNfcResult(supabase, job.id, 'end', nfcEndRef.current)
       nfcEndRef.current = null
       try {
@@ -1230,7 +1247,16 @@ export default function EmployeePortal() {
   }
 
   const timeOffNotices = unseenDecisions(myTimeOff, seenTimeOff)
-  const bellCount = unreadMsgs + timeOffNotices.length
+  const salaryNotices = salaryAnswers.filter(c => !seenAnswers.has(answerKey(c)))
+  const payslipPending = !!statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period)
+  const bellCount = unreadMsgs + timeOffNotices.length + salaryNotices.length + (payslipPending ? 1 : 0) + spotJobs.length
+
+  // Home opens the salary pop-up by itself once per visit: an answer first, then the payslip to confirm.
+  useEffect(() => {
+    if (tab !== 'home' || salaryPopupShown.current) return
+    if (salaryNotices.length) { salaryPopupShown.current = true; setAnswerOpen(salaryNotices[0]) }
+    else if (payslipPending) { salaryPopupShown.current = true; setPayslipOpen(true) }
+  }, [tab, salaryNotices.length, payslipPending]) // eslint-disable-line react-hooks/exhaustive-deps
   const closeBell = () => {
     setBellOpen(false)
     if (timeOffNotices.length) setSeenTimeOff(markSeen(user.id, seenTimeOff, myTimeOff))
@@ -1316,6 +1342,44 @@ export default function EmployeePortal() {
     const id = setInterval(load, 5 * 60000)
     return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id) }
   }, [])
+  // Job due / spot to accept: pop-up + sound + voice now, then again every 5 minutes until answered.
+  const [dueAlert, setDueAlert] = useState(null)
+  const dueSeenRef = useRef({})
+  const dueMinute = Math.floor(clock.getTime() / 60000)
+  const dueList = useMemo(() => {
+    const list = dueAlertJobs(allJobs, { activeJobId: activeJob?.id, hasActiveJob: !!activeJob })
+    // Quick round (Alexandre) ticks places off its own list: only spot offers alert there.
+    return quickRoundOn ? list.filter(x => x.kind === 'accept') : list
+  }, [allJobs, activeJob, quickRoundOn, dueMinute]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!dueList.length) { setDueAlert(null); return }
+    const next = dueList.find(x => dueSeenRef.current[x.job.id] !== dueAlertSlot(x.past))
+    if (next) {
+      dueSeenRef.current[next.job.id] = dueAlertSlot(next.past)
+      setDueAlert(next)
+      ringDueAlert(next, { labels: e, lang, voiceOn })
+    } else {
+      setDueAlert(cur => cur ? dueList.find(x => x.job.id === cur.job.id) || null : null)
+    }
+  }, [dueList]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Jobs the admin adds or offers while the app is open show up without reopening it.
+  const activeJobRef = useRef(null)
+  activeJobRef.current = activeJob
+  useEffect(() => {
+    const refresh = () => { if (!activeJobRef.current && document.visibilityState === 'visible') loadAll() }
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    document.addEventListener('visibilitychange', onVisible)
+    const id = setInterval(refresh, 3 * 60000)
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goStartDueJob = (job) => {
+    setDueAlert(null)
+    setTab('shift')
+    setTimeout(() => document.getElementById(`job-card-${job.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+  }
+
   const hasFacility = (job) => !!job?.client_id && facilityIndex.some(m => m.client_id === job.client_id
     && (!m.location_name || m.location_name === locationFromJob(job)))
 
@@ -1393,6 +1457,11 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {dueAlert&&<JobDueAlert item={dueAlert} others={Math.max(0, dueList.length - 1)} labels={e}
+        onAccept={async job=>{ await handleAcceptSpot(job); setDueAlert(null) }}
+        onDecline={async job=>{ await handleDeclineSpot(job); setDueAlert(null) }}
+        onGoStart={goStartDueJob}
+        onLater={()=>setDueAlert(null)} />}
       {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} job={facilityJob} employee={{ id: user?.id, name: user?.name }} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
@@ -1528,6 +1597,15 @@ export default function EmployeePortal() {
         </div>
       </div>
 
+      {payslipOpen&&statement&&(
+        <PayslipPopup statement={statement} employeeId={user.id} employeeName={user.name} lang={lang}
+          onClose={()=>setPayslipOpen(false)} onDone={()=>{setPayslipOpen(false);loadStatement()}} />
+      )}
+      {answerOpen&&(
+        <SalaryAnswerPopup complaint={answerOpen} statement={statement} employeeId={user.id} employeeName={user.name} lang={lang}
+          onClose={closeAnswer} onDone={()=>{closeAnswer();loadStatement()}} />
+      )}
+
       {/* Bell: answers to day-off requests + shortcuts to messages / spot jobs */}
       {bellOpen&&(
         <div className="emp-bell-overlay" onClick={closeBell}>
@@ -1543,9 +1621,16 @@ export default function EmployeePortal() {
                   </div>
                 </div>
               ))}
+              {payslipPending&&<button type="button" className="emp-bell-item is-link" onClick={()=>{closeBell();setPayslipOpen(true)}}><span className="emp-bell-icon" aria-hidden="true">💴</span><div><strong>{pickLang(lang,`Check your ${monthLabel(statement.period,'en',true)} salary`,`${monthLabel(statement.period,'ja',true)}の給与を確認してください`,`Confira o salário de ${monthLabel(statement.period,'en',true)}`)}</strong><small>¥{Number(statement.net_total||0).toLocaleString()}</small></div><b>›</b></button>}
+              {salaryNotices.map(c=>(
+                <button key={c.id} type="button" className={`emp-bell-item is-link is-${c.status==='resolved'?'approved':'rejected'}`} onClick={()=>{closeBell();setAnswerOpen(c)}}>
+                  <span className="emp-bell-icon" aria-hidden="true">{c.status==='resolved'?'✓':'✕'}</span>
+                  <div><strong>{pickLang(lang,`Answer about your ${monthLabel(c.period,'en',true)} salary`,`${monthLabel(c.period,'ja',true)}の給与についての回答`,`Resposta sobre o salário de ${monthLabel(c.period,'en',true)}`)}</strong>{c.admin_response&&<small>{c.admin_response}</small>}</div><b>›</b>
+                </button>
+              ))}
               {unreadMsgs>0&&<button type="button" className="emp-bell-item is-link" onClick={()=>bellGo('chat')}><span className="emp-bell-icon" aria-hidden="true">💬</span><div><strong>{e.bellMessages}</strong><small>{fill(e.unreadCount,{n:unreadMsgs})}</small></div><b>›</b></button>}
               {spotJobs.length>0&&<button type="button" className="emp-bell-item is-link" onClick={()=>bellGo('spots')}><span className="emp-bell-icon" aria-hidden="true">⚡</span><div><strong>{e.bellSpots}</strong><small>{spotJobs.length}</small></div><b>›</b></button>}
-              {!timeOffNotices.length&&!unreadMsgs&&!spotJobs.length&&<p className="emp-bell-empty">{e.bellNothingNew}</p>}
+              {!timeOffNotices.length&&!unreadMsgs&&!spotJobs.length&&!payslipPending&&!salaryNotices.length&&<p className="emp-bell-empty">{e.bellNothingNew}</p>}
             </div>
             <button type="button" className="emp-bell-all" onClick={()=>bellGo('availability')}>🗓 {e.bellSeeAllTimeOff} ›</button>
           </section>
@@ -1683,7 +1768,7 @@ export default function EmployeePortal() {
             {(()=>{
               const pendingClaims=claims.filter(c=>c.status==='pending').length
               const pendingEquipment=equipmentRequests.filter(r=>['pending','requested'].includes(r.status)).length
-              const notifications=bellCount+spotJobs.length
+              const notifications=bellCount
               return (
                 <div className="ex-duo">
                   <button type="button" className="ex-tile" onClick={()=>goToTab(pendingClaims||!pendingEquipment?'transport':'equipment')}>
@@ -1795,7 +1880,7 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
           {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
           </section>
         )}
 
@@ -1833,47 +1918,27 @@ export default function EmployeePortal() {
         {/* SALARY */}
         {tab==='salary'&&(
           <div>
-            {statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period) && (
-              <div style={{background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.25)',borderRadius:20,padding:18,marginBottom:14}}>
-                <div style={{fontSize:10,color:'#60a5fa',fontWeight:700,letterSpacing:1,marginBottom:8}}>📋 {fill(e.confirmSalary, { period: fmtPeriod(statement.period) })}</div>
-                <div style={{fontSize:28,fontWeight:800,color:'#fff',marginBottom:4}}>¥{Number(statement.net_total||0).toLocaleString()}</div>
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:12}}>
-                  {e.basePay} ¥{Number(statement.base_salary||0).toLocaleString()} · {e.deductionsLabel} -¥{Number(statement.deductions||0).toLocaleString()}
-                  <br />{fill(e.confirmBy, { deadline: getPeriodDates(statement.period).confirmDeadline, payDate: getPeriodDates(statement.period).payDate })}
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <button onClick={confirmStatement} style={{padding:'14px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontWeight:700,cursor:'pointer'}}>✅ {e.confirm}</button>
-                  <button onClick={()=>setShowComplaintForm(true)} style={{padding:'14px',borderRadius:14,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#f87171',fontWeight:700,cursor:'pointer'}}>⚠️ {e.dispute}</button>
-                </div>
-              </div>
+            {payslipPending&&(
+              <button type="button" className="earn-card earn-card-cta" onClick={()=>setPayslipOpen(true)}>
+                <span>
+                  <small>📋 {fill(e.confirmSalary, { period: fmtPeriod(statement.period) })}</small>
+                  <b>¥{Number(statement.net_total||0).toLocaleString()}</b>
+                  <small>{fill(e.confirmBy, { deadline: getPeriodDates(statement.period).confirmDeadline, payDate: getPeriodDates(statement.period).payDate })}</small>
+                </span>
+                <i aria-hidden="true">›</i>
+              </button>
             )}
             {statement?.employee_confirmed_at && (
-              <div style={{background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#4ade80'}}>
-                ✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period), payDate: getPeriodDates(statement.period).payDate })}
-              </div>
+              <div className="earn-status is-ok">✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period), payDate: getPeriodDates(statement.period).payDate })}</div>
             )}
             {statement?.employee_disputed_at && (
-              <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:14,padding:'12px 16px',marginBottom:14,fontSize:12,color:'#f87171'}}>
-                ⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period) })}
-              </div>
+              <div className="earn-status is-bad">⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period) })}</div>
             )}
-            {showComplaintForm && (
-              <div style={{...S.card,marginBottom:14}}>
-                <span style={S.label}>{e.salaryComplaint}</span>
-                <select value={complaintCategory} onChange={ev=>setComplaintCategory(ev.target.value)} style={{...S.input,marginBottom:10}}>
-                  <option value="hours">{e.catHours}</option>
-                  <option value="deductions">{e.catDeductions}</option>
-                  <option value="rate">{e.catRate}</option>
-                  <option value="missing">{e.catMissing}</option>
-                  <option value="other">{e.catOther}</option>
-                </select>
-                <textarea value={complaintText} onChange={ev=>setComplaintText(ev.target.value)} placeholder={e.salaryComplaintPlaceholder} rows={3} style={{...S.input,marginBottom:10,resize:'none'}} />
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <button onClick={submitSalaryComplaint} disabled={submittingComplaint} style={{padding:'12px',borderRadius:12,border:'none',background:'#f87171',color:'#fff',fontWeight:700,cursor:'pointer'}}>{submittingComplaint?e.sending:e.sendComplaint}</button>
-                  <button onClick={()=>setShowComplaintForm(false)} style={{padding:'12px',borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'rgba(255,255,255,0.5)',cursor:'pointer'}}>{e.cancel}</button>
-                </div>
-              </div>
-            )}
+            {salaryAnswers.slice(0,3).map(c=>(
+              <button key={c.id} type="button" className={`earn-status is-link ${c.status==='resolved'?'is-ok':'is-bad'}`} onClick={()=>setAnswerOpen(c)}>
+                {c.status==='resolved'?'✓':'✕'} {pickLang(lang,`Answer about ${monthLabel(c.period,'en',true)}`,`${monthLabel(c.period,'ja',true)}の回答`,`Resposta sobre ${monthLabel(c.period,'en',true)}`)}{c.admin_response?`: ${c.admin_response}`:''} ›
+              </button>
+            ))}
             <EarningsPanel employeeId={user.id} lang={lang} theme="portal" />
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
               <div className="earn-card">
@@ -2145,7 +2210,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2283,7 +2348,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         const hasTraining = trainingContract?.training_video_url
 
         return (
-          <div key={job.id} id={isActive?'active-job-card':undefined}
+          <div key={job.id} id={isActive?'active-job-card':`job-card-${job.id}`}
             onClick={()=>{ if(isDone&&setSelectedJob) setSelectedJob(job) }}
             style={{...S.card,marginBottom:10,opacity:isDone?0.85:1,cursor:isDone?'pointer':'default',border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(74,222,128,0.2)':'1px solid rgba(255,255,255,0.08)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isActive||isNext||isDone?8:0}}>
@@ -2409,7 +2474,17 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </div>
             )})()}
 
-            {isNext&&(
+            {isNext&&isPendingSpot(job)&&onAcceptSpot&&(
+              <div style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.35)',borderRadius:12,padding:12}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#c19c56',marginBottom:10,lineHeight:1.5}}>⚡ {labels.spotAcceptFirst}</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <button type="button" onClick={()=>onDeclineSpot?.(job)} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.55)',fontSize:14,fontWeight:700,cursor:'pointer'}}>✕ {labels.decline}</button>
+                  <button type="button" onClick={()=>onAcceptSpot(job)} style={{padding:'13px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer'}}>✅ {labels.accept}</button>
+                </div>
+              </div>
+            )}
+
+            {isNext&&!(isPendingSpot(job)&&onAcceptSpot)&&(
               <div>
                 {hasTraining&&(
                   <button type="button" onClick={()=>onOpenTraining({ job, contract: trainingContract })} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>

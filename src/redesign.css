@@ -644,3 +644,8 @@
 .sidebar .kp-lang-dark{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
 .sidebar .kp-lang-dark .kp-lang-btn{white-space:nowrap;padding-inline:4px}
 @media (max-width:720px){.sidebar-footer .kp-lang-dark{flex:1.6 1 0}.sidebar-footer .sidebar-logout{flex:1 1 0}}
+
+/* v1.0.79: one bell in the admin topbar (Smart Facility offers live inside it) and a wider search */
+.tor-section{font-size:12px;font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.05em;margin:6px 2px 0}
+.ref-topbar-search{width:min(560px,46vw);height:40px}
+@media(max-width:720px){.ref-topbar-search{height:42px;flex:1 1 auto;margin-right:2px}.ref-topbar-search .ref-search-input{font-size:15px}}

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { dueDateAfter } from '../lib/spotContract'
 import { useLang, fill } from '../hooks/useLang'
 import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAutomation'
+import { ClientLink } from '../components/ClientSheetHost'
 
 export default function Faturas() {
   const [searchParams] = useSearchParams()
@@ -289,7 +290,7 @@ export default function Faturas() {
             <div key={f.id} className="card" style={{marginBottom:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                 <div>
-                  <div style={{fontWeight:700,fontSize:15}}>{f.client_name}</div>
+                  <div style={{fontWeight:700,fontSize:15}}><ClientLink id={f.client_id} name={f.client_name} /></div>
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{f.period_start} 〜 {f.period_end}</div>
                   <div style={{fontSize:12,color:'var(--text3)'}}>{tr('Issued', '発行', 'Emitida')}: {f.issue_date} · {tr('Due', '期限', 'Vencimento')}: {f.due_date||'—'}</div>
                 </div>

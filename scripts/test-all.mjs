@@ -21,6 +21,7 @@ const steps = [
   ['npm run test:add-service', 'add-service'],
   ['npm run test:past-service', 'past-service'],
   ['npm run test:job-overdue', 'job-overdue'],
+  ['npm run test:job-due-alert', 'job-due-alert'],
   ['npm run test:employee-pay', 'employee-pay'],
   ['npm run test:facility', 'facility'],
   ['npm run test:employee-theme', 'employee-theme'],

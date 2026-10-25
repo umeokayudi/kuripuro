@@ -67,7 +67,7 @@ function chair(m, x, z, faceAngle) {
 /** Tipos presos na parede: o chamador vira o item para o lado de dentro da sala. */
 export const WALL_KINDS = new Set(['air_conditioner', 'light_switch', 'breaker', 'window'])
 /** Tipos que a pessoa não atravessa no modo andar. */
-export const SOLID_KINDS = new Set(['table', 'counter', 'stove', 'fryer', 'oven', 'fridge', 'dishwasher', 'sink', 'toilet', 'other'])
+export const SOLID_KINDS = new Set(['table', 'counter', 'stove', 'fryer', 'oven', 'fridge', 'dishwasher', 'sink', 'toilet', 'stairs', 'supplies', 'other'])
 
 export function buildProp(el) {
   const m = mats()
@@ -235,6 +235,46 @@ export function buildProp(el) {
       g.add(cyl(Math.min(0.3, w / 2), Math.min(0.3, w / 2), 0.04, m.lamp, 0, 2.58, 0, 24))
       break
     }
+    case 'stairs': {
+      if (el.level) {
+        // andar de cima: o vão da escada (buraco escuro com guarda-corpo em volta)
+        g.add(box(w, 0.01, d, m.black, 0, 0.006, 0))
+        for (const [x, z, bw, bd] of [[0, -d / 2, w, 0.04], [-w / 2, 0, 0.04, d], [w / 2, 0, 0.04, d]]) {
+          g.add(box(bw, 0.04, bd, m.steelDark, x, 0.95, z))
+          g.add(box(Math.min(bw, 0.04), 0.95, Math.min(bd, 0.04), m.steelDark, x, 0.475, z))
+        }
+        break
+      }
+      // degraus subindo para o fundo (ou para a direita, se a escada estiver deitada)
+      const along = d >= w
+      const run = along ? d : w
+      const n = 13
+      const rise = 2.6 / n
+      const step = run / n
+      for (let i = 0; i < n; i++) {
+        const sh = rise * (i + 1)
+        const pos = run / 2 - step * (i + 0.5)
+        g.add(along ? box(w, sh, step, m.tableTop, 0, sh / 2, pos) : box(step, sh, d, m.tableTop, -pos, sh / 2, 0))
+      }
+      const rail = along ? box(0.05, 0.05, run, m.steelDark, w / 2 - 0.03, 0, 0) : box(run, 0.05, 0.05, m.steelDark, 0, 0, d / 2 - 0.03)
+      rail.position.y = 1.9
+      rail.rotation[along ? 'x' : 'z'] = Math.atan2(2.6, run)
+      g.add(rail)
+      break
+    }
+    case 'supplies': {
+      // estante com frascos coloridos e um balde: dá para reconhecer de longe
+      const sh = Math.max(1.0, h)
+      for (const y of [0.02, sh * 0.5, sh - 0.02]) g.add(box(w, 0.03, d, m.cabinet, 0, y, 0))
+      for (const x of [-w / 2 + 0.02, w / 2 - 0.02]) g.add(box(0.03, sh, d, m.cabinet, x, sh / 2, 0))
+      const colors = ['#38bdf8', '#f472b6', '#facc15', '#4ade80']
+      for (let i = 0; i < 4; i++) {
+        const mat = new THREE.MeshStandardMaterial({ color: colors[i], roughness: 0.4 })
+        g.add(cyl(0.05, 0.05, 0.22, mat, -w / 2 + 0.12 + i * ((w - 0.24) / 3), sh * 0.5 + 0.13, 0, 10))
+      }
+      g.add(cyl(0.13, 0.11, 0.24, new THREE.MeshStandardMaterial({ color: '#2563eb', roughness: 0.5 }), w / 4, 0.15, 0, 14))
+      break
+    }
     case 'floor': {
       g.add(box(w, 0.005, d, new THREE.MeshStandardMaterial({ color: '#94a3b8', transparent: true, opacity: 0.25 }), 0, 0.004, 0))
       break
@@ -258,5 +298,6 @@ function topOf(kind, h, k) {
   if (kind === 'breaker') return 1.75
   if (kind === 'light_switch') return 1.3
   if (kind === 'window') return 2.1
+  if (kind === 'stairs') return 1.4
   return (k.z || 0) + h
 }

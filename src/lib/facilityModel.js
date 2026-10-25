@@ -22,6 +22,7 @@ export const AREA_KINDS = {
   ventilation: { color: '#94a3b8', icon: '🌀', en: 'Ventilation', ja: '換気', pt: 'Ventilação' },
   entrance: { color: '#4ade80', icon: '🚪', en: 'Entrance', ja: '入口', pt: 'Entrada' },
   office: { color: '#fbbf24', icon: '🗂', en: 'Office / staff', ja: '事務所', pt: 'Escritório / equipe' },
+  sales: { color: '#f472b6', icon: '🛍', en: 'Sales floor', ja: '売場', pt: 'Área de vendas' },
   other: { color: '#cbd5e1', icon: '▫️', en: 'Other', ja: 'その他', pt: 'Outro' },
 }
 
@@ -50,11 +51,13 @@ export const ELEMENT_KINDS = {
   light: { icon: '🔆', en: 'Light', ja: '照明', pt: 'Luminária', service: null, intervalDays: null, h: 0.1, z: 2.6 },
   floor: { icon: '🧽', en: 'Floor', ja: '床', pt: 'Piso', service: 'Floor deep scrub & wax', intervalDays: 60, h: 0.02 },
   window: { icon: '🪟', en: 'Window / glass', ja: '窓', pt: 'Janela / vidro', service: 'Window & glass cleaning', intervalDays: 30, h: 1.5 },
+  stairs: { icon: '🪜', en: 'Stairs', ja: '階段', pt: 'Escada', service: 'Stair cleaning', intervalDays: 30, h: 2.6 },
+  supplies: { icon: '🧴', en: 'Cleaning supplies', ja: '清掃用具', pt: 'Materiais de limpeza', service: null, intervalDays: null, h: 1.2 },
   other: { icon: '▫️', en: 'Other', ja: 'その他', pt: 'Outro', service: null, intervalDays: null, h: 0.5 },
 }
 
 /** Itens que o funcionário mais procura: mostram um pino 📷 no 3D e a foto real fica a um toque. */
-export const IMPORTANT_KINDS = new Set(['light_switch', 'breaker', 'valve', 'grease_trap', 'range_hood'])
+export const IMPORTANT_KINDS = new Set(['light_switch', 'breaker', 'valve', 'grease_trap', 'range_hood', 'supplies'])
 
 /**
  * Manutenções recorrentes sugeridas por tipo (além da limpeza do ELEMENT_KINDS.service).
@@ -158,6 +161,12 @@ export function taskState(task, now = new Date()) {
 const AREA_KEYS = Object.keys(AREA_KINDS)
 const ELEMENT_KEYS = Object.keys(ELEMENT_KINDS)
 
+export const MAX_LEVELS = 3
+const lvl = (o) => {
+  const v = Math.round(Number(o?.level) || 0)
+  return v > 0 ? { level: Math.min(MAX_LEVELS - 1, v) } : {}
+}
+
 export function kindLabel(kind, lang = 'en', table = ELEMENT_KINDS) {
   const k = table[kind] || table.other
   return lang === 'ja' ? k.ja : lang === 'pt' ? (k.pt || k.en) : k.en
@@ -208,6 +217,7 @@ export function normalizeLayout(raw) {
       w,
       d,
       notes: str(a?.notes),
+      ...lvl(a),
     }
   })
   const areaIds = new Set(areas.map(a => a.id))
@@ -219,6 +229,7 @@ export function normalizeLayout(raw) {
     x2: num(wl?.x2, 0, 0, width),
     y2: num(wl?.y2, 0, 0, depth),
     h: num(wl?.h, 2.4, 0.3, 6),
+    ...lvl(wl),
   })).filter(wl => wl.x1 !== wl.x2 || wl.y1 !== wl.y2)
 
   const elements = (Array.isArray(src.elements) ? src.elements : []).slice(0, 200).map(e => {
@@ -244,10 +255,41 @@ export function normalizeLayout(raw) {
       notes: str(e?.notes),
       important: typeof e?.important === 'boolean' ? e.important : IMPORTANT_KINDS.has(kind),
       ...(Array.isArray(e?.tasks) ? { tasks: normalizeTasks(e.tasks) } : {}),
+      ...lvl(e),
     }
   })
 
-  return { width, depth, areas, walls, elements }
+  const levels = Math.max(num(src.levels, 1, 1, MAX_LEVELS), ...[...areas, ...walls, ...elements].map(x => (x.level || 0) + 1))
+  return { width, depth, areas, walls, elements, ...(levels > 1 ? { levels } : {}) }
+}
+
+// ---------------------------------------------------------------------------
+// Andares: cada área / parede / item tem level (0 = térreo, 1 = 2º andar...). Sem level = térreo.
+// ---------------------------------------------------------------------------
+
+export const levelOf = (o) => o?.level || 0
+export const levelCount = (layout) => Math.max(1, layout?.levels || 1)
+
+/** Só o que está num andar (o resto do app continua vendo uma planta normal). */
+export function levelLayout(layout, level = 0) {
+  if (levelCount(layout) < 2) return layout
+  const on = x => levelOf(x) === level
+  return { ...layout, areas: layout.areas.filter(on), walls: layout.walls.filter(on), elements: layout.elements.filter(on) }
+}
+
+/** Devolve um andar editado para a planta inteira (marca o andar em tudo o que veio dele). */
+export function mergeLevel(full, level, part) {
+  if (levelCount(full) < 2 && !level) return normalizeLayout({ ...part, levels: full.levels })
+  const tag = x => (level ? { ...x, level } : (({ level: _drop, ...rest }) => rest)(x))
+  const other = x => levelOf(x) !== level
+  return normalizeLayout({
+    ...full,
+    width: part.width,
+    depth: part.depth,
+    areas: [...full.areas.filter(other), ...part.areas.map(tag)],
+    walls: [...full.walls.filter(other), ...part.walls.map(tag)],
+    elements: [...full.elements.filter(other), ...part.elements.map(tag)],
+  })
 }
 
 /** Área que contém o ponto central do elemento (para "localização" automática). */

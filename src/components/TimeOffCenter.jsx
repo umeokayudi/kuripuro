@@ -2,15 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { useLang, pickLang } from '../hooks/useLang'
+import { useLang, pickLang, fill } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { fetchPendingTimeOff, decideTimeOff, TIME_OFF_CHANGED } from '../lib/timeOff'
 import { fetchAutoClosedPeriods, PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { fetchPendingQuoteRequests, QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
+import { fetchQuoteFlowAlerts, QUOTE_FLOW_CHANGED } from '../lib/quoteFlow'
 import { fmtPeriod } from '../lib/salaryPeriod'
 import { fmtDay } from './AvailabilityPlanner'
 import { fetchDayContext } from '../lib/dayContext'
 import DayContext from './DayContext'
+import { fetchFacilityOffers, offerToClient, offerWhen } from './facility/FacilityOffersBell'
+import { ELEMENT_KINDS } from '../lib/facilityModel'
 
 const SEEN_KEY = 'kp_timeoff_seen_v1'
 const readSeen = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
@@ -19,8 +22,10 @@ const writeSeen = (ids) => { try { localStorage.setItem(SEEN_KEY, JSON.stringify
 // Admin topbar: bell with the number of pending day-off requests (plus payroll months the
 // cron closed automatically and client quote requests waiting for a price), a small alert
 // when new ones arrive, and a pop-up to approve / reject each request or open the page.
+// Since v1.0.79 it also holds the Smart Facility "services to offer" (was a separate 🧽 button).
 export default function TimeOffCenter() {
-  const { lang } = useLang()
+  const { lang, t: tAll } = useLang()
+  const ft = tAll.facility
   const L = (en, jaText, pt) => pickLang(lang, en, jaText, pt)
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
@@ -33,20 +38,35 @@ export default function TimeOffCenter() {
   const [dayCtx, setDayCtx] = useState({})
   const [payroll, setPayroll] = useState([])
   const [quotes, setQuotes] = useState([])
+  // v1.0.70 · accepted quotes with no date yet + quote jobs just finished (invoice sent)
+  const [toBook, setToBook] = useState([])
+  const [flowDone, setFlowDone] = useState([])
+  const [newFlow, setNewFlow] = useState([])
+  const [offers, setOffers] = useState([])
+  const [newOffers, setNewOffers] = useState([])
   const seen = useRef(readSeen())
 
   const load = () => Promise.all([
     fetchPendingTimeOff(tokyoToday()).catch(() => []),
     fetchAutoClosedPeriods().catch(() => []),
     fetchPendingQuoteRequests().catch(() => []),
-  ]).then(([list, periods, quoteRows]) => {
+    fetchQuoteFlowAlerts().catch(() => ({ toBook: [], done: [] })),
+    fetchFacilityOffers().catch(() => []),
+  ]).then(([list, periods, quoteRows, flow, offerRows]) => {
+    setOffers(offerRows)
     setRows(list)
     setPayroll(periods)
     setQuotes(quoteRows)
+    setToBook(flow.toBook)
+    // a finished job stays in the bell until it has been seen once
+    const doneUnseen = flow.done.filter(d => !seen.current.has(d.id))
+    setFlowDone(doneUnseen)
     // Alert only once per item, ever: after that the number stays in the side menu until it is resolved
-    const fresh = [...list, ...periods, ...quoteRows].filter(r => !seen.current.has(r.id))
+    const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows].filter(r => !seen.current.has(r.id))
     if (fresh.length) {
       setNewQuotes(quoteRows.filter(q => fresh.includes(q)))
+      setNewFlow([...flow.toBook, ...doneUnseen].filter(q => fresh.includes(q)))
+      setNewOffers(offerRows.filter(q => fresh.includes(q)))
       fresh.forEach(r => seen.current.add(r.id))
       writeSeen(seen.current)
       setToastOpen(true)
@@ -59,7 +79,8 @@ export default function TimeOffCenter() {
     window.addEventListener(TIME_OFF_CHANGED, load)
     window.addEventListener(PAYROLL_CHANGED, load)
     window.addEventListener(QUOTE_REQUESTS_CHANGED, load)
-    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load); window.removeEventListener(QUOTE_REQUESTS_CHANGED, load) }
+    window.addEventListener(QUOTE_FLOW_CHANGED, load)
+    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load); window.removeEventListener(QUOTE_REQUESTS_CHANGED, load); window.removeEventListener(QUOTE_FLOW_CHANGED, load) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The pop-up alert goes away on its own; the bell and the side-menu numbers stay.
@@ -70,7 +91,7 @@ export default function TimeOffCenter() {
   }, [toastOpen])
 
   const markSeen = () => {
-    rows.concat(payroll, quotes).forEach(r => seen.current.add(r.id))
+    rows.concat(payroll, quotes, toBook, flowDone, offers).forEach(r => seen.current.add(r.id))
     writeSeen(seen.current)
     setToastOpen(false)
   }
@@ -94,8 +115,21 @@ export default function TimeOffCenter() {
 
   const openCalendar = () => { setOpen(false); markSeen(); navigate('/employees?tab=availability') }
   const openPayroll = (period) => { setOpen(false); markSeen(); navigate(`/salary-periods?period=${period}`) }
-  const openQuotes = () => { setOpen(false); markSeen(); navigate('/client-feedback?tab=requests') }
-  const n = rows.length + payroll.length + quotes.length
+  const openQuotes = () => { setOpen(false); markSeen(); navigate('/mitsumori?tab=requests') }
+  const openTrack = (item) => { setOpen(false); markSeen(); navigate(`/mitsumori?track=${item.ref || `${item.kind === 'mitsumori' ? 'mit' : 'req'}:${item.ref_id}`}`) }
+  const openStore = (r) => { setOpen(false); markSeen(); navigate(`/facility?model=${r.model_id}`) }
+  const offer = async (r) => {
+    setBusy(r.id)
+    try {
+      await offerToClient(r, ft)
+      toast.success(ft.offered)
+      setOffers(list => list.filter(x => x.id !== r.id))
+    } catch (e) {
+      toast.error(e.message)
+    }
+    setBusy(null)
+  }
+  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length
 
   return (
     <>
@@ -119,7 +153,18 @@ export default function TimeOffCenter() {
           <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる', 'Dispensar')}>×</button>
         </div>
       )}
-      {toastOpen && newQuotes.length === 0 && payroll.length > 0 && !open && (
+      {toastOpen && newQuotes.length === 0 && newFlow.length > 0 && !open && (
+        <div className="tor-toast" role="status">
+          <span className="tor-toast-icon" aria-hidden="true">{newFlow[0].id.startsWith('qf-done') ? '🧾' : '📅'}</span>
+          <div className="tor-toast-text">
+            <strong>{newFlow[0].id.startsWith('qf-done') ? L('Job done · invoice sent', '作業完了・請求書を送付', 'Serviço feito · nota enviada') : L('Quote accepted · book the date', '見積承認・日程を決めてください', 'Orçamento aceito · marque a data')}</strong>
+            <span>{[newFlow[0].name, newFlow[0].total ? `¥${Math.round(Number(newFlow[0].total)).toLocaleString()}` : ''].filter(Boolean).join(' · ')}</span>
+          </div>
+          <button type="button" className="tor-btn tor-btn-primary tor-btn-sm" onClick={() => openTrack(newFlow[0])}>{L('Open', '開く', 'Abrir')}</button>
+          <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる', 'Dispensar')}>×</button>
+        </div>
+      )}
+      {toastOpen && newQuotes.length === 0 && newFlow.length === 0 && payroll.length > 0 && !open && (
         <div className="tor-toast" role="status">
           <span className="tor-toast-icon" aria-hidden="true">💴</span>
           <div className="tor-toast-text">
@@ -130,7 +175,18 @@ export default function TimeOffCenter() {
           <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる', 'Dispensar')}>×</button>
         </div>
       )}
-      {toastOpen && newQuotes.length === 0 && payroll.length === 0 && rows.length > 0 && !open && (
+      {toastOpen && newQuotes.length === 0 && newFlow.length === 0 && payroll.length === 0 && rows.length === 0 && newOffers.length > 0 && !open && (
+        <div className="tor-toast" role="status">
+          <span className="tor-toast-icon" aria-hidden="true">🧽</span>
+          <div className="tor-toast-text">
+            <strong>{fill(ft.offersCount, { n: newOffers.length })}</strong>
+            <span>{fill(ft.offerTo, { task: newOffers[0].task_name, client: newOffers[0].client_name || newOffers[0].location })}</span>
+          </div>
+          <button type="button" className="tor-btn tor-btn-primary tor-btn-sm" onClick={openPopup}>{L('Open', '開く', 'Abrir')}</button>
+          <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる', 'Dispensar')}>×</button>
+        </div>
+      )}
+      {toastOpen && newQuotes.length === 0 && newFlow.length === 0 && payroll.length === 0 && rows.length > 0 && !open && (
         <div className="tor-toast" role="status">
           <span className="tor-toast-icon" aria-hidden="true">🗓</span>
           <div className="tor-toast-text">
@@ -147,7 +203,7 @@ export default function TimeOffCenter() {
           <section className="tor-modal" role="dialog" aria-modal="true" aria-label={L('Day-off requests', '休み申請', 'Pedidos de folga')} onClick={e => e.stopPropagation()}>
             <header className="tor-head">
               <div>
-                <h2>{quotes.length && !rows.length ? L('Waiting for you', '確認待ち', 'Aguardando você') : L('Day-off requests', '休み申請', 'Pedidos de folga')}</h2>
+                <h2>{(quotes.length || toBook.length || flowDone.length || offers.length || payroll.length) ? L('Waiting for you', '確認待ち', 'Aguardando você') : L('Day-off requests', '休み申請', 'Pedidos de folga')}</h2>
                 <p>{n ? L(`${n} waiting for you`, `${n}件が確認待ち`, `${n} aguardando você`) : L('Nothing waiting. All caught up.', '承認待ちはありません。', 'Nada pendente. Tudo em dia.')}</p>
               </div>
               <button type="button" className="tor-close" onClick={() => setOpen(false)} aria-label={L('Close', '閉じる', 'Fechar')}>×</button>
@@ -166,6 +222,35 @@ export default function TimeOffCenter() {
                   </div>
                   <div className="tor-actions">
                     <button type="button" className="tor-btn tor-btn-approve" onClick={openQuotes}>{L('Open quote requests', '見積もり依頼を開く', 'Abrir pedidos de orçamento')}</button>
+                  </div>
+                </article>
+              ))}
+              {toBook.map(q => (
+                <article key={q.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">📅</div>
+                    <div className="tor-item-main">
+                      <strong>{L('Quote accepted', '見積承認', 'Orçamento aceito')} · {q.name || '—'}</strong>
+                      <span>{[q.what, q.total ? `¥${Math.round(Number(q.total)).toLocaleString()}` : ''].filter(Boolean).join(' · ')}</span>
+                    </div>
+                    <span className="tor-kind is-extra">{L('Book date', '日程', 'Marcar data')}</span>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openTrack(q)}>{L('Book and notify the worker', '予約して担当者に通知', 'Marcar e avisar o funcionário')}</button>
+                  </div>
+                </article>
+              ))}
+              {flowDone.map(q => (
+                <article key={q.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">🧾</div>
+                    <div className="tor-item-main">
+                      <strong>{L('Job done · invoice sent', '作業完了・請求書を送付', 'Serviço feito · nota enviada')}</strong>
+                      <span>{[q.name, q.total ? `¥${Math.round(Number(q.total)).toLocaleString()}` : ''].filter(Boolean).join(' · ')}</span>
+                    </div>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openTrack(q)}>{L('See the follow-up', '進捗を見る', 'Ver acompanhamento')}</button>
                   </div>
                 </article>
               ))}
@@ -210,6 +295,29 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
+              {offers.length > 0 && <div className="tor-section">🧽 {ft.offersTitle} · {offers.length}</div>}
+              {offers.map(r => {
+                const k = ELEMENT_KINDS[r.element_kind] || ELEMENT_KINDS.other
+                return (
+                  <article key={r.id} className={`tor-item fob-item st-${r.status}`}>
+                    <div className="tor-item-top">
+                      <div className="tor-avatar fob-avatar" aria-hidden="true">{k.icon}</div>
+                      <div className="tor-item-main">
+                        <strong>{fill(ft.offerTo, { task: r.task_name, client: r.client_name || r.location })}</strong>
+                        <span>{r.location} · {r.element_name}</span>
+                      </div>
+                      <span className={`tor-kind fob-kind st-${r.status}`}>{r.task_type === 'maintenance' ? '🔧' : '🧽'} {r.status === 'overdue' ? ft.late : ft.soon}</span>
+                    </div>
+                    <p className="fob-when">🕒 {offerWhen(r, ft)}</p>
+                    <div className="tor-actions">
+                      <button type="button" className="tor-btn tor-btn-ghost" onClick={() => openStore(r)}>🏢 {ft.openStore}</button>
+                      <button type="button" className="tor-btn tor-btn-approve" disabled={!!busy} onClick={() => offer(r)}>
+                        {busy === r.id ? '…' : `📨 ${ft.offerClient}`}
+                      </button>
+                    </div>
+                  </article>
+                )
+              })}
             </div>
 
             <footer className="tor-foot">

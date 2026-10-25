@@ -5,6 +5,8 @@ import { FollowupChip, followupCopy } from './SalesFollowupParts'
 import { followupStatus } from '../lib/salesFollowup'
 import ClientPage from './ClientPage'
 import { PHASES, funnelCopy, initials, phaseOf, shortDay, yen } from '../lib/salesPhases'
+import { pickLang } from '../hooks/useLang'
+import { openClientSheet } from '../lib/clientSheet'
 
 // Sales funnel board: one column per phase, from first contact to active client.
 // Shared by the admin page (/sales-funnel) and the seller portal (Leads tab).
@@ -55,13 +57,76 @@ function useIsPhone() {
   return Boolean(phone)
 }
 
+// Desktop list: phases as groups that open and close (most advanced first), one row per client,
+// stage changed from the row's menu instead of dragging across a wide board.
+function GroupedList({ deals, phases, t, lang, f, isAdmin, activeId, setActive, canDrop, moveTo, closed, setClosed, onAddLead, onShowAll }) {
+  const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
+  const order = [...phases.filter(p => p !== 'lost').reverse(), ...phases.filter(p => p === 'lost')]
+  const groups = order.map(p => ({ p, rows: deals.filter(d => d.phase === p).sort((a, b) => String(b.last).localeCompare(String(a.last))) })).filter(g => g.rows.length)
+  const toggle = p => setClosed(cur => { const next = new Set(cur); next.has(p) ? next.delete(p) : next.add(p); return next })
+  const next = d => d.phase === 'approved' ? <span className="fn-badge is-approved">✓ {t.quoteApproved}</span>
+    : d.phase === 'contract' ? <span className="fn-badge is-contract">{t.contractStatus[d.submissions[0]?.status] || '—'}</span>
+    : d.info && !['active', 'lost'].includes(d.phase) && ['overdue', 'today'].includes(d.info.status) ? <FollowupChip info={d.info} f={f} />
+    : d.info?.next ? <span className="fn-muted">{shortDay(d.info.next)}</span> : <span className="fn-muted">—</span>
+  if (!groups.length) return <div className="fn-list"><div className="fn-list-empty"><p className="fn-empty">{t.empty}</p>
+    {onShowAll && <button type="button" className="fn-col-add is-list" onClick={onShowAll}>{t.showAll}</button>}
+    {onAddLead && <button type="button" className="fn-col-add is-list" onClick={onAddLead}>+ {t.addLead}</button>}</div></div>
+  return <div className="fn-glist">
+    <div className={`fn-grow fn-ghead${isAdmin ? ' has-seller' : ''}`}>
+      <span>{L('Client', '顧客', 'Cliente')}</span>
+      {isAdmin && <span>{L('Seller', '担当', 'Vendedor')}</span>}
+      <span className="is-num">{L('Value', '金額', 'Valor')}</span>
+      <span>{L('Next step', '次のアクション', 'Próximo passo')}</span>
+      <span>{t.lastContact}</span>
+      <span>{L('Stage', '段階', 'Fase')}</span>
+    </div>
+    {groups.map(({ p, rows }) => {
+      const open = !closed.has(p)
+      const sum = rows.reduce((s, d) => s + d.value, 0)
+      return <section key={p} className={`fn-group is-${p}`}>
+        <button type="button" className="fn-group-head" aria-expanded={open} onClick={() => toggle(p)}>
+          <span className="fn-caret">{open ? '▾' : '▸'}</span>
+          <span className="fn-num">{p === 'lost' ? '×' : PHASES.indexOf(p) + 1}</span>
+          <strong>{t.phases[p]}</strong>
+          <small>{t.clients(rows.length)}{sum ? ` · ${yen(sum)}` : ''}</small>
+        </button>
+        {open && rows.map(d => {
+          const targets = phases.filter(x => x !== d.phase && canDrop(x))
+          const isClient = isAdmin && ['approved', 'contract', 'active'].includes(d.phase)
+          return <div key={d.lead.id} role="button" tabIndex={0} className={`fn-grow${isAdmin ? ' has-seller' : ''}${activeId === d.lead.id ? ' is-open' : ''}`}
+            onClick={() => setActive(d.lead.id)} onKeyDown={e => { if (e.key === 'Enter') setActive(d.lead.id) }}>
+            <span className="fn-gname">
+              <span className="fn-avatar" aria-hidden="true">{initials(d.lead.site_name || d.lead.company_name)}</span>
+              <span className="fn-card-text"><strong>{d.lead.site_name || d.lead.company_name}</strong><small>{[d.lead.site_name ? d.lead.company_name : null, d.lead.contact_name].filter(Boolean).join(' · ') || '—'}</small></span>
+              {isClient && <button type="button" className="fn-sheet" title={L('Client sheet', '顧客カード', 'Ficha do cliente')} onClick={e => { e.stopPropagation(); openClientSheet({ name: d.lead.company_name }) }}>📇</button>}
+            </span>
+            {isAdmin && <span className="fn-cell">{d.seller || '—'}</span>}
+            <span className="fn-cell is-num">{d.value ? <b>{yen(d.value)}</b> : '—'}</span>
+            <span className="fn-cell">{next(d)}</span>
+            <span className="fn-cell">{shortDay(d.last)}</span>
+            <span className="fn-cell" onClick={e => e.stopPropagation()}>
+              {targets.length ? <select className="fn-stage" value="" aria-label={t.moveTo} onChange={e => moveTo(d, e.target.value)}>
+                <option value="">{t.phases[d.phase]}</option>
+                {targets.map(x => <option key={x} value={x}>→ {t.phases[x]}</option>)}
+              </select> : <span className={`fn-badge is-${d.phase}`}>{t.phases[d.phase]}</span>}
+            </span>
+          </div>
+        })}
+      </section>
+    })}
+    {onAddLead && <button type="button" className="fn-col-add is-list" onClick={onAddLead}>+ {t.addLead}</button>}
+  </div>
+}
+
 export default function SalesFunnel({ data, lang, today, isAdmin = false, onChanged, onAddLead, onEditLead, onLogVisit, openLeadId, onOpenLead }) {
   const t = funnelCopy(lang)
   const f = followupCopy(lang)
   const [search, setSearch] = useState('')
   const [seller, setSeller] = useState('')
   const [showLost, setShowLost] = useState(false)
-  const [view, setView] = useState('board')
+  const [view, setViewState] = useState(() => { const auto = window.matchMedia?.('(max-width: 700px)').matches ? 'board' : 'list'; try { return localStorage.getItem('kp_funnel_view') || auto } catch { return auto } })
+  const setView = v => { setViewState(v); try { localStorage.setItem('kp_funnel_view', v) } catch { /* private mode */ } }
+  const [closed, setClosed] = useState(() => new Set())
   const [openId, setOpenId] = useState('')
   const [dragId, setDragId] = useState('')
   const [dropPhase, setDropPhase] = useState('')
@@ -103,7 +168,7 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
       <label className="fn-check"><input type="checkbox" checked={showLost} onChange={e => setShowLost(e.target.checked)} />{t.showLost}</label>
     </div>
 
-    <div className="fn-kpis">
+    <div className="fn-kpis is-fit" style={{ '--fn-n': phases.length }}>
       {phases.map((p, i) => <button type="button" key={p} aria-pressed={view === 'list' ? listPhase === p : phone && focused === p} className={`fn-kpi is-${p}${(view === 'list' ? listPhase === p : phone && focused === p) ? ' is-focus' : ''}`} onClick={() => { if (view === 'list') return setListPhase(cur => cur === p ? '' : p); setFocus(p); if (!phone) setTimeout(() => document.getElementById(`fn-col-${p}`)?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }), 30) }}>
         <span className="fn-num">{p === 'lost' ? '×' : i + 1}</span>
         <span className="fn-kpi-text"><strong>{t.phases[p]}</strong><small>{t.clients(byPhase[p].length)}</small></span>
@@ -136,7 +201,8 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
         </section>)}
       </div>
       <p className="fn-hint">{phone ? t.moveHint : t.dragHint}</p>
-    </> : <div className="fn-list">
+    </> : !phone ? <GroupedList deals={listRows} phases={phases} t={t} lang={lang} f={f} isAdmin={isAdmin} activeId={activeId} setActive={setActive}
+      canDrop={canDrop} moveTo={moveTo} closed={closed} setClosed={setClosed} onAddLead={onAddLead} onShowAll={listPhase ? () => setListPhase('') : null} /> : <div className="fn-list">
       {listRows.length === 0 && <div className="fn-list-empty">
         <p className="fn-empty">{listPhase ? `${t.phases[listPhase]} · ${t.empty}` : t.empty}</p>
         {listPhase && <button type="button" className="fn-col-add is-list" onClick={() => setListPhase('')}>{t.showAll}</button>}
