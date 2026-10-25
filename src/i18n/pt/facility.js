@@ -14,6 +14,12 @@ export const facilityPt = {
   },
   world: {
     brand: 'Mundo Kuripuro',
+    exit: 'Sair', see: 'Ver', myWork: 'Meu trabalho', mine: 'Feito por mim', myDone30: 'Feitos por mim · 30 dias',
+    myWorkEmpty: 'Quando você terminar um serviço ou marcar um item como limpo, ele aparece aqui na hora.',
+    care: 'Cuidados da loja', askQuote: 'Pedir orçamento', askQuoteHint: 'O escritório recebe o pedido e responde com o valor em Orçamentos.',
+    askQuoteWhat: 'O que você precisa?', askQuoteDate: 'Data que prefere (opcional)', cancel: 'Cancelar', send: 'Enviar pedido',
+    emptyClient: 'A planta da sua loja ainda está sendo preparada pelo escritório.',
+    emptyEmployee: 'As lojas onde você trabalha ainda não têm planta publicada.',
     stores: '{n} lojas',
     search: 'Procurar loja…',
     late: 'Atrasado', week: 'Esta semana', done30: 'Feitos · 30 dias',

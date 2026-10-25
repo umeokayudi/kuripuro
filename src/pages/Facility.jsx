@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
@@ -8,14 +9,14 @@ import {
   AREA_KINDS, ELEMENT_KINDS, areaForElement, careForElement, elementHistory, levelCount, levelLayout, levelOf,
   serviceOffers, statusMap, todoElementIds, withServiceLog,
 } from '../lib/facilityModel'
-import { listAllModels, listRecommendations, listServiceLog, logElementService, offerService } from '../lib/facilityApi'
+import { listAllModels, listApprovedModels, listModels, listRecommendations, listServiceLog, logElementService, offerService } from '../lib/facilityApi'
 import { loadStoreTimeline, placePhotosOf, sizeLabel } from '../lib/cleaningTimeline'
 import { openClientSheet } from '../lib/clientSheet'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { offerWhen } from '../components/facility/FacilityOffersBell'
 import { WorldView } from '../components/facility/FacilityViewer'
 import ItemSheet from '../components/facility/ItemSheet'
-import FacilityItemPopup from '../components/facility/FacilityItemPopup'
+import FacilityItemPopup, { RecommendationCard } from '../components/facility/FacilityItemPopup'
 import CleaningTimeline from '../components/CleaningTimeline'
 import { rowsForElement } from '../components/facility/CareList'
 import '../components/facility/facility.css'
@@ -45,18 +46,31 @@ function useBoxSize(ref) {
 
 const openMenu = () => window.dispatchEvent(new Event('kp:open-menu'))
 
+const daysAgo = n => new Date(Date.now() - n * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
+
 /**
  * Mundo Kuripuro (admin, /facility): tela cheia com cara de jogo, sem cabeçalho.
  * Cidade com todas as lojas → toca num prédio → entra na loja (Mapa | Itens | Histórico) → toca num item → fotos reais.
  * Missões (atrasado / esta semana) ficam do lado, com Ir, Oferecer e Feito. A edição da planta continua em /facility/edit.
+ *
+ * v1.0.86 · audience 'employee' e 'client' = o mesmo mundo só para ver, aberto por cima do portal (onClose fecha):
+ * - employee (viewer { id, name }): lojas publicadas dos clientes onde ele trabalha; painel "Meu trabalho" com o que ele terminou.
+ * - client (viewer { client_id, company_name }): só as lojas dele; painel "Cuidados" com Pedir orçamento (onRequestQuote) e recomendações (onDecideRec).
  */
-export default function Facility() {
+export default function Facility({ audience = 'admin', viewer = null, onClose, onRequestQuote, onDecideRec }) {
+  const isAdmin = audience === 'admin'
+  const isClient = audience === 'client'
+  const isEmployee = audience === 'employee'
   const { t: tr, lang } = useLang()
   const t = tr.facility
   const w = t.world || {}
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [params, setParams] = useSearchParams()
+  const [urlParams, setUrlParams] = useSearchParams()
+  // nos portais a loja aberta fica só na tela (não mexe no endereço do portal)
+  const [localParams, setLocalParams] = useState(() => new URLSearchParams())
+  const params = isAdmin ? urlParams : localParams
+  const setParams = isAdmin ? setUrlParams : v => setLocalParams(new URLSearchParams(v))
   const rootRef = useRef(null)
   const { h: rootH, w: rootW } = useBoxSize(rootRef)
   const mobile = rootW > 0 && rootW < 760
@@ -71,15 +85,59 @@ export default function Facility() {
   const [query, setQuery] = useState('')
   const [listMode, setListMode] = useState(false)
   const [missionsOpen, setMissionsOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 760)
-  const [missionTab, setMissionTab] = useState('late')
+  const [missionTab, setMissionTab] = useState(isEmployee ? 'mine' : 'late')
   const [busy, setBusy] = useState('')
   const [popup, setPopup] = useState(null)
+  const [myJobs, setMyJobs] = useState([])
+  const [quoteFor, setQuoteFor] = useState(null)
+  const [recBusy, setRecBusy] = useState('')
 
   const storeId = params.get('model') || null
   const mapView = !storeId && params.get('view') === 'map'
   const [pendingSel, setPendingSel] = useState(null)
 
   const load = useCallback(async () => {
+    if (isClient) {
+      const cid = viewer?.client_id
+      const [ms, ls, rs, { data: js }] = await Promise.all([
+        cid ? listModels(cid).catch(() => []) : [],
+        cid ? listServiceLog({ clientId: cid, limit: 3000 }) : [],
+        cid ? listRecommendations({ clientId: cid }).catch(() => []) : [],
+        supabase.from('jobs').select('id,title,scheduled_date,status,employee_name,client_id')
+          .eq('client_id', cid).gte('scheduled_date', tokyoToday()).order('scheduled_date').limit(200),
+      ])
+      const loc = viewer?.location_name
+      setModels(ms.filter(m => m.status === 'approved' && (!loc || !m.location_name || m.location_name === loc)))
+      setLogs(ls)
+      setRecs(rs || [])
+      setClients(new Map([[cid, viewer?.company_name || '']]))
+      setJobs((js || []).filter(j => !['cancelled', 'completed'].includes(j.status)))
+      setLoaded(true)
+      return
+    }
+    if (isEmployee) {
+      // lojas = clientes com serviço meu nos últimos 6 meses ou nos próximos 2
+      const { data: mine } = await supabase.from('jobs')
+        .select('id,title,scheduled_date,status,employee_name,client_id,completed_at,photo_end_url')
+        .eq('employee_id', viewer?.id).gte('scheduled_date', daysAgo(180)).order('scheduled_date', { ascending: false }).limit(1000)
+      const clientIds = [...new Set((mine || []).map(j => j.client_id).filter(Boolean))]
+      const [all, ls, rs, { data: cl }] = await Promise.all([
+        clientIds.length ? listApprovedModels() : [],
+        clientIds.length ? listServiceLog({ limit: 3000 }) : [],
+        clientIds.length ? listRecommendations({}).catch(() => []) : [],
+        clientIds.length ? supabase.from('clients').select('id,company_name').in('id', clientIds) : { data: [] },
+      ])
+      const ms = all.filter(m => clientIds.includes(m.client_id))
+      const ids = new Set(ms.map(m => m.id))
+      setModels(ms)
+      setLogs(ls.filter(l => ids.has(l.model_id)))
+      setRecs((rs || []).filter(r => ids.has(r.model_id)))
+      setClients(new Map((cl || []).map(c => [c.id, c.company_name])))
+      setMyJobs(mine || [])
+      setJobs((mine || []).filter(j => j.scheduled_date >= tokyoToday() && !['cancelled', 'completed'].includes(j.status)).reverse())
+      setLoaded(true)
+      return
+    }
     const [ms, ls, rs, { data: cl }, { data: js }] = await Promise.all([
       listAllModels(),
       listServiceLog({ limit: 3000 }),
@@ -94,8 +152,17 @@ export default function Facility() {
     setClients(new Map((cl || []).map(c => [c.id, c.company_name])))
     setJobs((js || []).filter(j => !['cancelled', 'completed'].includes(j.status)))
     setLoaded(true)
-  }, [])
+  }, [isClient, isEmployee, viewer?.client_id, viewer?.id, viewer?.company_name, viewer?.location_name])
   useEffect(() => { load().catch(() => setLoaded(true)) }, [load])
+  // portais: o que o funcionário acabou de terminar aparece sem precisar reabrir
+  useEffect(() => {
+    if (isAdmin) return undefined
+    const again = () => { if (document.visibilityState !== 'hidden') load().catch(() => {}) }
+    const timer = setInterval(again, 60000)
+    window.addEventListener('kp:facility-updated', again)
+    document.addEventListener('visibilitychange', again)
+    return () => { clearInterval(timer); window.removeEventListener('kp:facility-updated', again); document.removeEventListener('visibilitychange', again) }
+  }, [isAdmin, load])
 
   // ---- missões (todas as lojas aprovadas) ----
   const offeredKeys = useMemo(() => new Set(recs.filter(r => r.status === 'pending').map(r => `${r.model_id}:${r.element_id}:${String(r.service || '').toLowerCase()}`)), [recs])
@@ -108,6 +175,31 @@ export default function Facility() {
   const soon = missions.filter(m => m.status !== 'overdue')
   const since30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
   const done30 = logs.filter(l => String(l.service_date || '') >= since30).length
+
+  // funcionário: o que eu terminei (itens marcados + serviços concluídos nas lojas do mundo)
+  const myWork = useMemo(() => {
+    if (!isEmployee) return []
+    const storeOf = clientId => models.find(m => m.client_id === clientId)
+    const fromLogs = logs.filter(l => l.employee_id === viewer?.id).map(l => ({
+      key: `l:${l.id}`, date: String(l.service_date || l.created_at || '').slice(0, 10), model_id: l.model_id, element_id: l.element_id,
+      title: l.service ? `${l.element_name} · ${l.service}` : l.element_name, store: clients.get(l.client_id) || l.location_name || '', photo: l.photos?.[0] || null,
+    }))
+    const fromJobs = myJobs.filter(j => j.status === 'completed' && storeOf(j.client_id)).map(j => ({
+      key: `j:${j.id}`, date: String(j.completed_at || j.scheduled_date || '').slice(0, 10), model_id: storeOf(j.client_id).id, element_id: null,
+      title: j.title, store: clients.get(j.client_id) || '', photo: j.photo_end_url || null, job: true,
+    }))
+    return [...fromLogs, ...fromJobs].filter(x => x.date >= since30).sort((a, b) => b.date.localeCompare(a.date))
+  }, [isEmployee, logs, myJobs, models, clients, viewer?.id, since30])
+  const pendingRecs = isClient ? recs.filter(r => r.status === 'pending') : []
+  const decideRec = async (rec, decision) => {
+    if (!onDecideRec) return
+    setRecBusy(rec.id)
+    try { await onDecideRec(rec, decision); const rs = await listRecommendations({ clientId: viewer?.client_id }).catch(() => null); if (rs) setRecs(rs) } finally { setRecBusy('') }
+  }
+  const askQuote = (storeRow, extra = '') => setQuoteFor({
+    location_name: storeRow?.model?.location_name || '',
+    description: [storeRow?.name, extra].filter(Boolean).join(' — '),
+  })
 
   // ---- lojas para a cidade ----
   const stores = useMemo(() => models.map(m => {
@@ -188,11 +280,11 @@ export default function Facility() {
 
   const q = query.trim().toLowerCase()
   const found = q ? stores.filter(s => `${s.name} ${s.sub}`.toLowerCase().includes(q)).slice(0, 6) : []
-  const shownMissions = missionTab === 'late' ? late : soon
+  const shownMissions = missionTab === 'late' ? late : missionTab === 'soon' ? soon : []
   const popupStore = popup ? stores.find(s => s.id === popup.modelId) : null
 
-  return (
-    <div className="kw-root" ref={rootRef}>
+  const view = (
+    <div className={`kw-root${isAdmin ? '' : ' kw-overlay'}`} ref={rootRef}>
       {store ? (
         <StoreView
           key={store.id}
@@ -214,10 +306,12 @@ export default function Facility() {
           onDetails={(item) => setPopup({ modelId: store.id, ...item })}
           onEdit={() => navigate(`/facility/edit?model=${store.id}`)}
           onQuote={() => navigate('/mitsumori')}
+          audience={audience}
+          onAskQuote={isClient && onRequestQuote ? extra => askQuote(store, extra) : undefined}
         />
       ) : (
         <>
-          {mapView && loaded && (
+          {mapView && loaded && isAdmin && (
             <Suspense fallback={<div className="kw-loading">{w.loading}</div>}>
               <CityMap stores={stores} m={w.cityMap || {}} lang={lang} query={query} mobile={mobile} onOpenStore={id => enterStore(id)} />
             </Suspense>
@@ -252,7 +346,9 @@ export default function Facility() {
 
           {/* HUD: canto de cima à esquerda */}
           <div className="kw-hud kw-hud-tl">
-            {mobile && <button type="button" className="kw-icon-btn" onClick={openMenu} aria-label={w.menu}>☰</button>}
+            {onClose
+              ? <button type="button" className="kw-back" onClick={onClose}>‹ {w.exit}</button>
+              : mobile && <button type="button" className="kw-icon-btn" onClick={openMenu} aria-label={w.menu}>☰</button>}
             <div className="kw-brand">
               <span className="kw-brand-logo" aria-hidden="true">🌏</span>
               <span><strong>{w.brand}</strong><small>{fill(w.stores, { n: stores.length })}</small></span>
@@ -269,33 +365,50 @@ export default function Facility() {
                 </div>
               )}
             </div>
-            <button type="button" className={`kw-pill kw-mapbtn${mapView ? ' on' : ''}`} onClick={() => setParams(mapView ? {} : { view: 'map' })}>
+            {isAdmin && <button type="button" className={`kw-pill kw-mapbtn${mapView ? ' on' : ''}`} onClick={() => setParams(mapView ? {} : { view: 'map' })}>
               {mapView ? `🌏 ${w.cityMap?.world3d}` : `🗺️ ${w.cityMap?.open}`}
-            </button>
+            </button>}
           </div>
 
           {/* HUD: placar */}
           <div className="kw-hud kw-hud-tr">
             <button type="button" className="kw-stat late" onClick={() => { setMissionTab('late'); setMissionsOpen(true) }}><b>{late.length}</b><span>{w.late}</span></button>
             <button type="button" className="kw-stat soon" onClick={() => { setMissionTab('soon'); setMissionsOpen(true) }}><b>{soon.length}</b><span>{w.week}</span></button>
-            <div className="kw-stat ok"><b>{done30}</b><span>{w.done30}</span></div>
+            {isEmployee
+              ? <button type="button" className="kw-stat ok" onClick={() => { setMissionTab('mine'); setMissionsOpen(true) }}><b>{myWork.length}</b><span>{w.myDone30}</span></button>
+              : <div className="kw-stat ok"><b>{done30}</b><span>{w.done30}</span></div>}
           </div>
 
           {/* Missões */}
           {!mapView && <aside className={`kw-missions${missionsOpen ? ' open' : ''}${mobile ? ' sheet' : ''}`}>
             <button type="button" className="kw-missions-head" onClick={() => setMissionsOpen(v => !v)} aria-expanded={missionsOpen}>
-              <span>🎯 {w.missions}</span>
-              <b className={late.length ? 'late' : ''}>{missions.length}</b>
+              <span>{isEmployee ? `✅ ${w.myWork}` : isClient ? `🧽 ${w.care}` : `🎯 ${w.missions}`}</span>
+              <b className={late.length && !isEmployee ? 'late' : ''}>{isEmployee ? myWork.length : missions.length + pendingRecs.length}</b>
               <i aria-hidden="true">{missionsOpen ? '▾' : '▴'}</i>
             </button>
             {missionsOpen && (
               <>
                 <div className="kw-seg">
+                  {isEmployee && <button type="button" className={missionTab === 'mine' ? 'on' : ''} onClick={() => setMissionTab('mine')}>✅ {w.mine} · {myWork.length}</button>}
                   <button type="button" className={missionTab === 'late' ? 'on' : ''} onClick={() => setMissionTab('late')}>🔴 {w.late} · {late.length}</button>
                   <button type="button" className={missionTab === 'soon' ? 'on' : ''} onClick={() => setMissionTab('soon')}>🟡 {w.week} · {soon.length}</button>
                 </div>
                 <div className="kw-mission-list">
-                  {shownMissions.length === 0 && <div className="kw-empty">{w.missionsEmpty}</div>}
+                  {pendingRecs.length > 0 && (
+                    <div className="kw-recs fac-dark">
+                      <div className="kw-recs-title">💡 {t.recommendedForYou}</div>
+                      {pendingRecs.map(r => <RecommendationCard key={r.id} rec={r} t={t} onDecide={decideRec} busy={recBusy === r.id} showStatus={false} />)}
+                    </div>
+                  )}
+                  {missionTab === 'mine' && myWork.length === 0 && <div className="kw-empty">{w.myWorkEmpty}</div>}
+                  {missionTab === 'mine' && myWork.map(x => (
+                    <button key={x.key} type="button" className="kw-mywork" onClick={() => enterStore(x.model_id, x.element_id)}>
+                      <span className="kw-mywork-img">{x.photo ? <img src={viewablePhotoUrl(x.photo)} alt="" loading="lazy" /> : <span aria-hidden="true">{x.job ? '🧹' : '✅'}</span>}</span>
+                      <span className="kw-mywork-text"><strong>{x.title}</strong><small>{x.store}</small></span>
+                      <time>{x.date.slice(5).replace('-', '/')}</time>
+                    </button>
+                  ))}
+                  {missionTab !== 'mine' && shownMissions.length === 0 && <div className="kw-empty">{w.missionsEmpty}</div>}
                   {shownMissions.map(r => {
                     const k = ELEMENT_KINDS[r.element_kind] || ELEMENT_KINDS.other
                     return (
@@ -309,9 +422,10 @@ export default function Facility() {
                           </div>
                         </div>
                         <div className="kw-mission-actions">
-                          <button type="button" onClick={() => enterStore(r.model_id, r.element_id)}>▶ {w.go}</button>
-                          <button type="button" disabled={r.offered || busy === r.key} onClick={() => offer(r)}>{r.offered ? `✓ ${w.offered}` : busy === r.key ? '…' : `📨 ${w.offer}`}</button>
-                          <button type="button" className="primary" onClick={() => setPopup({ modelId: r.model_id, type: 'element', id: r.element_id, log: true })}>✅ {w.done}</button>
+                          <button type="button" onClick={() => enterStore(r.model_id, r.element_id)}>▶ {isAdmin ? w.go : w.see}</button>
+                          {isAdmin && <button type="button" disabled={r.offered || busy === r.key} onClick={() => offer(r)}>{r.offered ? `✓ ${w.offered}` : busy === r.key ? '…' : `📨 ${w.offer}`}</button>}
+                          {isAdmin && <button type="button" className="primary" onClick={() => setPopup({ modelId: r.model_id, type: 'element', id: r.element_id, log: true })}>✅ {w.done}</button>}
+                          {isClient && onRequestQuote && <button type="button" className="primary" onClick={() => askQuote(stores.find(s => s.id === r.model_id), `${r.element_name} · ${r.task_name}`)}>💴 {w.askQuote}</button>}
                         </div>
                       </article>
                     )
@@ -322,11 +436,12 @@ export default function Facility() {
           </aside>}
 
           {!mapView && <div className="kw-hud kw-hud-bl">
-            <button type="button" className="kw-pill" onClick={() => navigate('/facility/edit')}>＋ {w.newStore}</button>
+            {isAdmin && <button type="button" className="kw-pill" onClick={() => navigate('/facility/edit')}>＋ {w.newStore}</button>}
+            {isClient && onRequestQuote && <button type="button" className="kw-pill" onClick={() => askQuote(stores[0] || null)}>💴 {w.askQuote}</button>}
             <button type="button" className="kw-pill ghost" onClick={() => setListMode(v => !v)}>{listMode ? `🌏 ${w.openWorld}` : `☰ ${w.openList}`}</button>
           </div>}
           {loaded && !listMode && !mapView && stores.length > 0 && !mobile && <div className="kw-help">{w.help}</div>}
-          {loaded && !mapView && stores.length === 0 && <div className="kw-empty-world">{w.empty}</div>}
+          {loaded && !mapView && stores.length === 0 && <div className="kw-empty-world">{isAdmin ? w.empty : isClient ? w.emptyClient : w.emptyEmployee}</div>}
         </>
       )}
 
@@ -339,17 +454,54 @@ export default function Facility() {
           recs={recs.filter(r => r.model_id === popupStore.id)}
           logs={logs.filter(l => l.model_id === popupStore.id)}
           todo={todoElementIds(recs.filter(r => r.model_id === popupStore.id))}
-          onLogService={(el, data) => onLogService(popupStore.model, el, data)}
+          onLogService={isAdmin ? (el, data) => onLogService(popupStore.model, el, data) : undefined}
           onClose={() => setPopup(null)}
           onSelectItem={item => setPopup({ modelId: popupStore.id, ...item })}
         />
       )}
+      {quoteFor && (
+        <QuoteSheet
+          w={w}
+          initial={quoteFor}
+          onClose={() => setQuoteFor(null)}
+          onSend={async form => { await onRequestQuote(form); setQuoteFor(null) }}
+        />
+      )}
+    </div>
+  )
+  // portais: por cima de tudo (o cabeçalho e a barra de baixo do portal ficam escondidos)
+  return isAdmin ? view : createPortal(view, document.body)
+}
+
+/** v1.0.86 · cliente pede orçamento sem sair do mundo (vai para client_requests como os outros pedidos). */
+function QuoteSheet({ w, initial, onClose, onSend }) {
+  const [text, setText] = useState(initial.description || '')
+  const [date, setDate] = useState('')
+  const [sending, setSending] = useState(false)
+  return (
+    <div className="kw-modal" role="dialog" aria-modal="true" onClick={onClose}>
+      <form className="kw-quote" onClick={e => e.stopPropagation()} onSubmit={async e => {
+        e.preventDefault()
+        if (!text.trim() || sending) return
+        setSending(true)
+        try { await onSend({ kind: 'quote', category: '', location_name: initial.location_name || '', description: text.trim(), preferred_date: date }) } finally { setSending(false) }
+      }}>
+        <h3>💴 {w.askQuote}</h3>
+        <p>{w.askQuoteHint}</p>
+        <label><span>{w.askQuoteWhat}</span><textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus /></label>
+        <label><span>{w.askQuoteDate}</span><input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
+        <div className="kw-quote-btns">
+          <button type="button" onClick={onClose}>{w.cancel}</button>
+          <button type="submit" className="primary" disabled={!text.trim() || sending}>{sending ? '…' : w.send}</button>
+        </div>
+      </form>
     </div>
   )
 }
 
 /** Dentro de uma loja: Mapa (3D) | Itens (inventário) | Histórico (fotos reais), painel do item tocado. */
-function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, mobile, initialSel, busy, onBack, onOffer, onDone, onDetails, onEdit, onQuote }) {
+function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, mobile, initialSel, busy, onBack, onOffer, onDone, onDetails, onEdit, onQuote, audience = 'admin', onAskQuote }) {
+  const isAdmin = audience === 'admin'
   const [tab, setTab] = useState('map')
   const [mode, setMode] = useState('3d')
   const [level, setLevel] = useState(0)
@@ -484,9 +636,12 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
         )}
       </div>
       <div className="kw-hud kw-hud-tr kw-actions">
-        <button type="button" className="kw-chip-btn" onClick={() => openClientSheet({ id: store.model.client_id })} title={w.clientSheet}>📇 <span>{w.clientSheet}</span></button>
-        <button type="button" className="kw-chip-btn" onClick={onQuote} title={w.quote}>💴 <span>{w.quote}</span></button>
-        <button type="button" className="kw-chip-btn" onClick={onEdit} title={w.editPlan}>✏️ <span>{w.editPlan}</span></button>
+        {isAdmin && <>
+          <button type="button" className="kw-chip-btn" onClick={() => openClientSheet({ id: store.model.client_id })} title={w.clientSheet}>📇 <span>{w.clientSheet}</span></button>
+          <button type="button" className="kw-chip-btn" onClick={onQuote} title={w.quote}>💴 <span>{w.quote}</span></button>
+          <button type="button" className="kw-chip-btn" onClick={onEdit} title={w.editPlan}>✏️ <span>{w.editPlan}</span></button>
+        </>}
+        {onAskQuote && <button type="button" className="kw-chip-btn gold" onClick={() => onAskQuote('')} title={w.askQuote}>💴 <span>{w.askQuote}</span></button>}
         <div className="kw-next">🗓 {nextJob ? fill(w.nextJob, { date: fmtDate(String(nextJob.scheduled_date).slice(0, 10)), who: nextJob.employee_name || '—' }) : w.noNextJob}</div>
       </div>
       {tab === 'map' && (
@@ -508,9 +663,10 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
             logs={logs}
             onDetails={() => onDetails({ type: 'element', id: sel.id })}
             onClose={() => setSelId(null)}
-            onOffer={selMission && busy !== selMission.key ? () => onOffer(selMission) : undefined}
+            onOffer={isAdmin && selMission && busy !== selMission.key ? () => onOffer(selMission) : undefined}
             offered={!!selMission?.offered}
-            onLog={rowsForElement(sel, sel.care || careForElement(sel, [])).length > 0 ? () => onDone(sel) : undefined}
+            onLog={isAdmin && rowsForElement(sel, sel.care || careForElement(sel, [])).length > 0 ? () => onDone(sel) : undefined}
+            extraActions={onAskQuote ? <button type="button" className="primary" onClick={() => onAskQuote(selMission ? `${sel.name} · ${selMission.task_name}` : sel.name)}>💴 {w.askQuote}</button> : null}
           />
         </div>
       )}

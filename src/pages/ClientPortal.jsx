@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill } from '../hooks/useLang'
@@ -22,11 +22,9 @@ import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
-import { listModels, listRecommendations, decideRecommendation, listServiceLog } from '../lib/facilityApi'
-import FacilityViewer from '../components/facility/FacilityViewer'
-import CareList from '../components/facility/CareList'
-import { careSchedule, withServiceLog } from '../lib/facilityModel'
-import { RecommendationCard } from '../components/facility/FacilityItemPopup'
+import { listModels, listRecommendations, decideRecommendation } from '../lib/facilityApi'
+// v1.0.86 · Kuripuro World só para ver (three.js baixa só quando abre)
+const Facility = lazy(() => import('./Facility'))
 import './client-portal.css'
 
 function sanitizePostgrestToken(value) {
@@ -118,10 +116,7 @@ export default function ClientPortal() {
   const [savingCreds, setSavingCreds] = useState(false)
 
   const [facilityModels, setFacilityModels] = useState([])
-  const [facilityModelId, setFacilityModelId] = useState('')
   const [facilityRecs, setFacilityRecs] = useState([])
-  const [facilityLogs, setFacilityLogs] = useState([])
-  const [facilityBusy, setFacilityBusy] = useState('')
 
   const msgEndRef = useRef()
 
@@ -223,9 +218,7 @@ export default function ClientPortal() {
         .filter(m => m.status === 'approved')
         .filter(m => !user.location_name || !m.location_name || m.location_name === user.location_name)
       setFacilityModels(models)
-      setFacilityModelId(id => (models.some(m => m.id === id) ? id : (models.find(m => m.location_name === user.location_name) || models[0])?.id || ''))
       setFacilityRecs(await listRecommendations({ clientId: user.client_id, locationName: user.location_name }))
-      setFacilityLogs(await listServiceLog({ clientId: user.client_id }))
     } catch {
       setFacilityModels([])
     }
@@ -234,7 +227,6 @@ export default function ClientPortal() {
   useEffect(() => { loadFacility() }, [loadFacility])
 
   const decideFacilityRec = async (rec, decision) => {
-    setFacilityBusy(rec.id)
     try {
       await decideRecommendation(rec, decision, { by: 'client', clientUserId: user.id })
       toast.success(decision === 'accepted' ? tr.facility.recAccepted : tr.facility.recDeclined)
@@ -243,7 +235,6 @@ export default function ClientPortal() {
     } catch (e) {
       toast.error(e.message)
     }
-    setFacilityBusy('')
   }
 
   useEffect(() => {
@@ -576,7 +567,6 @@ export default function ClientPortal() {
   const weeklyDone = weeklyCompleted(jobs, deepProgressMonth)
 
   const pendingFacilityRecs = facilityRecs.filter(r => r.status === 'pending')
-  const facilityModel = facilityModels.find(m => m.id === facilityModelId) || null
 
   const quotesWaiting = requests.filter(rq => rq.quote_status === 'quoted').length
   const navItems = [
@@ -588,7 +578,7 @@ export default function ClientPortal() {
     { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab, badge: quotesWaiting },
     { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
     ...(facilityModels.length || pendingFacilityRecs.length
-      ? [{ key: 'facility', icon: <NavIcon name="store" />, label: tr.facility.storeModel, badge: pendingFacilityRecs.length }]
+      ? [{ key: 'facility', icon: <NavIcon name="store" />, label: tr.facility.tab, badge: pendingFacilityRecs.length }]
       : []),
     { key: 'settings', icon: <NavIcon name="settings" />, label: c.settings },
   ]
@@ -1104,75 +1094,16 @@ export default function ClientPortal() {
               </div>
             )}
 
-            {!loading && tab === 'facility' && (
-              <>
-                {pendingFacilityRecs.length > 0 && (
-                  <>
-                    <div className="cp-section-title">{tr.facility.recommendedForYou}</div>
-                    <div className="fac-dark" style={{ marginBottom: 16 }}>
-                      {pendingFacilityRecs.map(r => (
-                        <RecommendationCard key={r.id} rec={r} t={tr.facility} onDecide={decideFacilityRec} busy={facilityBusy === r.id} showStatus={false} />
-                      ))}
-                    </div>
-                  </>
-                )}
-                <div className="cp-section-title">{tr.facility.storeModel}</div>
-                {facilityModels.length > 1 && (
-                  <div className="fac-toolbar">
-                    {facilityModels.map(m => (
-                      <button key={m.id} type="button" className={`fac-chip${m.id === facilityModelId ? ' on' : ''}`} onClick={() => setFacilityModelId(m.id)}>
-                        {m.location_name || m.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {facilityModel ? (
-                  <div className="fac-dark">
-                    <FacilityViewer
-                      model={facilityModel}
-                      t={tr.facility}
-                      lang={lang}
-                      recs={facilityRecs.filter(r => r.model_id === facilityModel.id)}
-                      logs={facilityLogs.filter(l => l.model_id === facilityModel.id)}
-                      onDecide={decideFacilityRec}
-                      busyId={facilityBusy}
-                    />
-                  </div>
-                ) : (
-                  <PortalEmpty icon="🏢" text={tr.facility.noModel} />
-                )}
-                {facilityModel && (() => {
-                  const rows = careSchedule(withServiceLog(facilityModel.layout, facilityLogs.filter(l => l.model_id === facilityModel.id)))
-                  if (!rows.length) return null
-                  return (
-                    <>
-                      <div className="cp-section-title" style={{ marginTop: 18 }}>🧽🔧 {tr.facility.careForClient}</div>
-                      <div className="fac-muted" style={{ fontSize: 12, marginBottom: 8 }}>{tr.facility.careForClientHint}</div>
-                      <div className="fac-dark">
-                        <CareList rows={rows} t={tr.facility} lang={lang} showElement dark limit={8} />
-                      </div>
-                    </>
-                  )
-                })()}
-                {facilityModel && facilityLogs.some(l => l.model_id === facilityModel.id) && (
-                  <>
-                    <div className="cp-section-title" style={{ marginTop: 18 }}>{tr.facility.recentWork}</div>
-                    <div className="fac-dark">
-                      <div className="fac-hist">
-                        {facilityLogs.filter(l => l.model_id === facilityModel.id).slice(0, 12).map(l => (
-                          <div key={l.id} className="fac-hist-row">
-                            <span className="fac-hist-date">{new Date(l.service_date + 'T00:00:00+09:00').toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Tokyo' })}</span>
-                            <span style={{ flex: 1 }}>
-                              <strong>{l.element_name}</strong>{l.service ? ` · ${l.service}` : ''}
-                              {l.photos?.length > 0 && <div className="fac-muted">📷 {l.photos.length}</div>}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </>
+            {tab === 'facility' && (
+              <Suspense fallback={null}>
+                <Facility
+                  audience="client"
+                  viewer={{ client_id: user.client_id, company_name: clientRow?.company_name || user.client_name, location_name: user.location_name }}
+                  onClose={() => setTab('home')}
+                  onRequestQuote={form => submitRequest(form, '')}
+                  onDecideRec={decideFacilityRec}
+                />
+              </Suspense>
             )}
 
             {!loading && tab === 'settings' && (
