@@ -1,4 +1,4 @@
--- v1.0.83 · Notificações push (Web Push) para admin, funcionários, vendedores e clientes.
+-- v1.0.84 · Notificações push (Web Push) para admin, funcionários, vendedores e clientes.
 -- Rodar UMA vez no Supabase → SQL Editor, só depois do OK do dono.
 -- Pode rodar de novo sem problema (tudo é "if not exists" / "or replace").
 --

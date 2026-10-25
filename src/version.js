@@ -1,2 +1,2 @@
-export const APP_VERSION = 'v1.0.83'
+export const APP_VERSION = 'v1.0.84'
 export const APP_BUILD_LABEL = `REBUILD · ${APP_VERSION} · NOTIFICAÇÕES PUSH PARA TODOS · 25 OUT 2026`
