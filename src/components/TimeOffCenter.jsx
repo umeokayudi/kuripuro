@@ -41,7 +41,7 @@ export default function TimeOffCenter() {
   // v1.0.70 · accepted quotes with no date yet + quote jobs just finished (invoice sent)
   const [toBook, setToBook] = useState([])
   const [flowDone, setFlowDone] = useState([])
-  // v1.0.86 · booked quote sessions not done on their day: stay in the bell until done, moved or cancelled
+  // v1.0.87 · booked quote sessions not done on their day: stay in the bell until done, moved or cancelled
   const [late, setLate] = useState([])
   const [newFlow, setNewFlow] = useState([])
   const [offers, setOffers] = useState([])

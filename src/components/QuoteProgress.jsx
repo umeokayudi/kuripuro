@@ -3,7 +3,7 @@ import { useLang, pickLang } from '../hooks/useLang'
 import { fetchQuoteSessions, quoteProgress, QUOTE_FLOW_CHANGED } from '../lib/quoteFlow'
 import './quote-tracker.css'
 
-// v1.0.86 · One line on an accepted quote card: 5 steps + what is missing now (late in red).
+// v1.0.87 · One line on an accepted quote card: 5 steps + what is missing now (late in red).
 // Pass sessions when the page already loaded them, or just quoteRef and it loads them itself.
 export default function QuoteProgress({ quoteRef, sessions: given, onOpen }) {
   const { lang } = useLang()

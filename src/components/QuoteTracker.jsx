@@ -16,7 +16,7 @@ const billChecked = s => s.invoice?.status === 'paid' || Boolean(s.contract_deta
 
 // v1.0.70 · Accepted quote → book sessions → worker does it → invoice sent.
 // Opens from Quotes (mitsumori accepted), Client requests (client accepted) and the admin bell.
-// v1.0.86 · after the date: late alert, "was it done / how did it go" check with the worker's report
+// v1.0.87 · after the date: late alert, "was it done / how did it go" check with the worker's report
 // and photos, reschedule when it was not done, and the billing check.
 export default function QuoteTracker({ quote, onClose }) {
   const { lang } = useLang()

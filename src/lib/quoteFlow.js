@@ -69,7 +69,7 @@ export function quoteStage(sessions = []) {
   return 'scheduled'
 }
 
-// v1.0.86 · follow-up after the booking: late alert, "how did it go" check, billing check.
+// v1.0.87 · follow-up after the booking: late alert, "how did it go" check, billing check.
 // All of it lives in spot_contracts.contract_details (jsonb), no new columns:
 //   check: { result: 'ok' | 'issue' | 'not_done', note, at }   (admin looked at the job)
 //   billing_checked_at                                          (admin confirmed the invoice reached the client)
@@ -313,7 +313,7 @@ export async function fetchQuoteFlowAlerts() {
   const { data: jobs } = jobIds.length ? await supabase.from('jobs').select('id,status,completed_at').in('id', jobIds).eq('status', 'completed').gte('completed_at', since) : { data: [] }
   const doneIds = new Set((jobs || []).map(j => j.id))
   const done = (recent.data || []).filter(r => doneIds.has(r.job_id)).map(r => ({ id: `qf-done-${r.id}`, ref: r.contract_details?.quote_ref, name: r.client_name || r.location_name, total: r.price }))
-  // v1.0.86 · booked sessions whose day came and the job is not done: they stay until done, moved or cancelled
+  // v1.0.87 · booked sessions whose day came and the job is not done: they stay until done, moved or cancelled
   const today = tokyoToday()
   const { data: due } = await supabase.from('spot_contracts').select('id,job_id,client_name,location_name,price,service_date,service_time,contract_details')
     .eq('is_active', true).not('contract_details->>quote_ref', 'is', null).lte('service_date', today).gte('service_date', new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)).limit(300)
