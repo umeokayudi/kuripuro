@@ -53,7 +53,7 @@ export async function fetchQuoteSessions(ref) {
   const jobIds = rows.map(r => r.job_id).filter(Boolean)
   const invIds = rows.map(r => r.fatura_id).filter(Boolean)
   const [jobs, invs] = await Promise.all([
-    jobIds.length ? supabase.from('jobs').select('id,status,spot_status,completed_at,employee_name,scheduled_date,scheduled_time,photo_end_url').in('id', jobIds) : { data: [] },
+    jobIds.length ? supabase.from('jobs').select('id,status,spot_status,started_at,completed_at,employee_name,scheduled_date,scheduled_time,photo_start_url,photo_end_url,notes_employee,retro_report,retro_ai_summary,checklist_total,checklist_done,checklist_missed_items,photo_ai_score,photo_ai_issues').in('id', jobIds) : { data: [] },
     invIds.length ? supabase.from('faturas').select('id,status,total,issue_date,due_date').in('id', invIds) : { data: [] },
   ])
   const jobById = new Map((jobs.data || []).map(j => [j.id, j]))
@@ -67,6 +67,105 @@ export function quoteStage(sessions = []) {
   if (!live.length) return 'approved'
   if (live.every(s => s.job?.status === 'completed')) return 'done'
   return 'scheduled'
+}
+
+// v1.0.86 · follow-up after the booking: late alert, "how did it go" check, billing check.
+// All of it lives in spot_contracts.contract_details (jsonb), no new columns:
+//   check: { result: 'ok' | 'issue' | 'not_done', note, at }   (admin looked at the job)
+//   billing_checked_at                                          (admin confirmed the invoice reached the client)
+//   reschedules: [{ from, to, at, reason }]                    (it was not done on the booked day)
+
+const isOff = j => j?.status === 'cancelled' || j?.spot_status === 'declined'
+const tokyoMinutes = (now = new Date()) => {
+  const [h, m] = now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Tokyo', hour12: false }).split(':').map(Number)
+  return (h % 24) * 60 + m
+}
+const LATE_GRACE_MIN = 60
+
+/**
+ * Why a booked session is late, or null:
+ * 'missed' (the day passed and it never started), 'unfinished' (started, the day passed, not finished),
+ * 'not_started' (today, an hour past the booked time and nobody started it).
+ */
+export function sessionLate(s, now = new Date()) {
+  const j = s?.job
+  if (!j || j.status === 'completed' || isOff(j)) return null
+  const day = String(s.service_date || j.scheduled_date || '').slice(0, 10)
+  if (!day) return null
+  const today = tokyoToday()
+  if (day > today) return null
+  if (day < today) return j.status === 'in_progress' ? 'unfinished' : 'missed'
+  const time = String(s.service_time || j.scheduled_time || '')
+  if (!/^\d{1,2}:\d{2}/.test(time) || j.status === 'in_progress') return null
+  const [h, m] = time.split(':').map(Number)
+  return tokyoMinutes(now) > h * 60 + m + LATE_GRACE_MIN ? 'not_started' : null
+}
+
+const billed = s => ['sent', 'paid'].includes(s.invoice?.status)
+const billChecked = s => s.invoice?.status === 'paid' || Boolean(s.contract_details?.billing_checked_at)
+
+/** Counts for the steps strip: booked → done → checked → invoice sent → invoice checked. */
+export function quoteProgress(sessions = []) {
+  const live = sessions.filter(s => !isOff(s.job))
+  const done = live.filter(s => s.job?.status === 'completed')
+  const late = live.filter(s => sessionLate(s))
+  const upcoming = live.filter(s => s.job?.status !== 'completed').map(s => s.service_date).filter(Boolean).sort()
+  return {
+    stage: quoteStage(sessions),
+    booked: live.length,
+    done: done.length,
+    checked: done.filter(s => s.contract_details?.check?.result && s.contract_details.check.result !== 'not_done').length,
+    billed: live.filter(billed).length,
+    billChecked: live.filter(billChecked).length,
+    late: late.length,
+    next: upcoming[0] || null,
+  }
+}
+
+async function patchDetails(session, patch) {
+  const details = { ...(session.contract_details || {}), ...patch }
+  const { error } = await supabase.from('spot_contracts').update({ contract_details: details }).eq('id', session.id)
+  if (error) throw error
+  return details
+}
+
+/** Admin's look at a finished (or missed) session: result + how it went. */
+export async function checkQuoteSession(session, { result, note = '' }) {
+  const details = await patchDetails(session, { check: { result, note: String(note || '').trim(), at: new Date().toISOString() } })
+  changed()
+  return details
+}
+
+/** Admin confirmed the invoice of this session reached the client. */
+export async function checkQuoteBilling(session) {
+  const details = await patchDetails(session, { billing_checked_at: new Date().toISOString() })
+  changed()
+  return details
+}
+
+/**
+ * It was not done on the booked day: move job, contract and draft invoice to a new day.
+ * A new worker gets it as a fresh spot offer.
+ */
+export async function rescheduleQuoteSession(session, { date, time = '', employee = null, reason = '' }) {
+  if (!date) throw new Error('date')
+  const job = { scheduled_date: date, scheduled_time: time || null }
+  if (session.job?.status === 'in_progress') job.status = 'assigned'
+  if (employee && employee.id !== session.employee_id) Object.assign(job, { employee_id: employee.id, employee_name: employee.full_name || '', spot_status: 'pending', status: 'assigned' })
+  if (session.job_id) {
+    const { error } = await supabase.from('jobs').update(job).eq('id', session.job_id)
+    if (error) throw error
+  }
+  const reschedules = [...(session.contract_details?.reschedules || []), { from: session.service_date, to: date, at: new Date().toISOString(), reason: String(reason || '').trim() }]
+  const details = { ...(session.contract_details || {}), reschedules }
+  delete details.check
+  const contract = { service_date: date, service_time: time || null, contract_details: details }
+  if (employee && employee.id !== session.employee_id) Object.assign(contract, { employee_id: employee.id, employee_name: employee.full_name || '' })
+  const { error } = await supabase.from('spot_contracts').update(contract).eq('id', session.id)
+  if (error) throw error
+  if (session.fatura_id && session.invoice?.status === 'draft') await supabase.from('faturas').update({ issue_date: date }).eq('id', session.fatura_id)
+  notifySeller(session, 'quote_rescheduled', `Serviço remarcado · ${session.client_name || session.location_name || ''}`, `${session.service_date} → ${date}${time ? ` ${time}` : ''}`)
+  changed()
 }
 
 const sessionPlace = (quote, n) => {
@@ -188,8 +287,8 @@ function notifySeller(quote, event_type, title, body) {
 }
 
 /**
- * For the admin bell: accepted quotes nobody has booked yet, and quote jobs finished in the last
- * 7 days (their invoice went out). Ids are prefixed so the bell can remember what it showed.
+ * For the admin bell: accepted quotes nobody has booked yet, quote jobs finished in the last
+ * 7 days (their invoice went out) and booked sessions that are late (not done on their day). Ids are prefixed so the bell can remember what it showed.
  */
 export async function fetchQuoteFlowAlerts() {
   const since = new Date(Date.now() - 7 * 864e5).toISOString()
@@ -214,5 +313,18 @@ export async function fetchQuoteFlowAlerts() {
   const { data: jobs } = jobIds.length ? await supabase.from('jobs').select('id,status,completed_at').in('id', jobIds).eq('status', 'completed').gte('completed_at', since) : { data: [] }
   const doneIds = new Set((jobs || []).map(j => j.id))
   const done = (recent.data || []).filter(r => doneIds.has(r.job_id)).map(r => ({ id: `qf-done-${r.id}`, ref: r.contract_details?.quote_ref, name: r.client_name || r.location_name, total: r.price }))
-  return { toBook, done }
+  // v1.0.86 · booked sessions whose day came and the job is not done: they stay until done, moved or cancelled
+  const today = tokyoToday()
+  const { data: due } = await supabase.from('spot_contracts').select('id,job_id,client_name,location_name,price,service_date,service_time,contract_details')
+    .eq('is_active', true).not('contract_details->>quote_ref', 'is', null).lte('service_date', today).gte('service_date', new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)).limit(300)
+  const dueJobIds = (due || []).map(r => r.job_id).filter(Boolean)
+  const { data: dueJobs } = dueJobIds.length ? await supabase.from('jobs').select('id,status,spot_status,scheduled_date,scheduled_time,employee_name').in('id', dueJobIds) : { data: [] }
+  const dueJob = new Map((dueJobs || []).map(j => [j.id, j]))
+  const late = (due || []).map(r => ({ ...r, job: dueJob.get(r.job_id) })).map(r => [r, sessionLate(r)]).filter(([, why]) => why).map(([r, why]) => ({
+    id: `qf-late-${r.id}-${r.service_date}`, ref: r.contract_details?.quote_ref, why, name: r.client_name || r.location_name, total: r.price,
+    date: r.service_date, time: r.service_time || '', who: r.job?.employee_name || '',
+  }))
+  // a finished job the admin already looked at does not need the bell any more
+  const checkedDone = new Set((recent.data || []).filter(r => r.contract_details?.check).map(r => `qf-done-${r.id}`))
+  return { toBook, done: done.filter(d => !checkedDone.has(d.id)), late }
 }

@@ -30,6 +30,7 @@ import SalesLeadFields from '../components/SalesLeadFields'
 import StoreDossier from '../components/facility/StoreDossier'
 import ClientQuoteBox from '../components/ClientQuoteBox'
 import QuoteTracker from '../components/QuoteTracker'
+import QuoteProgress from '../components/QuoteProgress'
 import { quoteFromMitsumori, quoteFromRequest, fetchQuoteSessions, quoteStage, quoteRef, QUOTE_FLOW_CHANGED } from '../lib/quoteFlow'
 import { QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
 import { fetchContractSellers } from '../lib/contractSellers'
@@ -129,11 +130,11 @@ export default function Mitsumori() {
     return () => { window.removeEventListener(QUOTE_FLOW_CHANGED, reload); window.removeEventListener(QUOTE_REQUESTS_CHANGED, loadRequests) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // stage of each accepted quote (approved / scheduled / done) for its button
+  // sessions of each accepted quote, for its button and its follow-up strip
   useEffect(() => {
     const accepted = quotes.filter(q => q.status === 'accepted')
     if (!accepted.length) return
-    Promise.all(accepted.map(q => fetchQuoteSessions(quoteRef('mitsumori', q.id)).then(rows => [q.id, quoteStage(rows)]).catch(() => [q.id, 'approved'])))
+    Promise.all(accepted.map(q => fetchQuoteSessions(quoteRef('mitsumori', q.id)).then(rows => [q.id, rows]).catch(() => [q.id, []])))
       .then(pairs => setFlow(Object.fromEntries(pairs)))
   }, [quotes])
 
@@ -432,14 +433,18 @@ export default function Mitsumori() {
                 <button type="button" className="btn btn-sm" onClick={() => openPrint(q, false, 'en')}>{s.printEn}</button>
                 {q.status === 'draft' && <button type="button" className="btn btn-sm btn-primary" onClick={() => handleStatus(q, 'sent')}>{s.markSent}</button>}
                 {q.status === 'sent' && <button type="button" className="btn btn-sm" style={{ background: 'var(--green)', color: '#fff' }} onClick={() => handleStatus(q, 'accepted')}>{s.markAccepted}</button>}
-                {q.status === 'accepted' && (
-                  <button type="button" className={`btn btn-sm${flow[q.id] && flow[q.id] !== 'approved' ? '' : ' btn-primary'}`} onClick={() => setTracking(quoteFromMitsumori(q))}>
-                    📅 {flow[q.id] === 'done' ? L('Done · see invoice', '完了・請求書を見る', 'Feito · ver nota') : flow[q.id] === 'scheduled' ? L('Scheduled · follow up', '予約済み・進捗を見る', 'Agendado · acompanhar') : L('Book the date and follow up', '日程を決めて進める', 'Marcar a data e acompanhar')}
-                  </button>
-                )}
+                {q.status === 'accepted' && (() => {
+                  const stage = flow[q.id] ? quoteStage(flow[q.id]) : 'approved'
+                  return (
+                    <button type="button" className={`btn btn-sm${stage !== 'approved' ? '' : ' btn-primary'}`} onClick={() => setTracking(quoteFromMitsumori(q))}>
+                      📅 {stage === 'done' ? L('Done · see invoice', '完了・請求書を見る', 'Feito · ver nota') : stage === 'scheduled' ? L('Scheduled · follow up', '予約済み・進捗を見る', 'Agendado · acompanhar') : L('Book the date and follow up', '日程を決めて進める', 'Marcar a data e acompanhar')}
+                    </button>
+                  )
+                })()}
                 {q.status !== 'declined' && q.status !== 'accepted' && <button type="button" className="btn btn-sm btn-danger" onClick={() => handleStatus(q, 'declined')}>{s.markDeclined}</button>}
                 <button type="button" className="btn btn-sm btn-danger" onClick={() => handleDelete(q.id)}>{s.delete}</button>
               </div>
+              {q.status === 'accepted' && flow[q.id] && <QuoteProgress sessions={flow[q.id]} onOpen={() => setTracking(quoteFromMitsumori(q))} />}
             </div>
           ))}
         </div>
