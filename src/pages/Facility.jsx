@@ -53,7 +53,7 @@ const daysAgo = n => new Date(Date.now() - n * 86400000).toLocaleDateString('en-
  * Cidade com todas as lojas → toca num prédio → entra na loja (Mapa | Itens | Histórico) → toca num item → fotos reais.
  * Missões (atrasado / esta semana) ficam do lado, com Ir, Oferecer e Feito. A edição da planta continua em /facility/edit.
  *
- * v1.0.86 · audience 'employee' e 'client' = o mesmo mundo só para ver, aberto por cima do portal (onClose fecha):
+ * v1.0.90 · audience 'employee' e 'client' = o mesmo mundo só para ver, aberto por cima do portal (onClose fecha):
  * - employee (viewer { id, name }): lojas publicadas dos clientes onde ele trabalha; painel "Meu trabalho" com o que ele terminou.
  * - client (viewer { client_id, company_name }): só as lojas dele; painel "Cuidados" com Pedir orçamento (onRequestQuote) e recomendações (onDecideRec).
  */
@@ -473,7 +473,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   return isAdmin ? view : createPortal(view, document.body)
 }
 
-/** v1.0.86 · cliente pede orçamento sem sair do mundo (vai para client_requests como os outros pedidos). */
+/** v1.0.90 · cliente pede orçamento sem sair do mundo (vai para client_requests como os outros pedidos). */
 function QuoteSheet({ w, initial, onClose, onSend }) {
   const [text, setText] = useState(initial.description || '')
   const [date, setDate] = useState('')

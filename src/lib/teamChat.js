@@ -59,7 +59,7 @@ export function buildChatSections({ me, employees, teamMessages, officeMessages,
   const leaderEmp = leaderId ? others.find(x => x.id === leaderId) : null
   const team = others.filter(x => x.leader_id === meId && x.id !== leaderId).map(x => contact(x, 'team')).sort(byRecent)
   const teamIds = new Set(team.map(x => x.id))
-  // v1.0.86 · only the office and the own leader to start a chat; other coworkers show up only when a chat already exists.
+  // v1.0.90 · only the office and the own leader to start a chat; other coworkers show up only when a chat already exists.
   const colleagues = others.filter(x => x.id !== leaderId && !teamIds.has(x.id)).map(x => contact(x, 'colleague')).filter(c => c.last).sort(byRecent)
   return { leader: leaderEmp ? contact(leaderEmp, 'leader') : null, team, colleagues, office: officeContact, leaderId }
 }

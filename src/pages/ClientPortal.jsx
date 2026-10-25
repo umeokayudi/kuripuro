@@ -23,7 +23,7 @@ import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { listModels, listRecommendations, decideRecommendation } from '../lib/facilityApi'
-// v1.0.86 · Kuripuro World só para ver (three.js baixa só quando abre)
+// v1.0.90 · Kuripuro World só para ver (three.js baixa só quando abre)
 const Facility = lazy(() => import('./Facility'))
 import './client-portal.css'
 

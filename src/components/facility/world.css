@@ -233,7 +233,7 @@ body:has(.kw-root) .kp-ai-trigger { bottom: 18px; }
 .kw-mapbtn { height: 48px; font-size: 14px; }
 .kw-mapbtn.on { border-color: var(--kw-gold); color: #fde68a; }
 
-/* v1.0.86 · mesmo mundo, só para ver, por cima do portal do funcionário e do cliente */
+/* v1.0.90 · mesmo mundo, só para ver, por cima do portal do funcionário e do cliente */
 .kw-root.kw-overlay { position: fixed; inset: 0; z-index: 1000; height: 100vh; height: 100dvh; }
 .kw-chip-btn.gold { background: linear-gradient(135deg, #f5c76a, #d99a2b); color: #2a1a00; border-color: transparent; }
 .kw-chip-btn.gold span { display: inline; }

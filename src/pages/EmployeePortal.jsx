@@ -21,7 +21,7 @@ import { dueAlertJobs, dueAlertSlot, acceptSpotUpdate, isBrokenRunningJob, isPen
 import JobDueAlert, { ringDueAlert } from '../components/JobDueAlert'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
-// v1.0.86 · Kuripuro World só para ver (three.js baixa só quando abre)
+// v1.0.90 · Kuripuro World só para ver (three.js baixa só quando abre)
 const FacilityWorld = lazy(() => import('./Facility'))
 import EmployeeChat from '../components/EmployeeChat'
 import { OFFICE_KEY, buildChatSections, officeThread, threadWith, teamUnreadTotal } from '../lib/teamChat'

@@ -20,7 +20,7 @@ const s = buildChatSections({ me: { id: 'me' }, employees, teamMessages, officeM
 assert.equal(s.leader.id, 'lead')
 assert.deepEqual(s.team.map(x => x.id), ['sub'])
 assert.deepEqual(s.colleagues.map(x => x.id), ['co'], 'inactive people and the leader are not coworkers')
-// v1.0.86 · a coworker without a chat yet is not offered (only the office and the own manager)
+// v1.0.90 · a coworker without a chat yet is not offered (only the office and the own manager)
 const quiet = buildChatSections({ me: { id: 'me' }, employees: [...employees, { id: 'new', full_name: 'Gil New', is_active: true }], teamMessages, officeMessages, teamReady: true })
 assert.ok(!quiet.colleagues.some(x => x.id === 'new'))
 assert.equal(s.colleagues[0].unread, 1)
