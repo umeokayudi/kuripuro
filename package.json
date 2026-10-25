@@ -71,7 +71,8 @@
     "test:team-chat": "node scripts/test-team-chat.mjs",
     "test:video-compress": "node scripts/test-video-compress.mjs",
     "test:job-deadline": "npx vite-node scripts/test-job-deadline.mjs",
-    "test:job-eliminate": "npx vite-node scripts/test-job-eliminate.mjs"
+    "test:job-eliminate": "npx vite-node scripts/test-job-eliminate.mjs",
+    "test:push": "node scripts/test-push.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
@@ -85,7 +86,8 @@
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.22.0",
-    "three": "^0.169.0"
+    "three": "^0.169.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
