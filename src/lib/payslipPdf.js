@@ -31,7 +31,18 @@ const L = {
     perMonth: '/mo', perHour: '/h', perDay: 'Daily', dayUnit: 'days', jobUnit: 'jobs',
     status_scheduled: 'Scheduled', status_paid: 'Paid', status_pending: 'Pending',
   },
+  pt: {
+    title: 'Holerite', employee: 'Funcionário', contract: 'Contrato', salaryType: 'Tipo de pagamento', period: 'Período',
+    rate: 'Valor', days: 'Dias trabalhados', hours: 'Horas', jobs: 'Serviços', earnings: 'Ganhos', deductionsTitle: 'Descontos',
+    item: 'Item', amount: 'Valor', base: 'Salário base', spot: 'Serviços spot', gross: 'Total bruto', dedTotal: 'Total de descontos',
+    net: 'Valor líquido', schedule: 'Pagamentos programados', date: 'Data', desc: 'Descrição', status: 'Situação', detail: 'Detalhe dos serviços',
+    place: 'Local', time: 'Horário', none: 'Sem descontos', confidential: 'Confidencial', created: 'Gerado em',
+    noRate: 'Nenhum valor de pagamento cadastrado para este funcionário (mensal e por hora são ¥0). Se o valor aparecer ¥0, fale com o admin.',
+    perMonth: '/mês', perHour: '/h', perDay: 'Diária', dayUnit: 'dias', jobUnit: 'serviços',
+    status_scheduled: 'Agendado', status_paid: 'Pago', status_pending: 'Pendente',
+  },
 }
+const docLang = lang => (lang === 'ja' || lang === 'pt' ? lang : 'en')
 
 function rateText(emp, salary, t) {
   const type = emp?.salary_type || 'fixed'
@@ -43,7 +54,7 @@ function rateText(emp, salary, t) {
 
 /** Printable HTML for one month. `salary` is calcEmployeeMonthlySalary(...) for that month. */
 export function payslipHtml({ employee, month, salary, deductions = [], payments = [], jobs = [], lang = 'ja', companyName = 'KuriPuro by JBM' }) {
-  const t = L[lang === 'ja' ? 'ja' : 'en']
+  const t = L[docLang(lang)]
   const s = salary || {}
   const dedRows = deductions.map(d => ({ label: d.description || t.deductionsTitle, amount: Number(d.amount || 0) }))
   const dedTotal = dedRows.reduce((a, d) => a + d.amount, 0)
@@ -51,7 +62,7 @@ export function payslipHtml({ employee, month, salary, deductions = [], payments
   const net = Math.max(0, gross - dedTotal)
   const paid = payments.filter(p => !p.is_deduction && p.payment_type !== 'advance')
   const showJobAmounts = (employee?.salary_type || 'fixed') !== 'fixed' || jobs.some(j => j.job_category === 'spot')
-  const created = new Date().toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-GB', { timeZone: 'Asia/Tokyo' })
+  const created = new Date().toLocaleString(lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB', { timeZone: 'Asia/Tokyo' })
 
   const info = [
     [t.employee, employee?.full_name || '—'], [t.contract, employee?.contract_type || '—'],
@@ -60,7 +71,7 @@ export function payslipHtml({ employee, month, salary, deductions = [], payments
     [t.hours, `${Number(s.hours || 0).toFixed(1)}h`], [t.jobs, `${s.jobs || 0} ${t.jobUnit}`],
   ]
 
-  return `<!doctype html><html lang="${lang === 'ja' ? 'ja' : 'en'}"><head><meta charset="utf-8"><style>
+  return `<!doctype html><html lang="${docLang(lang)}"><head><meta charset="utf-8"><style>
 *{box-sizing:border-box}
 /* Plain sans-serif: the phone picks its own Japanese font the same way for the page and for the canvas. Naming fonts made html2canvas mis-measure words. */
 body{margin:0;font-family:sans-serif;color:#1c2333;background:#fff;font-size:14px}
@@ -112,8 +123,8 @@ ${jobs.map(j => `<tr><td>${esc(j.scheduled_date)}</td><td>${esc(j.title || '')}<
 
 /** Builds and downloads the payslip PDF for one month. */
 export async function downloadPayslipPdf(opts) {
-  const lang = opts.lang === 'ja' ? 'ja' : 'en'
-  const blob = await contractPdfBlob(payslipHtml(opts), { footer: lang === 'ja' ? 'KuriPuro - Kyuyo meisai' : 'KuriPuro - Payslip' })
+  const lang = docLang(opts.lang)
+  const blob = await contractPdfBlob(payslipHtml(opts), { footer: { ja: 'KuriPuro - Kyuyo meisai', pt: 'KuriPuro - Holerite', en: 'KuriPuro - Payslip' }[lang] })
   const name = (opts.employee?.full_name || 'employee').trim().replace(/\s+/g, '_')
-  downloadBlob(blob, `${lang === 'ja' ? 'kyuyo' : 'payslip'}_${name}_${opts.month}.pdf`)
+  downloadBlob(blob, `${{ ja: 'kyuyo', pt: 'holerite', en: 'payslip' }[lang]}_${name}_${opts.month}.pdf`)
 }

@@ -22,7 +22,8 @@ export function spokenDuration(min, lang) {
   const m = Math.round(min % 60)
   if (lang === 'ja') return `${h ? `${h}時間` : ''}${m || !h ? `${m}分` : ''}`
   const part = (n, one, many) => `${n} ${n === 1 ? one : many}`
-  return [h ? part(h, 'hour', 'hours') : '', m || !h ? part(m, 'minute', 'minutes') : ''].filter(Boolean).join(' ')
+  const [hour, hours, minute, minutes, and] = lang === 'pt' ? ['hora', 'horas', 'minuto', 'minutos', ' e '] : ['hour', 'hours', 'minute', 'minutes', ' ']
+  return [h ? part(h, hour, hours) : '', m || !h ? part(m, minute, minutes) : ''].filter(Boolean).join(and)
 }
 
 /** Text of one reminder. `dist` is meters from the store (null when unknown). */
@@ -41,8 +42,8 @@ export function speak(text, lang) {
   if (!canSpeak() || !text) return
   const synth = window.speechSynthesis
   const u = new SpeechSynthesisUtterance(text)
-  u.lang = lang === 'ja' ? 'ja-JP' : 'en-US'
-  const voice = synth.getVoices().find(v => v.lang?.toLowerCase().startsWith(lang === 'ja' ? 'ja' : 'en'))
+  u.lang = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-US'
+  const voice = synth.getVoices().find(v => v.lang?.toLowerCase().startsWith(lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en'))
   if (voice) u.voice = voice
   u.rate = lang === 'ja' ? 1 : 0.95
   synth.cancel()

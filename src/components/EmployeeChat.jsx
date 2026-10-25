@@ -11,7 +11,7 @@ export default function EmployeeChat({
   containerRef, endRef, onScroll, unreadBelow, onJumpDown,
 }) {
   const fileRef = useRef()
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
   const todayKey = chatDayKey(new Date().toISOString())
   const dayLabel = key => key === todayKey
     ? labels.chatToday
