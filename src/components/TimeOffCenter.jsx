@@ -41,6 +41,8 @@ export default function TimeOffCenter() {
   // v1.0.70 · accepted quotes with no date yet + quote jobs just finished (invoice sent)
   const [toBook, setToBook] = useState([])
   const [flowDone, setFlowDone] = useState([])
+  // v1.0.87 · booked quote sessions not done on their day: stay in the bell until done, moved or cancelled
+  const [late, setLate] = useState([])
   const [newFlow, setNewFlow] = useState([])
   const [offers, setOffers] = useState([])
   const [newOffers, setNewOffers] = useState([])
@@ -50,7 +52,7 @@ export default function TimeOffCenter() {
     fetchPendingTimeOff(tokyoToday()).catch(() => []),
     fetchAutoClosedPeriods().catch(() => []),
     fetchPendingQuoteRequests().catch(() => []),
-    fetchQuoteFlowAlerts().catch(() => ({ toBook: [], done: [] })),
+    fetchQuoteFlowAlerts().catch(() => ({ toBook: [], done: [], late: [] })),
     fetchFacilityOffers().catch(() => []),
   ]).then(([list, periods, quoteRows, flow, offerRows]) => {
     setOffers(offerRows)
@@ -58,14 +60,15 @@ export default function TimeOffCenter() {
     setPayroll(periods)
     setQuotes(quoteRows)
     setToBook(flow.toBook)
+    setLate(flow.late || [])
     // a finished job stays in the bell until it has been seen once
     const doneUnseen = flow.done.filter(d => !seen.current.has(d.id))
     setFlowDone(doneUnseen)
     // Alert only once per item, ever: after that the number stays in the side menu until it is resolved
-    const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows].filter(r => !seen.current.has(r.id))
+    const fresh = [...list, ...periods, ...quoteRows, ...(flow.late || []), ...flow.toBook, ...doneUnseen, ...offerRows].filter(r => !seen.current.has(r.id))
     if (fresh.length) {
       setNewQuotes(quoteRows.filter(q => fresh.includes(q)))
-      setNewFlow([...flow.toBook, ...doneUnseen].filter(q => fresh.includes(q)))
+      setNewFlow([...(flow.late || []), ...flow.toBook, ...doneUnseen].filter(q => fresh.includes(q)))
       setNewOffers(offerRows.filter(q => fresh.includes(q)))
       fresh.forEach(r => seen.current.add(r.id))
       writeSeen(seen.current)
@@ -91,7 +94,7 @@ export default function TimeOffCenter() {
   }, [toastOpen])
 
   const markSeen = () => {
-    rows.concat(payroll, quotes, toBook, flowDone, offers).forEach(r => seen.current.add(r.id))
+    rows.concat(payroll, quotes, late, toBook, flowDone, offers).forEach(r => seen.current.add(r.id))
     writeSeen(seen.current)
     setToastOpen(false)
   }
@@ -129,7 +132,11 @@ export default function TimeOffCenter() {
     }
     setBusy(null)
   }
-  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length
+  const n = rows.length + payroll.length + quotes.length + late.length + toBook.length + flowDone.length + offers.length
+  const lateText = q => q.why === 'not_started'
+    ? L(`Booked today ${q.time} · not started`, `本日 ${q.time} 予定・未開始`, `Marcado hoje ${q.time} · não começou`)
+    : q.why === 'unfinished' ? L(`${q.date} · started, not finished`, `${q.date}・未完了`, `${q.date} · começou e não terminou`)
+      : L(`${q.date} · not done`, `${q.date}・未実施`, `${q.date} · não foi feito`)
 
   return (
     <>
@@ -155,10 +162,10 @@ export default function TimeOffCenter() {
       )}
       {toastOpen && newQuotes.length === 0 && newFlow.length > 0 && !open && (
         <div className="tor-toast" role="status">
-          <span className="tor-toast-icon" aria-hidden="true">{newFlow[0].id.startsWith('qf-done') ? '🧾' : '📅'}</span>
+          <span className="tor-toast-icon" aria-hidden="true">{newFlow[0].id.startsWith('qf-late') ? '⚠️' : newFlow[0].id.startsWith('qf-done') ? '🧾' : '📅'}</span>
           <div className="tor-toast-text">
-            <strong>{newFlow[0].id.startsWith('qf-done') ? L('Job done · invoice sent', '作業完了・請求書を送付', 'Serviço feito · nota enviada') : L('Quote accepted · book the date', '見積承認・日程を決めてください', 'Orçamento aceito · marque a data')}</strong>
-            <span>{[newFlow[0].name, newFlow[0].total ? `¥${Math.round(Number(newFlow[0].total)).toLocaleString()}` : ''].filter(Boolean).join(' · ')}</span>
+            <strong>{newFlow[0].id.startsWith('qf-late') ? L('Service not done on its day', '予定日に未実施の作業', 'Serviço não feito no dia') : newFlow[0].id.startsWith('qf-done') ? L('Job done · check how it went', '作業完了・内容を確認', 'Serviço feito · confira como foi') : L('Quote accepted · book the date', '見積承認・日程を決めてください', 'Orçamento aceito · marque a data')}</strong>
+            <span>{[newFlow[0].name, newFlow[0].id.startsWith('qf-late') ? lateText(newFlow[0]) : newFlow[0].total ? `¥${Math.round(Number(newFlow[0].total)).toLocaleString()}` : ''].filter(Boolean).join(' · ')}</span>
           </div>
           <button type="button" className="tor-btn tor-btn-primary tor-btn-sm" onClick={() => openTrack(newFlow[0])}>{L('Open', '開く', 'Abrir')}</button>
           <button type="button" className="tor-toast-close" onClick={markSeen} aria-label={L('Dismiss', '閉じる', 'Dispensar')}>×</button>
@@ -203,7 +210,7 @@ export default function TimeOffCenter() {
           <section className="tor-modal" role="dialog" aria-modal="true" aria-label={L('Day-off requests', '休み申請', 'Pedidos de folga')} onClick={e => e.stopPropagation()}>
             <header className="tor-head">
               <div>
-                <h2>{(quotes.length || toBook.length || flowDone.length || offers.length || payroll.length) ? L('Waiting for you', '確認待ち', 'Aguardando você') : L('Day-off requests', '休み申請', 'Pedidos de folga')}</h2>
+                <h2>{(quotes.length || late.length || toBook.length || flowDone.length || offers.length || payroll.length) ? L('Waiting for you', '確認待ち', 'Aguardando você') : L('Day-off requests', '休み申請', 'Pedidos de folga')}</h2>
                 <p>{n ? L(`${n} waiting for you`, `${n}件が確認待ち`, `${n} aguardando você`) : L('Nothing waiting. All caught up.', '承認待ちはありません。', 'Nada pendente. Tudo em dia.')}</p>
               </div>
               <button type="button" className="tor-close" onClick={() => setOpen(false)} aria-label={L('Close', '閉じる', 'Fechar')}>×</button>
@@ -222,6 +229,21 @@ export default function TimeOffCenter() {
                   </div>
                   <div className="tor-actions">
                     <button type="button" className="tor-btn tor-btn-approve" onClick={openQuotes}>{L('Open quote requests', '見積もり依頼を開く', 'Abrir pedidos de orçamento')}</button>
+                  </div>
+                </article>
+              ))}
+              {late.map(q => (
+                <article key={q.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">⚠️</div>
+                    <div className="tor-item-main">
+                      <strong>{L('Not done on its day', '予定日に未実施', 'Não foi feito no dia')} · {q.name || '—'}</strong>
+                      <span>{[lateText(q), q.who].filter(Boolean).join(' · ')}</span>
+                    </div>
+                    <span className="tor-kind is-late">{L('Late', '遅延', 'Atrasado')}</span>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openTrack(q)}>{L('Was it done? Check or move the date', '実施確認・日程変更', 'Foi feito? Conferir ou remarcar')}</button>
                   </div>
                 </article>
               ))}
@@ -245,12 +267,12 @@ export default function TimeOffCenter() {
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">🧾</div>
                     <div className="tor-item-main">
-                      <strong>{L('Job done · invoice sent', '作業完了・請求書を送付', 'Serviço feito · nota enviada')}</strong>
+                      <strong>{L('Job done · check how it went', '作業完了・内容を確認', 'Serviço feito · confira como foi')}</strong>
                       <span>{[q.name, q.total ? `¥${Math.round(Number(q.total)).toLocaleString()}` : ''].filter(Boolean).join(' · ')}</span>
                     </div>
                   </div>
                   <div className="tor-actions">
-                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openTrack(q)}>{L('See the follow-up', '進捗を見る', 'Ver acompanhamento')}</button>
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openTrack(q)}>{L('See photos and check', '写真を見て確認', 'Ver fotos e conferir')}</button>
                   </div>
                 </article>
               ))}

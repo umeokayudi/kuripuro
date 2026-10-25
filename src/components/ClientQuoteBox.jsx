@@ -6,6 +6,8 @@ import { salesPost } from '../lib/salesApi'
 import { quoteCommissionState } from '../lib/contractCommission'
 import { QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
 import { quoteSellerFor } from '../lib/quoteSeller'
+import { quoteRef } from '../lib/quoteFlow'
+import QuoteProgress from './QuoteProgress'
 
 const yen = (n) => `¥${Math.round(Number(n || 0)).toLocaleString()}`
 
@@ -141,6 +143,7 @@ export default function ClientQuoteBox({ row, clients, contracts, sellers, onCha
           📅 {followLabel}
         </button>
       )}
+      {qs === 'accepted' && onTrack && <QuoteProgress quoteRef={quoteRef('request', row.id)} onOpen={() => onTrack({ ...row, account_seller_id: accountSeller }, client)} />}
     </div>
   )
 }
