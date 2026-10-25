@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
-import { compressVideo } from '../lib/videoCompress'
+import { compressVideo, canUseWebCodecs } from '../lib/videoCompress'
 import { uploadJobVideo } from '../lib/jobVideo'
+import { enqueueAndSend, flushVideoQueue } from '../lib/videoQueue'
 import JobVideoPicker from '../components/JobVideoPicker'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
@@ -900,7 +901,7 @@ export default function EmployeePortal() {
     videoTaskRef.current?.abort.abort()
     const task = { abort: new AbortController() }
     videoTaskRef.current = task
-    setJobVideo({ status: 'compressing', progress: 0 })
+    setJobVideo({ status: 'compressing', progress: 0, slow: !canUseWebCodecs() })
     task.promise = compressVideo(file, {
       signal: task.abort.signal,
       onProgress: (progress) => { if (videoTaskRef.current === task) setJobVideo(v => v && v.status === 'compressing' ? { ...v, progress } : v) },
@@ -917,21 +918,50 @@ export default function EmployeePortal() {
     )
   }
 
-  // Não bloqueia a finalização: espera a compressão (se ainda rodando) e envia em segundo plano
+  // Não bloqueia a finalização: espera a compressão (se ainda rodando) e envia em segundo plano.
+  // O vídeo fica guardado no celular até o Storage confirmar (ver videoQueue).
   const sendJobVideoAfterComplete = (jobId, task) => {
     if (!task?.promise) return
     task.promise
       .then(async (res) => {
         const id = toast.loading(vt.uploading || 'Sending video…')
+        const sizeLabel = res.size >= 1024 * 1024 ? `${(res.size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(res.size / 1024))} KB`
+        let lastPct = -1
+        const onProgress = (p) => {
+          const pct = Math.round(p * 100)
+          if (pct === lastPct) return
+          lastPct = pct
+          toast.loading(fill(vt.uploadingPct || 'Sending video… {pct}% · {size}', { pct, size: sizeLabel }), { id })
+        }
         try {
-          await uploadJobVideo(jobId, res)
+          await enqueueAndSend(jobId, res, uploadJobVideo, { onProgress })
           toast.success(vt.uploaded || 'Video sent', { id })
         } catch (err) {
-          toast.error(fill(vt.uploadFailed || 'Video failed: {msg}', { msg: err?.message || '' }), { id, duration: 6000 })
+          if (err?.queued) toast(vt.queued || 'Video saved on this phone; it will be sent later.', { id, icon: '📶', duration: 7000 })
+          else toast.error(fill(vt.uploadFailed || 'Video failed: {msg}', { msg: err?.message || '' }), { id, duration: 6000 })
         }
       })
       .catch(() => { /* erro de compressão já foi avisado */ })
   }
+
+  // Vídeos que ficaram na fila (sem internet, app fechado no meio do envio): manda ao abrir e quando a rede volta
+  useEffect(() => {
+    const flush = () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+      flushVideoQueue(uploadJobVideo).then(({ sent }) => {
+        if (sent) toast.success(fill(vt.queueSent || 'Pending video sent ({n})', { n: sent }))
+      }).catch(() => {})
+    }
+    const t = setTimeout(flush, 4000)
+    const onVisible = () => { if (document.visibilityState === 'visible') flush() }
+    window.addEventListener('online', flush)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener('online', flush)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCompleteWithSig = async (job) => {
     const nfc = await askNfc('end', job)

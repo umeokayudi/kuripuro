@@ -1,15 +1,25 @@
-// Compressão de vídeo no navegador (sem servidor): toca o arquivo num <video> fora da tela,
-// desenha os quadros num canvas reduzido e grava com MediaRecorder em qualidade menor.
-// Tudo com try/catch: se o aparelho não suportar (ex.: iOS antigo), usa o original quando é pequeno.
+// Compressão de vídeo no navegador (sem servidor).
+// 1) Caminho rápido: WebCodecs (Mediabunny) decodifica e recodifica em H.264 720p, bem mais
+//    rápido que o tempo real (um vídeo de 60s leva poucos segundos num celular recente).
+// 2) Reserva: toca o arquivo num <video> fora da tela, desenha os quadros num canvas reduzido e
+//    grava com MediaRecorder (leva o tempo do vídeo).
+// Tudo com try/catch: se o aparelho não suportar nada disso, usa o original quando cabe.
 
 export const VIDEO_MAX_SECONDS = 90
 const MAX_SIDE = 640
 const FPS = 24
 const VIDEO_BPS = 700_000
 const AUDIO_BPS = 64_000
-const SKIP_BYTES = 6 * 1024 * 1024       // já pequeno: envia como está
+const SKIP_BYTES = 4 * 1024 * 1024       // já pequeno: envia como está
 const MAX_RESULT_BYTES = 40 * 1024 * 1024
-const MAX_ORIGINAL_BYTES = 25 * 1024 * 1024
+// O vídeo vai direto ao Storage (URL assinada), então o limite é o do Supabase (50 MB), não o da Vercel
+const MAX_ORIGINAL_BYTES = 45 * 1024 * 1024
+// Caminho rápido (WebCodecs)
+const FAST_MAX_SIDE = 720
+const FAST_FPS = 30
+const FAST_VIDEO_BPS = 1_000_000
+const FAST_AUDIO_BPS = 64_000
+const COPY_AUDIO = new Set(['aac', 'opus', 'mp3'])
 
 const MIME_CANDIDATES = [
   'video/webm;codecs=vp9,opus',
@@ -22,7 +32,7 @@ const MIME_CANDIDATES = [
 export class VideoCompressError extends Error {
   constructor(code, message) {
     super(message || code)
-    this.code = code // 'too_large' | 'not_video' | 'aborted'
+    this.code = code // 'too_large' | 'not_video' | 'aborted' | 'too_long'
   }
 }
 
@@ -66,6 +76,79 @@ function waitFor(el, event, timeoutMs) {
   })
 }
 
+const even = (n) => Math.max(2, Math.round(n / 2) * 2)
+
+/** Tamanho de saída: lado maior até `maxSide`, sem aumentar, sempre par (exigência do H.264). */
+export function targetSize(width, height, maxSide = FAST_MAX_SIDE) {
+  if (!width || !height) return null
+  const scale = Math.min(1, maxSide / Math.max(width, height))
+  return { width: even(width * scale), height: even(height * scale) }
+}
+
+export function canUseWebCodecs() {
+  return typeof window !== 'undefined' && typeof window.VideoEncoder === 'function' && typeof window.VideoDecoder === 'function'
+}
+
+/**
+ * Caminho rápido com WebCodecs. Devolve null quando o aparelho não consegue (aí usamos o MediaRecorder).
+ * A biblioteca só é baixada quando alguém escolhe um vídeo.
+ */
+async function compressWithWebCodecs(file, { onProgress, signal }) {
+  if (!canUseWebCodecs()) return null
+  const mb = await import('mediabunny')
+  const input = new mb.Input({ source: new mb.BlobSource(file), formats: mb.ALL_FORMATS })
+  let conversion = null
+  const onAbort = () => { conversion?.cancel().catch(() => {}) }
+  try {
+    const videoTrack = await input.getPrimaryVideoTrack()
+    if (!videoTrack || !(await videoTrack.canDecode())) return null
+    const size = targetSize(videoTrack.displayWidth, videoTrack.displayHeight)
+    if (!size) return null
+    const bitrate = FAST_VIDEO_BPS
+    const videoCodec = await mb.getFirstEncodableVideoCodec(['avc'], { ...size, bitrate })
+    if (!videoCodec) return null
+    const audioTrack = await input.getPrimaryAudioTrack().catch(() => null)
+    const audioCodec = audioTrack && (await audioTrack.canDecode().catch(() => false))
+      ? await mb.getFirstEncodableAudioCodec(['aac', 'opus'], { numberOfChannels: Math.min(2, audioTrack.numberOfChannels || 2), sampleRate: 48000, bitrate: FAST_AUDIO_BPS }).catch(() => null)
+      : null
+
+    const duration = await input.computeDuration().catch(() => 0)
+    const end = duration > 0 ? Math.min(duration, VIDEO_MAX_SECONDS) : VIDEO_MAX_SECONDS
+    const target = new mb.BufferTarget()
+    const output = new mb.Output({ format: new mb.Mp4OutputFormat({ fastStart: 'in-memory' }), target })
+    conversion = await mb.Conversion.init({
+      input,
+      output,
+      tracks: 'primary',
+      trim: { start: 0, end },
+      showWarnings: false,
+      video: { ...size, fit: 'contain', codec: videoCodec, bitrate, frameRate: FAST_FPS, forceTranscode: true },
+      // Áudio AAC do celular é copiado como está (é pequeno); sem codificador, tenta copiar também
+      audio: !audioTrack ? { discard: true }
+        : (COPY_AUDIO.has(audioTrack.codec) || !audioCodec) ? {}
+          : { codec: audioCodec, bitrate: FAST_AUDIO_BPS },
+    })
+    if (!conversion.isValid || !conversion.utilizedTracks.some(t => t.type === 'video')) return null
+    conversion.onProgress = (p) => onProgress?.(Math.min(1, Math.max(0, p)))
+    if (signal?.aborted) throw new VideoCompressError('aborted')
+    signal?.addEventListener('abort', onAbort, { once: true })
+    await conversion.execute()
+    if (signal?.aborted) throw new VideoCompressError('aborted')
+    const buffer = target.buffer
+    if (!buffer || !buffer.byteLength) return null
+    const blob = new Blob([buffer], { type: 'video/mp4' })
+    onProgress?.(1)
+    return { blob, contentType: 'video/mp4', ext: 'mp4', size: blob.size, compressed: true }
+  } catch (err) {
+    if (signal?.aborted || err instanceof VideoCompressError || err?.name === 'ConversionCanceledError') throw new VideoCompressError('aborted')
+    console.warn('webcodecs compress fallback:', err?.message)
+    return null
+  } finally {
+    signal?.removeEventListener('abort', onAbort)
+    try { input.dispose() } catch { /* ignora */ }
+  }
+}
+
 /**
  * Comprime um vídeo escolhido pelo funcionário.
  * Chame direto do onChange do <input type=file> (gesto do usuário) para o áudio funcionar.
@@ -76,6 +159,13 @@ export async function compressVideo(file, { onProgress, signal } = {}) {
     throw new VideoCompressError('not_video')
   }
   if (file.size <= SKIP_BYTES && videoTypeInfo(file.type, file.name)) return originalResult(file)
+
+  const fast = await compressWithWebCodecs(file, { onProgress, signal })
+  if (fast && fast.size < file.size) return fast
+  if (fast) {
+    try { return originalResult(file) } catch { return fast }
+  }
+  onProgress?.(0)
 
   const mimeType = pickRecorderMime()
   const canCapture = typeof HTMLCanvasElement !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function'
