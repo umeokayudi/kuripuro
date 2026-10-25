@@ -28,6 +28,8 @@ import CareList from '../components/facility/CareList'
 import { careSchedule, withServiceLog } from '../lib/facilityModel'
 import { RecommendationCard } from '../components/facility/FacilityItemPopup'
 import './client-portal.css'
+import { PushToggle } from '../components/PushNotifications'
+import { tabFromUrl, clearTabParam } from '../lib/push'
 
 function sanitizePostgrestToken(value) {
   return String(value || '').replace(/[%(),.\\]/g, '').trim()
@@ -73,7 +75,8 @@ export default function ClientPortal() {
     return typeof window !== 'undefined' && window.innerWidth >= 900
   })
 
-  const [tab, setTab] = useState('home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','visits','stores','chat','billing','requests','complaints','facility','settings']) || 'home')
+  useEffect(() => { clearTabParam() }, [])
   const [jobs, setJobs] = useState([])
   const [contracts, setContracts] = useState([])
   const [messages, setMessages] = useState([])
@@ -1178,6 +1181,7 @@ export default function ClientPortal() {
             {!loading && tab === 'settings' && (
               <>
                 <div className="cp-section-title">{c.settingsTitle}</div>
+                <PushToggle style={{ marginBottom: 16 }} />
                 <div className="cp-card" style={{ marginBottom: 16 }}>
                   <div className="cp-field">
                     <span className="cp-label">{c.company}</span>

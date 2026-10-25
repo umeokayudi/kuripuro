@@ -14,6 +14,7 @@ import { fetchDayContext } from '../lib/dayContext'
 import DayContext from './DayContext'
 import { fetchFacilityOffers, offerToClient, offerWhen } from './facility/FacilityOffersBell'
 import { ELEMENT_KINDS } from '../lib/facilityModel'
+import { PushToggle } from './PushNotifications'
 
 const SEEN_KEY = 'kp_timeoff_seen_v1'
 const readSeen = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
@@ -209,6 +210,7 @@ export default function TimeOffCenter() {
               <button type="button" className="tor-close" onClick={() => setOpen(false)} aria-label={L('Close', '閉じる', 'Fechar')}>×</button>
             </header>
 
+            <PushToggle style={{ margin: '0 16px 10px' }} />
             <div className="tor-list">
               {quotes.map(q => (
                 <article key={q.id} className="tor-item">

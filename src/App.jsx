@@ -16,6 +16,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import Sidebar, { usePendingCounts } from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
+import { PushPrompt } from './components/PushNotifications'
 import Login from './pages/Login'
 import { supabase } from './lib/supabase'
 
@@ -327,6 +328,7 @@ export default function App() {
       <AuthProvider>
         <LangProvider>
           <AppContent />
+          <PushPrompt />
           <Toaster position="top-right" toastOptions={{ style:{ fontSize:13 } }} />
         </LangProvider>
       </AuthProvider>

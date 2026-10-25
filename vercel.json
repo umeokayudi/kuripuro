@@ -20,6 +20,7 @@
     { "source": "/api/sales-reminders", "destination": "/api/sales?route=reminders" },
     { "source": "/api/sales-session", "destination": "/api/sales?route=session" },
     { "source": "/api/calendar/:e/:t/kuripuro.ics", "destination": "/api/sales?route=calendar&e=:e&t=:t" },
+    { "source": "/api/push", "destination": "/api/sales?route=push" },
     { "source": "/api/upload-photo", "destination": "/api/photo" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]

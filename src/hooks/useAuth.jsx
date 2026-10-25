@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { findClientUserForLogin, clientUserToSession } from '../lib/clientCredentials'
+import { disablePush } from '../lib/push'
 
 const AuthContext = createContext()
 
@@ -116,6 +117,8 @@ export function AuthProvider({ children }) {
   }
 
   const logout = () => {
+    // The phone keeps its permission, but nothing meant for this account reaches the next person who signs in.
+    disablePush({ keepBrowser: true })
     setUser(null)
     localStorage.removeItem('kp_user')
     fetch('/api/sales-session', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {})

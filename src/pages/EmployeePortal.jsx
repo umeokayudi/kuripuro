@@ -70,6 +70,8 @@ import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob
 import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
 import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
+import { PushToggle } from '../components/PushNotifications'
+import { tabFromUrl, clearTabParam } from '../lib/push'
 import {
   enrichJobValues,
   employeeEarningsForJob,
@@ -125,7 +127,9 @@ export default function EmployeePortal() {
   const personalGreeting = employeeGreetingFor(user)
   const quickRoundOn = quickRoundEnabledFor(user)
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
-  const [tab, setTab] = useState('home')
+  // A push notification opens the app on its screen (?tab=chat, ?tab=salary…).
+  const [tab, setTab] = useState(() => tabFromUrl(['home','shift','ai','spots','history','salary','transport','equipment','chat','calendar','availability','achievements']) || 'home')
+  useEffect(() => { clearTabParam() }, [])
   const [menuOpen, setMenuOpen] = useState(false)
   const [facilityIndex, setFacilityIndex] = useState([])
   const [facilityJob, setFacilityJob] = useState(null)
@@ -1587,6 +1591,7 @@ export default function EmployeePortal() {
               </button>
             ))}
             </div>
+            <PushToggle style={{ margin: '4px 0 10px' }} />
             <div className="emp-menu-footer"><button onClick={logout} className="emp-menu-logout">
               <span style={{fontSize:18}}>🚪</span> {e.logout}
             </button></div>

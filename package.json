@@ -46,7 +46,8 @@
     "test:jobs-period": "node scripts/test-jobs-period.mjs",
     "test:maps-link": "node scripts/test-maps-link.mjs",
     "test:facility": "npx vite-node scripts/test-facility-model.mjs",
-    "test:quick-round": "npx vite-node scripts/test-quick-round.mjs"
+    "test:quick-round": "npx vite-node scripts/test-quick-round.mjs",
+    "test:push": "node scripts/test-push.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
@@ -59,7 +60,8 @@
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.22.0",
-    "three": "^0.169.0"
+    "three": "^0.169.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

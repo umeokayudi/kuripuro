@@ -14,6 +14,7 @@ import SellerQuoteRequests, { QuoteRequestsAlert, quoteRequestsToSend, quoteRequ
 import SellerFacilityOffers, { offersCopy } from '../components/SellerFacilityOffers'
 import SalesFunnel, { buildDeals } from '../components/SalesFunnel'
 import ClientPage from '../components/ClientPage'
+import { tabFromUrl, clearTabParam } from '../lib/push'
 
 const COPY = {
   en: {
@@ -161,7 +162,8 @@ export default function SalespersonPortal() {
   const { user, logout } = useAuth()
   const { lang } = useLang()
   const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
-  const [tab, setTab] = useState('home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','leads','followups','offers','clients','quotes','commissions','approaches']) || 'home')
+  useEffect(() => { clearTabParam() }, [])
   const [sheet, setSheet] = useState('')
   const [gps, setGps] = useState({ state: 'idle' })
   const [cardPreview, setCardPreview] = useState('')
