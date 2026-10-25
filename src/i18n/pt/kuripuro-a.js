@@ -5,7 +5,7 @@ export const kuripuroPtA = {
     jobs: 'Serviços',
     employees: 'Funcionários',
     clients: 'Clientes',
-    facility: 'Smart Facility',
+    facility: 'Mundo Kuripuro',
     salary: 'Salários',
     payrollClose: 'Fechamento',
     payments: 'Pagamentos',

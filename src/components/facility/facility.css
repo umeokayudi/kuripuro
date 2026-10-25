@@ -389,3 +389,14 @@
 .fac-world.is-moving .fac-world-canvas canvas { cursor: grab; }
 .fac-world.is-moving .fac-world-canvas canvas:active { cursor: grabbing; }
 @keyframes fac-move-pop { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%); } }
+
+/* lojas prontas + andares */
+.fac-templates .fac-preset { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.fac-templates .fac-preset:hover { border-color: #c19c56; }
+.fac-tpl-name { font-weight: 700; }
+.fac-tpl-size { font-size: 11.5px; font-weight: 500; color: var(--text3, #64748b); }
+.fac-custom { margin-top: 6px; }
+.fac-floorbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 8px; }
+.fac-floorbar .fac-toggle { margin: 0; }
+.fac-floor-add { display: inline-flex; gap: 6px; align-items: center; }
+.fac-floor-add select { padding: 5px 8px; border-radius: 8px; }

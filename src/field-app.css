@@ -557,6 +557,19 @@ body.fa-sheet-open { overflow: hidden; }
 .fn-caret { width: 14px; color: var(--fa-muted); }
 .fn-glist > .fn-col-add.is-list { margin: 10px 16px 12px; align-self: flex-start; }
 
+/* v1.0.77 · seller sends a quote directly from the AI minimum */
+.sqr-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; }
+.sqr-top p { margin: 0; font-size: 13px; flex: 1; }
+.sqr-form select { width: 100%; min-height: 44px; border: 1px solid #dde2ec; border-radius: 12px; padding: 8px 12px; font-family: inherit; font-weight: 500; font-size: 15px; background: #fff; }
+.sqr-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.sqr-actions .fa-btn-primary { flex: 1 1 auto; }
+.sqr-ai { background: #eef3ff; border: 1px solid #d6e0ff; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.sqr-ai small { color: #3a4357; font-size: 12px; line-height: 1.4; }
+.sqr-link { align-self: flex-start; border: 0; background: none; padding: 0; color: #3557f5; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer; }
+.sqr-split .is-low { background: #fde8e8; border-color: #f5c2c2; } .sqr-split .is-low strong { color: #c53030; }
+.sqr-direct { align-self: flex-start; }
+.sqr-new .sqr-form + .sqr-form { margin-top: 10px; }
+
 /* ===== v1.0.76 · Bell + nav badges: small round count with a ring, sitting on the corner ===== */
 .fa-bell-count { top: -7px; right: -7px; min-width: 20px; height: 20px; padding: 0 5px; border: 2px solid var(--fa-bg); font-size: 11px; line-height: 16px; letter-spacing: 0; font-variant-numeric: tabular-nums; box-shadow: 0 2px 6px rgba(229,72,77,.35); pointer-events: none; }
 .fa-nav-badge { top: 1px; right: calc(50% - 24px); min-width: 18px; height: 18px; padding: 0 4px; border: 2px solid #fff; line-height: 14px; font-variant-numeric: tabular-nums; pointer-events: none; }

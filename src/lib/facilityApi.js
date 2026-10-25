@@ -17,6 +17,13 @@ function rowToModel(row) {
   return row ? { ...row, layout: normalizeLayout(row.layout), photos: Array.isArray(row.photos) ? row.photos : [] } : null
 }
 
+/** Uma loja pelo id (editor em tela cheia). */
+export async function getModel(id) {
+  const { data, error } = await supabase.from('facility_models').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return rowToModel(data)
+}
+
 export async function listModels(clientId) {
   const { data, error } = await supabase
     .from('facility_models')

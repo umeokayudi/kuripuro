@@ -1,173 +1,467 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
+import { getPeriodDates } from '../lib/salaryPeriod'
+import '../components/SalaryPopups.css'
+import './Payments.css'
+
+// One month (= month worked, salary_payments.period) at a time, one row per employee.
+// ¥0 people fold away, "Mark paid" pays every open line of that person in that month.
+
+const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
+const monthOf = (p) => p.period || p.payment_date?.slice(0, 7) || ''
+const shiftMonth = (period, n) => {
+  const [y, m] = period.split('-').map(Number)
+  const d = new Date(y, m - 1 + n, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+const isOpen = (p) => !p.is_deduction && p.status !== 'paid' && p.status !== 'cancelled'
+const counts = (p) => p.status !== 'cancelled'
+
+// What the employee did with the payslip of that month.
+function statementState(st) {
+  if (!st) return 'none'
+  if (st.employee_confirmed_at) return 'confirmed'
+  if (st.employee_disputed_at || st.status === 'disputed') return 'disputed'
+  return 'waiting'
+}
+
+const emptyForm = (period) => ({ employee_id:'', amount:'', payment_date:'', period, description:'', payment_type:'salary', status:'scheduled' })
 
 export default function Payments() {
-  const { t } = useLang()
+  const { tr, locale } = useLang()
   const [employees, setEmployees] = useState([])
   const [payments, setPayments] = useState([])
-  const [selected, setSelected] = useState(null)
-  const [showForm, setShowForm] = useState(false)
+  const [statements, setStatements] = useState([])
+  const [loaded, setLoaded] = useState(false)
+  const [month, setMonth] = useState(null)
+  const [filter, setFilter] = useState('all') // all | open | paid | check
+  const [who, setWho] = useState('')
+  const [openRow, setOpenRow] = useState(null)
+  const [showZero, setShowZero] = useState(false)
+  const [ask, setAsk] = useState(null) // { kind: 'pay' | 'delete', emp, lines }
+  const [busy, setBusy] = useState(false)
+  const [form, setForm] = useState(null) // null = closed
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ employee_id:'', employee_name:'', amount:'', payment_date:'', description:'', payment_type:'salary', is_deduction:false, status:'scheduled' })
 
-  const TYPES = ['salary','advance','bonus','transport','deduction','other']
+  // Same list as the salary_payments check constraint.
+  const TYPES = ['salary','advance','bonus','extra','deduction']
+  const typeLabel = {
+    salary: tr('Salary','給与','Salário'),
+    advance: tr('Advance','前払い','Adiantamento'),
+    bonus: tr('Bonus','ボーナス','Bônus'),
+    extra: tr('Extra','追加','Extra'),
+    deduction: tr('Deduction','控除','Desconto'),
+    transport: tr('Transport','交通費','Transporte'),
+    other: tr('Other','その他','Outro'),
+  }
+  const payKind = {
+    fixed: tr('Fixed salary','固定給','Salário fixo'),
+    hourly: tr('Per hour','時給','Por hora'),
+    per_job: tr('Per job','出来高','Por serviço'),
+  }
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
-    const [e, p] = await Promise.all([
-      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days').eq('is_active',true).order('full_name'),
+    const [e, p, st] = await Promise.all([
+      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days,salary_type,hourly_rate,is_active').order('full_name'),
       supabase.from('salary_payments').select('*').order('payment_date',{ascending:true}),
+      supabase.from('salary_statements').select('id,employee_id,period,status,net_total,employee_confirmed_at,employee_disputed_at'),
     ])
     setEmployees(e.data||[])
     setPayments(p.data||[])
+    setStatements(st.data||[])
+    setLoaded(true)
   }
 
-  const upd = (k,v) => setForm(f=>({...f,[k]:v}))
+  const today = tokyoToday()
+  const thisMonth = today.slice(0, 7)
+
+  // Start on the oldest month that still has something to pay, else the newest month with entries.
+  useEffect(() => {
+    if (!loaded || month) return
+    const open = payments.filter(p => isOpen(p) && Number(p.amount) > 0).map(monthOf).filter(Boolean).sort()
+    const all = payments.map(monthOf).filter(m => m && m <= thisMonth).sort()
+    setMonth(open[0] || all[all.length - 1] || thisMonth)
+  }, [loaded])
+
+  const fmt = n => '¥' + Math.round(Number(n||0)).toLocaleString(locale)
+  const fmtMonth = (period) => {
+    if (!period) return ''
+    const [y, m] = period.split('-').map(Number)
+    const txt = new Date(y, m - 1, 1).toLocaleDateString(locale, { month:'long', year:'numeric' })
+    return txt.charAt(0).toUpperCase() + txt.slice(1)
+  }
+  const fmtDay = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day:'numeric', month:'short' }) : ''
+
+  // Everyone who has lines this month (inactive people too, so nothing pending is hidden).
+  const rows = useMemo(() => {
+    if (!month) return []
+    const lines = payments.filter(p => monthOf(p) === month)
+    const ids = [...new Set(lines.map(p => p.employee_id))]
+    return ids.map(id => {
+      const emp = employees.find(e => e.id === id) || { id, full_name: lines.find(p => p.employee_id === id)?.employee_name || '—', is_active: false }
+      const mine = lines.filter(p => p.employee_id === id).sort((a, b) => (a.payment_date||'').localeCompare(b.payment_date||''))
+      const live = mine.filter(counts)
+      const earn = live.filter(p => !p.is_deduction).reduce((s, p) => s + Number(p.amount||0), 0)
+      const ded = live.filter(p => p.is_deduction).reduce((s, p) => s + Number(p.amount||0), 0)
+      const open = mine.filter(isOpen)
+      const toPay = open.reduce((s, p) => s + Number(p.amount||0), 0)
+      const salaryLine = live.find(p => p.payment_type === 'salary')
+      // Fixed salary that closed at ¥0 is almost always "no completed job in the month", worth a look.
+      const fixedZero = emp.salary_type === 'fixed' && Number(emp.fixed_salary) > 0 && salaryLine && Number(salaryLine.amount) === 0
+      let state
+      if (fixedZero) state = 'check'
+      else if (earn === 0) state = 'zero'
+      else if (toPay > 0) state = open.some(p => p.payment_date && p.payment_date < today) ? 'late' : 'open'
+      else state = 'paid'
+      const payDate = salaryLine?.payment_date || open[0]?.payment_date || mine[0]?.payment_date
+      const paidOn = state === 'paid' ? mine.filter(p => !p.is_deduction && p.status === 'paid').map(p => p.payment_date).sort().pop() : null
+      const st = statements.find(s => s.employee_id === id && s.period === month)
+      // Payroll close already takes deductions out of the salary row, so they are shown, not subtracted again.
+      return { emp, lines: mine, earn, ded, net: earn, toPay, open, state, payDate, paidOn, slip: statementState(st), st, fixedZero }
+    }).sort((a, b) => {
+      const order = { late:0, check:1, open:2, paid:3, zero:4 }
+      return order[a.state] - order[b.state] || a.emp.full_name.localeCompare(b.emp.full_name)
+    })
+  }, [payments, employees, statements, month, today])
+
+  const visible = rows.filter(r => !who || r.emp.id === who)
+  const byFilter = {
+    all: visible.filter(r => r.state !== 'zero'),
+    open: visible.filter(r => r.state === 'open' || r.state === 'late'),
+    paid: visible.filter(r => r.state === 'paid'),
+    check: visible.filter(r => r.state === 'check' || r.slip === 'disputed'),
+  }
+  const shown = byFilter[filter]
+  const zeroRows = filter === 'all' ? visible.filter(r => r.state === 'zero') : []
+
+  const totals = {
+    toPay: visible.reduce((s, r) => s + r.toPay, 0),
+    toPayPeople: visible.filter(r => r.toPay > 0).length,
+    paid: visible.reduce((s, r) => s + r.lines.filter(p => !p.is_deduction && p.status === 'paid').reduce((a, p) => a + Number(p.amount||0), 0), 0),
+    paidPeople: visible.filter(r => r.state === 'paid').length,
+    ded: visible.reduce((s, r) => s + r.ded, 0),
+    dedCount: visible.reduce((s, r) => s + r.lines.filter(p => p.is_deduction && counts(p)).length, 0),
+  }
+  const payDay = month ? getPeriodDates(month).payDate : null
+
+  // Open amounts left in other months, so moving month never hides a debt.
+  const elsewhere = useMemo(() => {
+    const m = {}
+    payments.filter(p => isOpen(p) && Number(p.amount) > 0 && monthOf(p) !== month).forEach(p => { m[monthOf(p)] = (m[monthOf(p)]||0) + Number(p.amount||0) })
+    return Object.entries(m).sort(([a], [b]) => a.localeCompare(b))
+  }, [payments, month])
+
+  const statePill = {
+    late: tr('Late','遅延','Atrasado'),
+    open: tr('To pay','未払い','A pagar'),
+    paid: tr('Paid','支払済','Pago'),
+    check: tr('Check','要確認','Conferir'),
+    zero: tr('No amount','金額なし','Sem valor'),
+  }
+  const slipShort = {
+    confirmed: tr('Payslip confirmed','明細確認済','Holerite confirmado'),
+    disputed: tr('Payslip disputed','明細に異議','Holerite contestado'),
+    waiting: tr('Payslip not confirmed','明細未確認','Holerite não confirmado'),
+    none: tr('No payslip','明細なし','Sem holerite'),
+  }
+  const slipLong = {
+    confirmed: tr('Employee confirmed the payslip','従業員が明細を確認済み','Funcionário confirmou o holerite'),
+    disputed: tr('Employee disputed the payslip','従業員が明細に異議あり','Funcionário contestou o holerite'),
+    waiting: tr('Employee has not confirmed yet','従業員はまだ確認していません','Funcionário ainda não confirmou'),
+    none: tr('No payslip sent for this month','この月の明細は未送付','Holerite deste mês não foi enviado'),
+  }
+
+  // ---- actions ----
+  const doConfirmed = async () => {
+    if (!ask) return
+    setBusy(true)
+    const ids = ask.lines.map(p => p.id)
+    const { error } = ask.kind === 'pay'
+      ? await supabase.from('salary_payments').update({ status:'paid' }).in('id', ids)
+      : await supabase.from('salary_payments').delete().in('id', ids)
+    setBusy(false)
+    if (error) return toast.error(error.message)
+    toast.success(ask.kind === 'pay' ? tr('Marked as paid','支払済みにしました','Marcado como pago') : tr('Deleted','削除しました','Apagado'))
+    setAsk(null); load()
+  }
+
+  const openNew = (emp) => {
+    setEditingId(null)
+    setForm({ ...emptyForm(month || thisMonth), employee_id: emp?.id || '', payment_date: today })
+  }
+  const openEdit = (p) => {
+    setEditingId(p.id)
+    setForm({ employee_id:p.employee_id||'', amount:p.amount ?? '', payment_date:p.payment_date||'', period:monthOf(p), description:p.description||'', payment_type:p.payment_type||'salary', status:p.status||'scheduled' })
+  }
+  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = async () => {
-    if (!form.employee_id||!form.amount||!form.payment_date) return toast.error('Fill required fields')
-    const emp = employees.find(e=>e.id===form.employee_id)
-    const payload = { ...form, employee_name:emp?.full_name||form.employee_name, amount:parseFloat(form.amount), period:form.payment_date.slice(0,7) }
-    if (editingId) {
-      const { error } = await supabase.from('salary_payments').update(payload).eq('id',editingId)
-      if (error) return toast.error(error.message)
-      toast.success('Updated!')
-    } else {
-      const { error } = await supabase.from('salary_payments').insert(payload)
-      if (error) return toast.error(error.message)
-      toast.success('Payment added!')
+    if (!form.employee_id || form.amount === '' || !form.payment_date) return toast.error(tr('Fill employee, amount and date','従業員・金額・日付を入力してください','Preencha funcionário, valor e data'))
+    const emp = employees.find(e => e.id === form.employee_id)
+    const payload = {
+      employee_id: form.employee_id, employee_name: emp?.full_name || '',
+      amount: parseFloat(form.amount), payment_date: form.payment_date,
+      period: form.period || form.payment_date.slice(0, 7), description: form.description,
+      payment_type: form.payment_type, is_deduction: form.payment_type === 'deduction', status: form.status,
     }
-    setShowForm(false); setEditingId(null)
-    setForm({ employee_id:'', employee_name:'', amount:'', payment_date:'', description:'', payment_type:'salary', is_deduction:false, status:'scheduled' })
+    const { error } = editingId
+      ? await supabase.from('salary_payments').update(payload).eq('id', editingId)
+      : await supabase.from('salary_payments').insert(payload)
+    if (error) return toast.error(error.message)
+    toast.success(editingId ? tr('Saved','保存しました','Salvo') : tr('Entry added','追加しました','Lançamento adicionado'))
+    setForm(null); setEditingId(null)
+    if (payload.period !== month) setMonth(payload.period)
     load()
   }
 
-  const handleEdit = (p) => {
-    setForm({ employee_id:p.employee_id||'', employee_name:p.employee_name||'', amount:p.amount||'', payment_date:p.payment_date||'', description:p.description||'', payment_type:p.payment_type||'salary', is_deduction:p.is_deduction||false, status:p.status||'scheduled' })
-    setEditingId(p.id); setShowForm(true)
+  const initials = (n) => (n||'?').split(' ').filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase()
+
+  const lineBits = (r) => {
+    const bits = {}
+    r.lines.filter(counts).forEach(p => { const k = p.payment_type || 'other'; bits[k] = (bits[k]||0) + Number(p.amount||0) })
+    const order = ['salary','extra','bonus','advance','transport','other','deduction']
+    return Object.entries(bits).filter(([, v]) => v !== 0).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete?')) return
-    await supabase.from('salary_payments').delete().eq('id',id)
-    toast('Deleted.'); load()
-  }
-
-  const handleMarkPaid = async (id) => {
-    await supabase.from('salary_payments').update({status:'paid'}).eq('id',id)
-    toast.success('Marked as paid!'); load()
-  }
-
-  const handleAutoGenerate = async (emp) => {
-    const month = new Date().toISOString().slice(0,7)
-    const dailyRate = Math.round((emp.fixed_salary||0)/(emp.monthly_work_days||22))
-    const existing = payments.filter(p=>p.employee_id===emp.id&&p.payment_date?.startsWith(month))
-    if (existing.length>0) { if (!confirm(`${existing.length} payments already exist for ${month}. Continue?`)) return }
-    toast('Generating payments...', {duration:2000})
-  }
-
-  const fmt = n => '¥'+Number(n||0).toLocaleString()
-  const today = new Date().toISOString().split('T')[0]
-  const filteredPayments = selected ? payments.filter(p=>p.employee_id===selected) : payments
-  const pending = filteredPayments.filter(p=>p.status!=='paid'&&!p.is_deduction)
-  const totalPending = pending.reduce((s,p)=>s+Number(p.amount||0),0)
-
-  return (
-    <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-        <h2 className="page-head" style={{margin:0,fontSize:22}}>{t.sidebar.payments}</h2>
-        <div style={{display:'flex',gap:8}}>
-          <button className="btn" onClick={()=>{setEditingId(null);setForm({employee_id:'',employee_name:'',amount:'',payment_date:'',description:'',payment_type:'salary',is_deduction:false,status:'scheduled'});setShowForm(!showForm)}}>+ Add Payment</button>
-        </div>
-      </div>
-
-      {/* Employee filter */}
-      <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        <button onClick={()=>setSelected(null)} style={{padding:'6px 14px',borderRadius:20,border:'1px solid',borderColor:!selected?'var(--gold)':'var(--border)',background:!selected?'#eef3ff':'none',color:!selected?'var(--gold)':'var(--text3)',fontSize:12,cursor:'pointer'}}>All</button>
-        {employees.map(e=>(
-          <button key={e.id} onClick={()=>setSelected(e.id)} style={{padding:'6px 14px',borderRadius:20,border:'1px solid',borderColor:selected===e.id?'var(--gold)':'var(--border)',background:selected===e.id?'#eef3ff':'none',color:selected===e.id?'var(--gold)':'var(--text3)',fontSize:12,cursor:'pointer'}}>{e.full_name.split(' ')[0]}</button>
-        ))}
-      </div>
-
-      {/* Summary */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:16}}>
-        {[['Pending',fmt(totalPending),'var(--amber)'],['Paid this month',fmt(filteredPayments.filter(p=>p.status==='paid'&&p.payment_date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,p)=>s+Number(p.amount||0),0)),'var(--green)'],['Total entries',filteredPayments.length,'var(--blue)']].map(([l,v,c])=>(
-          <div key={l} className="card" style={{textAlign:'center',padding:14}}>
-            <div style={{fontSize:20,fontWeight:700,color:c,marginBottom:3}}>{v}</div>
-            <div style={{fontSize:11,color:'var(--text3)'}}>{l}</div>
+  const rowView = (r) => {
+    const expanded = openRow === r.emp.id
+    const bits = lineBits(r)
+    return (
+      <div key={r.emp.id} className={`pm-row is-${r.state}${expanded ? ' is-expanded' : ''}`}>
+        <div className="pm-main" onClick={() => setOpenRow(expanded ? null : r.emp.id)}>
+          <div className="pm-av">{initials(r.emp.full_name)}</div>
+          <div className="pm-who">
+            <b>{r.emp.full_name}{r.emp.is_active === false && <em>{tr('inactive','退職','inativo')}</em>}</b>
+            <small>
+              {payKind[r.emp.salary_type] || ''}
+              {r.emp.salary_type === 'fixed' && Number(r.emp.fixed_salary) > 0 && ` · ${fmt(r.emp.fixed_salary)}/${tr('mo','月','mês')}`}
+            </small>
+            {bits.length > 0 && (
+              <div className="pm-bits">
+                {bits.map(([k, v]) => <span key={k} className={k === 'deduction' ? 'is-neg' : ''}>{typeLabel[k] || k} {k === 'deduction' ? '−' : ''}{fmt(v)}</span>)}
+              </div>
+            )}
           </div>
-        ))}
-      </div>
-
-      {showForm&&(
-        <div className="card" style={{marginBottom:16,border:'1px solid #d7e0ff'}}>
-          <div style={{fontWeight:600,fontSize:15,marginBottom:14,color:'var(--gold)'}}>{editingId?'Edit Payment':'New Payment'}</div>
-          <div className="grid-2">
-            <div className="form-group"><label>Employee *</label>
-              <select value={form.employee_id} onChange={e=>upd('employee_id',e.target.value)}>
-                <option value="">Select...</option>
-                {employees.map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
-              </select>
-            </div>
-            <div className="form-group"><label>Type</label>
-              <select value={form.payment_type} onChange={e=>upd('payment_type',e.target.value)}>
-                {TYPES.map(t=><option key={t}>{t}</option>)}
-              </select>
-            </div>
-            <div className="form-group"><label>Amount (¥) *</label><input type="number" value={form.amount} onChange={e=>upd('amount',e.target.value)} /></div>
-            <div className="form-group"><label>Payment Date *</label><input type="date" value={form.payment_date} onChange={e=>upd('payment_date',e.target.value)} /></div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Description</label><input value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="e.g. June salary final payment" /></div>
-            <div className="form-group"><label>Status</label>
-              <select value={form.status} onChange={e=>upd('status',e.target.value)}>
-                {['scheduled','paid','cancelled'].map(s=><option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="form-group"><label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginTop:20}}><input type="checkbox" checked={form.is_deduction} onChange={e=>upd('is_deduction',e.target.checked)} style={{width:16,height:16}} />Is Deduction</label></div>
+          <div className="pm-net">
+            <b>{fmt(r.toPay > 0 ? r.toPay : r.net)}</b>
+            <small>{r.state === 'paid'
+              ? `${tr('paid','支払','pago')} ${fmtDay(r.paidOn)}`
+              : r.toPay > 0 ? `${tr('to pay','支払予定','a pagar')} ${fmtDay(r.open[0]?.payment_date)}${r.toPay !== r.net ? ` · ${tr('total','合計','total')} ${fmt(r.net)}` : ''}` : tr('this month','今月','no mês')}</small>
           </div>
-          <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-primary" onClick={handleSave}>{editingId?'✅ Update':'✅ Add'}</button>
-            <button className="btn" onClick={()=>{setShowForm(false);setEditingId(null)}}>Cancel</button>
+          <div className="pm-tags">
+            <span className={`pm-pill is-${r.state}`}>{statePill[r.state]}</span>
+            {r.lines.some(p => p.payment_type === 'salary') && <span className={`pay-st is-${r.slip}`} title={slipLong[r.slip]}>{slipShort[r.slip]}</span>}
+          </div>
+          <div className="pm-act" onClick={ev => ev.stopPropagation()}>
+            {r.toPay > 0
+              ? <button className="pm-pay" onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:r.open, r })}>✓ {tr('Mark paid','支払済にする','Marcar pago')}</button>
+              : <span className="pm-done">{r.state === 'paid' ? '✓' : ''}</span>}
+            <button className="pm-chev" aria-label={tr('Details','詳細','Detalhes')} onClick={() => setOpenRow(expanded ? null : r.emp.id)}>{expanded ? '▴' : '▾'}</button>
           </div>
         </div>
-      )}
 
-      {/* Payments grouped by employee */}
-      {(selected ? employees.filter(e=>e.id===selected) : employees).map(emp=>{
-        const empPayments = filteredPayments.filter(p=>p.employee_id===emp.id).sort((a,b)=>a.payment_date?.localeCompare(b.payment_date||'')||0)
-        if (empPayments.length===0&&selected!==emp.id) return null
-        const empPending = empPayments.filter(p=>p.status!=='paid'&&!p.is_deduction).reduce((s,p)=>s+Number(p.amount||0),0)
-        return (
-          <div key={emp.id} className="card" style={{marginBottom:14}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-              <div>
-                <div style={{fontWeight:600,fontSize:15}}>{emp.full_name}</div>
-                <div style={{fontSize:12,color:'var(--text3)'}}>{fmt(emp.fixed_salary||0)}/mo · {emp.monthly_work_days||22} days</div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <div style={{fontSize:14,fontWeight:700,color:'var(--amber)'}}>{fmt(empPending)} pending</div>
-              </div>
-            </div>
-            {empPayments.map(p=>(
-              <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 0',borderBottom:'1px solid var(--border)'}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:500,color:p.is_deduction?'var(--red)':'var(--text)'}}>{p.is_deduction?'-':'+'}¥{Number(p.amount||0).toLocaleString()}</div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{p.payment_date} · {p.description||p.payment_type}</div>
+        {r.fixedZero && (
+          <div className="pm-note">
+            {tr(
+              `Fixed salary is ${fmt(r.emp.fixed_salary)}/month but the close came out ¥0 (no completed job this month). Check Payroll Close or edit the amount.`,
+              `固定給 ${fmt(r.emp.fixed_salary)}/月ですが、締めで ¥0 になりました（今月の完了ジョブなし）。給与締めを確認するか金額を修正してください。`,
+              `Salário fixo de ${fmt(r.emp.fixed_salary)}/mês, mas o fechamento deu ¥0 (nenhum serviço concluído no mês). Confira o Fechamento ou corrija o valor.`)}
+          </div>
+        )}
+
+        {expanded && (
+          <div className="pm-lines">
+            {r.lines.map(p => (
+              <div key={p.id} className={`pm-line${p.status === 'cancelled' ? ' is-cancel' : ''}`}>
+                <div className="pm-line-l">
+                  <span className={`pm-type t-${p.payment_type}`}>{typeLabel[p.payment_type] || p.payment_type}</span>
+                  <div>
+                    <div className="pm-desc">{p.description || typeLabel[p.payment_type]}</div>
+                    <small>{fmtDay(p.payment_date)} · {p.status === 'paid' ? tr('paid','支払済','pago') : p.status === 'cancelled' ? tr('cancelled','取消','cancelado') : p.is_deduction ? tr('discounted from pay','給与から控除','descontado do salário') : tr('scheduled','予定','agendado')}</small>
+                  </div>
                 </div>
-                <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                  <span style={{fontSize:9,padding:'2px 8px',borderRadius:20,fontWeight:600,background:p.status==='paid'?'rgba(74,222,128,0.1)':p.is_deduction?'rgba(248,113,113,0.1)':'rgba(251,191,36,0.1)',color:p.status==='paid'?'var(--green)':p.is_deduction?'var(--red)':'var(--amber)',border:'1px solid rgba(255,255,255,0.06)'}}>{p.payment_type||p.status}</span>
-                  {p.status!=='paid'&&!p.is_deduction&&<button className="btn btn-sm" style={{fontSize:10,background:'rgba(74,222,128,0.1)',color:'var(--green)',borderColor:'rgba(74,222,128,0.2)'}} onClick={()=>handleMarkPaid(p.id)}>✓ Pay</button>}
-                  <button className="btn btn-sm" style={{fontSize:10}} onClick={()=>handleEdit(p)}>✏️</button>
-                  <button className="btn btn-sm btn-danger" style={{fontSize:10}} onClick={()=>handleDelete(p.id)}>✕</button>
+                <b className={p.is_deduction ? 'is-neg' : ''}>{p.is_deduction ? '−' : ''}{fmt(p.amount)}</b>
+                <div className="pm-line-act">
+                  {isOpen(p) && <button title={tr('Mark paid','支払済にする','Marcar pago')} onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:[p], r })}>✓</button>}
+                  <button title={tr('Edit','編集','Editar')} onClick={() => openEdit(p)}>✎</button>
+                  {p.payment_type !== 'salary' && <button className="is-del" title={tr('Delete','削除','Apagar')} onClick={() => setAsk({ kind:'delete', emp:r.emp, lines:[p], r })}>🗑</button>}
                 </div>
               </div>
             ))}
-            {empPayments.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No payments.</div>}
+            <button className="pm-add-line" onClick={() => openNew(r.emp)}>+ {tr('Add entry for','追加:','Lançar para')} {r.emp.full_name.split(' ')[0]}</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const chips = [
+    ['all', tr('All','すべて','Todos'), byFilter.all.length],
+    ['open', tr('To pay','未払い','A pagar'), byFilter.open.length],
+    ['paid', tr('Paid','支払済','Pagos'), byFilter.paid.length],
+    ['check', tr('Check','要確認','Conferir'), byFilter.check.length],
+  ]
+
+  return (
+    <div className="pm">
+      <div className="pm-head">
+        <div>
+          <h2>{tr('Payments','支払い','Pagamentos')}</h2>
+          <p>{tr('Salary, extras and deductions by month worked','勤務月ごとの給与・追加・控除','Salário, extras e descontos por mês trabalhado')}</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => openNew(null)}>+ {tr('New entry','新規登録','Novo lançamento')}</button>
+      </div>
+
+      <div className="pm-bar">
+        <div className="pm-month">
+          <button aria-label={tr('Previous month','前月','Mês anterior')} onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
+          <div><small>{tr('Month worked','勤務月','Mês trabalhado')}</small><b>{fmtMonth(month)}</b></div>
+          <button aria-label={tr('Next month','翌月','Próximo mês')} onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
+        </div>
+        <select className="pm-who-pick" value={who} onChange={e => setWho(e.target.value)}>
+          <option value="">{tr('Everyone','全員','Todos os funcionários')}</option>
+          {employees.filter(e => e.is_active !== false || payments.some(p => p.employee_id === e.id)).map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+        </select>
+      </div>
+
+      {elsewhere.length > 0 && (
+        <div className="pm-elsewhere">
+          <span>{tr('Still to pay in other months:','他の月の未払い:','Ainda a pagar em outros meses:')}</span>
+          {elsewhere.map(([m, v]) => <button key={m} onClick={() => { setMonth(m); setFilter('open') }}>{fmtMonth(m)} · {fmt(v)}</button>)}
+        </div>
+      )}
+
+      <div className="pm-sum">
+        <div className="pm-card is-open">
+          <small>{tr('To pay','支払予定','A pagar')}</small>
+          <b>{fmt(totals.toPay)}</b>
+          <span>{totals.toPayPeople ? tr(`${totals.toPayPeople} people`,`${totals.toPayPeople}人`,`${totals.toPayPeople} pessoa${totals.toPayPeople>1?'s':''}`) : tr('nothing open','未払いなし','nada em aberto')}</span>
+        </div>
+        <div className="pm-card is-paid">
+          <small>{tr('Already paid','支払済','Já pago')}</small>
+          <b>{fmt(totals.paid)}</b>
+          <span>{tr(`${totals.paidPeople} people`,`${totals.paidPeople}人`,`${totals.paidPeople} pessoa${totals.paidPeople===1?'':'s'}`)}</span>
+        </div>
+        <div className="pm-card is-ded">
+          <small>{tr('Deductions','控除','Descontos')}</small>
+          <b>{totals.ded ? '−' : ''}{fmt(totals.ded)}</b>
+          <span>{tr(`${totals.dedCount} entries`,`${totals.dedCount}件`,`${totals.dedCount} lançamento${totals.dedCount===1?'':'s'}`)}</span>
+        </div>
+        <div className="pm-card is-day">
+          <small>{tr('Payday','支払日','Dia do pagamento')}</small>
+          <b>{fmtDay(payDay)}</b>
+          <span>{payDay && payDay < today ? tr('already passed','過ぎています','já passou') : payDay ? tr(`in ${Math.ceil((new Date(payDay) - new Date(today)) / 86400000)} days`,`あと${Math.ceil((new Date(payDay) - new Date(today)) / 86400000)}日`,`faltam ${Math.ceil((new Date(payDay) - new Date(today)) / 86400000)} dias`) : ''}</span>
+        </div>
+      </div>
+
+      <div className="pm-chips">
+        {chips.map(([k, label, n]) => (
+          <button key={k} className={filter === k ? 'is-on' : ''} onClick={() => setFilter(k)}>{label}<i>{n}</i></button>
+        ))}
+      </div>
+
+      <div className="pm-list">
+        {!loaded && <div className="pm-empty">{tr('Loading…','読み込み中…','Carregando…')}</div>}
+        {loaded && shown.length === 0 && (
+          <div className="pm-empty">
+            {filter === 'open' ? tr('Nothing left to pay this month 🎉','今月の未払いはありません 🎉','Nada para pagar neste mês 🎉')
+              : filter === 'check' ? tr('Nothing to check','確認事項なし','Nada para conferir')
+              : tr('No entries this month','今月の登録なし','Nenhum lançamento neste mês')}
+          </div>
+        )}
+        {shown.map(rowView)}
+      </div>
+
+      {zeroRows.length > 0 && (
+        <div className="pm-zero">
+          <button onClick={() => setShowZero(s => !s)}>
+            {showZero ? '▴' : '▾'} {tr(`${zeroRows.length} people with ¥0 this month`,`今月 ¥0 の人: ${zeroRows.length}人`,`${zeroRows.length} pessoa${zeroRows.length>1?'s':''} com ¥0 neste mês`)}
+            <small>{zeroRows.map(r => r.emp.full_name.split(' ')[0]).join(', ')}</small>
+          </button>
+          {showZero && <div className="pm-list">{zeroRows.map(rowView)}</div>}
+        </div>
+      )}
+
+      {form && (
+        <div className="sp-overlay" onClick={() => setForm(null)}>
+          <section className="sp-modal is-admin pm-form" role="dialog" aria-modal="true" onClick={ev => ev.stopPropagation()}>
+            <h3>{editingId ? tr('Edit entry','編集','Editar lançamento') : tr('New entry','新規登録','Novo lançamento')}</h3>
+            <label>{tr('Employee','従業員','Funcionário')}
+              <select value={form.employee_id} onChange={e => upd('employee_id', e.target.value)}>
+                <option value="">{tr('Choose…','選択…','Escolha…')}</option>
+                {employees.filter(e => e.is_active !== false || e.id === form.employee_id).map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+              </select>
+            </label>
+            <div className="pm-types">
+              {TYPES.map(k => <button key={k} type="button" className={form.payment_type === k ? 'is-on' : ''} onClick={() => upd('payment_type', k)}>{typeLabel[k]}</button>)}
+            </div>
+            <div className="pm-2">
+              <label>{tr('Amount (¥)','金額 (¥)','Valor (¥)')}<input type="number" inputMode="numeric" value={form.amount} onChange={e => upd('amount', e.target.value)} /></label>
+              <label>{tr('Month worked','勤務月','Mês trabalhado')}<input type="month" value={form.period} onChange={e => upd('period', e.target.value)} /></label>
+              <label>{form.payment_type === 'deduction' ? tr('Date','日付','Data') : tr('Payment date','支払日','Data do pagamento')}<input type="date" value={form.payment_date} onChange={e => upd('payment_date', e.target.value)} /></label>
+              {form.payment_type !== 'deduction' && (
+                <label>{tr('Status','状態','Situação')}
+                  <select value={form.status} onChange={e => upd('status', e.target.value)}>
+                    <option value="scheduled">{tr('To pay','未払い','A pagar')}</option>
+                    <option value="paid">{tr('Paid','支払済','Pago')}</option>
+                    <option value="cancelled">{tr('Cancelled','取消','Cancelado')}</option>
+                  </select>
+                </label>
+              )}
+            </div>
+            <label>{tr('Description','説明','Descrição')}<input value={form.description} onChange={e => upd('description', e.target.value)} placeholder={tr('e.g. October overtime','例: 10月残業','ex.: hora extra de outubro')} /></label>
+            {form.payment_type === 'deduction' && <p className="pm-hint">{tr('A deduction is taken from this month’s salary.','控除はこの月の給与から差し引かれます。','O desconto sai do salário deste mês.')}</p>}
+            <div className="sp-actions">
+              <button className="btn" onClick={() => setForm(null)}>{tr('Cancel','キャンセル','Cancelar')}</button>
+              <button className="btn btn-primary" onClick={handleSave}>{editingId ? tr('Save','保存','Salvar') : tr('Add','追加','Adicionar')}</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {ask && (() => {
+        const { kind, emp, lines, r } = ask
+        const isPay = kind === 'pay'
+        const total = lines.reduce((s, p) => s + Number(p.amount||0), 0)
+        const hasSalary = lines.some(p => p.payment_type === 'salary')
+        const k = r?.slip || 'none'
+        const calm = !hasSalary || k === 'confirmed'
+        return (
+          <div className="sp-overlay" onClick={() => !busy && setAsk(null)}>
+            <section className="sp-modal is-admin" role="dialog" aria-modal="true" onClick={ev => ev.stopPropagation()}>
+              <h3>{isPay ? tr('Confirm this payment was made?','この支払いを完了にしますか？','Confirmar que este pagamento foi feito?') : tr('Delete this entry?','この項目を削除しますか？','Apagar este lançamento?')}</h3>
+              <dl className="sp-rows">
+                <div><dt>{tr('Employee','従業員','Funcionário')}</dt><dd>{emp.full_name}</dd></div>
+                <div><dt>{tr('Month worked','勤務月','Mês trabalhado')}</dt><dd>{fmtMonth(monthOf(lines[0]))}</dd></div>
+                {lines.map(p => (
+                  <div key={p.id}><dt>{typeLabel[p.payment_type] || p.payment_type}{p.description ? ` · ${p.description}` : ''}</dt><dd>{p.is_deduction ? '−' : ''}{fmt(p.amount)}</dd></div>
+                ))}
+                {isPay && lines.length > 1 && <div><dt><b>{tr('Total','合計','Total')}</b></dt><dd className="sp-big">{fmt(total)}</dd></div>}
+                {isPay && lines.length === 1 && <div><dt>{tr('Amount','金額','Valor')}</dt><dd className="sp-big">{fmt(total)}</dd></div>}
+              </dl>
+              {isPay && r?.ded > 0 && <p className="pm-hint">{tr(`Deductions of ${fmt(r.ded)} are already taken out of the salary amount.`,`控除 ${fmt(r.ded)} は給与額から差し引き済みです。`,`Os descontos de ${fmt(r.ded)} já saíram do valor do salário.`)}</p>}
+              {isPay && hasSalary && (
+                <div className={`sp-state is-${k}`}>
+                  <b>{slipLong[k]}</b>
+                  {k==='confirmed'&&r.st&&<small>{new Date(r.st.employee_confirmed_at).toLocaleString(locale,{timeZone:'Asia/Tokyo'})}</small>}
+                  {k==='disputed'&&<small>{tr('Answer the dispute in Salary issues before paying.','支払う前に「給与の問題」で回答してください。','Responda a contestação em Problemas de salário antes de pagar.')}</small>}
+                  {k==='waiting'&&<small>{tr('You can still pay, but the employee has not checked the amount.','支払いは可能ですが、従業員は金額を確認していません。','Dá para pagar, mas o funcionário ainda não conferiu o valor.')}</small>}
+                </div>
+              )}
+              <div className="sp-actions">
+                <button className="btn" disabled={busy} onClick={() => setAsk(null)}>{tr('Cancel','キャンセル','Cancelar')}</button>
+                <button className={`btn ${isPay ? (calm ? 'btn-primary' : 'sp-warn-btn') : 'btn-danger'}`} disabled={busy} onClick={doConfirmed}>
+                  {isPay ? (calm ? tr('Yes, it was paid','はい、支払済み','Sim, foi pago') : tr('Pay anyway','それでも支払う','Pagar mesmo assim')) : tr('Delete','削除','Apagar')}
+                </button>
+              </div>
+            </section>
           </div>
         )
-      })}
+      })()}
     </div>
   )
 }
