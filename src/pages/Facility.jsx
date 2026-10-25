@@ -23,6 +23,7 @@ import '../components/facility/world.css'
 
 // three.js só é baixado quando a tela abre
 const CityWorld = lazy(() => import('../components/facility/CityWorld'))
+const CityMap = lazy(() => import('../components/facility/CityMap'))
 
 const tokyoToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
 const storeBase = name => String(name || '').split(/\s+[-—–]\s+/)[0].trim().toLowerCase()
@@ -75,6 +76,7 @@ export default function Facility() {
   const [popup, setPopup] = useState(null)
 
   const storeId = params.get('model') || null
+  const mapView = !storeId && params.get('view') === 'map'
   const [pendingSel, setPendingSel] = useState(null)
 
   const load = useCallback(async () => {
@@ -143,9 +145,13 @@ export default function Facility() {
   }, [loaded, wantClient]) // eslint-disable-line react-hooks/exhaustive-deps
   const enterStore = (id, sel = null) => {
     setPendingSel(sel)
-    setParams({ model: id })
+    setParams(mapView ? { model: id, from: 'map' } : { model: id })
   }
-  const leaveStore = () => { setParams({}); setFocus(store ? { id: store.id, enter: false, t: Date.now() } : null) }
+  const leaveStore = () => {
+    if (params.get('from') === 'map') { setParams({ view: 'map' }); return }
+    setParams({})
+    setFocus(store ? { id: store.id, enter: false, t: Date.now() } : null)
+  }
 
   const offer = async (r) => {
     setBusy(r.key)
@@ -211,7 +217,12 @@ export default function Facility() {
         />
       ) : (
         <>
-          {listMode || !loaded ? null : (
+          {mapView && loaded && (
+            <Suspense fallback={<div className="kw-loading">{w.loading}</div>}>
+              <CityMap stores={stores} m={w.cityMap || {}} lang={lang} query={query} mobile={mobile} onOpenStore={id => enterStore(id)} />
+            </Suspense>
+          )}
+          {listMode || mapView || !loaded ? null : (
             <Suspense fallback={<div className="kw-loading">{w.loading}</div>}>
               <CityWorld
                 stores={stores}
@@ -225,7 +236,7 @@ export default function Facility() {
             </Suspense>
           )}
           {!loaded && <div className="kw-loading">{w.loading}</div>}
-          {listMode && loaded && (
+          {listMode && !mapView && loaded && (
             <div className="kw-list">
               {stores.map(s => (
                 <button key={s.id} type="button" className={`kw-list-card st-${s.draft ? 'draft' : s.status}`} onClick={() => enterStore(s.id)}>
@@ -247,8 +258,8 @@ export default function Facility() {
               <span><strong>{w.brand}</strong><small>{fill(w.stores, { n: stores.length })}</small></span>
             </div>
             <div className="kw-search">
-              <input value={query} onChange={e => setQuery(e.target.value)} placeholder={w.search} aria-label={w.search} />
-              {found.length > 0 && (
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder={mapView ? w.cityMap?.search : w.search} aria-label={w.search} />
+              {found.length > 0 && !mapView && (
                 <div className="kw-search-results">
                   {found.map(s => (
                     <button key={s.id} type="button" onClick={() => { setQuery(''); if (listMode) enterStore(s.id); else setFocus({ id: s.id, enter: true, t: Date.now() }) }}>
@@ -258,6 +269,9 @@ export default function Facility() {
                 </div>
               )}
             </div>
+            <button type="button" className={`kw-pill kw-mapbtn${mapView ? ' on' : ''}`} onClick={() => setParams(mapView ? {} : { view: 'map' })}>
+              {mapView ? `🌏 ${w.cityMap?.world3d}` : `🗺️ ${w.cityMap?.open}`}
+            </button>
           </div>
 
           {/* HUD: placar */}
@@ -268,7 +282,7 @@ export default function Facility() {
           </div>
 
           {/* Missões */}
-          <aside className={`kw-missions${missionsOpen ? ' open' : ''}${mobile ? ' sheet' : ''}`}>
+          {!mapView && <aside className={`kw-missions${missionsOpen ? ' open' : ''}${mobile ? ' sheet' : ''}`}>
             <button type="button" className="kw-missions-head" onClick={() => setMissionsOpen(v => !v)} aria-expanded={missionsOpen}>
               <span>🎯 {w.missions}</span>
               <b className={late.length ? 'late' : ''}>{missions.length}</b>
@@ -305,14 +319,14 @@ export default function Facility() {
                 </div>
               </>
             )}
-          </aside>
+          </aside>}
 
-          <div className="kw-hud kw-hud-bl">
+          {!mapView && <div className="kw-hud kw-hud-bl">
             <button type="button" className="kw-pill" onClick={() => navigate('/facility/edit')}>＋ {w.newStore}</button>
             <button type="button" className="kw-pill ghost" onClick={() => setListMode(v => !v)}>{listMode ? `🌏 ${w.openWorld}` : `☰ ${w.openList}`}</button>
-          </div>
-          {loaded && !listMode && stores.length > 0 && !mobile && <div className="kw-help">{w.help}</div>}
-          {loaded && stores.length === 0 && <div className="kw-empty-world">{w.empty}</div>}
+          </div>}
+          {loaded && !listMode && !mapView && stores.length > 0 && !mobile && <div className="kw-help">{w.help}</div>}
+          {loaded && !mapView && stores.length === 0 && <div className="kw-empty-world">{w.empty}</div>}
         </>
       )}
 
