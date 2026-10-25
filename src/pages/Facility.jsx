@@ -13,7 +13,8 @@ import { loadStoreTimeline, placePhotosOf, sizeLabel } from '../lib/cleaningTime
 import { openClientSheet } from '../lib/clientSheet'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { offerWhen } from '../components/facility/FacilityOffersBell'
-import { FocusDock, WorldView } from '../components/facility/FacilityViewer'
+import { WorldView } from '../components/facility/FacilityViewer'
+import ItemSheet from '../components/facility/ItemSheet'
 import FacilityItemPopup from '../components/facility/FacilityItemPopup'
 import CleaningTimeline from '../components/CleaningTimeline'
 import { rowsForElement } from '../components/facility/CareList'
@@ -340,6 +341,7 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
   const [level, setLevel] = useState(0)
   const [selId, setSelId] = useState(initialSel)
   const [filter, setFilter] = useState('all')
+  const [view, setView] = useState('list')
   const [timeline, setTimeline] = useState(null)
   const layout = store.full
   const floors = store.levels
@@ -387,7 +389,34 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
             <div className="kw-seg kw-seg-inline">
               <button type="button" className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>{w.all} · {layout.elements.length}</button>
               <button type="button" className={filter === 'att' ? 'on' : ''} onClick={() => setFilter('att')}>⚠️ {w.attention} · {attentionN}</button>
+              <button type="button" className="kw-view" onClick={() => setView(v => (v === 'list' ? 'cards' : 'list'))} title={view === 'list' ? w.viewCards : w.viewList}>{view === 'list' ? '▦' : '☰'}</button>
             </div>
+            {view === 'list' ? (
+              <div className="kw-itemlist">
+                <div className="kw-itemlist-head">
+                  <span>{w.item}</span><span>{w.lastClean}</span><span>{w.firstClean}</span><span>{w.cleanings}</span>
+                </div>
+                {items.map(({ el, st }) => {
+                  const k = ELEMENT_KINDS[el.kind] || ELEMENT_KINDS.other
+                  const hist = elementHistory(el.id, logs)
+                  const lastL = hist[0]
+                  const firstL = hist[hist.length - 1]
+                  const area = areaForElement(layout, el)
+                  return (
+                    <button key={el.id} type="button" className={`kw-itemrow st-${st || 'none'}${sel?.id === el.id ? ' on' : ''}`} onClick={() => select({ type: 'element', id: el.id })}>
+                      <span className="kw-itemrow-name">
+                        <i className={`kw-dot st-${st || 'none'}`} />
+                        <b aria-hidden="true">{k.icon}</b>
+                        <span><strong>{el.name}</strong><small>{area ? area.name : ''}</small></span>
+                      </span>
+                      <span className="kw-itemrow-when">{lastL ? <><strong>{fmtDate(String(lastL.service_date).slice(0, 10))}</strong><small>{lastL.employee_name || ''}</small></> : <small>{w.never}</small>}</span>
+                      <span className="kw-itemrow-when">{firstL && hist.length > 1 ? <><strong>{fmtDate(String(firstL.service_date).slice(0, 10))}</strong><small>{firstL.employee_name || ''}</small></> : <small>—</small>}</span>
+                      <span className="kw-itemrow-n">{hist.length || ''}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
             <div className="kw-inventory">
               {items.map(({ el, st }) => {
                 const k = ELEMENT_KINDS[el.kind] || ELEMENT_KINDS.other
@@ -407,6 +436,7 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
                 )
               })}
             </div>
+            )}
           </div>
         )}
         {tab === 'history' && (
@@ -455,27 +485,19 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
       {/* painel do item: fotos reais + o que fazer */}
       {sel && tab !== 'history' && (
         <div className={`kw-inspect${mobile ? ' sheet' : ''}`}>
-          <FocusDock
+          <ItemSheet
             key={sel.id}
             el={sel}
             layout={layout}
             t={t}
-            lang={lang}
             status={status}
             logs={logs}
             onDetails={() => onDetails({ type: 'element', id: sel.id })}
             onClose={() => setSelId(null)}
+            onOffer={selMission && busy !== selMission.key ? () => onOffer(selMission) : undefined}
+            offered={!!selMission?.offered}
+            onLog={rowsForElement(sel, sel.care || careForElement(sel, [])).length > 0 ? () => onDone(sel) : undefined}
           />
-          <div className="kw-inspect-actions">
-            {selMission && (
-              <button type="button" disabled={selMission.offered || busy === selMission.key} onClick={() => onOffer(selMission)}>
-                {selMission.offered ? `✓ ${w.offered}` : `📨 ${w.offer}`}
-              </button>
-            )}
-            {rowsForElement(sel, sel.care || careForElement(sel, [])).length > 0 && (
-              <button type="button" className="primary" onClick={() => onDone(sel)}>✅ {w.done}</button>
-            )}
-          </div>
         </div>
       )}
 

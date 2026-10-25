@@ -1,21 +1,12 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
 import FacilityScene from './FacilityScene'
 import FacilityItemPopup from './FacilityItemPopup'
-import CleaningTimeline from '../CleaningTimeline'
-import { entriesFromLogs } from '../../lib/cleaningTimeline'
+import ItemSheet from './ItemSheet'
 import { pickLang } from '../../hooks/useLang'
-import { AREA_KINDS, ELEMENT_KINDS, areaForElement, withServiceLog, statusMap, todoElementIds, elementTasks, careForElement, elementHistory, levelCount, levelLayout, levelOf } from '../../lib/facilityModel'
-import CareList, { rowsForElement } from './CareList'
+import { ELEMENT_KINDS, withServiceLog, statusMap, todoElementIds, elementTasks, levelCount, levelLayout, levelOf } from '../../lib/facilityModel'
 
 // three.js só é baixado quando alguém abre o mapa
 const FacilityWorld = lazy(() => import('./FacilityWorld'))
-
-const STATUS_STYLE = {
-  overdue: { background: 'rgba(239,68,68,0.2)', color: '#fca5a5' },
-  due: { background: 'rgba(245,158,11,0.2)', color: '#fcd34d' },
-  ok: { background: 'rgba(34,197,94,0.2)', color: '#86efac' },
-  none: { background: 'rgba(148,163,184,0.2)', color: '#cbd5e1' },
-}
 
 export function StatusLegend({ t }) {
   return (
@@ -63,43 +54,8 @@ export function WorldView({ layout, mode, selectedId, onSelect, status, todo, al
  * Painel do item tocado: foto do local, últimas limpezas com fotos e calendário,
  * ao lado (computador) ou embaixo (celular).
  */
-export function FocusDock({ el, layout, t, lang, status, logs = [], onDetails, onLog, onClose }) {
-  const k = ELEMENT_KINDS[el.kind] || ELEMENT_KINDS.other
-  const area = areaForElement(layout, el)
-  const st = status?.get?.(el.id)
-  const stLabel = { overdue: t.stOverdue, due: t.stDue, ok: t.stOk, none: t.stNone }[st]
-  const RANK = { overdue: 0, due: 1, none: 2, ok: 3 }
-  const careRows = rowsForElement(el, el.care || careForElement(el, [])).sort((a, b) => RANK[a.status] - RANK[b.status])
-  const entries = useMemo(() => entriesFromLogs(elementHistory(el.id, logs)), [el.id, logs])
-
-  return (
-    <div className="fac-dock" key={el.id}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        <div>
-          <h4>{k.icon} {el.name}</h4>
-          <div className="fac-muted">
-            {area ? `${(AREA_KINDS[area.kind] || AREA_KINDS.other).icon} ${area.name}` : ''}
-            {el.important ? ` · ⭐ ${t.important}` : ''}
-          </div>
-          {st && <span className="fac-st-pill" style={STATUS_STYLE[st]}>{stLabel}</span>}
-        </div>
-        <button type="button" className="fac-chip" onClick={onClose} aria-label={t.close}>✕</button>
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        <CleaningTimeline key={el.id} entries={entries} placePhotos={el.photos || []} dark compact />
-      </div>
-
-      {careRows.length > 0 && <div style={{ marginTop: 10 }}><CareList rows={careRows} t={t} lang={lang} dark limit={2} /></div>}
-      {el.location_hint && <div className="fac-dock-text">🔎 {el.location_hint}</div>}
-      {el.instructions && <div className="fac-dock-text">🛠 {el.instructions.length > 220 ? `${el.instructions.slice(0, 220)}…` : el.instructions}</div>}
-
-      <div className="fac-dock-actions">
-        <button type="button" className="fac-btn" onClick={onDetails}>{t.details}</button>
-      </div>
-      {onLog && <button type="button" className="fac-btn fac-btn-gold" style={{ width: '100%', marginTop: 8 }} onClick={onLog}>{careRows.length > 1 ? t.markDone : t.markCleaned}</button>}
-    </div>
-  )
+export function FocusDock({ el, layout, t, status, logs = [], onDetails, onLog, onClose }) {
+  return <ItemSheet el={el} layout={layout} t={t} status={status} logs={logs} onDetails={onDetails} onLog={onLog} onClose={onClose} />
 }
 
 /**

@@ -204,3 +204,29 @@ body:has(.kw-root) .kp-ai-trigger { bottom: 18px; }
   .kw-tabs { bottom: 10px; width: calc(100% - 20px); }
   .kw-tabs button { flex: 1; min-width: 0; padding: 0 6px; }
 }
+
+/* lista de itens (aba Itens) */
+.kw-view { flex: 0 0 44px !important; font-size: 18px !important; }
+.kw-itemlist { display: flex; flex-direction: column; gap: 6px; }
+.kw-itemlist-head, .kw-itemrow { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) 56px; gap: 10px; align-items: center; }
+.kw-itemlist-head { padding: 0 14px; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+.kw-itemrow { text-align: left; padding: 10px 14px; border-radius: 14px; background: var(--kw-glass); border: 1px solid var(--kw-line); transition: border-color .12s, transform .12s; }
+.kw-itemrow:hover { border-color: rgba(245,199,106,0.6); transform: translateX(2px); }
+.kw-itemrow.on { border-color: var(--kw-gold); box-shadow: 0 0 0 3px rgba(245,199,106,0.2); }
+.kw-itemrow.st-overdue { border-left: 3px solid var(--kw-red); }
+.kw-itemrow.st-due { border-left: 3px solid var(--kw-amber); }
+.kw-itemrow-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.kw-itemrow-name b { font-size: 20px; font-weight: 400; }
+.kw-itemrow-name > span { display: flex; flex-direction: column; min-width: 0; }
+.kw-itemrow strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-itemrow small { font-size: 12px; color: rgba(255,255,255,0.55); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-itemrow-when { display: flex; flex-direction: column; min-width: 0; }
+.kw-itemrow-n { text-align: center; font-weight: 800; color: #fde68a; }
+.kw-inspect > .is { max-height: 100%; overflow-y: auto; }
+@media (max-width: 760px) {
+  .kw-itemlist-head { display: none; }
+  .kw-itemrow { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  .kw-itemrow-when:nth-of-type(3), .kw-itemrow-n { display: none; }
+}
+.kw-inspect { overflow: hidden; width: 380px; }
+@media (max-width: 760px) { .kw-inspect.sheet { width: auto; } }

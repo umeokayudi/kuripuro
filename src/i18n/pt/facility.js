@@ -31,6 +31,7 @@ export const facilityPt = {
     storeHistoryEmpty: 'Nenhuma limpeza registrada nesta loja ainda.',
     all: 'Todos', attention: 'Precisa de atenção', itemsN: '{n} itens', floors: '{n} andares',
     openList: 'Ver em lista', openWorld: 'Ver o mundo',
+    item: 'Item', lastClean: 'Última limpeza', firstClean: 'Primeira limpeza', cleanings: 'Vezes', viewCards: 'Cartões', viewList: 'Lista',
   },
   tab: 'Mundo Kuripuro',
   title: 'Smart Facility — modelo digital por loja',
