@@ -47,7 +47,8 @@
     "test:maps-link": "node scripts/test-maps-link.mjs",
     "test:facility": "npx vite-node scripts/test-facility-model.mjs",
     "test:quick-round": "npx vite-node scripts/test-quick-round.mjs",
-    "test:job-due-alert": "npx vite-node scripts/test-job-due-alert.mjs"
+    "test:job-due-alert": "npx vite-node scripts/test-job-due-alert.mjs",
+    "test:team-chat": "node scripts/test-team-chat.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
