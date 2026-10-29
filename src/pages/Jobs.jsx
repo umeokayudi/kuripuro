@@ -5,19 +5,19 @@ import { geocodeAddress } from '../lib/geocode'
 import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
+  DEEP_TASKS, deepTaskName, parseDeepTaskList,
 } from '../lib/cleaningType'
 import { useLang, fill, localeOf } from '../hooks/useLang'
-import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
 import JobVideos from '../components/JobVideos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl } from '../lib/calendar'
-import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient, contractStatus } from '../lib/spotContract'
-import { saveSpotContractWithInvoice, generateContractForJob } from '../lib/spotContractOps'
+import { contractStatus } from '../lib/spotContract'
+import { generateContractForJob } from '../lib/spotContractOps'
 import { fetchContractSellers } from '../lib/contractSellers'
-import SellerCommissionFields from '../components/SellerCommissionFields'
 import JobsPeriodPanel from '../components/JobsPeriodPanel'
+import NewJobForm from '../components/NewJobForm'
 import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
@@ -37,6 +37,13 @@ function applyGeocodeResult(result, setCoords, mapsMsg) {
     return true
   }
   return false
+}
+
+/** "Coifa, Fritadeira" from a "Deep Clean (Range Hood, Fryer)" title, or '' when it has no list. */
+function deepTaskList(title, lang) {
+  return (parseDeepTaskList(title) || [])
+    .map(l => { const t = DEEP_TASKS.find(x => x.label.toLowerCase() === l.toLowerCase()); return t ? deepTaskName(t, lang) : l })
+    .join(', ')
 }
 
 function toDateStr(d) {
@@ -494,15 +501,7 @@ export default function Jobs() {
   const [loading, setLoading] = useState(true)
   const [geocoding, setGeocoding] = useState(false)
   const [lightbox, setLightbox] = useState(null)
-  const [form, setForm] = useState({
-    title:'', client_id:'', client_name:'', employee_id:'', employee_name:'',
-    scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'',
-    value:0, description:'', checklist_template:'', photo_required:false,
-    location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic'
-  })
-  const [contractForm, setContractForm] = useState(emptySpotContractForm)
   const [spotContracts, setSpotContracts] = useState([])
-  const updContract = (k, v) => setContractForm(f => ({ ...f, [k]: v }))
   const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
 
   useEffect(() => { loadAll(); fetchContractSellers().then(setSellers) }, [])
@@ -528,81 +527,6 @@ export default function Jobs() {
     setClients(c.data || [])
     setLocations(l.data || [])
     setLoading(false)
-  }
-
-  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  const handleLocationSelect = (locId) => {
-    const loc = locations.find(l => l.id === locId)
-    if (!loc) return
-    setForm(f => ({
-      ...f,
-      location_id: locId,
-      address: loc.address,
-      gps_lat: loc.gps_lat || '',
-      gps_lng: loc.gps_lng || '',
-      title: f.title || loc.name,
-      description: loc.notes || f.description,
-      checklist_template: checklistTemplateForJob({ title: loc.name }) || f.checklist_template,
-    }))
-  }
-
-  const handleGeocode = async () => {
-    if (!form.address) return toast.error(jt.enterAddressFirst)
-    setGeocoding(true)
-    const result = await geocodeAddress(form.address)
-    setGeocoding(false)
-    if (!applyGeocodeResult(result, coords => setForm(f => ({ ...f, gps_lat: coords.lat, gps_lng: coords.lng })), jt.mapsValid)) {
-      toast.error(t.jobs.addressNotFound)
-    }
-  }
-
-  const handleCreate = async () => {
-    if (!form.title || !form.employee_id || !form.scheduled_date || !form.address) return toast.error('Fill required fields')
-    const emp = employees.find(e => e.id === form.employee_id)
-    const cli = clients.find(c => c.id === form.client_id)
-    const isSpot = form.job_category === 'spot'
-    const jobTitle = form.title.includes(' — ')
-      ? form.title
-      : applyCleaningTypeToTitle(form.title, form.cleaning_type)
-    const checklistTemplate = form.checklist_template || checklistTemplateForJob({ title: jobTitle })
-    const { data: inserted, error } = await supabase.from('jobs').insert({
-      title: jobTitle,
-      client_id: form.client_id || null,
-      client_name: cli?.company_name || '',
-      employee_id: form.employee_id,
-      employee_name: emp?.full_name || '',
-      scheduled_date: form.scheduled_date,
-      scheduled_time: form.scheduled_time,
-      address: form.address,
-      gps_lat: form.gps_lat || null,
-      gps_lng: form.gps_lng || null,
-      value: parseFloat(form.value) || 0,
-      spot_value: parseFloat(form.spot_value) || 0,
-      description: form.description,
-      checklist_template: checklistTemplate,
-      photo_required: form.photo_required,
-      job_category: form.job_category,
-      status: 'assigned',
-      spot_status: isSpot ? 'pending' : null,
-    }).select().single()
-    if (error) return toast.error(error.message)
-    toast.success(isSpot ? 'Spot job sent! Waiting for employee response.' : 'Job created!')
-    if (isSpot && contractForm.enabled) {
-      const row = buildSpotContractRow({ contract: contractForm, job: inserted, form, location: locations.find(l => l.id === form.location_id), client: cli, employee: emp })
-      try {
-        const { contract: saved, invoice, invoiceError } = await saveSpotContractWithInvoice(row)
-        toast.success(`📄 Contract ${saved.contract_number} saved in Contracts → Spot`)
-        if (invoice) toast.success(`💴 Invoice created · payment due ${invoice.due_date}`)
-        if (invoiceError) toast.error(`Invoice not created: ${invoiceError.message}`)
-      } catch (cErr) {
-        toast.error(`Contract not saved: ${cErr.message}`)
-      }
-    }
-    setContractForm(emptySpotContractForm())
-    setForm({ title:'', client_id:'', client_name:'', employee_id:'', employee_name:'', scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'', value:0, description:'', checklist_template:'', photo_required:false, location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic' })
-    loadAll()
-    setTab('list')
   }
 
   const statusColor = s => ({ assigned:'badge-blue', in_progress:'badge-amber', completed:'badge-green', cancelled:'badge-red' }[s] || 'badge-navy')
@@ -748,6 +672,9 @@ export default function Jobs() {
                       {ctype === 'deep' ? jt.filterDeep : jt.filterBasic}
                     </span>
                   </div>
+                  {ctype === 'deep' && deepTaskList(j.title, lang) && (
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#b7791f', marginBottom: 4 }}>✨ {deepTaskList(j.title, lang)}</div>
+                  )}
                   <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
                     👤 {j.employee_name || '—'} · 📅 {j.scheduled_date} · 🕐 {j.scheduled_time || '—'}
                   </div>
@@ -848,119 +775,10 @@ export default function Jobs() {
       )}
 
       {tab==='new' && (
-        <div className="card">
-          <div className="card-title">New Job</div>
-
-          {/* Job type toggle */}
-          <div style={{display:'flex',gap:8,marginBottom:16}}>
-            <button type="button" onClick={()=>upd('job_category','regular')} style={{flex:1,padding:'10px',borderRadius:8,border:'2px solid',borderColor:form.job_category==='regular'?'var(--navy)':'var(--border)',background:form.job_category==='regular'?'var(--navy)':'none',color:form.job_category==='regular'?'#fff':'var(--text2)',fontWeight:600,cursor:'pointer',fontSize:13}}>
-              📋 Regular Job
-            </button>
-            <button type="button" onClick={()=>upd('job_category','spot')} style={{flex:1,padding:'10px',borderRadius:8,border:'2px solid',borderColor:form.job_category==='spot'?'#EF9F27':'var(--border)',background:form.job_category==='spot'?'#FAEEDA':'none',color:form.job_category==='spot'?'#854F0B':'var(--text2)',fontWeight:600,cursor:'pointer',fontSize:13}}>
-              ⚡ Spot Job (employee must accept)
-            </button>
-          </div>
-
-          <div className="form-group">
-            <label>{t.jobs.cleaningType}</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {Object.entries(CLEANING_TYPES).map(([key, cfg]) => (
-                <button key={key} type="button" onClick={() => upd('cleaning_type', key)}
-                  style={{ flex: 1, padding: '10px', borderRadius: 8, border: '2px solid', borderColor: form.cleaning_type === key ? cfg.color : 'var(--border)', background: form.cleaning_type === key ? `${cfg.color}18` : 'transparent', color: form.cleaning_type === key ? cfg.color : 'var(--text2)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-                  {key === 'basic' ? '🧹' : '✨'} {cfg.short}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Use saved location</label>
-            <select value={form.location_id} onChange={e=>handleLocationSelect(e.target.value)}>
-              <option value="">— Select saved location —</option>
-              {locations.map(l=><option key={l.id} value={l.id}>{l.name} ({l.location_type})</option>)}
-            </select>
-          </div>
-
-          <div className="grid-2">
-            <div className="form-group"><label>Job Title *</label><input value={form.title} onChange={e=>upd('title',e.target.value)} placeholder="Hotel cleaning" /></div>
-            <div className="form-group"><label>Assign to *</label>
-              <select value={form.employee_id} onChange={e=>upd('employee_id',e.target.value)}>
-                <option value="">Select employee...</option>
-                {employees.map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
-              </select>
-            </div>
-            <div className="form-group"><label>Client</label>
-              <select value={form.client_id} onChange={e=>{ upd('client_id',e.target.value); setContractForm(f=>({ ...f, ...contractPrefillFromClient(clients.find(c=>c.id===e.target.value)) })) }}>
-                <option value="">Select client...</option>
-                {clients.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>{form.job_category==='spot' ? '⚡ Spot Value (¥) — added to salary' : 'Job Value (¥)'}</label>
-              <input type="number" value={form.job_category==='spot'?form.spot_value:form.value} onChange={e=>form.job_category==='spot'?upd('spot_value',e.target.value):upd('value',e.target.value)} />
-            </div>
-            <div className="form-group"><label>Date *</label><input type="date" value={form.scheduled_date} onChange={e=>upd('scheduled_date',e.target.value)} /></div>
-            <div className="form-group"><label>Time</label><input type="time" value={form.scheduled_time} onChange={e=>upd('scheduled_time',e.target.value)} /></div>
-          </div>
-
-          <div className="form-group">
-            <label>Address *</label>
-            <div style={{display:'flex',gap:8}}>
-              <input value={form.address} onChange={e=>upd('address',e.target.value)} placeholder="東京都新宿区..." style={{flex:1}} />
-              <button className="btn" onClick={handleGeocode} disabled={geocoding} style={{whiteSpace:'nowrap'}}>{geocoding?'...':'📍 Get GPS'}</button>
-            </div>
-            {form.gps_lat && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ GPS: {Number(form.gps_lat).toFixed(4)}, {Number(form.gps_lng).toFixed(4)}</div>}
-            {!form.gps_lat && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {t.jobs.mapsValid}</div>}
-          </div>
-
-          <div className="form-group"><label>Description / Instructions</label><textarea value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="Clean all rooms..." /></div>
-          <div className="form-group"><label>Checklist (one item per line)</label><textarea value={form.checklist_template} onChange={e=>upd('checklist_template',e.target.value)} placeholder="Clean floors&#10;Wipe windows&#10;Empty trash" /></div>
-
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
-            <input type="checkbox" id="photo_req" checked={form.photo_required} onChange={e=>upd('photo_required',e.target.checked)} style={{width:16,height:16,cursor:'pointer'}} />
-            <label htmlFor="photo_req" style={{cursor:'pointer',fontSize:13}}>📷 Photo required to complete this job</label>
-          </div>
-
-          {form.job_category==='spot' && (
-            <div className="card" style={{border:'1px solid #EF9F27',marginBottom:14,padding:14}}>
-              <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:700,fontSize:14,cursor:'pointer',marginBottom:contractForm.enabled?12:0}}>
-                <input type="checkbox" checked={contractForm.enabled} onChange={e=>updContract('enabled',e.target.checked)} style={{width:16,height:16}} />
-                📄 Create a contract with this location
-              </label>
-              {contractForm.enabled && (<>
-                <div style={{fontSize:12,color:'var(--text3)',marginBottom:10}}>業務委託契約書 · company data of the location (甲) is filled from the client; KuriPuro (乙) data is added automatically.</div>
-                <div className="grid-2">
-                  <div className="form-group" style={{gridColumn:'1/-1'}}><label>Company address (甲)</label><input value={contractForm.client_address} onChange={e=>updContract('client_address',e.target.value)} placeholder="東京都港区…" /></div>
-                  <div className="form-group"><label>Representative (代表者)</label><input value={contractForm.client_representative} onChange={e=>updContract('client_representative',e.target.value)} placeholder="代表取締役 山田 太郎" /></div>
-                  <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="31" value={contractForm.payment_day} onChange={e=>updContract('payment_day',e.target.value)} /></div>
-                  <div className="form-group"><label>Contact person (location)</label><input value={contractForm.contact_name} onChange={e=>updContract('contact_name',e.target.value)} placeholder="山田様 / Store manager" /></div>
-                  <div className="form-group"><label>Contact phone</label><input value={contractForm.contact_phone} onChange={e=>updContract('contact_phone',e.target.value)} placeholder="03-1234-5678" /></div>
-                  <div className="form-group"><label>Price charged to the location (¥)</label><input type="number" value={contractForm.price} onChange={e=>updContract('price',e.target.value)} placeholder="30000" /></div>
-                  <div className="form-group"><label>Tax</label>
-                    <div style={{display:'flex',gap:8}}>
-                      <select value={contractForm.tax_rate} onChange={e=>updContract('tax_rate',e.target.value)}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select>
-                      <select value={String(contractForm.price_includes_tax)} onChange={e=>updContract('price_includes_tax',e.target.value==='true')}><option value="true">incl. tax</option><option value="false">+ tax</option></select>
-                    </div>
-                  </div>
-                  <SellerCommissionFields sellers={sellers.salespeople} rules={sellers.rules} contract={{ ...contractForm, price: contractForm.price || form.value }} value={contractForm} onChange={patch=>setContractForm(f=>({...f,...patch}))} />
-                </div>
-                <div className="form-group"><label>Scope of work (empty = description / checklist)</label><textarea value={contractForm.scope} onChange={e=>updContract('scope',e.target.value)} rows={3} placeholder="Kitchen floor, range hood, grease trap..." /></div>
-                <div className="form-group"><label>Special terms 特記事項 (optional, added after the standard articles)</label><textarea value={contractForm.terms} onChange={e=>updContract('terms',e.target.value)} rows={3} placeholder="例：駐車場は店舗裏を使用可" /></div>
-                <div style={{fontSize:12,color:'var(--text3)'}}>Saved in Contracts → Spot contracts, where you can print it and collect the location's signature.</div>
-              </>)}
-            </div>
-          )}
-
-          {form.job_category==='spot' && (
-            <div style={{background:'#FAEEDA',border:'1px solid #EF9F27',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:'#854F0B'}}>
-              ⚡ This spot job will appear in the employee's app. They must accept it before it becomes active. Value <strong>¥{Number(form.spot_value||0).toLocaleString()}</strong> will be added to their salary automatically when completed.
-            </div>
-          )}
-
-          <button className="btn btn-primary" onClick={handleCreate}>
-            {form.job_category==='spot' ? '⚡ Send Spot Job' : '✅ Create Job'}
-          </button>
-        </div>
+        <NewJobForm
+          jobs={jobs} employees={employees} clients={clients} locations={locations} sellers={sellers}
+          onCreated={({ another }) => { loadAll(); if (!another) setTab('list') }}
+        />
       )}
 
       {tab==='locations' && <LocationsTab />}
