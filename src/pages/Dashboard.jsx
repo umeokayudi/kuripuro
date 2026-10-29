@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth'
 import { summarizeJobs, summarizeByEmployee, formatMinutes, gpsCheck } from '../lib/workKpis'
 import toast from 'react-hot-toast'
 import { askConfirm } from '../components/ConfirmDialog'
+import { ensureServiceReports } from '../lib/jobReport'
 
 const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
 const daysBetween = (from, to) => Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5) + 1
@@ -53,6 +54,17 @@ export default function Dashboard() {
     setLastUpdate(new Date())
     setLoading(false)
   }
+
+  // Completed jobs of the last 60 days without a service report get it now (once per session).
+  useEffect(() => {
+    if (sessionStorage.getItem('kp_reports_healed')) return
+    try { sessionStorage.setItem('kp_reports_healed', '1') } catch { /* private mode */ }
+    const since = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10)
+    supabase.from('jobs').select('*').eq('status', 'completed').gte('scheduled_date', since).limit(1000)
+      .then(({ data }) => ensureServiceReports(supabase, data))
+      .then(n => { if (n) console.log(`service reports created: ${n}`) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     load()

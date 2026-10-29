@@ -9,6 +9,7 @@ import EvaluationQuick from '../components/EvaluationQuick'
 import ContractTab from '../components/ContractTab'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
 import { useLang, pickLang } from '../hooks/useLang'
+import { tokyoToday } from '../lib/dates'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -191,7 +192,7 @@ export default function EmployeeProfile() {
 
   const scoreColor = s => s>=90?'var(--green)':s>=70?'#EF9F27':'var(--red)'
   const statusColor = s => ({assigned:'badge-blue',in_progress:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
-  const today = new Date().toISOString().split('T')[0]
+  const today = tokyoToday()
 
   if (loading) return <div style={{color:'var(--text3)',padding:20}}>Loading...</div>
   if (!emp) return <div style={{color:'var(--text3)',padding:20}}>Employee not found</div>

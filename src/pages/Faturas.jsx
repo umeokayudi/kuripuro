@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { tokyoToday } from '../lib/dates'
+import { ensureServiceReports } from '../lib/jobReport'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
@@ -12,6 +14,7 @@ import { askConfirm } from '../components/ConfirmDialog'
 export default function Faturas() {
   const [searchParams] = useSearchParams()
   const searchId = searchParams.get('search')
+  const navigate = useNavigate()
   const { t, lang, tr } = useLang()
   const inv = t.invoices
   const [faturas, setFaturas] = useState([])
@@ -22,7 +25,7 @@ export default function Faturas() {
   const [selected, setSelected] = useState(null)
   const [items, setItems] = useState([])
   const [form, setForm] = useState({ client_id:'', period_start:'', period_end:'', due_date:'', tax_rate:10, notes:'' })
-  const [autoPeriod, setAutoPeriod] = useState(new Date().toISOString().slice(0,7))
+  const [autoPeriod, setAutoPeriod] = useState(tokyoToday().slice(0,7))
   const [autoLoading, setAutoLoading] = useState(false)
 
   useEffect(() => { load() }, [])
@@ -31,7 +34,8 @@ export default function Faturas() {
     setLoading(true)
     const [f, c] = await Promise.all([
       supabase.from('faturas').select('*').order('created_at', { ascending:false }),
-      supabase.from('clients').select('*').eq('is_active', true).order('company_name'),
+      // v1.0.96 · every client: active ones first, inactive ones below (some still have jobs to bill)
+      supabase.from('clients').select('*').order('company_name'),
     ])
     setFaturas(f.data||[]); setClients(c.data||[])
     setLoading(false)
@@ -105,7 +109,7 @@ export default function Faturas() {
         }
 
         const client = clients.find(c => c.id === clientId)
-        if (!client) continue
+        if (!client || client.is_active === false) continue
 
         const clientContracts = contracts.filter(c => c.client_id === clientId)
         const { data: completedJobs } = await supabase.from('jobs')
@@ -114,6 +118,7 @@ export default function Faturas() {
           .gte('scheduled_date', start)
           .lte('scheduled_date', end)
           .eq('status', 'completed')
+        ensureServiceReports(supabase, completedJobs).catch(() => {}) // billed jobs also have their report
 
         const lines = clientContracts
           .map(contract => buildContractLine(contract, (completedJobs || []).filter(j => !spotBilledJobs.has(j.id))))
@@ -134,7 +139,7 @@ export default function Faturas() {
           client_name: client.company_name,
           period_start: start,
           period_end: end,
-          issue_date: new Date().toISOString().slice(0,10),
+          issue_date: tokyoToday(),
           due_date: dueDateAfter(start, payDay),
           subtotal,
           tax_amount: tax,
@@ -180,7 +185,7 @@ export default function Faturas() {
       client_name: client.company_name,
       period_start: form.period_start||null,
       period_end: form.period_end||null,
-      issue_date: new Date().toISOString().split('T')[0],
+      issue_date: tokyoToday(),
       due_date: form.due_date||null,
       subtotal, tax_amount:tax, total,
       tax_rate: parseInt(form.tax_rate)||10,
@@ -286,7 +291,7 @@ export default function Faturas() {
             </div>
           </div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {faturas.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No faturas yet.</div></div>}
+          {faturas.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>{tr('No invoices yet.','請求書はまだありません。','Nenhuma fatura ainda.')}</div></div>}
           {(searchId ? faturas.filter(f => f.id === searchId) : faturas).map(f=>(
             <div key={f.id} className="card" style={{marginBottom:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
@@ -301,11 +306,12 @@ export default function Faturas() {
                 </div>
               </div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                <button className="btn btn-sm" onClick={()=>handlePrint(f)}>🖨️ Print</button>
-                {f.status==='draft'&&<button className="btn btn-sm btn-primary" onClick={()=>handleStatusChange(f.id,'sent')}>📤 Mark Sent</button>}
-                {f.status==='sent'&&<button className="btn btn-sm" style={{background:'var(--green)',color:'#fff'}} onClick={()=>handleStatusChange(f.id,'paid')}>✅ Mark Paid</button>}
-                {f.status!=='cancelled'&&<button className="btn btn-sm btn-danger" onClick={()=>handleStatusChange(f.id,'cancelled')}>Cancel</button>}
-                <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(f.id)}>🗑 Delete</button>
+                <button className="btn btn-sm" onClick={()=>handlePrint(f)}>🖨️ {tr('Print','印刷','Imprimir')}</button>
+                {f.status==='draft'&&<button className="btn btn-sm btn-primary" onClick={()=>handleStatusChange(f.id,'sent')}>📤 {tr('Mark sent','送付済にする','Marcar enviada')}</button>}
+                {['sent','pending','overdue'].includes(f.status)&&<button className="btn btn-sm" style={{background:'var(--green)',color:'#fff'}} onClick={()=>handleStatusChange(f.id,'paid')}>✅ {tr('Mark paid','入金済にする','Marcar paga')}</button>}
+                {['sent','pending','overdue','paid'].includes(f.status)&&<button className="btn btn-sm" onClick={()=>navigate(`/ryoshu?fatura=${f.id}`)}>🧾 {tr('Receipt','領収書','Recibo')}</button>}
+                {f.status!=='cancelled'&&<button className="btn btn-sm btn-danger" onClick={()=>handleStatusChange(f.id,'cancelled')}>{tr('Cancel','取消','Cancelar')}</button>}
+                <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(f.id)}>🗑 {tr('Delete','削除','Apagar')}</button>
               </div>
             </div>
           ))}
@@ -318,21 +324,26 @@ export default function Faturas() {
             <div className="card-title">{inv.newTitle}</div>
             <div className="grid-2">
               <div className="form-group" style={{gridColumn:'1/-1'}}>
-                <label>Client *</label>
+                <label>{tr('Client','顧客','Cliente')} *</label>
                 <select value={form.client_id} onChange={e=>upd('client_id',e.target.value)}>
-                  <option value="">Select client...</option>
-                  {clients.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
+                  <option value="">{tr('Select client…','顧客を選択…','Escolha o cliente…')}</option>
+                  {clients.filter(c=>c.is_active!==false).map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
+                  {clients.some(c=>c.is_active===false)&&(
+                    <optgroup label={tr('Inactive clients','休止中の顧客','Clientes inativos')}>
+                      {clients.filter(c=>c.is_active===false).map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               </div>
-              <div className="form-group"><label>Period Start</label><input type="date" value={form.period_start} onChange={e=>upd('period_start',e.target.value)} /></div>
-              <div className="form-group"><label>Period End</label><input type="date" value={form.period_end} onChange={e=>upd('period_end',e.target.value)} /></div>
-              <div className="form-group"><label>Due Date</label><input type="date" value={form.due_date} onChange={e=>upd('due_date',e.target.value)} /></div>
-              <div className="form-group"><label>Tax Rate (%)</label>
+              <div className="form-group"><label>{tr('Period start','期間開始','Início do período')}</label><input type="date" value={form.period_start} onChange={e=>upd('period_start',e.target.value)} /></div>
+              <div className="form-group"><label>{tr('Period end','期間終了','Fim do período')}</label><input type="date" value={form.period_end} onChange={e=>upd('period_end',e.target.value)} /></div>
+              <div className="form-group"><label>{tr('Due date','支払期限','Vencimento')}</label><input type="date" value={form.due_date} onChange={e=>upd('due_date',e.target.value)} /></div>
+              <div className="form-group"><label>{tr('Tax rate (%)','税率 (%)','Imposto (%)')}</label>
                 <select value={form.tax_rate} onChange={e=>upd('tax_rate',e.target.value)}>
                   <option value={10}>10%</option><option value={8}>8%</option><option value={0}>0%</option>
                 </select>
               </div>
-              <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} /></div>
+              <div className="form-group" style={{gridColumn:'1/-1'}}><label>{tr('Notes','備考','Observações')}</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} /></div>
             </div>
           </div>
 
@@ -344,9 +355,9 @@ export default function Faturas() {
             {items.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No items. Select client + period or add manually.</div>}
             {items.map((it,i)=>(
               <div key={i} style={{display:'grid',gridTemplateColumns:'3fr 1fr 1fr 1fr auto',gap:8,marginBottom:8,alignItems:'center'}}>
-                <input value={it.description} onChange={e=>updItem(i,'description',e.target.value)} placeholder="Description" style={{padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text)',fontSize:13}} />
-                <input type="number" value={it.quantity} onChange={e=>updItem(i,'quantity',e.target.value)} placeholder="Qty" style={{padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text)',fontSize:13}} />
-                <input type="number" value={it.unit_price} onChange={e=>updItem(i,'unit_price',e.target.value)} placeholder="Price" style={{padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text)',fontSize:13}} />
+                <input value={it.description} onChange={e=>updItem(i,'description',e.target.value)} placeholder={tr('Description','内容','Descrição')} style={{padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text)',fontSize:13}} />
+                <input type="number" value={it.quantity} onChange={e=>updItem(i,'quantity',e.target.value)} placeholder={tr('Qty','数量','Qtd')} style={{padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text)',fontSize:13}} />
+                <input type="number" value={it.unit_price} onChange={e=>updItem(i,'unit_price',e.target.value)} placeholder={tr('Price','単価','Preço')} style={{padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',color:'var(--text)',fontSize:13}} />
                 <div style={{fontSize:13,fontWeight:600,color:'var(--green)'}}>¥{Number(it.total||0).toLocaleString()}</div>
                 <button className="btn btn-sm btn-danger" onClick={()=>removeItem(i)}>✕</button>
               </div>
@@ -362,7 +373,7 @@ export default function Faturas() {
 
           <div style={{display:'flex',gap:8}}>
             <button className="btn btn-primary" onClick={handleCreate}>✅ {tr('Create invoice', '請求書を作成', 'Criar fatura')}</button>
-            <button className="btn" onClick={()=>setTab('list')}>Cancel</button>
+            <button className="btn" onClick={()=>setTab('list')}>{tr('Cancel','キャンセル','Cancelar')}</button>
           </div>
         </div>
       )}

@@ -3,12 +3,13 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
 import EarningsPanel from '../components/EarningsPanel'
+import { tokyoToday } from '../lib/dates'
 
 export default function Salary() {
   const { lang } = useLang()
   const [employees, setEmployees] = useState([])
   const [selected, setSelected] = useState(null)
-  const [period, setPeriod] = useState(new Date().toISOString().slice(0,7))
+  const [period, setPeriod] = useState(tokyoToday().slice(0, 7))
   const [jobs, setJobs] = useState([])
   const [advances, setAdvances] = useState([])
   const [newAdv, setNewAdv] = useState({ amount:'', desc:'' })

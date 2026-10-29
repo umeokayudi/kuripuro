@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
+import { tokyoToday } from '../lib/dates'
 
 const CF_TEXT = {
   en: { overview:'Overview', confirmedToDo:'Confirmed (job still to do)', addEntry:'+ Add Entry', history:'History', title:'Financial overview', subtitle:'Real cash + invoicing + amounts still to come in.', invoiced:'Invoiced', received:'Received', receivable:'Receivable', overdue:'Overdue', expenses:'Expenses', projection:'Projection', realProfit:'Real profit', realMargin:'Real margin', monthStatus:'This month', recordedIncome:'Recorded income', recordedExpenses:'Recorded expenses', realCosts:'Real costs', billing:'Billing', issuedInvoices:'Invoices issued', open:'Open', whereMoneyGoes:'Where the money goes', salariesPaid:'Salaries paid', transport:'Transport', otherExpenses:'Other expenses', totalRealCosts:'Total real costs', monthMovements:'This month\'s movements', income:'💴 Income', expense:'💸 Expenses', balance:'💰 Balance', thisMonth:'This Month', noEntries:'No entries this month.' },
@@ -28,8 +29,8 @@ export default function Cashflow() {
   const [transportClaims, setTransportClaims] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('overview')
-  const [form, setForm] = useState({ type:'income', category:'Client Payment', amount:'', description:'', date:new Date().toISOString().split('T')[0] })
-  const [period, setPeriod] = useState(new Date().toISOString().slice(0,7))
+  const [form, setForm] = useState({ type:'income', category:'Client Payment', amount:'', description:'', date:tokyoToday() })
+  const [period, setPeriod] = useState(tokyoToday().slice(0, 7))
 
   const INCOME_CATS = ['Client Payment','Spot Job','Bonus','Other Income']
   const EXPENSE_CATS = ['Salary','Supplies','Transport','Equipment','Tax','Other Expense']
@@ -65,7 +66,7 @@ export default function Cashflow() {
     })
     if (error) return toast.error(error.message)
     toast.success('Entry added!')
-    setForm({ type:'income', category:'Client Payment', amount:'', description:'', date:new Date().toISOString().split('T')[0] })
+    setForm({ type:'income', category:'Client Payment', amount:'', description:'', date:tokyoToday() })
     load(); setTab('overview')
   }
 
@@ -79,12 +80,13 @@ export default function Cashflow() {
   const income = thisMonth.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount||0),0)
   const expense = thisMonth.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount||0),0)
   const balance = income - expense
-  const issued = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status !== 'cancelled').reduce((s,f)=>s+Number(f.total||0),0)
+  // v1.0.96 · a draft invoice is not billing yet: it only counts from "sent" (drafts show in "Confirmed (job still to do)")
+  const issued = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status !== 'cancelled' && f.status !== 'draft').reduce((s,f)=>s+Number(f.total||0),0)
   // v1.0.70 · accepted quotes booked this month: draft invoice dated on the job day, sent when the job is done
   const confirmedToDo = invoices.filter(f=>f.status === 'draft' && f.issue_date?.startsWith(month)).reduce((s,f)=>s+Number(f.total||0),0)
-  const receivable = invoices.filter(f=>f.status === 'sent' || f.status === 'draft').reduce((s,f)=>s+Number(f.total||0),0)
-  const today = new Date().toISOString().slice(0,10)
-  const overdue = invoices.filter(f=>(f.status === 'sent' || f.status === 'draft') && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
+  const receivable = invoices.filter(f=>['sent','pending','overdue'].includes(f.status)).reduce((s,f)=>s+Number(f.total||0),0)
+  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0,10)
+  const overdue = invoices.filter(f=>(['sent','pending','overdue'].includes(f.status)) && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
   const paidSalary = salaryPayments
     .filter(p => p.status === 'paid' && !p.is_deduction && p.payment_date?.startsWith(month))
     .reduce((s,p)=>s+Number(p.amount||0),0)

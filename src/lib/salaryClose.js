@@ -2,6 +2,7 @@
 // Takes any Supabase client: the browser one or the server one with the service role.
 import { getPeriodDates } from './salaryPeriod.js'
 import { fixedMonthBase } from './salaryCalc.js'
+import { ensureServiceReports } from './jobReport.js'
 
 const tokyoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())
 
@@ -73,6 +74,8 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
     .eq('employee_id', emp.id).eq('status', 'completed')
     .gte('scheduled_date', `${period}-01`).lte('scheduled_date', closeDate)
   if (jobsErr) throw jobsErr
+  // Every job paid here also has its service report (same rule as billing).
+  await ensureServiceReports(db, jobs).catch(() => {})
 
   const { data: deductions } = await db.from('salary_payments').select('amount')
     .eq('employee_id', emp.id).eq('period', period).eq('is_deduction', true).neq('status', 'cancelled')

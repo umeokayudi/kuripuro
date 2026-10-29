@@ -8,6 +8,7 @@ import NfcClockAdmin from '../components/NfcClockAdmin'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
 import { useLang, pickLang } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
+import { tokyoToday } from '../lib/dates'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -146,7 +147,7 @@ export default function Employees() {
     const emp = employees.find(e=>e.id===recEmpId)
     const newScore = Math.max(0,(emp.score||100)-recType)
     await supabase.from('employees').update({ score:newScore }).eq('id',recEmpId)
-    await supabase.from('complaints').insert({ employee_id:recEmpId, employee_name:emp.full_name, client_name:recClient, complaint_type:COMPLAINT_TYPES.find(c=>c.value===recType)?.label, points_deducted:recType, description:recDesc, complaint_date:new Date().toISOString().split('T')[0] })
+    await supabase.from('complaints').insert({ employee_id:recEmpId, employee_name:emp.full_name, client_name:recClient, complaint_type:COMPLAINT_TYPES.find(c=>c.value===recType)?.label, points_deducted:recType, description:recDesc, complaint_date:tokyoToday() })
     toast.error(`-${recType} pts from ${emp.full_name}`)
     setRecEmpId(''); setRecClient(''); setRecType(5); setRecDesc('')
     loadEmployees()

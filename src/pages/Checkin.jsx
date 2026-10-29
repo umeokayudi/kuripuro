@@ -3,6 +3,7 @@ import { useLang } from '../hooks/useLang'
 import { Icons } from '../components/Icons'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
+import { tokyoToday } from '../lib/dates'
 
 const ROUTES = ['Subway — Hibiya Line', 'Bus — Line 21', 'Own bicycle', 'Walking', 'Train — JR Yamanote']
 const EMPLOYEES = ['Yuki Tanaka', 'Kenji Sato', 'Mika Kobayashi', 'Hana Yamamoto', 'Ryo Ito']
@@ -22,7 +23,7 @@ export default function Checkin() {
   const [form, setForm] = useState({
     employee: EMPLOYEES[0],
     client: CLIENTS[0],
-    date: new Date().toISOString().split('T')[0],
+    date: tokyoToday(),
     type: 'in',
     time: '08:00',
     route: ROUTES[0],

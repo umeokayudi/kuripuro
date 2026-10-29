@@ -3,11 +3,12 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { askConfirm, confirmAndRun } from '../components/ConfirmDialog'
 import { isDeductionToReview, reviewText, approvePatch, rejectPatch } from '../lib/deductionReview'
+import { tokyoToday } from '../lib/dates'
 
 export default function Deductions() {
   const [employees, setEmployees] = useState([])
   const [history, setHistory] = useState([])
-  const [form, setForm] = useState({ employee_id:'', amount:'', description:'', payment_date: new Date().toISOString().split('T')[0], deduction_type:'damage' })
+  const [form, setForm] = useState({ employee_id:'', amount:'', description:'', payment_date: tokyoToday(), deduction_type:'damage' })
 
   const TYPES = [
     { key:'damage', label:'Property Damage' },
@@ -50,7 +51,7 @@ export default function Deductions() {
       await supabase.from('employees').update({ score: newScore }).eq('id', form.employee_id)
     }
     toast.success('Deduction added!')
-    setForm({ employee_id:'', amount:'', description:'', payment_date:new Date().toISOString().split('T')[0], deduction_type:'damage' })
+    setForm({ employee_id:'', amount:'', description:'', payment_date:tokyoToday(), deduction_type:'damage' })
     load()
   }
 

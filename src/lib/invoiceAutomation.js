@@ -6,7 +6,8 @@
 export function monthBounds(period) {
   const [year, month] = period.split('-').map(Number)
   const start = `${period}-01`
-  const end = new Date(year, month, 0).toISOString().slice(0, 10)
+  // Last day as a plain string (a local Date + toISOString gave the day before in Japan time).
+  const end = `${period}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`
   return { start, end }
 }
 

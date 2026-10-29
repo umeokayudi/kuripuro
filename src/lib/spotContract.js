@@ -1,6 +1,7 @@
 import { escapeHtml } from './escapeHtml.js'
 import { PRINT_DOC_CSS } from './printDoc.js'
 import { printIssuer } from './quoteIssuer.js'
+import { tokyoToday } from './dates.js'
 
 // v1.0.21 · Contrato spot = 業務委託契約書. A spot job created in Jobs → New Job also stores a
 // contract with the location (table spot_contracts). Admin keeps them in Contracts → Spot
@@ -14,7 +15,7 @@ export const contractStatus = c => (c?.status === 'signed' ? 'approved' : c?.sta
 
 /** Payment due date: `day` of the month after `ymd` (clamped to that month's last day). */
 export function dueDateAfter(ymd, day = 10) {
-  const base = ymd ? String(ymd).slice(0, 10) : new Date().toISOString().slice(0, 10)
+  const base = ymd ? String(ymd).slice(0, 10) : tokyoToday()
   const [y, m] = base.split('-').map(Number)
   const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
   const d = Math.min(Math.max(1, parseInt(day, 10) || 10), last)
@@ -24,14 +25,14 @@ export function dueDateAfter(ymd, day = 10) {
 /** Draft invoice (faturas + one fatura_items line) for a spot contract, due on the payment day. */
 export function spotInvoiceRows(c) {
   const t = spotContractTotals(c)
-  const day = c.service_date || new Date().toISOString().slice(0, 10)
+  const day = c.service_date || tokyoToday()
   return {
     fatura: {
       client_id: c.client_id || null,
       client_name: c.client_name || c.location_name,
       period_start: day,
       period_end: day,
-      issue_date: new Date().toISOString().slice(0, 10),
+      issue_date: tokyoToday(),
       due_date: dueDateAfter(day, c.payment_day),
       subtotal: t.subtotal,
       tax_amount: t.tax,
