@@ -62,7 +62,6 @@
     "heic2any": "^0.0.4",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
-    "leaflet": "^1.9.4",
     "mediabunny": "1.61.6",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
