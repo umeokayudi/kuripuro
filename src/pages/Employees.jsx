@@ -158,7 +158,7 @@ export default function Employees() {
   return (
     <div>
       <div className="tab-pills">
-        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{pickLang(lang,'Active','有効','Ativos')} ({employees.filter(e=>e.is_active).length})</button>
+        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{pickLang(lang,'Active','有効','Ativos')} ({employees.filter(e=>e.is_active!==false).length})</button>
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>+ Add Employee</button>
         <button className={`tab-pill${tab==='complaints'?' active':''}`} onClick={()=>setTab('complaints')}>Complaints</button>
         <button className={`tab-pill${tab==='availability'?' active':''}`} onClick={()=>setTab('availability')}>🗓 Availability{pendingAvail>0?` (${pendingAvail})`:''}</button>
@@ -167,14 +167,14 @@ export default function Employees() {
 
       {tab==='list' && (
         <div>
-          {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {employees.some(e=>!e.is_active) && (
+          {loading && <div aria-busy="true" aria-label={pickLang(lang,'Loading…','読み込み中…','Carregando…')}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
+          {employees.some(e=>e.is_active===false) && (
             <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'var(--text2)',marginBottom:12,cursor:'pointer'}}>
               <input type="checkbox" checked={showInactive} onChange={ev=>setShowInactive(ev.target.checked)} />
-              {pickLang(lang,'Show inactive','無効も表示','Mostrar inativos')} ({employees.filter(e=>!e.is_active).length})
+              {pickLang(lang,'Show inactive','無効も表示','Mostrar inativos')} ({employees.filter(e=>e.is_active===false).length})
             </label>
           )}
-          {employees.filter(e=>showInactive||e.is_active).map(e=>{
+          {employees.filter(e=>showInactive||e.is_active!==false).map(e=>{
             const days = (() => { try { return e.work_days ? JSON.parse(e.work_days) : [] } catch { return [] } })()
             return (
             <div key={e.id} className="card" style={{marginBottom:12}}>
@@ -187,7 +187,7 @@ export default function Employees() {
                   <div style={{fontSize:12,color:'var(--text3)'}}>{e.email} · {e.contract_type}</div>
                   {e.leader_id && <div style={{fontSize:12,color:'var(--text2)'}}>{pickLang(lang, 'Leader', 'リーダー', 'Líder')}: <b>{employees.find(x=>x.id===e.leader_id)?.full_name || '—'}</b></div>}
                 </div>
-                <span className={`badge ${e.is_active?'badge-green':'badge-red'}`}>{e.is_active?'Active':'Inactive'}</span>
+                <span className={`badge ${e.is_active!==false?'badge-green':'badge-red'}`}>{e.is_active!==false?'Active':'Inactive'}</span>
               </div>
 
               <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:12}}>
@@ -225,7 +225,7 @@ export default function Employees() {
 
               <div style={{display:'flex',gap:8}}>
                 <button className="btn btn-sm btn-primary" onClick={()=>navigate('/employees/'+e.id)}>👤 Profile</button>
-                <button className="btn btn-sm" onClick={()=>handleDeactivate(e.id,e.is_active)}>{e.is_active?'Deactivate':'Activate'}</button>
+                <button className="btn btn-sm" onClick={()=>handleDeactivate(e.id,e.is_active!==false)}>{e.is_active!==false?'Deactivate':'Activate'}</button>
                 <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(e.id,e.full_name)} style={{background:'#DC2626',color:'#fff'}}>🗑️ Delete</button>
               </div>
             </div>

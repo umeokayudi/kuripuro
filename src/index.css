@@ -1995,3 +1995,7 @@ body { background: var(--hq-bg); }
 @media(max-width:720px){.finance-month input{flex:1;width:auto}}
 .kp-skel-text{color:#64748b!important;font-weight:600!important;font-size:12px!important;animation:kp-skel-pulse 1.2s ease-in-out infinite}
 @keyframes kp-skel-pulse{50%{opacity:.45}}
+.kp-skel{border-radius:10px;background:linear-gradient(90deg,#eef2f7 25%,#f7f9fc 50%,#eef2f7 75%);background-size:200% 100%;animation:kp-skel-move 1.3s linear infinite}
+.kp-skel-chart{height:96px;margin-top:8px}
+.kp-skel-row{height:56px;margin-bottom:10px}
+@keyframes kp-skel-move{to{background-position:-200% 0}}

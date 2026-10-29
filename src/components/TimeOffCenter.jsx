@@ -52,14 +52,22 @@ export default function TimeOffCenter() {
   const [noPerson, setNoPerson] = useState([])
   const seen = useRef(readSeen())
 
-  const load = () => Promise.all([
-    fetchPendingTimeOff(tokyoToday()).catch(() => []),
-    fetchAutoClosedPeriods().catch(() => []),
-    fetchPendingQuoteRequests().catch(() => []),
-    fetchQuoteFlowAlerts().catch(() => ({ toBook: [], done: [] })),
-    fetchFacilityOffers().catch(() => []),
-    fetchAssignAlerts().catch(() => ({ accepted: [], noPerson: [] })),
-  ]).then(([list, periods, quoteRows, flow, offerRows, assign]) => {
+  // v1.0.102 · a list that fails to load keeps its last value (it used to drop to 0 and come back,
+  // so the count went 3 → empty → 3), and only the newest load is applied.
+  const loadSeq = useRef(0)
+  const last = useRef({ list: [], periods: [], quoteRows: [], flow: { toBook: [], done: [] }, offerRows: [], assign: { accepted: [], noPerson: [] } })
+  const keep = (p, k) => p.then(v => { last.current[k] = v; return v }, () => last.current[k])
+  const load = () => {
+    const seq = ++loadSeq.current
+    return Promise.all([
+      keep(fetchPendingTimeOff(tokyoToday()), 'list'),
+      keep(fetchAutoClosedPeriods(), 'periods'),
+      keep(fetchPendingQuoteRequests(), 'quoteRows'),
+      keep(fetchQuoteFlowAlerts(), 'flow'),
+      keep(fetchFacilityOffers(), 'offerRows'),
+      keep(fetchAssignAlerts(), 'assign'),
+    ]).then(([list, periods, quoteRows, flow, offerRows, assign]) => {
+    if (seq !== loadSeq.current) return
     setOffers(offerRows)
     const takenUnseen = assign.accepted.filter(a => !seen.current.has(a.id))
     setTaken(takenUnseen)
@@ -82,6 +90,7 @@ export default function TimeOffCenter() {
       setToastOpen(true)
     }
   })
+  }
 
   useEffect(() => {
     load()

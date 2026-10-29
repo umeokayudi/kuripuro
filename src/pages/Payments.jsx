@@ -373,17 +373,17 @@ export default function Payments() {
       <div className="pm-sum">
         <div className="pm-card is-open">
           <small>{tr('To pay','支払予定','A pagar')}</small>
-          <b>{fmt(totals.toPay)}</b>
+          <b>{loaded ? fmt(totals.toPay) : <span className="kp-skel-text">{tr('loading…','読み込み中…','carregando…')}</span>}</b>
           <span>{totals.toPayPeople ? tr(`${totals.toPayPeople} people`,`${totals.toPayPeople}人`,`${totals.toPayPeople} pessoa${totals.toPayPeople>1?'s':''}`) : tr('nothing open','未払いなし','nada em aberto')}</span>
         </div>
         <div className="pm-card is-paid">
           <small>{tr('Already paid','支払済','Já pago')}</small>
-          <b>{fmt(totals.paid)}</b>
+          <b>{loaded ? fmt(totals.paid) : <span className="kp-skel-text">{tr('loading…','読み込み中…','carregando…')}</span>}</b>
           <span>{tr(`${totals.paidPeople} people`,`${totals.paidPeople}人`,`${totals.paidPeople} pessoa${totals.paidPeople===1?'':'s'}`)}</span>
         </div>
         <div className="pm-card is-ded">
           <small>{tr('Deductions','控除','Descontos')}</small>
-          <b>{totals.ded ? '−' : ''}{fmt(totals.ded)}</b>
+          <b>{loaded ? <>{totals.ded ? '−' : ''}{fmt(totals.ded)}</> : <span className="kp-skel-text">{tr('loading…','読み込み中…','carregando…')}</span>}</b>
           <span>{tr(`${totals.dedCount} entries`,`${totals.dedCount}件`,`${totals.dedCount} lançamento${totals.dedCount===1?'':'s'}`)}</span>
         </div>
         <div className="pm-card is-day">
@@ -400,7 +400,7 @@ export default function Payments() {
       </div>
 
       <div className="pm-list">
-        {!loaded && <div className="pm-empty">{tr('Loading…','読み込み中…','Carregando…')}</div>}
+        {!loaded && <div aria-busy="true" aria-label={tr('Loading…','読み込み中…','Carregando…')}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
         {loaded && shown.length === 0 && (
           <div className="pm-empty">
             {filter === 'open' ? tr('Nothing left to pay this month 🎉','今月の未払いはありません 🎉','Nada para pagar neste mês 🎉')

@@ -410,7 +410,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
               : mobile && <button type="button" className="kw-icon-btn" onClick={openMenu} aria-label={w.menu}>☰</button>}
             <div className="kw-brand">
               <span className="kw-brand-logo" aria-hidden="true">🌏</span>
-              <span><strong>{w.brand}</strong><small>{fill(w.stores, { n: stores.length })}</small></span>
+              <span><strong>{w.brand}</strong><small>{loaded ? fill(w.stores, { n: stores.length }) : pickLang(lang, 'loading…', '読み込み中…', 'carregando…')}</small></span>
             </div>
             <div className="kw-search">
               <input value={query} onChange={e => setQuery(e.target.value)} placeholder={mapView ? w.cityMap?.search : w.search} aria-label={w.search} />
