@@ -30,6 +30,7 @@ export default function TimeOffCenter() {
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
   const [open, setOpen] = useState(false)
+  const [kind, setKind] = useState('all')
   const [newQuotes, setNewQuotes] = useState([])
   const [toastOpen, setToastOpen] = useState(false)
   const [busy, setBusy] = useState(null)
@@ -130,12 +131,19 @@ export default function TimeOffCenter() {
     setBusy(null)
   }
   const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length
+  const kinds = [
+    { key: 'quotes', label: L('Quotes', '見積もり', 'Orçamentos'), n: quotes.length + toBook.length + flowDone.length },
+    { key: 'payroll', label: L('Payroll', '給与', 'Folha'), n: payroll.length },
+    { key: 'dayoff', label: L('Day off', '休み', 'Folgas'), n: rows.length },
+    { key: 'offers', label: L('Offers', '提案', 'Ofertas'), n: offers.length },
+  ]
+  const show = key => kind === 'all' || kind === key
 
   return (
     <>
       <button type="button" className={`ref-top-action tor-bell${n ? ' has-items' : ''}`} onClick={openPopup}
         title={n ? L(`${n} item(s) waiting`, `確認待ち ${n}件`, `${n} item(ns) aguardando`) : L('No requests waiting', '承認待ちはありません', 'Nenhum pedido aguardando')}
-        aria-label={L('Day-off requests', '休み申請', 'Pedidos de folga')}>
+        aria-label={L('Waiting for you', '確認待ち', 'Aguardando você')}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
         {n > 0 && <span className="tor-count">{n > 9 ? '9+' : n}</span>}
       </button>
@@ -200,17 +208,27 @@ export default function TimeOffCenter() {
 
       {open && (
         <div className="tor-backdrop" onClick={() => setOpen(false)}>
-          <section className="tor-modal" role="dialog" aria-modal="true" aria-label={L('Day-off requests', '休み申請', 'Pedidos de folga')} onClick={e => e.stopPropagation()}>
+          <section className="tor-modal" role="dialog" aria-modal="true" aria-label={L('Waiting for you', '確認待ち', 'Aguardando você')} onClick={e => e.stopPropagation()}>
             <header className="tor-head">
               <div>
-                <h2>{(quotes.length || toBook.length || flowDone.length || offers.length || payroll.length) ? L('Waiting for you', '確認待ち', 'Aguardando você') : L('Day-off requests', '休み申請', 'Pedidos de folga')}</h2>
+                <h2>{L('Waiting for you', '確認待ち', 'Aguardando você')}</h2>
                 <p>{n ? L(`${n} waiting for you`, `${n}件が確認待ち`, `${n} aguardando você`) : L('Nothing waiting. All caught up.', '承認待ちはありません。', 'Nada pendente. Tudo em dia.')}</p>
               </div>
               <button type="button" className="tor-close" onClick={() => setOpen(false)} aria-label={L('Close', '閉じる', 'Fechar')}>×</button>
             </header>
 
+            {/* v1.0.96 · split by type */}
+            {kinds.filter(k => k.n).length > 1 && <div className="tor-kinds" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '0 18px 10px' }}>
+              {[{ key: 'all', label: L('All', 'すべて', 'Todos'), n }, ...kinds.filter(k => k.n)].map(k => (
+                <button key={k.key} type="button" onClick={() => setKind(k.key)}
+                  style={{ border: '1px solid var(--border)', borderRadius: 999, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: kind === k.key ? 'var(--navy)' : 'var(--surface)', color: kind === k.key ? '#fff' : 'var(--text2)' }}>
+                  {k.label} · {k.n}
+                </button>
+              ))}
+            </div>}
             <div className="tor-list">
-              {quotes.map(q => (
+              {show('quotes') && (quotes.length + toBook.length + flowDone.length) > 0 && kind === 'all' && <div className="tor-section">📝 {L('Quotes', '見積もり', 'Orçamentos')}</div>}
+              {show('quotes') && quotes.map(q => (
                 <article key={q.id} className="tor-item">
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">📝</div>
@@ -225,7 +243,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {toBook.map(q => (
+              {show('quotes') && toBook.map(q => (
                 <article key={q.id} className="tor-item">
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">📅</div>
@@ -240,7 +258,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {flowDone.map(q => (
+              {show('quotes') && flowDone.map(q => (
                 <article key={q.id} className="tor-item">
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">🧾</div>
@@ -254,7 +272,8 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {payroll.map(pr => (
+              {show('payroll') && payroll.length > 0 && kind === 'all' && <div className="tor-section">💴 {L('Payroll', '給与', 'Folha')}</div>}
+              {show('payroll') && payroll.map(pr => (
                 <article key={pr.id} className="tor-item">
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">💴</div>
@@ -269,7 +288,8 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {rows.map(r => (
+              {show('dayoff') && rows.length > 0 && kind === 'all' && <div className="tor-section">🗓 {L('Day-off requests', '休み申請', 'Pedidos de folga')}</div>}
+              {show('dayoff') && rows.map(r => (
                 <article key={r.id} className="tor-item">
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">{(r.employee_name || '?').slice(0, 1).toUpperCase()}</div>
@@ -295,8 +315,8 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {offers.length > 0 && <div className="tor-section">🧽 {ft.offersTitle} · {offers.length}</div>}
-              {offers.map(r => {
+              {show('offers') && offers.length > 0 && kind === 'all' && <div className="tor-section">🧽 {ft.offersTitle} · {offers.length}</div>}
+              {show('offers') && offers.map(r => {
                 const k = ELEMENT_KINDS[r.element_kind] || ELEMENT_KINDS.other
                 return (
                   <article key={r.id} className={`tor-item fob-item st-${r.status}`}>

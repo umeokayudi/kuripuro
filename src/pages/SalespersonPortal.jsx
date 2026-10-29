@@ -537,16 +537,25 @@ export default function SalespersonPortal() {
     { key: 'followups', label: c.followups, icon: 'followups', badge: counts.overdue + counts.today },
     { key: 'more', label: c.more, icon: 'more' },
   ]
+  // v1.0.96 · a seller sees four areas: Quotes, Sales funnel, My portfolio and Clients (read-only).
+  const SEC = {
+    quotes: pickLang(lang, 'Quotes', '見積もり', 'Orçamentos'),
+    funnel: pickLang(lang, 'Sales funnel', '営業ファネル', 'Funil de vendas'),
+    portfolio: pickLang(lang, 'My portfolio', '自分のポートフォリオ', 'Minha carteira'),
+    clients: pickLang(lang, 'Clients (view only)', '顧客（閲覧のみ）', 'Clientes (só leitura)'),
+  }
   const menuItems = [
-    { key: 'offers', icon: '🧽', label: offersCopy(lang).title + (offersTodo.length ? ` (${offersTodo.length})` : ''), hint: pickLang(lang, 'Cleaning & maintenance due at your clients', '清掃・メンテナンスの提案時期', 'Limpeza e manutenção para oferecer aos seus clientes') },
-    { key: 'clients', icon: '👥', label: pickLang(lang, 'My clients', '自分の顧客', 'Meus clientes'), hint: pickLang(lang, 'Every client and its stage', '全顧客と状況', 'Todos os clientes e a etapa de cada um') },
-    { key: 'quotes', icon: '📝', label: pickLang(lang, 'Quote requests', '見積もり依頼', 'Pedidos de orçamento'), hint: pickLang(lang, 'From your clients · add your extra', 'お客様からの依頼・上乗せ額', 'Dos seus clientes · some o seu valor'), badge: quoteAlerts },
-    { key: 'commissions', icon: '💴', label: pickLang(lang, 'Commissions & payments', 'コミッションと支払い', 'Comissões e pagamentos'), hint: pickLang(lang, 'To receive and received', '受取予定・受取済み', 'A receber e recebidos') },
-    { key: 'approaches', icon: '📝', label: c.menuReports, hint: c.menuHint.approaches },
-    { key: 'contracts', icon: '✍️', label: c.menuContracts, hint: c.menuHint.contracts },
-    { key: 'goals', icon: '🎯', label: c.menuGoals, hint: c.menuHint.goals },
-    { key: 'kpi', icon: '📈', label: c.menuKpi, hint: c.menuHint.kpi },
-    { key: 'ai', icon: '✦', label: c.menuAi, hint: c.menuHint.ai, onClick: () => setSheet('ai') },
+    { section: SEC.quotes, key: 'quotes', icon: '📝', label: pickLang(lang, 'Quote requests', '見積もり依頼', 'Pedidos de orçamento'), hint: pickLang(lang, 'From your clients · add your extra', 'お客様からの依頼・上乗せ額', 'Dos seus clientes · some o seu valor'), badge: quoteAlerts },
+    { section: SEC.quotes, key: 'contracts', icon: '✍️', label: c.menuContracts, hint: c.menuHint.contracts },
+    { section: SEC.funnel, key: 'leads', icon: '🎯', label: c.leads, hint: pickLang(lang, 'Contact → Proposal → Contract', '連絡 → 提案 → 契約', 'Contato → Proposta → Contrato') },
+    { section: SEC.funnel, key: 'followups', icon: '⏰', label: c.followups, badge: counts.overdue + counts.today },
+    { section: SEC.funnel, key: 'approaches', icon: '🗒', label: c.menuReports, hint: c.menuHint.approaches },
+    { section: SEC.portfolio, key: 'commissions', icon: '💴', label: pickLang(lang, 'Commissions & payments', 'コミッションと支払い', 'Comissões e pagamentos'), hint: pickLang(lang, 'To receive and received', '受取予定・受取済み', 'A receber e recebidos') },
+    { section: SEC.portfolio, key: 'offers', icon: '🧽', label: offersCopy(lang).title + (offersTodo.length ? ` (${offersTodo.length})` : ''), hint: pickLang(lang, 'Cleaning & maintenance due at your clients', '清掃・メンテナンスの提案時期', 'Limpeza e manutenção para oferecer aos seus clientes') },
+    { section: SEC.portfolio, key: 'goals', icon: '🏁', label: c.menuGoals, hint: c.menuHint.goals },
+    { section: SEC.portfolio, key: 'kpi', icon: '📈', label: c.menuKpi, hint: c.menuHint.kpi },
+    { section: SEC.clients, key: 'clients', icon: '👥', label: pickLang(lang, 'My clients', '自分の顧客', 'Meus clientes'), hint: pickLang(lang, 'Every client and its stage', '全顧客と状況', 'Todos os clientes e a etapa de cada um') },
+    { section: 'AI', key: 'ai', icon: '✦', label: c.menuAi, hint: c.menuHint.ai, onClick: () => setSheet('ai') },
   ]
 
   const dayCard = <section className={`sp-day is-${dayState}`}>

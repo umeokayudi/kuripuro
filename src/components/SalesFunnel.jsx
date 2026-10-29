@@ -33,13 +33,25 @@ export function buildDeals(data, today) {
     const activeSub = subs.find(r => ['active', 'approved'].includes(r.status))
     const value = Number(activeSub?.client_monthly_total || accepted?.total || q[0]?.total || lead.expected_monthly || 0)
     const last = [lead.last_contact_date, ...t.map(r => r.happened_at), ...v.map(r => r.work_date)].map(x => String(x || '').slice(0, 10)).filter(Boolean).sort().pop() || String(lead.first_contact_date || lead.created_at || '').slice(0, 10)
+    // Approved quote past its validity with no contract yet: its own state, needs a follow-up.
+    const expired = Boolean(accepted?.valid_until && today && String(accepted.valid_until).slice(0, 10) < today && !subs.length)
     return {
-      lead, quotes: q, accepted, submissions: subs, value, touchpoints: t, visits: v,
+      lead, quotes: q, accepted, submissions: subs, value, expired,
+      quoteValue: Number(accepted?.total || q[0]?.total || 0), touchpoints: t, visits: v,
       phase: phaseOf(lead, q, subs, v, t.length),
       contactsCount: t.length + v.length, last,
       seller: sellers.get(lead.salesperson_id) || (lead.salesperson_id && lead.salesperson_id === data?.user?.id ? data.user.name || data.user.full_name : '') || '', info: today ? followupStatus(lead, today, data?.touchpoints || []) : null,
     }
   })
+}
+
+// Expired approved quote: own badge plus a one-tap follow-up for today.
+function ExpiredBadge({ d, lang, onFollowup }) {
+  const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
+  return <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+    <span className="fn-badge is-lost">⏰ {L('Approved quote expired', '承認済み見積の期限切れ', 'Orçamento aprovado vencido')}</span>
+    {onFollowup && <button type="button" className="fn-col-add is-list" style={{ padding: '2px 8px', margin: 0, width: 'auto' }} onClick={() => onFollowup(d)}>{L('Follow up today', '今日フォロー', 'Follow-up hoje')}</button>}
+  </span>
 }
 
 // Phones get one phase at a time (tap a phase, read its clients top to bottom, move a card
@@ -59,12 +71,13 @@ function useIsPhone() {
 
 // Desktop list: phases as groups that open and close (most advanced first), one row per client,
 // stage changed from the row's menu instead of dragging across a wide board.
-function GroupedList({ deals, phases, t, lang, f, isAdmin, activeId, setActive, canDrop, moveTo, closed, setClosed, onAddLead, onShowAll }) {
+function GroupedList({ deals, phases, t, lang, f, isAdmin, activeId, setActive, canDrop, moveTo, followup, closed, setClosed, onAddLead, onShowAll }) {
   const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
   const order = [...phases.filter(p => p !== 'lost').reverse(), ...phases.filter(p => p === 'lost')]
   const groups = order.map(p => ({ p, rows: deals.filter(d => d.phase === p).sort((a, b) => String(b.last).localeCompare(String(a.last))) })).filter(g => g.rows.length)
   const toggle = p => setClosed(cur => { const next = new Set(cur); next.has(p) ? next.delete(p) : next.add(p); return next })
-  const next = d => d.phase === 'approved' ? <span className="fn-badge is-approved">✓ {t.quoteApproved}</span>
+  const next = d => d.expired ? <ExpiredBadge d={d} lang={lang} onFollowup={followup} />
+    : d.phase === 'approved' ? <span className="fn-badge is-approved">✓ {t.quoteApproved}</span>
     : d.phase === 'contract' ? <span className="fn-badge is-contract">{t.contractStatus[d.submissions[0]?.status] || '—'}</span>
     : d.info && !['active', 'lost'].includes(d.phase) && ['overdue', 'today'].includes(d.info.status) ? <FollowupChip info={d.info} f={f} />
     : d.info?.next ? <span className="fn-muted">{shortDay(d.info.next)}</span> : <span className="fn-muted">—</span>
@@ -148,13 +161,22 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
   // Phone: the phase on screen (the first one with clients until the seller picks one).
   const focused = phases.includes(focus) ? focus : (phases.find(p => byPhase[p].length) || 'lead')
 
-  const canDrop = phase => Boolean(DROP_STAGE[phase]) || (isAdmin && (phase === 'approved' || phase === 'lost'))
+  // Shortcut: a client who closes right after the first contact goes straight to "Approved" (next step: contract).
+  const canDrop = phase => Boolean(DROP_STAGE[phase]) || phase === 'approved' || (isAdmin && phase === 'lost')
   const moveTo = async (deal, phase) => {
     if (!deal || deal.phase === phase || !canDrop(phase)) return
     const stage = DROP_STAGE[phase] || (phase === 'approved' ? 'won' : 'lost')
     try {
       await salesPost('/api/sales-data', { action: 'save-lead', id: deal.lead.id, lead: { stage, company_name: deal.lead.company_name } }, lang)
-      toast.success(t.moved(t.phases[phase]))
+      toast.success(deal.quoteValue ? `${t.moved(t.phases[phase])} · ${yen(deal.quoteValue)}` : t.moved(t.phases[phase]))
+      await onChanged?.()
+      if (phase === 'approved') setActive(deal.lead.id) // open the client page to generate the contract
+    } catch (e) { toast.error(e.message) }
+  }
+  const followup = async deal => {
+    try {
+      await salesPost('/api/sales-data', { action: 'save-lead', id: deal.lead.id, lead: { next_followup_date: today, company_name: deal.lead.company_name } }, lang)
+      toast.success(pickLang(lang, 'Follow-up set for today', '今日のフォローを設定しました', 'Follow-up marcado para hoje'))
       await onChanged?.()
     } catch (e) { toast.error(e.message) }
   }
@@ -186,7 +208,7 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
             {byPhase[p].map(d => <div key={d.lead.id} className="fn-card-wrap"><button type="button" className={`fn-card${activeId === d.lead.id ? ' is-open' : ''}`} draggable onDragStart={() => setDragId(d.lead.id)} onDragEnd={() => { setDragId(''); setDropPhase('') }} onClick={() => setActive(d.lead.id)}>
               <span className="fn-card-top"><span className="fn-avatar" aria-hidden="true">{initials(d.lead.site_name || d.lead.company_name)}</span><span className="fn-card-text"><strong>{d.lead.site_name || d.lead.company_name}</strong><small>{[d.lead.region, isAdmin ? d.seller : d.lead.contact_name].filter(Boolean).join(' · ')}</small></span></span>
               <span className="fn-card-foot"><span>{t.contacts(d.contactsCount)}</span>{d.value > 0 && <b>{yen(d.value)}</b>}<span>{shortDay(d.last)}</span></span>
-              {d.phase === 'approved' ? <span className="fn-badge is-approved">✓ {t.quoteApproved}</span> : d.phase === 'contract' ? <span className="fn-badge is-contract">{t.contractStatus[d.submissions[0]?.status] || ''}</span> : d.info && !['active', 'lost'].includes(d.phase) && ['overdue', 'today'].includes(d.info.status) && <FollowupChip info={d.info} f={f} />}
+              {d.expired ? <ExpiredBadge d={d} lang={lang} onFollowup={followup} /> : d.phase === 'approved' ? <span className="fn-badge is-approved">✓ {t.quoteApproved}</span> : d.phase === 'contract' ? <span className="fn-badge is-contract">{t.contractStatus[d.submissions[0]?.status] || ''}</span> : d.info && !['active', 'lost'].includes(d.phase) && ['overdue', 'today'].includes(d.info.status) && <FollowupChip info={d.info} f={f} />}
             </button>
               {phone && phases.some(x => x !== d.phase && canDrop(x)) && <div className="fn-move">
                 <select aria-label={t.moveTo} value="" onChange={e => moveTo(d, e.target.value)}>
@@ -202,7 +224,7 @@ export default function SalesFunnel({ data, lang, today, isAdmin = false, onChan
       </div>
       <p className="fn-hint">{phone ? t.moveHint : t.dragHint}</p>
     </> : !phone ? <GroupedList deals={listRows} phases={phases} t={t} lang={lang} f={f} isAdmin={isAdmin} activeId={activeId} setActive={setActive}
-      canDrop={canDrop} moveTo={moveTo} closed={closed} setClosed={setClosed} onAddLead={onAddLead} onShowAll={listPhase ? () => setListPhase('') : null} /> : <div className="fn-list">
+      canDrop={canDrop} moveTo={moveTo} followup={followup} closed={closed} setClosed={setClosed} onAddLead={onAddLead} onShowAll={listPhase ? () => setListPhase('') : null} /> : <div className="fn-list">
       {listRows.length === 0 && <div className="fn-list-empty">
         <p className="fn-empty">{listPhase ? `${t.phases[listPhase]} · ${t.empty}` : t.empty}</p>
         {listPhase && <button type="button" className="fn-col-add is-list" onClick={() => setListPhase('')}>{t.showAll}</button>}
