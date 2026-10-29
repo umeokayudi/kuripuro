@@ -2628,6 +2628,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
   const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
   // v1.0.96 · any pending job opens and can be started; by default the next one in the day's order is open.
   const [openId, setOpenId] = useState(null)
+  const [reorderOpen, setReorderOpen] = useState(false)
   useEffect(() => { if (focusJobId) { setOpenId(focusJobId); setTimeout(() => document.getElementById(`job-card-${focusJobId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250) } }, [focusJobId])
   const firstNextId = activeJob ? null : todayQueue.find((j, idx) => j.status === 'assigned' && todayQueue.slice(0, idx).every(x => x.status === 'completed' || x.status === 'cancelled' || isOverdueAssignedJob(x)))?.id
   const expandedId = activeJob ? null : (openId && todayQueue.some(j => j.id === openId && j.status === 'assigned') ? openId : firstNextId)
@@ -2734,6 +2735,35 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
         </div>
       </div>}
 
+      {/* v1.0.102 · the employee changes the order of today's services; the admin sees the same order. */}
+      {onMoveJob&&movableIds.length>1&&(
+        <div className="emp-reorder">
+          {!reorderOpen ? (
+            <button type="button" className="emp-reorder-open" onClick={()=>setReorderOpen(true)}>
+              ↕ {L('Change the order of my day','今日の順番を変える','Mudar a ordem do meu dia')}
+            </button>
+          ) : (
+            <>
+              <div className="emp-reorder-head">
+                <b>↕ {L('Order of my day','今日の順番','Ordem do meu dia')}</b>
+                <button type="button" className="emp-reorder-done" onClick={()=>setReorderOpen(false)}>{L('Done','完了','Pronto')}</button>
+              </div>
+              <p className="emp-reorder-hint">{L('Use the arrows. The office sees the same order.','矢印で並べ替え。事務所にも同じ順番が表示されます。','Use as setas. O escritório vê a mesma ordem.')}</p>
+              <ol className="emp-reorder-list">
+                {todayQueue.filter(j=>movableIds.includes(j.id)).map((job,i,arr)=>(
+                  <li key={job.id} className="emp-reorder-item">
+                    <span className="emp-reorder-n">{i+1}</span>
+                    <span className="emp-reorder-name"><b>{job.title.replace(/ — .*/,'')}</b><small>{String(job.scheduled_time||'').slice(0,5)||'—'}</small></span>
+                    <button type="button" className="emp-reorder-btn" disabled={reorderBusy||i===0} aria-label={labels?.moveUp||L('Move up','上へ','Subir')} onClick={()=>onMoveJob(job,-1)}>▲</button>
+                    <button type="button" className="emp-reorder-btn" disabled={reorderBusy||i===arr.length-1} aria-label={labels?.moveDown||L('Move down','下へ','Descer')} onClick={()=>onMoveJob(job,1)}>▼</button>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+        </div>
+      )}
+
       {!activeJob && total===0&&<div className="emp-shift-empty">
         <div className="emp-empty-icon">☀</div>
         <div className="emp-empty-kicker">{labels?.todayShift || 'Today'}</div>
@@ -2783,22 +2813,6 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                 </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
-                {onMoveJob&&movableIds.length>1&&movableIds.includes(job.id)&&(
-                  <div style={{display:'flex',flexDirection:'column',gap:4}}>
-                    {[[-1,'▲',labels?.moveUp||'Move up'],[1,'▼',labels?.moveDown||'Move down']].map(([dir,icon,label])=>{
-                      const pos = movableIds.indexOf(job.id)
-                      const edge = dir<0 ? pos===0 : pos===movableIds.length-1
-                      const off = reorderBusy || edge
-                      return (
-                        <button key={dir} type="button" disabled={off} aria-label={label} title={label} aria-hidden={edge||undefined}
-                          onClick={ev=>{ ev.stopPropagation(); onMoveJob(job, dir) }}
-                          style={{width:34,height:26,borderRadius:8,border:'1px solid rgba(255,255,255,0.14)',background:'rgba(255,255,255,0.06)',color:off?'rgba(255,255,255,0.18)':'#fff',fontSize:11,lineHeight:1,cursor:off?'default':'pointer',padding:0,visibility:edge?'hidden':'visible'}}>
-                          {icon}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
                 {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
                 {isDone&&<span style={{fontSize:10,color:'#4ade80',fontWeight:600}}>{L('View details','詳細を見る','Ver detalhes')} ›</span>}
                 {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:20,textDecoration:'none'}}>🗺</a>}

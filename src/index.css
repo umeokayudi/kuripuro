@@ -1970,3 +1970,20 @@ body { background: var(--hq-bg); }
 @media (max-width: 640px) { .fb-quote-form { grid-template-columns: 1fr; } }
 .client-seller-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: var(--text2); }
 .client-seller-row select { flex: 1; min-width: 0; max-width: 260px; }
+
+/* v1.0.102 · employee reorders the own day (My day) */
+.emp-reorder{margin:0 0 14px}
+.emp-reorder-open{width:100%;min-height:44px;border-radius:14px;border:1px solid #c9d4ea;background:#fff;color:#315cf5;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.emp-reorder:has(.emp-reorder-list){background:#fff;border:1px solid #e7ebf2;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+.emp-reorder-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.emp-reorder-head b{font-size:14px;color:#0f172a}
+.emp-reorder-done{min-height:40px;min-width:72px;border:0;border-radius:12px;background:#315cf5;color:#fff;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+.emp-reorder-hint{margin:4px 0 8px;font-size:12px;color:#475569}
+.emp-reorder-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.emp-reorder-item{display:flex;align-items:center;gap:8px;background:#f7f9fc;border:1px solid #e7ebf2;border-radius:12px;padding:6px 8px}
+.emp-reorder-n{flex-shrink:0;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#e8eeff;color:#315cf5;font-size:12px;font-weight:800}
+.emp-reorder-name{flex:1;min-width:0;display:flex;flex-direction:column}
+.emp-reorder-name b{font-size:13px;color:#0f172a;overflow-wrap:anywhere}
+.emp-reorder-name small{font-size:12px;color:#475569}
+.emp-reorder-btn{flex-shrink:0;width:44px;height:40px;border-radius:10px;border:1px solid #c9d4ea;background:#fff;color:#315cf5;font-size:14px;cursor:pointer}
+.emp-reorder-btn:disabled{opacity:.35;cursor:default}
