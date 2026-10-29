@@ -19,6 +19,7 @@ import {
 } from './cleaningType'
 import { checklistTemplateForJob } from './jobChecklist'
 import { tokyoToday } from './dates'
+import { tokyoTomorrow, validateShiftWindow, shiftWindowNote } from './nextDayShift'
 
 export { titleMatchesLocation }
 
@@ -90,7 +91,7 @@ export function pastServicePrefillFromJob(job) {
 }
 
 /** Build UI rows — respects basic vs deep as separate services */
-export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, cleaningType = 'basic') {
+export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, cleaningType = 'basic', { allowTransfer = true } = {}) {
   const jobs = todayJobs || []
   const active = jobs.filter(j => j.status === 'assigned' || j.status === 'in_progress')
   const completed = jobs.filter(j => j.status === 'completed')
@@ -126,6 +127,9 @@ export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, 
       j.status === 'assigned' &&
       !j.started_at
     )
+    if (other && !allowTransfer) {
+      return { location: loc, state: 'blocked', job: other, reason: 'planned' }
+    }
     if (other) {
       return {
         location: loc,
@@ -201,6 +205,7 @@ async function reassignJob(supabase, {
   fromEmployeeId,
   fromEmployeeName,
   actionLabel,
+  extraFields = {},
 }) {
   const nextSeq = await nextSequenceOrder(supabase, employee.id, date)
   const stamp = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).replace('T', ' ')
@@ -216,6 +221,7 @@ async function reassignJob(supabase, {
       value,
       checklist_template: checklist || job.checklist_template,
       sequence_order: nextSeq,
+      ...extraFields,
     })
     .eq('id', job.id)
     .eq('status', 'assigned')
@@ -242,8 +248,9 @@ async function reassignJob(supabase, {
 }
 
 /**
- * Employee adds a service for today.
+ * Employee adds a service for today, or plans one for tomorrow.
  * basic and deep are separate services at the same location.
+ * Tomorrow needs the employee's own start/end (ending by 09:00) and never takes a coworker's job.
  */
 export async function employeeAddService(supabase, {
   employee,
@@ -251,9 +258,20 @@ export async function employeeAddService(supabase, {
   date,
   cleaningType = 'basic',
   deepComponents = [],
+  shiftStart = null,
+  shiftEnd = null,
 }) {
   if (!employee?.id || !location?.name || !date) {
     return { ok: false, error: 'invalid_input' }
+  }
+
+  const isTomorrow = date === tokyoTomorrow()
+  if (date !== tokyoToday() && !isTomorrow) {
+    return { ok: false, error: 'invalid_date' }
+  }
+  if (isTomorrow) {
+    const shiftCheck = validateShiftWindow(shiftStart, shiftEnd)
+    if (!shiftCheck.ok) return { ok: false, error: shiftCheck.error }
   }
 
   if (cleaningType === 'basic' && (location.deepOnly || isOtpDeepOnlyLocation(location.name))) {
@@ -264,7 +282,12 @@ export async function employeeAddService(supabase, {
     return { ok: false, error: 'deep_components_required' }
   }
 
-  const { title, description, value, checklist } = buildJobPayload(location, { cleaningType, deepComponents })
+  const payload = buildJobPayload(location, { cleaningType, deepComponents })
+  const { title, value, checklist } = payload
+  const description = isTomorrow
+    ? [payload.description, shiftWindowNote(shiftStart, shiftEnd)].filter(Boolean).join('\n')
+    : payload.description
+  const timeFields = isTomorrow ? { scheduled_time: shiftStart } : {}
 
   const { data: myActive } = await supabase
     .from('jobs')
@@ -306,6 +329,7 @@ export async function employeeAddService(supabase, {
       fromEmployeeId: null,
       fromEmployeeName: null,
       actionLabel: 'assumiu serviço sem atribuição',
+      extraFields: timeFields,
     })
     if (!result.ok) return result
     return { ok: true, action: 'claimed', job: result.job }
@@ -317,6 +341,10 @@ export async function employeeAddService(supabase, {
     j.status === 'assigned' &&
     !j.started_at
   )
+
+  if (transferJob && isTomorrow) {
+    return { ok: false, error: 'blocked' }
+  }
 
   if (transferJob) {
     const result = await reassignJob(supabase, {
@@ -356,7 +384,7 @@ export async function employeeAddService(supabase, {
     client_id: location.clientId || null,
     client_name: location.clientName || 'On The Planet',
     scheduled_date: date,
-    scheduled_time: location.scheduledTime || '00:30',
+    scheduled_time: isTomorrow ? shiftStart : (location.scheduledTime || '00:30'),
     address: location.address || '',
     description,
     value,
