@@ -12,6 +12,7 @@ import { useLang, pickLang, localeOf } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient } from '../lib/spotContract'
 import { saveSpotContractWithInvoice } from '../lib/spotContractOps'
+import { notifyCreated } from '../lib/assignOps'
 import SellerCommissionFields from './SellerCommissionFields'
 import { splitChecklist } from '../lib/agenda'
 import { contractForPlace } from '../lib/places'
@@ -214,6 +215,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       spot_status: isSpot ? 'pending' : null,
     }).select().single()
     if (error) { setSaving(false); return toast.error(error.message) }
+    if (!isSpot) notifyCreated([inserted]).catch(() => {})
     toast.success(isSpot
       ? L('Spot job sent! Waiting for the employee to accept.', 'スポット送信！担当者の承認待ち', 'Spot enviado! Esperando o funcionário aceitar.')
       : L('Job created!', '作成しました！', 'Serviço criado!'))

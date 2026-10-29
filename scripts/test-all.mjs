@@ -10,6 +10,7 @@ const steps = [
   ['npm run test:client-care', 'client-care'],
   ['npm run test:availability', 'availability'],
   ['npm run test:schedule', 'schedule generator'],
+  ['npm run test:assign-flow', 'assign flow'],
   ['npm run test:sales-kpi', 'sales-kpi'],
   ['npm run test:sales-insights', 'sales-insights'],
   ['npm run test:mitsumori', 'mitsumori'],
