@@ -1,7 +1,7 @@
 export const kuripuroPtB = {
   jobVideo: {
     add: 'Adicionar vídeo (opcional)',
-    hint: 'Vídeo curto do serviço pronto · máx. 90 s, comprimido',
+    hint: 'Vídeo curto do serviço pronto · máx. 60 s, comprimido',
     compressing: 'Comprimindo vídeo… {pct}%',
     ready: 'Vídeo pronto · {size}',
     remove: 'Remover',
@@ -9,7 +9,7 @@ export const kuripuroPtB = {
     uploading: 'Enviando vídeo…',
     uploaded: 'Vídeo enviado',
     uploadFailed: 'Serviço salvo, mas o vídeo não foi enviado: {msg}',
-    tooLarge: 'Vídeo grande demais. Grave um vídeo mais curto (máx. ~90 segundos).',
+    tooLarge: 'Vídeo grande demais. Grave um vídeo mais curto (máx. ~60 segundos).',
     notVideo: 'Este arquivo não é um vídeo compatível.',
     title: 'Vídeo',
     show: 'Ver vídeo',

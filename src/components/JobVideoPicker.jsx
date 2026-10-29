@@ -28,7 +28,7 @@ export default function JobVideoPicker({ video, onPick, onRemove, labels = {} })
     <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: 12, color: video.status === 'ready' ? '#4ade80' : 'rgba(255,255,255,0.75)', fontWeight: 600 }}>
-          🎬 {video.status === 'ready' ? fill(L.ready || 'Video ready · {size}', { size: fmtSize(video.size || 0) }) : fill(L.compressing || 'Compressing… {pct}%', { pct })}
+          🎬 {video.status === 'ready' ? fill(L.ready || 'Video ready · {size}', { size: fmtSize(video.size || 0) }) : fill((video.slow && L.compressingSlow) || L.compressing || 'Compressing… {pct}%', { pct })}
         </span>
         <button type="button" onClick={onRemove} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(248,113,113,0.4)', background: 'transparent', color: '#f87171', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
           {L.remove || 'Remove'}
