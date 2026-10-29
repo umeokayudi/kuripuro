@@ -2,11 +2,27 @@
 .cm-root { position: absolute; inset: 0; z-index: 0; }
 .cm-map { position: absolute; inset: 0; isolation: isolate; background: #dfe6ee; }
 .cm-root button, .cm-root a { font: inherit; color: inherit; cursor: pointer; text-decoration: none; }
-.cm-root .leaflet-control-attribution { font-size: 10px; background: rgba(255,255,255,0.75); }
-.cm-root .leaflet-bottom.leaflet-right { margin-bottom: 4px; }
+.cm-map.off { background: linear-gradient(160deg, #e8edf4, #d6dee9); }
+.cm-map.off > * { visibility: hidden; }
 
-/* pinos */
-.cm-pin-wrap { background: none; border: 0; }
+/* sem chave do Google Maps (ou chave recusada): aviso claro, nunca mapa quebrado */
+.cm-nomap {
+  position: absolute; z-index: 20; left: 24px; right: 398px; top: 104px; display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px; border-radius: 14px; background: #fff; border: 1px solid #f3d27a; box-shadow: 0 6px 20px rgba(15,23,42,0.12); color: #0d1f35;
+}
+.cm-nomap > span { font-size: 26px; line-height: 1; }
+.cm-nomap strong { display: block; font-size: 15px; font-weight: 800; color: #92400e; }
+.cm-nomap small { display: block; margin-top: 3px; font-size: 13px; line-height: 1.45; color: #334155; }
+
+/* pinos (camada própria sobre o Google Maps) */
+.cm-gpins { position: absolute; left: 0; top: 0; }
+.cm-gpin { position: absolute; width: 0; height: 0; }
+.cm-cluster i { width: 32px; height: 32px; font-size: 14px; box-shadow: 0 0 0 5px rgba(59,130,246,0.25), 0 3px 10px rgba(0,0,0,0.35); }
+.cm-cluster.st-overdue i { box-shadow: 0 0 0 5px rgba(239,68,68,0.25), 0 3px 10px rgba(0,0,0,0.35); }
+.cm-cluster.st-due i, .cm-cluster.st-week i { box-shadow: 0 0 0 5px rgba(245,158,11,0.25), 0 3px 10px rgba(0,0,0,0.35); }
+.cm-cluster.st-ok i { box-shadow: 0 0 0 5px rgba(34,197,94,0.25), 0 3px 10px rgba(0,0,0,0.35); }
+.cm-cluster { transform: translate(-16px, -16px); }
+.cm-mpt { position: absolute; width: 14px; height: 14px; transform: translate(-7px, -7px); border-radius: 50%; background: #f59e0b; border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
 .cm-pin {
   position: absolute; left: 0; top: 0; transform: translate(-14px, -14px); display: flex; align-items: center; gap: 6px; white-space: nowrap;
   pointer-events: auto; cursor: pointer; font-family: inherit;
@@ -140,5 +156,6 @@
   .cm-panel.sheet:not(.open) { left: auto; right: 10px; bottom: 76px; border-radius: 16px; }
   .cm-panel.sheet.open { bottom: 0; }
   .cm-card { left: 0; right: 0; bottom: 0; width: auto; max-width: none; border-radius: 18px 18px 0 0; max-height: 70%; overflow-y: auto; }
-  .cm-root .leaflet-control-zoom { display: none; }
+  .cm-nomap { left: 10px; right: 10px; top: 128px; padding: 12px 14px; }
+  .cm-panel.sheet.nomap { max-height: calc(100% - 250px); }
 }
