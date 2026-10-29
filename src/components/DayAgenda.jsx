@@ -21,6 +21,7 @@ import ProgressChart from './ProgressChart'
 import JobVideos from './JobVideos'
 import JobPhotos from './JobPhotos'
 import PhotoLightbox from './PhotoLightbox'
+import KeyReveal from './KeyReveal'
 
 const STATUS_COLOR = { assigned: '#60a5fa', in_progress: '#f59e0b', completed: '#22c55e', cancelled: '#ef4444' }
 
@@ -427,7 +428,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
             {aiPending(job) && <span className="ag-badge" style={{ color: '#64748b' }}>IA …</span>}
           </div>
           {deep && deepTasksText(job.title, lang) && <div className="ag-meta" style={{ color: '#b7791f', fontWeight: 700 }}>✨ {deepTasksText(job.title, lang)}</div>}
-          {keyBox && <div className="ag-key">🔑 {keyBox}</div>}
+          {keyBox && <KeyReveal className="ag-key" value={keyBox} />}
         </div>
         <div className="ag-move">
           <button type="button" disabled={idx === 0} onClick={() => onNudge(job, colId, -1)} aria-label={tr('Move up', '上へ', 'Subir')}>▲</button>

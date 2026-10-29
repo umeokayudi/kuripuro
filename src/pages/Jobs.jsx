@@ -27,6 +27,7 @@ import '../components/agenda.css'
 import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
+import KeyReveal from '../components/KeyReveal'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
 } from '../lib/jobsPeriod'
@@ -293,9 +294,7 @@ export default function Jobs() {
               </div>
 
               {j.description && (
-                <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }}>
-                  🔑 {j.description.split('\n')[0]}
-                </div>
+                <KeyReveal value={j.description.split('\n')[0]} style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }} />
               )}
 
               {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (

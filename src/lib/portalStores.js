@@ -1,6 +1,13 @@
 import { SCHEDULE_CLIENTS, OTP_BASIC_LOCATIONS, ATOMIC_LOCATION } from './serviceCatalog'
 
-export const DEFAULT_PORTAL_PASSWORD = 'Kuripuro2026'
+// v1.0.96 · 8.1 no shared default password: each new store account gets its own password, shown
+// once to the admin after creating; existing accounts keep the password they already have.
+export function newPortalPassword() {
+  const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const bytes = new Uint8Array(10)
+  globalThis.crypto.getRandomValues(bytes)
+  return Array.from(bytes, b => abc[b % abc.length]).join('')
+}
 
 export function storeSlug(name) {
   return (name || '')
@@ -61,7 +68,7 @@ function resolveClientId(store, clients) {
 /** Create/update portal accounts + service_contracts for every store */
 export async function provisionAllStoreAccounts(supabase, clients = []) {
   const stores = getPortalStores()
-  const results = { created: 0, updated: 0, contracts: 0, skipped: 0, errors: [] }
+  const results = { created: 0, updated: 0, contracts: 0, skipped: 0, errors: [], passwords: [] }
 
   for (const store of stores) {
     const client = resolveClientId(store, clients)
@@ -87,7 +94,6 @@ export async function provisionAllStoreAccounts(supabase, clients = []) {
       location_name: store.location_name,
       contact_name: store.contact_name,
       email: store.email,
-      password: DEFAULT_PORTAL_PASSWORD,
       is_active: true,
     }
 
@@ -96,9 +102,10 @@ export async function provisionAllStoreAccounts(supabase, clients = []) {
       if (error) results.errors.push(`${store.location_name}: ${error.message}`)
       else results.updated++
     } else {
-      const { error } = await supabase.from('client_users').insert(userPayload)
+      const password = newPortalPassword()
+      const { error } = await supabase.from('client_users').insert({ ...userPayload, password })
       if (error) results.errors.push(`${store.location_name}: ${error.message}`)
-      else results.created++
+      else { results.created++; results.passwords.push({ store: store.location_name, email: store.email, password }) }
     }
 
     const { data: existingContract } = await supabase

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
-import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } from '../lib/portalStores'
+import { provisionAllStoreAccounts, getPortalStores } from '../lib/portalStores'
 import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 import ClientCareAdmin from '../components/ClientCareAdmin'
@@ -186,9 +186,10 @@ export default function Clients() {
     loadPortal(portalClientId)
   }
 
+  const [newPasswords, setNewPasswords] = useState(null) // shown once after creating store accounts
   const provisionAllStores = async () => {
     if (!portalSchemaOk) return toast.error('Primeiro rode o SQL no Supabase')
-    if (!(await askConfirm({ message: `Criar/atualizar ${getPortalStores().length} contas (On The Planet + Atomic)?\nSenha padrão: ${DEFAULT_PORTAL_PASSWORD}`, danger: false }))) return
+    if (!(await askConfirm({ message: `Criar/atualizar ${getPortalStores().length} contas (On The Planet + Atomic)?\nContas novas recebem senha própria; as existentes mantêm a senha atual.`, danger: false }))) return
     setBulkProvisionBusy(true)
     try {
       const results = await provisionAllStoreAccounts(supabase, clients)
@@ -196,6 +197,7 @@ export default function Clients() {
       if (results.errors.length) toast.error(`${results.errors.length} erros — veja console`)
       else toast.success(msg)
       if (results.errors.length) console.warn('Portal provision errors:', results.errors)
+      if (results.passwords.length) setNewPasswords(results.passwords)
       if (portalClientId) loadPortal(portalClientId)
     } catch (e) {
       toast.error(e.message)
@@ -428,10 +430,22 @@ export default function Clients() {
               <textarea readOnly value={PORTAL_SETUP_SQL} onClick={e => e.target.select()} style={{ width: '100%', height: 120, marginTop: 14, fontSize: 10, fontFamily: 'monospace', background: '#0a1525', color: '#94a3b8', border: '1px solid var(--border)', borderRadius: 8, padding: 10, boxSizing: 'border-box' }} />
             </div>
           )}
+          {newPasswords && (
+            <div className="card" style={{marginBottom:14,border:'1px solid var(--amber)'}}>
+              <div className="card-title">🔑 Senhas das contas novas — anote agora, não aparecem de novo</div>
+              <table style={{width:'100%',fontSize:13}}><tbody>
+                {newPasswords.map(p => <tr key={p.email}><td>{p.store}</td><td style={{color:'var(--text3)'}}>{p.email}</td><td><code>{p.password}</code></td></tr>)}
+              </tbody></table>
+              <div style={{display:'flex',gap:8,marginTop:10}}>
+                <button className="btn btn-sm" type="button" onClick={() => navigator.clipboard?.writeText(newPasswords.map(p => `${p.store}\t${p.email}\t${p.password}`).join('\n')).then(() => toast.success('Copiado'))}>📋 Copiar</button>
+                <button className="btn btn-sm btn-primary" type="button" onClick={() => setNewPasswords(null)}>Já anotei</button>
+              </div>
+            </div>
+          )}
           <div className="card" style={{marginBottom:14}}>
             <div className="card-title">🔐 Client Portal Accounts</div>
             <div style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>
-              Uma conta por loja. Login com <b>nome do local</b> ou email. Senha padrão: <code>{DEFAULT_PORTAL_PASSWORD}</code>
+              Uma conta por loja. Login com <b>nome do local</b> ou email. Cada loja tem a própria senha (para trocar, use ✎ na conta).
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
               <button className="btn btn-primary" onClick={provisionAllStores} disabled={bulkProvisionBusy || !portalSchemaOk} type="button">
