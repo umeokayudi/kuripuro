@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
+import { askConfirm } from '../components/ConfirmDialog'
 
 // v1.0.35 · Business partners (parceiros de negócio) — table business_partners.
 // Companies and people the business works with that are not clients, employees or sellers.
@@ -112,7 +113,7 @@ export default function Partners() {
   }
 
   const remove = async p => {
-    if (!window.confirm(t.confirmDelete(p.name))) return
+    if (!(await askConfirm({ message: t.confirmDelete(p.name), danger: true }))) return
     const { error } = await supabase.from('business_partners').delete().eq('id', p.id)
     if (error) return toast.error(error.message)
     toast.success(t.deleted)

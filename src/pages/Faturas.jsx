@@ -7,6 +7,7 @@ import { dueDateAfter } from '../lib/spotContract'
 import { useLang, fill } from '../hooks/useLang'
 import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAutomation'
 import { ClientLink } from '../components/ClientSheetHost'
+import { askConfirm } from '../components/ConfirmDialog'
 
 export default function Faturas() {
   const [searchParams] = useSearchParams()
@@ -195,7 +196,7 @@ export default function Faturas() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm(inv.deleteConfirm)) return
+    if (!(await askConfirm({ message: inv.deleteConfirm, danger: true }))) return
     await supabase.from('faturas').delete().eq('id', id)
     toast(inv.deleted); load()
   }

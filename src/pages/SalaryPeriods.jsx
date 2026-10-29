@@ -6,6 +6,7 @@ import { closeSalaryPeriod } from '../lib/salaryClose'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { useSearchParams } from 'react-router-dom'
 import { useLang, fill } from '../hooks/useLang'
+import { askConfirm } from '../components/ConfirmDialog'
 
 export default function SalaryPeriods() {
   const { t } = useLang()
@@ -38,7 +39,7 @@ export default function SalaryPeriods() {
 
   const closeMonth = async (period) => {
     const { confirmDeadline, payDate } = getPeriodDates(period)
-    if (!window.confirm(fill(p.closeConfirm, { period: fmtPeriod(period), deadline: confirmDeadline, payDate }))) return
+    if (!(await askConfirm({ message: fill(p.closeConfirm, { period: fmtPeriod(period), deadline: confirmDeadline, payDate }), danger: false }))) return
     setClosing(true)
     try {
       await closeSalaryPeriod(supabase, period, { salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(period) }) })
@@ -62,8 +63,8 @@ export default function SalaryPeriods() {
     loadPeriods()
   }
 
-  const reopen = (period) => {
-    if (!window.confirm(fill(p.reopenConfirm, { period: fmtPeriod(period) }))) return
+  const reopen = async (period) => {
+    if (!(await askConfirm({ message: fill(p.reopenConfirm, { period: fmtPeriod(period) }), danger: true }))) return
     setPeriodStatus(period, 'open', fill(p.reopened, { period: fmtPeriod(period) }))
   }
 

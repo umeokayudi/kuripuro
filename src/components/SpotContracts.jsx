@@ -16,6 +16,7 @@ import { showPrintOverlay } from '../lib/openPrintHtml'
 import { googleCalendarUrl } from '../lib/calendar'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
+import { askConfirm } from './ConfirmDialog'
 
 // v1.0.21 · Contracts → Spot contracts: every spot job's contract with the location, stored.
 
@@ -131,7 +132,7 @@ export default function SpotContracts() {
   }
 
   const setStatus = async (c, status) => {
-    if (status === 'cancelled' && !confirm('Cancel this contract? Its draft invoice is cancelled too.')) return
+    if (status === 'cancelled' && !(await askConfirm({ message: 'Cancel this contract? Its draft invoice is cancelled too.', danger: true }))) return
     const patch = { status, approved_at: status === 'approved' ? new Date().toISOString() : null }
     const { error } = await supabase.from('spot_contracts').update(patch).eq('id', c.id)
     if (error) return toast.error(error.message)
@@ -197,7 +198,7 @@ export default function SpotContracts() {
   }
 
   const removeProof = async (c, path) => {
-    if (!confirm('Remove this photo from the contract?')) return
+    if (!(await askConfirm({ message: 'Remove this photo from the contract?', danger: true }))) return
     const next = (c.proof_photos || []).filter(p => p !== path)
     await supabase.from('spot_contracts').update({ proof_photos: next }).eq('id', c.id)
     load()

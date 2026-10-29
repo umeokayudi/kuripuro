@@ -12,6 +12,11 @@ import { saveContractPdf, contractPdfUrl } from '../lib/spotContractOps'
 import { sellerFields } from '../lib/spotContract'
 import { fetchContractSellers } from '../lib/contractSellers'
 import SellerCommissionFields from '../components/SellerCommissionFields'
+import { confirmAndRun } from '../components/ConfirmDialog'
+import SetupChain from '../components/SetupChain'
+import { splitChecklist } from '../lib/agenda'
+import { ensurePlaceForContract } from '../lib/places'
+import '../components/agenda.css'
 
 const NO_SELLER = { salesperson_id:'', salesperson_name:'', commission_type:null, commission_value:null, commission_amount:0 }
 
@@ -50,7 +55,8 @@ function RecurringContracts() {
   const loadClients = async () => {
     const { data } = await supabase.from('clients').select('*').eq('is_active',true).order('company_name')
     setClients(data||[])
-    if (data?.length>0) setSelectedClient(data[0].id)
+    const wanted = new URLSearchParams(window.location.search).get('client')
+    if (data?.length>0) setSelectedClient((data.find(c=>c.id===wanted)||data[0]).id)
   }
 
   const loadContracts = async (clientId) => {
@@ -58,7 +64,9 @@ function RecurringContracts() {
     setContracts(data||[])
   }
 
-  const upd = (k,v) => setForm(f=>({...f,[k]:v}))
+  const [errors, setErrors] = useState({})
+  const upd = (k,v) => { setForm(f=>({...f,[k]:v})); setErrors(e=>({ ...e, [k]: null })) }
+  const fieldErr = k => errors[k] && <div className="ag-field-error">{errors[k]}</div>
 
   const toggleDay = (d) => setForm(f=>({ ...f, days_of_week: f.days_of_week.includes(d) ? f.days_of_week.filter(x=>x!==d) : [...f.days_of_week, d] }))
 
@@ -72,10 +80,17 @@ function RecurringContracts() {
   const totalHours = visitsPerMonth * parseFloat(form.hours_per_visit||0)
 
   const handleSave = async () => {
-    if (!form.location_name||!selectedClient) return toast.error('Fill required fields')
+    const errs = {}
+    if (!selectedClient) errs.client = 'Pick the client first'
+    if (!form.location_name.trim()) errs.location_name = 'Location name is required'
+    if ((form.billing_type||'per_visit')==='per_visit' && !(parseFloat(form.price_per_visit) > 0)) errs.price_per_visit = 'Enter the price per visit'
+    if (form.billing_type==='fixed_monthly' && !(parseFloat(form.fixed_monthly) > 0)) errs.fixed_monthly = 'Enter the monthly amount'
+    if (!(parseFloat(form.hours_per_visit) > 0)) errs.hours_per_visit = 'Enter the hours per visit'
+    setErrors(errs)
+    if (Object.keys(errs).length) return
     const visits = calcVisits(form.days_of_week)
     const revenue = form.billing_type==='fixed_monthly' ? parseFloat(form.fixed_monthly||0) : visits * parseFloat(form.price_per_visit||0)
-    const payload = { client_id:selectedClient, ...form, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, area:(form.area||'').trim()||null, monthly_revenue:revenue }
+    const payload = { client_id:selectedClient, ...form, location_name:form.location_name.trim(), training_checklist:splitChecklist(form.training_checklist).join('\n')||null, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, area:(form.area||'').trim()||null, monthly_revenue:revenue }
     // Seller of this location: monthly commission (salesperson_name is only on spot contracts).
     Object.assign(payload, sellerFields(form))
     delete payload.salesperson_name
@@ -89,6 +104,8 @@ function RecurringContracts() {
       if (error) return toast.error(error.message)
       toast.success('Contract added!')
     }
+    // Every contract store is also a place in the single registry (Jobs → Places).
+    await ensurePlaceForContract(supabase, payload)
 
     // Update client monthly_revenue
     const { data: allContracts } = await supabase.from('service_contracts').select('monthly_revenue').eq('client_id',selectedClient).eq('is_active',true)
@@ -107,9 +124,14 @@ function RecurringContracts() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Remove this location?')) return
-    await supabase.from('service_contracts').update({ is_active:false }).eq('id',id)
-    toast('Removed.')
+    const c = contracts.find(x=>x.id===id)
+    const ok = await confirmAndRun({
+      title: 'Remove this contract?',
+      message: `${c?.location_name||''}\nThe place stays in the registry; past jobs and invoices are kept.`,
+      confirmLabel: 'Remove', success: 'Contract removed',
+      run: () => supabase.from('service_contracts').update({ is_active:false }).eq('id',id),
+    })
+    if (!ok) return
     loadContracts(selectedClient)
     // Recalculate client revenue
     const { data } = await supabase.from('service_contracts').select('monthly_revenue').eq('client_id',selectedClient).eq('is_active',true).neq('id',id)
@@ -149,6 +171,7 @@ function RecurringContracts() {
 
   return (
     <div>
+      <SetupChain current="contract" clientId={selectedClient} />
       {details && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={()=>setDetails(null)}>
           <div className="card" style={{ width:'min(680px,100%)', maxHeight:'92vh', overflowY:'auto' }} onClick={e=>e.stopPropagation()}>
@@ -198,7 +221,7 @@ function RecurringContracts() {
             <div className="card" style={{marginBottom:16,border:'1px solid var(--navy)'}}>
               <div className="card-title">{editing?'Edit Location':'New Location'}</div>
               <div className="grid-2">
-                <div className="form-group"><label>Location Name *</label><input value={form.location_name} onChange={e=>upd('location_name',e.target.value)} placeholder="Atomic Bar" /></div>
+                <div className="form-group"><label>Location Name *</label><input className={errors.location_name?'ag-invalid':''} value={form.location_name} onChange={e=>upd('location_name',e.target.value)} placeholder="Atomic Bar" />{fieldErr('location_name')}{fieldErr('client')}</div>
                 <div className="form-group"><label>Area / zone</label><input list="kp-areas" value={form.area||''} onChange={e=>upd('area',e.target.value)} placeholder="Shinbashi" /><datalist id="kp-areas">{[...new Set(contracts.map(c=>c.area).filter(Boolean))].sort().map(a=><option key={a} value={a} />)}</datalist></div>
                 <div className="form-group"><label>Service Type</label>
                   <select value={form.service_type} onChange={e=>upd('service_type',e.target.value)}>
@@ -211,9 +234,9 @@ function RecurringContracts() {
                     <option value="fixed_monthly">Fixed Monthly</option>
                   </select>
                 </div>
-                {(form.billing_type||'per_visit')==='per_visit'&&<div className="form-group"><label>Price per Visit (¥)</label><input type="number" value={form.price_per_visit} onChange={e=>upd('price_per_visit',e.target.value)} /></div>}
-                {form.billing_type==='fixed_monthly'&&<div className="form-group"><label>Fixed Monthly (¥)</label><input type="number" value={form.fixed_monthly||0} onChange={e=>upd('fixed_monthly',e.target.value)} /></div>}
-                <div className="form-group"><label>Hours per Visit</label><input type="number" step="0.5" value={form.hours_per_visit} onChange={e=>upd('hours_per_visit',e.target.value)} /></div>
+                {(form.billing_type||'per_visit')==='per_visit'&&<div className="form-group"><label>Price per Visit (¥)</label><input type="number" className={errors.price_per_visit?'ag-invalid':''} value={form.price_per_visit} onChange={e=>upd('price_per_visit',e.target.value)} />{fieldErr('price_per_visit')}</div>}
+                {form.billing_type==='fixed_monthly'&&<div className="form-group"><label>Fixed Monthly (¥)</label><input type="number" className={errors.fixed_monthly?'ag-invalid':''} value={form.fixed_monthly||0} onChange={e=>upd('fixed_monthly',e.target.value)} />{fieldErr('fixed_monthly')}</div>}
+                <div className="form-group"><label>Hours per Visit</label><input type="number" step="0.5" className={errors.hours_per_visit?'ag-invalid':''} value={form.hours_per_visit} onChange={e=>upd('hours_per_visit',e.target.value)} />{fieldErr('hours_per_visit')}</div>
                 <div className="form-group"><label>Discount (%)</label><input type="number" min="0" max="100" step="0.1" value={form.discount_percent||0} onChange={e=>upd('discount_percent',e.target.value)} /></div>
                 <div className="form-group"><label>Tax (%)</label><select value={form.tax_rate??10} onChange={e=>upd('tax_rate',e.target.value)}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select></div>
                 <div className="form-group"><label>Price includes tax?</label><select value={String(form.price_includes_tax !== false)} onChange={e=>upd('price_includes_tax',e.target.value==='true')}><option value="true">Yes</option><option value="false">No</option></select></div>

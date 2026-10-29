@@ -39,3 +39,23 @@ export function contractForPlace(place, cleaningType = 'basic') {
   return list.find(c => key(c.location_name) === key(place.name) && c.location_name.trim().toLowerCase() === place.name.trim().toLowerCase())
     || list.find(c => !isDeep(c) && !/ — /.test(c.location_name)) || list[0]
 }
+
+/**
+ * Saving a contract makes sure its store exists in the place registry (Person → Client → Place → Contract).
+ * Returns the place id, or null when it could not be created. An existing place only gets its client filled in.
+ */
+export async function ensurePlaceForContract(supabase, contract) {
+  const name = storeName(contract?.location_name)
+  if (!name) return null
+  const { data: found } = await supabase.from('locations').select('id,name,client_id,is_active')
+  const same = (found || []).filter(l => key(l.name) === key(name))
+  const place = same.find(l => l.is_active !== false) || same[0] // a removed place stays removed
+  if (place) {
+    if (!place.client_id && contract.client_id) await supabase.from('locations').update({ client_id: contract.client_id }).eq('id', place.id)
+    return place.id
+  }
+  const { data, error } = await supabase.from('locations')
+    .insert({ name, address: contract.location_address || '', location_type: 'fixed', client_id: contract.client_id || null })
+    .select('id').maybeSingle()
+  return error ? null : data?.id || null
+}

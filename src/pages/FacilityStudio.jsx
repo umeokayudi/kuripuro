@@ -69,6 +69,7 @@ import FacilityScene from '../components/facility/FacilityScene'
 import { StatusLegend, ViewModeChips, WorldView } from '../components/facility/FacilityViewer'
 import FacilityItemPopup, { RecommendationCard } from '../components/facility/FacilityItemPopup'
 import CareList from '../components/facility/CareList'
+import { askConfirm } from '../components/ConfirmDialog'
 
 const COLLECTION = { area: 'areas', element: 'elements', wall: 'walls' }
 
@@ -421,8 +422,8 @@ export default function FacilityStudio({ clients, initialClientId }) {
   const templateThumbs = useMemo(() => Object.fromEntries(STORE_TEMPLATES.map(tpl => [tpl.id, buildTemplate(tpl, { lang, fill: false })])), [lang])
   const previews = useMemo(() => Object.fromEntries(PLAN_PRESETS.map(p => [p, generatePlan({ width: plan.width, depth: plan.depth, preset: p, rooms: plan.rooms, lang })])), [plan.width, plan.depth, plan.rooms, lang])
 
-  const buildPlan = () => {
-    if (hasContent && !confirm(t.replaceConfirm)) return
+  const buildPlan = async () => {
+    if (hasContent && !(await askConfirm({ message: t.replaceConfirm, danger: true }))) return
     let l = generatePlan({ width: plan.width, depth: plan.depth, preset: plan.preset, rooms: plan.rooms, lang })
     if (plan.upper) l = addUpperFloor(l, plan.upper, { lang, fill: plan.fill })
     if (plan.fill) l = fillLevel(l, 0, lang)
@@ -434,8 +435,8 @@ export default function FacilityStudio({ clients, initialClientId }) {
   }
 
   /** Modelo pronto: um toque e a loja inteira já aparece (cômodos, equipamentos e andar de cima). */
-  const buildFromTemplate = (tpl) => {
-    if (hasContent && !confirm(t.replaceConfirm)) return
+  const buildFromTemplate = async (tpl) => {
+    if (hasContent && !(await askConfirm({ message: t.replaceConfirm, danger: true }))) return
     const l = buildTemplate(tpl, { lang })
     updateModel({ layout: l })
     setPlan(p => ({ ...p, width: tpl.width, depth: tpl.depth, preset: tpl.preset, rooms: { ...tpl.rooms }, upper: tpl.upper || null }))
@@ -453,8 +454,8 @@ export default function FacilityStudio({ clients, initialClientId }) {
     setLevel(1)
     toast.success(t.floorAdded)
   }
-  const removeFloor = () => {
-    if (!confirm(t.removeFloorConfirm)) return
+  const removeFloor = async () => {
+    if (!(await askConfirm({ message: t.removeFloorConfirm, danger: true }))) return
     updateModel({ layout: removeUpperFloors(current.layout) })
     setSelected(null)
     setLevel(0)
@@ -581,7 +582,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
 
   const generateAi = async () => {
     if (!current.photos.length) return toast.error(t.step1Hint)
-    if (hasContent && !confirm(t.replaceConfirm)) return
+    if (hasContent && !(await askConfirm({ message: t.replaceConfirm, danger: true }))) return
     setBusy('ai')
     try {
       const resp = await apiPost('/api/admin-ai', {
@@ -661,8 +662,8 @@ export default function FacilityStudio({ clients, initialClientId }) {
     setBusy('')
   }
 
-  const useTemplate = () => {
-    if (hasContent && !confirm(t.replaceConfirm)) return
+  const useTemplate = async () => {
+    if (hasContent && !(await askConfirm({ message: t.replaceConfirm, danger: true }))) return
     updateModel({ layout: restaurantTemplate(current.layout.width, current.layout.depth) })
     setSelected(null)
   }
@@ -670,7 +671,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
   const toggleApprove = () => persist({ ...current, status: current.status === 'approved' ? 'draft' : 'approved' })
 
   const removeModel = async () => {
-    if (!confirm(t.deleteConfirm)) return
+    if (!(await askConfirm({ message: t.deleteConfirm, danger: true }))) return
     try {
       await deleteModel(current.id)
       setModels(ms => ms.filter(m => m.id !== current.id))

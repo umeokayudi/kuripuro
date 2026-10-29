@@ -3,10 +3,9 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang, fill, localeOf } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
-import { roleInfo } from '../lib/employeeRoles'
+import { roleInfo, roleCan } from '../lib/employeeRoles'
 
 // Roles that never get cleaning routes from the generator.
-const NO_ROUTE_ROLES = ['office']
 
 function addDaysStr(d, n) {
   const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10)
@@ -112,10 +111,10 @@ export default function ScheduleGenerator() {
   const teamIds = useMemo(() => {
     const valid = new Set(employees.map(e => e.id))
     const ids = team ? team.filter(id => valid.has(id)) : defaultScheduleEmployees(employees).map(e => e.id)
-    return new Set(ids.filter(id => !NO_ROUTE_ROLES.includes(employees.find(e => e.id === id)?.job_role)))
+    return new Set(ids.filter(id => roleCan(employees.find(e => e.id === id)?.job_role, 'routes')))
   }, [team, employees])
   // Active people not in the schedule (e.g. just hired): shown with a warning, never silently.
-  const outOfTeam = useMemo(() => employees.filter(e => !teamIds.has(e.id) && !NO_ROUTE_ROLES.includes(e.job_role)), [employees, teamIds])
+  const outOfTeam = useMemo(() => employees.filter(e => !teamIds.has(e.id) && roleCan(e.job_role, 'routes')), [employees, teamIds])
   const teamEmployees = useMemo(() => employees.filter(e => teamIds.has(e.id)), [employees, teamIds])
 
   const colorOf = useMemo(() =>
@@ -301,13 +300,13 @@ export default function ScheduleGenerator() {
                   <tr key={e.id} style={{ borderTop: '1px solid var(--border)', opacity: inTeam ? 1 : 0.45 }}>
                     <td style={{ position: 'sticky', left: 0, background: 'var(--surface)', padding: '6px 8px', whiteSpace: 'nowrap' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={inTeam} disabled={NO_ROUTE_ROLES.includes(e.job_role)} onChange={() => toggleTeam(e.id)} />
+                        <input type="checkbox" checked={inTeam} disabled={!roleCan(e.job_role, 'routes')} onChange={() => toggleTeam(e.id)} />
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: colorOf[e.id] }} />
                         <span style={{ fontWeight: 600 }}>{e.full_name}</span>
                         {roleInfo(e.job_role, lang) && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, color: roleInfo(e.job_role, lang).color, background: roleInfo(e.job_role, lang).bg }}>{roleInfo(e.job_role, lang).label}</span>}
                       </label>
-                      {NO_ROUTE_ROLES.includes(e.job_role) && <div style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 22 }}>{tr('Role without cleaning routes', '清掃ルートなしの役割', 'Função sem rotas de limpeza')}</div>}
-                      {!inTeam && !NO_ROUTE_ROLES.includes(e.job_role) && <div style={{ fontSize: 10, color: '#b45309', marginLeft: 22, fontWeight: 700 }}>⚠️ {tr('Not in the schedule', 'スケジュール対象外', 'Fora da escala')}</div>}
+                      {!roleCan(e.job_role, 'routes') && <div style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 22 }}>{tr('Role without cleaning routes', '清掃ルートなしの役割', 'Função sem rotas de limpeza')}</div>}
+                      {!inTeam && roleCan(e.job_role, 'routes') && <div style={{ fontSize: 10, color: '#b45309', marginLeft: 22, fontWeight: 700 }}>⚠️ {tr('Not in the schedule', 'スケジュール対象外', 'Fora da escala')}</div>}
                       {inTeam && marks === 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 22 }}>{s.noMarks}</div>}
                     </td>
                     {calDays.map(d => {

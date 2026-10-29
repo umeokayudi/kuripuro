@@ -77,6 +77,7 @@ import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib
 import { aiIssuesText } from '../lib/photoAi'
 import { askConfirm } from '../components/ConfirmDialog'
 import AfterPhotoLater from '../components/AfterPhotoLater'
+import TeamDay from '../components/TeamDay'
 import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate } from '../lib/agenda'
 import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
 import { quickRoundEnabledFor } from '../lib/quickRound'
@@ -765,7 +766,7 @@ export default function EmployeePortal() {
       'Reset this job so you can start fresh? (Timer will be cleared)',
       'この作業をリセットして最初からやり直しますか？（開始時刻が消えます）',
       'Reiniciar este serviço para começar de novo? (O cronômetro será zerado)')
-    if (!window.confirm(msg)) return
+    if (!(await askConfirm({ message: msg, danger: false }))) return
     setSubmitting(true)
     try {
       const { error } = await supabase.from('jobs').update({
@@ -1014,9 +1015,9 @@ export default function EmployeePortal() {
       }
       const gpsResult = await checkGPS(job)
       if (gpsResult.override) {
-        const proceed = window.confirm(gpsResult.dist!=null
+        const proceed = (await askConfirm({ message: gpsResult.dist!=null
           ? fill(L('⚠️ GPS shows you are {m} from the location.\n\nProceed anyway? This will be logged in the report.', '⚠️ GPSでは現場から{m}離れています。\n\nこのまま続けますか？報告書に記録されます。', '⚠️ O GPS mostra que você está a {m} do local.\n\nContinuar mesmo assim? Isso ficará registrado no relatório.'), { m: formatDistance(gpsResult.dist) })
-          : L('⚠️ GPS could not confirm you are at the location.\n\nProceed anyway? This will be logged in the report.', '⚠️ GPSで現場にいることを確認できませんでした。\n\nこのまま続けますか？報告書に記録されます。', '⚠️ O GPS não confirmou que você está no local.\n\nContinuar mesmo assim? Isso ficará registrado no relatório.'))
+          : L('⚠️ GPS could not confirm you are at the location.\n\nProceed anyway? This will be logged in the report.', '⚠️ GPSで現場にいることを確認できませんでした。\n\nこのまま続けますか？報告書に記録されます。', '⚠️ O GPS não confirmou que você está no local.\n\nContinuar mesmo assim? Isso ficará registrado no relatório.'), danger: false }))
         if (!proceed) { setGpsStatus(''); return }
       }
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
@@ -2116,6 +2117,7 @@ export default function EmployeePortal() {
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
           {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
           <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
+          <TeamDay userId={user.id} L={L} />
           </section>
         )}
 

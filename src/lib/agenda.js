@@ -1,6 +1,8 @@
 // Agenda do Dia: pure helpers shared by the admin Agenda, Live Track, Reports and the employee timer.
 import { getCleaningType, locationNameFromTitle } from './cleaningType'
-import { checklistTemplateForJob, parseChecklistTemplate } from './jobChecklist'
+import { checklistTemplateForJob, parseChecklistTemplate, splitChecklist } from './jobChecklist'
+
+export { splitChecklist }
 import { isMissedJob, hoursPastScheduled, tokyoDateString } from './jobOverdue'
 
 export const DEFAULT_AGENDA_SETTINGS = { tolerance_min: 30, cap_factor: 2 }
@@ -41,14 +43,6 @@ export function agendaChecklistItems(job, { place, contract } = {}) {
   const fromPlace = splitChecklist(place?.checklist)
   if (fromPlace.length) return fromPlace
   return splitChecklist(contract?.training_checklist)
-}
-
-/** One item per line; also splits old one-line lists saved as "a; b; c" or "• a • b". */
-export function splitChecklist(text) {
-  if (!text) return []
-  const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean)
-  const parts = lines.length === 1 && /[;•]/.test(lines[0]) ? lines[0].split(/[;•]/) : lines
-  return parts.map(l => l.replace(/^[-*•\d.)\s]+/, '').trim()).filter(Boolean)
 }
 
 /** Which checklist items are done, from the job's saved counters and missed list. */

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { EMPLOYEE_ROLES, isPresetRole, roleInfo } from '../lib/employeeRoles'
+import { EMPLOYEE_ROLES, isPresetRole, roleInfo, PERMISSION_LABELS, roleCan } from '../lib/employeeRoles'
 import { pickLang } from '../hooks/useLang'
 
 export function RoleBadge({ value, lang = 'en', size = 'md' }) {
@@ -46,6 +46,12 @@ export function RolePicker({ value, onChange, lang = 'en' }) {
         <input style={{ marginTop: 8 }} value={isPresetRole(current) ? '' : current} onChange={e => onChange(e.target.value)} placeholder={t.custom} maxLength={40} />
       )}
       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>{t.hint}</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+        {Object.keys(PERMISSION_LABELS).map(p => {
+          const on = roleCan(current, p)
+          return <span key={p} style={{ fontSize: 11, fontWeight: 600, color: on ? '#0f7a52' : 'var(--text3)' }}>{on ? '✓' : '✕'} {pickLang(lang, PERMISSION_LABELS[p].en, PERMISSION_LABELS[p].ja, PERMISSION_LABELS[p].pt)}</span>
+        })}
+      </div>
     </div>
   )
 }

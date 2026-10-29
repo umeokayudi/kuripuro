@@ -6,6 +6,7 @@ import {
   loadRound, saveRound, newRound, segmentStart, quickRoundRows, completeQuickRow, undoQuickRow,
 } from '../lib/quickRound'
 import './QuickRound.css'
+import { askConfirm } from './ConfirmDialog'
 
 // Always in Portuguese: this mode exists only for the owner's own account.
 const ERRORS = {
@@ -48,8 +49,8 @@ export default function QuickRound({ user, allJobs, onChanged }) {
 
   const start = () => setRound(newRound())
 
-  const finish = () => {
-    if (!window.confirm('Encerrar a rodada?')) return
+  const finish = async () => {
+    if (!(await askConfirm({ message: 'Encerrar a rodada?', danger: true }))) return
     setRound(r => ({ ...r, endedAt: new Date().toISOString() }))
   }
 

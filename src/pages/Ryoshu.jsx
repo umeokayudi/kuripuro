@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
+import { askConfirm } from '../components/ConfirmDialog'
 
 export default function Ryoshu() {
   const { t, lang, tr } = useLang()
@@ -52,7 +53,7 @@ export default function Ryoshu() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this receipt?')) return
+    if (!(await askConfirm({ message: 'Delete this receipt?', danger: true }))) return
     await supabase.from('ryoshu').delete().eq('id', id)
     toast('Deleted.'); load()
   }

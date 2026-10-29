@@ -139,7 +139,10 @@ export default function EmployeeProfile() {
     const team = await supabase.from('employees').select('id,full_name,leader_id,is_active').order('full_name')
     if (team.error) setPeople(null)
     else { setPeople(team.data || []); setLeaderId((team.data || []).find(x => x.id === id)?.leader_id || '') }
-    setEmp(e.data); setForm(e.data||{})
+    // Edit form: every saved column (the header query above is a short list), never the password itself.
+    const full = await supabase.from('employees').select('*').eq('id', id).maybeSingle()
+    const { password: _pw, ...saved } = full.data || e.data || {}
+    setEmp(e.data ? { ...e.data, ...saved } : null); setForm(saved)
     setWorkDays(e.data?.work_days ? JSON.parse(e.data.work_days) : [])
     setJobs(j.data||[]); setEvals(ev.data||[])
     setPayments(p.data||[]); setAdvances(adv.data||[])
@@ -151,7 +154,7 @@ export default function EmployeeProfile() {
 
   const handleSave = async () => {
     const { error } = await supabase.from('employees').update({
-      full_name:form.full_name, email:form.email, password:form.password,
+      full_name:form.full_name, email:form.email, ...(form.password ? { password:form.password } : {}),
       phone:form.phone, address:form.address, contract_type:form.contract_type,
       job_role:String(form.job_role||'').trim()||null,
       salary_type:form.salary_type, hourly_rate:parseFloat(form.hourly_rate)||0,
@@ -159,7 +162,7 @@ export default function EmployeeProfile() {
       contract_start:form.contract_start||null, contract_end:form.contract_end||null,
       advance_per_week:parseFloat(form.advance_per_week)||0,
       attendance_bonus:parseFloat(form.attendance_bonus)||0,
-      transport_reimbursed:form.transport_reimbursed,
+      transport_reimbursed:form.transport_reimbursed!==false,
       bank_name:form.bank_name, bank_branch:form.bank_branch,
       account_type:form.account_type, account_number:form.account_number,
       account_holder_katakana:form.account_holder_katakana,
@@ -433,7 +436,7 @@ export default function EmployeeProfile() {
           <div className="grid-2">
             <div className="form-group"><label>Full Name</label><input value={form.full_name||''} onChange={e=>upd('full_name',e.target.value)} /></div>
             <div className="form-group"><label>Email</label><input value={form.email||''} onChange={e=>upd('email',e.target.value)} /></div>
-            <div className="form-group"><label>Password</label><input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" /></div>
+            <div className="form-group"><label>Password</label><input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" placeholder={lang==='ja'?'変更しない場合は空欄':'Leave blank to keep'} /></div>
             <div className="form-group"><label>Phone</label><input value={form.phone||''} onChange={e=>upd('phone',e.target.value)} /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address||''} onChange={e=>upd('address',e.target.value)} /></div>
           </div>

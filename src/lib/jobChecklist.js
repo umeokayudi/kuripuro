@@ -186,8 +186,16 @@ export function checklistTemplateForJob(job, deepComponents) {
   return (job?.checklist_template || '').trim()
 }
 
+/** One item per line; also splits old one-line lists saved as "a; b; c" or "• a • b". */
+export function splitChecklist(text) {
+  if (!text) return []
+  const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  const parts = lines.length === 1 && /[;•]/.test(lines[0]) ? lines[0].split(/[;•]/) : lines
+  return parts.map(l => l.trim().replace(/^(?:[-*•]\s*|\d+[.)]\s+)/, '').trim()).filter(Boolean)
+}
+
 export function parseChecklistTemplate(template) {
-  return (template || '').split('\n').map(l => l.trim()).filter(Boolean)
+  return splitChecklist(template)
 }
 
 export function initChecklistState(job) {

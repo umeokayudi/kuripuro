@@ -20,6 +20,7 @@ import JobsPeriodPanel from '../components/JobsPeriodPanel'
 import NewJobForm from '../components/NewJobForm'
 import DayAgenda from '../components/DayAgenda'
 import { confirmAndRun } from '../components/ConfirmDialog'
+import SetupChain from '../components/SetupChain'
 import { buildPlaces } from '../lib/places'
 import { splitChecklist } from '../lib/agenda'
 import '../components/agenda.css'
@@ -81,7 +82,7 @@ export default function Jobs() {
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const [tab, setTab] = useState(() => searchId ? 'list' : 'agenda')
+  const [tab, setTab] = useState(() => searchId ? 'list' : searchParams.get('tab') === 'locations' ? 'locations' : 'agenda')
   const [cleaningFilter, setCleaningFilter] = useState('all')
   const [period, setPeriod] = useState('7d')
   const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
@@ -384,11 +385,12 @@ function LocationsTab() {
   const { t, tr } = useLang()
   const jt = t.jobs
   const EMPTY_LOC = { name:'', address:'', location_type:'fixed', notes:'', client_id:'', area:'', key_box:'', checklist:'' }
+  const clientFromUrl = new URLSearchParams(window.location.search).get('client') || ''
   const [locations, setLocations] = useState([])
   const [contracts, setContracts] = useState([])
   const [clients, setClients] = useState([])
   const [editingLoc, setEditingLoc] = useState(null)
-  const [form, setForm] = useState(EMPTY_LOC)
+  const [form, setForm] = useState(() => ({ ...EMPTY_LOC, client_id: clientFromUrl }))
   const [errors, setErrors] = useState({})
   const [geocoding, setGeocoding] = useState(false)
   const [gps, setGps] = useState(null)
@@ -472,6 +474,7 @@ function LocationsTab() {
 
   return (
     <div>
+      <SetupChain current="place" clientId={form.client_id || null} />
       <div className="card" style={{marginBottom:14}}>
         <div className="card-title">{editingLoc ? tr('Edit place', '場所を編集', 'Editar local') : tr('New place', '新しい場所', 'Novo local')}</div>
         <div style={{fontSize:12,color:'var(--text3)',marginBottom:10}}>{tr('One registry for Jobs, Contracts, Generator and World. Value and checklist of each job come from the place\'s contract.', 'Jobs・契約・スケジュール・ワールド共通の登録です。作業の金額とチェックリストは場所の契約から入ります。', 'Cadastro único para Jobs, Contratos, Gerador e Mundo. Valor e checklist de cada job vêm do contrato do local.')}</div>

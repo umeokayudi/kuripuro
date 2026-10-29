@@ -7,6 +7,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { useLang, fill, localeOf } from '../hooks/useLang'
+import { askConfirm } from '../components/ConfirmDialog'
 
 const TZ = 'Asia/Tokyo'
 const LATE_AFTER_MIN = 5
@@ -89,7 +90,7 @@ export default function LiveTracking() {
   }
 
   const cleanPhotos = async () => {
-    if (!window.confirm(L.cleanConfirm)) return
+    if (!(await askConfirm({ message: L.cleanConfirm, danger: false }))) return
     setCleaning(true)
     try {
       const r = await apiFetch('/api/cleanup-photos', { method: 'POST' })

@@ -1,4 +1,5 @@
 import { locationNameFromTitle } from './cleaningType'
+import { splitChecklist } from './jobChecklist'
 
 export function locationFromJobTitle(title) {
   return locationNameFromTitle(title || '')
@@ -17,6 +18,5 @@ export function contractForJob(job, contracts) {
 }
 
 export function parseTrainingChecklist(text) {
-  if (!text) return []
-  return text.split('\n').map(l => l.trim()).filter(Boolean)
+  return splitChecklist(text)
 }

@@ -8,6 +8,7 @@ import DateRangeSheet, { presetRange, formatRangeLabel, tokyoToday } from '../co
 import { useAuth } from '../hooks/useAuth'
 import { summarizeJobs, summarizeByEmployee, formatMinutes, gpsCheck } from '../lib/workKpis'
 import toast from 'react-hot-toast'
+import { askConfirm } from '../components/ConfirmDialog'
 
 const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
 const daysBetween = (from, to) => Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5) + 1
@@ -62,7 +63,7 @@ export default function Dashboard() {
 
   const cancelStaleJobs = async () => {
     const today = tokyoToday()
-    if (!window.confirm(fill(d.cancelStaleConfirm, { today }))) return
+    if (!(await askConfirm({ message: fill(d.cancelStaleConfirm, { today }), danger: true }))) return
     const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).eq('status', 'assigned').lt('scheduled_date', today)
     if (error) return toast.error(error.message)
     toast.success(d.staleCancelled)

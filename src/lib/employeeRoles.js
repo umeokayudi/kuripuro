@@ -23,3 +23,26 @@ export function roleInfo(value, lang = 'en') {
 export function isPresetRole(value) {
   return EMPLOYEE_ROLES.some(r => r.key === value)
 }
+
+// v1.0.96 · The role is also a permission set, read by the generator, the Agenda and the employee portal.
+//   routes   — gets cleaning routes (Generator / Agenda)
+//   team_day — sees the team's jobs of the day (read-only, no money)
+export const ROLE_PERMISSIONS = {
+  cleaner: ['routes'],
+  leader: ['routes', 'team_day'],
+  supervisor: ['routes', 'team_day'],
+  driver: ['routes'],
+  trainee: ['routes'],
+  office: ['team_day'],
+}
+const DEFAULT_PERMISSIONS = ['routes'] // no role / free-text role: same as cleaning staff
+
+export function roleCan(role, permission) {
+  const raw = String(role || '').trim()
+  return (ROLE_PERMISSIONS[raw] || DEFAULT_PERMISSIONS).includes(permission)
+}
+
+export const PERMISSION_LABELS = {
+  routes: { en: 'Gets cleaning routes', ja: '清掃ルートを担当', pt: 'Recebe rotas de limpeza' },
+  team_day: { en: "Sees the team's day (no money)", ja: 'チームの一日を閲覧（金額なし）', pt: 'Vê o dia da equipe (sem valores)' },
+}
