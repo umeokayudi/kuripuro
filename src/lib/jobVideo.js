@@ -69,6 +69,12 @@ const TUS_CHUNK = 6 * 1024 * 1024 // Supabase wants 6 MB chunks (the last one ca
 const b64 = v => btoa(unescape(encodeURIComponent(String(v))))
 const tusHeaders = extra => ({ apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, 'Tus-Resumable': '1.0.0', ...extra })
 
+// https://<ref>.supabase.co → https://<ref>.storage.supabase.co (recommended for large uploads)
+function storageHost() {
+  const m = String(SUPABASE_URL).match(/^https:\/\/([a-z0-9]+)\.supabase\.co\/?$/)
+  return m ? `https://${m[1]}.storage.supabase.co` : SUPABASE_URL
+}
+
 function xhr(method, url, headers, body, onProgress) {
   return new Promise((resolve, reject) => {
     const r = new XMLHttpRequest()
@@ -98,7 +104,16 @@ async function tusUpload(path, blob, contentType, { onProgress, resume, onResume
   if (!url) {
     const meta = [['bucketName', BUCKET], ['objectName', path], ['contentType', contentType], ['cacheControl', '3600']]
       .map(([k, v]) => `${k} ${b64(v)}`).join(',')
-    const created = await xhr('POST', `${SUPABASE_URL}/storage/v1/upload/resumable`, tusHeaders({ 'Upload-Length': String(blob.size), 'Upload-Metadata': meta, 'x-upsert': 'true' }))
+    const createHeaders = tusHeaders({ 'Upload-Length': String(blob.size), 'Upload-Metadata': meta, 'x-upsert': 'true' })
+    // v1.0.100: Supabase's direct storage host is faster for big files; the normal one stays as backup
+    let created
+    let base = storageHost()
+    try {
+      created = await xhr('POST', `${base}/storage/v1/upload/resumable`, createHeaders)
+    } catch {
+      base = SUPABASE_URL
+      created = await xhr('POST', `${base}/storage/v1/upload/resumable`, createHeaders)
+    }
     if (created.status !== 201) {
       let msg = ''
       try { msg = JSON.parse(created.responseText || '{}').message || '' } catch { /* ignore */ }
@@ -108,7 +123,7 @@ async function tusUpload(path, blob, contentType, { onProgress, resume, onResume
     }
     url = created.getResponseHeader('Location')
     if (!url) throw new Error('Upload sem endereço de retomada')
-    if (url.startsWith('/')) url = SUPABASE_URL + url
+    if (url.startsWith('/')) url = base + url
     onResume?.({ path, url })
   }
   while (offset < blob.size) {
@@ -253,4 +268,22 @@ export async function listJobVideos(jobId) {
 function withPoster(v) {
   const posterPath = v.path.replace(/\.[a-z0-9]+$/, '.jpg')
   return { ...v, poster: supabase.storage.from(BUCKET).getPublicUrl(posterPath).data?.publicUrl || null }
+}
+
+// v1.0.100 · Reports list: video icon per row without loading any video. Reads only the small
+// status file, at most 4 at a time, cached for this page visit.
+const statusCache = new Map()
+const waiting = []
+let active = 0
+function pump() {
+  while (active < 4 && waiting.length) {
+    const { jobId, resolve } = waiting.shift()
+    active++
+    readVideoStatus(jobId).then(resolve, () => resolve(null)).finally(() => { active--; pump() })
+  }
+}
+export function peekVideoStatus(jobId) {
+  if (!jobId) return Promise.resolve(null)
+  if (!statusCache.has(jobId)) statusCache.set(jobId, new Promise(resolve => { waiting.push({ jobId, resolve }); pump() }))
+  return statusCache.get(jobId)
 }

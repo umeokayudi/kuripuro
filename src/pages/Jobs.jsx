@@ -297,9 +297,9 @@ export default function Jobs() {
                 <KeyReveal value={j.description.split('\n')[0]} style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }} />
               )}
 
-              {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
+              {j.status === 'completed' && (
                 <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{jt.servicePhotos}</div>
+                  {(j.photo_start_url || j.photo_end_url) && <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{jt.servicePhotos}</div>}
                   <JobPhotos
                     photoStartUrl={j.photo_start_url}
                     photoEndUrl={j.photo_end_url}

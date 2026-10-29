@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLang } from '../hooks/useLang'
-import { listJobVideos, readVideoStatus } from '../lib/jobVideo'
+import { listJobVideos, peekVideoStatus, readVideoStatus } from '../lib/jobVideo'
 
 /**
  * Vídeos opcionais do serviço (jobs/<jobId>/video_n.*), ao lado das fotos Antes/Depois.
@@ -8,7 +8,7 @@ import { listJobVideos, readVideoStatus } from '../lib/jobVideo'
  * Mostra também o estado do envio: "enviando…" ou "falhou".
  * lazy: mostra só um botão e busca ao clicar (bom para listas com muitos jobs).
  */
-export default function JobVideos({ jobId, lazy = false, label, style }) {
+export default function JobVideos({ jobId, lazy = false, label, style, emptyLabel = null }) {
   const { t, tr } = useLang()
   const L = t?.jobVideo || {}
   const [open, setOpen] = useState(!lazy)
@@ -36,14 +36,14 @@ export default function JobVideos({ jobId, lazy = false, label, style }) {
   }
 
   if (state.loading) return <div style={{ fontSize: 12, color: 'var(--text3)', ...style }}>{L.loading || 'Loading video…'}</div>
-  if (state.error) return lazy ? <div style={{ fontSize: 12, color: 'var(--text3)', ...style }}>{L.loadFailed}</div> : null
+  if (state.error) return lazy || emptyLabel ? <div style={{ fontSize: 12, color: 'var(--text3)', ...style }}>{L.loadFailed}</div> : null
   const st = state.status
   const pendingNote = st && st.status !== 'uploaded' && !(state.videos || []).some(v => v.path === st.path)
     ? (st.status === 'failed'
       ? <div style={{ fontSize: 12, color: 'var(--red, #ef4444)', fontWeight: 700 }}>⚠️ {tr('Video failed to upload — the employee can try again', '動画の送信に失敗 — スタッフが再送できます', 'Vídeo falhou — o funcionário pode tentar de novo')}</div>
       : <div style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 700 }}>⏳ {tr('Video uploading…', '動画を送信中…', 'Vídeo enviando…')}</div>)
     : null
-  if (!state.videos?.length) return pendingNote ? <div style={style}>{pendingNote}</div> : (lazy ? <div style={{ fontSize: 12, color: 'var(--text3)', ...style }}>{L.none || 'No video'}</div> : null)
+  if (!state.videos?.length) return pendingNote ? <div style={style}>{pendingNote}</div> : emptyLabel ? <div style={style}>{emptyLabel}</div> : (lazy ? <div style={{ fontSize: 12, color: 'var(--text3)', ...style }}>{L.none || 'No video'}</div> : null)
 
   return (
     <div style={style} onClick={ev => ev.stopPropagation()}>
@@ -67,4 +67,20 @@ export default function JobVideos({ jobId, lazy = false, label, style }) {
       </div>
     </div>
   )
+}
+
+/** Reports list cell: 🎬 when a video is attached, ⏳ while sending, ⚠️ when it failed, — when none. */
+export function VideoMark({ jobId }) {
+  const { tr } = useLang()
+  const [st, setSt] = useState(undefined)
+  useEffect(() => {
+    let alive = true
+    peekVideoStatus(jobId).then(s => { if (alive) setSt(s) })
+    return () => { alive = false }
+  }, [jobId])
+  if (st === undefined) return <span style={{ color: 'var(--text3)' }}>…</span>
+  if (!st) return <span style={{ color: 'var(--text3)' }}>—</span>
+  if (st.status === 'uploaded') return <span title={tr('Video attached', '動画あり', 'Vídeo anexado')}>🎬{st.duration ? <small style={{ color: 'var(--text2)' }}> {st.duration}s</small> : null}</span>
+  if (st.status === 'failed') return <span title={tr('Video failed', '動画の送信失敗', 'Vídeo falhou')}>⚠️</span>
+  return <span title={tr('Video uploading…', '動画を送信中…', 'Vídeo enviando…')}>⏳</span>
 }
