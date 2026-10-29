@@ -43,10 +43,12 @@ const reqToPromise = (req) => new Promise((resolve, reject) => {
 })
 
 /** Guarda o vídeo na fila. Devolve o id (ou null se o aparelho não deixar guardar). */
-export async function enqueueVideo(jobId, { blob, contentType, ext, poster = null, duration = null }) {
+// raw = true: the camera file, kept as soon as the job is finished while it is still being
+// compressed. If the app closes before that, the next send compresses it first (v1.0.100).
+export async function enqueueVideo(jobId, { blob, contentType, ext, poster = null, duration = null, raw = false }) {
   const id = `${jobId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
   try {
-    await withStore('readwrite', store => { store.put({ id, jobId, blob, contentType, ext, poster, duration, createdAt: Date.now(), attempts: 0 }) })
+    await withStore('readwrite', store => { store.put({ id, jobId, blob, contentType, ext, poster, duration, raw, createdAt: Date.now(), attempts: 0 }) })
     return id
   } catch {
     return null
@@ -72,23 +74,43 @@ async function markAttempt(item) {
 }
 
 const inFlight = new Set()
+
+/** Keeps a queued item out of flushVideoQueue while this page still handles it (raw copy). */
+export function holdQueuedVideo(id, hold = true) {
+  if (!id) return
+  if (hold) inFlight.add(id)
+  else inFlight.delete(id)
+}
 const isLimitError = (err) => /Limite/.test(err?.message || '')
 
 async function saveResume(item, resume) {
   try { await withStore('readwrite', store => { store.put({ ...item, resume }) }) } catch { /* ignora */ }
 }
 
+/** Camera file left in the queue: compress it now (same 720p / ~2 Mbps rule) before sending. */
+async function compressRaw(item) {
+  const [{ compressVideo }, { videoPoster }] = await Promise.all([import('./videoCompress'), import('./jobVideo')])
+  const res = await compressVideo(item.blob)
+  const extra = await videoPoster(res.blob)
+  const next = { ...item, blob: res.blob, contentType: res.contentType, ext: res.ext, poster: extra.poster, duration: extra.duration, raw: false }
+  try { await withStore('readwrite', store => { store.put(next) }) } catch { /* ignora */ }
+  return next
+}
+
 async function sendItem(item, upload, onProgress) {
   inFlight.add(item.id)
   try {
+    if (item.raw) item = await compressRaw(item)
     // resume = { path, url } of the resumable upload: a new try continues from the last part sent
     const path = await upload(item.jobId, item, { onProgress, resume: item.resume, onResume: r => { item.resume = r; saveResume(item, r) } })
     await removeQueuedVideo(item.id)
     return path
   } catch (err) {
-    // Limite de vídeos do serviço: tentar de novo não resolve
-    if (isLimitError(err)) await removeQueuedVideo(item.id)
-    else await markAttempt(item)
+    // Limite de vídeos do serviço, ou vídeo grande demais / inválido: tentar de novo não resolve
+    if (isLimitError(err) || err?.code === 'too_large' || err?.code === 'not_video') {
+      await removeQueuedVideo(item.id)
+      import('./jobVideo').then(m => m.writeVideoStatus(item.jobId, { status: 'failed', path: null, error: String(err?.message || err).slice(0, 200) })).catch(() => {})
+    } else await markAttempt(item)
     throw err
   } finally {
     inFlight.delete(item.id)

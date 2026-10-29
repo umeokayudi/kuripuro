@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
-import { compressVideo, canUseWebCodecs } from '../lib/videoCompress'
-import { uploadJobVideo, videoPoster } from '../lib/jobVideo'
-import { enqueueAndSend, flushVideoQueue } from '../lib/videoQueue'
+import { compressVideo, canUseWebCodecs, videoTypeInfo } from '../lib/videoCompress'
+import { uploadJobVideo, videoPoster, writeVideoStatus } from '../lib/jobVideo'
+import { enqueueAndSend, enqueueVideo, flushVideoQueue, holdQueuedVideo, removeQueuedVideo } from '../lib/videoQueue'
 import JobVideoPicker from '../components/JobVideoPicker'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { useAuth } from '../hooks/useAuth'
@@ -1060,7 +1060,7 @@ export default function EmployeePortal() {
 
   const pickJobVideo = (file) => {
     videoTaskRef.current?.abort.abort()
-    const task = { abort: new AbortController() }
+    const task = { abort: new AbortController(), file }
     videoTaskRef.current = task
     setJobVideo({ status: 'compressing', progress: 0, slow: !canUseWebCodecs() })
     task.promise = compressVideo(file, {
@@ -1083,8 +1083,24 @@ export default function EmployeePortal() {
   // O vídeo fica guardado no celular até o Storage confirmar (ver videoQueue).
   const sendJobVideoAfterComplete = (jobId, task) => {
     if (!task?.promise) return
+    // v1.0.100: the admin sees "video uploading…" right away, and while the video is still being
+    // compressed the camera file is kept on the phone, so closing the app does not lose it.
+    writeVideoStatus(jobId, { status: 'uploading', path: null })
+    let compressed = false
+    task.promise.then(() => { compressed = true }, () => {})
+    const type = task.file && videoTypeInfo(task.file.type, task.file.name)
+    const rawSaved = Promise.resolve().then(async () => {
+      if (compressed || !type) return null
+      const id = await enqueueVideo(jobId, { blob: task.file, ...type, raw: true })
+      holdQueuedVideo(id) // this page sends it; the background retry only takes it if the app closes
+      return id
+    })
+    // Compression failed here: release the camera copy so the background retry can try again
+    task.promise.catch(() => rawSaved.then(id => holdQueuedVideo(id, false)))
     task.promise
       .then(async (res) => {
+        const rawId = await rawSaved
+        if (rawId) { await removeQueuedVideo(rawId); holdQueuedVideo(rawId, false) }
         const id = toast.loading(vt.uploading || 'Sending video…')
         const sizeLabel = res.size >= 1024 * 1024 ? `${(res.size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(res.size / 1024))} KB`
         let lastPct = -1

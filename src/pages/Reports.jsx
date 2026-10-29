@@ -2,61 +2,29 @@ import { ReportsAnalytics } from '../components/AnalyticsCharts'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import ProgressChart from '../components/ProgressChart'
 import { confirmAndRun } from '../components/ConfirmDialog'
-import { aiIssueRows, gradeJobPhoto } from '../lib/photoAi'
+import { gradeJobPhoto } from '../lib/photoAi'
 import { contractForAgendaJob } from '../lib/agenda'
 import { supabase } from '../lib/supabase'
-import { fmtDuration, fmtTime, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync, jobToReportView } from '../lib/jobReport'
+import { fmtDuration, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync, jobToReportView } from '../lib/jobReport'
 import SignatureImage from '../components/SignatureImage'
 import { tokyoToday } from '../lib/dates'
-import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
-import JobVideos from '../components/JobVideos'
+import { VideoMark } from '../components/JobVideos'
+import ReportSheet from '../components/ReportSheet'
+import { executionMode, jobNoteCount } from '../lib/reportSheet'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill, pickLang } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
-import { formatDistance } from '../lib/geocode'
 import { useAuth } from '../hooks/useAuth'
 import toast from 'react-hot-toast'
-import { mapsCoordsUrl } from '../lib/mapsLink'
 
-function typeBadge(type, tr) {
+function typeBadge(type, tr, job, lang) {
+  if (job && executionMode(job) === 'manual') return <span className="badge badge-amber">🔒 {pickLang(lang, 'Closed by admin', '管理者が完了', 'Fechamento manual')}</span>
   return type === 'retroativo'
     ? <span className="badge badge-amber">{tr.typeRetro}</span>
     : <span className="badge badge-green">{tr.typeLive}</span>
 }
 
-const mapUrl = (lat, lng) => mapsCoordsUrl(lat, lng)
-
-function GpsBlock({ r, tr, lang }) {
-  const rows = [
-    [tr.gpsIn, r.started_at, r.gps_lat_in, r.gps_lng_in, r.gps_acc_in, r.gps_dist_in],
-    [tr.gpsOut, r.completed_at, r.gps_lat_out, r.gps_lng_out, r.gps_acc_out, r.gps_dist_out],
-  ]
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{tr.gpsTitle}</div>
-      <div className="grid-2" style={{ gap: 8 }}>
-        {rows.map(([label, at, lat, lng, acc, dist]) => (
-          <div key={label} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, lineHeight: 1.5 }}>
-            <div style={{ fontWeight: 600 }}>{label} · {at ? fmtTime(at, lang) : '—'}</div>
-            {lat != null && lng != null ? (
-              <>
-                {dist != null && (
-                  <div style={{ fontSize: 15, fontWeight: 700, color: Number(dist) > 150 ? 'var(--red)' : 'var(--green)' }}>
-                    {Number(dist) > 150 ? '⚠ ' : ''}{fill(tr.gpsFromSite, { m: formatDistance(dist) })}
-                  </div>
-                )}
-                <div style={{ color: 'var(--text3)', fontSize: 11.5 }}>{Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}</div>
-                {acc != null && <div style={{ color: 'var(--text3)', fontSize: 11 }}>{fill(tr.gpsAccuracy, { m: Math.round(acc) })}</div>}
-                <a href={mapUrl(lat, lng)} target="_blank" rel="noreferrer">{tr.openMap} ↗</a>
-              </>
-            ) : <div style={{ color: 'var(--text3)' }}>{tr.gpsNone}</div>}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 // Admin's own signature for the bottom of the day report PDF. Saved on admins.signature_url;
 // until that column exists it is kept on this device only.
@@ -136,6 +104,22 @@ function typeLabel(type, tr) {
   return type === 'retroativo' ? tr.typeRetro : tr.typeLive
 }
 
+// Phone width: the list becomes cards (no sideways scrolling)
+function useNarrow(max = 700) {
+  const q = `(max-width: ${max}px)`
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(q).matches)
+  useEffect(() => {
+    const m = window.matchMedia?.(q)
+    if (!m) return
+    const on = () => setNarrow(m.matches)
+    m.addEventListener?.('change', on)
+    return () => m.removeEventListener?.('change', on)
+  }, [q])
+  return narrow
+}
+
+const noteCountOf = r => r._job ? jobNoteCount(r._job) : (r.notes_out ? 1 : 0)
+
 export default function Reports() {
   const { lang, t } = useLang()
   const tr = t.reports
@@ -159,6 +143,7 @@ export default function Reports() {
   const [filterDay, setFilterDay] = useState('')
   const [pdfBusy, setPdfBusy] = useState(false)
   const { user } = useAuth()
+  const narrow = useNarrow()
   const [adminSig, setAdminSig] = useState(null)
   const [sigPad, setSigPad] = useState(false)
 
@@ -393,7 +378,31 @@ export default function Reports() {
         {!loading && filtered.length === 0 && (
           <div style={{ color: 'var(--text3)', fontSize: 13 }}>{tr.empty}</div>
         )}
-        {filtered.length > 0 && (
+        {filtered.length > 0 && narrow && (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {filtered.map(r => {
+              const n = noteCountOf(r)
+              return (
+                <button key={r.job_id || r.id} type="button" onClick={() => setSelected(r)}
+                  style={{ textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', color: 'inherit', font: 'inherit' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(r.job_title || r.client_name || '').replace(/ — .*/, '')}</div>
+                    <div style={{ flexShrink: 0 }}>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr, r._job, lang)}</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>👤 {r.employee_name || '—'} · 📅 {r.report_date}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginTop: 8, fontSize: 13 }}>
+                    <span>⏱ {fmtDuration(r.duration_min, lang)}</span>
+                    <span>☑ {r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</span>
+                    {r.photo_ai_score != null && <span>🤖 {r.photo_ai_score}/10</span>}
+                    {r.job_id && <VideoMark jobId={r.job_id} />}
+                    {n > 0 && <span className="badge badge-navy">📝 {n}</span>}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {filtered.length > 0 && !narrow && (
           <div className="table-wrap">
             <table>
               <thead>
@@ -406,6 +415,8 @@ export default function Reports() {
                   <th>{tr.colChecklist}</th>
                   <th>{tr.colAiPhoto}</th>
                   <th>{tr.colSignature}</th>
+                  <th>{pickLang(lang, 'Video', '動画', 'Vídeo')}</th>
+                  <th>{pickLang(lang, 'Notes', 'メモ', 'Notas')}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -415,7 +426,7 @@ export default function Reports() {
                     <td style={{ fontWeight: 500 }}>{r.employee_name}</td>
                     <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name || r.job_title}</td>
                     <td>{r.report_date}</td>
-                    <td>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr)}</td>
+                    <td>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr, r._job, lang)}</td>
                     <td>{fmtDuration(r.duration_min, lang)}</td>
                     <td>{r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</td>
                     <td>
@@ -432,6 +443,8 @@ export default function Reports() {
                       ) : (r.photo_ai_score == null ? '—' : null)}
                     </td>
                     <td><SignatureImage url={r.signature_url} height={34} emptyLabel={r.job_status && r.job_status !== 'completed' ? '—' : tr.noSignature} /></td>
+                    <td>{r.job_id ? <VideoMark jobId={r.job_id} /> : '—'}</td>
+                    <td>{noteCountOf(r) ? <span className="badge badge-navy">📝 {noteCountOf(r)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => setSelected(r)}>{tr.read}</button>
@@ -449,108 +462,37 @@ export default function Reports() {
       {selected && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelected(null)}>
           <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 24, maxWidth: 560, width: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{selected.job_title || selected.client_name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{selected.employee_name} · {selected.report_date}{selected.area ? ` · ${tr.area}: ${selected.area}` : ''}</div>
-              </div>
-              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -8 }}>
+              <button onClick={() => setSelected(null)} aria-label={tr.close} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', minWidth: 40, minHeight: 40 }}>✕</button>
             </div>
-
-            <div className="grid-2" style={{ gap: 8, marginBottom: 14 }}>
-              {[
-                [tr.start, selected.time_in],
-                [tr.end, selected.time_out],
-                [tr.duration, fmtDuration(selected.duration_min, lang)],
-                [tr.type, typeLabel(selected.report_type, tr)],
-                [tr.checklist, selected.checklist_total ? `${selected.checklist_done}/${selected.checklist_total}` : '—'],
-                [tr.value, selected.job_value ? `¥${Number(selected.job_value).toLocaleString()}` : '—'],
-              ].map(([l, v]) => (
-                <div key={l} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l}</div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{v || '—'}</div>
-                </div>
-              ))}
-            </div>
-
-            <GpsBlock r={selected} tr={tr} lang={lang} />
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{tr.signature}</div>
-              <SignatureImage url={selected.signature_url} height={90} emptyLabel={tr.noSignature} />
-            </div>
-
-            {selected.notes_out && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.employeeReport}</div>
-                <div style={{ fontSize: 13, background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px', lineHeight: 1.5 }}>{selected.notes_out}</div>
-              </div>
-            )}
-
-            {selected.retro_ai_summary && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.aiRetro}</div>
-                <div style={{ fontSize: 13, background: '#eef3ff', borderRadius: 8, padding: '10px 12px' }}>{selected.retro_ai_summary}</div>
-              </div>
-            )}
-
-            {selected.checklist_missed_items && (
-              <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--red)' }}>{tr.missedItems}: {selected.checklist_missed_items}</div>
-            )}
-
-            {(selected.photo_ai_score != null || selected.photo_after_url) && (
-              <div style={{ marginBottom: 12, fontSize: 13, borderRadius: 10, padding: '10px 12px', background: selected.photo_ai_score == null ? 'var(--surface2)' : selected.photo_ai_approved ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <b>🤖 {selected.photo_ai_score != null ? `${pickLang(lang, 'AI grade', 'AI評価', 'Nota da IA')}: ${selected.photo_ai_score}/10 ${selected.photo_ai_approved ? '✅' : '⚠️'}` : pickLang(lang, 'AI grade pending', 'AI評価待ち', 'Análise da IA pendente')}</b>
-                  {selected.photo_after_url && selected.job_id && (
-                    <button type="button" className="btn btn-sm" disabled={regrading === selected.job_id} onClick={async () => {
-                      setRegrading(selected.job_id)
-                      try {
-                        const { data: job } = await supabase.from('jobs').select('*').eq('id', selected.job_id).maybeSingle()
-                        const graded = await gradeJobPhoto(job || { id: selected.job_id, photo_end_url: selected.photo_after_url, title: selected.job_title })
-                        setSelected(s => ({ ...s, photo_ai_score: graded.photo_ai_score, photo_ai_approved: graded.photo_ai_approved, photo_ai_issues: graded.photo_ai_issues }))
-                        loadReports()
-                      } catch (err) {
-                        toast.error(err.message === 'timeout' ? pickLang(lang, 'The AI took too long — try again.', 'AIの応答が遅すぎます。再試行してください。', 'A IA demorou demais — tente de novo.') : err.message)
-                      }
-                      setRegrading(null)
-                    }}>{regrading === selected.job_id ? tr.analyzing : pickLang(lang, 'Analyse again', '再分析', 'Analisar de novo')}</button>
-                  )}
-                </div>
-                {aiIssueRows(selected.photo_ai_issues).length > 0 && (
-                  <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                    {aiIssueRows(selected.photo_ai_issues).map((r, i) => <li key={i}>{r.issue}{r.fix && <> — <b>{pickLang(lang, 'fix', '直す', 'corrigir')}:</b> {r.fix}</>}</li>)}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            {(selected.photo_before_url || selected.photo_after_url) && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>{tr.servicePhotos}</div>
-                <JobPhotos
-                  photoStartUrl={selected.photo_before_url}
-                  photoEndUrl={selected.photo_after_url}
-                  beforeLabel={tr.before}
-                  afterLabel={tr.after}
-                  variant="full"
-                  onPhotoClick={setLightbox}
-                />
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  {selected.photo_before_url && (
-                    <a href={viewablePhotoUrl(selected.photo_before_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ flex: 1 }}>{tr.openFullscreen} ({tr.before})</a>
-                  )}
-                  {selected.photo_after_url && (
-                    <a href={viewablePhotoUrl(selected.photo_after_url)} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ flex: 1 }}>{tr.openFullscreen} ({tr.after})</a>
-                  )}
-                </div>
-                {selected.job_id && <JobVideos jobId={selected.job_id} style={{ marginTop: 10 }} />}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-              <button className="btn btn-danger" onClick={() => handleDelete(selected)}>🗑 {tr.deleteReport}</button>
-            </div>
+            <ReportSheet
+              key={selected.job_id || selected.id}
+              row={selected}
+              tr={tr}
+              lang={lang}
+              contracts={contractList}
+              user={user}
+              onPhoto={setLightbox}
+              regrading={regrading === selected.job_id}
+              onRegrade={async () => {
+                setRegrading(selected.job_id)
+                try {
+                  const { data: job } = await supabase.from('jobs').select('*').eq('id', selected.job_id).maybeSingle()
+                  const graded = await gradeJobPhoto(job || { id: selected.job_id, photo_end_url: selected.photo_after_url, title: selected.job_title })
+                  setSelected(s => ({ ...s, photo_ai_score: graded.photo_ai_score, photo_ai_approved: graded.photo_ai_approved, photo_ai_issues: graded.photo_ai_issues }))
+                  loadReports()
+                } catch (err) {
+                  toast.error(err.message === 'timeout' ? pickLang(lang, 'The AI took too long — try again.', 'AIの応答が遅すぎます。再試行してください。', 'A IA demorou demais — tente de novo.') : err.message)
+                }
+                setRegrading(null)
+              }}
+              onJobSaved={job => {
+                const merge = r => r.job_id === job.id ? { ...r, _job: job } : r
+                setSelected(merge)
+                setReports(prev => prev.map(merge))
+              }}
+              onDelete={() => handleDelete(selected)}
+            />
           </div>
         </div>
       )}

@@ -87,6 +87,7 @@ export function jobReportExtras(job) {
     gps_acc_out: job.end_accuracy ?? null,
     gps_dist_in: job.gps_start_distance ?? null,
     gps_dist_out: job.gps_end_distance ?? null,
+    _job: job, // v1.0.100: the full job, so the report detail shows everything saved on it
   }
 }
 
