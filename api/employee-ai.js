@@ -5,6 +5,7 @@ import { runGeminiToolLoop } from './_tool-loop.js'
 import { requireSalesSession, salesDb } from './_salesSession.js'
 import { trimHistory, workOnlyRule, maskPendingRows, PENDING_RULE } from './_ai-guard.js'
 import { transcribeAudio } from './_transcribe.js'
+import { employeeJobRows, payRule, JOB_MONEY_COLUMNS } from './_employee-ai-pay.js'
 
 const EMPLOYEE_TABLES = ['jobs', 'salary_payments', 'transport_claims', 'equipment_requests', 'messages', 'badges', 'checkins', 'salary_statements', 'salary_complaints', 'employee_contracts', 'employee_availability']
 
@@ -19,14 +20,19 @@ function cleanSelect(select) {
   return cols.length ? cols.join(',') : '*'
 }
 
-async function queryEmployeeData(employeeId, args) {
+async function queryEmployeeData(employee, args) {
+  const employeeId = employee.id
   const table = args.table
   if (!EMPLOYEE_TABLES.includes(table)) {
     throw new Error(`Tabela "${table}" não disponível. Use: ${EMPLOYEE_TABLES.join(', ')}`)
   }
-  let query = salesDb().from(table).select(cleanSelect(args.select))
+  const isJobs = table === 'jobs'
+  const columns = cleanSelect(args.select)
+  // Jobs are read whole so the employee's pay can be worked out; the client amounts are removed below.
+  let query = salesDb().from(table).select(isJobs ? '*' : columns)
   for (const [key, value] of Object.entries(args.filters || {})) {
     if (!COLUMN.test(key) || key === 'employee_id' || value === null || typeof value === 'object') continue
+    if (isJobs && JOB_MONEY_COLUMNS.includes(key)) continue
     query = query.eq(key, value)
   }
   const limit = Math.min(Number(args.limit) || 30, 50)
@@ -35,12 +41,25 @@ async function queryEmployeeData(employeeId, args) {
     .order(ORDER_BY[table] || 'created_at', { ascending: false })
     .limit(limit)
   if (error) throw new Error(error.message)
-  return maskPendingRows(data)
+  if (!isJobs) return maskPendingRows(data)
+  return employeeJobRows(data, employee, columns, await contractPrices(employee))
 }
 
-async function isActiveEmployee(id) {
-  const { data } = await salesDb().from('employees').select('is_active').eq('id', id).maybeSingle()
-  return Boolean(data?.is_active)
+/** Price per visit by store, only needed when the employee's pay is a share of the job. */
+async function contractPrices(employee) {
+  if (!['per_job', 'mixed'].includes(employee.salary_type)) return []
+  if (!employee.contracts) {
+    employee.contracts = salesDb().from('service_contracts').select('location_name,price_per_visit')
+      .then(({ data }) => data || [], () => [])
+  }
+  return employee.contracts
+}
+
+async function activeEmployee(id) {
+  const { data } = await salesDb().from('employees')
+    .select('id,is_active,salary_type,hourly_rate,job_bonus_rate,fixed_salary,monthly_work_days')
+    .eq('id', id).maybeSingle()
+  return data?.is_active ? { ...data, id } : null
 }
 
 const TOOLS = [{
@@ -65,7 +84,8 @@ export default async function handler(req, res) {
 
   const session = requireSalesSession(req, res, ['employee'])
   if (!session) return
-  if (!(await isActiveEmployee(session.id))) return res.status(401).json({ error: 'Sua sessão expirou. Saia e entre de novo para usar a IA.' })
+  const employee = await activeEmployee(session.id)
+  if (!employee) return res.status(401).json({ error: 'Sua sessão expirou. Saia e entre de novo para usar a IA.' })
   const employeeId = session.id
   const employeeName = session.name
 
@@ -115,6 +135,8 @@ Rules:
 - Help with this employee's schedule, salary and deductions, transport claims, day-off requests, messages, badges, and hours.
 - Keep answers concise, especially for voice conversations.
 
+${payRule(employee)}
+
 ${PENDING_RULE}
 
 ${workOnlyRule(responseLanguage)}`
@@ -130,7 +152,7 @@ ${workOnlyRule(responseLanguage)}`
       contents,
       tools: TOOLS,
       systemInstruction: { parts: [{ text: systemInstruction }] },
-      executeTool: (_name, args) => queryEmployeeData(employeeId, args || {}),
+      executeTool: (_name, args) => queryEmployeeData(employee, args || {}),
       maxIterations: 4,
     })
 
