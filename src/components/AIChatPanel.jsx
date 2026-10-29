@@ -38,7 +38,16 @@ const CopyIcon = () => <svg {...svgProps} width={14} height={14}><rect x="9" y="
 const RefreshIcon = () => <svg {...svgProps} width={14} height={14}><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 4v5h-5" /></svg>
 const ClipIcon = () => <svg {...svgProps}><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" /></svg>
 
-const MAX_RECORDING_MS = 60_000
+// 5 minutes: a whole request can be said in one voice note instead of several short ones.
+const MAX_RECORDING_MS = 5 * 60_000
+
+// A big request continues on its own in a new call (each call has 60 s on the server).
+const MAX_AUTO_PARTS = 5
+const PROGRESS_TEXT = {
+  en: { part: 'Big request — still working on it (part {n})…', queued: 'Will be sent after the current answer', stopped: 'This request is very big. Send "continue" and I will carry on from where I stopped.' },
+  pt: { part: 'Pedido grande — ainda trabalhando (parte {n})…', queued: 'Vai junto depois da resposta atual', stopped: 'Este pedido é muito grande. Mande "continue" que eu sigo de onde parei.' },
+  ja: { part: '大きな依頼です。続けて作業中（{n}回目）…', queued: '今の回答のあとに送ります', stopped: 'とても大きな依頼です。「続けて」と送ると、止まったところから続けます。' },
+}
 
 const VOICE_TEXT = {
   en: { recording: 'Recording… tap the mic to stop', transcribing: 'Turning your audio into text…', cancel: 'Cancel', empty: 'I could not hear anything. Try again a little closer to the phone.', failed: 'Could not transcribe the audio.', denied: 'Microphone blocked. Allow the microphone for this site in the browser settings (on iPhone: Settings › Safari › Microphone).', noMic: 'Could not open the microphone.', unsupported: 'This browser cannot record audio.' },
@@ -106,6 +115,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   )
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [progressPart, setProgressPart] = useState(0)
+  const progressText = PROGRESS_TEXT[lang] || PROGRESS_TEXT.en
   const [callOpen, setCallOpen] = useState(false)
   const [voiceReplies, setVoiceReplies] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -163,11 +174,9 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
 
   const speakReply = (text) => speakText(text, { voice: voiceRef.current })
 
-  const callAPI = async (allMessages) => {
+  const callAPI = async (allMessages, extra = {}) => {
     const endpoint = mode === 'employee' ? '/api/employee-ai' : '/api/admin-ai'
-    const body = mode === 'employee'
-      ? { messages: allMessages }
-      : { messages: allMessages }
+    const body = { messages: allMessages.filter(m => !m.isError), ...extra }
     if (mode === 'employee') body.language = lang
     const controller = new AbortController()
     // A bit longer than the server's own 52 s budget (Vercel maxDuration is 60 s), so the
@@ -192,10 +201,31 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       throw new Error(unavailable)
     }
     if (!resp.ok || data.error) throw new Error(data.error || `Error ${resp.status}`)
+    if (data.incomplete) return data
     if (typeof data.reply !== 'string' || !data.reply.trim()) {
       throw new Error(lang === 'ja' ? 'AIから回答がありませんでした。もう一度お試しください。' : 'A IA não retornou uma resposta. Tente novamente.')
     }
     return data
+  }
+
+  // Asks the AI and, when the server ran out of time mid-request, sends the work done so far
+  // back so it carries on: the person never has to split a big request into pieces.
+  const askAI = async (allMessages) => {
+    let data = await callAPI(allMessages)
+    const toolLog = [...(data.toolLog || [])]
+    let part = 1
+    try {
+      while (data.incomplete && data.continuation && part < MAX_AUTO_PARTS) {
+        part += 1
+        setProgressPart(part)
+        data = await callAPI(allMessages, { continuation: data.continuation, proposedToken: data.proposedToken })
+        toolLog.push(...(data.toolLog || []))
+      }
+    } finally {
+      setProgressPart(0)
+    }
+    if (data.incomplete) return { ...data, reply: progressText.stopped, toolLog }
+    return { ...data, toolLog }
   }
 
   const sendFromCall = async (text) => {
@@ -203,7 +233,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     const history = messagesRef.current.slice(-6)
     const newMessages = [...history, userMsg]
     setMessages(m => [...m, { ...userMsg, attachmentsData: undefined }])
-    const data = await callAPI(newMessages)
+    const data = await askAI(newMessages)
     const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }
     setMessages(m => [...m, replyMsg])
     return data.reply
@@ -280,7 +310,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       .find(type => window.MediaRecorder.isTypeSupported?.(type))
     let recorder
     try {
-      recorder = new window.MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 64000 })
+      recorder = new window.MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32000 })
     } catch {
       recorder = new window.MediaRecorder(stream)
     }
@@ -335,7 +365,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   }
 
   const send = async () => {
-    if ((!input.trim() && !attachments.length) || loading) return
+    if (!input.trim() && !attachments.length) return
     const labels = attachments.map(file => file.name)
     const userMsg = {
       role: 'user',
@@ -343,14 +373,20 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       attachments: attachments.map(({ name, type }) => ({ name, type })),
       attachmentsData: attachments,
     }
-    const newMessages = [...messages, userMsg]
-    setMessages(m => [...m, userMsg])
-    retryRequestRef.current = newMessages
     setInput('')
     setAttachments([])
+    // While the AI is answering, the next piece waits and goes together with any others
+    // right after, so the person can keep typing instead of waiting for each answer.
+    if (loading) { setMessages(m => [...m, { ...userMsg, queued: true }]); return }
+    await sendRequest([...messages, userMsg], userMsg)
+  }
+
+  const sendRequest = async (newMessages, userMsg) => {
+    if (userMsg) setMessages(m => [...m, userMsg])
+    retryRequestRef.current = newMessages
     setLoading(true)
     try {
-      const data = await callAPI(newMessages)
+      const data = await askAI(newMessages)
       const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }
       setMessages(m => [...m, replyMsg])
       if (voiceReplies) speakReply(data.reply)
@@ -361,13 +397,24 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     if (window.matchMedia?.('(pointer: fine)').matches) inputRef.current?.focus()
   }
 
+  // Pieces typed while the AI was busy go out as soon as it is free.
+  const hasQueued = messages.some(m => m.queued)
+  useEffect(() => {
+    if (loading || !hasQueued) return
+    // The waiting pieces go after the answer that just arrived, so the request ends with them.
+    const current = messagesRef.current
+    const request = [...current.filter(m => !m.queued), ...current.filter(m => m.queued).map(m => ({ ...m, queued: false }))]
+    setMessages(request)
+    sendRequest(request)
+  }, [loading, hasQueued]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const retryLastRequest = async () => {
     const lastRequest = retryRequestRef.current
     if (!lastRequest || loading) return
     setMessages(current => current.slice(0, -1))
     setLoading(true)
     try {
-      const data = await callAPI(lastRequest)
+      const data = await askAI(lastRequest)
       const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }
       setMessages(current => [...current, replyMsg])
       if (voiceReplies) speakReply(data.reply)
@@ -388,7 +435,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     setMessages(request)
     setLoading(true)
     try {
-      const data = await callAPI(request)
+      const data = await askAI(request)
       setMessages(m => [...m, { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }])
       if (voiceReplies) speakReply(data.reply)
     } catch (error) {
@@ -486,6 +533,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
                 border: m.role === 'user' ? 'none' : botBorder,
               }}>
                 {formatText(m.content)}
+                {m.queued && <div style={{ fontSize: 10, opacity: 0.75, marginTop: 4 }}>⏳ {progressText.queued}</div>}
                 {m.attachments?.length > 0 && <div className="ai-attachment-list">{m.attachments.map((file, j) => <span key={j}>📎 {file.name}</span>)}</div>}
                 {m.isError && i === messages.length - 1 && <button type="button" className="ai-retry-button" onClick={retryLastRequest} disabled={loading}>{lang === 'ja' ? '↻ 再試行' : '↻ Tentar novamente'}</button>}
                 {m.approval && <ApprovalCard approval={m.approval} lang={lang} onAuthorize={password => authorizeChanges(i, password)} onCancel={() => setApproval(i, { state: 'cancelled', token: null })} />}
@@ -509,7 +557,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
             </div>
           </div>
         ))}
-        {loading && <div className="ai-msg is-bot"><span className="ai-orb ai-orb-xs ai-msg-avatar is-thinking" aria-hidden="true" /><div className="ai-typing" aria-label={ai.thinking}><i /><i /><i /></div></div>}
+        {loading && <div className="ai-msg is-bot"><span className="ai-orb ai-orb-xs ai-msg-avatar is-thinking" aria-hidden="true" /><div className="ai-typing" aria-label={ai.thinking}><i /><i /><i /></div>{progressPart > 1 && <small style={{ alignSelf: 'center', fontSize: 11, opacity: 0.7, marginLeft: 8 }}>{fill(progressText.part, { n: progressPart })}</small>}</div>}
         <div ref={bottomRef} />
       </div>
       )}
@@ -554,8 +602,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
                 {recording ? <span className="ai-rec-dot" /> : <MicIcon />}
               </button>
               <button type="button" className="ai-composer-send" onClick={send}
-                disabled={loading || (!input.trim() && !attachments.length)} title={ai.send} aria-label={ai.send}>
-                {loading ? <span className="ai-send-spinner" /> : <SendIcon />}
+                disabled={!input.trim() && !attachments.length} title={ai.send} aria-label={ai.send}>
+                {loading && !input.trim() && !attachments.length ? <span className="ai-send-spinner" /> : <SendIcon />}
               </button>
             </div>
           </div>
