@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
+import EvaluationQuick from '../components/EvaluationQuick'
 import ContractTab from '../components/ContractTab'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
 import { useLang, pickLang } from '../hooks/useLang'
@@ -103,7 +104,6 @@ export default function EmployeeProfile() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [workDays, setWorkDays] = useState([])
-  const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
   const [addingEval, setAddingEval] = useState(false)
   const [analyzingId, setAnalyzingId] = useState(null)
   // v1.0.72 · leader of this employee (employees.leader_id). Hidden until the team chat SQL is applied.
@@ -134,7 +134,6 @@ export default function EmployeeProfile() {
     setAnalyzingId(null)
   }
 
-  const EVAL_CATEGORIES = ['Quality','Punctuality','Behavior','Communication','Initiative','Cleanliness']
 
   useEffect(() => { loadAll() }, [id])
 
@@ -186,18 +185,6 @@ export default function EmployeeProfile() {
     }
     toast.success('Saved!')
     setEditing(false); loadAll()
-  }
-
-  const handleAddEval = async () => {
-    if (!evalForm.description) return toast.error('Add a description')
-    const pts = evalForm.type==='positive' ? Math.abs(evalForm.points_change) : -Math.abs(evalForm.points_change)
-    const newScore = Math.max(0, Math.min(100, (emp.score||100) + pts))
-    await supabase.from('evaluations').insert({ employee_id:id, employee_name:emp.full_name, ...evalForm, points_change:pts })
-    await supabase.from('employees').update({ score:newScore }).eq('id', id)
-    toast.success(`Evaluation added! Score: ${newScore}`)
-    setAddingEval(false)
-    setEvalForm({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
-    loadAll()
   }
 
   const handleDeleteEval = async (evalId, pts) => {
@@ -335,46 +322,7 @@ export default function EmployeeProfile() {
 
           {addingEval&&(
             <div className="card" style={{marginBottom:16,border:'1px solid var(--navy)'}}>
-              <div className="card-title">New Evaluation</div>
-              <div className="grid-2">
-                <div className="form-group">
-                  <label>Type</label>
-                  <select value={evalForm.type} onChange={e=>setEvalForm(f=>({...f,type:e.target.value}))}>
-                    <option value="positive">✅ Positive (+points)</option>
-                    <option value="complaint">❌ Complaint (-points)</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Category</label>
-                  <select value={evalForm.category} onChange={e=>setEvalForm(f=>({...f,category:e.target.value}))}>
-                    {EVAL_CATEGORIES.map(c=><option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Points ({evalForm.type==='positive'?'+':'-'}{evalForm.points_change})</label>
-                  <input type="number" value={evalForm.points_change} min={1} max={20} onChange={e=>setEvalForm(f=>({...f,points_change:parseInt(e.target.value)||5}))} />
-                </div>
-                <div className="form-group">
-                  <label>Stars</label>
-                  <div style={{display:'flex',gap:4,marginTop:4}}>
-                    {[1,2,3,4,5].map(n=>(
-                      <button key={n} onClick={()=>setEvalForm(f=>({...f,stars:n}))} style={{fontSize:22,background:'none',border:'none',cursor:'pointer',opacity:n<=evalForm.stars?1:0.3,padding:0}}>★</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Date</label>
-                  <input type="date" value={evalForm.eval_date} onChange={e=>setEvalForm(f=>({...f,eval_date:e.target.value}))} />
-                </div>
-                <div className="form-group" style={{gridColumn:'1/-1'}}>
-                  <label>Description *</label>
-                  <textarea value={evalForm.description} onChange={e=>setEvalForm(f=>({...f,description:e.target.value}))} placeholder="Describe the evaluation..." />
-                </div>
-              </div>
-              <div style={{display:'flex',gap:8}}>
-                <button className="btn btn-primary" onClick={handleAddEval}>Save Evaluation</button>
-                <button className="btn" onClick={()=>setAddingEval(false)}>Cancel</button>
-              </div>
+              <EvaluationQuick employee={emp} onSaved={()=>{ setAddingEval(false); loadAll() }} onCancel={()=>setAddingEval(false)} />
             </div>
           )}
 

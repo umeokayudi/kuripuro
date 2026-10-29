@@ -30,6 +30,74 @@ export const DEEP_CLEAN_COMPONENTS = [
   { id: 'other', label: 'Other', labelJa: 'その他', labelPt: 'Outro' },
 ]
 
+/**
+ * Specific deep-clean tasks the admin can pick when creating a job.
+ * `label` is the English name written in the job title ("Loc — Deep Clean (Range Hood, Fryer)");
+ * `check` is the checklist line the employee ticks (display text in jobChecklist.js).
+ */
+export const DEEP_TASKS = [
+  { id: 'range_hood', icon: '🌀', label: 'Range Hood', ja: 'レンジフード', pt: 'Coifa', check: 'Range Hood — limpeza completa (filtros, duto, superficie)' },
+  { id: 'grease_trap', icon: '🛢️', label: 'Grease Trap', ja: 'グリストラップ', pt: 'Caixa de gordura', check: 'Grease Trap — esvaziado e higienizado' },
+  { id: 'grating', icon: '🔲', label: 'Grating', ja: 'グレーティング', pt: 'Grelhas de piso', check: 'Grating — grelha limpa sem gordura' },
+  { id: 'stove', icon: '🔥', label: 'Stove', ja: 'コンロ', pt: 'Fogão', check: 'Stove — fogões limpos e sem gordura' },
+  { id: 'ac', icon: '❄️', label: 'AC Cleaning', ja: 'エアコン', pt: 'Ar-condicionado', check: 'AC Cleaning — filtros e unidade interna' },
+  { id: 'fryer', icon: '🍟', label: 'Fryer', ja: 'フライヤー', pt: 'Fritadeira', check: 'Fryer — oleo retirado, cesto e cuba limpos' },
+  { id: 'kitchen_equipment', icon: '🍳', label: 'Kitchen Equipment', ja: '厨房機器', pt: 'Equipamentos da cozinha', check: 'Kitchen Equipment — mesas, prateleiras e equipamentos sem gordura' },
+  { id: 'fridge', icon: '🧊', label: 'Fridge', ja: '冷蔵庫', pt: 'Geladeira', check: 'Fridge — por dentro e por fora, borrachas limpas' },
+  { id: 'walls', icon: '🧱', label: 'Walls & Tiles', ja: '壁・タイル', pt: 'Paredes e azulejos', check: 'Walls & Tiles — gordura removida, rejunte limpo' },
+  { id: 'floor_scrub', icon: '🧽', label: 'Floor Scrub', ja: '床の洗浄', pt: 'Lavar piso', check: 'Floor Scrub — piso esfregado, cantos e debaixo dos equipamentos' },
+  { id: 'drains', icon: '🚰', label: 'Drains', ja: '排水溝', pt: 'Ralos', check: 'Drains — ralos abertos, limpos e sem cheiro' },
+  { id: 'restroom', icon: '🚽', label: 'Restroom', ja: 'トイレ', pt: 'Banheiro completo', check: 'Restroom — vaso, pia, piso e paredes' },
+  { id: 'windows', icon: '🪟', label: 'Windows', ja: '窓ガラス', pt: 'Vidros e janelas', check: 'Windows — vidros por dentro e por fora, sem marcas' },
+  { id: 'ceiling', icon: '💡', label: 'Ceiling & Lights', ja: '天井・照明', pt: 'Teto e luminárias', check: 'Ceiling & Lights — teto, luminarias e saidas de ar' },
+  { id: 'seats', icon: '🪑', label: 'Seats & Sofas', ja: '椅子・ソファ', pt: 'Cadeiras e sofás', check: 'Seats & Sofas — assentos limpos, sem manchas' },
+  { id: 'floor_wax', icon: '✨', label: 'Floor Wax', ja: '床ワックス', pt: 'Cera no piso', check: 'Floor Wax — piso limpo e encerado' },
+]
+
+export function deepTaskName(task, lang = 'en') {
+  return lang === 'ja' ? task.ja : lang === 'pt' ? task.pt : task.label
+}
+
+/** Free-text task typed by the admin, made safe for the "(a, b, c)" title list. */
+export function cleanCustomTask(text) {
+  return String(text || '').replace(/[(),\n]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** "Loc — Deep Clean (Range Hood, Fryer, wash the back door)" from task ids + free-text tasks. */
+export function buildDeepTaskTitle(locName, taskIds = [], customTasks = []) {
+  const labels = [
+    ...DEEP_TASKS.filter(t => taskIds.includes(t.id)).map(t => t.label),
+    ...customTasks.map(cleanCustomTask).filter(Boolean),
+  ]
+  return labels.length ? `${locName} — Deep Clean (${labels.join(', ')})` : `${locName} — Deep Clean`
+}
+
+/** Task labels written in a deep-clean title, or null when the title has no explicit list. */
+export function parseDeepTaskList(title) {
+  const m = String(title || '').match(/deep clean \(([^)]*)\)\s*$/i)
+  if (!m) return null
+  return m[1].split(',').map(s => s.trim()).filter(Boolean)
+}
+
+/** Split title labels back into known task ids + free-text tasks. */
+export function deepTasksFromTitle(title) {
+  const labels = parseDeepTaskList(title) || []
+  const ids = []
+  const custom = []
+  for (const l of labels) {
+    const task = DEEP_TASKS.find(t => t.label.toLowerCase() === l.toLowerCase())
+    if (task) ids.push(task.id)
+    else custom.push(l)
+  }
+  return { ids, custom }
+}
+
+/** Checklist lines for the tasks listed in a deep-clean title. */
+export function deepTaskChecklistLines(title) {
+  const labels = parseDeepTaskList(title) || []
+  return labels.filter(l => l.toLowerCase() !== 'other').map(l => DEEP_TASKS.find(t => t.label.toLowerCase() === l.toLowerCase())?.check || l)
+}
+
 /** Manutenção no dia de folga (deep-only OTP) */
 export const REST_DAY_MAINTENANCE_COMPONENTS = [
   { id: 'grease_trap', label: 'Grease Trap', timesPerMonth: 2 },
@@ -98,9 +166,10 @@ export function parseDeepComponents(job) {
   const text = `${job?.title || ''}\n${job?.description || ''}`.toLowerCase()
   const found = DEEP_CLEAN_COMPONENTS.filter(c => {
     const label = c.label.toLowerCase()
-    return text.includes(label) || text.includes(c.id.replace('_', ' '))
+    return text.includes(label) || new RegExp(`\\b${c.id.replace('_', ' ')}\\b`).test(text)
   }).map(c => c.id)
-  if (found.length) return found
+  // An explicit task list in the title ("Deep Clean (Fryer)") means only those tasks.
+  if (found.length || parseDeepTaskList(job?.title)) return found
   if (getCleaningType(job) === 'deep') return [...ALL_DEEP_COMPONENT_IDS]
   return []
 }

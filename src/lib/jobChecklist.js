@@ -2,6 +2,8 @@ import {
   getCleaningType,
   normalizeDeepComponents,
   parseDeepComponents,
+  parseDeepTaskList,
+  deepTaskChecklistLines,
 } from './cleaningType'
 
 function locationNameFromTitle(title) {
@@ -76,6 +78,17 @@ const CHECKLIST_DISPLAY = {
   'Grating — grelha limpa sem gordura': { en: 'Grating — clean, no grease', ja: 'グレーティング — 油なし', pt: 'Grelha de piso — limpa, sem gordura' },
   'Grease Trap — esvaziado e higienizado': { en: 'Grease Trap — emptied and sanitized', ja: 'グリストラップ — 空にして清掃', pt: 'Caixa de gordura — esvaziada e higienizada' },
   'Stove — fogões limpos e sem gordura': { en: 'Stove — clean, no grease', ja: 'コンロ — 油なし', pt: 'Fogão — limpo e sem gordura' },
+  'Fryer — oleo retirado, cesto e cuba limpos': { en: 'Fryer — oil out, basket and vat clean', ja: 'フライヤー — 油を抜き、バスケットと槽を清掃', pt: 'Fritadeira — óleo retirado, cesto e cuba limpos' },
+  'Kitchen Equipment — mesas, prateleiras e equipamentos sem gordura': { en: 'Kitchen equipment — tables, shelves and machines, no grease', ja: '厨房機器 — 台・棚・機器の油汚れなし', pt: 'Equipamentos da cozinha — mesas, prateleiras e equipamentos sem gordura' },
+  'Fridge — por dentro e por fora, borrachas limpas': { en: 'Fridge — inside and out, door seals clean', ja: '冷蔵庫 — 内外とパッキン', pt: 'Geladeira — por dentro e por fora, borrachas limpas' },
+  'Walls & Tiles — gordura removida, rejunte limpo': { en: 'Walls & tiles — grease off, grout clean', ja: '壁・タイル — 油汚れと目地', pt: 'Paredes e azulejos — gordura removida, rejunte limpo' },
+  'Floor Scrub — piso esfregado, cantos e debaixo dos equipamentos': { en: 'Floor scrub — corners and under equipment', ja: '床洗浄 — 隅と機器の下まで', pt: 'Lavar piso — cantos e debaixo dos equipamentos' },
+  'Drains — ralos abertos, limpos e sem cheiro': { en: 'Drains — opened, clean, no smell', ja: '排水溝 — 開けて清掃、臭いなし', pt: 'Ralos — abertos, limpos e sem cheiro' },
+  'Restroom — vaso, pia, piso e paredes': { en: 'Restroom — toilet, sink, floor and walls', ja: 'トイレ — 便器・洗面台・床・壁', pt: 'Banheiro completo — vaso, pia, piso e paredes' },
+  'Windows — vidros por dentro e por fora, sem marcas': { en: 'Windows — inside and out, no streaks', ja: '窓ガラス — 内外、拭き跡なし', pt: 'Vidros e janelas — por dentro e por fora, sem marcas' },
+  'Ceiling & Lights — teto, luminarias e saidas de ar': { en: 'Ceiling & lights — ceiling, lamps and vents', ja: '天井・照明 — 天井・照明・吹出口', pt: 'Teto e luminárias — teto, luminárias e saídas de ar' },
+  'Seats & Sofas — assentos limpos, sem manchas': { en: 'Seats & sofas — clean, no stains', ja: '椅子・ソファ — シミなし', pt: 'Cadeiras e sofás — limpos, sem manchas' },
+  'Floor Wax — piso limpo e encerado': { en: 'Floor wax — cleaned and waxed', ja: '床ワックス — 清掃とワックスがけ', pt: 'Cera no piso — limpo e encerado' },
 }
 
 export function checklistDisplayLabel(label, lang = 'en') {
@@ -156,6 +169,12 @@ export function getChecklistItems(locationName) {
 export function checklistTemplateForJob(job, deepComponents) {
   const catalogItems = getChecklistItems(job?.title || job?.location_name || '')
   const isDeep = getCleaningType(job) === 'deep'
+  // Admin picked specific deep-clean tasks: the employee gets exactly those.
+  if (isDeep && !deepComponents?.length && parseDeepTaskList(job?.title)) {
+    const saved = (job?.checklist_template || '').trim()
+    if (!catalogItems.length && saved) return saved
+    return [...catalogItems, ...deepTaskChecklistLines(job.title)].join('\n')
+  }
   const comps = normalizeDeepComponents(
     deepComponents?.length ? deepComponents : (isDeep ? parseDeepComponents(job) : [])
   )
