@@ -36,7 +36,7 @@ Considere aprovado (true) apenas se nota >= 7. Seja objetivo: sujeira visível, 
         ],
       }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 300 },
-    })
+    }, { lowThinking: true })
 
     const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '{}'
     const cleaned = raw.replace(/```json|```/g, '').trim()

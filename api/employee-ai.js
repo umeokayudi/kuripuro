@@ -3,7 +3,7 @@
 
 import { runGeminiToolLoop } from './_tool-loop.js'
 import { requireSalesSession, salesDb } from './_salesSession.js'
-import { trimHistory, workOnlyRule, maskPendingRows, PENDING_RULE } from './_ai-guard.js'
+import { trimHistory, workOnlyRule, mergeTurns, packContinuation, readContinuation, maskPendingRows, PENDING_RULE } from './_ai-guard.js'
 import { transcribeAudio } from './_transcribe.js'
 import { employeeJobRows, payRule, JOB_MONEY_COLUMNS } from './_employee-ai-pay.js'
 
@@ -142,20 +142,25 @@ ${PENDING_RULE}
 ${workOnlyRule(responseLanguage)}`
 
   try {
-    const contents = validatedMessages.map(m => {
+    const contents = mergeTurns(validatedMessages.map(m => {
       const parts = [{ text: m.content || '' }]
       parts.push(...(m.validatedAttachments || []))
       return { role: m.role === 'assistant' ? 'model' : 'user', parts }
-    })
+    }))
+    const baseLength = contents.length
+    contents.push(...readContinuation(req.body.continuation))
 
-    const { reply, toolLog } = await runGeminiToolLoop({
+    const { reply, toolLog, incomplete } = await runGeminiToolLoop({
       contents,
       tools: TOOLS,
       systemInstruction: { parts: [{ text: systemInstruction }] },
       executeTool: (_name, args) => queryEmployeeData(employee, args || {}),
-      maxIterations: 4,
+      maxIterations: 6,
+      canContinue: true,
     })
 
+    const continuation = incomplete ? packContinuation(contents, baseLength) : null
+    if (continuation) return res.status(200).json({ reply: '', toolLog, incomplete: true, continuation })
     res.status(200).json({ reply, toolLog })
   } catch (err) {
     res.status(500).json({ error: err.message })

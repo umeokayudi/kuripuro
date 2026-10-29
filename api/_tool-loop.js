@@ -15,6 +15,7 @@ export async function runGeminiToolLoop({
   maxIterations = 10,
   synthesizeOnEmpty = true,
   budgetMs = DEFAULT_BUDGET_MS,
+  canContinue = false,
 }) {
   const deadline = Date.now() + budgetMs
   const callTimeout = () => Math.min(MAX_CALL_MS, deadline - Date.now())
@@ -61,6 +62,12 @@ export async function runGeminiToolLoop({
     contents.push({ role: 'user', parts: responses })
   }
 
+  // Out of time with lookups done: hand the work back so the next request carries on from
+  // here (the browser sends it on its own) instead of asking the person to split the request.
+  if (!finalText && outOfTime && canContinue && toolLog.length) {
+    return { reply: '', toolLog, incomplete: true }
+  }
+
   if (!finalText && synthesizeOnEmpty && toolLog.length && callTimeout() >= MIN_CALL_MS) {
     const failed = toolLog.filter(t => !t.ok)
     const summary = toolLog.map(t =>
@@ -92,7 +99,7 @@ ${outOfTime ? 'O tempo para esta resposta acabou antes de terminar. Diga o que j
   }
 
   if (!finalText && outOfTime) {
-    finalText = 'Este pedido levou mais tempo do que o limite. Mande "continue" ou divida o pedido em partes menores.'
+    finalText = 'Este pedido levou mais tempo do que o limite. Mande "continue" para eu seguir de onde parei.'
   }
 
   return { reply: finalText || '(sem resposta)', toolLog }

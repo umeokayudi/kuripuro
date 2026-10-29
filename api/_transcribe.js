@@ -13,7 +13,7 @@ export async function transcribeAudio(res, audio) {
     return res.status(415).json({ error: 'Formato de áudio não suportado.' })
   }
   if (match[2].length > MAX_AUDIO_BASE64) {
-    return res.status(413).json({ error: 'Áudio longo demais. Grave até 1 minuto.' })
+    return res.status(413).json({ error: 'Áudio longo demais. Grave até 5 minutos.' })
   }
   const mimeType = match[1].toLowerCase() === 'audio/x-m4a' || match[1].toLowerCase() === 'audio/m4a' ? 'audio/mp4' : match[1].toLowerCase()
   try {
@@ -26,7 +26,7 @@ export async function transcribeAudio(res, audio) {
         ],
       }],
       generationConfig: { temperature: 0 },
-    })
+    }, { lowThinking: true, timeoutMs: 50000 })
     const text = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim()
     return res.status(200).json({ text })
   } catch (error) {
