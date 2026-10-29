@@ -35,6 +35,7 @@ import { QUOTE_REQUESTS_CHANGED } from '../lib/quoteRequests'
 import { fetchContractSellers } from '../lib/contractSellers'
 import { quoteSellerFor } from '../lib/quoteSeller'
 import { ClientLink } from '../components/ClientSheetHost'
+import { askConfirm } from '../components/ConfirmDialog'
 
 const QUOTE_FILTERS = ['all', 'draft', 'sent', 'accepted', 'declined']
 
@@ -344,7 +345,7 @@ export default function Mitsumori() {
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm(s.deleteQuoteConfirm)) return
+    if (!(await askConfirm({ message: s.deleteQuoteConfirm, danger: true }))) return
     const { error } = await supabase.from('mitsumori').delete().eq('id', id)
     if (error) return toast.error(error.message)
     toast(s.deleted)

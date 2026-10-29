@@ -26,7 +26,8 @@ export function spokenDuration(min, lang) {
     return [h ? p(h, 'hora', 'horas') : '', m || !h ? p(m, 'minuto', 'minutos') : ''].filter(Boolean).join(' e ')
   }
   const part = (n, one, many) => `${n} ${n === 1 ? one : many}`
-  return [h ? part(h, 'hour', 'hours') : '', m || !h ? part(m, 'minute', 'minutes') : ''].filter(Boolean).join(' ')
+  const [hour, hours, minute, minutes, and] = lang === 'pt' ? ['hora', 'horas', 'minuto', 'minutos', ' e '] : ['hour', 'hours', 'minute', 'minutes', ' ']
+  return [h ? part(h, hour, hours) : '', m || !h ? part(m, minute, minutes) : ''].filter(Boolean).join(and)
 }
 
 /** Text of one reminder. `dist` is meters from the store (null when unknown). */

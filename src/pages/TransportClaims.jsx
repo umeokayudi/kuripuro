@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { tokyoToday } from '../lib/dates'
 
 export default function TransportClaims() {
   const [claims, setClaims] = useState([])
@@ -25,8 +26,8 @@ export default function TransportClaims() {
     if (status === 'approved') {
       await supabase.from('salary_payments').insert({
         employee_id: empId, employee_name: empName,
-        period: new Date().toISOString().slice(0,7),
-        amount, payment_date: new Date().toISOString().split('T')[0],
+        period: tokyoToday().slice(0, 7),
+        amount, payment_date: tokyoToday(),
         description: `Transport reimbursement`, status: 'scheduled',
         payment_type: 'bonus', is_deduction: false
       })

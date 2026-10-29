@@ -37,6 +37,15 @@ const T = {
     calendar: 'Calendar', prev: 'Previous', next: 'Next', allDays: 'All jobs in this period', back: 'Back to period', thisWeek: 'This week', thisMonth: 'This month',
     pickRange: 'Pick dates', perDay: 'Per day',
   },
+  pt: {
+    title: 'Ganhos', week: 'Semana', month: 'Mês', custom: 'Período', net: 'Líquido', gross: 'Bruto', ded: 'Descontos', jobs: 'Serviços', hours: 'Horas',
+    days: 'Dias', perHour: 'Por hora', vsPrev: 'vs período anterior', base: 'Salário base', spot: 'Spot', breakdown: 'Detalhes',
+    list: 'Serviços', empty: 'Nenhum serviço neste período', dayEmpty: 'Nenhum serviço neste dia', loading: 'Carregando…',
+    payslip: m => `Holerite de ${m} (PDF)`, making: 'Gerando PDF…', done: 'Holerite baixado',
+    noRate: 'Nenhum valor de pagamento cadastrado, por isso aparece ¥0. Fale com o admin.', fixedNote: 'Salário mensal: pago por dia trabalhado',
+    calendar: 'Calendário', prev: 'Anterior', next: 'Próximo', allDays: 'Todos os serviços do período', back: 'Voltar ao período', thisWeek: 'Esta semana', thisMonth: 'Este mês',
+    pickRange: 'Escolher datas', perDay: 'Por dia',
+  },
 }
 
 const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString('ja-JP')}`
@@ -107,7 +116,7 @@ function MonthCalendar({ summary, selected, onPick, lang }) {
   const first = summary.from
   const lead = (new Date(`${first}T12:00:00Z`).getUTCDay() + 6) % 7
   const max = Math.max(...summary.days.map(d => d.total), 1)
-  const names = lang === 'ja' ? ['月', '火', '水', '木', '金', '土', '日'] : ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+  const names = lang === 'ja' ? ['月', '火', '水', '木', '金', '土', '日'] : lang === 'pt' ? ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'] : ['M', 'T', 'W', 'T', 'F', 'S', 'S']
   const today = tokyoToday()
   return (
     <div className="earn-cal">
@@ -141,7 +150,7 @@ function JobRow({ job, emp, showAmount, lang }) {
 }
 
 export default function EarningsPanel({ employeeId, employee: employeeProp, lang = 'en', theme = 'portal', showTitle = true }) {
-  const t = T[lang === 'ja' ? 'ja' : 'en']
+  const t = T[lang] || T.en
   const today = tokyoToday()
   const [mode, setMode] = useState('week')
   const [weekAnchor, setWeekAnchor] = useState(() => weekStart(today))
@@ -175,7 +184,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
         : supabase.from('employees').select('id,full_name,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days').eq('id', employeeId).maybeSingle(),
       supabase.from('jobs').select('*').eq('employee_id', employeeId).eq('status', 'completed').gte('scheduled_date', addDays(from, -1)).lte('scheduled_date', today).order('scheduled_date', { ascending: false }).limit(5000),
       supabase.from('service_contracts').select('location_name,price_per_visit').eq('is_active', true),
-      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true).gte('payment_date', from).lte('payment_date', today),
+      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true).neq('status', 'cancelled').gte('payment_date', from).lte('payment_date', today),
     ]).then(([emp, jobs, contracts, ded]) => {
       if (!alive) return
       const visible = (jobs.data || []).filter(j => !isDuskinJob(j))

@@ -6,9 +6,10 @@ import { closeSalaryPeriod } from '../lib/salaryClose'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { useSearchParams } from 'react-router-dom'
 import { useLang, fill } from '../hooks/useLang'
+import { askConfirm } from '../components/ConfirmDialog'
 
 export default function SalaryPeriods() {
-  const { t } = useLang()
+  const { t, tr } = useLang()
   const p = t.payroll
   const [periods, setPeriods] = useState([])
   const [statements, setStatements] = useState([])
@@ -16,10 +17,14 @@ export default function SalaryPeriods() {
   const [loading, setLoading] = useState(true)
   const [closing, setClosing] = useState(false)
   const [schemaOk, setSchemaOk] = useState(true)
+  const [activeEmps, setActiveEmps] = useState([])
   const [searchParams] = useSearchParams()
   const wanted = searchParams.get('period')
 
-  useEffect(() => { loadPeriods() }, [])
+  useEffect(() => {
+    loadPeriods()
+    supabase.from('employees').select('id,full_name').eq('is_active', true).order('full_name').then(({ data }) => setActiveEmps(data || []))
+  }, [])
 
   useEffect(() => { if (selectedPeriod) loadStatements(selectedPeriod) }, [selectedPeriod])
 
@@ -38,7 +43,7 @@ export default function SalaryPeriods() {
 
   const closeMonth = async (period) => {
     const { confirmDeadline, payDate } = getPeriodDates(period)
-    if (!window.confirm(fill(p.closeConfirm, { period: fmtPeriod(period), deadline: confirmDeadline, payDate }))) return
+    if (!(await askConfirm({ message: fill(p.closeConfirm, { period: fmtPeriod(period), deadline: confirmDeadline, payDate }), danger: false }))) return
     setClosing(true)
     try {
       await closeSalaryPeriod(supabase, period, { salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(period) }) })
@@ -62,8 +67,8 @@ export default function SalaryPeriods() {
     loadPeriods()
   }
 
-  const reopen = (period) => {
-    if (!window.confirm(fill(p.reopenConfirm, { period: fmtPeriod(period) }))) return
+  const reopen = async (period) => {
+    if (!(await askConfirm({ message: fill(p.reopenConfirm, { period: fmtPeriod(period) }), danger: true }))) return
     setPeriodStatus(period, 'open', fill(p.reopened, { period: fmtPeriod(period) }))
   }
 
@@ -81,6 +86,11 @@ export default function SalaryPeriods() {
     return `${py}-${String(pm).padStart(2, '0')}`
   })()
 
+  // A month shows ONE action: close it while open, otherwise its state (+ reopen / recalculate).
+  const statusOf = (period) => periods.find(r => r.period === period)?.status || 'open'
+  const missing = activeEmps.filter(e => !statements.some(s => s.employee_id === e.id))
+  const selectedStatus = selectedPeriod ? statusOf(selectedPeriod) : 'open'
+
   return (
     <div>
       <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{p.title}</h2>
@@ -94,12 +104,16 @@ export default function SalaryPeriods() {
       )}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button className="btn btn-primary" disabled={closing} onClick={() => closeMonth(prevPeriod)}>
-          {closing ? p.closing : `🔒 ${fill(p.closePrev, { period: fmtPeriod(prevPeriod) })}`}
-        </button>
-        <button className="btn" onClick={() => closeMonth(currentPeriod)} disabled={closing}>
-          {fill(p.closeCurrent, { period: fmtPeriod(currentPeriod) })}
-        </button>
+        {statusOf(prevPeriod) === 'open' && (
+          <button className="btn btn-primary" disabled={closing} onClick={() => closeMonth(prevPeriod)}>
+            {closing ? p.closing : `🔒 ${fill(p.closePrev, { period: fmtPeriod(prevPeriod) })}`}
+          </button>
+        )}
+        {statusOf(currentPeriod) === 'open' && (
+          <button className="btn" onClick={() => closeMonth(currentPeriod)} disabled={closing}>
+            {fill(p.closeCurrent, { period: fmtPeriod(currentPeriod) })}
+          </button>
+        )}
       </div>
 
       {loading && <div style={{ color: 'var(--text3)' }}>{t.app.loading}</div>}
@@ -142,6 +156,12 @@ export default function SalaryPeriods() {
             const d = getPeriodDates(selectedPeriod)
             return <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>{fill(p.confirmUntil, { deadline: d.confirmDeadline, payDate: d.payDate })}</div>
           })()}
+          {selectedStatus !== 'open' && missing.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, color: 'var(--text2)', marginBottom: 10 }}>
+              <span>⚠️ {tr(`Not in this payroll: ${missing.map(e => e.full_name).join(', ')}`, `この締めに含まれていない人: ${missing.map(e => e.full_name).join('、')}`, `Fora desta folha: ${missing.map(e => e.full_name).join(', ')}`)}</span>
+              <button className="btn btn-sm" disabled={closing} onClick={() => closeMonth(selectedPeriod)}>{tr('Recalculate and include', '再計算して追加', 'Recalcular e incluir')}</button>
+            </div>
+          )}
           {statements.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{p.noSlips}</div>}
           {statements.map(s => (
             <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>

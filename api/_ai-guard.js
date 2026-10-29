@@ -4,13 +4,47 @@
 import { createHmac, timingSafeEqual, createHash } from 'node:crypto'
 
 /** Only the most recent turns go to Gemini; older ones cost tokens and add little. */
-export const MAX_HISTORY = 8
+export const MAX_HISTORY = 12
 
 export function trimHistory(messages) {
   const recent = messages.slice(-MAX_HISTORY)
   // Gemini expects the conversation to start with the user.
   while (recent.length && recent[0].role === 'assistant') recent.shift()
   return recent
+}
+
+/** Several messages in a row from the same side (a request sent in pieces) become one turn. */
+export function mergeTurns(contents) {
+  const merged = []
+  for (const turn of contents) {
+    const last = merged[merged.length - 1]
+    if (last && last.role === turn.role) last.parts = [...last.parts, ...turn.parts]
+    else merged.push({ ...turn, parts: [...turn.parts] })
+  }
+  return merged
+}
+
+// ── Continuing a long request ──────────────────────────────────────────────
+// When a request needs more lookups than fit in one call (Vercel stops at 60 s), the model
+// turns and lookup results so far go back to the browser, which sends them with the next
+// call. Only Gemini turns are accepted: { role: 'user' | 'model', parts: [...] }.
+
+const MAX_CONTINUATION_CHARS = 1_500_000
+export const MAX_CONTINUATIONS = 4
+
+export function packContinuation(contents, baseLength) {
+  const added = contents.slice(baseLength)
+  if (!added.length) return null
+  const json = JSON.stringify(added)
+  return json.length <= MAX_CONTINUATION_CHARS ? added : null
+}
+
+export function readContinuation(value) {
+  if (!Array.isArray(value) || !value.length) return []
+  if (JSON.stringify(value).length > MAX_CONTINUATION_CHARS) return []
+  const ok = value.every(turn => turn && (turn.role === 'user' || turn.role === 'model') && Array.isArray(turn.parts)
+    && turn.parts.every(p => p && typeof p === 'object' && !p.inlineData && !p.fileData))
+  return ok ? value.map(turn => ({ role: turn.role, parts: turn.parts })) : []
 }
 
 export function workOnlyRule(language) {

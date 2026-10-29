@@ -16,6 +16,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import Sidebar, { usePendingCounts } from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
+import ConfirmDialogHost from './components/ConfirmDialog'
 import Login from './pages/Login'
 import { supabase } from './lib/supabase'
 
@@ -328,6 +329,7 @@ export default function App() {
         <LangProvider>
           <AppContent />
           <Toaster position="top-right" toastOptions={{ style:{ fontSize:13 } }} />
+          <ConfirmDialogHost />
         </LangProvider>
       </AuthProvider>
     </BrowserRouter>

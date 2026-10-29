@@ -1,5 +1,5 @@
-import { tokyoToday, workedDayKey } from './dates'
-import { calcEmployeeMonthlySalary, jobMinutes, jobPay } from './salaryCalc'
+import { tokyoToday, workedDayKey } from './dates.js'
+import { calcEmployeeMonthlySalary, jobMinutes, jobPay } from './salaryCalc.js'
 
 // Earnings history for the Salary screens (employee Salary tab + admin Salary page).
 // Each worked day gets its own amount, like a driver-app earnings screen. A full calendar
@@ -32,23 +32,32 @@ export function shiftMonth(month, n) {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTHS_BY_LANG = {
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  pt: ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'],
+}
+const MONTHS_LONG_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 const WEEKDAYS = {
   en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
   ja: ['日', '月', '火', '水', '木', '金', '土'],
+  pt: ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'],
 }
+const monthsFor = lang => MONTHS_BY_LANG[lang] || MONTHS_BY_LANG.en
+const weekdaysFor = lang => WEEKDAYS[lang] || WEEKDAYS.en
 
 export function monthLabel(month, lang = 'en', long = false) {
   const [y, m] = month.split('-').map(Number)
   if (lang === 'ja') return long ? `${y}年${m}月` : `${m}月`
-  return long ? `${MONTHS[m - 1]} ${y}` : MONTHS[m - 1]
+  if (lang === 'pt' && long) return `${MONTHS_LONG_PT[m - 1]} de ${y}`
+  const months = monthsFor(lang)
+  return long ? `${months[m - 1]} ${y}` : months[m - 1]
 }
 
 export function dayLabel(day, lang = 'en', withWeekday = true) {
   const d = parse(day)
-  const wd = WEEKDAYS[lang === 'ja' ? 'ja' : 'en'][d.getUTCDay()]
+  const wd = weekdaysFor(lang)[d.getUTCDay()]
   if (lang === 'ja') return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日${withWeekday ? `(${wd})` : ''}`
-  return `${withWeekday ? wd + ' ' : ''}${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
+  return `${withWeekday ? wd + ' ' : ''}${d.getUTCDate()} ${monthsFor(lang)[d.getUTCMonth()]}`
 }
 
 export function rangeLabel(from, to, lang = 'en') {
@@ -58,8 +67,9 @@ export function rangeLabel(from, to, lang = 'en') {
     const right = `${b.getUTCMonth() + 1}/${b.getUTCDate()}`
     return from === to ? left : `${left} – ${right}`
   }
-  const left = `${a.getUTCDate()} ${MONTHS[a.getUTCMonth()]}`
-  const right = `${b.getUTCDate()} ${MONTHS[b.getUTCMonth()]}`
+  const months = monthsFor(lang)
+  const left = `${a.getUTCDate()} ${months[a.getUTCMonth()]}`
+  const right = `${b.getUTCDate()} ${months[b.getUTCMonth()]}`
   return from === to ? left : `${left} – ${right}`
 }
 
@@ -150,7 +160,7 @@ export function chartBars(summary, lang = 'en') {
     return days.map(d => ({
       key: d.day, from: d.day, to: d.day, value: d.total, future: d.future,
       label: days.length <= 7
-        ? (lang === 'ja' ? WEEKDAYS.ja : WEEKDAYS.en)[parse(d.day).getUTCDay()]
+        ? weekdaysFor(lang)[parse(d.day).getUTCDay()]
         : String(Number(d.day.slice(8))),
       title: dayLabel(d.day, lang),
     }))

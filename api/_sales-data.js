@@ -517,7 +517,8 @@ async function postAction(db, user, body, res) {
     if (!payload.company_name) return jsonError(res, 400, 'Informe a empresa/restaurante.')
     if (admin && body.salesperson_id) payload.salesperson_id = body.salesperson_id
     if (!admin) payload.salesperson_id = own
-    if (!admin && ['won', 'lost'].includes(payload.stage)) payload.stage = 'followup'
+    // v1.0.96 · sellers may close a deal straight from Contact ("won" → Contract step, still approved by the office).
+    if (!admin && payload.stage === 'lost') payload.stage = 'followup'
     if (payload.maps_url && !isMapsLink(payload.maps_url)) return jsonError(res, 400, 'Cole um link do Google Maps (google.com/maps ou maps.app.goo.gl).')
     // Every lead a seller registers carries the business card photo and where they were.
     if (!admin && !body.id) {

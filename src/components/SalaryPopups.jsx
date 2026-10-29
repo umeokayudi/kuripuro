@@ -17,7 +17,7 @@ import './SalaryPopups.css'
 const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString('ja-JP')}`
 const shortDate = (d, lang) => {
   const [, m, day] = d.split('-').map(Number)
-  return lang === 'ja' ? `${m}月${day}日` : `${day} ${monthLabel(d.slice(0, 7), 'en')}`
+  return lang === 'ja' ? `${m}月${day}日` : `${day} ${monthLabel(d.slice(0, 7), lang === 'pt' ? 'pt' : 'en')}`
 }
 
 function Sheet({ onClose, children, label }) {
@@ -153,7 +153,7 @@ function useMonthWork(employeeId, month) {
       const all = pays.data || []
       setData({
         emp: emp.data || {}, jobs: enrichJobValues(visible, contracts.data || []),
-        deductions: all.filter(p => p.is_deduction), payments: all,
+        deductions: all.filter(p => p.is_deduction && p.status !== 'cancelled'), payments: all,
       })
     }).catch(() => alive && setData({ emp: {}, jobs: [], deductions: [], payments: [] }))
     return () => { alive = false }

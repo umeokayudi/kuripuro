@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { normalizeTagUid, nfcSupported, readOneTag, nfcActiveFor, tagPlace } from '../lib/nfcClock'
+import { askConfirm } from './ConfirmDialog'
 
 const STATUS = {
   ok: '✅ Right sticker',
@@ -91,7 +92,7 @@ export default function NfcClockAdmin({ employees }) {
   }
 
   const removeTag = async (tag) => {
-    if (!window.confirm(`Remove sticker ${tag.tag_uid}?`)) return
+    if (!(await askConfirm({ message: `Remove sticker ${tag.tag_uid}?`, danger: true }))) return
     const { error } = await supabase.from('nfc_tags').delete().eq('id', tag.id)
     if (error) return toast.error(error.message)
     setTags(ts => ts.filter(t => t.id !== tag.id))

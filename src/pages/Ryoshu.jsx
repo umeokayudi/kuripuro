@@ -1,60 +1,82 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams, Link } from 'react-router-dom'
+import { tokyoToday } from '../lib/dates'
 import { supabase } from '../lib/supabase'
 import { escapeHtml } from '../lib/escapeHtml'
 import { useLang } from '../hooks/useLang'
 import toast from 'react-hot-toast'
+import { askConfirm } from '../components/ConfirmDialog'
+
+// v1.0.96 · a receipt is made FROM an invoice (no free form): client, amount and tax come from the
+// invoice, and receipt_number = R-<first 8 of the invoice id> keeps the link (no new column needed).
+// The screen follows the account language; the printed receipt stays in Japanese (it goes to the client).
+export const receiptNumberFor = (faturaId) => `R-${String(faturaId || '').slice(0, 8)}`
+const invoiceOf = (r, faturas) => {
+  const key = String(r.receipt_number || '').replace(/^R-/, '')
+  return key ? faturas.find(f => f.id.startsWith(key)) : null
+}
 
 export default function Ryoshu() {
-  const { t, lang, tr } = useLang()
+  const { t, tr, locale } = useLang()
+  const [searchParams] = useSearchParams()
+  const wanted = searchParams.get('fatura')
   const [receipts, setReceipts] = useState([])
-  const [clients, setClients] = useState([])
+  const [faturas, setFaturas] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ client_id:'', client_name:'', amount:'', description:'', issue_date:new Date().toISOString().split('T')[0], tax_rate:10 })
+  const emptyForm = () => ({ fatura_id:'', description:'', issue_date:tokyoToday() })
+  const [form, setForm] = useState(emptyForm)
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
     setLoading(true)
-    const [r, c] = await Promise.all([
-      supabase.from('ryoshu').select('*').order('issue_date', { ascending:false }).limit(50),
-      supabase.from('clients').select('id,company_name').eq('is_active',true).order('company_name'),
+    const [r, f] = await Promise.all([
+      supabase.from('ryoshu').select('*').order('issue_date', { ascending:false }).limit(100),
+      supabase.from('faturas').select('id,client_id,client_name,period_start,period_end,issue_date,subtotal,tax_amount,total,tax_rate,status,paid_at').order('issue_date', { ascending:false }).limit(300),
     ])
-    setReceipts(r.data||[]); setClients(c.data||[])
+    setReceipts(r.data||[]); setFaturas(f.data||[])
     setLoading(false)
   }
 
-  const upd = (k,v) => setForm(f=>({...f,[k]:v}))
+  // Opened from an invoice ("🧾 Receipt" in Invoices): the form starts filled with it.
+  useEffect(() => {
+    if (!wanted || !faturas.length) return
+    if (faturas.some(f => f.id === wanted)) { setForm({ ...emptyForm(), fatura_id: wanted }); setShowForm(true) }
+  }, [wanted, faturas.length])
 
-  const handleClientSelect = (id) => {
-    const c = clients.find(c=>c.id===id)
-    setForm(f=>({...f, client_id:id, client_name:c?.company_name||''}))
-  }
+  const upd = (k,v) => setForm(f=>({...f,[k]:v}))
+  // Only invoices that were really billed can get a receipt; one receipt per invoice.
+  const billable = faturas.filter(f => ['sent','pending','overdue','paid'].includes(f.status))
+  const taken = new Set(receipts.map(r => invoiceOf(r, faturas)?.id).filter(Boolean))
+  const inv = faturas.find(f => f.id === form.fatura_id)
+  const fmtInv = f => `${f.client_name} · ${f.period_start || f.issue_date || ''}${f.period_end ? ` → ${f.period_end}` : ''} · ¥${Number(f.total||0).toLocaleString(locale)}`
 
   const handleCreate = async () => {
-    if (!form.amount||!form.client_name) return toast.error('Fill required fields')
-    const amount = parseFloat(form.amount)||0
-    const tax = Math.round(amount * form.tax_rate/100)
-    const total = amount + tax
+    if (!inv) return toast.error(tr('Choose the invoice','請求書を選択してください','Escolha a fatura'))
+    if (taken.has(inv.id) && !(await askConfirm({ message: tr('This invoice already has a receipt. Make another one?','この請求書には領収書があります。もう一枚作りますか？','Essa fatura já tem recibo. Fazer outro?') }))) return
+    const total = Number(inv.total||0)
+    const tax = Number(inv.tax_amount ?? 0)
     const { error } = await supabase.from('ryoshu').insert({
-      client_id: form.client_id||null,
-      client_name: form.client_name,
-      amount, tax_amount:tax, total_amount:total,
-      tax_rate: form.tax_rate,
+      receipt_number: receiptNumberFor(inv.id),
+      client_id: inv.client_id||null,
+      client_name: inv.client_name,
+      amount: Number(inv.subtotal ?? (total - tax)), tax_amount: tax, total_amount: total,
+      tax_rate: Number(inv.tax_rate ?? 10),
       description: form.description,
       issue_date: form.issue_date,
       status: 'issued'
     })
     if (error) return toast.error(error.message)
-    toast.success('領収書を作成しました!')
-    setForm({ client_id:'', client_name:'', amount:'', description:'', issue_date:new Date().toISOString().split('T')[0], tax_rate:10 })
+    toast.success(tr('Receipt created','領収書を作成しました','Recibo criado'))
+    setForm(emptyForm())
     setShowForm(false); load()
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this receipt?')) return
+    if (!(await askConfirm({ message: tr('Delete this receipt?','この領収書を削除しますか？','Apagar este recibo?'), danger: true }))) return
     await supabase.from('ryoshu').delete().eq('id', id)
-    toast('Deleted.'); load()
+    toast(tr('Deleted','削除しました','Apagado')); load()
   }
 
   const handlePrint = (r) => {
@@ -72,6 +94,7 @@ export default function Ryoshu() {
       </style></head>
       <body>
         <h1>領収書</h1>
+        ${r.receipt_number ? `<div class="row"><span>No.</span><span>${escapeHtml(r.receipt_number)}</span></div>` : ''}
         <div class="row"><span>発行日</span><span>${issueDate}</span></div>
         <div class="row"><span>宛名</span><span>${clientName} 御中</span></div>
         <div class="row"><span>但し書き</span><span>${description}</span></div>
@@ -86,7 +109,7 @@ export default function Ryoshu() {
     w.print()
   }
 
-  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,r)=>s+Number(r.total_amount||0),0)
+  const totalMonth = receipts.filter(r=>r.issue_date?.startsWith(tokyoToday().slice(0,7))).reduce((s,r)=>s+Number(r.total_amount||0),0)
 
   return (
     <div>
@@ -100,46 +123,44 @@ export default function Ryoshu() {
 
       {showForm&&(
         <div className="card" style={{marginBottom:16,border:'1px solid var(--navy)'}}>
-          <div className="card-title">新規領収書</div>
+          <div className="card-title">{tr('New receipt','新規領収書','Novo recibo')}</div>
           <div className="grid-2">
-            <div className="form-group"><label>クライアント</label>
-              <select value={form.client_id} onChange={e=>handleClientSelect(e.target.value)}>
-                <option value="">選択してください</option>
-                {clients.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>{tr('Invoice','請求書','Fatura')} *</label>
+              <select value={form.fatura_id} onChange={e=>upd('fatura_id',e.target.value)}>
+                <option value="">{tr('Choose the invoice…','請求書を選択…','Escolha a fatura…')}</option>
+                {billable.map(f=><option key={f.id} value={f.id}>{fmtInv(f)}{taken.has(f.id) ? ` · ${tr('has receipt','領収書あり','já tem recibo')}` : ''}</option>)}
               </select>
+              {billable.length===0&&<small style={{color:'var(--text3)'}}>{tr('No sent or paid invoice yet.','送付済み・入金済みの請求書がありません。','Nenhuma fatura enviada ou paga ainda.')}</small>}
             </div>
-            <div className="form-group"><label>宛名 *</label><input value={form.client_name} onChange={e=>upd('client_name',e.target.value)} placeholder="株式会社○○" /></div>
-            <div className="form-group"><label>金額 (¥) *</label><input type="number" value={form.amount} onChange={e=>upd('amount',e.target.value)} /></div>
-            <div className="form-group"><label>消費税率 (%)</label>
-              <select value={form.tax_rate} onChange={e=>upd('tax_rate',parseInt(e.target.value))}>
-                <option value={10}>10%</option><option value={8}>8%</option><option value={0}>0%</option>
-              </select>
-            </div>
-            <div className="form-group"><label>発行日</label><input type="date" value={form.issue_date} onChange={e=>upd('issue_date',e.target.value)} /></div>
-            <div className="form-group"><label>但し書き</label><input value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="サービス代として" /></div>
+            <div className="form-group"><label>{tr('Receipt date','発行日','Data do recibo')}</label><input type="date" value={form.issue_date} onChange={e=>upd('issue_date',e.target.value)} /></div>
+            <div className="form-group"><label>{tr('Note on the receipt (但し書き)','但し書き','Observação no recibo (但し書き)')}</label><input value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="サービス代として" /></div>
           </div>
-          {form.amount&&<div style={{background:'var(--surface2)',borderRadius:8,padding:'10px 14px',marginBottom:12,fontSize:13}}>
-            小計: ¥{Number(form.amount||0).toLocaleString()} + 税: ¥{Math.round(Number(form.amount||0)*form.tax_rate/100).toLocaleString()} = <strong>合計: ¥{(Number(form.amount||0)+Math.round(Number(form.amount||0)*form.tax_rate/100)).toLocaleString()}</strong>
+          {inv&&<div style={{background:'var(--surface2)',borderRadius:8,padding:'10px 14px',marginBottom:12,fontSize:13}}>
+            {inv.client_name} · {tr('Subtotal','小計','Subtotal')}: ¥{Number(inv.subtotal ?? 0).toLocaleString(locale)} + {tr('tax','税','imposto')}: ¥{Number(inv.tax_amount ?? 0).toLocaleString(locale)} = <strong>{tr('Total','合計','Total')}: ¥{Number(inv.total||0).toLocaleString(locale)}</strong>
+            {inv.status!=='paid'&&<div style={{color:'var(--amber)',marginTop:4}}>⚠️ {tr('This invoice is not marked paid yet.','この請求書はまだ入金済みではありません。','Esta fatura ainda não está marcada como paga.')}</div>}
           </div>}
           <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-primary" onClick={handleCreate}>✅ 作成</button>
-            <button className="btn" onClick={()=>setShowForm(false)}>キャンセル</button>
+            <button className="btn btn-primary" onClick={handleCreate}>✅ {tr('Create','作成','Criar')}</button>
+            <button className="btn" onClick={()=>setShowForm(false)}>{tr('Cancel','キャンセル','Cancelar')}</button>
           </div>
         </div>
       )}
 
-      {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-      {receipts.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>領収書はまだありません。</div></div>}
+      {loading&&<div style={{color:'var(--text3)',fontSize:13}}>{tr('Loading…','読み込み中…','Carregando…')}</div>}
+      {receipts.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>{tr('No receipts yet.','領収書はまだありません。','Nenhum recibo ainda.')}</div></div>}
       {receipts.map(r=>(
         <div key={r.id} className="card" style={{marginBottom:10}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
             <div>
               <div style={{fontWeight:600,fontSize:15}}>{r.client_name} 御中</div>
               <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{r.issue_date} · {r.description||'サービス代'}</div>
+              {(() => { const f = invoiceOf(r, faturas); return f
+                ? <div style={{fontSize:12,marginTop:2}}>🧾 {tr('Invoice','請求書','Fatura')}: <Link to={`/faturas?search=${f.id}`}>{f.period_start || f.issue_date}{f.period_end ? ` → ${f.period_end}` : ''}</Link> · {f.status}</div>
+                : <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{tr('Not linked to an invoice','請求書と未連携','Sem fatura vinculada')}</div> })()}
             </div>
             <div style={{textAlign:'right'}}>
               <div style={{fontSize:16,fontWeight:700,color:'var(--green)'}}>¥{Number(r.total_amount||0).toLocaleString()}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>税込 ({r.tax_rate}%)</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>{tr('incl. tax','税込','com imposto')} ({r.tax_rate}%)</div>
             </div>
           </div>
           <div style={{display:'flex',gap:8}}>

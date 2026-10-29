@@ -1,11 +1,15 @@
+import { gradeJobPhoto } from '../lib/photoAi'
+import { sortByOrder } from '../lib/agenda'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
+import EvaluationQuick from '../components/EvaluationQuick'
 import ContractTab from '../components/ContractTab'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
 import { useLang, pickLang } from '../hooks/useLang'
+import { tokyoToday } from '../lib/dates'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -71,7 +75,7 @@ function RecentDays({ jobs, onDayClick }) {
             </div>
             {isOpen&&(
               <div style={{marginTop:4,paddingLeft:10}}>
-                {dayJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map((j,i)=>(
+                {sortByOrder(dayJobs).map((j,i)=>(
                   <div key={j.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <span style={{fontSize:11,color:'var(--text3)',width:16}}>{i+1}</span>
@@ -103,7 +107,6 @@ export default function EmployeeProfile() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [workDays, setWorkDays] = useState([])
-  const [evalForm, setEvalForm] = useState({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
   const [addingEval, setAddingEval] = useState(false)
   const [analyzingId, setAnalyzingId] = useState(null)
   // v1.0.72 · leader of this employee (employees.leader_id). Hidden until the team chat SQL is applied.
@@ -114,19 +117,8 @@ export default function EmployeeProfile() {
     if (!job.photo_end_url) return
     setAnalyzingId(job.id)
     try {
-      const resp = await fetch('/api/analyze-photo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photoUrl: job.photo_end_url, locationName: job.title }),
-      })
-      const result = await resp.json().catch(() => ({}))
-      if (!resp.ok) throw new Error(result.error || `HTTP ${resp.status}`)
-      await supabase.from('jobs').update({
-        photo_ai_score: result?.nota ?? null,
-        photo_ai_approved: result?.aprovado ?? null,
-        photo_ai_issues: result?.problemas?.length ? result.problemas.join(', ') : null,
-      }).eq('id', job.id)
-      toast.success(`Analisado: nota ${result?.nota ?? '?'}/10`)
+      const graded = await gradeJobPhoto(job)
+      toast.success(`Analisado: nota ${graded.photo_ai_score ?? '?'}/10`)
       loadAll()
     } catch (e) {
       toast.error('Erro ao analisar: ' + e.message)
@@ -134,7 +126,6 @@ export default function EmployeeProfile() {
     setAnalyzingId(null)
   }
 
-  const EVAL_CATEGORIES = ['Quality','Punctuality','Behavior','Communication','Initiative','Cleanliness']
 
   useEffect(() => { loadAll() }, [id])
 
@@ -150,7 +141,10 @@ export default function EmployeeProfile() {
     const team = await supabase.from('employees').select('id,full_name,leader_id,is_active').order('full_name')
     if (team.error) setPeople(null)
     else { setPeople(team.data || []); setLeaderId((team.data || []).find(x => x.id === id)?.leader_id || '') }
-    setEmp(e.data); setForm(e.data||{})
+    // Edit form: every saved column (the header query above is a short list), never the password itself.
+    const full = await supabase.from('employees').select('*').eq('id', id).maybeSingle()
+    const { password: _pw, ...saved } = full.data || e.data || {}
+    setEmp(e.data ? { ...e.data, ...saved } : null); setForm(saved)
     setWorkDays(e.data?.work_days ? JSON.parse(e.data.work_days) : [])
     setJobs(j.data||[]); setEvals(ev.data||[])
     setPayments(p.data||[]); setAdvances(adv.data||[])
@@ -162,7 +156,7 @@ export default function EmployeeProfile() {
 
   const handleSave = async () => {
     const { error } = await supabase.from('employees').update({
-      full_name:form.full_name, email:form.email, password:form.password,
+      full_name:form.full_name, email:form.email, ...(form.password ? { password:form.password } : {}),
       phone:form.phone, address:form.address, contract_type:form.contract_type,
       job_role:String(form.job_role||'').trim()||null,
       salary_type:form.salary_type, hourly_rate:parseFloat(form.hourly_rate)||0,
@@ -170,7 +164,7 @@ export default function EmployeeProfile() {
       contract_start:form.contract_start||null, contract_end:form.contract_end||null,
       advance_per_week:parseFloat(form.advance_per_week)||0,
       attendance_bonus:parseFloat(form.attendance_bonus)||0,
-      transport_reimbursed:form.transport_reimbursed,
+      transport_reimbursed:form.transport_reimbursed!==false,
       bank_name:form.bank_name, bank_branch:form.bank_branch,
       account_type:form.account_type, account_number:form.account_number,
       account_holder_katakana:form.account_holder_katakana,
@@ -188,18 +182,6 @@ export default function EmployeeProfile() {
     setEditing(false); loadAll()
   }
 
-  const handleAddEval = async () => {
-    if (!evalForm.description) return toast.error('Add a description')
-    const pts = evalForm.type==='positive' ? Math.abs(evalForm.points_change) : -Math.abs(evalForm.points_change)
-    const newScore = Math.max(0, Math.min(100, (emp.score||100) + pts))
-    await supabase.from('evaluations').insert({ employee_id:id, employee_name:emp.full_name, ...evalForm, points_change:pts })
-    await supabase.from('employees').update({ score:newScore }).eq('id', id)
-    toast.success(`Evaluation added! Score: ${newScore}`)
-    setAddingEval(false)
-    setEvalForm({ type:'positive', category:'Quality', points_change:5, stars:5, description:'', eval_date:new Date().toISOString().split('T')[0] })
-    loadAll()
-  }
-
   const handleDeleteEval = async (evalId, pts) => {
     await supabase.from('evaluations').delete().eq('id', evalId)
     const newScore = Math.max(0, Math.min(100, (emp.score||100) - pts))
@@ -210,7 +192,7 @@ export default function EmployeeProfile() {
 
   const scoreColor = s => s>=90?'var(--green)':s>=70?'#EF9F27':'var(--red)'
   const statusColor = s => ({assigned:'badge-blue',in_progress:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
-  const today = new Date().toISOString().split('T')[0]
+  const today = tokyoToday()
 
   if (loading) return <div style={{color:'var(--text3)',padding:20}}>Loading...</div>
   if (!emp) return <div style={{color:'var(--text3)',padding:20}}>Employee not found</div>
@@ -335,46 +317,7 @@ export default function EmployeeProfile() {
 
           {addingEval&&(
             <div className="card" style={{marginBottom:16,border:'1px solid var(--navy)'}}>
-              <div className="card-title">New Evaluation</div>
-              <div className="grid-2">
-                <div className="form-group">
-                  <label>Type</label>
-                  <select value={evalForm.type} onChange={e=>setEvalForm(f=>({...f,type:e.target.value}))}>
-                    <option value="positive">✅ Positive (+points)</option>
-                    <option value="complaint">❌ Complaint (-points)</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Category</label>
-                  <select value={evalForm.category} onChange={e=>setEvalForm(f=>({...f,category:e.target.value}))}>
-                    {EVAL_CATEGORIES.map(c=><option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Points ({evalForm.type==='positive'?'+':'-'}{evalForm.points_change})</label>
-                  <input type="number" value={evalForm.points_change} min={1} max={20} onChange={e=>setEvalForm(f=>({...f,points_change:parseInt(e.target.value)||5}))} />
-                </div>
-                <div className="form-group">
-                  <label>Stars</label>
-                  <div style={{display:'flex',gap:4,marginTop:4}}>
-                    {[1,2,3,4,5].map(n=>(
-                      <button key={n} onClick={()=>setEvalForm(f=>({...f,stars:n}))} style={{fontSize:22,background:'none',border:'none',cursor:'pointer',opacity:n<=evalForm.stars?1:0.3,padding:0}}>★</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Date</label>
-                  <input type="date" value={evalForm.eval_date} onChange={e=>setEvalForm(f=>({...f,eval_date:e.target.value}))} />
-                </div>
-                <div className="form-group" style={{gridColumn:'1/-1'}}>
-                  <label>Description *</label>
-                  <textarea value={evalForm.description} onChange={e=>setEvalForm(f=>({...f,description:e.target.value}))} placeholder="Describe the evaluation..." />
-                </div>
-              </div>
-              <div style={{display:'flex',gap:8}}>
-                <button className="btn btn-primary" onClick={handleAddEval}>Save Evaluation</button>
-                <button className="btn" onClick={()=>setAddingEval(false)}>Cancel</button>
-              </div>
+              <EvaluationQuick employee={emp} onSaved={()=>{ setAddingEval(false); loadAll() }} onCancel={()=>setAddingEval(false)} />
             </div>
           )}
 
@@ -495,7 +438,7 @@ export default function EmployeeProfile() {
           <div className="grid-2">
             <div className="form-group"><label>Full Name</label><input value={form.full_name||''} onChange={e=>upd('full_name',e.target.value)} /></div>
             <div className="form-group"><label>Email</label><input value={form.email||''} onChange={e=>upd('email',e.target.value)} /></div>
-            <div className="form-group"><label>Password</label><input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" /></div>
+            <div className="form-group"><label>Password</label><input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" placeholder={lang==='ja'?'変更しない場合は空欄':'Leave blank to keep'} /></div>
             <div className="form-group"><label>Phone</label><input value={form.phone||''} onChange={e=>upd('phone',e.target.value)} /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address||''} onChange={e=>upd('address',e.target.value)} /></div>
           </div>

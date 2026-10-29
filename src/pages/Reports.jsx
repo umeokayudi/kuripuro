@@ -1,5 +1,9 @@
 import { ReportsAnalytics } from '../components/AnalyticsCharts'
 import { useState, useEffect, useMemo, useRef } from 'react'
+import ProgressChart from '../components/ProgressChart'
+import { confirmAndRun } from '../components/ConfirmDialog'
+import { aiIssueRows, gradeJobPhoto } from '../lib/photoAi'
+import { contractForAgendaJob } from '../lib/agenda'
 import { supabase } from '../lib/supabase'
 import { fmtDuration, fmtTime, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync, jobToReportView } from '../lib/jobReport'
 import SignatureImage from '../components/SignatureImage'
@@ -139,6 +143,15 @@ export default function Reports() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [filterEmp, setFilterEmp] = useState('')
+  const [filterClient, setFilterClient] = useState('')
+  const [includeOpen, setIncludeOpen] = useState(false)
+  const [clientList, setClientList] = useState([])
+  const [contractList, setContractList] = useState([])
+  const [regrading, setRegrading] = useState(null)
+  useEffect(() => {
+    supabase.from('clients').select('id,company_name').eq('is_active', true).order('company_name').then(({ data }) => setClientList(data || []))
+    supabase.from('service_contracts').select('*').then(({ data }) => setContractList(data || []))
+  }, [])
   const [filterDays, setFilterDays] = useState(30)
   const [aiAnalysis, setAiAnalysis] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -151,7 +164,7 @@ export default function Reports() {
 
   useEffect(() => { loadAdminSignature(user).then(setAdminSig) }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { loadReports() }, [filterDays, filterDay, lang]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadReports() }, [filterDays, filterDay, includeOpen, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadReports = async () => {
     setLoading(true)
@@ -163,7 +176,9 @@ export default function Reports() {
     // as it had any row, and the other completed jobs disappeared from the report).
     const jobsQuery = filterDay
       ? supabase.from('jobs').select('*').eq('scheduled_date', filterDay).neq('status', 'cancelled').order('scheduled_time', { ascending: true }).limit(500)
-      : supabase.from('jobs').select('*').eq('status', 'completed').gte('completed_at', sinceIso).order('completed_at', { ascending: false }).limit(500)
+      : includeOpen
+        ? supabase.from('jobs').select('*').gte('scheduled_date', sinceDate).lte('scheduled_date', tokyoToday()).neq('status', 'cancelled').order('scheduled_date', { ascending: false }).limit(800)
+        : supabase.from('jobs').select('*').eq('status', 'completed').gte('completed_at', sinceIso).order('completed_at', { ascending: false }).limit(500)
     const srQuery = filterDay
       ? supabase.from('service_reports').select('*').eq('report_date', filterDay).limit(500)
       : supabase.from('service_reports').select('*').gte('report_date', sinceDate).order('created_at', { ascending: false }).limit(500)
@@ -244,9 +259,10 @@ export default function Reports() {
     [...new Set(reports.map(r => r.employee_name).filter(Boolean))].sort(),
   [reports])
 
+  const clientOfReport = r => r.client_id || contractForAgendaJob({ title: r.job_title || r.location_name || '' }, contractList)?.client_id || ''
   const filtered = useMemo(() =>
-    filterEmp ? reports.filter(r => r.employee_name === filterEmp) : reports,
-  [reports, filterEmp])
+    reports.filter(r => (!filterEmp || r.employee_name === filterEmp) && (!filterClient || clientOfReport(r) === filterClient)),
+  [reports, filterEmp, filterClient, contractList])
 
   const stats = useMemo(() => {
     const withDur = filtered.filter(r => r.duration_min != null)
@@ -263,31 +279,34 @@ export default function Reports() {
 
   const handleDelete = async (report) => {
     const label = `${report.employee_name} · ${report.client_name || report.job_title} · ${report.report_date}`
-    if (!confirm(fill(tr.deleteConfirm, { label }))) return
-
-    const { error: srErr } = await supabase.from('service_reports').delete().eq('job_id', report.job_id)
-    if (srErr) { toast.error(srErr.message); return }
-
+    const ok = await confirmAndRun({
+      title: pickLang(lang, 'Delete report?', '報告書を削除しますか？', 'Excluir report?'),
+      message: fill(tr.deleteConfirm, { label }),
+      success: tr.deleted,
+      run: () => supabase.from('service_reports').delete().eq('job_id', report.job_id),
+    })
+    if (!ok) return
     setReports(prev => prev.filter(r => r.job_id !== report.job_id))
     if (selected?.job_id === report.job_id) setSelected(null)
-    toast.success(tr.deleted)
   }
 
   const runAiAnalysis = async () => {
     setAiLoading(true)
     setAiAnalysis('')
     try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 90000)
       const resp = await apiPost('/api/analyze-reports', {
         days: filterDays,
         employeeName: filterEmp || undefined,
         lang,
-      })
+      }, { signal: ctrl.signal }).finally(() => clearTimeout(timer))
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
       setAiAnalysis(data.analysis)
       toast.success(fill(tr.analysisReady, { count: data.count }))
     } catch (e) {
-      toast.error(e.message)
+      toast.error(e?.name === 'AbortError' ? pickLang(lang, 'The AI took too long — try again.', 'AIの応答が遅すぎます。再試行してください。', 'A IA demorou demais — tente de novo.') : e.message)
     }
     setAiLoading(false)
   }
@@ -310,6 +329,17 @@ export default function Reports() {
             {employees.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
         </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{pickLang(lang, 'Client', '顧客', 'Cliente')}</div>
+          <select value={filterClient} onChange={e => setFilterClient(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', minWidth: 160, maxWidth: '100%' }}>
+            <option value="">{tr.all}</option>
+            {clientList.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+          </select>
+        </div>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginTop: 16, opacity: filterDay ? 0.45 : 1 }}>
+          <input type="checkbox" disabled={!!filterDay} checked={includeOpen} onChange={e => setIncludeOpen(e.target.checked)} />
+          {pickLang(lang, 'Include pending and late', '未完了・遅れも含む', 'Incluir pendentes e atrasados')}
+        </label>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.day}</div>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -342,6 +372,8 @@ export default function Reports() {
           <div style={{ fontSize: 28, fontWeight: 700 }}>{Object.keys(stats.byEmp).length}</div>
         </div>
       </div>
+
+      <ProgressChart anchorDate={filterDay || tokyoToday()} defaultUnit="week" />
 
       <ReportsAnalytics reports={filtered} />
 
@@ -466,8 +498,31 @@ export default function Reports() {
               <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--red)' }}>{tr.missedItems}: {selected.checklist_missed_items}</div>
             )}
 
-            {selected.photo_ai_issues && (
-              <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text3)' }}>{tr.photoIssues}: {selected.photo_ai_issues}</div>
+            {(selected.photo_ai_score != null || selected.photo_after_url) && (
+              <div style={{ marginBottom: 12, fontSize: 13, borderRadius: 10, padding: '10px 12px', background: selected.photo_ai_score == null ? 'var(--surface2)' : selected.photo_ai_approved ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <b>🤖 {selected.photo_ai_score != null ? `${pickLang(lang, 'AI grade', 'AI評価', 'Nota da IA')}: ${selected.photo_ai_score}/10 ${selected.photo_ai_approved ? '✅' : '⚠️'}` : pickLang(lang, 'AI grade pending', 'AI評価待ち', 'Análise da IA pendente')}</b>
+                  {selected.photo_after_url && selected.job_id && (
+                    <button type="button" className="btn btn-sm" disabled={regrading === selected.job_id} onClick={async () => {
+                      setRegrading(selected.job_id)
+                      try {
+                        const { data: job } = await supabase.from('jobs').select('*').eq('id', selected.job_id).maybeSingle()
+                        const graded = await gradeJobPhoto(job || { id: selected.job_id, photo_end_url: selected.photo_after_url, title: selected.job_title })
+                        setSelected(s => ({ ...s, photo_ai_score: graded.photo_ai_score, photo_ai_approved: graded.photo_ai_approved, photo_ai_issues: graded.photo_ai_issues }))
+                        loadReports()
+                      } catch (err) {
+                        toast.error(err.message === 'timeout' ? pickLang(lang, 'The AI took too long — try again.', 'AIの応答が遅すぎます。再試行してください。', 'A IA demorou demais — tente de novo.') : err.message)
+                      }
+                      setRegrading(null)
+                    }}>{regrading === selected.job_id ? tr.analyzing : pickLang(lang, 'Analyse again', '再分析', 'Analisar de novo')}</button>
+                  )}
+                </div>
+                {aiIssueRows(selected.photo_ai_issues).length > 0 && (
+                  <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                    {aiIssueRows(selected.photo_ai_issues).map((r, i) => <li key={i}>{r.issue}{r.fix && <> — <b>{pickLang(lang, 'fix', '直す', 'corrigir')}:</b> {r.fix}</>}</li>)}
+                  </ul>
+                )}
+              </div>
             )}
 
             {(selected.photo_before_url || selected.photo_after_url) && (

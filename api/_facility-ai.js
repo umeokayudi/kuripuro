@@ -6,6 +6,7 @@
 
 import { geminiGenerate } from './_gemini.js'
 import { fetchStorageBuffer } from './_storage.js'
+import { tokyoToday } from '../src/lib/dates.js'
 import {
   AREA_KINDS,
   ELEMENT_KINDS,
@@ -163,7 +164,7 @@ async function recommendServices({ layout, history = [], locationName }) {
   const catalog = [...new Set(Object.values(ELEMENT_KINDS).map(k => k.service).filter(Boolean))]
 
   const prompt = `You advise a restaurant cleaning company (KuriPuro, Tokyo).
-Location: "${locationName || 'restaurant'}". Today: ${new Date().toISOString().slice(0, 10)}.
+Location: "${locationName || 'restaurant'}". Today: ${tokyoToday()}.
 Equipment registered in the digital model:
 ${JSON.stringify(elements)}
 Recent cleaning visits (newest first):

@@ -5,22 +5,29 @@ import { geocodeAddress } from '../lib/geocode'
 import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
+  DEEP_TASKS, deepTaskName, parseDeepTaskList,
 } from '../lib/cleaningType'
 import { useLang, fill, localeOf } from '../hooks/useLang'
-import { checklistTemplateForJob } from '../lib/jobChecklist'
 import JobPhotos from '../components/JobPhotos'
 import JobVideos from '../components/JobVideos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl } from '../lib/calendar'
-import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient, contractStatus } from '../lib/spotContract'
-import { saveSpotContractWithInvoice, generateContractForJob } from '../lib/spotContractOps'
+import { contractStatus } from '../lib/spotContract'
+import { generateContractForJob } from '../lib/spotContractOps'
 import { fetchContractSellers } from '../lib/contractSellers'
-import SellerCommissionFields from '../components/SellerCommissionFields'
 import JobsPeriodPanel from '../components/JobsPeriodPanel'
+import NewJobForm from '../components/NewJobForm'
+import DayAgenda from '../components/DayAgenda'
+import { confirmAndRun } from '../components/ConfirmDialog'
+import SetupChain from '../components/SetupChain'
+import { buildPlaces } from '../lib/places'
+import { splitChecklist } from '../lib/agenda'
+import '../components/agenda.css'
 import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
+import KeyReveal from '../components/KeyReveal'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
 } from '../lib/jobsPeriod'
@@ -39,6 +46,13 @@ function applyGeocodeResult(result, setCoords, mapsMsg) {
   return false
 }
 
+/** "Coifa, Fritadeira" from a "Deep Clean (Range Hood, Fryer)" title, or '' when it has no list. */
+function deepTaskList(title, lang) {
+  return (parseDeepTaskList(title) || [])
+    .map(l => { const t = DEEP_TASKS.find(x => x.label.toLowerCase() === l.toLowerCase()); return t ? deepTaskName(t, lang) : l })
+    .join(', ')
+}
+
 function toDateStr(d) {
   return d.toISOString().split('T')[0]
 }
@@ -47,27 +61,6 @@ function shiftDate(dateStr, days) {
   const d = new Date(dateStr + 'T12:00:00')
   d.setDate(d.getDate() + days)
   return toDateStr(d)
-}
-
-function buildCalendarDays(yearMonth) {
-  const [y, m] = yearMonth.split('-').map(Number)
-  const first = new Date(y, m - 1, 1)
-  const last = new Date(y, m, 0)
-  let startPad = first.getDay() - 1
-  if (startPad < 0) startPad = 6
-  const days = []
-  for (let i = 0; i < startPad; i++) days.push(null)
-  for (let d = 1; d <= last.getDate(); d++) {
-    days.push(`${yearMonth}-${String(d).padStart(2, '0')}`)
-  }
-  return days
-}
-
-function dayDotColor(stats) {
-  if (!stats?.total) return null
-  if (stats.completed >= stats.total) return '#4ade80'
-  if (stats.completed > 0) return '#fbbf24'
-  return '#60a5fa'
 }
 
 function ProgressBar({ pct, height = 10, style }) {
@@ -83,404 +76,14 @@ function ProgressBar({ pct, height = 10, style }) {
   )
 }
 
-function statusStyle(status, labels) {
-  const colors = {
-    assigned: { bg: 'rgba(96,165,250,0.12)', border: '#60a5fa', text: '#93c5fd' },
-    in_progress: { bg: 'rgba(251,191,36,0.14)', border: '#fbbf24', text: '#fcd34d' },
-    completed: { bg: 'rgba(74,222,128,0.12)', border: '#4ade80', text: '#86efac' },
-    cancelled: { bg: 'rgba(248,113,113,0.1)', border: '#f87171', text: '#fca5a5' },
-  }
-  const c = colors[status] || colors.assigned
-  return { ...c, label: labels[status] || status }
-}
-
-function DayScheduleView({ onClose }) {
+export default function Jobs() {
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
   const { lang, t, tr } = useLang()
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const dateLocale = localeOf(lang)
-  const [date, setDate] = useState(toDateStr(new Date()))
-  const [calMonth, setCalMonth] = useState(() => toDateStr(new Date()).slice(0, 7))
-  const [showCalendar, setShowCalendar] = useState(false)
-  const [dayJobs, setJobs] = useState([])
-  const [areaFilter, setAreaFilter] = useState('')
-  const dayAreas = useMemo(() => [...new Set(dayJobs.map(j => j.area).filter(Boolean))].sort(), [dayJobs])
-  const jobs = areaFilter ? dayJobs.filter(j => (j.area || '') === areaFilter) : dayJobs
-  const [monthJobStats, setMonthJobStats] = useState({})
-  const [employees, setEmployees] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => { loadEmps() }, [])
-  useEffect(() => { loadJobs() }, [date])
-  useEffect(() => { loadMonthStats(calMonth) }, [calMonth])
-  useEffect(() => { setCalMonth(date.slice(0, 7)) }, [date])
-
-  const loadEmps = async () => {
-    const { data } = await supabase.from('employees').select('id,full_name').eq('is_active', true).order('full_name')
-    setEmployees(data || [])
-  }
-
-  const loadJobs = async () => {
-    setLoading(true)
-    const { data } = await supabase.from('jobs').select('*').eq('scheduled_date', date).order('sequence_order')
-    setJobs(data || [])
-    setLoading(false)
-  }
-
-  const loadMonthStats = async (ym) => {
-    const { data } = await supabase.from('jobs')
-      .select('scheduled_date, status')
-      .gte('scheduled_date', `${ym}-01`)
-      .lte('scheduled_date', `${ym}-31`)
-    const stats = {}
-    for (const j of data || []) {
-      if (!stats[j.scheduled_date]) stats[j.scheduled_date] = { total: 0, completed: 0 }
-      stats[j.scheduled_date].total++
-      if (j.status === 'completed') stats[j.scheduled_date].completed++
-    }
-    setMonthJobStats(stats)
-  }
-
-  const selectDate = (ds) => {
-    setDate(ds)
-    setShowCalendar(false)
-  }
-
-  const shiftCalMonth = (delta) => {
-    const [y, m] = calMonth.split('-').map(Number)
-    const d = new Date(y, m - 1 + delta, 1)
-    setCalMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-
-  const calendarDays = useMemo(() => buildCalendarDays(calMonth), [calMonth])
-  const weekDays = tr(
-    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    ['月', '火', '水', '木', '金', '土', '日'],
-    ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
-  )
-  const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
-  const todayStr = toDateStr(new Date())
-
-  const handleReassign = async (jobId, empId) => {
-    if (!empId) {
-      await supabase.from('jobs').update({ employee_id: null, employee_name: null }).eq('id', jobId)
-      loadJobs()
-      return
-    }
-    const emp = employees.find(e => e.id === empId)
-    await supabase.from('jobs').update({ employee_id: empId, employee_name: emp?.full_name }).eq('id', jobId)
-    loadJobs()
-  }
-
-  const handleStatusChange = async (jobId, status) => {
-    await supabase.from('jobs').update({ status }).eq('id', jobId)
-    loadJobs()
-    loadMonthStats(calMonth)
-  }
-
-  const handleTimeChange = async (jobId, time) => {
-    await supabase.from('jobs').update({ scheduled_time: time }).eq('id', jobId)
-    loadJobs()
-  }
-
-  const handleDelete = async (jobId, title) => {
-    if (!confirm(fill(jt.deleteJobConfirm, { title }))) return
-    await supabase.from('jobs').delete().eq('id', jobId)
-    toast.success(jt.jobDeleted)
-    loadJobs()
-    loadMonthStats(calMonth)
-  }
-
-  const handleCleaningTypeChange = async (job, type) => {
-    const loc = locationNameFromTitle(job.title)
-    const { error } = await supabase.from('jobs').update({ title: applyCleaningTypeToTitle(loc, type) }).eq('id', job.id)
-    if (error) return toast.error(error.message)
-    loadJobs()
-  }
-
-  const empGroups = employees.map(e => ({
-    emp: e,
-    jobs: jobs.filter(j => j.employee_id === e.id).sort((a, b) => (a.sequence_order || 99) - (b.sequence_order || 99)),
-  })).filter(g => g.jobs.length > 0)
-
-  const unassigned = jobs.filter(j => !j.employee_id)
-  const done = jobs.filter(j => j.status === 'completed').length
-  const inProgress = jobs.filter(j => j.status === 'in_progress').length
-  const pending = jobs.filter(j => j.status === 'assigned').length
-  const progressPct = jobs.length ? Math.round((done / jobs.length) * 100) : 0
-  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })
-  const dateShort = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
-
-  const JobCard = ({ j, idx }) => {
-    const stl = statusStyle(j.status, st)
-    const missed = isMissedJob(j)
-    const locName = locationNameFromTitle(j.title)
-    const ctype = getCleaningType(j)
-    const ctypeCfg = CLEANING_TYPES[ctype]
-    return (
-      <div style={{
-        background: 'var(--surface)',
-        border: `1px solid var(--border)`,
-        borderLeft: `4px solid ${ctype === 'deep' ? ctypeCfg.color : stl.border}`,
-        borderRadius: 12,
-        padding: '14px 16px',
-        marginBottom: 10,
-      }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 800,
-            background: stl.bg, color: stl.text, border: `2px solid ${stl.border}`,
-          }}>
-            {j.status === 'completed' ? '✓' : idx + 1}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{locName}</div>
-            <div style={{ fontSize: 13, color: ctypeCfg.color, fontWeight: 600, marginTop: 2 }}>{ctypeCfg.label}{j.area && <span style={{ color: 'var(--text3)', fontWeight: 600 }}> · 📍 {j.area}</span>}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 8 }}>
-                🕐 {j.scheduled_time || '00:30'}
-              </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: missed ? '#fca5a5' : stl.text, background: missed ? 'rgba(248,113,113,0.12)' : stl.bg, padding: '4px 10px', borderRadius: 8 }}>
-                {missed ? jt.incomplete : stl.label}
-              </span>
-              {isRetroJob(j) && <span className="badge badge-amber" title={jt.retroBadgeHint}>{jt.retroBadge}</span>}
-              {j.value > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value).toLocaleString()}</span>}
-            </div>
-            {j.description && (
-              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8, background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
-                🔑 {j.description.split('\n')[0]}
-              </div>
-            )}
-            {hasMapsLink(j.address, locName) && (
-              <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#60a5fa', textDecoration: 'none', fontWeight: 600 }}>
-                🗺 {jt.openMaps}
-              </a>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {jt.time}
-            <input type="time" defaultValue={j.scheduled_time || '00:30'} onBlur={e => handleTimeChange(j.id, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }} />
-          </label>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {jt.employee}
-            <select value={j.employee_id || ''} onChange={e => handleReassign(j.id, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}>
-              <option value="">{jt.unassigned}</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
-            </select>
-          </label>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {jt.cleaningType}
-            <select value={ctype} onChange={e => handleCleaningTypeChange(j, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: `2px solid ${ctypeCfg.color}`, background: `${ctypeCfg.color}12`, color: ctypeCfg.color, fontWeight: 600 }}>
-              <option value="basic">{jt.filterBasic}</option>
-              <option value="deep">{jt.filterDeep}</option>
-            </select>
-          </label>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {jt.status}
-            <select value={j.status} onChange={e => handleStatusChange(j.id, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: stl.text, fontWeight: 600 }}>
-              <option value="assigned">{st.assigned}</option>
-              <option value="in_progress">{st.in_progress}</option>
-              <option value="completed">{st.completed}</option>
-              <option value="cancelled">{st.cancelled}</option>
-            </select>
-          </label>
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button className="btn btn-danger" onClick={() => handleDelete(j.id, locName)} style={{ width: '100%', fontSize: 13, padding: '9px 12px' }}>
-              🗑 {jt.deleteJob}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'var(--bg, #0a1929)', zIndex: 200, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
-      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '16px 20px', position: 'sticky', top: 0, zIndex: 10 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button className="btn" onClick={onClose}>← {jt.back}</button>
-            <div>
-              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>📅 {jt.dayScheduleTitle}</h2>
-              <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2, textTransform: 'capitalize' }}>{dateLabel}</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-            <button className="btn" onClick={() => setDate(shiftDate(date, -1))} title={jt.prevDay}>◀ {jt.prevDay}</button>
-            <button
-              className="btn"
-              onClick={() => setShowCalendar(v => !v)}
-              style={{ fontWeight: 700, minWidth: 130, background: showCalendar ? 'var(--navy)' : 'var(--surface2)', color: showCalendar ? '#fff' : 'var(--text)' }}
-            >
-              📅 {dateShort}
-            </button>
-            <button className="btn" onClick={() => setDate(shiftDate(date, 1))} title={jt.nextDay}>{jt.nextDay} ▶</button>
-            {date !== todayStr && (
-              <button className="btn btn-primary" onClick={() => setDate(todayStr)}>{jt.today}</button>
-            )}
-          </div>
-        </div>
-
-        {showCalendar && (
-          <div style={{
-            marginTop: 14, padding: 14, background: 'var(--surface2)', borderRadius: 14,
-            border: '1px solid var(--border)', maxWidth: 360,
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <button type="button" className="btn btn-sm" onClick={() => shiftCalMonth(-1)}>◀</button>
-              <div style={{ fontWeight: 800, fontSize: 14, textTransform: 'capitalize' }}>{monthLabel}</div>
-              <button type="button" className="btn btn-sm" onClick={() => shiftCalMonth(1)}>▶</button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
-              {weekDays.map(w => (
-                <div key={w} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text3)', padding: '2px 0' }}>{w}</div>
-              ))}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-              {calendarDays.map((ds, i) => {
-                if (!ds) return <div key={`pad-${i}`} />
-                const dayNum = Number(ds.split('-')[2])
-                const stats = monthJobStats[ds]
-                const dot = dayDotColor(stats)
-                const isSelected = ds === date
-                const isToday = ds === todayStr
-                return (
-                  <button
-                    key={ds}
-                    type="button"
-                    onClick={() => selectDate(ds)}
-                    style={{
-                      aspectRatio: '1', borderRadius: 10, border: '2px solid',
-                      borderColor: isSelected ? 'var(--navy)' : isToday ? '#60a5fa' : 'transparent',
-                      background: isSelected ? 'var(--navy)' : isToday ? 'rgba(96,165,250,0.12)' : 'var(--surface)',
-                      color: isSelected ? '#fff' : 'var(--text)',
-                      fontWeight: isSelected || isToday ? 800 : 600,
-                      fontSize: 13, cursor: 'pointer', padding: 0,
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-                    }}
-                  >
-                    <span>{dayNum}</span>
-                    {dot && <span style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? '#fff' : dot }} />}
-                  </button>
-                )
-              })}
-            </div>
-            <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 10, color: 'var(--text3)', flexWrap: 'wrap' }}>
-              <span>● {st.completed}</span>
-              <span style={{ color: '#fbbf24' }}>● {st.in_progress}</span>
-              <span style={{ color: '#60a5fa' }}>● {st.assigned}</span>
-            </div>
-          </div>
-        )}
-
-        <div style={{ marginTop: 14, background: 'var(--surface2)', borderRadius: 12, padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{jt.checkingProgress}</div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: progressPct >= 100 ? '#4ade80' : '#60a5fa' }}>
-              {fill(jt.progressSummary, { done, total: jobs.length, pct: progressPct })}
-            </div>
-          </div>
-          <ProgressBar pct={progressPct} height={12} />
-        </div>
-
-        {dayAreas.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>📍 {tr('Area', 'エリア', 'Área')}</span>
-            <button type="button" className={`tab-pill${!areaFilter ? ' active' : ''}`} onClick={() => setAreaFilter('')}>{tr('All', 'すべて', 'Todos')} ({dayJobs.length})</button>
-            {dayAreas.map(a => (
-              <button key={a} type="button" className={`tab-pill${areaFilter === a ? ' active' : ''}`} onClick={() => setAreaFilter(a)}>{a} ({dayJobs.filter(j => j.area === a).length})</button>
-            ))}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-          {[
-            [jt.total, jobs.length, 'var(--text)'],
-            [st.completed, done, '#4ade80'],
-            [st.assigned, pending, '#60a5fa'],
-            [st.in_progress, inProgress, '#fbbf24'],
-            [jt.progress, `${progressPct}%`, progressPct >= 100 ? '#4ade80' : '#fbbf24'],
-          ].map(([label, val, color]) => (
-            <div key={label} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 16px', minWidth: 90 }}>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ padding: '20px', maxWidth: 900, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-        {loading && <div style={{ color: 'var(--text3)', fontSize: 14, padding: 20 }}>{t.app.loading}</div>}
-
-        {!loading && jobs.length === 0 && (
-          <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{jt.noJobsDay}</div>
-            <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{jt.chooseDate}</div>
-          </div>
-        )}
-
-        {empGroups.map(({ emp, jobs: empJobs }) => {
-          const empDone = empJobs.filter(j => j.status === 'completed').length
-          const empPct = empJobs.length ? Math.round((empDone / empJobs.length) * 100) : 0
-          return (
-          <div key={emp.id} style={{ marginBottom: 24 }}>
-            <div style={{
-              fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 12,
-              padding: '10px 14px', background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <div style={{
-                  width: 10, height: 10, borderRadius: '50%',
-                  background: empJobs.every(j => j.status === 'completed') ? '#4ade80'
-                    : empJobs.some(j => j.status === 'in_progress') ? '#fbbf24' : '#60a5fa',
-                }} />
-                {emp.full_name}
-                <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>
-                  {fill(jt.doneOfTotal, { done: empDone, total: empJobs.length })}
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: empPct >= 100 ? '#4ade80' : '#60a5fa', marginLeft: 'auto' }}>
-                  {empPct}%
-                </span>
-              </div>
-              <ProgressBar pct={empPct} height={6} />
-            </div>
-            {empJobs.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
-          </div>
-        )})}
-
-        {unassigned.length > 0 && (
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#fbbf24', marginBottom: 12, padding: '10px 14px', background: 'rgba(251,191,36,0.1)', borderRadius: 12, border: '1px solid rgba(251,191,36,0.25)' }}>
-              ⚠️ {jt.noEmployee} ({unassigned.length})
-            </div>
-            {unassigned.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export default function Jobs() {
-  const [searchParams] = useSearchParams()
-  const searchId = searchParams.get('search')
-  const { lang, t } = useLang()
-  const jt = t.jobs
-  const st = t.status
-  const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const [tab, setTab] = useState('list')
+  const [tab, setTab] = useState(() => searchId ? 'list' : searchParams.get('tab') === 'locations' ? 'locations' : 'agenda')
   const [cleaningFilter, setCleaningFilter] = useState('all')
   const [period, setPeriod] = useState('7d')
   const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
@@ -489,20 +92,10 @@ export default function Jobs() {
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
   const [locations, setLocations] = useState([])
-  const [showDaySchedule, setShowDaySchedule] = useState(false)
-  const [editingLoc, setEditingLoc] = useState(null)
   const [loading, setLoading] = useState(true)
   const [geocoding, setGeocoding] = useState(false)
   const [lightbox, setLightbox] = useState(null)
-  const [form, setForm] = useState({
-    title:'', client_id:'', client_name:'', employee_id:'', employee_name:'',
-    scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'',
-    value:0, description:'', checklist_template:'', photo_required:false,
-    location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic'
-  })
-  const [contractForm, setContractForm] = useState(emptySpotContractForm)
   const [spotContracts, setSpotContracts] = useState([])
-  const updContract = (k, v) => setContractForm(f => ({ ...f, [k]: v }))
   const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
 
   useEffect(() => { loadAll(); fetchContractSellers().then(setSellers) }, [])
@@ -514,11 +107,12 @@ export default function Jobs() {
 
   const loadAll = async () => {
     setLoading(true)
-    const [j, e, c, l] = await Promise.all([
+    const [j, e, c, l, scs] = await Promise.all([
       supabase.from('jobs').select('*').order('scheduled_date', { ascending: false }),
       supabase.from('employees').select('id,full_name,salary_type,hourly_rate,fixed_salary').eq('is_active', true),
       supabase.from('clients').select('id,company_name,address,contact_person,contact_name,phone,manager_name,manager_phone').eq('is_active', true),
       supabase.from('locations').select('*').eq('is_active', true).order('name'),
+      supabase.from('service_contracts').select('*').eq('is_active', true),
     ])
     // Table added in v1.0.21; ignore errors so Jobs still loads if it is missing.
     const sc = await supabase.from('spot_contracts').select('id,job_id,contract_number,status').eq('is_active', true)
@@ -526,83 +120,8 @@ export default function Jobs() {
     setJobs(j.data || [])
     setEmployees(e.data || [])
     setClients(c.data || [])
-    setLocations(l.data || [])
+    setLocations(buildPlaces(l.data || [], scs.data || []))
     setLoading(false)
-  }
-
-  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  const handleLocationSelect = (locId) => {
-    const loc = locations.find(l => l.id === locId)
-    if (!loc) return
-    setForm(f => ({
-      ...f,
-      location_id: locId,
-      address: loc.address,
-      gps_lat: loc.gps_lat || '',
-      gps_lng: loc.gps_lng || '',
-      title: f.title || loc.name,
-      description: loc.notes || f.description,
-      checklist_template: checklistTemplateForJob({ title: loc.name }) || f.checklist_template,
-    }))
-  }
-
-  const handleGeocode = async () => {
-    if (!form.address) return toast.error(jt.enterAddressFirst)
-    setGeocoding(true)
-    const result = await geocodeAddress(form.address)
-    setGeocoding(false)
-    if (!applyGeocodeResult(result, coords => setForm(f => ({ ...f, gps_lat: coords.lat, gps_lng: coords.lng })), jt.mapsValid)) {
-      toast.error(t.jobs.addressNotFound)
-    }
-  }
-
-  const handleCreate = async () => {
-    if (!form.title || !form.employee_id || !form.scheduled_date || !form.address) return toast.error('Fill required fields')
-    const emp = employees.find(e => e.id === form.employee_id)
-    const cli = clients.find(c => c.id === form.client_id)
-    const isSpot = form.job_category === 'spot'
-    const jobTitle = form.title.includes(' — ')
-      ? form.title
-      : applyCleaningTypeToTitle(form.title, form.cleaning_type)
-    const checklistTemplate = form.checklist_template || checklistTemplateForJob({ title: jobTitle })
-    const { data: inserted, error } = await supabase.from('jobs').insert({
-      title: jobTitle,
-      client_id: form.client_id || null,
-      client_name: cli?.company_name || '',
-      employee_id: form.employee_id,
-      employee_name: emp?.full_name || '',
-      scheduled_date: form.scheduled_date,
-      scheduled_time: form.scheduled_time,
-      address: form.address,
-      gps_lat: form.gps_lat || null,
-      gps_lng: form.gps_lng || null,
-      value: parseFloat(form.value) || 0,
-      spot_value: parseFloat(form.spot_value) || 0,
-      description: form.description,
-      checklist_template: checklistTemplate,
-      photo_required: form.photo_required,
-      job_category: form.job_category,
-      status: 'assigned',
-      spot_status: isSpot ? 'pending' : null,
-    }).select().single()
-    if (error) return toast.error(error.message)
-    toast.success(isSpot ? 'Spot job sent! Waiting for employee response.' : 'Job created!')
-    if (isSpot && contractForm.enabled) {
-      const row = buildSpotContractRow({ contract: contractForm, job: inserted, form, location: locations.find(l => l.id === form.location_id), client: cli, employee: emp })
-      try {
-        const { contract: saved, invoice, invoiceError } = await saveSpotContractWithInvoice(row)
-        toast.success(`📄 Contract ${saved.contract_number} saved in Contracts → Spot`)
-        if (invoice) toast.success(`💴 Invoice created · payment due ${invoice.due_date}`)
-        if (invoiceError) toast.error(`Invoice not created: ${invoiceError.message}`)
-      } catch (cErr) {
-        toast.error(`Contract not saved: ${cErr.message}`)
-      }
-    }
-    setContractForm(emptySpotContractForm())
-    setForm({ title:'', client_id:'', client_name:'', employee_id:'', employee_name:'', scheduled_date:'', scheduled_time:'', address:'', gps_lat:'', gps_lng:'', value:0, description:'', checklist_template:'', photo_required:false, location_id:'', job_category:'regular', spot_value:0, cleaning_type:'basic' })
-    loadAll()
-    setTab('list')
   }
 
   const statusColor = s => ({ assigned:'badge-blue', in_progress:'badge-amber', completed:'badge-green', cancelled:'badge-red' }[s] || 'badge-navy')
@@ -655,11 +174,8 @@ export default function Jobs() {
 
   return (
     <div>
-      {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-        <button className="btn btn-primary" onClick={()=>setShowDaySchedule(true)}>📅 {jt.daySchedule}</button>
-      </div>
       <div className="tab-pills">
+        <button className={`tab-pill${tab==='agenda'?' active':''}`} onClick={()=>setTab('agenda')}>📅 {tr('Day agenda', '本日の予定', 'Agenda do Dia')}</button>
         <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{jt.allJobs}</button>
         <button className={`tab-pill${tab==='spot'?' active':''}`} onClick={()=>setTab('spot')}>
           ⚡ {jt.spotJobs} {spotJobs.filter(j=>j.spot_status==='pending').length > 0 && <span className="badge badge-amber" style={{marginLeft:4}}>{spotJobs.filter(j=>j.spot_status==='pending').length}</span>}
@@ -667,6 +183,8 @@ export default function Jobs() {
         <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>+ {jt.newJob}</button>
         <button className={`tab-pill${tab==='locations'?' active':''}`} onClick={()=>setTab('locations')}>📍 {jt.locations}</button>
       </div>
+
+      {tab==='agenda' && <DayAgenda onChanged={loadAll} />}
 
       {tab==='list' && (
         <div>
@@ -748,6 +266,9 @@ export default function Jobs() {
                       {ctype === 'deep' ? jt.filterDeep : jt.filterBasic}
                     </span>
                   </div>
+                  {ctype === 'deep' && deepTaskList(j.title, lang) && (
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#b7791f', marginBottom: 4 }}>✨ {deepTaskList(j.title, lang)}</div>
+                  )}
                   <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
                     👤 {j.employee_name || '—'} · 📅 {j.scheduled_date} · 🕐 {j.scheduled_time || '—'}
                   </div>
@@ -773,9 +294,7 @@ export default function Jobs() {
               </div>
 
               {j.description && (
-                <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }}>
-                  🔑 {j.description.split('\n')[0]}
-                </div>
+                <KeyReveal value={j.description.split('\n')[0]} style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }} />
               )}
 
               {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
@@ -848,119 +367,10 @@ export default function Jobs() {
       )}
 
       {tab==='new' && (
-        <div className="card">
-          <div className="card-title">New Job</div>
-
-          {/* Job type toggle */}
-          <div style={{display:'flex',gap:8,marginBottom:16}}>
-            <button type="button" onClick={()=>upd('job_category','regular')} style={{flex:1,padding:'10px',borderRadius:8,border:'2px solid',borderColor:form.job_category==='regular'?'var(--navy)':'var(--border)',background:form.job_category==='regular'?'var(--navy)':'none',color:form.job_category==='regular'?'#fff':'var(--text2)',fontWeight:600,cursor:'pointer',fontSize:13}}>
-              📋 Regular Job
-            </button>
-            <button type="button" onClick={()=>upd('job_category','spot')} style={{flex:1,padding:'10px',borderRadius:8,border:'2px solid',borderColor:form.job_category==='spot'?'#EF9F27':'var(--border)',background:form.job_category==='spot'?'#FAEEDA':'none',color:form.job_category==='spot'?'#854F0B':'var(--text2)',fontWeight:600,cursor:'pointer',fontSize:13}}>
-              ⚡ Spot Job (employee must accept)
-            </button>
-          </div>
-
-          <div className="form-group">
-            <label>{t.jobs.cleaningType}</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {Object.entries(CLEANING_TYPES).map(([key, cfg]) => (
-                <button key={key} type="button" onClick={() => upd('cleaning_type', key)}
-                  style={{ flex: 1, padding: '10px', borderRadius: 8, border: '2px solid', borderColor: form.cleaning_type === key ? cfg.color : 'var(--border)', background: form.cleaning_type === key ? `${cfg.color}18` : 'transparent', color: form.cleaning_type === key ? cfg.color : 'var(--text2)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-                  {key === 'basic' ? '🧹' : '✨'} {cfg.short}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Use saved location</label>
-            <select value={form.location_id} onChange={e=>handleLocationSelect(e.target.value)}>
-              <option value="">— Select saved location —</option>
-              {locations.map(l=><option key={l.id} value={l.id}>{l.name} ({l.location_type})</option>)}
-            </select>
-          </div>
-
-          <div className="grid-2">
-            <div className="form-group"><label>Job Title *</label><input value={form.title} onChange={e=>upd('title',e.target.value)} placeholder="Hotel cleaning" /></div>
-            <div className="form-group"><label>Assign to *</label>
-              <select value={form.employee_id} onChange={e=>upd('employee_id',e.target.value)}>
-                <option value="">Select employee...</option>
-                {employees.map(e=><option key={e.id} value={e.id}>{e.full_name}</option>)}
-              </select>
-            </div>
-            <div className="form-group"><label>Client</label>
-              <select value={form.client_id} onChange={e=>{ upd('client_id',e.target.value); setContractForm(f=>({ ...f, ...contractPrefillFromClient(clients.find(c=>c.id===e.target.value)) })) }}>
-                <option value="">Select client...</option>
-                {clients.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>{form.job_category==='spot' ? '⚡ Spot Value (¥) — added to salary' : 'Job Value (¥)'}</label>
-              <input type="number" value={form.job_category==='spot'?form.spot_value:form.value} onChange={e=>form.job_category==='spot'?upd('spot_value',e.target.value):upd('value',e.target.value)} />
-            </div>
-            <div className="form-group"><label>Date *</label><input type="date" value={form.scheduled_date} onChange={e=>upd('scheduled_date',e.target.value)} /></div>
-            <div className="form-group"><label>Time</label><input type="time" value={form.scheduled_time} onChange={e=>upd('scheduled_time',e.target.value)} /></div>
-          </div>
-
-          <div className="form-group">
-            <label>Address *</label>
-            <div style={{display:'flex',gap:8}}>
-              <input value={form.address} onChange={e=>upd('address',e.target.value)} placeholder="東京都新宿区..." style={{flex:1}} />
-              <button className="btn" onClick={handleGeocode} disabled={geocoding} style={{whiteSpace:'nowrap'}}>{geocoding?'...':'📍 Get GPS'}</button>
-            </div>
-            {form.gps_lat && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ GPS: {Number(form.gps_lat).toFixed(4)}, {Number(form.gps_lng).toFixed(4)}</div>}
-            {!form.gps_lat && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {t.jobs.mapsValid}</div>}
-          </div>
-
-          <div className="form-group"><label>Description / Instructions</label><textarea value={form.description} onChange={e=>upd('description',e.target.value)} placeholder="Clean all rooms..." /></div>
-          <div className="form-group"><label>Checklist (one item per line)</label><textarea value={form.checklist_template} onChange={e=>upd('checklist_template',e.target.value)} placeholder="Clean floors&#10;Wipe windows&#10;Empty trash" /></div>
-
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
-            <input type="checkbox" id="photo_req" checked={form.photo_required} onChange={e=>upd('photo_required',e.target.checked)} style={{width:16,height:16,cursor:'pointer'}} />
-            <label htmlFor="photo_req" style={{cursor:'pointer',fontSize:13}}>📷 Photo required to complete this job</label>
-          </div>
-
-          {form.job_category==='spot' && (
-            <div className="card" style={{border:'1px solid #EF9F27',marginBottom:14,padding:14}}>
-              <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:700,fontSize:14,cursor:'pointer',marginBottom:contractForm.enabled?12:0}}>
-                <input type="checkbox" checked={contractForm.enabled} onChange={e=>updContract('enabled',e.target.checked)} style={{width:16,height:16}} />
-                📄 Create a contract with this location
-              </label>
-              {contractForm.enabled && (<>
-                <div style={{fontSize:12,color:'var(--text3)',marginBottom:10}}>業務委託契約書 · company data of the location (甲) is filled from the client; KuriPuro (乙) data is added automatically.</div>
-                <div className="grid-2">
-                  <div className="form-group" style={{gridColumn:'1/-1'}}><label>Company address (甲)</label><input value={contractForm.client_address} onChange={e=>updContract('client_address',e.target.value)} placeholder="東京都港区…" /></div>
-                  <div className="form-group"><label>Representative (代表者)</label><input value={contractForm.client_representative} onChange={e=>updContract('client_representative',e.target.value)} placeholder="代表取締役 山田 太郎" /></div>
-                  <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="31" value={contractForm.payment_day} onChange={e=>updContract('payment_day',e.target.value)} /></div>
-                  <div className="form-group"><label>Contact person (location)</label><input value={contractForm.contact_name} onChange={e=>updContract('contact_name',e.target.value)} placeholder="山田様 / Store manager" /></div>
-                  <div className="form-group"><label>Contact phone</label><input value={contractForm.contact_phone} onChange={e=>updContract('contact_phone',e.target.value)} placeholder="03-1234-5678" /></div>
-                  <div className="form-group"><label>Price charged to the location (¥)</label><input type="number" value={contractForm.price} onChange={e=>updContract('price',e.target.value)} placeholder="30000" /></div>
-                  <div className="form-group"><label>Tax</label>
-                    <div style={{display:'flex',gap:8}}>
-                      <select value={contractForm.tax_rate} onChange={e=>updContract('tax_rate',e.target.value)}><option value="10">10%</option><option value="8">8%</option><option value="0">0%</option></select>
-                      <select value={String(contractForm.price_includes_tax)} onChange={e=>updContract('price_includes_tax',e.target.value==='true')}><option value="true">incl. tax</option><option value="false">+ tax</option></select>
-                    </div>
-                  </div>
-                  <SellerCommissionFields sellers={sellers.salespeople} rules={sellers.rules} contract={{ ...contractForm, price: contractForm.price || form.value }} value={contractForm} onChange={patch=>setContractForm(f=>({...f,...patch}))} />
-                </div>
-                <div className="form-group"><label>Scope of work (empty = description / checklist)</label><textarea value={contractForm.scope} onChange={e=>updContract('scope',e.target.value)} rows={3} placeholder="Kitchen floor, range hood, grease trap..." /></div>
-                <div className="form-group"><label>Special terms 特記事項 (optional, added after the standard articles)</label><textarea value={contractForm.terms} onChange={e=>updContract('terms',e.target.value)} rows={3} placeholder="例：駐車場は店舗裏を使用可" /></div>
-                <div style={{fontSize:12,color:'var(--text3)'}}>Saved in Contracts → Spot contracts, where you can print it and collect the location's signature.</div>
-              </>)}
-            </div>
-          )}
-
-          {form.job_category==='spot' && (
-            <div style={{background:'#FAEEDA',border:'1px solid #EF9F27',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:'#854F0B'}}>
-              ⚡ This spot job will appear in the employee's app. They must accept it before it becomes active. Value <strong>¥{Number(form.spot_value||0).toLocaleString()}</strong> will be added to their salary automatically when completed.
-            </div>
-          )}
-
-          <button className="btn btn-primary" onClick={handleCreate}>
-            {form.job_category==='spot' ? '⚡ Send Spot Job' : '✅ Create Job'}
-          </button>
-        </div>
+        <NewJobForm
+          jobs={jobs} employees={employees} clients={clients} locations={locations} sellers={sellers}
+          onCreated={({ another }) => { loadAll(); if (!another) setTab('list') }}
+        />
       )}
 
       {tab==='locations' && <LocationsTab />}
@@ -971,109 +381,164 @@ export default function Jobs() {
 }
 
 function LocationsTab() {
-  const { t } = useLang()
+  const { t, tr } = useLang()
   const jt = t.jobs
+  const EMPTY_LOC = { name:'', address:'', location_type:'fixed', notes:'', client_id:'', area:'', key_box:'', checklist:'' }
+  const clientFromUrl = new URLSearchParams(window.location.search).get('client') || ''
   const [locations, setLocations] = useState([])
-  const [showDaySchedule, setShowDaySchedule] = useState(false)
+  const [contracts, setContracts] = useState([])
+  const [clients, setClients] = useState([])
   const [editingLoc, setEditingLoc] = useState(null)
-  const [form, setForm] = useState({ name:'', address:'', location_type:'fixed', notes:'' })
+  const [form, setForm] = useState(() => ({ ...EMPTY_LOC, client_id: clientFromUrl }))
+  const [errors, setErrors] = useState({})
   const [geocoding, setGeocoding] = useState(false)
   const [gps, setGps] = useState(null)
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
-    const { data } = await supabase.from('locations').select('*').order('name')
-    setLocations(data || [])
+    const [l, sc, c] = await Promise.all([
+      supabase.from('locations').select('*').order('name'),
+      supabase.from('service_contracts').select('*').eq('is_active', true),
+      supabase.from('clients').select('id,company_name').eq('is_active', true).order('company_name'),
+    ])
+    setLocations(l.data || [])
+    setContracts(sc.data || [])
+    setClients(c.data || [])
   }
+  // Columns added by the v1.0.96 SQL (checklist, key box, area on the place itself).
+  const hasPlaceCols = locations.some(l => 'checklist' in l)
+  const places = buildPlaces(locations.filter(l => l.is_active), contracts)
+  const clientName = id => clients.find(c => c.id === id)?.company_name || ''
 
-  const upd = (k,v) => setForm(f=>({...f,[k]:v}))
+  const upd = (k,v) => { setForm(f=>({...f,[k]:v})); setErrors(e => ({ ...e, [k]: null })) }
 
   const handleGeocode = async () => {
-    if (!form.address) return toast.error(jt.enterAddressFirst)
+    if (!form.address) { setErrors(e => ({ ...e, address: jt.enterAddressFirst })); return }
     setGeocoding(true)
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
-    if (!applyGeocodeResult(result, setGps, jt.mapsValid)) {
-      toast.error(t.jobs.addressNotFound)
-    }
+    if (!applyGeocodeResult(result, setGps, jt.mapsValid)) setErrors(e => ({ ...e, address: t.jobs.addressNotFound }))
+  }
+
+  const payload = () => {
+    const row = { name: form.name.trim(), address: form.address.trim(), location_type: form.location_type, notes: form.notes, client_id: form.client_id || null, gps_lat: gps?.lat ?? null, gps_lng: gps?.lng ?? null }
+    if (hasPlaceCols) Object.assign(row, { area: form.area || null, key_box: form.key_box || null, checklist: splitChecklist(form.checklist).join('\n') || null })
+    return row
+  }
+  const validate = () => {
+    const e = {}
+    if (!form.name.trim()) e.name = tr('Name is required', '名前は必須です', 'Nome é obrigatório')
+    if (!form.address.trim()) e.address = tr('Address or Google Maps link is required', '住所またはGoogleマップのリンクが必要です', 'Endereço ou link do Google Maps é obrigatório')
+    const dup = locations.find(l => l.is_active && l.id !== editingLoc && l.name.trim().toLowerCase() === form.name.trim().toLowerCase())
+    if (dup) e.name = tr('A place with this name already exists', '同じ名前の場所があります', 'Já existe um local com este nome')
+    setErrors(e)
+    return !Object.keys(e).length
   }
 
   const handleSave = async () => {
-    if (!form.name || !form.address) return toast.error('Name and address required')
-    const { error } = await supabase.from('locations').insert({ ...form, gps_lat: gps?.lat, gps_lng: gps?.lng })
+    if (!validate()) return
+    const { error } = editingLoc
+      ? await supabase.from('locations').update(payload()).eq('id', editingLoc)
+      : await supabase.from('locations').insert(payload())
     if (error) return toast.error(error.message)
-    toast.success('Location saved!')
-    setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null); load()
+    toast.success(editingLoc ? tr('Place updated', '更新しました', 'Local atualizado') : tr('Place saved', '保存しました', 'Local salvo'))
+    setEditingLoc(null); setForm(EMPTY_LOC); setGps(null); load()
   }
 
   const handleEditLoc = (l) => {
+    if (l.fromContract) {
+      // Store that only exists in Contracts: open the form prefilled to save it as a place.
+      setEditingLoc(null)
+      setForm({ ...EMPTY_LOC, name: l.name, address: l.address || '', client_id: l.client_id || '', area: l.area || '' })
+      setGps(null)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     setEditingLoc(l.id)
-    setForm({ name:l.name||'', address:l.address||'', location_type:l.location_type||'fixed', notes:l.notes||'' })
+    setForm({ ...EMPTY_LOC, name:l.name||'', address:l.address||'', location_type:l.location_type||'fixed', notes:l.notes||'', client_id:l.client_id||'', area:l.area||'', key_box:l.key_box||'', checklist:l.checklist||'' })
     setGps(l.gps_lat&&l.gps_lng?{lat:l.gps_lat,lng:l.gps_lng}:null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleUpdateLoc = async () => {
-    if (!form.name) return toast.error('Name required')
-    await supabase.from('locations').update({ name:form.name, address:form.address, location_type:form.location_type, notes:form.notes, gps_lat:gps?.lat||null, gps_lng:gps?.lng||null }).eq('id', editingLoc)
-    toast.success('Location updated!')
-    setEditingLoc(null)
-    setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null); load()
-  }
+  const handleDelete = (l) => confirmAndRun({
+    title: tr('Remove place?', '場所を削除しますか？', 'Remover local?'),
+    message: `${l.name}${l.contracts.length ? `\n${tr('Its contracts stay in Contracts.', '契約は契約画面に残ります。', 'Os contratos dele continuam em Contratos.')}` : ''}`,
+    confirmLabel: tr('Remove', '削除', 'Remover'),
+    success: tr('Place removed', '削除しました', 'Local removido'),
+    run: () => supabase.from('locations').update({ is_active: false }).eq('id', l.id),
+  }).then(ok => ok && load())
 
-  const handleDelete = async (id) => {
-    await supabase.from('locations').update({ is_active: false }).eq('id', id)
-    load()
-  }
+  const fieldErr = k => errors[k] && <div className="ag-field-error">{errors[k]}</div>
 
   return (
     <div>
-      {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
+      <SetupChain current="place" clientId={form.client_id || null} />
       <div className="card" style={{marginBottom:14}}>
-        <div className="card-title">{editingLoc ? 'Edit Location' : 'Save New Location'}</div>
+        <div className="card-title">{editingLoc ? tr('Edit place', '場所を編集', 'Editar local') : tr('New place', '新しい場所', 'Novo local')}</div>
+        <div style={{fontSize:12,color:'var(--text3)',marginBottom:10}}>{tr('One registry for Jobs, Contracts, Generator and World. Value and checklist of each job come from the place\'s contract.', 'Jobs・契約・スケジュール・ワールド共通の登録です。作業の金額とチェックリストは場所の契約から入ります。', 'Cadastro único para Jobs, Contratos, Gerador e Mundo. Valor e checklist de cada job vêm do contrato do local.')}</div>
         <div className="grid-2">
-          <div className="form-group"><label>Name</label><input value={form.name} onChange={e=>upd('name',e.target.value)} placeholder="Hotel Grand" /></div>
-          <div className="form-group"><label>Type</label>
-            <select value={form.location_type} onChange={e=>upd('location_type',e.target.value)}>
-              <option value="fixed">Fixed (recurring)</option>
-              <option value="spot">Spot (one-time)</option>
+          <div className="form-group"><label>{tr('Name', '名前', 'Nome')} *</label><input className={errors.name?'ag-invalid':''} value={form.name} onChange={e=>upd('name',e.target.value)} placeholder="Hotel Grand" />{fieldErr('name')}</div>
+          <div className="form-group"><label>{tr('Client', '顧客', 'Cliente')}</label>
+            <select value={form.client_id} onChange={e=>upd('client_id',e.target.value)}>
+              <option value="">—</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
             </select>
           </div>
         </div>
         <div className="form-group">
-          <label>{t.jobs.addressLabel}</label>
+          <label>{t.jobs.addressLabel} *</label>
           <div style={{display:'flex',gap:8}}>
-            <input value={form.address} onChange={e=>upd('address',e.target.value)} placeholder={t.jobs.addressPlaceholder} style={{flex:1}} />
+            <input className={errors.address?'ag-invalid':''} value={form.address} onChange={e=>upd('address',e.target.value)} placeholder={t.jobs.addressPlaceholder} style={{flex:1,minWidth:0}} />
             <button className="btn" onClick={handleGeocode} disabled={geocoding}>{geocoding?'...':'📍 GPS'}</button>
           </div>
+          {fieldErr('address')}
           {gps && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}</div>}
           {!gps && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {jt.mapsValid}</div>}
         </div>
-        <div className="form-group"><label>{jt.keyboxNotes}</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 0315" /></div>
-        <button className="btn btn-primary" onClick={editingLoc ? handleUpdateLoc : handleSave}>{editingLoc ? jt.updateLocation : jt.saveLocation}</button>
-        {editingLoc && <button className="btn" style={{ marginLeft: 8 }} onClick={() => { setEditingLoc(null); setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null) }}>{jt.cancelEdit}</button>}
+        <div className="grid-2">
+          <div className="form-group"><label>{tr('Type', '種類', 'Tipo')}</label>
+            <select value={form.location_type} onChange={e=>upd('location_type',e.target.value)}>
+              <option value="fixed">{tr('Fixed (recurring)', '定期', 'Fixo (recorrente)')}</option>
+              <option value="spot">{tr('Spot (one-time)', 'スポット', 'Spot (avulso)')}</option>
+            </select>
+          </div>
+          {hasPlaceCols
+            ? <div className="form-group"><label>🔑 Key box</label><input value={form.key_box} onChange={e=>upd('key_box',e.target.value)} placeholder="0315" /></div>
+            : <div className="form-group"><label>{jt.keyboxNotes}</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 0315" /></div>}
+        </div>
+        {hasPlaceCols && (
+          <div className="form-group"><label>{tr('Checklist (one item per line)', 'チェックリスト（1行1項目）', 'Checklist (um item por linha)')}</label>
+            <textarea rows={4} value={form.checklist} onChange={e=>upd('checklist',e.target.value)} />
+            {splitChecklist(form.checklist).length > 0 && <small style={{color:'var(--text3)'}}>{splitChecklist(form.checklist).length} {tr('items', '項目', 'itens')}</small>}
+          </div>
+        )}
+        <button className="btn btn-primary" onClick={handleSave}>{editingLoc ? jt.updateLocation : jt.saveLocation}</button>
+        {(editingLoc || form.name) && <button className="btn" style={{ marginLeft: 8 }} onClick={() => { setEditingLoc(null); setForm(EMPTY_LOC); setErrors({}); setGps(null) }}>{jt.cancelEdit}</button>}
       </div>
 
       <div className="card">
-        <div className="card-title">{jt.savedLocations}</div>
-        <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Address</th><th>Key box</th><th>GPS</th><th></th></tr></thead>
-          <tbody>
-            {locations.filter(l=>l.is_active).map(l=>(
-              <tr key={l.id}>
-                <td style={{fontWeight:500}}>{l.name}</td>
-                <td><span className={`badge ${l.location_type==='fixed'?'badge-green':'badge-amber'}`}>{l.location_type}</span></td>
-                <td style={{fontSize:12,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.address}</td>
-                <td style={{fontSize:12}}>{l.notes || '—'}</td>
-                <td>{l.gps_lat ? <span className="badge badge-navy">✓</span> : hasMapsLink(l.address, l.name) ? <span className="badge badge-green">🗺</span> : '—'}</td>
-                <td style={{display:'flex',gap:4}}>
-                  <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>✏️</button>
-                  <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l.id)}>✕</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="card-title">{tr('Places', '場所', 'Locais')} ({places.length})</div>
+        <div style={{display:'grid',gap:8}}>
+          {places.map(l => (
+            <div key={l.id} style={{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:10,background:l.fromContract?'rgba(245,158,11,0.06)':'var(--surface)'}}>
+              <div style={{flex:'1 1 220px',minWidth:0}}>
+                <div style={{fontWeight:700}}>{l.name} {l.client_id && <span style={{fontWeight:400,color:'var(--text3)',fontSize:12}}>· {clientName(l.client_id)}</span>}</div>
+                <div style={{fontSize:12,color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.address || '—'}</div>
+                <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>
+                  📄 {l.contracts.length ? l.contracts.map(c => `${c.location_name}${c.price_per_visit ? ` ¥${Number(c.price_per_visit).toLocaleString()}` : ''}`).join(' · ') : tr('No contract yet', '契約なし', 'Sem contrato ainda')}
+                </div>
+                {l.fromContract && <div style={{fontSize:12,color:'#b45309',fontWeight:700,marginTop:4}}>⚠️ {tr('Only in Contracts — save it as a place', '契約にのみ存在 — 場所として保存してください', 'Só existe em Contratos — salve como local')}</div>}
+              </div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {l.gps_lat ? <span className="badge badge-navy">GPS ✓</span> : hasMapsLink(l.address, l.name) ? <span className="badge badge-green">🗺</span> : null}
+                <Link className="btn btn-sm" to={`/contracts${l.client_id ? `?client=${l.client_id}` : ''}`}>{l.contracts.length ? tr('Contracts', '契約', 'Contratos') : `+ ${tr('Contract', '契約', 'Contrato')}`}</Link>
+                <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>{l.fromContract ? tr('Save as place', '場所として保存', 'Salvar como local') : '✏️'}</button>
+                {!l.fromContract && <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l)} aria-label={tr('Remove', '削除', 'Remover')}>✕</button>}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

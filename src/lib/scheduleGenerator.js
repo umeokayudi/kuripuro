@@ -470,7 +470,7 @@ export function jobsToRows(jobs) {
     title: j.title,
     employee_id: j.employeeId || null,
     employee_name: j.employeeName || j.employee || null,
-    client_id: clientMap[j.client]?.id || SCHEDULE_CLIENTS.ontheplanet.id,
+    client_id: j.clientId || clientMap[j.client]?.id || SCHEDULE_CLIENTS.ontheplanet.id,
     client_name: j.client,
     scheduled_date: j.date,
     scheduled_time: j.time,

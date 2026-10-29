@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import LanguageToggle from './LanguageToggle'
 import { localeOf, pickLang } from '../hooks/useLang'
 
@@ -105,14 +105,15 @@ export default function FieldAppShell({
 
       {menuOpen && <Sheet title={pickLang(lang, 'Menu', 'メニュー', 'Menu')} onClose={() => setMenuOpen(false)}>
         <div className="fa-menu-list">
-          {menuItems.map(item => (
-            <button key={item.key} type="button" className={`fa-menu-item${tab === item.key ? ' is-active' : ''}`} onClick={() => { setMenuOpen(false); item.onClick ? item.onClick() : onTab(item.key) }}>
+          {menuItems.map((item, i) => (<Fragment key={item.key}>
+            {item.section && item.section !== menuItems[i - 1]?.section && <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.55, margin: i ? '10px 4px 2px' : '0 4px 2px' }}>{item.section}</div>}
+            <button type="button" className={`fa-menu-item${tab === item.key ? ' is-active' : ''}`} onClick={() => { setMenuOpen(false); item.onClick ? item.onClick() : onTab(item.key) }}>
               <span className="fa-menu-icon" aria-hidden="true">{item.icon}</span>
               <span className="fa-menu-copy"><strong>{item.label}</strong>{item.hint && <small>{item.hint}</small>}</span>
               {item.badge > 0 && <span className="fa-nav-badge is-inline">{item.badge}</span>}
               <span aria-hidden="true" className="fa-chevron">›</span>
             </button>
-          ))}
+          </Fragment>))}
         </div>
         <div className="fa-menu-footer">
           <LanguageToggle variant="light" />

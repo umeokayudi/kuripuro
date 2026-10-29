@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import OvertimeAlerts from '../components/OvertimeAlerts'
 import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl, mapsCoordsUrl } from '../lib/mapsLink'
 import { apiFetch } from '../lib/apiFetch'
@@ -6,6 +7,7 @@ import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { useLang, fill, localeOf } from '../hooks/useLang'
+import { askConfirm } from '../components/ConfirmDialog'
 
 const TZ = 'Asia/Tokyo'
 const LATE_AFTER_MIN = 5
@@ -88,7 +90,7 @@ export default function LiveTracking() {
   }
 
   const cleanPhotos = async () => {
-    if (!window.confirm(L.cleanConfirm)) return
+    if (!(await askConfirm({ message: L.cleanConfirm, danger: false }))) return
     setCleaning(true)
     try {
       const r = await apiFetch('/api/cleanup-photos', { method: 'POST' })
@@ -260,6 +262,8 @@ export default function LiveTracking() {
           </a>
         ))}
       </div>
+
+      <OvertimeAlerts jobs={jobs} />
 
       {loading && <div className="lt-empty">{L.loading}</div>}
 

@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
-import { provisionAllStoreAccounts, DEFAULT_PORTAL_PASSWORD, getPortalStores } from '../lib/portalStores'
+import { provisionAllStoreAccounts, getPortalStores } from '../lib/portalStores'
 import { apiFetch } from '../lib/apiFetch'
 import toast from 'react-hot-toast'
 import ClientCareAdmin from '../components/ClientCareAdmin'
 import { fetchContractSellers } from '../lib/contractSellers'
 import { ClientLink } from '../components/ClientSheetHost'
+import { askConfirm } from '../components/ConfirmDialog'
+import SetupChain from '../components/SetupChain'
 
 export default function Clients() {
   const [searchParams] = useSearchParams()
@@ -148,7 +150,7 @@ export default function Clients() {
   }
 
   const deletePortalUser = async (id) => {
-    if (!confirm('Delete this portal account?')) return
+    if (!(await askConfirm({ message: 'Delete this portal account?', danger: true }))) return
     await supabase.from('client_users').delete().eq('id', id)
     loadPortal(portalClientId)
   }
@@ -184,9 +186,10 @@ export default function Clients() {
     loadPortal(portalClientId)
   }
 
+  const [newPasswords, setNewPasswords] = useState(null) // shown once after creating store accounts
   const provisionAllStores = async () => {
     if (!portalSchemaOk) return toast.error('Primeiro rode o SQL no Supabase')
-    if (!confirm(`Criar/atualizar ${getPortalStores().length} contas (On The Planet + Atomic)?\nSenha padrão: ${DEFAULT_PORTAL_PASSWORD}`)) return
+    if (!(await askConfirm({ message: `Criar/atualizar ${getPortalStores().length} contas (On The Planet + Atomic)?\nContas novas recebem senha própria; as existentes mantêm a senha atual.`, danger: false }))) return
     setBulkProvisionBusy(true)
     try {
       const results = await provisionAllStoreAccounts(supabase, clients)
@@ -194,6 +197,7 @@ export default function Clients() {
       if (results.errors.length) toast.error(`${results.errors.length} erros — veja console`)
       else toast.success(msg)
       if (results.errors.length) console.warn('Portal provision errors:', results.errors)
+      if (results.passwords.length) setNewPasswords(results.passwords)
       if (portalClientId) loadPortal(portalClientId)
     } catch (e) {
       toast.error(e.message)
@@ -231,9 +235,10 @@ export default function Clients() {
   }
 
   const handleDelete = async (id, name) => {
-    if (!confirm(`Delete ${name}?`)) return
-    await supabase.from('clients').delete().eq('id', id)
-    toast('Client deleted.')
+    if (!(await askConfirm({ title: `Delete ${name}?`, message: 'If this client has contracts, invoices or jobs, use Deactivate instead.', confirmLabel: 'Delete', danger: true }))) return
+    const { error } = await supabase.from('clients').delete().eq('id', id)
+    if (error) return toast.error(/foreign key|violates/i.test(error.message) ? 'This client has linked records (contracts, invoices, logins). Use Deactivate instead.' : error.message)
+    toast.success('Client deleted')
     load()
   }
 
@@ -257,6 +262,7 @@ export default function Clients() {
 
   return (
     <div>
+      <SetupChain current="client" />
       <div className="tab-pills">
         <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>{setTab('list');setEditing(null);setForm({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })}}>List ({clients.length})</button>
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>{editing?'✏️ Edit':'+ Register'}</button>
@@ -310,6 +316,8 @@ export default function Clients() {
                 </label>
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <button className="btn btn-sm btn-primary" onClick={()=>handleEdit(c)}>✏️ Edit</button>
+                  <button className="btn btn-sm" onClick={()=>navigate(`/jobs?tab=locations&client=${c.id}`)}>📍 Places</button>
+                  <button className="btn btn-sm" onClick={()=>navigate(`/contracts?client=${c.id}`)}>📄 Contracts</button>
                   <button className="btn btn-sm" onClick={()=>{setPortalClientId(c.id);setTab('portal')}}>🔐 Portal</button>
                   <button className="btn btn-sm" onClick={()=>navigate(`/facility?client=${c.id}`)}>🏢 3D</button>
                   <button className="btn btn-sm" onClick={()=>handleToggle(c.id,c.is_active)}>{c.is_active?'Deactivate':'Activate'}</button>
@@ -422,10 +430,22 @@ export default function Clients() {
               <textarea readOnly value={PORTAL_SETUP_SQL} onClick={e => e.target.select()} style={{ width: '100%', height: 120, marginTop: 14, fontSize: 10, fontFamily: 'monospace', background: '#0a1525', color: '#94a3b8', border: '1px solid var(--border)', borderRadius: 8, padding: 10, boxSizing: 'border-box' }} />
             </div>
           )}
+          {newPasswords && (
+            <div className="card" style={{marginBottom:14,border:'1px solid var(--amber)'}}>
+              <div className="card-title">🔑 Senhas das contas novas — anote agora, não aparecem de novo</div>
+              <table style={{width:'100%',fontSize:13}}><tbody>
+                {newPasswords.map(p => <tr key={p.email}><td>{p.store}</td><td style={{color:'var(--text3)'}}>{p.email}</td><td><code>{p.password}</code></td></tr>)}
+              </tbody></table>
+              <div style={{display:'flex',gap:8,marginTop:10}}>
+                <button className="btn btn-sm" type="button" onClick={() => navigator.clipboard?.writeText(newPasswords.map(p => `${p.store}\t${p.email}\t${p.password}`).join('\n')).then(() => toast.success('Copiado'))}>📋 Copiar</button>
+                <button className="btn btn-sm btn-primary" type="button" onClick={() => setNewPasswords(null)}>Já anotei</button>
+              </div>
+            </div>
+          )}
           <div className="card" style={{marginBottom:14}}>
             <div className="card-title">🔐 Client Portal Accounts</div>
             <div style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>
-              Uma conta por loja. Login com <b>nome do local</b> ou email. Senha padrão: <code>{DEFAULT_PORTAL_PASSWORD}</code>
+              Uma conta por loja. Login com <b>nome do local</b> ou email. Cada loja tem a própria senha (para trocar, use ✎ na conta).
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
               <button className="btn btn-primary" onClick={provisionAllStores} disabled={bulkProvisionBusy || !portalSchemaOk} type="button">

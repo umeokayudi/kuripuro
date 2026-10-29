@@ -83,7 +83,15 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   const [loaded, setLoaded] = useState(false)
   const [focus, setFocus] = useState(null)
   const [query, setQuery] = useState('')
-  const [listMode, setListMode] = useState(false)
+  // Employee: opens as the "My work" list; the 3D is optional (v1.0.96).
+  const [listMode, setListMode] = useState(() => isEmployee || (typeof window !== 'undefined' && window.innerWidth < 760))
+  // The portal overlay must always be closable, even if the 3D view stops responding: Escape key too.
+  useEffect(() => {
+    if (!onClose) return undefined
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
   const [missionsOpen, setMissionsOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 760)
   const [missionTab, setMissionTab] = useState(isEmployee ? 'mine' : 'late')
   const [busy, setBusy] = useState('')
@@ -91,6 +99,11 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   const [myJobs, setMyJobs] = useState([])
   const [quoteFor, setQuoteFor] = useState(null)
   const [recBusy, setRecBusy] = useState('')
+  // v1.0.96 · every place of the single location registry shows in the World, with today's jobs,
+  // even without a 3D plan yet (those show as a plain building and open a simple sheet).
+  const [places, setPlaces] = useState([])
+  const [todayJobs, setTodayJobs] = useState([])
+  const [placeOpen, setPlaceOpen] = useState(null)
 
   const storeId = params.get('model') || null
   const mapView = !storeId && params.get('view') === 'map'
@@ -135,9 +148,29 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
       setClients(new Map((cl || []).map(c => [c.id, c.company_name])))
       setMyJobs(mine || [])
       setJobs((mine || []).filter(j => j.scheduled_date >= tokyoToday() && !['cancelled', 'completed'].includes(j.status)).reverse())
+      // Employee: only the places of my own route today, no money and nobody else's work.
+      const mineToday = (mine || []).filter(j => j.scheduled_date === tokyoToday() && j.status !== 'cancelled')
+      setTodayJobs(mineToday)
+      setPlaces([...new Map(mineToday.map(j => [storeBase(j.title), { name: j.title.split(/\s+[-—–]\s+/)[0].trim(), client_id: j.client_id }])).values()])
       setLoaded(true)
       return
     }
+    const [{ data: locs }, { data: scs }, { data: tj }] = await Promise.all([
+      supabase.from('locations').select('*').eq('is_active', true),
+      supabase.from('service_contracts').select('client_id,location_name,location_address,is_active').eq('is_active', true),
+      supabase.from('jobs').select('id,title,scheduled_date,scheduled_time,status,employee_name,client_id').eq('scheduled_date', tokyoToday()).neq('status', 'cancelled'),
+    ])
+    const byName = new Map()
+    for (const l of locs || []) byName.set(storeBase(l.name), { name: l.name, client_id: l.client_id, address: l.address, location_id: l.id })
+    for (const c of scs || []) {
+      const k = storeBase(c.location_name)
+      if (!k) continue
+      const cur = byName.get(k)
+      if (!cur) byName.set(k, { name: c.location_name.split(/\s+[-—–]\s+/)[0].trim(), client_id: c.client_id, address: c.location_address })
+      else if (!cur.client_id) cur.client_id = c.client_id
+    }
+    setPlaces([...byName.values()])
+    setTodayJobs(tj || [])
     const [ms, ls, rs, { data: cl }, { data: js }] = await Promise.all([
       listAllModels(),
       listServiceLog({ limit: 3000 }),
@@ -224,7 +257,22 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
       soon: soonN,
       draft: m.status !== 'approved',
     }
-  }).sort((a, b) => a.name.localeCompare(b.name)), [models, logs, clients, late, soon])
+  }).concat(isClient ? [] : places
+    // a place already drawn in 3D is not repeated
+    .filter(pl => !models.some(m => storeBase(m.location_name || m.name) === storeBase(pl.name) || (!m.location_name && m.client_id === pl.client_id && storeBase(clients.get(m.client_id)) === storeBase(pl.name))))
+    .map(pl => ({
+      id: `place:${storeBase(pl.name)}`,
+      place: pl,
+      model: { id: null, client_id: pl.client_id, location_name: pl.name },
+      client_name: clients.get(pl.client_id) || '',
+      name: pl.name,
+      sub: clients.get(pl.client_id) && clients.get(pl.client_id) !== pl.name ? clients.get(pl.client_id) : '',
+      layout: null, full: null, levels: 1, elStatus: new Map(),
+      status: 'none', late: 0, soon: 0, draft: false, placeOnly: true,
+    })))
+    .map(st => ({ ...st, today: todayJobs.filter(j => storeBase(j.title) === storeBase(st.model?.location_name || st.name) || (!st.model?.location_name && j.client_id === st.model?.client_id)) }))
+    .filter(st => !isEmployee || st.today.length > 0 || !st.placeOnly)
+    .sort((a, b) => (b.today.length > 0) - (a.today.length > 0) || a.name.localeCompare(b.name)), [models, logs, clients, late, soon, places, todayJobs, isClient, isEmployee])
 
   const store = stores.find(s => s.id === storeId) || null
   // links antigos (Clientes → 🏢 3D): ?client= abre a loja desse cliente ou o editor para criar a primeira
@@ -236,6 +284,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
     else navigate(`/facility/edit?client=${wantClient}`, { replace: true })
   }, [loaded, wantClient]) // eslint-disable-line react-hooks/exhaustive-deps
   const enterStore = (id, sel = null) => {
+    if (String(id).startsWith('place:')) { setPlaceOpen(stores.find(s => s.id === id) || null); return }
     setPendingSel(sel)
     setParams(mapView ? { model: id, from: 'map' } : { model: id })
   }
@@ -285,6 +334,11 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
 
   const view = (
     <div className={`kw-root${isAdmin ? '' : ' kw-overlay'}`} ref={rootRef}>
+      {/* Always-on-top exit for the portals: works even if the 3D view is busy. */}
+      {onClose && (
+        <button type="button" onClick={onClose} aria-label={w.exit}
+          style={{ position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 10, zIndex: 10000, width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(15,23,42,0.85)', color: '#fff', fontSize: 18, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.3)' }}>✕</button>
+      )}
       {store ? (
         <StoreView
           key={store.id}
@@ -317,7 +371,11 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
             </Suspense>
           )}
           {listMode || mapView || !loaded ? null : (
-            <Suspense fallback={<div className="kw-loading">{w.loading}</div>}>
+            <Suspense fallback={<div className="kw-list">{stores.map(s => (
+              <button key={s.id} type="button" className={`kw-list-card st-${s.draft ? 'draft' : s.status}`} onClick={() => enterStore(s.id)}>
+                <strong>{s.name}</strong>{s.sub && <span>{s.sub}</span>}
+              </button>
+            ))}</div>}>
               <CityWorld
                 stores={stores}
                 height={rootH || 600}
@@ -337,7 +395,8 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                   <strong>{s.name}</strong>
                   {s.sub && <span>{s.sub}</span>}
                   <span className="kw-list-meta">
-                    {s.draft ? w.draft : s.late ? fill(w.lateN, { n: s.late }) : s.soon ? fill(w.weekN, { n: s.soon }) : w.allOk}
+                    {s.placeOnly ? pickLang(lang, 'No 3D plan yet', '3D図面なし', 'Sem planta 3D ainda') : s.draft ? w.draft : s.late ? fill(w.lateN, { n: s.late }) : s.soon ? fill(w.weekN, { n: s.soon }) : w.allOk}
+                    {s.today.length > 0 && <> · 🧹 {pickLang(lang, `${s.today.length} today`, `今日${s.today.length}件`, `${s.today.length} hoje`)}</>}
                   </span>
                 </button>
               ))}
@@ -443,6 +502,29 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
           {loaded && !listMode && !mapView && stores.length > 0 && !mobile && <div className="kw-help">{w.help}</div>}
           {loaded && !mapView && stores.length === 0 && <div className="kw-empty-world">{isAdmin ? w.empty : isClient ? w.emptyClient : w.emptyEmployee}</div>}
         </>
+      )}
+
+      {placeOpen && (
+        <div className="kw-place-sheet" role="dialog" aria-modal="true" onClick={() => setPlaceOpen(null)}
+          style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(5,12,25,.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 12 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '80%', overflowY: 'auto', background: '#0f2440', color: '#e8eefc', borderRadius: 18, padding: 18, border: '1px solid rgba(255,255,255,.12)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <div><div style={{ fontSize: 18, fontWeight: 800 }}>{placeOpen.name}</div>{placeOpen.sub && <div style={{ fontSize: 13, opacity: .7 }}>{placeOpen.sub}</div>}</div>
+              <button type="button" className="kw-back" onClick={() => setPlaceOpen(null)}>✕</button>
+            </div>
+            {placeOpen.place?.address && isAdmin && <div style={{ fontSize: 12, opacity: .7, marginTop: 6 }}>📍 {placeOpen.place.address}</div>}
+            <div style={{ marginTop: 14, fontWeight: 700, fontSize: 13 }}>🧹 {pickLang(lang, "Today's jobs", '今日の作業', 'Jobs de hoje')} ({placeOpen.today.length})</div>
+            {placeOpen.today.length === 0 && <div style={{ fontSize: 13, opacity: .7, marginTop: 6 }}>{pickLang(lang, 'Nothing today.', '今日はありません。', 'Nada hoje.')}</div>}
+            {placeOpen.today.map(j => (
+              <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, padding: '7px 0', borderTop: '1px solid rgba(255,255,255,.08)' }}>
+                <span>{j.scheduled_time || '—'} · {j.title.split(/\s+[—–]\s+/).slice(1).join(' — ') || j.title}</span>
+                <span style={{ opacity: .75 }}>{isEmployee ? '' : (j.employee_name || '—') + ' · '}{j.status === 'completed' ? '✅' : j.status === 'in_progress' ? '▶' : '○'}</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 12, opacity: .6, marginTop: 12 }}>{pickLang(lang, 'This place has no 3D plan yet.', 'この場所の3D図面はまだありません。', 'Este local ainda não tem planta 3D.')}</div>
+            {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 10 }} onClick={() => navigate(placeOpen.model.client_id ? `/facility/edit?client=${placeOpen.model.client_id}` : '/facility/edit')}>＋ {w.newStore}</button>}
+          </div>
+        </div>
       )}
 
       {popup && popupStore && (

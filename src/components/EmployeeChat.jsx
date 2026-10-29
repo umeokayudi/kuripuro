@@ -19,7 +19,7 @@ export default function EmployeeChat({
   teamReady = false, sections = null, activeKey = OFFICE_KEY, onOpen, onBack,
 }) {
   const fileRef = useRef()
-  const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
+  const dateLocale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
   const todayKey = chatDayKey(new Date().toISOString())
   const timeOf = iso => new Date(iso).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
   const dayLabel = key => key === todayKey

@@ -150,3 +150,26 @@ export async function syncServiceReport(supabase, job) {
     if (error) throw error
   }
 }
+
+/**
+ * v1.0.96 · one rule for "job done": a completed job counts in salary and billing AND has its
+ * service report. Salary close, invoice generation and the admin dashboard call this with the
+ * completed jobs they use, so a report that failed to save (bad signal, app closed) is made then.
+ * @returns {Promise<number>} how many reports were created
+ */
+export async function ensureServiceReports(supabase, jobs) {
+  const done = (jobs || []).filter(j => j?.id && j.status === 'completed')
+  if (!done.length) return 0
+  let made = 0
+  for (let i = 0; i < done.length; i += 200) {
+    const part = done.slice(i, i + 200)
+    const { data, error } = await supabase.from('service_reports').select('job_id').in('job_id', part.map(j => j.id))
+    if (error) return made
+    const have = new Set((data || []).map(r => r.job_id))
+    for (const j of part) {
+      if (have.has(j.id)) continue
+      try { await syncServiceReport(supabase, j); made++ } catch { /* tries again next time */ }
+    }
+  }
+  return made
+}

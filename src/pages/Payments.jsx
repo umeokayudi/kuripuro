@@ -5,9 +5,12 @@ import toast from 'react-hot-toast'
 import { getPeriodDates } from '../lib/salaryPeriod'
 import '../components/SalaryPopups.css'
 import './Payments.css'
+import PayrollCloseSheet from '../components/PayrollCloseSheet'
 
 // One month (= month worked, salary_payments.period) at a time, one row per employee.
 // ¥0 people fold away, "Mark paid" pays every open line of that person in that month.
+// v1.0.96: opens on the current month, every active employee has a row, a salary is only paid after
+// the employee confirmed the payslip, and "Payroll" opens the one-screen close of that person.
 
 const tokyoToday = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0]
 const monthOf = (p) => p.period || p.payment_date?.slice(0, 7) || ''
@@ -44,6 +47,7 @@ export default function Payments() {
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState(null) // null = closed
   const [editingId, setEditingId] = useState(null)
+  const [closing, setClosing] = useState(null) // employee whose month is open in PayrollCloseSheet
 
   // Same list as the salary_payments check constraint.
   const TYPES = ['salary','advance','bonus','extra','deduction']
@@ -79,12 +83,10 @@ export default function Payments() {
   const today = tokyoToday()
   const thisMonth = today.slice(0, 7)
 
-  // Start on the oldest month that still has something to pay, else the newest month with entries.
+  // Always opens on the current month (Tokyo); open amounts of other months show in "Still to pay".
   useEffect(() => {
     if (!loaded || month) return
-    const open = payments.filter(p => isOpen(p) && Number(p.amount) > 0).map(monthOf).filter(Boolean).sort()
-    const all = payments.map(monthOf).filter(m => m && m <= thisMonth).sort()
-    setMonth(open[0] || all[all.length - 1] || thisMonth)
+    setMonth(thisMonth)
   }, [loaded])
 
   const fmt = n => '¥' + Math.round(Number(n||0)).toLocaleString(locale)
@@ -96,11 +98,11 @@ export default function Payments() {
   }
   const fmtDay = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day:'numeric', month:'short' }) : ''
 
-  // Everyone who has lines this month (inactive people too, so nothing pending is hidden).
+  // Every active employee, plus anyone (inactive too) who has lines this month, so nothing is hidden.
   const rows = useMemo(() => {
     if (!month) return []
     const lines = payments.filter(p => monthOf(p) === month)
-    const ids = [...new Set(lines.map(p => p.employee_id))]
+    const ids = [...new Set([...employees.filter(e => e.is_active !== false).map(e => e.id), ...lines.map(p => p.employee_id)])]
     return ids.map(id => {
       const emp = employees.find(e => e.id === id) || { id, full_name: lines.find(p => p.employee_id === id)?.employee_name || '—', is_active: false }
       const mine = lines.filter(p => p.employee_id === id).sort((a, b) => (a.payment_date||'').localeCompare(b.payment_date||''))
@@ -113,7 +115,8 @@ export default function Payments() {
       // Fixed salary that closed at ¥0 is almost always "no completed job in the month", worth a look.
       const fixedZero = emp.salary_type === 'fixed' && Number(emp.fixed_salary) > 0 && salaryLine && Number(salaryLine.amount) === 0
       let state
-      if (fixedZero) state = 'check'
+      if (!mine.length) state = 'none'
+      else if (fixedZero) state = 'check'
       else if (earn === 0) state = 'zero'
       else if (toPay > 0) state = open.some(p => p.payment_date && p.payment_date < today) ? 'late' : 'open'
       else state = 'paid'
@@ -123,7 +126,7 @@ export default function Payments() {
       // Payroll close already takes deductions out of the salary row, so they are shown, not subtracted again.
       return { emp, lines: mine, earn, ded, net: earn, toPay, open, state, payDate, paidOn, slip: statementState(st), st, fixedZero }
     }).sort((a, b) => {
-      const order = { late:0, check:1, open:2, paid:3, zero:4 }
+      const order = { late:0, check:1, open:2, none:3, paid:4, zero:5 }
       return order[a.state] - order[b.state] || a.emp.full_name.localeCompare(b.emp.full_name)
     })
   }, [payments, employees, statements, month, today])
@@ -161,6 +164,7 @@ export default function Payments() {
     paid: tr('Paid','支払済','Pago'),
     check: tr('Check','要確認','Conferir'),
     zero: tr('No amount','金額なし','Sem valor'),
+    none: tr('Not closed','未締め','Sem fechamento'),
   }
   const slipShort = {
     confirmed: tr('Payslip confirmed','明細確認済','Holerite confirmado'),
@@ -227,6 +231,9 @@ export default function Payments() {
     return Object.entries(bits).filter(([, v]) => v !== 0).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
   }
 
+  // A salary line is only paid after the employee confirmed the payslip of that month.
+  const blocked = (r, lines) => lines.some(p => p.payment_type === 'salary') && r.slip !== 'confirmed'
+
   const rowView = (r) => {
     const expanded = openRow === r.emp.id
     const bits = lineBits(r)
@@ -257,9 +264,10 @@ export default function Payments() {
             {r.lines.some(p => p.payment_type === 'salary') && <span className={`pay-st is-${r.slip}`} title={slipLong[r.slip]}>{slipShort[r.slip]}</span>}
           </div>
           <div className="pm-act" onClick={ev => ev.stopPropagation()}>
-            {r.toPay > 0
+            {r.toPay > 0 && !blocked(r, r.open)
               ? <button className="pm-pay" onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:r.open, r })}>✓ {tr('Mark paid','支払済にする','Marcar pago')}</button>
-              : <span className="pm-done">{r.state === 'paid' ? '✓' : ''}</span>}
+              : r.state === 'paid' ? <span className="pm-done">✓</span>
+              : <button className="pm-pay" style={{ background:'transparent', color:'var(--text2)', border:'1px solid var(--border)' }} onClick={() => setClosing(r.emp)}>{tr('Payroll','給与締め','Folha')}</button>}
             <button className="pm-chev" aria-label={tr('Details','詳細','Detalhes')} onClick={() => setOpenRow(expanded ? null : r.emp.id)}>{expanded ? '▴' : '▾'}</button>
           </div>
         </div>
@@ -286,12 +294,13 @@ export default function Payments() {
                 </div>
                 <b className={p.is_deduction ? 'is-neg' : ''}>{p.is_deduction ? '−' : ''}{fmt(p.amount)}</b>
                 <div className="pm-line-act">
-                  {isOpen(p) && <button title={tr('Mark paid','支払済にする','Marcar pago')} onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:[p], r })}>✓</button>}
+                  {isOpen(p) && !blocked(r, [p]) && <button title={tr('Mark paid','支払済にする','Marcar pago')} onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:[p], r })}>✓</button>}
                   <button title={tr('Edit','編集','Editar')} onClick={() => openEdit(p)}>✎</button>
                   {p.payment_type !== 'salary' && <button className="is-del" title={tr('Delete','削除','Apagar')} onClick={() => setAsk({ kind:'delete', emp:r.emp, lines:[p], r })}>🗑</button>}
                 </div>
               </div>
             ))}
+            <button className="pm-add-line" onClick={() => setClosing(r.emp)}>🧾 {tr('Payroll of the month (calculate, payslip, finalize, pay)','今月の給与締め（計算・明細・確定・支払）','Folha do mês (calcular, holerite, finalizar, pagar)')}</button>
             <button className="pm-add-line" onClick={() => openNew(r.emp)}>+ {tr('Add entry for','追加:','Lançar para')} {r.emp.full_name.split(' ')[0]}</button>
           </div>
         )}
@@ -407,7 +416,7 @@ export default function Payments() {
                 <label>{tr('Status','状態','Situação')}
                   <select value={form.status} onChange={e => upd('status', e.target.value)}>
                     <option value="scheduled">{tr('To pay','未払い','A pagar')}</option>
-                    <option value="paid">{tr('Paid','支払済','Pago')}</option>
+                    <option value="paid" disabled={form.payment_type === 'salary' && form.status !== 'paid'}>{tr('Paid','支払済','Pago')}{form.payment_type === 'salary' && form.status !== 'paid' ? ` — ${tr('use Payroll','給与締めから','pelo Folha')}` : ''}</option>
                     <option value="cancelled">{tr('Cancelled','取消','Cancelado')}</option>
                   </select>
                 </label>
@@ -423,6 +432,8 @@ export default function Payments() {
         </div>
       )}
 
+      {closing && <PayrollCloseSheet emp={closing} period={month} onClose={() => setClosing(null)} onChanged={load} />}
+
       {ask && (() => {
         const { kind, emp, lines, r } = ask
         const isPay = kind === 'pay'
@@ -430,6 +441,7 @@ export default function Payments() {
         const hasSalary = lines.some(p => p.payment_type === 'salary')
         const k = r?.slip || 'none'
         const calm = !hasSalary || k === 'confirmed'
+        const stop = isPay && !calm
         return (
           <div className="sp-overlay" onClick={() => !busy && setAsk(null)}>
             <section className="sp-modal is-admin" role="dialog" aria-modal="true" onClick={ev => ev.stopPropagation()}>
@@ -449,14 +461,17 @@ export default function Payments() {
                   <b>{slipLong[k]}</b>
                   {k==='confirmed'&&r.st&&<small>{new Date(r.st.employee_confirmed_at).toLocaleString(locale,{timeZone:'Asia/Tokyo'})}</small>}
                   {k==='disputed'&&<small>{tr('Answer the dispute in Salary issues before paying.','支払う前に「給与の問題」で回答してください。','Responda a contestação em Problemas de salário antes de pagar.')}</small>}
-                  {k==='waiting'&&<small>{tr('You can still pay, but the employee has not checked the amount.','支払いは可能ですが、従業員は金額を確認していません。','Dá para pagar, mas o funcionário ainda não conferiu o valor.')}</small>}
+                  {k==='waiting'&&<small>{tr('The salary can be marked paid only after the employee confirms the payslip.','従業員が明細を確認した後に支払済にできます。','O salário só pode ser marcado pago depois que o funcionário confirmar o holerite.')}</small>}
+                  {k==='none'&&<small>{tr('Calculate the payslip first (Payroll).','先に明細を計算してください（給与締め）。','Calcule o holerite primeiro (Folha).')}</small>}
                 </div>
               )}
               <div className="sp-actions">
                 <button className="btn" disabled={busy} onClick={() => setAsk(null)}>{tr('Cancel','キャンセル','Cancelar')}</button>
-                <button className={`btn ${isPay ? (calm ? 'btn-primary' : 'sp-warn-btn') : 'btn-danger'}`} disabled={busy} onClick={doConfirmed}>
-                  {isPay ? (calm ? tr('Yes, it was paid','はい、支払済み','Sim, foi pago') : tr('Pay anyway','それでも支払う','Pagar mesmo assim')) : tr('Delete','削除','Apagar')}
-                </button>
+                {stop
+                  ? <button className="btn btn-primary" onClick={() => { setAsk(null); setClosing(emp) }}>{tr('Open payroll','給与締めを開く','Abrir folha')}</button>
+                  : <button className={`btn ${isPay ? 'btn-primary' : 'btn-danger'}`} disabled={busy} onClick={doConfirmed}>
+                    {isPay ? tr('Yes, it was paid','はい、支払済み','Sim, foi pago') : tr('Delete','削除','Apagar')}
+                  </button>}
               </div>
             </section>
           </div>

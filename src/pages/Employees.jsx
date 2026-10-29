@@ -7,6 +7,8 @@ import AvailabilityAdmin from '../components/AvailabilityAdmin'
 import NfcClockAdmin from '../components/NfcClockAdmin'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
 import { useLang, pickLang } from '../hooks/useLang'
+import { askConfirm } from '../components/ConfirmDialog'
+import { tokyoToday } from '../lib/dates'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -20,6 +22,8 @@ export default function Employees() {
   useEffect(() => { const v = tabFromUrl(location.search); if (v) setTab(v) }, [location.search])
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
+  // Same rule as Users: the count is active people; inactive ones only when asked.
+  const [showInactive, setShowInactive] = useState(false)
   const [pendingAvail, setPendingAvail] = useState(0)
   const [workDays, setWorkDays] = useState([])
   const [form, setForm] = useState({
@@ -100,12 +104,22 @@ export default function Employees() {
   }
 
   const handleDeactivate = async (id, current) => {
-    await supabase.from('employees').update({ is_active: !current }).eq('id', id)
+    const { error } = await supabase.from('employees').update({ is_active: !current }).eq('id', id)
+    if (error) return toast.error(error.message)
+    toast.success(current ? pickLang(lang, 'Deactivated', '無効にしました', 'Desativado') : pickLang(lang, 'Activated', '有効にしました', 'Ativado'))
     loadEmployees()
   }
 
   const handleDelete = async (id, name) => {
-    if (!window.confirm(`⚠️ Delete ${name}? This will also delete all their jobs, payments, evaluations and history. This action cannot be undone.`)) return
+    const ok = await askConfirm({
+      title: pickLang(lang, `Delete ${name}?`, `${name}を削除しますか？`, `Excluir ${name}?`),
+      message: pickLang(lang,
+        'This also deletes all their jobs, payments, evaluations and history. It cannot be undone. To keep the history, use Deactivate instead.',
+        '作業・支払い・評価・履歴もすべて削除され、元に戻せません。履歴を残す場合は「無効にする」を使ってください。',
+        'Isso também apaga todos os jobs, pagamentos, avaliações e histórico. Não dá para desfazer. Para manter o histórico, use Desativar.'),
+      confirmLabel: pickLang(lang, 'Delete forever', '完全に削除', 'Excluir de vez'), danger: true,
+    })
+    if (!ok) return
     try {
       await supabase.from('jobs').delete().eq('employee_id', id)
       await supabase.from('checkins').delete().eq('employee_id', id)
@@ -133,7 +147,7 @@ export default function Employees() {
     const emp = employees.find(e=>e.id===recEmpId)
     const newScore = Math.max(0,(emp.score||100)-recType)
     await supabase.from('employees').update({ score:newScore }).eq('id',recEmpId)
-    await supabase.from('complaints').insert({ employee_id:recEmpId, employee_name:emp.full_name, client_name:recClient, complaint_type:COMPLAINT_TYPES.find(c=>c.value===recType)?.label, points_deducted:recType, description:recDesc, complaint_date:new Date().toISOString().split('T')[0] })
+    await supabase.from('complaints').insert({ employee_id:recEmpId, employee_name:emp.full_name, client_name:recClient, complaint_type:COMPLAINT_TYPES.find(c=>c.value===recType)?.label, points_deducted:recType, description:recDesc, complaint_date:tokyoToday() })
     toast.error(`-${recType} pts from ${emp.full_name}`)
     setRecEmpId(''); setRecClient(''); setRecType(5); setRecDesc('')
     loadEmployees()
@@ -144,7 +158,7 @@ export default function Employees() {
   return (
     <div>
       <div className="tab-pills">
-        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>List ({employees.length})</button>
+        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{pickLang(lang,'Active','有効','Ativos')} ({employees.filter(e=>e.is_active).length})</button>
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>+ Add Employee</button>
         <button className={`tab-pill${tab==='complaints'?' active':''}`} onClick={()=>setTab('complaints')}>Complaints</button>
         <button className={`tab-pill${tab==='availability'?' active':''}`} onClick={()=>setTab('availability')}>🗓 Availability{pendingAvail>0?` (${pendingAvail})`:''}</button>
@@ -154,7 +168,13 @@ export default function Employees() {
       {tab==='list' && (
         <div>
           {loading && <div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {employees.map(e=>{
+          {employees.some(e=>!e.is_active) && (
+            <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'var(--text2)',marginBottom:12,cursor:'pointer'}}>
+              <input type="checkbox" checked={showInactive} onChange={ev=>setShowInactive(ev.target.checked)} />
+              {pickLang(lang,'Show inactive','無効も表示','Mostrar inativos')} ({employees.filter(e=>!e.is_active).length})
+            </label>
+          )}
+          {employees.filter(e=>showInactive||e.is_active).map(e=>{
             const days = (() => { try { return e.work_days ? JSON.parse(e.work_days) : [] } catch { return [] } })()
             return (
             <div key={e.id} className="card" style={{marginBottom:12}}>

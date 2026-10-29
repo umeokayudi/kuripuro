@@ -8,6 +8,8 @@ import { GOAL_KEYS, alertCounts, followupQueue, goalFor, monthResults } from '..
 import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
 import { regionOf, suggestSeller } from '../lib/salesInsights'
+import { buildDeals } from '../components/SalesFunnel'
+import { funnelCopy } from '../lib/salesPhases'
 
 const TXT = {
   en: { title:'Sales performance', create:'Create seller login', name:'Name', email:'Email', password:'Temporary password (10+ characters)', phone:'Phone', add:'Create access', team:'Team', approaches:'Approaches', leads:'Leads', quotes:'Quotes', average:'Avg. quote', conversion:'Approach→won', contracts:'Active contracts', newContracts:'New contracts', commission:'Commission', followups:'Follow-ups', due:'Due', pipeline:'Pipeline', assign:'Assign seller', none:'Unassigned', review:'Contract approvals', approve:'Approve', changes:'Request changes', reject:'Reject', note:'Review note', openPdf:'Signed PDF', active:'Active', inactive:'Inactive', commissionRule:'Commission default', percent:'Percent', fixed:'Fixed', value:'Value', saveRule:'Save rule', reports:'Field reports', travel:'Travel', hours:'Hours', noRows:'No records yet.', loading:'Loading…', goals:'Monthly goals', goalsHint:'Set each seller\'s goals for the month. Sellers see them in their portal; progress uses real records.', goalMonth:'Month', saveGoals:'Save goals', alerts:'Follow-up alerts', alertsHint:'Open clients that are overdue, due today or without contact for 14+ days.', seller:'Seller', allClear:'No client needs attention right now.', contacts:'Contacts', newLeads:'New leads', period:'Period', today:'Today', month:'This month', year:'This year', all:'All time', target:'Target', progress:'Progress', savedHere:'Targets are saved in this browser.', revenue:'Monthly contract value', routing:'New leads to hand out', routingHint:'Leads without a seller (e.g. from marketing). The suggestion uses each seller\'s results in the same region and source, their open clients and late follow-ups.', suggested:'Suggested', askAi:'Ask AI', aiPick:'AI pick', assignTo:'Assign', noUnassigned:'Every lead has a seller.', handNote:'Note for the seller (optional)', winIn:(r,n)=>`${r}% won in region (${n})`, load:(o,d)=>`${o} open · ${d} late`, today2:'Seller day today', notStarted:'Not started', working:'Working since', finished:'Finished', report:'Automatic report', noReport:'No report yet.', approachesShort:'approaches', contactsShort:'contacts', quotesShort:'quotes' },
@@ -18,6 +20,7 @@ const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString()}`
 const japanToday = () => new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Tokyo' }).format(new Date())
 export default function SalesTeam() {
   const { lang, tr } = useLang()
+  const fc = funnelCopy(lang)
   const { logout } = useAuth()
   const t = TXT[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
   const [data, setData] = useState(null)
@@ -71,6 +74,8 @@ export default function SalesTeam() {
   const contracts = (data?.contracts || []).filter(x => x.status === 'pending_review' || x.status === 'changes_requested')
   const reports = (data?.reports || []).filter(x => !selectedId || x.salesperson_id === selectedId)
   const today = japanToday()
+  // Funnel phase and the real quote value of each lead (same rules as the funnel board).
+  const dealOf = new Map(buildDeals(data, today).map(d => [d.lead.id, d]))
   const inPeriod = value => {
     const date = String(value || '').slice(0, 10)
     if (!date) return false
@@ -198,7 +203,7 @@ export default function SalesTeam() {
       </div>
 
       <section className="card"><div className="sales-section-head"><div><div className="card-title">{t.pipeline}</div><p className="sales-muted">{tr('Leads, assignments, and due dates', 'Leads, assignments, and due dates', 'Leads, atribuições e prazos')}</p></div><select aria-label={t.assign} value={selectedId} onChange={e=>setSelectedId(e.target.value)}><option value="">{t.none}</option>{sellers.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>
-        {leads.filter(row=>!selectedId || row.salesperson_id===selectedId).map(row=><div className="sales-row" key={row.id}><div><strong>{row.site_name||row.company_name}</strong><small>{row.contact_name} · {row.stage}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={data?.today || today} /><FollowupChip info={statusOf.get(row.id)} f={f} /></div><select value={row.salesperson_id||''} onChange={e=>act({action:'assign-lead',lead_id:row.id,salesperson_id:e.target.value||null})}><option value="">{t.none}</option>{sellers.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>)}
+        {leads.filter(row=>!selectedId || row.salesperson_id===selectedId).map(row=>{ const d = dealOf.get(row.id); return <div className="sales-row" key={row.id}><div><strong>{row.site_name||row.company_name}</strong><small>{[row.contact_name, d ? fc.phases[d.phase] : row.stage, d?.quoteValue ? `${yen(d.quoteValue)} (${tr('quote','見積','orçamento')})` : null, d?.expired ? `⏰ ${tr('quote expired','見積期限切れ','orçamento vencido')}` : null].filter(Boolean).join(' · ')}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={data?.today || today} /><FollowupChip info={statusOf.get(row.id)} f={f} /></div><select value={row.salesperson_id||''} onChange={e=>act({action:'assign-lead',lead_id:row.id,salesperson_id:e.target.value||null})}><option value="">{t.none}</option>{sellers.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>})}
       </section>
 
       <section className="card"><div className="card-title">{t.review}</div>{contracts.length===0&&<p className="sales-muted">{t.noRows}</p>}{contracts.map(row=><div className="sales-review-card" key={row.id}>
