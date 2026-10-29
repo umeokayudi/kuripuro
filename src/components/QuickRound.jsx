@@ -7,13 +7,14 @@ import {
 } from '../lib/quickRound'
 import './QuickRound.css'
 import { askConfirm } from './ConfirmDialog'
+import { useLang, pickLang } from '../hooks/useLang'
 
-// Always in Portuguese: this mode exists only for the owner's own account.
-const ERRORS = {
-  already_done_today: 'Esse local já foi feito hoje por outra pessoa',
-  blocked: 'Outra pessoa está fazendo esse local agora',
-  transfer_race: 'Esse local acabou de mudar, tente de novo',
-}
+// v1.0.96 · follows the account language like the rest of the portal (was always Portuguese).
+const errorsFor = L => ({
+  already_done_today: L('Someone else already did this place today', '本日この場所は他の人が完了済みです', 'Esse local já foi feito hoje por outra pessoa'),
+  blocked: L('Someone else is doing this place now', '他の人がこの場所を作業中です', 'Outra pessoa está fazendo esse local agora'),
+  transfer_race: L('This place just changed, try again', 'この場所が変更されました。もう一度お試しください', 'Esse local acabou de mudar, tente de novo'),
+})
 
 const pad = (n) => String(n).padStart(2, '0')
 function fmtElapsed(ms) {
@@ -27,6 +28,9 @@ function fmtMinutes(ms) {
 const fmtClock = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
 
 export default function QuickRound({ user, allJobs, onChanged }) {
+  const { lang } = useLang()
+  const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
+  const ERRORS = errorsFor(L)
   const [round, setRound] = useState(() => loadRound(user.id))
   const [now, setNow] = useState(Date.now())
   const [busyKey, setBusyKey] = useState(null)
@@ -50,7 +54,7 @@ export default function QuickRound({ user, allJobs, onChanged }) {
   const start = () => setRound(newRound())
 
   const finish = async () => {
-    if (!(await askConfirm({ message: 'Encerrar a rodada?', danger: true }))) return
+    if (!(await askConfirm({ message: L('End the round?', 'ラウンドを終了しますか？', 'Encerrar a rodada?'), danger: true }))) return
     setRound(r => ({ ...r, endedAt: new Date().toISOString() }))
   }
 
@@ -61,7 +65,7 @@ export default function QuickRound({ user, allJobs, onChanged }) {
       const result = await completeQuickRow(supabase, {
         employee: { id: user.id, name: user.name }, row, startedAt: segmentStart(round),
       })
-      if (!result.ok) { toast.error(ERRORS[result.error] || result.detail || 'Não deu para salvar, tente de novo'); return }
+      if (!result.ok) { toast.error(ERRORS[result.error] || result.detail || L('Could not save, try again', '保存できませんでした。もう一度お試しください', 'Não deu para salvar, tente de novo')); return }
       const at = result.already ? (result.job.completed_at || new Date().toISOString()) : result.job.completed_at
       setRound(r => ({ ...r, done: [...r.done, { key: row.key, name: row.name, jobId: result.job.id, at, already: !!result.already }] }))
       toast.success(`✓ ${row.name}`)
@@ -78,7 +82,7 @@ export default function QuickRound({ user, allJobs, onChanged }) {
     setBusyKey(row.key)
     try {
       const res = await undoQuickRow(supabase, entry.jobId)
-      if (!res.ok) { toast.error(res.detail || 'Não deu para desfazer'); return }
+      if (!res.ok) { toast.error(res.detail || L('Could not undo', '元に戻せませんでした', 'Não deu para desfazer')); return }
       setRound(r => ({ ...r, done: r.done.filter(d => d.key !== row.key) }))
       onChanged?.()
     } finally {
@@ -90,9 +94,9 @@ export default function QuickRound({ user, allJobs, onChanged }) {
     return (
       <section className="qr-card qr-idle">
         <div>
-          <small>Rodada rápida</small>
-          <strong>Todos os restaurantes</strong>
-          <span>Sem checklist, foto ou GPS. Só o horário.</span>
+          <small>{L('Quick round', 'クイックラウンド', 'Rodada rápida')}</small>
+          <strong>{L('All restaurants', '全店舗', 'Todos os restaurantes')}</strong>
+          <span>{L('No checklist, photo or GPS. Time only.', 'チェックリスト・写真・GPSなし。時刻のみ。', 'Sem checklist, foto ou GPS. Só o horário.')}</span>
         </div>
         <button type="button" className="qr-start" onClick={start}>▶ Start</button>
       </section>
@@ -116,13 +120,13 @@ export default function QuickRound({ user, allJobs, onChanged }) {
     <section className={`qr-card${ended ? ' is-ended' : ' is-running'}`}>
       <div className="qr-head">
         <div>
-          <small>{ended ? 'Rodada encerrada' : 'Rodada rápida em andamento'}</small>
+          <small>{ended ? L('Round ended', 'ラウンド終了', 'Rodada encerrada') : L('Quick round running', 'クイックラウンド実行中', 'Rodada rápida em andamento')}</small>
           <strong className="qr-timer">{fmtElapsed(endMs - startedMs)}</strong>
-          <span>Início {fmtClock(round.startedAt)}{ended ? ` · fim ${fmtClock(round.endedAt)}` : ''} · {doneRows.length} {doneRows.length === 1 ? 'local feito' : 'locais feitos'}</span>
+          <span>{L('Start', '開始', 'Início')} {fmtClock(round.startedAt)}{ended ? ` · ${L('end', '終了', 'fim')} ${fmtClock(round.endedAt)}` : ''} · {doneRows.length} {L('done', '完了', doneRows.length === 1 ? 'local feito' : 'locais feitos')}</span>
         </div>
         {ended
-          ? <button type="button" className="qr-start" onClick={() => setRound(null)}>Nova rodada</button>
-          : <button type="button" className="qr-stop" onClick={finish}>■ Encerrar</button>}
+          ? <button type="button" className="qr-start" onClick={() => setRound(null)}>{L('New round', '新しいラウンド', 'Nova rodada')}</button>
+          : <button type="button" className="qr-stop" onClick={finish}>■ {L('End', '終了', 'Encerrar')}</button>}
       </div>
 
       {doneRows.length > 0 && (
@@ -133,8 +137,8 @@ export default function QuickRound({ user, allJobs, onChanged }) {
             return (
               <li key={d.key}>
                 <span className="qr-check" aria-hidden="true">✓</span>
-                <div><strong>{d.name}</strong><span>{fmtClock(d.at)}{d.already ? ' · já estava feito' : ` · ${fmtMinutes(new Date(d.at) - new Date(from))}`}</span></div>
-                {!ended && <button type="button" className="qr-undo" disabled={!!busyKey} onClick={() => undo(row)}>Desfazer</button>}
+                <div><strong>{d.name}</strong><span>{fmtClock(d.at)}{d.already ? ` · ${L('already done', '完了済み', 'já estava feito')}` : ` · ${fmtMinutes(new Date(d.at) - new Date(from))}`}</span></div>
+                {!ended && <button type="button" className="qr-undo" disabled={!!busyKey} onClick={() => undo(row)}>{L('Undo', '取り消し', 'Desfazer')}</button>}
               </li>
             )
           })}
@@ -143,33 +147,33 @@ export default function QuickRound({ user, allJobs, onChanged }) {
 
       {!ended && (
         <>
-          <input className="qr-search" type="search" placeholder="Buscar restaurante" value={filter} onChange={ev => setFilter(ev.target.value)} />
-          {scheduledPending.length > 0 && <p className="qr-label">Seus serviços de hoje</p>}
+          <input className="qr-search" type="search" placeholder={L('Search restaurant', '店舗を検索', 'Buscar restaurante')} value={filter} onChange={ev => setFilter(ev.target.value)} />
+          {scheduledPending.length > 0 && <p className="qr-label">{L('Your jobs today', '本日の作業', 'Seus serviços de hoje')}</p>}
           <ul className="qr-list">
-            {scheduledPending.map(r => <PendingRow key={r.key} row={r} busy={busyKey === r.key} disabled={!!busyKey} onDone={markDone} />)}
+            {scheduledPending.map(r => <PendingRow key={r.key} row={r} busy={busyKey === r.key} disabled={!!busyKey} onDone={markDone} L={L} />)}
           </ul>
           {otherPending.length > 0 && !q && (
             <button type="button" className="qr-more" onClick={() => setShowAll(v => !v)}>
-              {showAll ? 'Esconder outros restaurantes' : `Outros restaurantes (${otherPending.length})`}
+              {showAll ? L('Hide other restaurants', '他の店舗を隠す', 'Esconder outros restaurantes') : `${L('Other restaurants', '他の店舗', 'Outros restaurantes')} (${otherPending.length})`}
             </button>
           )}
           {visibleOthers.length > 0 && (
             <ul className="qr-list">
-              {visibleOthers.map(r => <PendingRow key={r.key} row={r} busy={busyKey === r.key} disabled={!!busyKey} onDone={markDone} />)}
+              {visibleOthers.map(r => <PendingRow key={r.key} row={r} busy={busyKey === r.key} disabled={!!busyKey} onDone={markDone} L={L} />)}
             </ul>
           )}
-          {q && pending.length === 0 && <p className="qr-empty">Nenhum restaurante com esse nome</p>}
+          {q && pending.length === 0 && <p className="qr-empty">{L('No restaurant with this name', '該当する店舗はありません', 'Nenhum restaurante com esse nome')}</p>}
         </>
       )}
     </section>
   )
 }
 
-function PendingRow({ row, busy, disabled, onDone }) {
+function PendingRow({ row, busy, disabled, onDone, L }) {
   return (
     <li>
       <div><strong>{row.name}</strong>{row.title !== row.name && <span>{row.title}</span>}</div>
-      <button type="button" className="qr-done-btn" disabled={disabled} onClick={() => onDone(row)}>{busy ? '…' : 'Feito'}</button>
+      <button type="button" className="qr-done-btn" disabled={disabled} onClick={() => onDone(row)}>{busy ? '…' : L('Done', '完了', 'Feito')}</button>
     </li>
   )
 }

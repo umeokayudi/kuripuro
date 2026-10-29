@@ -184,7 +184,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
         : supabase.from('employees').select('id,full_name,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days').eq('id', employeeId).maybeSingle(),
       supabase.from('jobs').select('*').eq('employee_id', employeeId).eq('status', 'completed').gte('scheduled_date', addDays(from, -1)).lte('scheduled_date', today).order('scheduled_date', { ascending: false }).limit(5000),
       supabase.from('service_contracts').select('location_name,price_per_visit').eq('is_active', true),
-      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true).gte('payment_date', from).lte('payment_date', today),
+      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true).neq('status', 'cancelled').gte('payment_date', from).lte('payment_date', today),
     ]).then(([emp, jobs, contracts, ded]) => {
       if (!alive) return
       const visible = (jobs.data || []).filter(j => !isDuskinJob(j))

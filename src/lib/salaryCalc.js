@@ -33,6 +33,23 @@ export function countWorkedDays(jobs) {
  * Employee portal monthly salary breakdown (shared logic).
  * `month` (YYYY-MM) defaults to the current Tokyo month; past months use the same rules.
  */
+/**
+ * v1.0.96 · Fixed monthly salary for a month: the full amount, never less because there were
+ * few or no jobs. Only a contract that starts or ends inside the month is prorated by calendar days.
+ */
+export function fixedMonthBase(emp, month) {
+  const fixed = Number(emp?.fixed_salary || 0)
+  if (!fixed || !month) return fixed
+  const [y, m] = month.split('-').map(Number)
+  const days = new Date(y, m, 0).getDate()
+  const first = `${month}-01`, last = `${month}-${String(days).padStart(2, '0')}`
+  const start = emp?.contract_start && emp.contract_start > first ? emp.contract_start : first
+  const end = emp?.contract_end && emp.contract_end < last ? emp.contract_end : last
+  if (start > last || end < first) return 0
+  const covered = Number(end.slice(8, 10)) - Number(start.slice(8, 10)) + 1
+  return covered >= days ? fixed : Math.round(fixed / days * covered)
+}
+
 export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [], month) {
   const todayStr = tokyoToday()
   month = month || todayStr.slice(0, 7)
@@ -51,13 +68,13 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [],
 
   let base = 0
   if (empInfo?.salary_type === 'fixed') {
-    base = Math.min(Math.round(dailyRate * workedDays), fixedMax)
+    base = fixedMonthBase(empInfo, month)
   } else if (empInfo?.salary_type === 'hourly') {
     base = Math.round((totalMins / 60) * (empInfo?.hourly_rate || 0))
   } else if (empInfo?.salary_type === 'per_job') {
     base = completed.reduce((s, j) => s + Math.round(jobPay(j) * bonusRate), 0)
   } else if (empInfo?.salary_type === 'mixed') {
-    const fixedPart = Math.min(Math.round(dailyRate * workedDays), fixedMax)
+    const fixedPart = fixedMonthBase(empInfo, month)
     const hourlyPart = Math.round((totalMins / 60) * (empInfo?.hourly_rate || 0))
     const bonusPart = completed.reduce((s, j) => s + Math.round(jobPay(j) * ((empInfo?.job_bonus_rate || 0) / 100)), 0)
     base = fixedPart + hourlyPart + bonusPart

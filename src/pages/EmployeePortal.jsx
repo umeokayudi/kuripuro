@@ -79,6 +79,8 @@ import { aiIssuesText } from '../lib/photoAi'
 import { askConfirm } from '../components/ConfirmDialog'
 import AfterPhotoLater from '../components/AfterPhotoLater'
 import TeamDay from '../components/TeamDay'
+import { REVIEW_PREFIX } from '../lib/deductionReview'
+import MyProfile from '../components/MyProfile'
 import PendingVideos from '../components/PendingVideos'
 import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate, sortByOrder, nextPendingJob, MANUAL_ORDER_BASE } from '../lib/agenda'
 import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
@@ -214,6 +216,8 @@ export default function EmployeePortal() {
   const [statement, setStatement] = useState(null)
   // Payslip to confirm + admin answers to salary disputes, both shown as home pop-ups
   const [salaryAnswers, setSalaryAnswers] = useState([])
+  const [myQuestions, setMyQuestions] = useState([]) // every salary question of this employee (hub)
+  const [salaryView, setSalaryView] = useState('payslip')
   const [seenAnswers, setSeenAnswers] = useState(() => loadSeenAnswers(user?.id))
   const [payslipOpen, setPayslipOpen] = useState(false)
   const [answerOpen, setAnswerOpen] = useState(null)
@@ -468,13 +472,15 @@ export default function EmployeePortal() {
 
   const loadStatement = async () => {
     const period = getConfirmablePeriod()
-    const [{ data }, answers] = await Promise.all([
+    const [{ data }, answers, all] = await Promise.all([
       supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle(),
       supabase.from('salary_complaints').select('*').eq('employee_id', user.id).in('status', ['resolved', 'rejected'])
         .not('resolved_at', 'is', null).order('resolved_at', { ascending: false }).limit(20),
+      supabase.from('salary_complaints').select('*').eq('employee_id', user.id).order('created_at', { ascending: false }).limit(50),
     ])
     setStatement(data)
     setSalaryAnswers(answers.data || [])
+    setMyQuestions(all.data || [])
   }
 
   const markAnswerSeen = (c) => {
@@ -1272,7 +1278,8 @@ export default function EmployeePortal() {
     await Promise.all([gpsSaved, aiSaved])
     try { await syncReport() } catch (syncErr) { console.error('service_report sync failed', syncErr?.message) }
 
-    // Multa só se houver checklist parcial (não deveria ocorrer com bloqueio acima)
+    // Checklist parcial: só uma SUGESTÃO de desconto. Fica para o escritório revisar (Deductions)
+    // e não entra no salário até alguém aprovar (v1.0.96).
     if (missed>0 && total>0 && Number(job.value||0)>0) {
       const deductionAmount = Math.round(Number(job.value)*(missed/total))
       if (deductionAmount>0) {
@@ -1281,10 +1288,10 @@ export default function EmployeePortal() {
           period: (job.scheduled_date||tokyoToday()).slice(0,7),
           amount: deductionAmount,
           payment_date: job.scheduled_date||tokyoToday(),
-          description: `Itens não feitos (${missed}/${total}) — ${job.title}: ${missedLabels.join(', ')}`,
-          status:'scheduled', payment_type:'deduction', is_deduction:true,
+          description: `${REVIEW_PREFIX}Itens não feitos (${missed}/${total}) — ${job.title}: ${missedLabels.join(', ')}`,
+          status:'cancelled', payment_type:'deduction', is_deduction:true,
         })
-        if (dedErr) toast.error('Desconto não registrado: ' + dedErr.message)
+        if (dedErr) console.error('deduction suggestion not saved', dedErr.message)
       }
     }
   }
@@ -1442,36 +1449,35 @@ export default function EmployeePortal() {
   // v1.0.96 · lean employee menu: My day, My jobs, My salary, My requests, Chat (+ World, AI).
   // Screens that used to be separate menu entries now open as tabs inside their group.
   const MENU_GROUPS = {
-    jobs: [['history', e.allJobs], ['calendar', e.calendar], ['spots', e.spotJobs], ['achievements', e.achievements]],
-    requests: [['equipment', e.equipment], ['transport', e.transport], ['availability', e.availability]],
+    jobs: [['history', e.allJobs], ['calendar', L('Calendar & availability','カレンダーと勤務可能日','Calendário e disponibilidade')], ['spots', e.spotJobs], ['achievements', e.achievements]],
+    requests: [['equipment', e.equipment], ['transport', e.transport]],
   }
   const groupOf = key => Object.keys(MENU_GROUPS).find(g => MENU_GROUPS[g].some(([k]) => k === key))
   const menuItems = [
-    {key:'home',icon:'🏠',label:e.dashboard},
+    {key:'home',icon:'🏠',label:e.home},
     {key:'shift',icon:'🗺',label:L('My day','今日の予定','Meu dia')},
-    {key:'history',group:'jobs',icon:'📅',label:L('My jobs','自分の作業','Meus jobs'),badge:spotJobs.length},
+    ...(quickRoundOn?[{key:'quickround',icon:'⚡',label:L('Quick round','クイックラウンド','Rodada rápida'),hint:L('Time only, no checklist or photo','時刻のみ・チェックリストや写真なし','Só horário, sem checklist nem foto')}]:[]),
+    {key:'history',group:'jobs',icon:'📅',label:L('My jobs','自分の作業','Meus jobs'),hint:L('History · calendar & availability · spots','履歴・カレンダーと勤務可能日・スポット','Histórico · calendário e disponibilidade · spots'),badge:spotJobs.length+(planAlert?1:0)},
     {key:'salary',icon:'💴',label:L('My salary','自分の給与','Meu salário')},
-    {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport} · ${e.availability}`,badge:planAlert?1:0},
+    {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport}`},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
     {key:'world',icon:'🌏',label:tr.facility.tab},
-    {key:'ai',icon:'✦',label:e.ai},
+    {key:'profile',icon:'👤',label:L('My profile','マイプロフィール','Meu perfil'),hint:L('Your data and password','自分の情報とパスワード','Seus dados e senha')},
   ]
 
   const bottomTabs = [
     {key:'home',label:e.home,icon:'⌂'},
-    {key:'shift',label:e.shift,icon:'▶'},
+    {key:'shift',label:L('My day','今日の予定','Meu dia'),icon:'▶'},
     {key:'quick'},
-    {key:'salary',label:e.salary,icon:'¥'},
-    {key:'ai',label:e.ai,icon:'✦'},
+    {key:'salary',label:L('My salary','自分の給与','Meu salário'),icon:'¥'},
+    {key:'chat',label:e.chat,icon:'✉',badge:unreadMsgs},
   ]
   const quickActions = [
     !activeJob&&{icon:'✓',label:e.pastServiceButton,hint:e.pastServiceHint,run:()=>openPastService()},
     {icon:'＋',label:e.addService,hint:e.addServiceHint,run:openAddService},
-    {icon:'🗓',label:e.availability,hint:e.availabilityHint,run:()=>goToTab('availability')},
+    {icon:'🗓',label:e.availability,hint:e.availabilityHint,run:()=>openAvailability()},
     {icon:'🚃',label:e.transport,hint:e.transportHint,run:()=>goToTab('transport')},
     {icon:'🧰',label:e.equipment,hint:e.equipmentHint,run:()=>goToTab('equipment')},
-    {icon:'✉',label:e.chat,hint:e.chatHint,run:()=>goToTab('chat')},
-    {icon:'🌏',label:tr.facility.tab,hint:tr.facility.world?.myWork,run:()=>goToTab('world')},
   ].filter(Boolean)
 
   const currentTabLabel = menuItems.find(m=>m.key===tab)?.label || (groupOf(tab) && menuItems.find(m=>m.group===groupOf(tab))?.label)
@@ -1621,6 +1627,9 @@ export default function EmployeePortal() {
     && (!m.location_name || m.location_name === locationFromJob(job)))
 
   const [focusJobId, setFocusJobId] = useState(null)
+  const openAvailability = () => { goToTab('calendar'); setTimeout(() => document.getElementById('my-availability')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300) }
+  // AI help lives inside the job (sheet opened from the job card), not as a main tab.
+  const [aiJob, setAiJob] = useState(null)
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (job.checklist_template||'').split('\n').filter(Boolean)
@@ -1680,6 +1689,7 @@ export default function EmployeePortal() {
             <button onClick={syncMyCalendar} style={{gridColumn:'1/-1',background:'none',border:'1px dashed rgba(255,255,255,0.15)',borderRadius:14,padding:'10px 8px',color:'rgba(255,255,255,0.6)',fontSize:12,cursor:'pointer'}}>🔄 {e.calSync}</button>
           </div>}
           {job.status!=='completed'&&<div style={{fontSize:12,fontWeight:700,marginBottom:10,color:job.photo_required?'#f87171':'rgba(255,255,255,0.5)'}}>📷 {job.photo_required?L('Before photo required to start','開始には作業前写真が必要','Foto Antes obrigatória para iniciar'):L('Before photo optional · After can be sent later','作業前写真は任意・作業後はあとで送信可','Foto Antes opcional · Depois pode ser enviada mais tarde')}</div>}
+          {job.status!=='completed'&&<button onClick={()=>{ onClose(); setAiJob(job) }} style={{width:'100%',padding:'12px',borderRadius:14,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.12)',color:'#d8b4fe',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:10}}>✦ {L('Ask the AI about this job','この作業についてAIに質問','Perguntar à IA sobre este job')}</button>}
           {/* One place to execute: today's jobs open in My day with checklist, photos, start and finish. */}
           {job.scheduled_date===today&&['assigned','in_progress'].includes(job.status)&&<button onClick={()=>{ onClose(); setFocusJobId(job.id); goToTab('shift') }} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',marginBottom:10}}>{job.status==='in_progress'?L('▶ Continue this job','▶ この作業を続ける','▶ Continuar este job'):L('▶ Open to do this job','▶ この作業を開く','▶ Abrir para executar')}</button>}
           {job.status==='assigned'&&!activeJob&&canRegisterLate(job)&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
@@ -1698,6 +1708,17 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {aiJob&&(
+        <div className="emp-sheet-backdrop" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:210,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={()=>setAiJob(null)}>
+          <div className="emp-sheet" style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'14px 12px 20px',height:'85vh',display:'flex',flexDirection:'column'}} onClick={ev=>ev.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,padding:'0 6px'}}>
+              <strong style={{color:'#fff',fontSize:14}}>✦ {L('AI help','AIヘルプ','Ajuda da IA')} · {businessName(aiJob)}</strong>
+              <button type="button" onClick={()=>setAiJob(null)} aria-label={e.close} style={{background:'none',border:'none',color:'#fff',fontSize:22,cursor:'pointer'}}>×</button>
+            </div>
+            <div className="emp-ai-chat" style={{flex:1,minHeight:0}}><AIChatPanel compact mode="employee" employeeId={user.id} employeeName={user.name} /></div>
+          </div>
+        </div>
+      )}
       {dueAlert&&<JobDueAlert item={dueAlert} others={Math.max(0, dueList.length - 1)} labels={e}
         onAccept={async job=>{ await handleAcceptSpot(job); setDueAlert(null) }}
         onDecline={async job=>{ await handleDeclineSpot(job); setDueAlert(null) }}
@@ -1918,7 +1939,6 @@ export default function EmployeePortal() {
         {/* HOME */}
         {tab==='home'&&(
           <div className="emp-home ex-home">
-            {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
             <PendingVideos jobs={allJobs} L={L} />
             <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-3*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
 
@@ -1992,7 +2012,7 @@ export default function EmployeePortal() {
               </div>
             )}
 
-            <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>goToTab('availability')} />
+            <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>openAvailability()} />
 
             {/* Summary cards (swipe sideways) */}
             <div className="ex-cards" role="list">
@@ -2059,32 +2079,7 @@ export default function EmployeePortal() {
               )
             })()}
 
-            {/* Quick actions */}
-            <div className="ex-section-title">{e.quickActionTitle}</div>
-            <div className="ex-chips">
-              {!activeJob&&<button type="button" className="ex-chip is-gold" onClick={()=>openPastService()}><i>✓</i>{e.pastServiceButton}</button>}
-              <button type="button" className="ex-chip" onClick={openAddService}><i>＋</i>{e.addService}</button>
-              <button type="button" className="ex-chip" onClick={()=>goToTab('transport')}><i>🚃</i>{e.transport}</button>
-              <button type="button" className="ex-chip" onClick={()=>goToTab('equipment')}><i>🧰</i>{e.equipment}</button>
-            </div>
-
-            {/* Quick access */}
-            <div className="ex-section-title">{e.quickAccess}</div>
-            <div className="ex-access">
-              {[
-                ['shift','▶',e.shift,'blue'],
-                ['calendar','▦',e.calendar,'amber'],
-                ['salary','¥',e.salary,'green'],
-                ['ai','✦',e.ai,'purple'],
-                ['chat','✉',e.chat,'pink',unreadMsgs],
-                ['history','☰',e.allJobs,'teal'],
-              ].map(([key,icon,label,tone,badge])=>(
-                <button type="button" key={key} className={`ex-access-item tone-${tone}`} onClick={()=>goToTab(key)}>
-                  <span className="ex-access-icon">{icon}{badge>0&&<em>{badge}</em>}</span>
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
+            {/* v1.0.96 · one destination, one name, one place: navigation is the bottom bar + menu, actions are the ＋ button. */}
 
             {/* Overview */}
             <div className="ex-section-title">{e.overview}</div>
@@ -2152,12 +2147,21 @@ export default function EmployeePortal() {
         {/* SHIFT */}
         {tab==='shift'&&(
           <section className="emp-shift-screen">
-            <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
-          {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
-          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} />
+            <div className="emp-section-heading"><span>{e.workspace}</span><h1>{L('My day','今日の予定','Meu dia')}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
+          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} />
           <TeamDay userId={user.id} L={L} />
           </section>
         )}
+
+        {/* Quick round lives on its own screen so it does not compete with the job-by-job flow. */}
+        {tab==='quickround'&&quickRoundOn&&(
+          <section className="emp-shift-screen">
+            <div className="emp-section-heading"><span>{L('Time only','時刻のみ','Só horário')}</span><h1>{L('Quick round','クイックラウンド','Rodada rápida')}</h1><p>{L('For days you cannot do job by job: tick each place when done. No checklist, photo or GPS.','一件ずつ作業できない日に：終わった場所を順にチェック。チェックリスト・写真・GPSなし。','Para dias em que não dá para fazer job a job: marque cada local quando terminar. Sem checklist, foto ou GPS.')}</p></div>
+            <QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />
+          </section>
+        )}
+
+        {tab==='profile'&&<MyProfile user={user} L={L} />}
 
         {tab==='ai'&&(
           <section className="emp-ai-screen">
@@ -2193,27 +2197,52 @@ export default function EmployeePortal() {
         {/* SALARY */}
         {tab==='salary'&&(
           <div>
-            {payslipPending&&(
-              <button type="button" className="earn-card earn-card-cta" onClick={()=>setPayslipOpen(true)}>
-                <span>
-                  <small>📋 {fill(e.confirmSalary, { period: fmtPeriod(statement.period) })}</small>
-                  <b>¥{Number(statement.net_total||0).toLocaleString()}</b>
-                  <small>{fill(e.confirmBy, { deadline: getPeriodDates(statement.period).confirmDeadline, payDate: getPeriodDates(statement.period).payDate })}</small>
-                </span>
-                <i aria-hidden="true">›</i>
-              </button>
+            {/* v1.0.96 · three parts: payslip (confirm / dispute), earnings by period, and one hub for salary questions */}
+            <div className="tab-pills" style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+              {[['payslip',L('Payslip','給与明細','Holerite'),payslipPending?1:0],['earnings',L('Earnings','収入','Ganhos'),0],['questions',L('My salary questions','給与の質問','Minhas questões de salário'),salaryNotices.length]].map(([k,label,badge])=>(
+                <button key={k} type="button" onClick={()=>setSalaryView(k)} style={{padding:'7px 12px',borderRadius:999,border:'1px solid rgba(255,255,255,0.15)',background:salaryView===k?'#c19c56':'rgba(255,255,255,0.05)',color:salaryView===k?'#0a1929':'rgba(255,255,255,0.75)',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                  {label}{badge>0?` · ${badge}`:''}
+                </button>
+              ))}
+            </div>
+
+            {salaryView==='payslip'&&(<>
+              {statement ? (
+                <div className="earn-card">
+                  <h4>📋 {fill(L('Payslip {period}','{period} 給与明細','Holerite {period}'),{period:fmtPeriod(statement.period)})}</h4>
+                  <div className="earn-card-row"><div><b>¥{Number(statement.net_total||0).toLocaleString()}</b><small>{fill(e.confirmBy, { deadline: getPeriodDates(statement.period).confirmDeadline, payDate: getPeriodDates(statement.period).payDate })}</small></div>
+                    <span className={`earn-pill${statement.employee_confirmed_at?' is-ok':''}`}>{statement.employee_confirmed_at?`✓ ${L('Confirmed','確認済み','Confirmado')}`:statement.employee_disputed_at?`⚠ ${L('Disputed','異議あり','Contestado')}`:L('Waiting for you','確認待ち','Aguardando você')}</span>
+                  </div>
+                  {statement.employee_confirmed_at&&<div className="earn-status is-ok">✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period), payDate: getPeriodDates(statement.period).payDate })}</div>}
+                  {statement.employee_disputed_at&&<div className="earn-status is-bad">⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period) })}</div>}
+                  {payslipPending&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:10}}>
+                    <button type="button" className="earn-secondary" style={{margin:0}} onClick={()=>setPayslipOpen(true)}>⚠ {L('Dispute','異議を申し立てる','Contestar')}</button>
+                    <button type="button" className="earn-secondary" style={{margin:0,background:'#22c55e',color:'#0a1929',fontWeight:800}} onClick={()=>setPayslipOpen(true)}>✓ {L('Review and confirm','確認して承認','Ver e confirmar')}</button>
+                  </div>}
+                  {!payslipPending&&<button type="button" className="earn-secondary" style={{marginTop:10}} onClick={()=>setPayslipOpen(true)}>{L('Open payslip','明細を開く','Abrir holerite')} ›</button>}
+                </div>
+              ) : <div className="earn-card"><small>{L('No payslip to confirm yet.','確認する給与明細はまだありません。','Ainda não há holerite para confirmar.')}</small></div>}
+            </>)}
+
+            {salaryView==='questions'&&(
+              <div className="earn-card">
+                <h4>💬 {L('My salary questions','給与の質問','Minhas questões de salário')}</h4>
+                {!myQuestions.length&&<small>{L('No questions sent.','送信した質問はありません。','Nenhuma questão enviada.')}</small>}
+                {myQuestions.map(c=>{
+                  const st = c.status==='resolved'?['✓',L('Answered','回答済み','Respondida'),'is-ok']:c.status==='rejected'?['✕',L('Not accepted','不承認','Não aceita'),'is-bad']:['⏳',L('Waiting for the office','事務所の確認待ち','Aguardando o escritório'),'']
+                  const isNew = salaryNotices.some(n=>n.id===c.id)
+                  return (
+                    <button key={c.id} type="button" className={`earn-status is-link ${st[2]}`} style={{display:'block',width:'100%',textAlign:'left'}} onClick={()=>c.status==='resolved'||c.status==='rejected'?setAnswerOpen(c):null}>
+                      <b>{st[0]} {monthLabel(c.period,lang==='ja'?'ja':lang==='pt'?'pt':'en',true)} · {st[1]}{isNew?` · ${L('new','新着','novo')}`:''}</b>
+                      <small style={{display:'block',opacity:0.75,marginTop:2}}>{String(c.created_at||'').slice(0,10)} · {String(c.description||c.category||'').slice(0,80)}</small>
+                      {c.admin_response&&<small style={{display:'block',marginTop:2}}>↳ {String(c.admin_response).slice(0,120)}</small>}
+                    </button>
+                  )
+                })}
+              </div>
             )}
-            {statement?.employee_confirmed_at && (
-              <div className="earn-status is-ok">✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period), payDate: getPeriodDates(statement.period).payDate })}</div>
-            )}
-            {statement?.employee_disputed_at && (
-              <div className="earn-status is-bad">⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period) })}</div>
-            )}
-            {salaryAnswers.slice(0,3).map(c=>(
-              <button key={c.id} type="button" className={`earn-status is-link ${c.status==='resolved'?'is-ok':'is-bad'}`} onClick={()=>setAnswerOpen(c)}>
-                {c.status==='resolved'?'✓':'✕'} {pickLang(lang,`Answer about ${monthLabel(c.period,'en',true)}`,`${monthLabel(c.period,'ja',true)}の回答`,`Resposta sobre ${monthLabel(c.period,'pt',true)}`)}{c.admin_response?`: ${c.admin_response}`:''} ›
-              </button>
-            ))}
+
+            {salaryView==='earnings'&&<>
             <EarningsPanel employeeId={user.id} lang={lang} theme="portal" />
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
               <div className="earn-card">
@@ -2244,7 +2273,8 @@ export default function EmployeePortal() {
                 </div>}
               </>)
             })()}
-            <button type="button" className="earn-secondary" onClick={async()=>{
+            </>}
+            {salaryView==='earnings'&&<button type="button" className="earn-secondary" onClick={async()=>{
               const today2 = tokyoToday()
               const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
               if (!todayJobsForPDF.length) return toast.error(e.noJobsToday)
@@ -2254,7 +2284,7 @@ export default function EmployeePortal() {
               toast.success(L('Report downloaded!', '報告書をダウンロードしました', 'Relatório baixado!'))
             }}>
               📋 {L("Today's service report (PDF)", '今日の作業報告書 (PDF)', 'Relatório de serviço de hoje (PDF)')}
-            </button>
+            </button>}
           </div>
         )}
 
@@ -2390,15 +2420,15 @@ export default function EmployeePortal() {
         {chatLightbox&&<PhotoLightbox url={chatLightbox} onClose={()=>setChatLightbox(null)} closeLabel={e.close} />}
 
         {/* CALENDAR */}
-        {tab==='calendar'&&(
+        {/* v1.0.96 · one calendar: jobs (read) and availability / day off (the only place to edit them) */}
+        {(tab==='calendar'||tab==='availability')&&(<>
           <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} labels={e} statusLabels={tr.status} lang={lang} />
-        )}
+          <div id="my-availability" style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'22px 2px 10px'}}>🗓 {L('My availability and day off','勤務可能日と休み','Minha disponibilidade e folgas')}</div>
+          <TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />
+          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
+        </>)}
 
         {/* ACHIEVEMENTS */}
-        {tab==='availability'&&<TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />}
-        {tab==='availability'&&(
-          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
-        )}
 
         {tab==='world'&&(
           <Suspense fallback={null}>
@@ -2496,7 +2526,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId }) {
+function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId, onAskAI }) {
   const todayJobs = sortByOrder(allJobs.filter(j=>j.scheduled_date===today))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
@@ -2548,6 +2578,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
               <div style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6,whiteSpace:'pre-line'}}>{activeInstructions}</div>
             </div>
           )}
+          {onAskAI&&<button type="button" onClick={()=>onAskAI(activeJob)} style={{width:'100%',padding:'11px',borderRadius:12,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.12)',color:'#d8b4fe',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:12}}>✦ {L('Ask the AI about this job','この作業についてAIに質問','Perguntar à IA sobre este job')}</button>}
           {hasFacility?.(activeJob)&&(
             <button type="button" onClick={ev=>{ ev.stopPropagation(); onOpenFacility(activeJob) }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.45)',background:'rgba(193,156,86,0.14)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
               {facilityLabel}
@@ -2801,6 +2832,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
 
             {isNext&&!(isPendingSpot(job)&&onAcceptSpot)&&(
               <div>
+                {onAskAI&&<button type="button" onClick={()=>onAskAI(job)} style={{width:'100%',padding:'11px',borderRadius:12,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.12)',color:'#d8b4fe',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:12}}>✦ {L('Ask the AI about this job','この作業についてAIに質問','Perguntar à IA sobre este job')}</button>}
                 {hasTraining&&(
                   <button type="button" onClick={()=>onOpenTraining({ job, contract: trainingContract })} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
                     🎬 {L('View cleaning manual', '清掃マニュアルを見る', 'Ver manual de limpeza')}

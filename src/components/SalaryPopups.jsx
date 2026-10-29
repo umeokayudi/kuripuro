@@ -153,7 +153,7 @@ function useMonthWork(employeeId, month) {
       const all = pays.data || []
       setData({
         emp: emp.data || {}, jobs: enrichJobValues(visible, contracts.data || []),
-        deductions: all.filter(p => p.is_deduction), payments: all,
+        deductions: all.filter(p => p.is_deduction && p.status !== 'cancelled'), payments: all,
       })
     }).catch(() => alive && setData({ emp: {}, jobs: [], deductions: [], payments: [] }))
     return () => { alive = false }

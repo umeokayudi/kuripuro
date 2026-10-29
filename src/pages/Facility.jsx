@@ -83,7 +83,15 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   const [loaded, setLoaded] = useState(false)
   const [focus, setFocus] = useState(null)
   const [query, setQuery] = useState('')
-  const [listMode, setListMode] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760)
+  // Employee: opens as the "My work" list; the 3D is optional (v1.0.96).
+  const [listMode, setListMode] = useState(() => isEmployee || (typeof window !== 'undefined' && window.innerWidth < 760))
+  // The portal overlay must always be closable, even if the 3D view stops responding: Escape key too.
+  useEffect(() => {
+    if (!onClose) return undefined
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
   const [missionsOpen, setMissionsOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 760)
   const [missionTab, setMissionTab] = useState(isEmployee ? 'mine' : 'late')
   const [busy, setBusy] = useState('')
@@ -326,6 +334,11 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
 
   const view = (
     <div className={`kw-root${isAdmin ? '' : ' kw-overlay'}`} ref={rootRef}>
+      {/* Always-on-top exit for the portals: works even if the 3D view is busy. */}
+      {onClose && (
+        <button type="button" onClick={onClose} aria-label={w.exit}
+          style={{ position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 10, zIndex: 10000, width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(15,23,42,0.85)', color: '#fff', fontSize: 18, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.3)' }}>✕</button>
+      )}
       {store ? (
         <StoreView
           key={store.id}

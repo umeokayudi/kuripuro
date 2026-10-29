@@ -99,6 +99,9 @@ function ApprovalCard({ approval, lang, onAuthorize, onCancel }) {
   )
 }
 
+// Requests still running per chat (survive the panel closing).
+const PENDING = new Map()
+
 export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0 }) {
   const { t, lang } = useLang()
   const { user } = useAuth() || {}
@@ -110,9 +113,33 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     [{ role: 'assistant', content: (mode === 'employee' ? ai.employeeWelcome : ai.adminWelcome) || '' }]
   ), [mode, ai.employeeWelcome, ai.adminWelcome])
 
-  const [messages, setMessages] = useState(() =>
+  const [messages, setMessagesState] = useState(() =>
     newChatId ? welcome : loadChatHistory(mode, employeeId, welcome)
   )
+  // v1.0.96 · closing the panel while the AI is answering must not lose the answer:
+  // after unmount, updates go straight to the saved history, which the panel reloads when reopened.
+  const mountedRef = useRef(true)
+  const chatKey = `${mode}:${employeeId || ''}`
+  const setMessages = updater => {
+    if (mountedRef.current) return setMessagesState(updater)
+    const next = typeof updater === 'function' ? updater(messagesRef.current) : updater
+    messagesRef.current = next
+    saveChatHistory(mode, employeeId, next.map(message => { const stored = { ...message }; delete stored.attachmentsData; return stored }))
+  }
+  useEffect(() => {
+    mountedRef.current = true
+    // An answer that was still on its way when the panel closed: show "thinking" and pick it up.
+    const pending = PENDING.get(chatKey)
+    if (pending) {
+      setLoading(true)
+      pending.finally(() => {
+        if (!mountedRef.current) return
+        setMessagesState(loadChatHistory(mode, employeeId, welcome))
+        setLoading(false)
+      })
+    }
+    return () => { mountedRef.current = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [progressPart, setProgressPart] = useState(0)
@@ -385,8 +412,10 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     if (userMsg) setMessages(m => [...m, userMsg])
     retryRequestRef.current = newMessages
     setLoading(true)
+    const request = askAI(newMessages)
+    PENDING.set(chatKey, request.catch(() => {}).finally(() => PENDING.delete(chatKey)))
     try {
-      const data = await askAI(newMessages)
+      const data = await request
       const replyMsg = { role: 'assistant', content: data.reply, toolLog: data.toolLog, approval: approvalFrom(data) }
       setMessages(m => [...m, replyMsg])
       if (voiceReplies) speakReply(data.reply)

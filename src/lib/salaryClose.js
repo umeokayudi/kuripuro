@@ -1,6 +1,7 @@
 // Payroll close shared by the admin page (manual button) and the daily cron (automatic).
 // Takes any Supabase client: the browser one or the server one with the service role.
 import { getPeriodDates } from './salaryPeriod.js'
+import { fixedMonthBase } from './salaryCalc.js'
 
 const tokyoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())
 
@@ -12,12 +13,10 @@ export function previousPeriod(today = tokyoToday()) {
 /** Last day the cron may still close last month on its own: staff confirm until the 5th. */
 export const AUTO_CLOSE_LAST_DAY = 5
 
-export function computeBase(emp, jobs) {
+export function computeBase(emp, jobs, period) {
   const jobPay = (j) => Number(j.retro_value ?? j.value ?? 0)
-  if (emp.salary_type === 'fixed') {
-    const days = new Set(jobs.map(j => j.scheduled_date)).size
-    return Math.min(Math.round((emp.fixed_salary || 0) / (emp.monthly_work_days || 22) * days), emp.fixed_salary || 0)
-  }
+  // Fixed salary: the whole month, even with no jobs (only prorated by contract start / end).
+  if (emp.salary_type === 'fixed') return fixedMonthBase(emp, period)
   if (emp.salary_type === 'hourly') {
     const minutes = jobs.reduce((s, j) => {
       if (j.started_at && j.completed_at) return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
@@ -54,9 +53,9 @@ export async function closeSalaryPeriod(db, period, { auto = false, salaryDesc =
     if (jobsErr) throw jobsErr
 
     const { data: deductions } = await db.from('salary_payments').select('amount')
-      .eq('employee_id', emp.id).eq('period', period).eq('is_deduction', true)
+      .eq('employee_id', emp.id).eq('period', period).eq('is_deduction', true).neq('status', 'cancelled')
 
-    const base = computeBase(emp, jobs || [])
+    const base = computeBase(emp, jobs || [], period)
     const dedTotal = (deductions || []).reduce((s, d) => s + Number(d.amount || 0), 0)
     const net = Math.max(0, base - dedTotal)
     total += net
