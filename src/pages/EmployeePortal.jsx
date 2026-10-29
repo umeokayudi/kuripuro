@@ -22,6 +22,10 @@ import { dueAlertJobs, dueAlertSlot, acceptSpotUpdate, isBrokenRunningJob, isPen
 import JobDueAlert, { ringDueAlert } from '../components/JobDueAlert'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
+import { fetchOpenOffers, fetchClosedOffers, dismissClosedOffers, hideOffer } from '../lib/openOffers'
+import { takeOffer } from '../lib/assignOps'
+import { fetchMyNotices, ackNotices } from '../lib/assignNotices'
+import AgendaNoticesItem from '../components/AgendaNoticesItem'
 // v1.0.90 · Kuripuro World só para ver (three.js baixa só quando abre)
 const FacilityWorld = lazy(() => import('./Facility'))
 import EmployeeChat from '../components/EmployeeChat'
@@ -153,6 +157,9 @@ export default function EmployeePortal() {
   const [allJobs, setAllJobs] = useState([])
   const [reorderBusy, setReorderBusy] = useState(false)
   const [spotJobs, setSpotJobs] = useState([])
+  // v1.0.101 · changes the office made to my agenda (confirm "Got it") + offers someone else took
+  const [agendaNotices, setAgendaNotices] = useState([])
+  const [closedOffers, setClosedOffers] = useState([])
   // v1.0.21 · spot contract of the open job (signed on site by the location)
   const [jobContract, setJobContract] = useState(null)
   const [contractSignOpen, setContractSignOpen] = useState(false)
@@ -436,7 +443,10 @@ export default function EmployeePortal() {
       }
     }
     if (inProgress && !allVisible.some(j => j.id === inProgress.id)) allVisible.unshift(inProgress)
-    setJobs(regular); setSpotJobs(spots); setAllJobs(allVisible)
+    const open = await fetchOpenOffers(user.id).catch(() => [])
+    setJobs(regular); setSpotJobs([...spots, ...open]); setAllJobs(allVisible)
+    fetchClosedOffers(user.id, open.map(j => j.id)).then(setClosedOffers).catch(() => {})
+    fetchMyNotices(user.id).then(setAgendaNotices).catch(() => {})
     if (inProgress) {
       setActiveJob(inProgress)
       let ck = []
@@ -724,6 +734,15 @@ export default function EmployeePortal() {
   }
 
   const handleAcceptSpot = async (job) => {
+    // Open offer: the first one to accept keeps it.
+    if (job._open) {
+      try {
+        const r = await takeOffer(job, user)
+        if (r === 'taken') toast(L('Someone else already accepted this one.', '他の人が先に承諾しました。', 'Outra pessoa já aceitou este.'), { icon: '⚡' })
+        else toast.success(`${e.spotAccepted || L('Accepted!', '承諾しました！', 'Aceito!')} +¥${Number(job.spot_value||0).toLocaleString()}`)
+      } catch (err) { toast.error(err.message) }
+      loadAll(); return
+    }
     // Read the job again: if it was already started, accepting must not touch its status or timer.
     const { data: fresh } = await supabase.from('jobs').select('id,status,started_at').eq('id', job.id).maybeSingle()
     const fields = acceptSpotUpdate(fresh || job)
@@ -734,6 +753,8 @@ export default function EmployeePortal() {
     toast.success(`${e.spotAccepted || L('Accepted!', '承諾しました！', 'Aceito!')} +¥${Number(job.spot_value||0).toLocaleString()}`); loadAll()
   }
   const handleDeclineSpot = async (job) => {
+    // An open offer is not cancelled for everyone: it only leaves this phone.
+    if (job._open) { hideOffer(user.id, job.id); setSpotJobs(list => list.filter(j => j.id !== job.id)); return }
     await supabase.from('jobs').update({ spot_status:'declined',status:'cancelled',spot_responded_at:new Date().toISOString() }).eq('id',job.id)
     toast(L('Declined.', '辞退しました。', 'Recusado.')); loadAll()
   }
@@ -1492,7 +1513,22 @@ export default function EmployeePortal() {
   const timeOffNotices = unseenDecisions(myTimeOff, seenTimeOff)
   const salaryNotices = salaryAnswers.filter(c => !seenAnswers.has(answerKey(c)))
   const payslipPending = !!statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period)
-  const bellCount = unreadMsgs + timeOffNotices.length + salaryNotices.length + (payslipPending ? 1 : 0) + spotJobs.length
+  const bellCount = unreadMsgs + timeOffNotices.length + salaryNotices.length + (payslipPending ? 1 : 0) + spotJobs.length + agendaNotices.length + closedOffers.length
+  const ackAgenda = async () => {
+    const ids = agendaNotices.map(n => n.id)
+    setAgendaNotices([])
+    await ackNotices(ids)
+    loadAll()
+  }
+  // A change to my agenda pops one short toast; the details stay in the bell until "Got it".
+  const toastedNotices = useRef(new Set())
+  useEffect(() => {
+    const fresh = agendaNotices.filter(n => !toastedNotices.current.has(n.id))
+    if (!fresh.length) return
+    fresh.forEach(n => toastedNotices.current.add(n.id))
+    toast(L('Your agenda changed — see the bell', '予定が変わりました — ベルを確認', 'Sua agenda mudou — veja o sino'), { icon: '📌', id: 'kp-agenda-notice' })
+  }, [agendaNotices.map(n => n.id).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  const dismissClosed = () => { dismissClosedOffers(user.id, closedOffers.map(j => j.id)); setClosedOffers([]) }
 
   // Home opens the salary pop-up by itself once per visit: an answer first, then the payslip to confirm.
   useEffect(() => {
@@ -1890,9 +1926,19 @@ export default function EmployeePortal() {
                   <div><strong>{pickLang(lang,`Answer about your ${monthLabel(c.period,'en',true)} salary`,`${monthLabel(c.period,'ja',true)}の給与についての回答`,`Resposta sobre o salário de ${monthLabel(c.period,'pt',true)}`)}</strong>{c.admin_response&&<small>{c.admin_response}</small>}</div><b>›</b>
                 </button>
               ))}
+              {agendaNotices.length>0&&<AgendaNoticesItem notices={agendaNotices} lang={lang} onAck={ackAgenda} />}
+              {closedOffers.length>0&&(
+                <div className="emp-bell-item is-rejected">
+                  <span className="emp-bell-icon" aria-hidden="true">⚡</span>
+                  <div><strong>{pickLang(lang,'Offer closed','オファー終了','Oferta fechada')}</strong>
+                    {closedOffers.map(j=><small key={j.id} style={{display:'block'}}>{(j.title||'').split(' — ')[0]} · {j.scheduled_date?.slice(5)} — {j.employee_id?pickLang(lang,'someone else accepted','他の人が承諾','outra pessoa aceitou'):pickLang(lang,'cancelled by the office','事務所が取消','cancelada pelo escritório')}</small>)}
+                  </div>
+                  <button type="button" className="emp-bell-ok" onClick={dismissClosed}>OK</button>
+                </div>
+              )}
               {unreadMsgs>0&&<button type="button" className="emp-bell-item is-link" onClick={()=>bellGo('chat')}><span className="emp-bell-icon" aria-hidden="true">💬</span><div><strong>{e.bellMessages}</strong><small>{fill(e.unreadCount,{n:unreadMsgs})}</small></div><b>›</b></button>}
               {spotJobs.length>0&&<button type="button" className="emp-bell-item is-link" onClick={()=>bellGo('spots')}><span className="emp-bell-icon" aria-hidden="true">⚡</span><div><strong>{e.bellSpots}</strong><small>{spotJobs.length}</small></div><b>›</b></button>}
-              {!timeOffNotices.length&&!unreadMsgs&&!spotJobs.length&&!payslipPending&&!salaryNotices.length&&<p className="emp-bell-empty">{e.bellNothingNew}</p>}
+              {!timeOffNotices.length&&!unreadMsgs&&!spotJobs.length&&!payslipPending&&!salaryNotices.length&&!agendaNotices.length&&!closedOffers.length&&<p className="emp-bell-empty">{e.bellNothingNew}</p>}
             </div>
             <button type="button" className="emp-bell-all" onClick={()=>bellGo('availability')}>🗓 {e.bellSeeAllTimeOff} ›</button>
           </section>
@@ -2179,10 +2225,11 @@ export default function EmployeePortal() {
                   <div style={{flex:1,marginRight:12}}><div style={{fontSize:17,fontWeight:700,color:'#fff',marginBottom:4}}>{j.title}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:1}}>📅 {displayDate(j)} · {j.scheduled_time}</div>{hasMapsLink(j.address, j.title)&&<a href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 {e.openMaps}</a>}</div>
                   <div style={{background:'rgba(193,156,86,0.15)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0}}><div style={{fontSize:9,color:'#c19c56',fontWeight:700,letterSpacing:1}}>{e.extra.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:'#c19c56'}}>+¥{Number(j.spot_value||0).toLocaleString()}</div></div>
                 </div>
+                {j._open&&<div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:10}}>⚡ {L('Offer to the team — the first to accept keeps it','チームへのオファー — 最初に承諾した人が担当','Oferta para a equipe — o primeiro que aceitar fica com o job')}</div>}
                 {j.description&&<div style={{fontSize:13,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.03)',borderRadius:10,padding:'10px 12px',marginBottom:14,lineHeight:1.6}}>{j.description}</div>}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                   <button onClick={()=>handleAcceptSpot(j)} style={{padding:'15px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer'}}>✅ {e.accept}</button>
-                  <button onClick={()=>handleDeclineSpot(j)} style={{padding:'15px',borderRadius:14,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.45)',fontSize:15,fontWeight:700,cursor:'pointer'}}>✕ {e.decline}</button>
+                  <button onClick={()=>handleDeclineSpot(j)} style={{padding:'15px',borderRadius:14,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.45)',fontSize:15,fontWeight:700,cursor:'pointer'}}>✕ {j._open?L('Not for me','今回はパス','Não posso'):e.decline}</button>
                 </div>
               </div>
             ))}
