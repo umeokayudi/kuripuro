@@ -1,7 +1,7 @@
 // Payroll close shared by the admin page (manual button) and the daily cron (automatic).
 // Takes any Supabase client: the browser one or the server one with the service role.
 import { getPeriodDates } from './salaryPeriod.js'
-import { fixedMonthBase } from './salaryCalc.js'
+import { monthBase } from './salaryCalc.js'
 import { ensureServiceReports } from './jobReport.js'
 
 const tokyoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())
@@ -15,20 +15,32 @@ export function previousPeriod(today = tokyoToday()) {
 export const AUTO_CLOSE_LAST_DAY = 5
 
 export function computeBase(emp, jobs, period) {
-  const jobPay = (j) => Number(j.retro_value ?? j.value ?? 0)
-  // Fixed salary: the whole month, even with no jobs (only prorated by contract start / end).
-  if (emp.salary_type === 'fixed') return fixedMonthBase(emp, period)
-  if (emp.salary_type === 'hourly') {
-    const minutes = jobs.reduce((s, j) => {
-      if (j.started_at && j.completed_at) return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
-      return s + (j.retro_time_min || 45)
-    }, 0)
-    return Math.round(minutes / 60 * (emp.hourly_rate || 0))
-  }
-  if (emp.salary_type === 'per_job') {
-    return jobs.reduce((s, j) => s + Math.round(jobPay(j) * ((emp.job_bonus_rate || 100) / 100)), 0)
-  }
-  return emp.fixed_salary || 0
+  return monthBase(emp, jobs, period)
+}
+
+/** v1.0.102 · Who is in a payroll: every employee not switched off (is_active true OR empty). */
+export const isPayrollActive = emp => emp?.is_active !== false
+
+/**
+ * v1.0.102 · ONE state for the salary of a person in a month, read by Payments, Payroll close and the
+ * month list, so "Paid" and the payslip can never say different things.
+ *  none        not calculated yet
+ *  waiting     payslip sent, employee has not confirmed
+ *  disputed    employee disputed it
+ *  confirmed   employee confirmed (admin may finalize and pay)
+ *  finalized   admin finalized after the confirmation
+ *  paid        paid AND confirmed
+ *  paid_unconfirmed  marked paid while the payslip is still not confirmed (old data) — needs a look
+ */
+export function payrollState(statement, salaryLine) {
+  const slip = !statement ? 'none'
+    : statement.employee_confirmed_at ? 'confirmed'
+    : (statement.employee_disputed_at || statement.status === 'disputed') ? 'disputed'
+    : 'waiting'
+  const paid = salaryLine?.status === 'paid'
+  if (paid) return slip === 'confirmed' ? 'paid' : 'paid_unconfirmed'
+  if (slip === 'confirmed' && statement.status === 'finalized') return 'finalized'
+  return slip
 }
 
 /**
@@ -43,17 +55,25 @@ export async function closeSalaryPeriod(db, period, { auto = false, salaryDesc =
   }, { onConflict: 'period' })
   if (periodErr) throw periodErr
 
-  const { data: employees, error: empErr } = await db.from('employees').select('*').eq('is_active', true)
+  // v1.0.102 · Everyone not switched off (is_active empty counts as active, as in Payments), and one
+  // person failing never stops the others: who stayed out is returned with the reason.
+  const { data: all, error: empErr } = await db.from('employees').select('*')
   if (empErr) throw empErr
+  const employees = (all || []).filter(isPayrollActive)
 
   let total = 0
   let kept = 0
-  for (const emp of employees || []) {
-    const res = await closeEmployeeMonth(db, period, emp, { salaryDesc })
-    if (res.kept) kept++
-    total += res.net
+  const failed = []
+  for (const emp of employees) {
+    try {
+      const res = await closeEmployeeMonth(db, period, emp, { salaryDesc })
+      if (res.kept) kept++
+      total += res.net
+    } catch (e) {
+      failed.push({ id: emp.id, name: emp.full_name, error: e?.message || String(e) })
+    }
   }
-  return { period, employees: employees?.length || 0, total, kept, confirmDeadline, payDate }
+  return { period, employees: employees.length, total, kept, failed, confirmDeadline, payDate }
 }
 
 /**
@@ -66,7 +86,10 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
   const { closeDate, payDate } = getPeriodDates(period)
   const { data: existing } = await db.from('salary_payments')
     .select('id,status,amount').eq('employee_id', emp.id).eq('period', period).eq('payment_type', 'salary').limit(1)
-  if (existing?.[0]?.status === 'paid') {
+  // A month already paid is never recalculated — except a salary "paid" at ¥0, which was never a
+  // real payment (old close of a fixed salary without jobs): it is recalculated and opened again.
+  const paidZero = existing?.[0]?.status === 'paid' && Number(existing[0].amount || 0) === 0
+  if (existing?.[0]?.status === 'paid' && !paidZero) {
     return { net: Number(existing[0].amount || 0), base: null, dedTotal: null, jobs: null, kept: true }
   }
 

@@ -206,7 +206,7 @@ export default function Users() {
         </label>
       </div>
 
-      {loading && <div className="card" style={{ fontSize: 13, color: 'var(--text3)' }}>{t.loading}</div>}
+      {loading && <div aria-busy="true" aria-label={t.loading}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
       {!loading && sections.map(({ type, list }) => (
         <section key={type} className="kp-users-section">
           <div className="kp-users-section-head">

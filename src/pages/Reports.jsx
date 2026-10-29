@@ -374,7 +374,7 @@ export default function Reports() {
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
           {tr.autoHint}
         </div>
-        {loading && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{tr.loading}</div>}
+        {loading && <div aria-busy="true" aria-label={tr.loading}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
         {!loading && filtered.length === 0 && (
           <div style={{ color: 'var(--text3)', fontSize: 13 }}>{tr.empty}</div>
         )}

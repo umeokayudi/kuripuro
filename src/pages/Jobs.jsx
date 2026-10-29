@@ -22,7 +22,8 @@ import DayAgenda from '../components/DayAgenda'
 import { confirmAndRun } from '../components/ConfirmDialog'
 import SetupChain from '../components/SetupChain'
 import { buildPlaces } from '../lib/places'
-import { splitChecklist } from '../lib/agenda'
+import { splitChecklist, agendaChecklistItems, checklistProgress, checklistUpdate, contractForAgendaJob, storeName } from '../lib/agenda'
+import { checklistDisplayLabel } from '../lib/jobChecklist'
 import '../components/agenda.css'
 import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
@@ -97,6 +98,7 @@ export default function Jobs() {
   const [lightbox, setLightbox] = useState(null)
   const [spotContracts, setSpotContracts] = useState([])
   const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
+  const [contractList, setContractList] = useState([])
 
   useEffect(() => { loadAll(); fetchContractSellers().then(setSellers) }, [])
   useEffect(() => {
@@ -121,6 +123,7 @@ export default function Jobs() {
     setEmployees(e.data || [])
     setClients(c.data || [])
     setLocations(buildPlaces(l.data || [], scs.data || []))
+    setContractList(scs.data || [])
     setLoading(false)
   }
 
@@ -292,6 +295,11 @@ export default function Jobs() {
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value || j.spot_value || 0).toLocaleString()}</span>
                 </div>
               </div>
+
+              {ctype === 'deep' && (
+                <DeepChecklist job={j} lang={lang} tr={tr} contracts={contractList} places={locations}
+                  onSaved={patch => setJobs(list => list.map(x => x.id === j.id ? { ...x, ...patch } : x))} />
+              )}
 
               {j.description && (
                 <KeyReveal value={j.description.split('\n')[0]} style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }} />
@@ -540,6 +548,43 @@ function LocationsTab() {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * v1.0.102 · Every Deep card in All Jobs has the same "Checklist" button as the Day agenda and the report:
+ * the tasks of the job (job → place → contract), x of y done, tick to save.
+ */
+function DeepChecklist({ job, lang, tr, contracts, places, onSaved }) {
+  const [open, setOpen] = useState(false)
+  const contract = contractForAgendaJob(job, contracts)
+  const place = places.find(p => (job.location_id && p.id === job.location_id) || p.name?.toLowerCase() === storeName(locationNameFromTitle(job.title)).toLowerCase())
+  const items = agendaChecklistItems(job, { place, contract })
+  const p = checklistProgress(job, items)
+  const toggle = async i => {
+    const patch = checklistUpdate(p.items.map((r, k) => k === i ? { ...r, done: !r.done } : r))
+    const { error } = await supabase.from('jobs').update(patch).eq('id', job.id)
+    if (error) return toast.error(error.message)
+    onSaved(patch)
+  }
+  return (
+    <div className="ag-progress" style={{ marginBottom: 10 }}>
+      <div className="ag-progress-line">
+        <span>✅ {p.total ? tr(`${p.done} of ${p.total}`, `${p.total}中${p.done}`, `${p.done} de ${p.total}`) : tr('No checklist for this place yet', 'この場所のチェックリストはまだありません', 'Este local ainda não tem checklist')}</span>
+        {p.total > 0 && <button type="button" style={{ minHeight: 40 }} onClick={() => setOpen(o => !o)}>{open ? tr('Hide checklist', 'チェックリストを閉じる', 'Fechar checklist') : tr('Checklist', 'チェックリスト', 'Checklist')}</button>}
+      </div>
+      {p.total > 0 && <div className="ag-progress-bar"><i style={{ width: `${Math.round((p.done / p.total) * 100)}%` }} /></div>}
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          {p.items.map((r, i) => (
+            <label key={i} className="ag-check">
+              <input type="checkbox" checked={r.done} onChange={() => toggle(i)} />
+              <span style={{ textDecoration: r.done ? 'line-through' : 'none', color: r.done ? 'var(--text3)' : 'var(--text)' }}>{checklistDisplayLabel(r.label, lang)}</span>
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -39,7 +39,7 @@ const yenCompact = v => {
 }
 const yenFull = v => (v < 0 ? '−' : '') + '¥' + Math.abs(Math.round(v)).toLocaleString()
 
-export default function MonthlyKpiCharts({ lang, snapshot = {} }) {
+export default function MonthlyKpiCharts({ lang, snapshot = {}, snapshotLoading = false }) {
   const tr = (en, ja, pt) => pickLang(lang, en, ja, pt)
   const dateLocale = localeOf(lang)
   const [months, setMonths] = useState(6)
@@ -164,21 +164,21 @@ export default function MonthlyKpiCharts({ lang, snapshot = {} }) {
                 {c.link && <Link to={c.link} className="mk-link">{tr('Details →', '詳細 →', 'Detalhes →')}</Link>}
               </header>
               <div className="mk-now">
-                <strong>{now == null ? '—' : c.format(now)}</strong>
+                <strong>{!loaded ? <span className="kp-skel-text">{tr('loading…', '読み込み中…', 'carregando…')}</span> : now == null ? '—' : c.format(now)}</strong>
                 <small>{thisMonth?.title}{tr(' · so far', '（途中）', ' · até agora')}</small>
               </div>
               {diffText ? <div className={`mk-diff${good == null ? '' : good ? ' is-good' : ' is-bad'}`}>{diffText}</div>
                 : c.note ? <div className="mk-diff">{c.note}</div> : <div className="mk-diff">&nbsp;</div>}
               {loaded
                 ? <MonthBars data={buckets.map(b => ({ key: b.key, label: b.label, title: b.title, value: b[c.id], sub: c.sub?.(b) }))} format={c.format} tone={TONES[c.tone]} max={c.max} emptyLabel={tr('No data yet', 'まだデータがありません', 'Ainda sem dados')} />
-                : <div className="mk-empty">{tr('Loading…', '読み込み中…', 'Carregando…')}</div>}
+                : <div className="kp-skel kp-skel-chart" aria-label={tr('Loading…', '読み込み中…', 'Carregando…')} />}
             </article>
           )
         })}
         {snapshots.filter(s => visible.includes(s.id)).map(s => (
           <article key={s.id} className="mk-card mk-card-plain" style={{ '--tone': TONES.navy }}>
             <header><span className="mk-label">{L[s.id]}</span></header>
-            <div className="mk-now"><strong>{s.value}</strong></div>
+            <div className="mk-now"><strong>{snapshotLoading ? <span className="kp-skel-text">{tr('loading…', '読み込み中…', 'carregando…')}</span> : s.value}</strong></div>
             <div className="mk-diff">{s.note}</div>
           </article>
         ))}

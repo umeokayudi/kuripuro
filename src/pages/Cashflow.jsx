@@ -5,9 +5,9 @@ import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 
 const CF_TEXT = {
-  en: { overview:'Overview', confirmedToDo:'Confirmed (job still to do)', addEntry:'+ Add Entry', history:'History', title:'Financial overview', subtitle:'Real cash + invoicing + amounts still to come in.', invoiced:'Invoiced', received:'Received', receivable:'Receivable', overdue:'Overdue', expenses:'Expenses', projection:'Projection', realProfit:'Real profit', realMargin:'Real margin', monthStatus:'This month', recordedIncome:'Recorded income', recordedExpenses:'Recorded expenses', realCosts:'Real costs', billing:'Billing', issuedInvoices:'Invoices issued', open:'Open', whereMoneyGoes:'Where the money goes', salariesPaid:'Salaries paid', transport:'Transport', otherExpenses:'Other expenses', totalRealCosts:'Total real costs', monthMovements:'This month\'s movements', income:'💴 Income', expense:'💸 Expenses', balance:'💰 Balance', thisMonth:'This Month', noEntries:'No entries this month.' },
-  ja: { overview:'概要', confirmedToDo:'確定（作業予定）', addEntry:'+ 記帳', history:'履歴', title:'財務の概要', subtitle:'実際の現金 + 請求 + これから入る金額。', invoiced:'請求額', received:'入金済み', receivable:'未入金', overdue:'期限超過', expenses:'経費', projection:'見込み', realProfit:'実利益', realMargin:'実利益率', monthStatus:'今月の状況', recordedIncome:'記録済み収入', recordedExpenses:'記録済み経費', realCosts:'実コスト', billing:'請求', issuedInvoices:'発行済み請求書', open:'未回収', whereMoneyGoes:'お金の使い道', salariesPaid:'支払済み給与', transport:'交通費', otherExpenses:'その他の経費', totalRealCosts:'実コスト合計', monthMovements:'今月の入出金', income:'💴 収入', expense:'💸 支出', balance:'💰 残高', thisMonth:'今月', noEntries:'今月の記録はありません。' },
-  pt: { overview:'Visão geral', confirmedToDo:'Confirmado (serviço a fazer)', addEntry:'+ Novo lançamento', history:'Histórico', title:'Visão financeira', subtitle:'Caixa real + faturamento + valores a receber.', invoiced:'Faturado', received:'Recebido', receivable:'A receber', overdue:'Vencido', expenses:'Despesas', projection:'Projeção', realProfit:'Lucro real', realMargin:'Margem real', monthStatus:'Este mês', recordedIncome:'Receitas registradas', recordedExpenses:'Despesas registradas', realCosts:'Custos reais', billing:'Faturamento', issuedInvoices:'Faturas emitidas', open:'Em aberto', whereMoneyGoes:'Para onde vai o dinheiro', salariesPaid:'Salários pagos', transport:'Transporte', otherExpenses:'Outras despesas', totalRealCosts:'Total de custos reais', monthMovements:'Movimentações do mês', income:'💴 Receitas', expense:'💸 Despesas', balance:'💰 Saldo', thisMonth:'Este mês', noEntries:'Nenhum lançamento este mês.' },
+  en: { overview:'Overview', confirmedToDo:'Confirmed (job still to do)', addEntry:'+ Add Entry', history:'History', title:'Financial overview', subtitle:'Real cash + invoicing + amounts still to come in.', invoiced:'Invoiced', received:'Received', receivable:'Receivable', overdue:'Overdue', expenses:'Expenses', projection:'Projection', realProfit:'Real profit', realMargin:'Real margin', monthStatus:'This month', recordedIncome:'Recorded income', recordedExpenses:'Recorded expenses', realCosts:'Real costs', billing:'Billing', issuedInvoices:'Invoices issued', open:'Open', whereMoneyGoes:'Where the money goes', salariesPaid:'Salaries paid', transport:'Transport', otherExpenses:'Other expenses', totalRealCosts:'Total real costs', monthMovements:'This month\'s movements', income:'💴 Income', expense:'💸 Expenses', balance:'💰 Balance', thisMonth:'This Month', noEntries:'No entries this month.', loading:'loading…' },
+  ja: { overview:'概要', confirmedToDo:'確定（作業予定）', addEntry:'+ 記帳', history:'履歴', title:'財務の概要', subtitle:'実際の現金 + 請求 + これから入る金額。', invoiced:'請求額', received:'入金済み', receivable:'未入金', overdue:'期限超過', expenses:'経費', projection:'見込み', realProfit:'実利益', realMargin:'実利益率', monthStatus:'今月の状況', recordedIncome:'記録済み収入', recordedExpenses:'記録済み経費', realCosts:'実コスト', billing:'請求', issuedInvoices:'発行済み請求書', open:'未回収', whereMoneyGoes:'お金の使い道', salariesPaid:'支払済み給与', transport:'交通費', otherExpenses:'その他の経費', totalRealCosts:'実コスト合計', monthMovements:'今月の入出金', income:'💴 収入', expense:'💸 支出', balance:'💰 残高', thisMonth:'今月', noEntries:'今月の記録はありません。', loading:'読み込み中…' },
+  pt: { overview:'Visão geral', confirmedToDo:'Confirmado (serviço a fazer)', addEntry:'+ Novo lançamento', history:'Histórico', title:'Visão financeira', subtitle:'Caixa real + faturamento + valores a receber.', invoiced:'Faturado', received:'Recebido', receivable:'A receber', overdue:'Vencido', expenses:'Despesas', projection:'Projeção', realProfit:'Lucro real', realMargin:'Margem real', monthStatus:'Este mês', recordedIncome:'Receitas registradas', recordedExpenses:'Despesas registradas', realCosts:'Custos reais', billing:'Faturamento', issuedInvoices:'Faturas emitidas', open:'Em aberto', whereMoneyGoes:'Para onde vai o dinheiro', salariesPaid:'Salários pagos', transport:'Transporte', otherExpenses:'Outras despesas', totalRealCosts:'Total de custos reais', monthMovements:'Movimentações do mês', income:'💴 Receitas', expense:'💸 Despesas', balance:'💰 Saldo', thisMonth:'Este mês', noEntries:'Nenhum lançamento este mês.', loading:'carregando…' },
 }
 
 /** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
@@ -27,6 +27,7 @@ export default function Cashflow() {
   const [invoices, setInvoices] = useState([])
   const [salaryPayments, setSalaryPayments] = useState([])
   const [transportClaims, setTransportClaims] = useState([])
+  const [monthJobs, setMonthJobs] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('overview')
   const [form, setForm] = useState({ type:'income', category:'Client Payment', amount:'', description:'', date:tokyoToday() })
@@ -36,6 +37,22 @@ export default function Cashflow() {
   const EXPENSE_CATS = ['Salary','Supplies','Transport','Equipment','Tax','Other Expense']
 
   useEffect(() => { load() }, [])
+  // v1.0.102 · "Confirmed (job still to do)" = jobs of the month not done yet; draft invoices never count
+  useEffect(() => {
+    let alive = true
+    const [y, m] = period.split('-').map(Number)
+    const last = new Date(y, m, 0).getDate()
+    supabase.from('jobs').select('id,value,retro_value,status,scheduled_date')
+      .gte('scheduled_date', `${period}-01`).lte('scheduled_date', `${period}-${String(last).padStart(2, '0')}`)
+      .not('status', 'in', '(completed,cancelled)').limit(3000)
+      .then(({ data }) => { if (alive) setMonthJobs(data || []) })
+    return () => { alive = false }
+  }, [period])
+  const shiftPeriod = n => {
+    const [y, m] = period.split('-').map(Number)
+    const d = new Date(y, m - 1 + n, 1)
+    setPeriod(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
 
   const load = async () => {
     setLoading(true)
@@ -80,10 +97,11 @@ export default function Cashflow() {
   const income = thisMonth.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount||0),0)
   const expense = thisMonth.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount||0),0)
   const balance = income - expense
-  // v1.0.96 · a draft invoice is not billing yet: it only counts from "sent" (drafts show in "Confirmed (job still to do)")
+  // v1.0.96 · a draft invoice is not billing yet: it only counts from "sent".
+  // v1.0.102 · and a draft counts in NO line of the Cashflow (not in "Confirmed" either).
   const issued = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status !== 'cancelled' && f.status !== 'draft').reduce((s,f)=>s+Number(f.total||0),0)
   // v1.0.70 · accepted quotes booked this month: draft invoice dated on the job day, sent when the job is done
-  const confirmedToDo = invoices.filter(f=>f.status === 'draft' && f.issue_date?.startsWith(month)).reduce((s,f)=>s+Number(f.total||0),0)
+  const confirmedToDo = monthJobs.reduce((s,j)=>s+Number(j.retro_value ?? j.value ?? 0),0)
   const receivable = invoices.filter(f=>['sent','pending','overdue'].includes(f.status)).reduce((s,f)=>s+Number(f.total||0),0)
   const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0,10)
   const overdue = invoices.filter(f=>(['sent','pending','overdue'].includes(f.status)) && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
@@ -102,6 +120,8 @@ export default function Cashflow() {
   const realProfit = income - realCosts
   const realMargin = income > 0 ? (realProfit / income) * 100 : 0
   const projected = income + receivable - realCosts
+  // negative amounts keep their minus sign (a loss is never shown as a positive number)
+  const money = v => `${v < 0 ? '−' : ''}¥${Math.abs(Math.round(Number(v) || 0)).toLocaleString()}`
 
   return (
     <div>
@@ -119,7 +139,11 @@ export default function Cashflow() {
               <h3>{L.title}</h3>
               <p>{L.subtitle}</p>
             </div>
-            <input type="month" value={period} onChange={e=>setPeriod(e.target.value)} />
+            <div className="finance-month">
+              <button type="button" aria-label="‹" onClick={()=>shiftPeriod(-1)}>‹</button>
+              <input type="month" value={period} onChange={e=>e.target.value&&setPeriod(e.target.value)} />
+              <button type="button" aria-label="›" onClick={()=>shiftPeriod(1)}>›</button>
+            </div>
           </div>
           <div className="finance-kpis">
             {[
@@ -131,14 +155,14 @@ export default function Cashflow() {
               [L.projection, projected, projected >= 0 ? 'var(--green)' : 'var(--red)'],
             ].map(([label,value,color]) => (
               <div className="finance-kpi" key={label}>
-                <span>{label}</span><strong style={{color}}>¥{Math.abs(value).toLocaleString()}</strong>
+                <span>{label}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color}}>{money(value)}</strong>}
               </div>
             ))}
           </div>
           <div className="finance-kpis" style={{marginTop:12}}>
-            <div className="finance-kpi"><span>{L.realProfit}</span><strong style={{color:realProfit>=0?'var(--green)':'var(--red)'}}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
-            <div className="finance-kpi"><span>{L.confirmedToDo}</span><strong style={{color:'var(--amber)'}}>¥{confirmedToDo.toLocaleString()}</strong></div>
-            <div className="finance-kpi"><span>{L.realMargin}</span><strong style={{color:realMargin>=0?'var(--green)':'var(--red)'}}>{realMargin.toFixed(1)}%</strong></div>
+            <div className="finance-kpi"><span>{L.realProfit}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:realProfit>=0?'var(--green)':'var(--red)'}}>{money(realProfit)}</strong>}</div>
+            <div className="finance-kpi"><span>{L.confirmedToDo}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:'var(--amber)'}}>{money(confirmedToDo)}</strong>}</div>
+            <div className="finance-kpi"><span>{L.realMargin}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:realMargin>=0?'var(--green)':'var(--red)'}}>{realMargin.toFixed(1)}%</strong>}</div>
           </div>
           <div className="finance-summary-grid">
             <div className="card finance-focus-card">
@@ -146,7 +170,7 @@ export default function Cashflow() {
               <div className="finance-big-row"><span>{L.recordedIncome}</span><strong className="finance-positive">¥{income.toLocaleString()}</strong></div>
               <div className="finance-big-row"><span>{L.recordedExpenses}</span><strong className="finance-negative">¥{expense.toLocaleString()}</strong></div>
               <div className="finance-big-row"><span>{L.realCosts}</span><strong className="finance-negative">¥{realCosts.toLocaleString()}</strong></div>
-              <div className="finance-big-row finance-total"><span>{L.realProfit}</span><strong className={realProfit>=0?'finance-positive':'finance-negative'}>¥{Math.abs(realProfit).toLocaleString()}</strong></div>
+              <div className="finance-big-row finance-total"><span>{L.realProfit}</span><strong className={realProfit>=0?'finance-positive':'finance-negative'}>{money(realProfit)}</strong></div>
             </div>
             <div className="card finance-focus-card">
               <div className="card-title">{L.billing}</div>
@@ -168,7 +192,7 @@ export default function Cashflow() {
             {[[L.income,income,'var(--green)'],[L.expense,expense,'var(--red)'],[L.balance,balance,balance>=0?'var(--green)':'var(--red)']].map(([l,v,c])=>(
               <div key={l} className="card" style={{textAlign:'center',padding:'18px'}}>
                 <div style={{fontSize:12,color:'var(--text3)',marginBottom:6}}>{l}</div>
-                <div style={{fontSize:24,fontWeight:700,color:c}}>¥{Number(Math.abs(v)).toLocaleString()}</div>
+                <div style={{fontSize:24,fontWeight:700,color:c}}>{loading ? <span className="kp-skel-text">{L.loading}</span> : money(v)}</div>
               </div>
             ))}
           </div>

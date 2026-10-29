@@ -168,7 +168,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <MonthlyKpiCharts lang={lang} snapshot={{ today: todayJobs.length, revenue: fmt(revenue), profit: fmt(profit) }} />
+      <MonthlyKpiCharts lang={lang} snapshotLoading={loading && !lastUpdate} snapshot={{ today: todayJobs.length, revenue: fmt(revenue), profit: fmt(profit) }} />
 
       <section className="card dx-overview">
         <div className="dx-overview-head">

@@ -50,12 +50,15 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'var(--surface2)', borderRadius: 8, fontSize: 12, color: 'var(--text3)',
         }}>
-          Carregando...
+          {tr('Loading…', '読み込み中…', 'Carregando…')}
         </div>
       )}
+      {/* v1.0.102 · lazy: a photo only downloads when its row is on screen (Reports AI photo column) */}
       <img
         src={src}
         alt={alt}
+        loading="lazy"
+        decoding="async"
         onLoad={() => setLoading(false)}
         onError={() => { setLoading(false); setFailed(true) }}
         onClick={onClick}
@@ -65,7 +68,8 @@ export default function StorageImage({ url, alt = 'foto', style, onClick }) {
           objectFit: 'cover',
           aspectRatio: '1',
           cursor: onClick ? 'zoom-in' : 'default',
-          display: loading ? 'none' : 'block',
+          display: 'block',
+          opacity: loading ? 0 : 1,
         }}
       />
       {heic && !loading && !failed && (

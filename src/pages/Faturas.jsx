@@ -207,6 +207,8 @@ export default function Faturas() {
   }
 
   const handleStatusChange = async (id, status) => {
+    // v1.0.102 · cancelling asks first, like delete
+    if (status === 'cancelled' && !(await askConfirm({ message: tr('Cancel this invoice? It stops counting as billed or receivable.', 'この請求書を取り消しますか？請求額・未収金に含まれなくなります。', 'Cancelar esta fatura? Ela deixa de contar como faturado e a receber.'), confirmLabel: tr('Cancel invoice', '請求書を取消', 'Cancelar fatura'), danger: true }))) return
     // paid_at drives the client's thank-you message and receipt date
     await supabase.from('faturas').update({ status, paid_at: status === 'paid' ? new Date().toISOString() : null }).eq('id', id)
     toast.success(`Status: ${status}`); load()
@@ -265,12 +267,16 @@ export default function Faturas() {
     w.print()
   }
 
+  // v1.0.102 · the list shows only the invoices of the month chosen above (billing period, else issue date)
+  const invoiceMonth = f => String(f.period_start || f.issue_date || '').slice(0, 7)
+  const monthList = faturas.filter(f => invoiceMonth(f) === autoPeriod)
+
   const statusBadge = s => ({draft:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red',overdue:'badge-red'}[s]||'badge-navy')
 
   return (
     <div>
       <div className="tab-pills">
-        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{fill(inv.list, { n: faturas.length })}</button>
+        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{fill(inv.list, { n: monthList.length })}</button>
         <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>{inv.new}</button>
       </div>
 
@@ -292,7 +298,8 @@ export default function Faturas() {
           </div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {faturas.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>{tr('No invoices yet.','請求書はまだありません。','Nenhuma fatura ainda.')}</div></div>}
-          {(searchId ? faturas.filter(f => f.id === searchId) : faturas).map(f=>(
+          {!loading && !searchId && faturas.length > 0 && monthList.length === 0 && <div className="card"><div style={{color:'var(--text2)',fontSize:13}}>{tr('No invoices for this month.','この月の請求書はありません。','Nenhuma fatura neste mês.')}</div></div>}
+          {(searchId ? faturas.filter(f => f.id === searchId) : monthList).map(f=>(
             <div key={f.id} className="card" style={{marginBottom:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                 <div>

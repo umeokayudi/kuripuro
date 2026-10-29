@@ -137,3 +137,9 @@
   .pm-type { min-width: 0; }
   .pm-2 { grid-template-columns: 1fr; }
 }
+
+/* v1.0.102 · action inside a note (recalculate / back to to-pay) */
+.pm-note-btn { display: inline-flex; align-items: center; min-height: 40px; margin: 6px 0 0; padding: 0 14px; border: 1px solid #c4b5fd; border-radius: 10px; background: #fff; color: #5b21b6; font: inherit; font-weight: 700; cursor: pointer; }
+.pm-note-btn + .pm-note-btn { margin-left: 8px; }
+.pm-note { display: block; }
+.pm-note .pm-note-btn { display: flex; }

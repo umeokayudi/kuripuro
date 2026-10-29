@@ -649,3 +649,12 @@
 .tor-section{font-size:12px;font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.05em;margin:6px 2px 0}
 .ref-topbar-search{width:min(560px,46vw);height:40px}
 @media(max-width:720px){.ref-topbar-search{height:42px;flex:1 1 auto;margin-right:2px}.ref-topbar-search .ref-search-input{font-size:15px}}
+/* v1.0.98 · "Fechar manualmente" on the Needs attention card */
+.lt-act.lt-act-close{border-color:#315cf5;background:#315cf5;color:#fff;font-weight:700}
+.lt-act.lt-act-close:hover{background:#2a4fd6;color:#fff}
+/* v1.0.101 · bell: agenda changes with "Got it" */
+.emp-bell-ok{flex-shrink:0;min-height:40px;min-width:64px;border:0;border-radius:12px;background:#315cf5;color:#fff;font:inherit;font-size:13px;font-weight:800;padding:0 14px;cursor:pointer}
+.emp-bell-item.is-agenda{align-items:flex-start}
+.emp-bell-item.is-agenda ul{margin:4px 0 0;padding:0;list-style:none}
+.emp-bell-item.is-agenda li{font-size:12px;color:#334155;padding:3px 0;overflow-wrap:anywhere}
+.emp-bell-item.is-agenda li b{font-weight:800}

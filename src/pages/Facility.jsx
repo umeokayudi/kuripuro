@@ -83,8 +83,8 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   const [loaded, setLoaded] = useState(false)
   const [focus, setFocus] = useState(null)
   const [query, setQuery] = useState('')
-  // Employee: opens as the "My work" list; the 3D is optional (v1.0.96).
-  const [listMode, setListMode] = useState(() => isEmployee || (typeof window !== 'undefined' && window.innerWidth < 760))
+  // v1.0.102 · everyone opens on the LIST view; the 3D is an option (a button), never the entry.
+  const [listMode, setListMode] = useState(true)
   // The portal overlay must always be closable, even if the 3D view stops responding: Escape key too.
   useEffect(() => {
     if (!onClose) return undefined
@@ -410,7 +410,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
               : mobile && <button type="button" className="kw-icon-btn" onClick={openMenu} aria-label={w.menu}>☰</button>}
             <div className="kw-brand">
               <span className="kw-brand-logo" aria-hidden="true">🌏</span>
-              <span><strong>{w.brand}</strong><small>{fill(w.stores, { n: stores.length })}</small></span>
+              <span><strong>{w.brand}</strong><small>{loaded ? fill(w.stores, { n: stores.length }) : pickLang(lang, 'loading…', '読み込み中…', 'carregando…')}</small></span>
             </div>
             <div className="kw-search">
               <input value={query} onChange={e => setQuery(e.target.value)} placeholder={mapView ? w.cityMap?.search : w.search} aria-label={w.search} />

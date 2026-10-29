@@ -1,6 +1,7 @@
 // Unresolved items per admin menu entry: the sidebar shows each number until it is dealt with.
 import { supabase } from './supabase'
 import { countPendingTimeOff } from './timeOff'
+import { addDays } from './schedulePlan'
 
 export const PENDING_CHANGED = 'kp-pending-changed'
 
@@ -20,7 +21,7 @@ async function count(table, apply) {
 export async function fetchPendingCounts(today) {
   const [
     timeOff, payroll, equipment, transport, salaryIssues,
-    quotes, serviceRequests, complaints, empMsgs, clientMsgs,
+    quotes, serviceRequests, complaints, empMsgs, clientMsgs, noPerson,
   ] = await Promise.all([
     countPendingTimeOff(today),
     count('salary_periods', q => q.eq('status', 'auto_closed')),
@@ -33,6 +34,8 @@ export async function fetchPendingCounts(today) {
     count('client_complaints', q => q.neq('status', 'resolved')),
     count('messages', q => q.eq('sender', 'employee').eq('read', false)),
     count('client_messages', q => q.eq('sender', 'client').eq('read', false)),
+    // v1.0.101 · jobs of the next 14 days with no person (Pending box)
+    count('jobs', q => q.is('employee_id', null).eq('status', 'assigned').gte('scheduled_date', today).lte('scheduled_date', addDays(today, 13))),
   ])
   return {
     employees: timeOff,
@@ -43,5 +46,6 @@ export async function fetchPendingCounts(today) {
     mitsumori: quotes,
     clientFeedback: serviceRequests + complaints,
     chat: empMsgs + clientMsgs,
+    schedule: noPerson,
   }
 }

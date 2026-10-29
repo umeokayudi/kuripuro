@@ -14,6 +14,14 @@ export default function JobVideos({ jobId, lazy = false, label, style, emptyLabe
   const [open, setOpen] = useState(!lazy)
   const [state, setState] = useState({ loading: false, videos: null, status: null, error: false })
   const [playing, setPlaying] = useState(null)
+  // v1.0.102 · lists (lazy): the "Show video" button only appears when the job really has a video
+  const [peek, setPeek] = useState(undefined)
+  useEffect(() => {
+    if (!lazy || open || !jobId) return
+    let alive = true
+    peekVideoStatus(jobId).then(s => { if (alive) setPeek(s || null) })
+    return () => { alive = false }
+  }, [lazy, open, jobId])
 
   useEffect(() => {
     if (!open || !jobId) return
@@ -28,6 +36,9 @@ export default function JobVideos({ jobId, lazy = false, label, style, emptyLabe
   if (!jobId) return null
 
   if (!open) {
+    if (!peek) return null
+    if (peek.status === 'failed') return <div style={{ fontSize: 12, color: 'var(--red, #ef4444)', fontWeight: 700, ...style }}>⚠️ {tr('Video failed to upload — the employee can try again', '動画の送信に失敗 — スタッフが再送できます', 'Vídeo falhou — o funcionário pode tentar de novo')}</div>
+    if (peek.status !== 'uploaded') return <div style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 700, ...style }}>⏳ {tr('Video uploading…', '動画を送信中…', 'Vídeo enviando…')}</div>
     return (
       <button type="button" className="btn btn-sm" style={style} onClick={ev => { ev.stopPropagation(); setOpen(true) }}>
         🎬 {L.show || 'Show video'}

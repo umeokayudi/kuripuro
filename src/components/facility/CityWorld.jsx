@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { AREA_KINDS } from '../../lib/facilityModel'
+import { renderGate } from './world/renderGate'
 
 /**
  * Mundo Kuripuro: todas as lojas como uma cidadezinha em 3D (estilo jogo).
@@ -117,6 +118,7 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
   const [failed, setFailed] = useState(false)
   const [hover, setHover] = useState(null)
   pickRef.current = onPick
+  useEffect(() => { ctxRef.current?.poke?.() })
 
   // renderer + laço (uma vez)
   useEffect(() => {
@@ -133,6 +135,8 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
     renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1))
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    // buildings do not move: shadows are drawn again only when the city is rebuilt
+    renderer.shadowMap.autoUpdate = false
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     host.appendChild(renderer.domElement)
@@ -154,8 +158,8 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
     controls.minPolarAngle = Math.PI * 0.12
     controls.minDistance = 8
     controls.maxDistance = 140
-    controls.autoRotate = true
-    controls.autoRotateSpeed = 0.35
+    // v1.0.102 · no endless auto-rotation: the city stands still until someone moves it
+    controls.autoRotate = false
     controls.screenSpacePanning = false
     controls.addEventListener('start', () => { controls.autoRotate = false })
 
@@ -193,6 +197,7 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
       const w = host.clientWidth || 600
       const h = host.clientHeight || 400
       renderer.setSize(w, h)
+      ctx.poke?.()
       camera.aspect = w / h
       // painel de missões à direita: o centro da cidade fica no meio do espaço livre
       const inset = Math.min(insetRef.current, w * 0.4)
@@ -245,15 +250,22 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
         toTarget: to.clone(), toPos: to.clone().add(dir.multiplyScalar(enter ? 7 : 16)).setY(enter ? 6.5 : 13),
         done: enter ? () => pickRef.current?.(id) : null,
       }
+      ctx.poke?.()
     }
     ctx.flyTo = flyTo
     ctx.resize = resize
 
+    const gate = renderGate(host)
+    ctx.poke = gate.poke
+    controls.addEventListener('change', gate.poke)
     const v = new THREE.Vector3()
-    let raf
+    let raf = 0
     const loop = () => {
+      raf = 0
+      if (!gate.active()) return
       raf = requestAnimationFrame(loop)
       const now = performance.now()
+      if (!gate.shouldDraw(now, !!ctx.fly)) return
       if (ctx.fly) {
         const f = ctx.fly
         const k = Math.min(1, (now - f.t0) / f.dur)
@@ -286,10 +298,12 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
         el.style.zIndex = String(1000 - Math.round(dist))
       })
     }
+    gate.onResume = () => { if (!raf) loop() }
     loop()
 
     return () => {
       cancelAnimationFrame(raf)
+      gate.dispose()
       ro.disconnect()
       renderer.domElement.removeEventListener('pointerdown', onDown)
       renderer.domElement.removeEventListener('pointerup', onUp)
@@ -365,6 +379,8 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
     sun.target.position.set(0, 0, 0)
     Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: half * 6 })
     sun.shadow.camera.updateProjectionMatrix()
+    ctx.renderer.shadowMap.needsUpdate = true
+    ctx.poke?.()
     if (!ctx.placed) {
       const d = Math.max(24, span * 1.25)
       camera.position.set(d * 0.7, d * 0.75, d * 0.9)
@@ -380,6 +396,7 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
     const ctx = ctxRef.current
     if (!ctx) return
     ctx.plots.forEach((p, id) => { p.plot.material = id === hover ? ctx.mats.plotHover : ctx.mats.plot })
+    ctx.poke?.()
   }, [hover, key])
 
   // pedido de foco vindo de fora (busca / missão): voa até a loja sem entrar
