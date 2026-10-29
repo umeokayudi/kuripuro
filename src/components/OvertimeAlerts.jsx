@@ -7,8 +7,9 @@ import { locationNameFromTitle } from '../lib/cleaningType'
 import { contractForAgendaJob, expectedMinutes, timeState } from '../lib/agenda'
 import { loadAgendaSettings } from '../lib/jobAdminOps'
 import { fmtMin } from './DayAgenda'
+import { ManualCloseButton } from './ManualCloseModal'
 
-export default function OvertimeAlerts({ jobs }) {
+export default function OvertimeAlerts({ jobs, onChanged }) {
   const { tr } = useLang()
   const [contracts, setContracts] = useState([])
   const [settings, setSettings] = useState(null)
@@ -29,14 +30,17 @@ export default function OvertimeAlerts({ jobs }) {
     <div style={{ margin: '0 0 16px', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(239,68,68,.45)', background: 'rgba(239,68,68,.07)' }}>
       <div style={{ fontWeight: 800, marginBottom: 6, color: '#dc2626' }}>⚠️ {tr('Open past the planned time', '予定時間を超えて作業中', 'Abertos além do tempo previsto')} ({rows.length})</div>
       {rows.map(({ j, expected, t }) => (
-        <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13, padding: '5px 0', borderTop: '1px solid rgba(239,68,68,.15)' }}>
-          <span><b>{locationNameFromTitle(j.title)}</b> · {j.employee_name || '—'}</span>
-          <span style={{ color: '#dc2626', fontWeight: 700 }}>
-            {fmtMin(t.elapsed)} / {fmtMin(expected)} {tr('planned', '予定', 'previsto')}{t.state === 'cap' ? ` · ⛔ ${tr('ceiling', '上限', 'teto')}` : ''}
+        <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, padding: '8px 0', borderTop: '1px solid rgba(239,68,68,.15)' }}>
+          <span style={{ flex: '1 1 180px', minWidth: 0 }}>
+            <b>{locationNameFromTitle(j.title)}</b> · {j.employee_name || '—'}
+            <span style={{ display: 'block', color: '#dc2626', fontWeight: 700 }}>
+              {fmtMin(t.elapsed)} / {fmtMin(expected)} {tr('planned', '予定', 'previsto')}{t.state === 'cap' ? ` · ⛔ ${tr('ceiling', '上限', 'teto')}` : ''}
+            </span>
           </span>
+          <ManualCloseButton job={j} expected={expected} className="btn btn-sm btn-primary" onDone={onChanged} />
         </div>
       ))}
-      <Link to="/jobs" className="btn btn-sm" style={{ marginTop: 8 }}>{tr('Open Day agenda → Adjust time', '本日の予定 → 時間を調整', 'Abrir Agenda do Dia → Ajustar tempo')}</Link>
+      <Link to="/jobs" className="btn btn-sm" style={{ marginTop: 8 }}>{tr('Open Day agenda', '本日の予定を開く', 'Abrir Agenda do Dia')}</Link>
     </div>
   )
 }

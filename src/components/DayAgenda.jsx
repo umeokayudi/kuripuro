@@ -22,6 +22,8 @@ import JobVideos from './JobVideos'
 import JobPhotos from './JobPhotos'
 import PhotoLightbox from './PhotoLightbox'
 import KeyReveal from './KeyReveal'
+import { ManualCloseButton } from './ManualCloseModal'
+import { manualCloseStamp } from '../lib/manualClose'
 
 const STATUS_COLOR = { assigned: '#60a5fa', in_progress: '#f59e0b', completed: '#22c55e', cancelled: '#ef4444' }
 
@@ -424,9 +426,11 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
             <span className="ag-badge" style={{ color: deep ? '#b7791f' : '#64748b' }}>{deep ? 'Deep Cleaning' : 'Basic'}</span>
             {info.bucket === 'late' && !missed && <span className="ag-badge" style={{ color: '#ef4444' }}>{tr('Late', '遅れ', 'Atrasado')}</span>}
             {after && <span className="ag-badge" style={{ color: '#a855f7' }}>📷 {tr('Waiting After photo', 'After写真待ち', 'Aguardando foto After')}</span>}
+            {job.closed_manually_at && <span className="ag-badge" style={{ color: '#b45309' }}>🔒 {tr('Closed by admin', '管理者が終了', 'Fechado pelo admin')}</span>}
             {job.photo_ai_score != null && <span className="ag-badge" style={{ color: job.photo_ai_approved ? '#16a34a' : '#ef4444' }}>IA {job.photo_ai_score}/10</span>}
             {aiPending(job) && <span className="ag-badge" style={{ color: '#64748b' }}>IA …</span>}
           </div>
+          {job.closed_manually_at && <div className="ag-meta" style={{ color: '#b45309' }}>{manualCloseStamp(job, lang)}</div>}
           {deep && deepTasksText(job.title, lang) && <div className="ag-meta" style={{ color: '#b7791f', fontWeight: 700 }}>✨ {deepTasksText(job.title, lang)}</div>}
           {keyBox && <KeyReveal className="ag-key" value={keyBox} />}
         </div>
@@ -475,6 +479,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
         <select className="ag-select" style={{ minHeight: 30, padding: '4px 8px', fontSize: 12 }} value={job.status} onChange={e => onStatus(job, e.target.value)} aria-label={tr('Status', 'ステータス', 'Status')}>
           {['assigned', 'in_progress', 'completed', 'cancelled'].map(s => <option key={s} value={s}>{statusLabel[s]}</option>)}
         </select>
+        <ManualCloseButton job={job} expected={info.expected} className="btn btn-sm btn-primary" onDone={onSaved} />
         {(job.started_at || job.status === 'completed') && <button type="button" className="btn btn-sm" onClick={() => setAdjust(a => !a)}>⏱ {tr('Adjust time', '時間を調整', 'Ajustar tempo')}</button>}
         {onEdit && <button type="button" className="btn btn-sm" onClick={() => onEdit(job)}>✏️</button>}
         <button type="button" className="btn btn-sm" onClick={showLog} title={tr('Change log', '変更履歴', 'Histórico')}>🕘</button>

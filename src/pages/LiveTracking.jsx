@@ -8,6 +8,7 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { useLang, fill, localeOf } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
+import { ManualCloseButton } from '../components/ManualCloseModal'
 
 const TZ = 'Asia/Tokyo'
 const LATE_AFTER_MIN = 5
@@ -212,6 +213,7 @@ export default function LiveTracking() {
           )}
         </button>
         <div className="lt-actions">
+          {p.staleOpen && <ManualCloseButton job={p.staleOpen} className="lt-act lt-act-close" onDone={load} />}
           {focusJob && hasMapsLink(focusJob.address, focusJob.title) && <a className="lt-act" href={mapsOpenUrl(focusJob.address, focusJob.title)} target="_blank" rel="noreferrer">🗺 {L.jobAddress}</a>}
           {showLoc && <a className="lt-act" href={mapsCoordsUrl(emp.last_lat, emp.last_lng)} target="_blank" rel="noreferrer">📍 {fill(L.whereNow, { d: fmtDuration(locAgeMin, L) })}</a>}
           {emp.phone && <a className="lt-act" href={`tel:${emp.phone.replace(/[^\d+]/g, '')}`}>📞 {L.call}</a>}
@@ -263,7 +265,7 @@ export default function LiveTracking() {
         ))}
       </div>
 
-      <OvertimeAlerts jobs={jobs} />
+      <OvertimeAlerts jobs={jobs} onChanged={load} />
 
       {loading && <div className="lt-empty">{L.loading}</div>}
 
