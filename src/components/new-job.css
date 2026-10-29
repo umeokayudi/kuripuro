@@ -78,3 +78,4 @@
   .nj-actions .btn { flex: 1; }
   .nj-footer { bottom: 84px; }
 }
+.nj-field-error { color: var(--red, #dc2626); font-size: 13px; font-weight: 700; margin: 0 0 8px; }

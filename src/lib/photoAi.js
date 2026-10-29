@@ -6,7 +6,10 @@ export const AI_TIMEOUT_MS = 45000
 
 /** "gordura no fogão => passar desengordurante" → { issue, fix } (old rows have no fix). */
 export function aiIssueRows(text) {
-  return String(text || '').split(/\s*[;\n]\s*|,\s(?=[^,]*=>)/).map(s => s.trim()).filter(Boolean).map(s => {
+  const raw = String(text || '')
+  // New rows: "a => fix; b => fix". Old rows (before v1.0.96): "a, b, c".
+  const parts = /;|=>|\n/.test(raw) ? raw.split(/\s*[;\n]\s*/) : raw.split(/\s*,\s*/)
+  return parts.map(s => s.trim()).filter(Boolean).map(s => {
     const [issue, fix] = s.split(/\s*=>\s*/)
     return { issue: issue.trim(), fix: (fix || '').trim() }
   })

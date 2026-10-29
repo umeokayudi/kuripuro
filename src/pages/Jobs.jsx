@@ -19,6 +19,10 @@ import { fetchContractSellers } from '../lib/contractSellers'
 import JobsPeriodPanel from '../components/JobsPeriodPanel'
 import NewJobForm from '../components/NewJobForm'
 import DayAgenda from '../components/DayAgenda'
+import { confirmAndRun } from '../components/ConfirmDialog'
+import { buildPlaces } from '../lib/places'
+import { splitChecklist } from '../lib/agenda'
+import '../components/agenda.css'
 import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
@@ -101,11 +105,12 @@ export default function Jobs() {
 
   const loadAll = async () => {
     setLoading(true)
-    const [j, e, c, l] = await Promise.all([
+    const [j, e, c, l, scs] = await Promise.all([
       supabase.from('jobs').select('*').order('scheduled_date', { ascending: false }),
       supabase.from('employees').select('id,full_name,salary_type,hourly_rate,fixed_salary').eq('is_active', true),
       supabase.from('clients').select('id,company_name,address,contact_person,contact_name,phone,manager_name,manager_phone').eq('is_active', true),
       supabase.from('locations').select('*').eq('is_active', true).order('name'),
+      supabase.from('service_contracts').select('*').eq('is_active', true),
     ])
     // Table added in v1.0.21; ignore errors so Jobs still loads if it is missing.
     const sc = await supabase.from('spot_contracts').select('id,job_id,contract_number,status').eq('is_active', true)
@@ -113,7 +118,7 @@ export default function Jobs() {
     setJobs(j.data || [])
     setEmployees(e.data || [])
     setClients(c.data || [])
-    setLocations(l.data || [])
+    setLocations(buildPlaces(l.data || [], scs.data || []))
     setLoading(false)
   }
 
@@ -376,107 +381,162 @@ export default function Jobs() {
 }
 
 function LocationsTab() {
-  const { t } = useLang()
+  const { t, tr } = useLang()
   const jt = t.jobs
+  const EMPTY_LOC = { name:'', address:'', location_type:'fixed', notes:'', client_id:'', area:'', key_box:'', checklist:'' }
   const [locations, setLocations] = useState([])
+  const [contracts, setContracts] = useState([])
+  const [clients, setClients] = useState([])
   const [editingLoc, setEditingLoc] = useState(null)
-  const [form, setForm] = useState({ name:'', address:'', location_type:'fixed', notes:'' })
+  const [form, setForm] = useState(EMPTY_LOC)
+  const [errors, setErrors] = useState({})
   const [geocoding, setGeocoding] = useState(false)
   const [gps, setGps] = useState(null)
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
-    const { data } = await supabase.from('locations').select('*').order('name')
-    setLocations(data || [])
+    const [l, sc, c] = await Promise.all([
+      supabase.from('locations').select('*').order('name'),
+      supabase.from('service_contracts').select('*').eq('is_active', true),
+      supabase.from('clients').select('id,company_name').eq('is_active', true).order('company_name'),
+    ])
+    setLocations(l.data || [])
+    setContracts(sc.data || [])
+    setClients(c.data || [])
   }
+  // Columns added by the v1.0.96 SQL (checklist, key box, area on the place itself).
+  const hasPlaceCols = locations.some(l => 'checklist' in l)
+  const places = buildPlaces(locations.filter(l => l.is_active), contracts)
+  const clientName = id => clients.find(c => c.id === id)?.company_name || ''
 
-  const upd = (k,v) => setForm(f=>({...f,[k]:v}))
+  const upd = (k,v) => { setForm(f=>({...f,[k]:v})); setErrors(e => ({ ...e, [k]: null })) }
 
   const handleGeocode = async () => {
-    if (!form.address) return toast.error(jt.enterAddressFirst)
+    if (!form.address) { setErrors(e => ({ ...e, address: jt.enterAddressFirst })); return }
     setGeocoding(true)
     const result = await geocodeAddress(form.address)
     setGeocoding(false)
-    if (!applyGeocodeResult(result, setGps, jt.mapsValid)) {
-      toast.error(t.jobs.addressNotFound)
-    }
+    if (!applyGeocodeResult(result, setGps, jt.mapsValid)) setErrors(e => ({ ...e, address: t.jobs.addressNotFound }))
+  }
+
+  const payload = () => {
+    const row = { name: form.name.trim(), address: form.address.trim(), location_type: form.location_type, notes: form.notes, client_id: form.client_id || null, gps_lat: gps?.lat ?? null, gps_lng: gps?.lng ?? null }
+    if (hasPlaceCols) Object.assign(row, { area: form.area || null, key_box: form.key_box || null, checklist: splitChecklist(form.checklist).join('\n') || null })
+    return row
+  }
+  const validate = () => {
+    const e = {}
+    if (!form.name.trim()) e.name = tr('Name is required', '名前は必須です', 'Nome é obrigatório')
+    if (!form.address.trim()) e.address = tr('Address or Google Maps link is required', '住所またはGoogleマップのリンクが必要です', 'Endereço ou link do Google Maps é obrigatório')
+    const dup = locations.find(l => l.is_active && l.id !== editingLoc && l.name.trim().toLowerCase() === form.name.trim().toLowerCase())
+    if (dup) e.name = tr('A place with this name already exists', '同じ名前の場所があります', 'Já existe um local com este nome')
+    setErrors(e)
+    return !Object.keys(e).length
   }
 
   const handleSave = async () => {
-    if (!form.name || !form.address) return toast.error('Name and address required')
-    const { error } = await supabase.from('locations').insert({ ...form, gps_lat: gps?.lat, gps_lng: gps?.lng })
+    if (!validate()) return
+    const { error } = editingLoc
+      ? await supabase.from('locations').update(payload()).eq('id', editingLoc)
+      : await supabase.from('locations').insert(payload())
     if (error) return toast.error(error.message)
-    toast.success('Location saved!')
-    setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null); load()
+    toast.success(editingLoc ? tr('Place updated', '更新しました', 'Local atualizado') : tr('Place saved', '保存しました', 'Local salvo'))
+    setEditingLoc(null); setForm(EMPTY_LOC); setGps(null); load()
   }
 
   const handleEditLoc = (l) => {
+    if (l.fromContract) {
+      // Store that only exists in Contracts: open the form prefilled to save it as a place.
+      setEditingLoc(null)
+      setForm({ ...EMPTY_LOC, name: l.name, address: l.address || '', client_id: l.client_id || '', area: l.area || '' })
+      setGps(null)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     setEditingLoc(l.id)
-    setForm({ name:l.name||'', address:l.address||'', location_type:l.location_type||'fixed', notes:l.notes||'' })
+    setForm({ ...EMPTY_LOC, name:l.name||'', address:l.address||'', location_type:l.location_type||'fixed', notes:l.notes||'', client_id:l.client_id||'', area:l.area||'', key_box:l.key_box||'', checklist:l.checklist||'' })
     setGps(l.gps_lat&&l.gps_lng?{lat:l.gps_lat,lng:l.gps_lng}:null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleUpdateLoc = async () => {
-    if (!form.name) return toast.error('Name required')
-    await supabase.from('locations').update({ name:form.name, address:form.address, location_type:form.location_type, notes:form.notes, gps_lat:gps?.lat||null, gps_lng:gps?.lng||null }).eq('id', editingLoc)
-    toast.success('Location updated!')
-    setEditingLoc(null)
-    setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null); load()
-  }
+  const handleDelete = (l) => confirmAndRun({
+    title: tr('Remove place?', '場所を削除しますか？', 'Remover local?'),
+    message: `${l.name}${l.contracts.length ? `\n${tr('Its contracts stay in Contracts.', '契約は契約画面に残ります。', 'Os contratos dele continuam em Contratos.')}` : ''}`,
+    confirmLabel: tr('Remove', '削除', 'Remover'),
+    success: tr('Place removed', '削除しました', 'Local removido'),
+    run: () => supabase.from('locations').update({ is_active: false }).eq('id', l.id),
+  }).then(ok => ok && load())
 
-  const handleDelete = async (id) => {
-    await supabase.from('locations').update({ is_active: false }).eq('id', id)
-    load()
-  }
+  const fieldErr = k => errors[k] && <div className="ag-field-error">{errors[k]}</div>
 
   return (
     <div>
       <div className="card" style={{marginBottom:14}}>
-        <div className="card-title">{editingLoc ? 'Edit Location' : 'Save New Location'}</div>
+        <div className="card-title">{editingLoc ? tr('Edit place', '場所を編集', 'Editar local') : tr('New place', '新しい場所', 'Novo local')}</div>
+        <div style={{fontSize:12,color:'var(--text3)',marginBottom:10}}>{tr('One registry for Jobs, Contracts, Generator and World. Value and checklist of each job come from the place\'s contract.', 'Jobs・契約・スケジュール・ワールド共通の登録です。作業の金額とチェックリストは場所の契約から入ります。', 'Cadastro único para Jobs, Contratos, Gerador e Mundo. Valor e checklist de cada job vêm do contrato do local.')}</div>
         <div className="grid-2">
-          <div className="form-group"><label>Name</label><input value={form.name} onChange={e=>upd('name',e.target.value)} placeholder="Hotel Grand" /></div>
-          <div className="form-group"><label>Type</label>
-            <select value={form.location_type} onChange={e=>upd('location_type',e.target.value)}>
-              <option value="fixed">Fixed (recurring)</option>
-              <option value="spot">Spot (one-time)</option>
+          <div className="form-group"><label>{tr('Name', '名前', 'Nome')} *</label><input className={errors.name?'ag-invalid':''} value={form.name} onChange={e=>upd('name',e.target.value)} placeholder="Hotel Grand" />{fieldErr('name')}</div>
+          <div className="form-group"><label>{tr('Client', '顧客', 'Cliente')}</label>
+            <select value={form.client_id} onChange={e=>upd('client_id',e.target.value)}>
+              <option value="">—</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
             </select>
           </div>
         </div>
         <div className="form-group">
-          <label>{t.jobs.addressLabel}</label>
+          <label>{t.jobs.addressLabel} *</label>
           <div style={{display:'flex',gap:8}}>
-            <input value={form.address} onChange={e=>upd('address',e.target.value)} placeholder={t.jobs.addressPlaceholder} style={{flex:1}} />
+            <input className={errors.address?'ag-invalid':''} value={form.address} onChange={e=>upd('address',e.target.value)} placeholder={t.jobs.addressPlaceholder} style={{flex:1,minWidth:0}} />
             <button className="btn" onClick={handleGeocode} disabled={geocoding}>{geocoding?'...':'📍 GPS'}</button>
           </div>
+          {fieldErr('address')}
           {gps && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}</div>}
           {!gps && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {jt.mapsValid}</div>}
         </div>
-        <div className="form-group"><label>{jt.keyboxNotes}</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 0315" /></div>
-        <button className="btn btn-primary" onClick={editingLoc ? handleUpdateLoc : handleSave}>{editingLoc ? jt.updateLocation : jt.saveLocation}</button>
-        {editingLoc && <button className="btn" style={{ marginLeft: 8 }} onClick={() => { setEditingLoc(null); setForm({ name:'', address:'', location_type:'fixed', notes:'' }); setGps(null) }}>{jt.cancelEdit}</button>}
+        <div className="grid-2">
+          <div className="form-group"><label>{tr('Type', '種類', 'Tipo')}</label>
+            <select value={form.location_type} onChange={e=>upd('location_type',e.target.value)}>
+              <option value="fixed">{tr('Fixed (recurring)', '定期', 'Fixo (recorrente)')}</option>
+              <option value="spot">{tr('Spot (one-time)', 'スポット', 'Spot (avulso)')}</option>
+            </select>
+          </div>
+          {hasPlaceCols
+            ? <div className="form-group"><label>🔑 Key box</label><input value={form.key_box} onChange={e=>upd('key_box',e.target.value)} placeholder="0315" /></div>
+            : <div className="form-group"><label>{jt.keyboxNotes}</label><input value={form.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Key box: 0315" /></div>}
+        </div>
+        {hasPlaceCols && (
+          <div className="form-group"><label>{tr('Checklist (one item per line)', 'チェックリスト（1行1項目）', 'Checklist (um item por linha)')}</label>
+            <textarea rows={4} value={form.checklist} onChange={e=>upd('checklist',e.target.value)} />
+            {splitChecklist(form.checklist).length > 0 && <small style={{color:'var(--text3)'}}>{splitChecklist(form.checklist).length} {tr('items', '項目', 'itens')}</small>}
+          </div>
+        )}
+        <button className="btn btn-primary" onClick={handleSave}>{editingLoc ? jt.updateLocation : jt.saveLocation}</button>
+        {(editingLoc || form.name) && <button className="btn" style={{ marginLeft: 8 }} onClick={() => { setEditingLoc(null); setForm(EMPTY_LOC); setErrors({}); setGps(null) }}>{jt.cancelEdit}</button>}
       </div>
 
       <div className="card">
-        <div className="card-title">{jt.savedLocations}</div>
-        <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Address</th><th>Key box</th><th>GPS</th><th></th></tr></thead>
-          <tbody>
-            {locations.filter(l=>l.is_active).map(l=>(
-              <tr key={l.id}>
-                <td style={{fontWeight:500}}>{l.name}</td>
-                <td><span className={`badge ${l.location_type==='fixed'?'badge-green':'badge-amber'}`}>{l.location_type}</span></td>
-                <td style={{fontSize:12,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.address}</td>
-                <td style={{fontSize:12}}>{l.notes || '—'}</td>
-                <td>{l.gps_lat ? <span className="badge badge-navy">✓</span> : hasMapsLink(l.address, l.name) ? <span className="badge badge-green">🗺</span> : '—'}</td>
-                <td style={{display:'flex',gap:4}}>
-                  <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>✏️</button>
-                  <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l.id)}>✕</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="card-title">{tr('Places', '場所', 'Locais')} ({places.length})</div>
+        <div style={{display:'grid',gap:8}}>
+          {places.map(l => (
+            <div key={l.id} style={{display:'flex',gap:10,alignItems:'flex-start',flexWrap:'wrap',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:10,background:l.fromContract?'rgba(245,158,11,0.06)':'var(--surface)'}}>
+              <div style={{flex:'1 1 220px',minWidth:0}}>
+                <div style={{fontWeight:700}}>{l.name} {l.client_id && <span style={{fontWeight:400,color:'var(--text3)',fontSize:12}}>· {clientName(l.client_id)}</span>}</div>
+                <div style={{fontSize:12,color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.address || '—'}</div>
+                <div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>
+                  📄 {l.contracts.length ? l.contracts.map(c => `${c.location_name}${c.price_per_visit ? ` ¥${Number(c.price_per_visit).toLocaleString()}` : ''}`).join(' · ') : tr('No contract yet', '契約なし', 'Sem contrato ainda')}
+                </div>
+                {l.fromContract && <div style={{fontSize:12,color:'#b45309',fontWeight:700,marginTop:4}}>⚠️ {tr('Only in Contracts — save it as a place', '契約にのみ存在 — 場所として保存してください', 'Só existe em Contratos — salve como local')}</div>}
+              </div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {l.gps_lat ? <span className="badge badge-navy">GPS ✓</span> : hasMapsLink(l.address, l.name) ? <span className="badge badge-green">🗺</span> : null}
+                <Link className="btn btn-sm" to={`/contracts${l.client_id ? `?client=${l.client_id}` : ''}`}>{l.contracts.length ? tr('Contracts', '契約', 'Contratos') : `+ ${tr('Contract', '契約', 'Contrato')}`}</Link>
+                <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>{l.fromContract ? tr('Save as place', '場所として保存', 'Salvar como local') : '✏️'}</button>
+                {!l.fromContract && <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l)} aria-label={tr('Remove', '削除', 'Remover')}>✕</button>}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

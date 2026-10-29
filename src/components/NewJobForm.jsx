@@ -13,6 +13,8 @@ import { tokyoToday } from '../lib/dates'
 import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient } from '../lib/spotContract'
 import { saveSpotContractWithInvoice } from '../lib/spotContractOps'
 import SellerCommissionFields from './SellerCommissionFields'
+import { splitChecklist } from '../lib/agenda'
+import { contractForPlace } from '../lib/places'
 import './new-job.css'
 
 const EMPTY = {
@@ -35,6 +37,7 @@ const sameLoc = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase()
  * last job at that place. Deep cleaning asks which tasks, and they become the employee's checklist.
  */
 export default function NewJobForm({ jobs = [], employees = [], clients = [], locations = [], sellers, onCreated }) {
+  // `locations` = single place list (lib/places.js): saved places + stores that only exist in Contracts.
   const { lang } = useLang()
   const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
   const TYPES = cleaningTypesForLang(lang)
@@ -48,6 +51,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
   const [taskDraft, setTaskDraft] = useState('')
   const [geocoding, setGeocoding] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [showErrors, setShowErrors] = useState(false)
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const updContract = (k, v) => setContractForm(f => ({ ...f, [k]: v }))
   const isSpot = form.job_category === 'spot'
@@ -88,6 +92,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
     const past = jobsAt(loc.name)
     const last = past[0]
     const sameType = past.find(j => getCleaningType(j) === form.cleaning_type)
+    const contract = contractForPlace(loc, form.cleaning_type)
     setOtherPlace(false)
     setQuery('')
     setForm(f => ({
@@ -98,12 +103,13 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       gps_lat: loc.gps_lat || '',
       gps_lng: loc.gps_lng || '',
       description: loc.notes || '',
-      client_id: last?.client_id || f.client_id,
+      client_id: loc.client_id || contract?.client_id || last?.client_id || f.client_id,
       employee_id: f.employee_id || last?.employee_id || '',
       scheduled_time: f.scheduled_time || (last?.scheduled_time || '').slice(0, 5),
-      value: valueTouched ? f.value : Number(sameType?.value ?? last?.value ?? f.value) || 0,
+      // Value comes from the place's contract; the last job here is only a fallback.
+      value: valueTouched ? f.value : Number(contract?.price_per_visit || sameType?.value || last?.value || f.value) || 0,
     }))
-    const cli = clients.find(c => c.id === last?.client_id)
+    const cli = clients.find(c => c.id === (loc.client_id || contract?.client_id || last?.client_id))
     if (cli) setContractForm(f => ({ ...f, ...contractPrefillFromClient(cli) }))
   }
 
@@ -113,10 +119,12 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
 
   const setType = (type) => {
     const sameType = lastOfType(type)
+    const contract = selectedLoc ? contractForPlace(selectedLoc, type) : null
+    const fromContract = Number(contract?.price_per_visit) || 0
     setForm(f => ({
       ...f,
       cleaning_type: type,
-      value: valueTouched || !sameType ? f.value : Number(sameType.value) || 0,
+      value: valueTouched ? f.value : fromContract || (sameType ? Number(sameType.value) || 0 : f.value),
     }))
   }
 
@@ -124,10 +132,11 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
     ...f,
     deep_tasks: f.deep_tasks.includes(id) ? f.deep_tasks.filter(x => x !== id) : [...f.deep_tasks, id],
   }))
+  // Several lines pasted at once become several tasks (they used to be glued into one line).
   const addCustomTask = () => {
-    const t = cleanCustomTask(taskDraft)
-    if (!t) return
-    setForm(f => ({ ...f, custom_tasks: f.custom_tasks.includes(t) ? f.custom_tasks : [...f.custom_tasks, t] }))
+    const list = splitChecklist(taskDraft).map(cleanCustomTask).filter(Boolean)
+    if (!list.length) return
+    setForm(f => ({ ...f, custom_tasks: [...f.custom_tasks, ...list.filter(t => !f.custom_tasks.includes(t))] }))
     setTaskDraft('')
   }
   const removeCustomTask = t => setForm(f => ({ ...f, custom_tasks: f.custom_tasks.filter(x => x !== t) }))
@@ -149,7 +158,9 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
     return isDeep ? buildDeepTaskTitle(base, form.deep_tasks, form.custom_tasks) : applyCleaningTypeToTitle(base, 'basic')
   })()
   const isCatalogPlace = !!LOCATION_CHECKLISTS[resolveChecklistLocationName(form.title)]
-  const autoChecklist = finalTitle ? checklistTemplateForJob({ title: finalTitle }) : ''
+  const placeContract = selectedLoc ? contractForPlace(selectedLoc, form.cleaning_type) : null
+  const contractChecklist = splitChecklist(selectedLoc?.checklist || placeContract?.training_checklist).join('\n')
+  const autoChecklist = finalTitle ? (checklistTemplateForJob({ title: finalTitle }) || contractChecklist) : ''
   const checklistText = checklistEdited ? form.checklist_template : autoChecklist
   const employeeSees = finalTitle ? parseChecklistTemplate(checklistTemplateForJob({ title: finalTitle, checklist_template: checklistText })) : []
 
@@ -173,9 +184,11 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
   ].filter(Boolean)
 
   const create = async (another) => {
-    if (missing.length) return toast.error(`${L('Missing', '未入力', 'Falta')}: ${missing.join(', ')}`)
-    if (isDeep && !form.deep_tasks.length && !form.custom_tasks.length) {
-      return toast.error(L('Pick what must be done in the deep clean', 'ディープ清掃の作業を選んでください', 'Escolha o que deve ser feito na limpeza pesada'))
+    if (missing.length || (isDeep && !form.deep_tasks.length && !form.custom_tasks.length)) {
+      // The error shows on the field itself; the page scrolls to the first one.
+      setShowErrors(true)
+      setTimeout(() => document.querySelector('.nj-field-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30)
+      return
     }
     setSaving(true)
     const emp = employees.find(e => e.id === form.employee_id)
@@ -194,7 +207,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       value: parseFloat(form.value) || 0,
       spot_value: parseFloat(form.spot_value) || 0,
       description: form.description,
-      checklist_template: checklistText || null,
+      checklist_template: splitChecklist(checklistText).join('\n') || null,
       photo_required: form.photo_required,
       job_category: form.job_category,
       status: 'assigned',
@@ -219,6 +232,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
     setContractForm(emptySpotContractForm())
     setValueTouched(false)
     setChecklistEdited(false)
+    setShowErrors(false)
     setOtherPlace(false)
     // "Create and add another" keeps who / when / type so a day can be filled place by place.
     setForm(another
@@ -247,6 +261,8 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       {/* 1 — where */}
       <section className="nj-step">
         <div className="nj-step-head"><span className="nj-num">1</span>{L('Where?', 'どこ？', 'Onde?')}</div>
+        {showErrors && !form.title && <div className="nj-field-error">⚠️ {L('Pick the place', '場所を選んでください', 'Escolha o local')}</div>}
+        {showErrors && form.title && !form.address && <div className="nj-field-error">⚠️ {L('Type the address or a Google Maps link', '住所かGoogleマップのリンクを入力', 'Digite o endereço ou um link do Google Maps')}</div>}
         {form.title && !otherPlace ? (
           <div className="nj-picked">
             <div className="nj-picked-main">
@@ -310,6 +326,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
 
         {isDeep && (
           <div className="nj-deep">
+            {showErrors && !form.deep_tasks.length && !form.custom_tasks.length && <div className="nj-field-error">⚠️ {L('Pick what must be done in the deep clean', 'ディープ清掃の作業を選んでください', 'Escolha o que deve ser feito na limpeza pesada')}</div>}
             <div className="nj-deep-head">
               <b>{L('What must be done?', '何をしますか？', 'O que deve ser feito?')}</b>
               <span>{L('Tap all that apply', '該当するものをすべてタップ', 'Toque em tudo que vale')}</span>
@@ -356,6 +373,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       {/* 3 — who */}
       <section className="nj-step">
         <div className="nj-step-head"><span className="nj-num">3</span>{L('Who?', '誰が？', 'Quem?')}</div>
+        {showErrors && !form.employee_id && <div className="nj-field-error">⚠️ {L('Pick who does it', '担当者を選んでください', 'Escolha quem faz')}</div>}
         <div className="nj-chips">
           {employeeOrder.map(e => (
             <button key={e.id} type="button" className={`nj-chip${form.employee_id === e.id ? ' on' : ''}`} onClick={() => upd('employee_id', e.id)}>
@@ -368,6 +386,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       {/* 4 — when */}
       <section className="nj-step">
         <div className="nj-step-head"><span className="nj-num">4</span>{L('When?', 'いつ？', 'Quando?')}</div>
+        {showErrors && !form.scheduled_date && <div className="nj-field-error">⚠️ {L('Pick the date', '日付を選んでください', 'Escolha a data')}</div>}
         <div className="nj-chips">
           {dateChips.map(c => (
             <button key={c.d} type="button" className={`nj-chip${form.scheduled_date === c.d ? ' on' : ''}`} onClick={() => upd('scheduled_date', c.d)}>{c.label}</button>
@@ -389,7 +408,8 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
           <label>
             {isSpot ? L('⚡ Spot value (¥) — added to salary', '⚡ スポット額（¥）', '⚡ Valor do spot (¥) — vai pro salário') : L('Job value (¥)', '金額（¥）', 'Valor (¥)')}
             <input type="number" inputMode="numeric" value={form[valueKey]} onChange={e => { setValueTouched(true); upd(valueKey, e.target.value) }} />
-            {!isSpot && lastValue != null && Number(lastValue) !== Number(form.value) && (
+            {!isSpot && placeContract?.price_per_visit > 0 && <small className="nj-muted">📄 {L('From the contract', '契約から', 'Do contrato')}: ¥{Number(placeContract.price_per_visit).toLocaleString()}</small>}
+            {!isSpot && !placeContract && lastValue != null && Number(lastValue) !== Number(form.value) && (
               <button type="button" className="nj-link" onClick={() => upd('value', Number(lastValue) || 0)}>
                 {L('Last time', '前回', 'Última vez')}: ¥{Number(lastValue).toLocaleString()}
               </button>
