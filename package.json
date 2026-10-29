@@ -47,13 +47,16 @@
     "test:jobs-period": "node scripts/test-jobs-period.mjs",
     "test:maps-link": "node scripts/test-maps-link.mjs",
     "test:facility": "npx vite-node scripts/test-facility-model.mjs",
-    "test:quick-round": "npx vite-node scripts/test-quick-round.mjs"
+    "test:quick-round": "npx vite-node scripts/test-quick-round.mjs",
+    "test:job-due-alert": "npx vite-node scripts/test-job-due-alert.mjs",
+    "test:team-chat": "node scripts/test-team-chat.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "heic2any": "^0.0.4",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "leaflet": "^1.9.4",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",

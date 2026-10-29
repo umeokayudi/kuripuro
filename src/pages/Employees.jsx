@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import AvailabilityAdmin from '../components/AvailabilityAdmin'
 import NfcClockAdmin from '../components/NfcClockAdmin'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
-import { useLang } from '../hooks/useLang'
+import { useLang, pickLang } from '../hooks/useLang'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -165,6 +165,7 @@ export default function Employees() {
                 <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:15,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{e.full_name}<RoleBadge value={e.job_role} lang={lang} /></div>
                   <div style={{fontSize:12,color:'var(--text3)'}}>{e.email} · {e.contract_type}</div>
+                  {e.leader_id && <div style={{fontSize:12,color:'var(--text2)'}}>{pickLang(lang, 'Leader', 'リーダー', 'Líder')}: <b>{employees.find(x=>x.id===e.leader_id)?.full_name || '—'}</b></div>}
                 </div>
                 <span className={`badge ${e.is_active?'badge-green':'badge-red'}`}>{e.is_active?'Active':'Inactive'}</span>
               </div>

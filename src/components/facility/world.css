@@ -230,3 +230,38 @@ body:has(.kw-root) .kp-ai-trigger { bottom: 18px; }
 }
 .kw-inspect { overflow: hidden; width: 380px; }
 @media (max-width: 760px) { .kw-inspect.sheet { width: auto; } }
+.kw-mapbtn { height: 48px; font-size: 14px; }
+.kw-mapbtn.on { border-color: var(--kw-gold); color: #fde68a; }
+
+/* v1.0.90 · mesmo mundo, só para ver, por cima do portal do funcionário e do cliente */
+.kw-root.kw-overlay { position: fixed; inset: 0; z-index: 1000; height: 100vh; height: 100dvh; }
+.kw-chip-btn.gold { background: linear-gradient(135deg, #f5c76a, #d99a2b); color: #2a1a00; border-color: transparent; }
+.kw-chip-btn.gold span { display: inline; }
+.kw-recs { margin-bottom: 10px; }
+.kw-recs-title { font-weight: 800; font-size: 13px; margin: 2px 2px 8px; color: var(--kw-gold); }
+.kw-mywork {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px; margin-bottom: 6px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--kw-line); border-radius: 12px;
+}
+.kw-mywork:hover { border-color: var(--kw-gold); }
+.kw-mywork-img { width: 44px; height: 44px; border-radius: 10px; overflow: hidden; flex: none; display: grid; place-items: center; background: rgba(34,197,94,0.15); font-size: 20px; }
+.kw-mywork-img img { width: 100%; height: 100%; object-fit: cover; }
+.kw-mywork-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.kw-mywork-text strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-mywork-text small { font-size: 12px; color: rgba(255,255,255,0.6); }
+.kw-mywork time { font-size: 12px; font-weight: 700; color: var(--kw-green); }
+.kw-modal { position: absolute; inset: 0; z-index: 60; background: rgba(2,8,18,0.6); display: grid; place-items: center; padding: 16px; }
+.kw-quote {
+  width: min(420px, 100%); background: #0f1f36; border: 1px solid var(--kw-line); border-radius: 18px; padding: 18px;
+  display: flex; flex-direction: column; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.kw-quote h3 { margin: 0; font-size: 18px; }
+.kw-quote p { margin: 0; font-size: 13px; color: rgba(255,255,255,0.7); }
+.kw-quote label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; }
+.kw-quote textarea, .kw-quote input {
+  font: inherit; font-weight: 400; color: #f1f5f9; background: rgba(255,255,255,0.06); border: 1px solid var(--kw-line); border-radius: 12px; padding: 10px 12px;
+}
+.kw-quote input { color-scheme: dark; }
+.kw-quote-btns { display: flex; gap: 8px; }
+.kw-quote-btns button { flex: 1; height: 46px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--kw-line); font-weight: 800; }
+.kw-quote-btns button.primary { background: linear-gradient(135deg, #f5c76a, #d99a2b); color: #2a1a00; border-color: transparent; }

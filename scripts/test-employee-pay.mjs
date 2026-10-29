@@ -37,6 +37,9 @@ function testIsStaleActiveJob() {
   assert(isStaleActiveJob(job, '2026-09-10', 100) === true, 'old date')
   assert(isStaleActiveJob({ status: 'in_progress', scheduled_date: '2026-09-10' }, '2026-09-10', 13 * 3600) === true, '12h+')
   assert(isStaleActiveJob({ status: 'assigned', scheduled_date: '2026-09-08' }, '2026-09-10', 100) === false, 'not in progress')
+  // 23:00 job still running after midnight is not a forgotten shift
+  assert(isStaleActiveJob({ status: 'in_progress', scheduled_date: '2026-10-25' }, '2026-10-26', 100 * 60) === false, 'night job past midnight')
+  assert(isStaleActiveJob({ status: 'in_progress', scheduled_date: '2026-10-31' }, '2026-11-01', 60) === false, 'month boundary')
 }
 
 function testClientValue() {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
@@ -17,9 +17,14 @@ import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
 import { VOICE_EVERY_SEC, voicePrefOn, setVoicePref, voiceMessage, speak, unlockSpeech, canSpeak } from '../lib/voiceAlert'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
+import { dueAlertJobs, dueAlertSlot, acceptSpotUpdate, isBrokenRunningJob, isPendingSpot } from '../lib/jobDueAlert'
+import JobDueAlert, { ringDueAlert } from '../components/JobDueAlert'
 import { locationFromJob } from '../lib/clientPortal'
 import FacilityModal from '../components/facility/FacilityModal'
+// v1.0.90 · Kuripuro World só para ver (three.js baixa só quando abre)
+const FacilityWorld = lazy(() => import('./Facility'))
 import EmployeeChat from '../components/EmployeeChat'
+import { OFFICE_KEY, buildChatSections, officeThread, threadWith, teamUnreadTotal } from '../lib/teamChat'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { photoMessage, chatPreview } from '../lib/chatContent'
 import toast from 'react-hot-toast'
@@ -172,6 +177,13 @@ export default function EmployeePortal() {
   const [newMsg, setNewMsg] = useState('')
   const [sendingChatPhoto, setSendingChatPhoto] = useState(false)
   const [chatLightbox, setChatLightbox] = useState(null)
+  // v1.0.72 · chat with coworkers / own leader (team_messages); office chat stays in messages
+  const [teamReady, setTeamReady] = useState(false)
+  const [coworkers, setCoworkers] = useState([])
+  const [teamMessages, setTeamMessages] = useState([])
+  const [chatKey, setChatKey] = useState(null)
+  const coworkersRef = useRef([])
+  coworkersRef.current = coworkers
   const [badges, setBadges] = useState([])
   const [clock, setClock] = useState(new Date())
   const [empScore, setEmpScore] = useState(100)
@@ -204,7 +216,7 @@ export default function EmployeePortal() {
   const nfcEndRef = useRef(null)
   useEffect(() => { if (user?.id) loadNfcConfig(supabase, user.id).then(setNfcConfig) }, [user?.id])
   const [retroSignOpen, setRetroSignOpen] = useState(false)
-  const [unreadMsgs, setUnreadMsgs] = useState(0)
+  const [officeUnread, setOfficeUnread] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [serviceContracts, setServiceContracts] = useState([])
   const [trainingModal, setTrainingModal] = useState(null)
@@ -216,6 +228,9 @@ export default function EmployeePortal() {
   const [overdueBusy, setOverdueBusy] = useState(null)
   const [todayAllJobs, setTodayAllJobs] = useState([])
   const [userScrolled, setUserScrolled] = useState(false)
+  const teamUnread = teamUnreadTotal(teamMessages, user.id)
+  const unreadMsgs = officeUnread + teamUnread
+  const chatOnOffice = !teamReady || chatKey === OFFICE_KEY
 
   const timerRef = useRef()
   const clockRef = useRef()
@@ -245,7 +260,7 @@ export default function EmployeePortal() {
   useEffect(() => {
     loadAll()
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
-    const msgPoll = setInterval(loadMessages, 10000)
+    const msgPoll = setInterval(() => { loadMessages(); loadTeamMessages() }, 10000)
     // Ping presence every 60s
     const pingPresence = async () => {
       const update = { last_seen: new Date().toISOString(), is_online: true }
@@ -340,13 +355,22 @@ export default function EmployeePortal() {
 
   useEffect(() => {
     if (tab==='chat') {
-      markRead()
+      if (chatOnOffice) { if (officeUnread > 0) markRead() }
+      else if (chatKey && teamMessages.some(m=>m.from_employee_id===chatKey&&m.to_employee_id===user.id&&!m.read)) markTeamRead(chatKey)
       // Only auto-scroll if user hasn't scrolled up
       if (!userScrolled) {
         setTimeout(()=>msgEndRef.current?.scrollIntoView({behavior:'smooth'}),100)
       }
     }
-  }, [tab, messages])
+  }, [tab, messages, teamMessages, chatKey])
+
+  // Phones open the people list first; wider screens open the leader (or the office) beside it.
+  useEffect(() => {
+    if (tab!=='chat' || !teamReady || chatKey) return
+    if (window.matchMedia('(min-width: 821px)').matches) setChatKey(coworkers.find(c=>c.id===user.id)?.leader_id || OFFICE_KEY)
+  }, [tab, teamReady])
+
+  const openChat = (key) => { setChatKey(key); setNewMsg(''); setUserScrolled(false) }
 
   const handleChatScroll = (e) => {
     const el = e.target
@@ -383,6 +407,19 @@ export default function EmployeePortal() {
     if (emp.data) { setEmpScore(emp.data.score||100); setEmpData(emp.data) }
     let inProgress = regular.find(j=>j.status==='in_progress')
     if (!inProgress) inProgress = allVisible.find(j => j.status === 'in_progress')
+    if (!inProgress) {
+      // A running job that was put back on 'assigned' (old Accept button) still has its start: reopen it.
+      const broken = allVisible.find(j => isBrokenRunningJob(j))
+      if (broken) {
+        const { data: reopened } = await supabase.from('jobs').update({ status: 'in_progress' })
+          .eq('id', broken.id).eq('status', 'assigned').not('started_at', 'is', null).select().maybeSingle()
+        if (reopened) {
+          inProgress = reopened
+          const i = allVisible.findIndex(j => j.id === reopened.id)
+          if (i >= 0) allVisible[i] = reopened
+        }
+      }
+    }
     if (inProgress && !allVisible.some(j => j.id === inProgress.id)) allVisible.unshift(inProgress)
     setJobs(regular); setSpotJobs(spots); setAllJobs(allVisible)
     if (inProgress) {
@@ -400,6 +437,7 @@ export default function EmployeePortal() {
     }
     calcSalary(enrichJobValues(allVisible, contractsRes.data || []), emp.data, monthPay.data||[])
     loadMessages()
+    loadTeam()
     awardBadges(allVisible, bdg.data||[])
     loadStatement()
     loadWeekPlans()
@@ -445,12 +483,42 @@ export default function EmployeePortal() {
       }
       return data||[]
     })
-    setUnreadMsgs(newUnread)
+    setOfficeUnread(newUnread)
   }
 
   const markRead = async () => {
     await supabase.from('messages').update({read:true}).eq('employee_id',user.id).eq('sender','admin').eq('read',false)
-    setUnreadMsgs(0)
+    setOfficeUnread(0)
+  }
+
+  const loadTeam = async () => {
+    const { data, error } = await supabase.from('employees').select('id,full_name,job_role,leader_id,is_active').eq('is_active', true).order('full_name')
+    if (error) { setTeamReady(false); return }
+    setCoworkers(data || [])
+    const ok = await loadTeamMessages()
+    setTeamReady(ok)
+  }
+
+  const loadTeamMessages = async () => {
+    const { data, error } = await supabase.from('team_messages').select('*')
+      .or(`from_employee_id.eq.${user.id},to_employee_id.eq.${user.id}`)
+      .order('created_at', { ascending:false }).limit(400)
+    if (error) return false
+    setTeamMessages(prev => {
+      const known = new Set(prev.map(m=>m.id))
+      const fresh = prev.length > 0 ? (data||[]).filter(m=>!known.has(m.id)&&m.to_employee_id===user.id) : []
+      if (fresh.length) {
+        const name = coworkersRef.current.find(c=>c.id===fresh[0].from_employee_id)?.full_name
+        toast(fill(e.chatNewFrom, { name: name || '…' }), { icon:'💬', duration:4000 })
+      }
+      return data || []
+    })
+    return true
+  }
+
+  const markTeamRead = async (fromId) => {
+    setTeamMessages(prev => prev.map(m => m.from_employee_id===fromId&&m.to_employee_id===user.id ? { ...m, read:true } : m))
+    await supabase.from('team_messages').update({ read:true }).eq('from_employee_id', fromId).eq('to_employee_id', user.id).eq('read', false)
   }
 
   const markEmployeeMsgRead = async (msgId) => {
@@ -462,11 +530,14 @@ export default function EmployeePortal() {
   const sendMessage = async (preset) => {
     const text = String(preset ?? newMsg).trim()
     if (!text) return false
-    const { error } = await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:text, read:false })
+    const toOffice = chatOnOffice
+    const { error } = toOffice
+      ? await supabase.from('messages').insert({ employee_id:user.id, employee_name:user.name, sender:'employee', content:text, read:false })
+      : await supabase.from('team_messages').insert({ from_employee_id:user.id, to_employee_id:chatKey, content:text })
     if (error) { toast.error(error.message); return false }
     if (preset === undefined) setNewMsg('')
     setUserScrolled(false)
-    loadMessages()
+    if (toOffice) loadMessages(); else loadTeamMessages()
     return true
   }
 
@@ -474,7 +545,8 @@ export default function EmployeePortal() {
     if (!file || sendingChatPhoto) return
     setSendingChatPhoto(true)
     try {
-      const path = await uploadJobPhoto(`jobs/chat/employee/${user.id}/${crypto.randomUUID()}.jpg`, file)
+      const folder = chatOnOffice ? 'employee' : 'team'
+      const path = await uploadJobPhoto(`jobs/chat/${folder}/${user.id}/${crypto.randomUUID()}.jpg`, file)
       await sendMessage(photoMessage(path))
     } catch (err) {
       toast.error(err?.message || L('Upload failed', 'アップロードに失敗しました', 'Falha no envio'))
@@ -567,8 +639,14 @@ export default function EmployeePortal() {
   }
 
   const handleAcceptSpot = async (job) => {
-    await supabase.from('jobs').update({ spot_status:'accepted',status:'assigned',spot_responded_at:new Date().toISOString() }).eq('id',job.id)
-    toast.success(`${L('Accepted!', '承諾しました！', 'Aceito!')} +¥${Number(job.spot_value||0).toLocaleString()}`); loadAll()
+    // Read the job again: if it was already started, accepting must not touch its status or timer.
+    const { data: fresh } = await supabase.from('jobs').select('id,status,started_at').eq('id', job.id).maybeSingle()
+    const fields = acceptSpotUpdate(fresh || job)
+    let q = supabase.from('jobs').update(fields).eq('id', job.id)
+    if (fields.status) q = q.neq('status', 'in_progress')
+    const { error } = await q
+    if (error) { toast.error(error.message); return }
+    toast.success(`${e.spotAccepted || L('Accepted!', '承諾しました！', 'Aceito!')} +¥${Number(job.spot_value||0).toLocaleString()}`); loadAll()
   }
   const handleDeclineSpot = async (job) => {
     await supabase.from('jobs').update({ spot_status:'declined',status:'cancelled',spot_responded_at:new Date().toISOString() }).eq('id',job.id)
@@ -853,7 +931,10 @@ export default function EmployeePortal() {
         if (!proceed) { setGpsStatus(''); return }
       }
       const photoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
-      const { data, error } = await supabase.from('jobs').update({ status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }).eq('id',job.id).select().maybeSingle()
+      const startFields = { status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }
+      // Starting a spot offer means taking it: it is accepted at the same time.
+      if (isPendingSpot(job)) Object.assign(startFields, { spot_status:'accepted', spot_responded_at:startFields.started_at })
+      const { data, error } = await supabase.from('jobs').update(startFields).eq('id',job.id).select().maybeSingle()
       if (error || !data) { toast.error(error?.message || e.startError); return }
       const gpsFields = {
         start_lat: gpsResult.pos?.lat ?? null, start_lng: gpsResult.pos?.lng ?? null, start_accuracy: gpsResult.pos?.acc ?? null,
@@ -990,6 +1071,7 @@ export default function EmployeePortal() {
       }).eq('id',job.id)
       if (coreErr) throw coreErr
       finishQuoteJob(job.id) // job from an accepted quote → its invoice goes to the client
+      window.dispatchEvent(new Event('kp:facility-updated'))
       await saveNfcResult(supabase, job.id, 'end', nfcEndRef.current)
       nfcEndRef.current = null
       try {
@@ -1194,6 +1276,9 @@ export default function EmployeePortal() {
 
   const planAlert = planningAlert(weekPlans, today)
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
+  const chatSections = teamReady ? buildChatSections({ me:user, employees:coworkers, teamMessages, officeMessages:messages, teamReady }) : null
+  const lastTeamUnread = teamMessages.find(m=>m.to_employee_id===user.id&&!m.read)
+  const chatMenuPreview = officeUnread>0&&lastAdminMsg ? lastAdminMsg.content : lastTeamUnread ? lastTeamUnread.content : null
   const menuItems = [
     {key:'home',icon:'🏠',label:e.dashboard},
     {key:'shift',icon:'🗺',label:e.todayShift},
@@ -1203,10 +1288,11 @@ export default function EmployeePortal() {
     {key:'salary',icon:'💴',label:e.salary},
     {key:'transport',icon:'🚃',label:e.transport},
     {key:'equipment',icon:'🧰',label:e.equipment},
-    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&lastAdminMsg?chatPreview(lastAdminMsg.content, '📷').substring(0,30):null},
+    {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
     {key:'calendar',icon:'📆',label:e.calendar},
     {key:'availability',icon:'🗓',label:e.availability,badge:planAlert?1:0},
     {key:'achievements',icon:'🏆',label:e.achievements},
+    ...(facilityIndex.some(m=>m.status==='approved') ? [{key:'world',icon:'🌏',label:tr.facility.tab}] : []),
   ]
 
   const bottomTabs = [
@@ -1223,6 +1309,7 @@ export default function EmployeePortal() {
     {icon:'🚃',label:e.transport,hint:e.transportHint,run:()=>goToTab('transport')},
     {icon:'🧰',label:e.equipment,hint:e.equipmentHint,run:()=>goToTab('equipment')},
     {icon:'✉',label:e.chat,hint:e.chatHint,run:()=>goToTab('chat')},
+    facilityIndex.some(m=>m.status==='approved')&&{icon:'🌏',label:tr.facility.tab,hint:tr.facility.world?.myWork,run:()=>goToTab('world')},
   ].filter(Boolean)
 
   const currentTabLabel = menuItems.find(m=>m.key===tab)?.label
@@ -1237,7 +1324,7 @@ export default function EmployeePortal() {
   const timeOffNotices = unseenDecisions(myTimeOff, seenTimeOff)
   const salaryNotices = salaryAnswers.filter(c => !seenAnswers.has(answerKey(c)))
   const payslipPending = !!statement && !statement.employee_confirmed_at && !statement.employee_disputed_at && canConfirmPeriod(statement.period)
-  const bellCount = unreadMsgs + timeOffNotices.length + salaryNotices.length + (payslipPending ? 1 : 0)
+  const bellCount = unreadMsgs + timeOffNotices.length + salaryNotices.length + (payslipPending ? 1 : 0) + spotJobs.length
 
   // Home opens the salary pop-up by itself once per visit: an answer first, then the payslip to confirm.
   useEffect(() => {
@@ -1330,6 +1417,44 @@ export default function EmployeePortal() {
     const id = setInterval(load, 5 * 60000)
     return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id) }
   }, [])
+  // Job due / spot to accept: pop-up + sound + voice now, then again every 5 minutes until answered.
+  const [dueAlert, setDueAlert] = useState(null)
+  const dueSeenRef = useRef({})
+  const dueMinute = Math.floor(clock.getTime() / 60000)
+  const dueList = useMemo(() => {
+    const list = dueAlertJobs(allJobs, { activeJobId: activeJob?.id, hasActiveJob: !!activeJob })
+    // Quick round (Alexandre) ticks places off its own list: only spot offers alert there.
+    return quickRoundOn ? list.filter(x => x.kind === 'accept') : list
+  }, [allJobs, activeJob, quickRoundOn, dueMinute]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!dueList.length) { setDueAlert(null); return }
+    const next = dueList.find(x => dueSeenRef.current[x.job.id] !== dueAlertSlot(x.past))
+    if (next) {
+      dueSeenRef.current[next.job.id] = dueAlertSlot(next.past)
+      setDueAlert(next)
+      ringDueAlert(next, { labels: e, lang, voiceOn })
+    } else {
+      setDueAlert(cur => cur ? dueList.find(x => x.job.id === cur.job.id) || null : null)
+    }
+  }, [dueList]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Jobs the admin adds or offers while the app is open show up without reopening it.
+  const activeJobRef = useRef(null)
+  activeJobRef.current = activeJob
+  useEffect(() => {
+    const refresh = () => { if (!activeJobRef.current && document.visibilityState === 'visible') loadAll() }
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    document.addEventListener('visibilitychange', onVisible)
+    const id = setInterval(refresh, 3 * 60000)
+    return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(id) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goStartDueJob = (job) => {
+    setDueAlert(null)
+    setTab('shift')
+    setTimeout(() => document.getElementById(`job-card-${job.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+  }
+
   const hasFacility = (job) => !!job?.client_id && facilityIndex.some(m => m.client_id === job.client_id
     && (!m.location_name || m.location_name === locationFromJob(job)))
 
@@ -1407,6 +1532,11 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {dueAlert&&<JobDueAlert item={dueAlert} others={Math.max(0, dueList.length - 1)} labels={e}
+        onAccept={async job=>{ await handleAcceptSpot(job); setDueAlert(null) }}
+        onDecline={async job=>{ await handleDeclineSpot(job); setDueAlert(null) }}
+        onGoStart={goStartDueJob}
+        onLater={()=>setDueAlert(null)} />}
       {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} job={facilityJob} employee={{ id: user?.id, name: user?.name }} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
@@ -1713,7 +1843,7 @@ export default function EmployeePortal() {
             {(()=>{
               const pendingClaims=claims.filter(c=>c.status==='pending').length
               const pendingEquipment=equipmentRequests.filter(r=>['pending','requested'].includes(r.status)).length
-              const notifications=bellCount+spotJobs.length
+              const notifications=bellCount
               return (
                 <div className="ex-duo">
                   <button type="button" className="ex-tile" onClick={()=>goToTab(pendingClaims||!pendingEquipment?'transport':'equipment')}>
@@ -1825,7 +1955,7 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
           {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
           </section>
         )}
 
@@ -2036,7 +2166,12 @@ export default function EmployeePortal() {
         {/* CHAT */}
         {tab==='chat'&&(
           <EmployeeChat
-            messages={messages}
+            messages={chatOnOffice ? officeThread(messages) : threadWith(teamMessages, user.id, chatKey)}
+            teamReady={teamReady}
+            sections={chatSections}
+            activeKey={teamReady ? chatKey : OFFICE_KEY}
+            onOpen={openChat}
+            onBack={()=>setChatKey(null)}
             labels={e}
             lang={lang}
             value={newMsg}
@@ -2048,7 +2183,7 @@ export default function EmployeePortal() {
             containerRef={chatContainerRef}
             endRef={msgEndRef}
             onScroll={handleChatScroll}
-            unreadBelow={userScrolled ? unreadMsgs : 0}
+            unreadBelow={userScrolled ? (chatOnOffice ? officeUnread : teamMessages.filter(m=>m.from_employee_id===chatKey&&m.to_employee_id===user.id&&!m.read).length) : 0}
             onJumpDown={()=>{setUserScrolled(false);msgEndRef.current?.scrollIntoView({behavior:'smooth'})}}
           />
         )}
@@ -2065,6 +2200,11 @@ export default function EmployeePortal() {
           <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
         )}
 
+        {tab==='world'&&(
+          <Suspense fallback={null}>
+            <FacilityWorld audience="employee" viewer={{ id:user.id, name:user.name }} onClose={()=>setTab('home')} />
+          </Suspense>
+        )}
         {tab==='achievements'&&(
           <div>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:14}}>{fill(e.badgesEarned,{earned:badges.length,total:BADGE_DEFS.length})}</div>
@@ -2156,7 +2296,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2295,7 +2435,7 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
         const hasTraining = trainingContract?.training_video_url
 
         return (
-          <div key={job.id} id={isActive?'active-job-card':undefined}
+          <div key={job.id} id={isActive?'active-job-card':`job-card-${job.id}`}
             onClick={()=>{ if(isDone&&setSelectedJob) setSelectedJob(job) }}
             style={{...S.card,marginBottom:10,opacity:isDone?0.85:1,cursor:isDone?'pointer':'default',border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(74,222,128,0.2)':'1px solid rgba(255,255,255,0.08)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isActive||isNext||isDone?8:0}}>
@@ -2421,7 +2561,17 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
               </div>
             )})()}
 
-            {isNext&&(
+            {isNext&&isPendingSpot(job)&&onAcceptSpot&&(
+              <div style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.35)',borderRadius:12,padding:12}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#c19c56',marginBottom:10,lineHeight:1.5}}>⚡ {labels.spotAcceptFirst}</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <button type="button" onClick={()=>onDeclineSpot?.(job)} style={{padding:'13px',borderRadius:12,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.55)',fontSize:14,fontWeight:700,cursor:'pointer'}}>✕ {labels.decline}</button>
+                  <button type="button" onClick={()=>onAcceptSpot(job)} style={{padding:'13px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer'}}>✅ {labels.accept}</button>
+                </div>
+              </div>
+            )}
+
+            {isNext&&!(isPendingSpot(job)&&onAcceptSpot)&&(
               <div>
                 {hasTraining&&(
                   <button type="button" onClick={()=>onOpenTraining({ job, contract: trainingContract })} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
