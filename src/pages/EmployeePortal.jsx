@@ -137,6 +137,7 @@ export default function EmployeePortal() {
   const [quickOpen, setQuickOpen] = useState(false)
   const [jobs, setJobs] = useState([])
   const [allJobs, setAllJobs] = useState([])
+  const [reorderBusy, setReorderBusy] = useState(false)
   const [spotJobs, setSpotJobs] = useState([])
   // v1.0.21 · spot contract of the open job (signed on site by the location)
   const [jobContract, setJobContract] = useState(null)
@@ -633,6 +634,38 @@ export default function EmployeePortal() {
     const away = dist > ON_SITE_METERS
     setGpsStatus(away ? `⚠️ ${fill(e.gpsAway, { m: formatDistance(dist) })}` : `✅ ${fill(e.gpsOnSite, { m: formatDistance(dist) })}`)
     return { ok: true, dist, override: away, pos }
+  }
+
+  // Employee changes the order of today's services: swap with the next/previous one still to do,
+  // then renumber the whole day 1..n so sequence_order has no gaps or duplicates.
+  const handleMoveJob = async (job, dir) => {
+    if (reorderBusy) return
+    const day = allJobs.filter(j => j.scheduled_date === job.scheduled_date)
+      .sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+    const movable = j => j.status === 'assigned'
+    const from = day.findIndex(j => j.id === job.id)
+    let to = from + dir
+    while (to >= 0 && to < day.length && !movable(day[to])) to += dir
+    if (from < 0 || to < 0 || to >= day.length) return
+    const order = [...day]
+    ;[order[from], order[to]] = [order[to], order[from]]
+    const changed = order.map((j, i) => ({ id: j.id, seq: i + 1, old: j.sequence_order })).filter(x => x.seq !== x.old)
+    const seqById = Object.fromEntries(changed.map(x => [x.id, x.seq]))
+    const previous = allJobs
+    setAllJobs(list => list.map(j => seqById[j.id] != null ? { ...j, sequence_order: seqById[j.id] } : j))
+    setReorderBusy(true)
+    try {
+      const results = await Promise.all(changed.map(x =>
+        supabase.from('jobs').update({ sequence_order: x.seq }).eq('id', x.id).eq('employee_id', user.id)))
+      const failed = results.find(r => r.error)
+      if (failed) throw failed.error
+      toast.success(e.orderSaved || 'Order saved', { id: 'kp-order-saved' })
+    } catch (err) {
+      setAllJobs(previous)
+      toast.error(err?.message || 'Could not save the order')
+    } finally {
+      setReorderBusy(false)
+    }
   }
 
   const handleAcceptSpot = async (job) => {
@@ -1943,7 +1976,7 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(lang==='ja'?'ja-JP':'en-GB',{weekday:'long',day:'numeric',month:'long'})}</p></div>
           {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
           </section>
         )}
 
@@ -2283,9 +2316,10 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
+function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
+  const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
   const total = todayJobs.length
   const beforePhotos = jobPhotos.filter(p=>p.slot==='start')
@@ -2448,6 +2482,22 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
                 </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
+                {onMoveJob&&movableIds.length>1&&movableIds.includes(job.id)&&(
+                  <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    {[[-1,'▲',labels?.moveUp||'Move up'],[1,'▼',labels?.moveDown||'Move down']].map(([dir,icon,label])=>{
+                      const pos = movableIds.indexOf(job.id)
+                      const edge = dir<0 ? pos===0 : pos===movableIds.length-1
+                      const off = reorderBusy || edge
+                      return (
+                        <button key={dir} type="button" disabled={off} aria-label={label} title={label} aria-hidden={edge||undefined}
+                          onClick={ev=>{ ev.stopPropagation(); onMoveJob(job, dir) }}
+                          style={{width:34,height:26,borderRadius:8,border:'1px solid rgba(255,255,255,0.14)',background:'rgba(255,255,255,0.06)',color:off?'rgba(255,255,255,0.18)':'#fff',fontSize:11,lineHeight:1,cursor:off?'default':'pointer',padding:0,visibility:edge?'hidden':'visible'}}>
+                          {icon}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
                 {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
                 {isDone&&<span style={{fontSize:10,color:'#4ade80',fontWeight:600}}>Ver detalhes ›</span>}
                 {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
