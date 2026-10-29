@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, memo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang, localeOf } from '../hooks/useLang'
@@ -27,6 +27,7 @@ import '../components/assign.css'
 // Two counts stay on top: PROGRAMMED (created × contract) and ASSIGNED (with person × created).
 
 const OWNERS_KEY = 'kp_schedule_route_owners'
+const PAGE = 20
 function readStored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback } catch { return fallback }
 }
@@ -94,6 +95,8 @@ export default function ScheduleGenerator() {
   const [forced, setForced] = useState(() => new Set())
   const [view, setView] = useState('list')
   const [filter, setFilter] = useState('all')
+  // v1.0.102 · the Pending box shows 20 lines at a time ("Show 20 more"), so a month never freezes the screen
+  const [pageSize, setPageSize] = useState(PAGE)
   const [offerFor, setOfferFor] = useState(null)
   const [busy, setBusy] = useState(null)
   const [sqlMissing, setSqlMissing] = useState(false)
@@ -210,6 +213,8 @@ export default function ScheduleGenerator() {
     setRows(rs => rs.map(r => r.key === key ? { ...r, employeeId: id || null, employee: firstName(emp), employeeName: emp?.full_name || null, assignReason: 'manual', why: [] } : r))
   }
   const editRow = (key, patch) => setRows(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r))
+
+  useEffect(() => { setPageSize(PAGE) }, [filter, kind, anchor, month])
 
   // ---- existing jobs waiting for a person ----
   const pendingJobs = useMemo(() => periodJobs
@@ -367,8 +372,9 @@ export default function ScheduleGenerator() {
     : filter === 'new' ? l.kind === 'new'
       : filter === 'job' ? l.kind === 'job'
         : warningsOf(l).length || !l.personId)
+  const page = shown.slice(0, pageSize)
   const byDate = {}
-  shown.forEach(l => { (byDate[l.item.date] = byDate[l.item.date] || []).push(l) })
+  page.forEach(l => { (byDate[l.item.date] = byDate[l.item.date] || []).push(l) })
   const toConfirm = lines.filter(l => l.checked && (l.kind === 'new' || l.personId))
   const accepted = periodJobs.filter(j => j.job_category === 'spot' && j.spot_status === 'accepted' && j.spot_responded_at && Date.now() - new Date(j.spot_responded_at) < 3 * 86400000)
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 100)
@@ -485,6 +491,13 @@ export default function ScheduleGenerator() {
                 ))}
               </div>
             ))}
+            {shown.length > page.length && (
+              <div className="as-more">
+                <span className="as-muted">{tr(`Showing ${page.length} of ${shown.length}`, `${shown.length}件中 ${page.length}件を表示`, `Mostrando ${page.length} de ${shown.length}`)}</span>
+                <button type="button" className="btn btn-sm" onClick={() => setPageSize(n => n + PAGE)}>{tr(`Show ${Math.min(PAGE, shown.length - page.length)} more`, `さらに${Math.min(PAGE, shown.length - page.length)}件`, `Mostrar mais ${Math.min(PAGE, shown.length - page.length)}`)}</button>
+                <button type="button" className="btn btn-sm" onClick={() => setPageSize(shown.length)}>{tr('Show all', 'すべて表示', 'Mostrar todos')}</button>
+              </div>
+            )}
           </>
         )}
 
@@ -520,7 +533,17 @@ export default function ScheduleGenerator() {
   )
 }
 
-function PendingLine({ l, T, tr, ranking, warnings, busy, offerOpen, employees, onToggle, onPerson, onTime, onDo, onOffer, onSendOffer, onCancelOffer }) {
+const PendingLine = memo(PendingLineView, (a, b) => lineSig(a) === lineSig(b))
+
+// What a Pending line shows: it is drawn again only when one of these changes.
+function lineSig(p) {
+  const l = p.l
+  return [l.key, l.kind, l.personId, l.checked, l.reason, l.item.time, l.item.date, (l.why || []).join(','), p.busy, p.offerOpen, p.T?.type?.basic,
+    p.ranking.map(r => `${r.emp.id}:${r.ok}:${r.conflicts.map(c => c.kind).join('+')}`).join('|'),
+    JSON.stringify(p.warnings), p.employees.length].join('§')
+}
+
+function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employees, onToggle, onPerson, onTime, onDo, onOffer, onSendOffer, onCancelOffer }) {
   const it = l.item
   const service = it.title.split(' — ')[1] || ''
   const client = l.row?.client || l.job?.client_name || ''

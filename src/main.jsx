@@ -6,6 +6,9 @@ import './redesign.css'
 import './field-app.css'
 import './brand.css'
 import ErrorBoundary from './ErrorBoundary.jsx'
+import { installChunkRecovery } from './lib/chunkReload'
+
+installChunkRecovery()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

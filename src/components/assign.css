@@ -120,3 +120,5 @@
 .rd-row-top input { width: 18px; height: 18px; margin-top: 2px; }
 .rd-foot { position: sticky; bottom: -16px; background: var(--surface, #fff); padding: 10px 0 2px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .rd-foot .btn { min-height: 42px; }
+.as-more { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; padding: 12px 4px 4px; }
+.as-more .btn { min-height: 40px; }

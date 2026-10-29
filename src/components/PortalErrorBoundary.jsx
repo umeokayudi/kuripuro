@@ -1,4 +1,5 @@
 import { Component } from 'react'
+import { isChunkError, reloadOnceForNewVersion } from '../lib/chunkReload'
 
 /** Isolates portal crashes — rest of the app can still recover via reload. */
 export default class PortalErrorBoundary extends Component {
@@ -8,10 +9,18 @@ export default class PortalErrorBoundary extends Component {
   }
 
   static getDerivedStateFromError(error) {
-    return { error }
+    return { error, updating: isChunkError(error) }
+  }
+
+  // v1.0.102 · new version deployed while the portal was open: reload once by itself.
+  componentDidCatch(error) {
+    if (isChunkError(error) && !reloadOnceForNewVersion()) this.setState({ updating: false })
   }
 
   render() {
+    if (this.state.error && this.state.updating) {
+      return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#334155', fontFamily: 'system-ui' }}>Updating… · 更新中… · Atualizando…</div>
+    }
     if (this.state.error) {
       const label = this.props.label || 'Portal'
       return (
