@@ -74,6 +74,7 @@ import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
 import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
+import { aiIssuesText } from '../lib/photoAi'
 import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
 import {
@@ -1179,7 +1180,7 @@ export default function EmployeePortal() {
       if (ev.nota == null) return
       await supabase.from('jobs').update({
         photo_ai_score: ev.nota ?? null, photo_ai_approved: ev.aprovado ?? null,
-        photo_ai_issues: ev.problemas?.length ? ev.problemas.join(', ') : null,
+        photo_ai_issues: aiIssuesText(ev.problemas),
       }).eq('id', job.id)
       toast(`IA: ${ev.nota}/10${ev.aprovado ? ' ✅' : ' ⚠️'} · ${job.title}`, { duration: 4000 })
     })().catch(ex => console.log('AI photo skipped', ex?.message))

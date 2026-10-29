@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     const mediaType = contentType || 'image/jpeg'
 
     const prompt = `Você é um inspetor de qualidade de limpeza de restaurante/bar. Analise esta foto tirada após a limpeza de "${locationName || 'um local'}". Responda APENAS com um JSON válido, sem nenhum texto fora dele, no formato exato:
-{"nota": <número de 1 a 10>, "aprovado": <true ou false>, "problemas": [<lista curta de problemas visíveis, em português, vazia se não houver>]}
+{"nota": <número de 1 a 10>, "aprovado": <true ou false>, "problemas": [<lista curta, em português, vazia se não houver; cada item no formato "problema visível => o que corrigir", ex.: "gordura no fogão => passar desengordurante e secar">]}
 Considere aprovado (true) apenas se nota >= 7. Seja objetivo: sujeira visível, lixo, bagunça, manchas, poeira acumulada, chão sujo são motivos para reprovar.`
 
     const data = await geminiGenerate({
@@ -35,7 +35,7 @@ Considere aprovado (true) apenas se nota >= 7. Seja objetivo: sujeira visível, 
           { text: prompt },
         ],
       }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 300 },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 500 },
     }, { lowThinking: true })
 
     const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '{}'

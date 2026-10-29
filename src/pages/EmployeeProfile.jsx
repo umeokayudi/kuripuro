@@ -1,3 +1,4 @@
+import { gradeJobPhoto } from '../lib/photoAi'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -114,19 +115,8 @@ export default function EmployeeProfile() {
     if (!job.photo_end_url) return
     setAnalyzingId(job.id)
     try {
-      const resp = await fetch('/api/analyze-photo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photoUrl: job.photo_end_url, locationName: job.title }),
-      })
-      const result = await resp.json().catch(() => ({}))
-      if (!resp.ok) throw new Error(result.error || `HTTP ${resp.status}`)
-      await supabase.from('jobs').update({
-        photo_ai_score: result?.nota ?? null,
-        photo_ai_approved: result?.aprovado ?? null,
-        photo_ai_issues: result?.problemas?.length ? result.problemas.join(', ') : null,
-      }).eq('id', job.id)
-      toast.success(`Analisado: nota ${result?.nota ?? '?'}/10`)
+      const graded = await gradeJobPhoto(job)
+      toast.success(`Analisado: nota ${graded.photo_ai_score ?? '?'}/10`)
       loadAll()
     } catch (e) {
       toast.error('Erro ao analisar: ' + e.message)

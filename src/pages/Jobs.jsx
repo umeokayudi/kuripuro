@@ -18,6 +18,7 @@ import { generateContractForJob } from '../lib/spotContractOps'
 import { fetchContractSellers } from '../lib/contractSellers'
 import JobsPeriodPanel from '../components/JobsPeriodPanel'
 import NewJobForm from '../components/NewJobForm'
+import DayAgenda from '../components/DayAgenda'
 import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
@@ -56,27 +57,6 @@ function shiftDate(dateStr, days) {
   return toDateStr(d)
 }
 
-function buildCalendarDays(yearMonth) {
-  const [y, m] = yearMonth.split('-').map(Number)
-  const first = new Date(y, m - 1, 1)
-  const last = new Date(y, m, 0)
-  let startPad = first.getDay() - 1
-  if (startPad < 0) startPad = 6
-  const days = []
-  for (let i = 0; i < startPad; i++) days.push(null)
-  for (let d = 1; d <= last.getDate(); d++) {
-    days.push(`${yearMonth}-${String(d).padStart(2, '0')}`)
-  }
-  return days
-}
-
-function dayDotColor(stats) {
-  if (!stats?.total) return null
-  if (stats.completed >= stats.total) return '#4ade80'
-  if (stats.completed > 0) return '#fbbf24'
-  return '#60a5fa'
-}
-
 function ProgressBar({ pct, height = 10, style }) {
   const safe = Math.min(100, Math.max(0, pct))
   return (
@@ -90,404 +70,14 @@ function ProgressBar({ pct, height = 10, style }) {
   )
 }
 
-function statusStyle(status, labels) {
-  const colors = {
-    assigned: { bg: 'rgba(96,165,250,0.12)', border: '#60a5fa', text: '#93c5fd' },
-    in_progress: { bg: 'rgba(251,191,36,0.14)', border: '#fbbf24', text: '#fcd34d' },
-    completed: { bg: 'rgba(74,222,128,0.12)', border: '#4ade80', text: '#86efac' },
-    cancelled: { bg: 'rgba(248,113,113,0.1)', border: '#f87171', text: '#fca5a5' },
-  }
-  const c = colors[status] || colors.assigned
-  return { ...c, label: labels[status] || status }
-}
-
-function DayScheduleView({ onClose }) {
+export default function Jobs() {
+  const [searchParams] = useSearchParams()
+  const searchId = searchParams.get('search')
   const { lang, t, tr } = useLang()
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const dateLocale = localeOf(lang)
-  const [date, setDate] = useState(toDateStr(new Date()))
-  const [calMonth, setCalMonth] = useState(() => toDateStr(new Date()).slice(0, 7))
-  const [showCalendar, setShowCalendar] = useState(false)
-  const [dayJobs, setJobs] = useState([])
-  const [areaFilter, setAreaFilter] = useState('')
-  const dayAreas = useMemo(() => [...new Set(dayJobs.map(j => j.area).filter(Boolean))].sort(), [dayJobs])
-  const jobs = areaFilter ? dayJobs.filter(j => (j.area || '') === areaFilter) : dayJobs
-  const [monthJobStats, setMonthJobStats] = useState({})
-  const [employees, setEmployees] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => { loadEmps() }, [])
-  useEffect(() => { loadJobs() }, [date])
-  useEffect(() => { loadMonthStats(calMonth) }, [calMonth])
-  useEffect(() => { setCalMonth(date.slice(0, 7)) }, [date])
-
-  const loadEmps = async () => {
-    const { data } = await supabase.from('employees').select('id,full_name').eq('is_active', true).order('full_name')
-    setEmployees(data || [])
-  }
-
-  const loadJobs = async () => {
-    setLoading(true)
-    const { data } = await supabase.from('jobs').select('*').eq('scheduled_date', date).order('sequence_order')
-    setJobs(data || [])
-    setLoading(false)
-  }
-
-  const loadMonthStats = async (ym) => {
-    const { data } = await supabase.from('jobs')
-      .select('scheduled_date, status')
-      .gte('scheduled_date', `${ym}-01`)
-      .lte('scheduled_date', `${ym}-31`)
-    const stats = {}
-    for (const j of data || []) {
-      if (!stats[j.scheduled_date]) stats[j.scheduled_date] = { total: 0, completed: 0 }
-      stats[j.scheduled_date].total++
-      if (j.status === 'completed') stats[j.scheduled_date].completed++
-    }
-    setMonthJobStats(stats)
-  }
-
-  const selectDate = (ds) => {
-    setDate(ds)
-    setShowCalendar(false)
-  }
-
-  const shiftCalMonth = (delta) => {
-    const [y, m] = calMonth.split('-').map(Number)
-    const d = new Date(y, m - 1 + delta, 1)
-    setCalMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-
-  const calendarDays = useMemo(() => buildCalendarDays(calMonth), [calMonth])
-  const weekDays = tr(
-    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    ['月', '火', '水', '木', '金', '土', '日'],
-    ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
-  )
-  const monthLabel = new Date(calMonth + '-01T12:00:00').toLocaleDateString(dateLocale, { month: 'long', year: 'numeric' })
-  const todayStr = toDateStr(new Date())
-
-  const handleReassign = async (jobId, empId) => {
-    if (!empId) {
-      await supabase.from('jobs').update({ employee_id: null, employee_name: null }).eq('id', jobId)
-      loadJobs()
-      return
-    }
-    const emp = employees.find(e => e.id === empId)
-    await supabase.from('jobs').update({ employee_id: empId, employee_name: emp?.full_name }).eq('id', jobId)
-    loadJobs()
-  }
-
-  const handleStatusChange = async (jobId, status) => {
-    await supabase.from('jobs').update({ status }).eq('id', jobId)
-    loadJobs()
-    loadMonthStats(calMonth)
-  }
-
-  const handleTimeChange = async (jobId, time) => {
-    await supabase.from('jobs').update({ scheduled_time: time }).eq('id', jobId)
-    loadJobs()
-  }
-
-  const handleDelete = async (jobId, title) => {
-    if (!confirm(fill(jt.deleteJobConfirm, { title }))) return
-    await supabase.from('jobs').delete().eq('id', jobId)
-    toast.success(jt.jobDeleted)
-    loadJobs()
-    loadMonthStats(calMonth)
-  }
-
-  const handleCleaningTypeChange = async (job, type) => {
-    const loc = locationNameFromTitle(job.title)
-    const { error } = await supabase.from('jobs').update({ title: applyCleaningTypeToTitle(loc, type) }).eq('id', job.id)
-    if (error) return toast.error(error.message)
-    loadJobs()
-  }
-
-  const empGroups = employees.map(e => ({
-    emp: e,
-    jobs: jobs.filter(j => j.employee_id === e.id).sort((a, b) => (a.sequence_order || 99) - (b.sequence_order || 99)),
-  })).filter(g => g.jobs.length > 0)
-
-  const unassigned = jobs.filter(j => !j.employee_id)
-  const done = jobs.filter(j => j.status === 'completed').length
-  const inProgress = jobs.filter(j => j.status === 'in_progress').length
-  const pending = jobs.filter(j => j.status === 'assigned').length
-  const progressPct = jobs.length ? Math.round((done / jobs.length) * 100) : 0
-  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long' })
-  const dateShort = new Date(date + 'T12:00:00').toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
-
-  const JobCard = ({ j, idx }) => {
-    const stl = statusStyle(j.status, st)
-    const missed = isMissedJob(j)
-    const locName = locationNameFromTitle(j.title)
-    const ctype = getCleaningType(j)
-    const ctypeCfg = CLEANING_TYPES[ctype]
-    return (
-      <div style={{
-        background: 'var(--surface)',
-        border: `1px solid var(--border)`,
-        borderLeft: `4px solid ${ctype === 'deep' ? ctypeCfg.color : stl.border}`,
-        borderRadius: 12,
-        padding: '14px 16px',
-        marginBottom: 10,
-      }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 800,
-            background: stl.bg, color: stl.text, border: `2px solid ${stl.border}`,
-          }}>
-            {j.status === 'completed' ? '✓' : idx + 1}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{locName}</div>
-            <div style={{ fontSize: 13, color: ctypeCfg.color, fontWeight: 600, marginTop: 2 }}>{ctypeCfg.label}{j.area && <span style={{ color: 'var(--text3)', fontWeight: 600 }}> · 📍 {j.area}</span>}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', background: 'var(--surface2)', padding: '4px 10px', borderRadius: 8 }}>
-                🕐 {j.scheduled_time || '00:30'}
-              </span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: missed ? '#fca5a5' : stl.text, background: missed ? 'rgba(248,113,113,0.12)' : stl.bg, padding: '4px 10px', borderRadius: 8 }}>
-                {missed ? jt.incomplete : stl.label}
-              </span>
-              {isRetroJob(j) && <span className="badge badge-amber" title={jt.retroBadgeHint}>{jt.retroBadge}</span>}
-              {j.value > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value).toLocaleString()}</span>}
-            </div>
-            {j.description && (
-              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8, background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
-                🔑 {j.description.split('\n')[0]}
-              </div>
-            )}
-            {hasMapsLink(j.address, locName) && (
-              <a href={mapsOpenUrl(j.address, locName)} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#60a5fa', textDecoration: 'none', fontWeight: 600 }}>
-                🗺 {jt.openMaps}
-              </a>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {jt.time}
-            <input type="time" defaultValue={j.scheduled_time || '00:30'} onBlur={e => handleTimeChange(j.id, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }} />
-          </label>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {jt.employee}
-            <select value={j.employee_id || ''} onChange={e => handleReassign(j.id, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }}>
-              <option value="">{jt.unassigned}</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
-            </select>
-          </label>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {jt.cleaningType}
-            <select value={ctype} onChange={e => handleCleaningTypeChange(j, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: `2px solid ${ctypeCfg.color}`, background: `${ctypeCfg.color}12`, color: ctypeCfg.color, fontWeight: 600 }}>
-              <option value="basic">{jt.filterBasic}</option>
-              <option value="deep">{jt.filterDeep}</option>
-            </select>
-          </label>
-          <label style={{ fontSize: 11, color: 'var(--text3)' }}>
-            {jt.status}
-            <select value={j.status} onChange={e => handleStatusChange(j.id, e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: 4, fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: stl.text, fontWeight: 600 }}>
-              <option value="assigned">{st.assigned}</option>
-              <option value="in_progress">{st.in_progress}</option>
-              <option value="completed">{st.completed}</option>
-              <option value="cancelled">{st.cancelled}</option>
-            </select>
-          </label>
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button className="btn btn-danger" onClick={() => handleDelete(j.id, locName)} style={{ width: '100%', fontSize: 13, padding: '9px 12px' }}>
-              🗑 {jt.deleteJob}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'var(--bg, #0a1929)', zIndex: 200, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
-      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '16px 20px', position: 'sticky', top: 0, zIndex: 10 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button className="btn" onClick={onClose}>← {jt.back}</button>
-            <div>
-              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>📅 {jt.dayScheduleTitle}</h2>
-              <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2, textTransform: 'capitalize' }}>{dateLabel}</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-            <button className="btn" onClick={() => setDate(shiftDate(date, -1))} title={jt.prevDay}>◀ {jt.prevDay}</button>
-            <button
-              className="btn"
-              onClick={() => setShowCalendar(v => !v)}
-              style={{ fontWeight: 700, minWidth: 130, background: showCalendar ? 'var(--navy)' : 'var(--surface2)', color: showCalendar ? '#fff' : 'var(--text)' }}
-            >
-              📅 {dateShort}
-            </button>
-            <button className="btn" onClick={() => setDate(shiftDate(date, 1))} title={jt.nextDay}>{jt.nextDay} ▶</button>
-            {date !== todayStr && (
-              <button className="btn btn-primary" onClick={() => setDate(todayStr)}>{jt.today}</button>
-            )}
-          </div>
-        </div>
-
-        {showCalendar && (
-          <div style={{
-            marginTop: 14, padding: 14, background: 'var(--surface2)', borderRadius: 14,
-            border: '1px solid var(--border)', maxWidth: 360,
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <button type="button" className="btn btn-sm" onClick={() => shiftCalMonth(-1)}>◀</button>
-              <div style={{ fontWeight: 800, fontSize: 14, textTransform: 'capitalize' }}>{monthLabel}</div>
-              <button type="button" className="btn btn-sm" onClick={() => shiftCalMonth(1)}>▶</button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
-              {weekDays.map(w => (
-                <div key={w} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text3)', padding: '2px 0' }}>{w}</div>
-              ))}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-              {calendarDays.map((ds, i) => {
-                if (!ds) return <div key={`pad-${i}`} />
-                const dayNum = Number(ds.split('-')[2])
-                const stats = monthJobStats[ds]
-                const dot = dayDotColor(stats)
-                const isSelected = ds === date
-                const isToday = ds === todayStr
-                return (
-                  <button
-                    key={ds}
-                    type="button"
-                    onClick={() => selectDate(ds)}
-                    style={{
-                      aspectRatio: '1', borderRadius: 10, border: '2px solid',
-                      borderColor: isSelected ? 'var(--navy)' : isToday ? '#60a5fa' : 'transparent',
-                      background: isSelected ? 'var(--navy)' : isToday ? 'rgba(96,165,250,0.12)' : 'var(--surface)',
-                      color: isSelected ? '#fff' : 'var(--text)',
-                      fontWeight: isSelected || isToday ? 800 : 600,
-                      fontSize: 13, cursor: 'pointer', padding: 0,
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-                    }}
-                  >
-                    <span>{dayNum}</span>
-                    {dot && <span style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? '#fff' : dot }} />}
-                  </button>
-                )
-              })}
-            </div>
-            <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 10, color: 'var(--text3)', flexWrap: 'wrap' }}>
-              <span>● {st.completed}</span>
-              <span style={{ color: '#fbbf24' }}>● {st.in_progress}</span>
-              <span style={{ color: '#60a5fa' }}>● {st.assigned}</span>
-            </div>
-          </div>
-        )}
-
-        <div style={{ marginTop: 14, background: 'var(--surface2)', borderRadius: 12, padding: '12px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{jt.checkingProgress}</div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: progressPct >= 100 ? '#4ade80' : '#60a5fa' }}>
-              {fill(jt.progressSummary, { done, total: jobs.length, pct: progressPct })}
-            </div>
-          </div>
-          <ProgressBar pct={progressPct} height={12} />
-        </div>
-
-        {dayAreas.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>📍 {tr('Area', 'エリア', 'Área')}</span>
-            <button type="button" className={`tab-pill${!areaFilter ? ' active' : ''}`} onClick={() => setAreaFilter('')}>{tr('All', 'すべて', 'Todos')} ({dayJobs.length})</button>
-            {dayAreas.map(a => (
-              <button key={a} type="button" className={`tab-pill${areaFilter === a ? ' active' : ''}`} onClick={() => setAreaFilter(a)}>{a} ({dayJobs.filter(j => j.area === a).length})</button>
-            ))}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-          {[
-            [jt.total, jobs.length, 'var(--text)'],
-            [st.completed, done, '#4ade80'],
-            [st.assigned, pending, '#60a5fa'],
-            [st.in_progress, inProgress, '#fbbf24'],
-            [jt.progress, `${progressPct}%`, progressPct >= 100 ? '#4ade80' : '#fbbf24'],
-          ].map(([label, val, color]) => (
-            <div key={label} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 16px', minWidth: 90 }}>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ padding: '20px', maxWidth: 900, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-        {loading && <div style={{ color: 'var(--text3)', fontSize: 14, padding: 20 }}>{t.app.loading}</div>}
-
-        {!loading && jobs.length === 0 && (
-          <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{jt.noJobsDay}</div>
-            <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{jt.chooseDate}</div>
-          </div>
-        )}
-
-        {empGroups.map(({ emp, jobs: empJobs }) => {
-          const empDone = empJobs.filter(j => j.status === 'completed').length
-          const empPct = empJobs.length ? Math.round((empDone / empJobs.length) * 100) : 0
-          return (
-          <div key={emp.id} style={{ marginBottom: 24 }}>
-            <div style={{
-              fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 12,
-              padding: '10px 14px', background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <div style={{
-                  width: 10, height: 10, borderRadius: '50%',
-                  background: empJobs.every(j => j.status === 'completed') ? '#4ade80'
-                    : empJobs.some(j => j.status === 'in_progress') ? '#fbbf24' : '#60a5fa',
-                }} />
-                {emp.full_name}
-                <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>
-                  {fill(jt.doneOfTotal, { done: empDone, total: empJobs.length })}
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: empPct >= 100 ? '#4ade80' : '#60a5fa', marginLeft: 'auto' }}>
-                  {empPct}%
-                </span>
-              </div>
-              <ProgressBar pct={empPct} height={6} />
-            </div>
-            {empJobs.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
-          </div>
-        )})}
-
-        {unassigned.length > 0 && (
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#fbbf24', marginBottom: 12, padding: '10px 14px', background: 'rgba(251,191,36,0.1)', borderRadius: 12, border: '1px solid rgba(251,191,36,0.25)' }}>
-              ⚠️ {jt.noEmployee} ({unassigned.length})
-            </div>
-            {unassigned.map((j, idx) => <JobCard key={j.id} j={j} idx={idx} />)}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export default function Jobs() {
-  const [searchParams] = useSearchParams()
-  const searchId = searchParams.get('search')
-  const { lang, t } = useLang()
-  const jt = t.jobs
-  const st = t.status
-  const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const [tab, setTab] = useState('list')
+  const [tab, setTab] = useState(() => searchId ? 'list' : 'agenda')
   const [cleaningFilter, setCleaningFilter] = useState('all')
   const [period, setPeriod] = useState('7d')
   const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
@@ -496,8 +86,6 @@ export default function Jobs() {
   const [employees, setEmployees] = useState([])
   const [clients, setClients] = useState([])
   const [locations, setLocations] = useState([])
-  const [showDaySchedule, setShowDaySchedule] = useState(false)
-  const [editingLoc, setEditingLoc] = useState(null)
   const [loading, setLoading] = useState(true)
   const [geocoding, setGeocoding] = useState(false)
   const [lightbox, setLightbox] = useState(null)
@@ -579,11 +167,8 @@ export default function Jobs() {
 
   return (
     <div>
-      {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-        <button className="btn btn-primary" onClick={()=>setShowDaySchedule(true)}>📅 {jt.daySchedule}</button>
-      </div>
       <div className="tab-pills">
+        <button className={`tab-pill${tab==='agenda'?' active':''}`} onClick={()=>setTab('agenda')}>📅 {tr('Day agenda', '本日の予定', 'Agenda do Dia')}</button>
         <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{jt.allJobs}</button>
         <button className={`tab-pill${tab==='spot'?' active':''}`} onClick={()=>setTab('spot')}>
           ⚡ {jt.spotJobs} {spotJobs.filter(j=>j.spot_status==='pending').length > 0 && <span className="badge badge-amber" style={{marginLeft:4}}>{spotJobs.filter(j=>j.spot_status==='pending').length}</span>}
@@ -591,6 +176,8 @@ export default function Jobs() {
         <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>+ {jt.newJob}</button>
         <button className={`tab-pill${tab==='locations'?' active':''}`} onClick={()=>setTab('locations')}>📍 {jt.locations}</button>
       </div>
+
+      {tab==='agenda' && <DayAgenda onChanged={loadAll} />}
 
       {tab==='list' && (
         <div>
@@ -792,7 +379,6 @@ function LocationsTab() {
   const { t } = useLang()
   const jt = t.jobs
   const [locations, setLocations] = useState([])
-  const [showDaySchedule, setShowDaySchedule] = useState(false)
   const [editingLoc, setEditingLoc] = useState(null)
   const [form, setForm] = useState({ name:'', address:'', location_type:'fixed', notes:'' })
   const [geocoding, setGeocoding] = useState(false)
@@ -846,7 +432,6 @@ function LocationsTab() {
 
   return (
     <div>
-      {showDaySchedule&&<DayScheduleView onClose={()=>setShowDaySchedule(false)} />}
       <div className="card" style={{marginBottom:14}}>
         <div className="card-title">{editingLoc ? 'Edit Location' : 'Save New Location'}</div>
         <div className="grid-2">

@@ -3,6 +3,7 @@ import { buildSpotContractRow, emptySpotContractForm, contractPrefillFromClient 
 import { saveSpotContractWithInvoice } from './spotContractOps'
 import { salesPost } from './salesApi'
 import { tokyoToday } from './dates'
+import { syncServiceReport } from './jobReport'
 
 // v1.0.70 · What happens after a client says yes to a quote.
 //
@@ -151,7 +152,10 @@ export async function finishQuoteJob(jobId, { byAdmin = false } = {}) {
     const ref = sc?.contract_details?.quote_ref
     if (!ref) return null
     if (byAdmin) {
-      await supabase.from('jobs').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', jobId).neq('status', 'completed')
+      const { data: doneJob } = await supabase.from('jobs').update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('id', jobId).neq('status', 'completed').select('*').maybeSingle()
+      // Same rule as a worker finish: a finished job always has its service report.
+      if (doneJob) await syncServiceReport(supabase, doneJob).catch(err => console.warn('report not synced', err))
     }
     let sent = false
     if (sc.fatura_id) {

@@ -1,0 +1,64 @@
+/* Agenda do Dia — uses the app's existing tokens so the approved look stays the same. */
+.ag-select, .ag-input {
+  padding: 8px 11px; font-size: 13px; min-height: 38px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm, 8px);
+  background: var(--surface); color: var(--text); font-family: inherit; box-sizing: border-box; max-width: 100%;
+}
+.ag-input.ag-invalid, .ag-select.ag-invalid { border-color: var(--red, #ef4444); }
+.ag-field-error { color: var(--red, #ef4444); font-size: 12px; font-weight: 600; margin-top: 4px; }
+
+.ag-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.ag-top .ag-date-label { font-weight: 800; font-size: 16px; text-transform: capitalize; margin-right: auto; min-width: 0; }
+.ag-people { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.ag-people button { border: 1px solid var(--border); background: var(--surface); color: var(--text2); border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ag-people button.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+.ag-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.ag-summary > div { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.ag-summary b { display: block; font-size: 20px; }
+.ag-summary span { font-size: 12px; color: var(--text3); }
+
+.ag-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; align-items: start; }
+.ag-col { background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 10px; min-width: 0; }
+.ag-col.ag-drop { outline: 2px dashed var(--navy2, #315cf5); outline-offset: -2px; }
+.ag-col-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 2px 4px 10px; }
+.ag-col-head b { font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-col-head span { font-size: 12px; color: var(--text3); flex-shrink: 0; }
+
+.ag-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--ag-c, #60a5fa); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; touch-action: auto; }
+.ag-card.ag-dragging { opacity: .35; }
+.ag-card.ag-alert { box-shadow: 0 0 0 2px rgba(239, 68, 68, .55); }
+.ag-ghost { position: fixed; z-index: 2500; pointer-events: none; width: 270px; opacity: .92; box-shadow: 0 14px 30px rgba(0,0,0,.2); }
+.ag-slot { height: 6px; border-radius: 3px; margin: 0 0 8px; }
+.ag-slot.on { background: var(--navy2, #315cf5); height: 10px; }
+.ag-row { display: flex; gap: 8px; align-items: flex-start; }
+.ag-handle { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; background: var(--surface2); color: var(--text); cursor: grab; touch-action: none; user-select: none; border: none; }
+.ag-handle:active { cursor: grabbing; }
+.ag-title { font-weight: 800; font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+.ag-meta { font-size: 12px; color: var(--text2); margin-top: 2px; overflow-wrap: anywhere; }
+.ag-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ag-badge { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.ag-key { margin-top: 6px; font-size: 12px; background: var(--surface2); border-radius: 8px; padding: 6px 8px; overflow-wrap: anywhere; }
+.ag-progress { margin-top: 8px; }
+.ag-progress-bar { height: 7px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+.ag-progress-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #60a5fa, #4ade80); }
+.ag-progress-line { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; margin-bottom: 4px; gap: 6px; }
+.ag-progress-line button { border: none; background: none; color: var(--navy2, #315cf5); font-weight: 700; font-size: 12px; cursor: pointer; padding: 0; }
+.ag-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; padding: 4px 0; cursor: pointer; }
+.ag-check input { margin-top: 2px; width: 16px; height: 16px; flex-shrink: 0; }
+.ag-ai { margin-top: 8px; font-size: 12px; border-radius: 8px; padding: 7px 9px; }
+.ag-ai ul { margin: 4px 0 0; padding-left: 18px; }
+.ag-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ag-actions .btn { font-size: 12px; padding: 5px 9px; }
+.ag-move { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.ag-move button { width: 28px; height: 22px; border: 1px solid var(--border); background: var(--surface); border-radius: 6px; font-size: 10px; cursor: pointer; color: var(--text2); padding: 0; }
+.ag-move button:disabled { opacity: .3; cursor: default; }
+.ag-empty { font-size: 12px; color: var(--text3); text-align: center; padding: 14px 4px; }
+.ag-queue { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; }
+.ag-queue-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--border); }
+.ag-queue-row:first-of-type { border-top: none; }
+.ag-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+@media (max-width: 640px) {
+  .ag-board { grid-template-columns: minmax(0, 1fr); }
+  .ag-form-grid { grid-template-columns: minmax(0, 1fr); }
+}
