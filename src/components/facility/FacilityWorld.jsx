@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { renderGate } from './world/renderGate'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { AREA_KINDS, ELEMENT_KINDS } from '../../lib/facilityModel'
@@ -252,6 +253,8 @@ export default function FacilityWorld({
   const buildRef = useRef({ layout, status, todo, alerts })
   buildRef.current = { layout, status, todo, alerts }
   selectedRef.current = selectedId
+  // any change from outside (selection, mode, plan) wakes the 3D for a few seconds
+  useEffect(() => { ctxRef.current?.poke?.() })
 
   // ---- renderer, câmera, luz e laço de animação (uma vez) ----
   useEffect(() => {
@@ -505,11 +508,19 @@ export default function FacilityWorld({
     let raf = 0
     let miniTick = 0
     const tmp = new THREE.Vector3()
+    // v1.0.102 · stops with the tab hidden / canvas off screen, few frames per second when idle
+    const gate = renderGate(host)
+    controls.addEventListener('change', gate.poke)
+    window.addEventListener('keydown', gate.poke)
     const loop = () => {
+      raf = 0
+      if (!gate.active()) return
       raf = requestAnimationFrame(loop)
+      const walking = modeRef.current === 'walk'
+      const moving = walking && (keys.size > 0 || !!walk.target || Math.abs(joyRef.current.x) + Math.abs(joyRef.current.y) > 0.05 || Math.hypot(walk.vx, walk.vz) > 0.01)
+      if (!gate.shouldDraw(performance.now(), moving)) { clock.getDelta(); return }
       const dt = Math.min(0.1, clock.getDelta())
       const t = clock.elapsedTime
-      const walking = modeRef.current === 'walk'
 
       // paredes: inteiras no modo andar; na casa de bonecas só as do fundo ficam inteiras,
       // as da frente e as internas descem até a cintura para dar para ver dentro
@@ -637,10 +648,14 @@ export default function FacilityWorld({
 
       if (walking && miniRef.current && ++miniTick % 3 === 0) drawMini(miniRef.current, ctx)
     }
+    gate.onResume = () => { if (!raf) loop() }
+    ctx.poke = gate.poke
     loop()
 
     return () => {
       cancelAnimationFrame(raf)
+      gate.dispose()
+      window.removeEventListener('keydown', gate.poke)
       ro?.disconnect()
       el.removeEventListener('pointerdown', onDown, true)
       window.removeEventListener('pointermove', onMove)

@@ -83,8 +83,8 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   const [loaded, setLoaded] = useState(false)
   const [focus, setFocus] = useState(null)
   const [query, setQuery] = useState('')
-  // Employee: opens as the "My work" list; the 3D is optional (v1.0.96).
-  const [listMode, setListMode] = useState(() => isEmployee || (typeof window !== 'undefined' && window.innerWidth < 760))
+  // v1.0.102 · everyone opens on the LIST view; the 3D is an option (a button), never the entry.
+  const [listMode, setListMode] = useState(true)
   // The portal overlay must always be closable, even if the 3D view stops responding: Escape key too.
   useEffect(() => {
     if (!onClose) return undefined
