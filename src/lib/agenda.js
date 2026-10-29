@@ -124,12 +124,29 @@ export function progressBucket(job, { expected, settings = DEFAULT_AGENDA_SETTIN
   return 'pending'
 }
 
-/** Jobs of one person in execution order (sequence_order, then time). */
+/**
+ * Order of a person's day. Canonical order is the clock (scheduled_time). A manual reorder (drag in the
+ * Agenda, ▲▼ in the employee portal) saves sequence_order from MANUAL_ORDER_BASE up, so it is told apart
+ * from the plain 1..n numbers the generator writes; only then does the saved order win, for that day.
+ */
+export const MANUAL_ORDER_BASE = 1000
+const timeKey = j => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(j.scheduled_time || '')
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : '99:99'
+}
+export const isManualOrder = list => (list || []).some(j => Number(j.sequence_order) >= MANUAL_ORDER_BASE)
 export function sortByOrder(list) {
+  const manual = isManualOrder(list)
   return [...list].sort((a, b) =>
-    (a.sequence_order ?? 9999) - (b.sequence_order ?? 9999)
-    || (a.scheduled_time || '99:99').localeCompare(b.scheduled_time || '99:99')
+    (manual ? (a.sequence_order ?? 99999) - (b.sequence_order ?? 99999) : 0)
+    || timeKey(a).localeCompare(timeKey(b))
+    || (a.sequence_order ?? 9999) - (b.sequence_order ?? 9999)
     || (a.title || '').localeCompare(b.title || ''))
+}
+
+/** Next job of the day: first one not finished, in the order shown. */
+export function nextPendingJob(list) {
+  return sortByOrder(list || []).find(j => !['completed', 'cancelled'].includes(j.status)) || null
 }
 
 /** Columns for the Agenda: one per person with jobs (or in `people`), plus "no one" when needed. */
@@ -164,7 +181,7 @@ export function moveInList(ids, id, toIndex) {
 
 /** sequence_order updates needed so the list shows in `ids` order (1-based). */
 export function orderUpdates(ids, jobsById) {
-  return ids.map((id, i) => ({ id, sequence_order: i + 1 }))
+  return ids.map((id, i) => ({ id, sequence_order: MANUAL_ORDER_BASE + i + 1 }))
     .filter(u => jobsById[u.id]?.sequence_order !== u.sequence_order)
 }
 

@@ -78,7 +78,7 @@ import { aiIssuesText } from '../lib/photoAi'
 import { askConfirm } from '../components/ConfirmDialog'
 import AfterPhotoLater from '../components/AfterPhotoLater'
 import TeamDay from '../components/TeamDay'
-import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate } from '../lib/agenda'
+import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate, sortByOrder, nextPendingJob, MANUAL_ORDER_BASE } from '../lib/agenda'
 import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
 import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
@@ -684,8 +684,7 @@ export default function EmployeePortal() {
   // then renumber the whole day 1..n so sequence_order has no gaps or duplicates.
   const handleMoveJob = async (job, dir) => {
     if (reorderBusy) return
-    const day = allJobs.filter(j => j.scheduled_date === job.scheduled_date)
-      .sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+    const day = sortByOrder(allJobs.filter(j => j.scheduled_date === job.scheduled_date))
     const movable = j => j.status === 'assigned'
     const from = day.findIndex(j => j.id === job.id)
     let to = from + dir
@@ -693,7 +692,8 @@ export default function EmployeePortal() {
     if (from < 0 || to < 0 || to >= day.length) return
     const order = [...day]
     ;[order[from], order[to]] = [order[to], order[from]]
-    const changed = order.map((j, i) => ({ id: j.id, seq: i + 1, old: j.sequence_order })).filter(x => x.seq !== x.old)
+    // Manual numbers (from MANUAL_ORDER_BASE) so this order wins over the clock for this day.
+    const changed = order.map((j, i) => ({ id: j.id, seq: MANUAL_ORDER_BASE + i + 1, old: j.sequence_order })).filter(x => x.seq !== x.old)
     const seqById = Object.fromEntries(changed.map(x => [x.id, x.seq]))
     const previous = allJobs
     setAllJobs(list => list.map(j => seqById[j.id] != null ? { ...j, sequence_order: seqById[j.id] } : j))
@@ -1000,7 +1000,8 @@ export default function EmployeePortal() {
     // Speech must be unlocked by this tap so the 5-minute voice reminders can play later.
     if (voiceOn) unlockSpeech()
     const startPhotos = jobPhotos.filter(p => p.slot === 'start')
-    if (startPhotos.length === 0) {
+    // The Before photo is required only on jobs marked "photo required" (the card shows the rule).
+    if (startPhotos.length === 0 && job.photo_required) {
       toast.error(L('Take at least 1 "Before" photo before starting', '開始前に「作業前」の写真を1枚以上撮ってください', 'Tire ao menos 1 foto "Antes" antes de iniciar'))
       return
     }
@@ -1346,7 +1347,7 @@ export default function EmployeePortal() {
     .filter(j => j.scheduled_date >= today && ['assigned','in_progress'].includes(j.status))
     .sort((a,b) => `${a.scheduled_date} ${a.scheduled_time||'00:00'}`.localeCompare(`${b.scheduled_date} ${b.scheduled_time||'00:00'}`))[0] || null
 
-  const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+  const todayJobs = sortByOrder(allJobs.filter(j=>j.scheduled_date===today))
   const todayPendingJobs = todayJobs.filter(j=>['assigned','in_progress'].includes(j.status))
 
   // GPS on the home map: where the employee is now, where today's sites are, and the nearest one.
@@ -1588,6 +1589,7 @@ export default function EmployeePortal() {
   const hasFacility = (job) => !!job?.client_id && facilityIndex.some(m => m.client_id === job.client_id
     && (!m.location_name || m.location_name === locationFromJob(job)))
 
+  const [focusJobId, setFocusJobId] = useState(null)
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
     const cl = (job.checklist_template||'').split('\n').filter(Boolean)
@@ -1646,6 +1648,9 @@ export default function EmployeePortal() {
             <button onClick={()=>downloadJobIcs(job)} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:14,padding:'12px 8px',color:'rgba(255,255,255,0.75)',fontSize:12,fontWeight:600,cursor:'pointer'}}>🗓 {e.calIcs}</button>
             <button onClick={syncMyCalendar} style={{gridColumn:'1/-1',background:'none',border:'1px dashed rgba(255,255,255,0.15)',borderRadius:14,padding:'10px 8px',color:'rgba(255,255,255,0.6)',fontSize:12,cursor:'pointer'}}>🔄 {e.calSync}</button>
           </div>}
+          {job.status!=='completed'&&<div style={{fontSize:12,fontWeight:700,marginBottom:10,color:job.photo_required?'#f87171':'rgba(255,255,255,0.5)'}}>📷 {job.photo_required?L('Before photo required to start','開始には作業前写真が必要','Foto Antes obrigatória para iniciar'):L('Before photo optional · After can be sent later','作業前写真は任意・作業後はあとで送信可','Foto Antes opcional · Depois pode ser enviada mais tarde')}</div>}
+          {/* One place to execute: today's jobs open in My day with checklist, photos, start and finish. */}
+          {job.scheduled_date===today&&['assigned','in_progress'].includes(job.status)&&<button onClick={()=>{ onClose(); setFocusJobId(job.id); goToTab('shift') }} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',marginBottom:10}}>{job.status==='in_progress'?L('▶ Continue this job','▶ この作業を続ける','▶ Continuar este job'):L('▶ Open to do this job','▶ この作業を開く','▶ Abrir para executar')}</button>}
           {job.status==='assigned'&&!activeJob&&canRegisterLate(job)&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
           <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>{e.close}</button>
         </div>
@@ -1887,7 +1892,8 @@ export default function EmployeePortal() {
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
-              const mapJob = activeJob || nearby?.job || todayPendingJobs[0] || null
+              // Next = first pending job in the day's order (clock, or the manual order), never the nearest by GPS.
+              const mapJob = activeJob || nextPendingJob(todayJobs) || null
               if (!mapJob) return null
               const place = businessName(mapJob)
               const coords = siteCoordsById[mapJob.id]
@@ -2116,7 +2122,7 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
           {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
-          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} />
           <TeamDay userId={user.id} L={L} />
           </section>
         )}
@@ -2436,7 +2442,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
       {dates.map(date=>(
         <div key={date} style={{marginBottom:16}}>
           <div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:8}}>{date}{date===today?(labels?.todaySuffix || ' (today)'):''} · {groups[date].length > 1 ? (labels?.serviceCountPlural || '{n} services').replace('{n}', groups[date].length) : (labels?.serviceCount || '{n} service').replace('{n}', groups[date].length)}</div>
-          {groups[date].sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map(j=>(
+          {sortByOrder(groups[date]).map(j=>(
             <div key={j.id} onClick={()=>setSelectedJob&&setSelectedJob(j)} style={{...(S?.card||{}),marginBottom:8,padding:12,cursor:'pointer',background:'rgba(255,255,255,0.03)',borderRadius:12,border:'1px solid rgba(255,255,255,0.06)'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{(j.title||'').split(' — ')[0]}</div>
@@ -2458,8 +2464,8 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
-  const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
+function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId }) {
+  const todayJobs = sortByOrder(allJobs.filter(j=>j.scheduled_date===today))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
@@ -2480,6 +2486,14 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
   )
   const activeInstructions = showActivePanel ? keyboxForJob(activeJob) : null
   const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
+  // v1.0.96 · any pending job opens and can be started; by default the next one in the day's order is open.
+  const [openId, setOpenId] = useState(null)
+  useEffect(() => { if (focusJobId) { setOpenId(focusJobId); setTimeout(() => document.getElementById(`job-card-${focusJobId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250) } }, [focusJobId])
+  const firstNextId = activeJob ? null : todayQueue.find((j, idx) => j.status === 'assigned' && todayQueue.slice(0, idx).every(x => x.status === 'completed' || x.status === 'cancelled' || isOverdueAssignedJob(x)))?.id
+  const expandedId = activeJob ? null : (openId && todayQueue.some(j => j.id === openId && j.status === 'assigned') ? openId : firstNextId)
+  const photoRule = job => job.photo_required
+    ? <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#f87171',background:'rgba(248,113,113,0.12)'}}>📷 {L('Before photo required','作業前写真必須','Foto Antes obrigatória')}</span>
+    : <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.06)'}}>📷 {L('Photo optional','写真任意','Foto opcional')}</span>
 
   return (
     <div>
@@ -2509,7 +2523,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
           )}
           {!activeJob.photo_start_url && (
             <div style={{marginBottom:12}}>
-              <div style={{fontSize:10,color:'#f87171',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({labels.required})</div>
+              <div style={{fontSize:10,color:activeJob.photo_required?'#f87171':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({activeJob.photo_required?labels.required:L('optional','任意','opcional')})</div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                 {beforePhotos.map((p,i)=>(
                   <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.before} />
@@ -2592,15 +2606,16 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
         const isOverdue = !isDone && !isActive && job.status==='assigned' && isOverdueAssignedJob(job)
         const isCritical = isOverdue && isCriticallyOverdueJob(job)
         // Late jobs can still be checked in until the day ends; the late registration is an extra option.
-        const isNext = !activeJob && job.status==='assigned' && todayQueue.slice(0,idx).every(j=>j.status==='completed' || j.status==='cancelled' || isOverdueAssignedJob(j))
+        const isNext = job.id === expandedId
+        const canOpen = !activeJob && job.status==='assigned' && !isNext
         const instructions = keyboxForJob(job)
         const trainingContract = contractForJob(job, serviceContracts)
         const hasTraining = trainingContract?.training_video_url
 
         return (
           <div key={job.id} id={isActive?'active-job-card':`job-card-${job.id}`}
-            onClick={()=>{ if(isDone&&setSelectedJob) setSelectedJob(job) }}
-            style={{...S.card,marginBottom:10,opacity:isDone?0.85:1,cursor:isDone?'pointer':'default',border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(74,222,128,0.2)':'1px solid rgba(255,255,255,0.08)'}}>
+            onClick={()=>{ if(isDone&&setSelectedJob) setSelectedJob(job); else if(canOpen) setOpenId(job.id) }}
+            style={{...S.card,marginBottom:10,opacity:isDone?0.85:1,cursor:isDone||canOpen?'pointer':'default',border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(74,222,128,0.2)':'1px solid rgba(255,255,255,0.08)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isActive||isNext||isDone?8:0}}>
               <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,background:isDone?'rgba(74,222,128,0.2)':isActive?'rgba(74,222,128,0.15)':'rgba(255,255,255,0.06)',color:isDone?'#4ade80':isActive?'#4ade80':'rgba(255,255,255,0.4)'}}>
@@ -2620,7 +2635,9 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                       )
                     })()}
                     {isRetroJob(job)&&<RetroBadge labels={labels} />}
+                    {!isDone&&photoRule(job)}
                     <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
+                    {canOpen&&<span style={{fontSize:10,color:'#60a5fa',fontWeight:700}}>{L('Tap to open','タップして開く','Toque para abrir')} ›</span>}
                   </div>
                 </div>
               </div>
@@ -2758,7 +2775,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                   </button>
                 )}
                 <div style={{marginBottom:12}}>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({beforePhotos.length}) — {labels.required}</div>
+                  <div style={{fontSize:10,color:job.photo_required?'#f87171':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({beforePhotos.length}) — {job.photo_required?labels.required:L('optional','任意','opcional')}</div>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                     {beforePhotos.map((p,i)=>(
                       <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.before} />
@@ -2770,9 +2787,11 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                     </label>
                   </div>
                 </div>
-                <button onClick={()=>handleStart(job)} disabled={submitting||beforePhotos.length===0} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||beforePhotos.length===0?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting||beforePhotos.length===0?'not-allowed':'pointer'}}>
-                  {submitting?L('Starting...','開始中...','Iniciando...'):beforePhotos.length===0?L('📷 Take the Before photo first','📷 先に作業前の写真を撮ってください','📷 Tire a foto Antes primeiro'):`▶ ${L('Start','開始','Iniciar')} — `+job.title.replace(/ — .*/,'')}
+                {(() => { const needPhoto = job.photo_required && beforePhotos.length===0; return (
+                <button onClick={()=>handleStart(job)} disabled={submitting||needPhoto} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||needPhoto?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting||needPhoto?'not-allowed':'pointer'}}>
+                  {submitting?L('Starting...','開始中...','Iniciando...'):needPhoto?L('📷 Take the Before photo first','📷 先に作業前の写真を撮ってください','📷 Tire a foto Antes primeiro'):`▶ ${L('Start','開始','Iniciar')} — `+job.title.replace(/ — .*/,'')}
                 </button>
+                ) })()}
               </div>
             )}
           </div>
@@ -2846,7 +2865,7 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
       {sel&&(
         <div>
           <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>{new Date(sel+'T12:00:00').toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</div>
-          {selJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map(j=>{
+          {sortByOrder(selJobs).map(j=>{
             const sc={completed:'#4ade80',assigned:'#60a5fa',in_progress:'#fbbf24',cancelled:'rgba(255,255,255,0.2)'}[j.status]
             const duration=j.started_at&&j.completed_at?Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000):null
             return (

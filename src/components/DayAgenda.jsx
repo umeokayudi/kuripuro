@@ -10,7 +10,7 @@ import { getCleaningType, locationNameFromTitle, parseDeepTaskList, DEEP_TASKS, 
 import { checklistDisplayLabel } from '../lib/jobChecklist'
 import { isMissedJob } from '../lib/jobOverdue'
 import {
-  agendaColumns, moveInList, orderUpdates, contractForAgendaJob, expectedMinutes, agendaChecklistItems,
+  agendaColumns, moveInList, orderUpdates, MANUAL_ORDER_BASE, isManualOrder, contractForAgendaJob, expectedMinutes, agendaChecklistItems,
   checklistProgress, checklistUpdate, timeState, awaitingAfterPhoto, aiPending, progressBucket, storeName,
   DEFAULT_AGENDA_SETTINGS,
 } from '../lib/agenda'
@@ -150,7 +150,7 @@ export default function DayAgenda({ onChanged, onEditJob }) {
     if (fromCol !== toCol) {
       if (job.status !== 'assigned') { toast.error(tr('Only jobs not started can go to another person.', '開始前の作業のみ担当変更できます。', 'Só job não iniciado pode ir para outra pessoa.')); return }
       const emp = employees.find(e => e.id === toCol)
-      const mine = ups.find(u => u.id === jobId) || { id: jobId, sequence_order: ids.indexOf(jobId) + 1 }
+      const mine = ups.find(u => u.id === jobId) || { id: jobId, sequence_order: MANUAL_ORDER_BASE + ids.indexOf(jobId) + 1 }
       Object.assign(mine, { employee_id: toCol || null, employee_name: emp?.full_name || null })
       if (!ups.includes(mine)) ups.push(mine)
     }
@@ -163,6 +163,17 @@ export default function DayAgenda({ onChanged, onEditJob }) {
     } catch (err) {
       toast.error(err.message)
     }
+    refresh()
+  }
+
+  // Back to the clock: plain 1..n in time order, so the column follows scheduled_time again.
+  const resetToClock = async col => {
+    const byTime = [...col.jobs].sort((a, b) => (a.scheduled_time || '99:99').localeCompare(b.scheduled_time || '99:99'))
+    const ups = byTime.map((j, i) => ({ id: j.id, sequence_order: i + 1 }))
+    try {
+      await saveOrder(ups)
+      toast.success(tr('Back to clock order', '時刻順に戻しました', 'Voltou para a ordem do horário'))
+    } catch (err) { toast.error(err.message) }
     refresh()
   }
 
@@ -310,6 +321,12 @@ export default function DayAgenda({ onChanged, onEditJob }) {
                 <b>{col.name || tr('No one assigned', '未割当', 'Sem pessoa')}</b>
                 <span>{done}/{col.jobs.length} · ⏱ {fmtMin(planned)}</span>
               </div>
+              {isManualOrder(col.jobs) && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text3)', margin: '-4px 4px 8px' }}>
+                  <span>✋ {tr('Manual order', '手動の順番', 'Ordem manual')}</span>
+                  <button type="button" className="btn btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => resetToClock(col)}>↺ {tr('Clock order', '時刻順', 'Pelo horário')}</button>
+                </div>
+              )}
               {col.jobs.map((job, idx) => (
                 <div key={job.id}>
                   {drag && drag.overCol === col.id && drag.overIdx === idx && drag.id !== job.id && <div className="ag-slot on" />}

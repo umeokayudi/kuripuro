@@ -1,4 +1,5 @@
 import { gradeJobPhoto } from '../lib/photoAi'
+import { sortByOrder } from '../lib/agenda'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -73,7 +74,7 @@ function RecentDays({ jobs, onDayClick }) {
             </div>
             {isOpen&&(
               <div style={{marginTop:4,paddingLeft:10}}>
-                {dayJobs.sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99)).map((j,i)=>(
+                {sortByOrder(dayJobs).map((j,i)=>(
                   <div key={j.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <span style={{fontSize:11,color:'var(--text3)',width:16}}>{i+1}</span>

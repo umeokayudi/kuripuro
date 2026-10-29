@@ -1,13 +1,27 @@
 // Pure checks for the Agenda do Dia helpers (no database).
 import assert from 'node:assert/strict'
-import { moveInList, orderUpdates, checklistProgress, checklistUpdate, splitChecklist, timeState, expectedMinutes, contractForAgendaJob, progressSeries, bucketKey, storeName } from '../src/lib/agenda.js'
+import { moveInList, orderUpdates, checklistProgress, checklistUpdate, splitChecklist, timeState, expectedMinutes, contractForAgendaJob, progressSeries, bucketKey, storeName, sortByOrder, nextPendingJob } from '../src/lib/agenda.js'
 import { buildPlaces, contractForPlace } from '../src/lib/places.js'
 import { aiIssueRows, aiIssuesText } from '../src/lib/photoAi.js'
 
 assert.deepEqual(moveInList(['a', 'b', 'c'], 'c', 0), ['c', 'a', 'b'])
 assert.deepEqual(moveInList(['a', 'b', 'c'], 'a', 1), ['b', 'a', 'c'])
 assert.deepEqual(moveInList(['a', 'b'], 'x', 9), ['a', 'b', 'x'])
-assert.deepEqual(orderUpdates(['b', 'a'], { a: { sequence_order: 1 }, b: { sequence_order: 2 } }), [{ id: 'b', sequence_order: 1 }, { id: 'a', sequence_order: 2 }])
+assert.deepEqual(orderUpdates(['b', 'a'], { a: { sequence_order: 1 }, b: { sequence_order: 2 } }), [{ id: 'b', sequence_order: 1001 }, { id: 'a', sequence_order: 1002 }])
+// Clock order unless someone reordered by hand (the 29/10 case: 00:30, 22:00, 20:00, 21:00).
+{
+  const day = [
+    { id: 'a', scheduled_time: '00:30', sequence_order: 1, status: 'completed' },
+    { id: 'b', scheduled_time: '22:00', sequence_order: 2, status: 'assigned' },
+    { id: 'c', scheduled_time: '20:00', sequence_order: 3, status: 'assigned' },
+    { id: 'd', scheduled_time: '21:00', sequence_order: 4, status: 'assigned' },
+  ]
+  assert.deepEqual(sortByOrder(day).map(j => j.id), ['a', 'c', 'd', 'b'])
+  assert.equal(nextPendingJob(day).id, 'c')
+  const manual = day.map(j => ({ ...j, sequence_order: { a: 1001, b: 1002, c: 1003, d: 1004 }[j.id] }))
+  assert.deepEqual(sortByOrder(manual).map(j => j.id), ['a', 'b', 'c', 'd'])
+  assert.equal(nextPendingJob(manual).id, 'b')
+}
 
 assert.deepEqual(splitChecklist('Varrer; Passar pano; Lixo'), ['Varrer', 'Passar pano', 'Lixo'])
 assert.deepEqual(splitChecklist('- a\n- b\n\n3. c'), ['a', 'b', 'c'])
