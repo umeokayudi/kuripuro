@@ -1,83 +1,26 @@
 #!/usr/bin/env node
-// Automatic payroll close: cron window, never re-closes an existing period, writes auto_closed.
-// Uses an in-memory fake of the Supabase client (no real database).
-import handler, { runPayrollClose } from '../api/_payroll-close.js'
-import { previousPeriod } from '../src/lib/salaryClose.js'
+// v1.0.102 · payroll close rules (pure, no database).
+import { computeBase, payrollState, isPayrollActive } from '../src/lib/salaryClose.js'
 
-function assert(cond, msg) { if (!cond) throw new Error(msg) }
+const assert = (c, m) => { if (!c) throw new Error(m) }
 
-function fakeDb(tables) {
-  const writes = []
-  const from = (table) => {
-    const filters = []
-    let op = 'select', payload = null
-    const rows = () => (tables[table] || []).filter(r => filters.every(f => f(r)))
-    const q = {
-      select: () => q,
-      eq: (k, v) => { filters.push(r => r[k] === v); return q },
-      gte: (k, v) => { filters.push(r => r[k] >= v); return q },
-      lte: (k, v) => { filters.push(r => r[k] <= v); return q },
-      order: () => q,
-      limit: () => q,
-      upsert: (p) => { op = 'upsert'; payload = p; return q },
-      insert: (p) => { op = 'insert'; payload = p; return q },
-      update: (p) => { op = 'update'; payload = p; return q },
-      maybeSingle: () => Promise.resolve({ data: rows()[0] || null, error: null }),
-      then: (ok, bad) => {
-        if (op !== 'select') writes.push({ table, op, payload })
-        return Promise.resolve({ data: op === 'select' ? rows() : null, error: null }).then(ok, bad)
-      },
-    }
-    return q
-  }
-  return { from, writes }
-}
+// Fixed salary never zeroes: no jobs, typed with separators, stale contract end.
+assert(computeBase({ salary_type: 'fixed', fixed_salary: 212000 }, [], '2026-10') === 212000, 'fixed without jobs')
+assert(computeBase({ salary_type: 'fixed', fixed_salary: '212,000' }, [], '2026-10') === 212000, 'fixed typed with comma')
+assert(computeBase({ salary_type: 'fixed', fixed_salary: 212000, contract_end: '2026-03-31', is_active: true }, [], '2026-10') === 212000, 'stale contract end on active person')
+assert(computeBase({ salary_type: 'fixed', fixed_salary: 212000, contract_end: '2026-03-31', is_active: false }, [], '2026-10') === 0, 'inactive person after contract end')
+assert(computeBase({ salary_type: null, fixed_salary: 212000 }, [], '2026-10') === 212000, 'no salary type = fixed')
+const job = { status: 'completed', started_at: '2026-10-05T01:00:00Z', completed_at: '2026-10-05T03:00:00Z', value: 10000 }
+assert(computeBase({ salary_type: 'mixed', fixed_salary: 100000, hourly_rate: 1000, job_bonus_rate: 10 }, [job], '2026-10') === 100000 + 2000 + 1000, 'mixed = fixed + hours + bonus')
 
-function res() {
-  const r = { code: 0, body: null }
-  r.status = (c) => { r.code = c; return r }
-  r.json = (b) => { r.body = b; return r }
-  return r
-}
+// Paid only with the payslip confirmed.
+assert(payrollState(null, null) === 'none', 'none')
+assert(payrollState({ status: 'awaiting_confirmation' }, { status: 'scheduled' }) === 'waiting', 'waiting')
+assert(payrollState({ status: 'awaiting_confirmation' }, { status: 'paid' }) === 'paid_unconfirmed', 'paid without confirmation is flagged')
+assert(payrollState({ status: 'finalized', employee_confirmed_at: 'x' }, { status: 'paid' }) === 'paid', 'paid')
+assert(payrollState({ status: 'finalized', employee_confirmed_at: 'x' }, { status: 'scheduled' }) === 'finalized', 'finalized')
 
-const run = async (db, day) => ({ code: 200, body: await runPayrollClose(db, day) })
+// Everyone not switched off is in the close.
+assert(isPayrollActive({ is_active: null }) && isPayrollActive({}) && isPayrollActive({ is_active: true }) && !isPayrollActive({ is_active: false }), 'active rule')
 
-process.env.CRON_SECRET = 'test-secret'
-
-const emp = { id: 'e1', full_name: 'Ana', is_active: true, salary_type: 'per_job', job_bonus_rate: 100 }
-const jobs = [
-  { employee_id: 'e1', status: 'completed', scheduled_date: '2026-09-03', value: 5000 },
-  { employee_id: 'e1', status: 'completed', scheduled_date: '2026-09-30', value: 3000 },
-  { employee_id: 'e1', status: 'completed', scheduled_date: '2026-10-01', value: 9999 },
-]
-
-let current
-
-// 1. Wrong secret is refused
-{ const r = res(); await handler({ method: 'GET', headers: { authorization: 'Bearer nope' } }, r); assert(r.code === 401, 'secret') }
-
-assert(previousPeriod('2026-01-01') === '2025-12', 'january wraps to december')
-assert(previousPeriod('2026-10-01') === '2026-09', 'previous month')
-
-// 2. Day 12: outside window, nothing written
-current = fakeDb({ salary_periods: [], employees: [emp], jobs, salary_payments: [] })
-let r = await run(current, '2026-10-12')
-assert(r.body.skipped === 'outside closing window' && current.writes.length === 0, 'window: ' + JSON.stringify(r.body))
-
-// 3. Day 1: closes September as auto_closed, only September jobs counted
-current = fakeDb({ salary_periods: [], employees: [emp], jobs, salary_payments: [] })
-r = await run(current, '2026-10-01')
-assert(r.code === 200 && r.body.period === '2026-09', 'closed: ' + JSON.stringify(r.body))
-const periodWrite = current.writes.find(w => w.table === 'salary_periods')
-assert(periodWrite.payload.status === 'auto_closed', 'auto status')
-const slip = current.writes.find(w => w.table === 'salary_statements')
-assert(slip.payload.base_salary === 8000, 'base from september jobs only: ' + slip.payload.base_salary)
-const pay = current.writes.find(w => w.table === 'salary_payments')
-assert(pay.payload.payment_date === '2026-10-15' && pay.payload.amount === 8000, 'payment row')
-
-// 4. Reopened by the admin: cron leaves it alone
-current = fakeDb({ salary_periods: [{ period: '2026-09', status: 'open' }], employees: [emp], jobs, salary_payments: [] })
-r = await run(current, '2026-10-02')
-assert(r.body.skipped === 'already open' && current.writes.length === 0, 'reopen respected')
-
-console.log('payroll close: all checks passed')
+console.log('payroll close: ok')

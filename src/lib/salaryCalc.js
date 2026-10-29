@@ -38,16 +38,46 @@ export function countWorkedDays(jobs) {
  * few or no jobs. Only a contract that starts or ends inside the month is prorated by calendar days.
  */
 export function fixedMonthBase(emp, month) {
-  const fixed = Number(emp?.fixed_salary || 0)
+  const fixed = yenAmount(emp?.fixed_salary)
   if (!fixed || !month) return fixed
   const [y, m] = month.split('-').map(Number)
   const days = new Date(y, m, 0).getDate()
   const first = `${month}-01`, last = `${month}-${String(days).padStart(2, '0')}`
-  const start = emp?.contract_start && emp.contract_start > first ? emp.contract_start : first
-  const end = emp?.contract_end && emp.contract_end < last ? emp.contract_end : last
+  const startDay = String(emp?.contract_start || '').slice(0, 10)
+  let endDay = String(emp?.contract_end || '').slice(0, 10)
+  // v1.0.102 · An ACTIVE person whose contract end is already in the past is an outdated date on
+  // the record, not a person who left: the salary of the month is never zeroed by it.
+  if (endDay && endDay < first && emp?.is_active !== false) endDay = ''
+  const start = startDay && startDay > first ? startDay : first
+  const end = endDay && endDay < last ? endDay : last
   if (start > last || end < first) return 0
   const covered = Number(end.slice(8, 10)) - Number(start.slice(8, 10)) + 1
   return covered >= days ? fixed : Math.round(fixed / days * covered)
+}
+
+/** ¥ amount typed in any way ("212000", "212,000", "¥212.000", 212000) → number. */
+export function yenAmount(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+  const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
+
+/**
+ * v1.0.102 · Base of the payslip with the same rules everywhere (payroll close, Payments, employee app).
+ * Fixed salary = the whole month with or without jobs. Mixed = fixed + hours + job bonus.
+ * A person with a monthly salary on the record and no / unknown salary type is paid as fixed.
+ */
+export function monthBase(emp, jobs, month) {
+  const done = jobs || []
+  const minutes = done.reduce((s, j) => s + jobMinutes(j), 0)
+  const hourly = Math.round(minutes / 60 * yenAmount(emp?.hourly_rate))
+  const type = emp?.salary_type
+  if (type === 'hourly') return hourly
+  if (type === 'per_job') return done.reduce((s, j) => s + Math.round(jobPay(j) * ((emp?.job_bonus_rate || 100) / 100)), 0)
+  if (type === 'mixed') {
+    return fixedMonthBase(emp, month) + hourly + done.reduce((s, j) => s + Math.round(jobPay(j) * ((emp?.job_bonus_rate || 0) / 100)), 0)
+  }
+  return fixedMonthBase(emp, month)
 }
 
 export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [], month) {
@@ -61,7 +91,7 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [],
     .reduce((s, j) => s + Number(j.spot_value || 0), 0)
   const deductions = (deductionsList || []).reduce((s, d) => s + Number(d.amount || 0), 0)
   const workedDays = countWorkedDays(completed)
-  const fixedMax = empInfo?.fixed_salary || 0
+  const fixedMax = yenAmount(empInfo?.fixed_salary)
   const monthlyDays = empInfo?.monthly_work_days || 22
   const dailyRate = fixedMax / monthlyDays
   const bonusRate = (empInfo?.job_bonus_rate || 100) / 100

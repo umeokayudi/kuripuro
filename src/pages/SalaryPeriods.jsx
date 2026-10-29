@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
-import { closeSalaryPeriod } from '../lib/salaryClose'
+import { closeSalaryPeriod, closeEmployeeMonth, isPayrollActive, payrollState } from '../lib/salaryClose'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { useSearchParams } from 'react-router-dom'
 import { useLang, fill } from '../hooks/useLang'
@@ -18,12 +18,16 @@ export default function SalaryPeriods() {
   const [closing, setClosing] = useState(false)
   const [schemaOk, setSchemaOk] = useState(true)
   const [activeEmps, setActiveEmps] = useState([])
+  const [salaryLines, setSalaryLines] = useState([])
+  const [failed, setFailed] = useState({}) // employee id → error of the last close
+  const [including, setIncluding] = useState(null)
   const [searchParams] = useSearchParams()
   const wanted = searchParams.get('period')
 
   useEffect(() => {
     loadPeriods()
-    supabase.from('employees').select('id,full_name').eq('is_active', true).order('full_name').then(({ data }) => setActiveEmps(data || []))
+    // Same rule as the close: everyone not switched off (is_active empty counts as active).
+    supabase.from('employees').select('*').order('full_name').then(({ data }) => setActiveEmps((data || []).filter(isPayrollActive)))
   }, [])
 
   useEffect(() => { if (selectedPeriod) loadStatements(selectedPeriod) }, [selectedPeriod])
@@ -37,8 +41,12 @@ export default function SalaryPeriods() {
   }
 
   const loadStatements = async (period) => {
-    const { data } = await supabase.from('salary_statements').select('*').eq('period', period).order('employee_name')
+    const [{ data }, { data: lines }] = await Promise.all([
+      supabase.from('salary_statements').select('*').eq('period', period).order('employee_name'),
+      supabase.from('salary_payments').select('id,employee_id,status,amount').eq('period', period).eq('payment_type', 'salary'),
+    ])
     setStatements(data || [])
+    setSalaryLines(lines || [])
   }
 
   const closeMonth = async (period) => {
@@ -46,8 +54,10 @@ export default function SalaryPeriods() {
     if (!(await askConfirm({ message: fill(p.closeConfirm, { period: fmtPeriod(period), deadline: confirmDeadline, payDate }), danger: false }))) return
     setClosing(true)
     try {
-      await closeSalaryPeriod(supabase, period, { salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(period) }) })
-      toast.success(fill(p.closed, { period: fmtPeriod(period) }))
+      const res = await closeSalaryPeriod(supabase, period, { salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(period) }) })
+      setFailed(Object.fromEntries((res.failed || []).map(f => [f.id, f.error])))
+      if (res.failed?.length) toast.error(tr(`${res.failed.length} person(s) could not be included — see the list`, `${res.failed.length}人を含められませんでした — 一覧を確認`, `${res.failed.length} pessoa(s) não entraram — veja a lista`))
+      else toast.success(fill(p.closed, { period: fmtPeriod(period) }))
       notifyChanged()
       loadPeriods()
       loadStatements(period)
@@ -55,6 +65,22 @@ export default function SalaryPeriods() {
       toast.error(e.message)
     }
     setClosing(false)
+  }
+
+  // "Include" one person left out of the month: same calculation as the month close, for that person only.
+  const includeOne = async (emp) => {
+    setIncluding(emp.id)
+    try {
+      await closeEmployeeMonth(supabase, selectedPeriod, emp, { salaryDesc: fill(p.salaryDesc, { period: fmtPeriod(selectedPeriod) }) })
+      setFailed(f => { const n = { ...f }; delete n[emp.id]; return n })
+      toast.success(tr(`${emp.full_name} included`, `${emp.full_name} を追加しました`, `${emp.full_name} incluído(a)`))
+      notifyChanged()
+      loadStatements(selectedPeriod)
+    } catch (e) {
+      setFailed(f => ({ ...f, [emp.id]: e.message }))
+      toast.error(e.message)
+    }
+    setIncluding(null)
   }
 
   const notifyChanged = () => { try { window.dispatchEvent(new Event(PAYROLL_CHANGED)) } catch { /* SSR */ } }
@@ -156,10 +182,24 @@ export default function SalaryPeriods() {
             const d = getPeriodDates(selectedPeriod)
             return <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>{fill(p.confirmUntil, { deadline: d.confirmDeadline, payDate: d.payDate })}</div>
           })()}
-          {selectedStatus !== 'open' && missing.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, color: 'var(--text2)', marginBottom: 10 }}>
-              <span>⚠️ {tr(`Not in this payroll: ${missing.map(e => e.full_name).join(', ')}`, `この締めに含まれていない人: ${missing.map(e => e.full_name).join('、')}`, `Fora desta folha: ${missing.map(e => e.full_name).join(', ')}`)}</span>
-              <button className="btn btn-sm" disabled={closing} onClick={() => closeMonth(selectedPeriod)}>{tr('Recalculate and include', '再計算して追加', 'Recalcular e incluir')}</button>
+          {(selectedStatus !== 'open' || statements.length > 0) && missing.length > 0 && (
+            <div className="sp-out" style={{ border: '1px solid rgba(245,158,11,.4)', background: 'rgba(245,158,11,.08)', borderRadius: 12, padding: '10px 12px', marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>⚠️ {tr(`Out of this payroll (${missing.length})`, `この締めに含まれていない人（${missing.length}人）`, `Fora deste fechamento (${missing.length})`)}</div>
+              {missing.map(e => (
+                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: '1px solid rgba(245,158,11,.25)' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{e.full_name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', overflowWrap: 'anywhere' }}>
+                      {failed[e.id]
+                        ? tr(`Could not calculate: ${failed[e.id]}`, `計算できませんでした: ${failed[e.id]}`, `Não deu para calcular: ${failed[e.id]}`)
+                        : tr('No payslip for this month yet', 'この月の明細がまだありません', 'Ainda sem holerite neste mês')}
+                    </div>
+                  </div>
+                  <button className="btn btn-sm btn-primary" style={{ minHeight: 40, flexShrink: 0 }} disabled={including === e.id || closing} onClick={() => includeOne(e)}>
+                    {including === e.id ? '…' : tr('Include', '追加', 'Incluir')}
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           {statements.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{p.noSlips}</div>}
@@ -173,7 +213,20 @@ export default function SalaryPeriods() {
                 <div style={{ fontSize: 11, marginTop: 2 }}>
                   {s.employee_confirmed_at && <span style={{ color: 'var(--green)' }}>✓ {p.confirmed} </span>}
                   {s.employee_disputed_at && <span style={{ color: 'var(--red)' }}>⚠ {p.disputed} </span>}
-                  <span className={`badge ${s.status === 'finalized' ? 'badge-green' : 'badge-amber'}`}>{s.status}</span>
+                  {(() => {
+                    const st = payrollState(s, salaryLines.find(l => l.employee_id === s.employee_id))
+                    const label = {
+                      none: tr('Not calculated', '未計算', 'Sem cálculo'),
+                      waiting: tr('Waiting for the employee', '本人確認待ち', 'Esperando o funcionário'),
+                      disputed: tr('Disputed', '異議あり', 'Contestado'),
+                      confirmed: tr('Confirmed', '確認済み', 'Confirmado'),
+                      finalized: tr('Finalized', '確定済み', 'Finalizado'),
+                      paid: tr('Paid', '支払済', 'Pago'),
+                      paid_unconfirmed: tr('Marked paid, payslip NOT confirmed', '支払済だが明細は未確認', 'Marcado pago, holerite NÃO confirmado'),
+                    }[st]
+                    const cls = st === 'paid' || st === 'finalized' || st === 'confirmed' ? 'badge-green' : st === 'disputed' || st === 'paid_unconfirmed' ? 'badge-red' : 'badge-amber'
+                    return <span className={`badge ${cls}`}>{label}</span>
+                  })()}
                 </div>
               </div>
               {s.status !== 'finalized' && s.employee_confirmed_at && (

@@ -6,6 +6,7 @@ import { getPeriodDates } from '../lib/salaryPeriod'
 import '../components/SalaryPopups.css'
 import './Payments.css'
 import PayrollCloseSheet from '../components/PayrollCloseSheet'
+import { payrollState } from '../lib/salaryClose'
 
 // One month (= month worked, salary_payments.period) at a time, one row per employee.
 // ¥0 people fold away, "Mark paid" pays every open line of that person in that month.
@@ -114,17 +115,20 @@ export default function Payments() {
       const salaryLine = live.find(p => p.payment_type === 'salary')
       // Fixed salary that closed at ¥0 is almost always "no completed job in the month", worth a look.
       const fixedZero = emp.salary_type === 'fixed' && Number(emp.fixed_salary) > 0 && salaryLine && Number(salaryLine.amount) === 0
+      const st = statements.find(s => s.employee_id === id && s.period === month)
+      // v1.0.102 · same truth as Payroll close: a salary is "Paid" only with the payslip confirmed.
+      const pstate = payrollState(st, salaryLine)
+      const paidUnconfirmed = pstate === 'paid_unconfirmed'
       let state
       if (!mine.length) state = 'none'
-      else if (fixedZero) state = 'check'
+      else if (fixedZero || paidUnconfirmed) state = 'check'
       else if (earn === 0) state = 'zero'
       else if (toPay > 0) state = open.some(p => p.payment_date && p.payment_date < today) ? 'late' : 'open'
       else state = 'paid'
       const payDate = salaryLine?.payment_date || open[0]?.payment_date || mine[0]?.payment_date
       const paidOn = state === 'paid' ? mine.filter(p => !p.is_deduction && p.status === 'paid').map(p => p.payment_date).sort().pop() : null
-      const st = statements.find(s => s.employee_id === id && s.period === month)
       // Payroll close already takes deductions out of the salary row, so they are shown, not subtracted again.
-      return { emp, lines: mine, earn, ded, net: earn, toPay, open, state, payDate, paidOn, slip: statementState(st), st, fixedZero }
+      return { emp, lines: mine, earn, ded, net: earn, toPay, open, state, payDate, paidOn, slip: statementState(st), st, fixedZero, paidUnconfirmed, salaryLine }
     }).sort((a, b) => {
       const order = { late:0, check:1, open:2, none:3, paid:4, zero:5 }
       return order[a.state] - order[b.state] || a.emp.full_name.localeCompare(b.emp.full_name)
@@ -144,7 +148,7 @@ export default function Payments() {
   const totals = {
     toPay: visible.reduce((s, r) => s + r.toPay, 0),
     toPayPeople: visible.filter(r => r.toPay > 0).length,
-    paid: visible.reduce((s, r) => s + r.lines.filter(p => !p.is_deduction && p.status === 'paid').reduce((a, p) => a + Number(p.amount||0), 0), 0),
+    paid: visible.filter(r => !r.paidUnconfirmed).reduce((s, r) => s + r.lines.filter(p => !p.is_deduction && p.status === 'paid').reduce((a, p) => a + Number(p.amount||0), 0), 0),
     paidPeople: visible.filter(r => r.state === 'paid').length,
     ded: visible.reduce((s, r) => s + r.ded, 0),
     dedCount: visible.reduce((s, r) => s + r.lines.filter(p => p.is_deduction && counts(p)).length, 0),
@@ -191,6 +195,17 @@ export default function Payments() {
     if (error) return toast.error(error.message)
     toast.success(ask.kind === 'pay' ? tr('Marked as paid','支払済みにしました','Marcado como pago') : tr('Deleted','削除しました','Apagado'))
     setAsk(null); load()
+  }
+
+  // Undo a "paid" set before the employee confirmed the payslip (old data): back to scheduled.
+  const undoPaid = async (r) => {
+    if (!r.salaryLine) return
+    setBusy(true)
+    const { error } = await supabase.from('salary_payments').update({ status: 'scheduled' }).eq('id', r.salaryLine.id)
+    setBusy(false)
+    if (error) return toast.error(error.message)
+    toast.success(tr('Back to "to pay"', '「未払い」に戻しました', 'Voltou para "a pagar"'))
+    load()
   }
 
   const openNew = (emp) => {
@@ -272,12 +287,23 @@ export default function Payments() {
           </div>
         </div>
 
+        {r.paidUnconfirmed && (
+          <div className="pm-note">
+            {tr(
+              'The salary is marked paid, but the employee has NOT confirmed the payslip yet. It only counts as paid after the confirmation.',
+              '給与は支払済になっていますが、本人がまだ明細を確認していません。確認後に支払済として扱われます。',
+              'O salário está marcado como pago, mas o funcionário AINDA NÃO confirmou o holerite. Só conta como pago depois da confirmação.')}
+            <button className="pm-note-btn" disabled={busy} onClick={() => undoPaid(r)}>{tr('Back to "to pay"', '「未払い」に戻す', 'Voltar para "a pagar"')}</button>
+          </div>
+        )}
+
         {r.fixedZero && (
           <div className="pm-note">
             {tr(
-              `Fixed salary is ${fmt(r.emp.fixed_salary)}/month but the close came out ¥0 (no completed job this month). Check Payroll Close or edit the amount.`,
-              `固定給 ${fmt(r.emp.fixed_salary)}/月ですが、締めで ¥0 になりました（今月の完了ジョブなし）。給与締めを確認するか金額を修正してください。`,
-              `Salário fixo de ${fmt(r.emp.fixed_salary)}/mês, mas o fechamento deu ¥0 (nenhum serviço concluído no mês). Confira o Fechamento ou corrija o valor.`)}
+              `Fixed salary is ${fmt(r.emp.fixed_salary)}/month but this line is ¥0 (an old close). The fixed salary is the whole month, with or without jobs: recalculate.`,
+              `固定給 ${fmt(r.emp.fixed_salary)}/月ですが、この行は ¥0 です（古い締め）。固定給はジョブの有無に関係なく1か月分です。再計算してください。`,
+              `Salário fixo de ${fmt(r.emp.fixed_salary)}/mês, mas esta linha está ¥0 (fechamento antigo). O fixo é o mês inteiro, com ou sem serviços: recalcule.`)}
+            <button className="pm-note-btn" onClick={() => setClosing(r.emp)}>{tr('Recalculate','再計算','Recalcular')}</button>
           </div>
         )}
 
