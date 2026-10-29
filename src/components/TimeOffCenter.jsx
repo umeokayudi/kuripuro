@@ -14,6 +14,8 @@ import { fetchDayContext } from '../lib/dayContext'
 import DayContext from './DayContext'
 import { fetchFacilityOffers, offerToClient, offerWhen } from './facility/FacilityOffersBell'
 import { ELEMENT_KINDS } from '../lib/facilityModel'
+import { fetchAssignAlerts } from '../lib/assignNotices'
+import { PENDING_CHANGED } from '../lib/adminPending'
 
 const SEEN_KEY = 'kp_timeoff_seen_v1'
 const readSeen = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
@@ -45,6 +47,9 @@ export default function TimeOffCenter() {
   const [newFlow, setNewFlow] = useState([])
   const [offers, setOffers] = useState([])
   const [newOffers, setNewOffers] = useState([])
+  // v1.0.101 · who accepted an urgent offer + jobs of today / tomorrow with nobody
+  const [taken, setTaken] = useState([])
+  const [noPerson, setNoPerson] = useState([])
   const seen = useRef(readSeen())
 
   const load = () => Promise.all([
@@ -53,8 +58,12 @@ export default function TimeOffCenter() {
     fetchPendingQuoteRequests().catch(() => []),
     fetchQuoteFlowAlerts().catch(() => ({ toBook: [], done: [] })),
     fetchFacilityOffers().catch(() => []),
-  ]).then(([list, periods, quoteRows, flow, offerRows]) => {
+    fetchAssignAlerts().catch(() => ({ accepted: [], noPerson: [] })),
+  ]).then(([list, periods, quoteRows, flow, offerRows, assign]) => {
     setOffers(offerRows)
+    const takenUnseen = assign.accepted.filter(a => !seen.current.has(a.id))
+    setTaken(takenUnseen)
+    setNoPerson(assign.noPerson)
     setRows(list)
     setPayroll(periods)
     setQuotes(quoteRows)
@@ -63,7 +72,7 @@ export default function TimeOffCenter() {
     const doneUnseen = flow.done.filter(d => !seen.current.has(d.id))
     setFlowDone(doneUnseen)
     // Alert only once per item, ever: after that the number stays in the side menu until it is resolved
-    const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows].filter(r => !seen.current.has(r.id))
+    const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows, ...takenUnseen, ...assign.noPerson].filter(r => !seen.current.has(r.id))
     if (fresh.length) {
       setNewQuotes(quoteRows.filter(q => fresh.includes(q)))
       setNewFlow([...flow.toBook, ...doneUnseen].filter(q => fresh.includes(q)))
@@ -81,7 +90,8 @@ export default function TimeOffCenter() {
     window.addEventListener(PAYROLL_CHANGED, load)
     window.addEventListener(QUOTE_REQUESTS_CHANGED, load)
     window.addEventListener(QUOTE_FLOW_CHANGED, load)
-    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load); window.removeEventListener(QUOTE_REQUESTS_CHANGED, load); window.removeEventListener(QUOTE_FLOW_CHANGED, load) }
+    window.addEventListener(PENDING_CHANGED, load)
+    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load); window.removeEventListener(QUOTE_REQUESTS_CHANGED, load); window.removeEventListener(QUOTE_FLOW_CHANGED, load); window.removeEventListener(PENDING_CHANGED, load) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The pop-up alert goes away on its own; the bell and the side-menu numbers stay.
@@ -92,7 +102,7 @@ export default function TimeOffCenter() {
   }, [toastOpen])
 
   const markSeen = () => {
-    rows.concat(payroll, quotes, toBook, flowDone, offers).forEach(r => seen.current.add(r.id))
+    rows.concat(payroll, quotes, toBook, flowDone, offers, noPerson).forEach(r => seen.current.add(r.id))
     writeSeen(seen.current)
     setToastOpen(false)
   }
@@ -118,6 +128,8 @@ export default function TimeOffCenter() {
   const openPayroll = (period) => { setOpen(false); markSeen(); navigate(`/salary-periods?period=${period}`) }
   const openQuotes = () => { setOpen(false); markSeen(); navigate('/mitsumori?tab=requests') }
   const openTrack = (item) => { setOpen(false); markSeen(); navigate(`/mitsumori?track=${item.ref || `${item.kind === 'mitsumori' ? 'mit' : 'req'}:${item.ref_id}`}`) }
+  const openAssign = () => { setOpen(false); markSeen(); navigate('/schedule') }
+  const okTaken = (t) => { seen.current.add(t.id); writeSeen(seen.current); setTaken(list => list.filter(x => x.id !== t.id)) }
   const openStore = (r) => { setOpen(false); markSeen(); navigate(`/facility?model=${r.model_id}`) }
   const offer = async (r) => {
     setBusy(r.id)
@@ -130,8 +142,9 @@ export default function TimeOffCenter() {
     }
     setBusy(null)
   }
-  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length
+  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length
   const kinds = [
+    { key: 'jobs', label: L('Jobs', '作業', 'Jobs'), n: taken.length + noPerson.length },
     { key: 'quotes', label: L('Quotes', '見積もり', 'Orçamentos'), n: quotes.length + toBook.length + flowDone.length },
     { key: 'payroll', label: L('Payroll', '給与', 'Folha'), n: payroll.length },
     { key: 'dayoff', label: L('Day off', '休み', 'Folgas'), n: rows.length },
@@ -227,6 +240,36 @@ export default function TimeOffCenter() {
               ))}
             </div>}
             <div className="tor-list">
+              {show('jobs') && (taken.length + noPerson.length) > 0 && kind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
+              {show('jobs') && noPerson.map(p => (
+                <article key={p.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">⚠️</div>
+                    <div className="tor-item-main">
+                      <strong>{L(`${p.count} job(s) today/tomorrow with nobody`, `今日・明日 担当なし ${p.count}件`, `${p.count} job(s) hoje/amanhã sem pessoa`)}</strong>
+                      <span>{(p.first.title || '').split(' — ')[0]} · {fmtDay(p.first.scheduled_date, lang, { weekday: 'short', day: 'numeric', month: 'short' })} {String(p.first.scheduled_time || '').slice(0, 5)}</span>
+                    </div>
+                    <span className="tor-kind is-off">{L('Assign', '割当', 'Atribuir')}</span>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={openAssign}>📥 {L('Open the Pending box', '未割当ボックスを開く', 'Abrir a Caixa de Pendentes')}</button>
+                  </div>
+                </article>
+              ))}
+              {show('jobs') && taken.map(t => (
+                <article key={t.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">⚡</div>
+                    <div className="tor-item-main">
+                      <strong>{L(`${t.employee_name || '—'} accepted the offer`, `${t.employee_name || '—'}さんがオファーを承諾`, `${t.employee_name || '—'} aceitou a oferta`)}</strong>
+                      <span>{(t.title || '').split(' — ')[0]} · {fmtDay(t.scheduled_date, lang, { weekday: 'short', day: 'numeric', month: 'short' })} {String(t.scheduled_time || '').slice(0, 5)}</span>
+                    </div>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => okTaken(t)}>✓ OK</button>
+                  </div>
+                </article>
+              ))}
               {show('quotes') && (quotes.length + toBook.length + flowDone.length) > 0 && kind === 'all' && <div className="tor-section">📝 {L('Quotes', '見積もり', 'Orçamentos')}</div>}
               {show('quotes') && quotes.map(q => (
                 <article key={q.id} className="tor-item">

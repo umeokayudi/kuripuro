@@ -2,6 +2,7 @@
 // (jobs.sequence_order). Drag the number to reorder or move to someone else; it saves at once.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import './agenda.css'
 import { supabase } from '../lib/supabase'
 import { useLang, localeOf } from '../hooks/useLang'
@@ -24,6 +25,13 @@ import PhotoLightbox from './PhotoLightbox'
 import KeyReveal from './KeyReveal'
 import { ManualCloseButton } from './ManualCloseModal'
 import { manualCloseStamp } from '../lib/manualClose'
+import RedistributeSheet from './RedistributeSheet'
+import { asItem, conflictsFor } from '../lib/assignFlow'
+import { availabilityIndex } from '../lib/scheduleGenerator'
+import { notifyChanges, fetchAckState } from '../lib/assignNotices'
+import { pendingChanged } from '../lib/adminPending'
+import { assignText, conflictLabel, RED_CONFLICTS } from './assignText'
+import './assign.css'
 
 const STATUS_COLOR = { assigned: '#60a5fa', in_progress: '#f59e0b', completed: '#22c55e', cancelled: '#ef4444' }
 
@@ -56,6 +64,9 @@ export default function DayAgenda({ onChanged, onEditJob }) {
   const [showSettings, setShowSettings] = useState(false)
   const [lightbox, setLightbox] = useState(null)
   const [onlyFlag, setOnlyFlag] = useState('')
+  const [availRows, setAvailRows] = useState([])
+  const [ackState, setAckState] = useState({})
+  const [redistribute, setRedistribute] = useState(null)
   const loadSeq = useRef(0)
 
   const loadDay = useCallback(async (d = date) => {
@@ -63,8 +74,10 @@ export default function DayAgenda({ onChanged, onEditJob }) {
     const { data, error } = await supabase.from('jobs').select('*').eq('scheduled_date', d)
     if (seq !== loadSeq.current) return
     if (error) setLoadError(error.message)
-    else { setLoadError(null); setJobs(data || []) }
+    else { setLoadError(null); setJobs(data || []); fetchAckState(data || []).then(setAckState).catch(() => {}) }
     setLoading(false)
+    supabase.from('employee_availability').select('employee_id,date,kind,status').eq('date', d)
+      .then(({ data: av }) => { if (seq === loadSeq.current) setAvailRows(av || []) })
   }, [date])
 
   useEffect(() => {
@@ -124,6 +137,20 @@ export default function DayAgenda({ onChanged, onEditJob }) {
   const visibleJobs = onlyFlag ? jobs.filter(j => flagOf(j) === onlyFlag) : jobs
   const columns = useMemo(() => agendaColumns(visibleJobs, employees, people.size ? people : null), [visibleJobs, employees, people])
   const jobsById = useMemo(() => Object.fromEntries(jobs.map(j => [j.id, j])), [jobs])
+  // v1.0.101 · assignment warnings on each card (day off, role, same time, travel): warn, never block.
+  const T = useMemo(() => assignText(tr), [lang]) // eslint-disable-line react-hooks/exhaustive-deps
+  const availability = useMemo(() => availabilityIndex(availRows), [availRows])
+  const warnings = useMemo(() => {
+    const out = {}
+    const empById = Object.fromEntries(employees.map(e => [e.id, e]))
+    for (const col of agendaColumns(jobs, employees)) {
+      const emp = empById[col.id]
+      if (!emp) continue
+      const items = col.jobs.map(asItem)
+      for (const j of col.jobs) if (j.status === 'assigned') out[j.id] = conflictsFor(asItem(j), emp, items, { availability })
+    }
+    return out
+  }, [jobs, employees, availability])
   const personChips = useMemo(() => {
     const ids = new Set(jobs.map(j => j.employee_id || ''))
     return [...employees.filter(e => ids.has(e.id)).map(e => ({ id: e.id, name: e.full_name })), ...(ids.has('') ? [{ id: '', name: tr('No one', '未割当', 'Sem pessoa') }] : [])]
@@ -164,6 +191,14 @@ export default function DayAgenda({ onChanged, onEditJob }) {
     try {
       await saveOrder(ups)
       toast.success(tr('Order saved', '順番を保存しました', 'Ordem salva'))
+      if (fromCol !== toCol) {
+        const n = await notifyChanges([[job, { employee_id: toCol || null }]])
+        pendingChanged()
+        const emp = employees.find(e => e.id === toCol)
+        const warn = emp ? conflictsFor({ ...asItem(job), employeeId: toCol }, emp, jobs.filter(j => j.employee_id === toCol).map(asItem), { availability }) : []
+        if (warn.length) toast(`⚠️ ${warn.map(c => conflictLabel(c, T)).join(' · ')}`, { duration: 5000 })
+        if (n.missing) toast(tr('Notices start after the database update (SQL).', '通知はDB更新（SQL）後に有効。', 'Os avisos começam depois do SQL do banco.'), { icon: 'ℹ️', id: 'kp-notice-sql' })
+      }
     } catch (err) {
       toast.error(err.message)
     }
@@ -267,6 +302,7 @@ export default function DayAgenda({ onChanged, onEditJob }) {
   const setTime = async (job, time) => {
     const { error } = await supabase.from('jobs').update({ scheduled_time: time || null }).eq('id', job.id)
     if (error) toast.error(error.message)
+    else notifyChanges([[job, { scheduled_time: time || null }]])
     refresh()
   }
 
@@ -325,6 +361,17 @@ export default function DayAgenda({ onChanged, onEditJob }) {
                 <b>{col.name || tr('No one assigned', '未割当', 'Sem pessoa')}</b>
                 <span>{done}/{col.jobs.length} · ⏱ {fmtMin(planned)}</span>
               </div>
+              {col.id && col.jobs.some(j => j.status === 'assigned') && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '-4px 4px 8px' }}>
+                  <button type="button" className="btn btn-sm" style={{ fontSize: 12 }} onClick={() => setRedistribute({ id: col.id, name: col.name })}>↪ {tr('Redistribute', '再配分', 'Redistribuir')}</button>
+                </div>
+              )}
+              {!col.id && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center', fontSize: 12, margin: '-4px 4px 8px', color: '#b91c1c', fontWeight: 700 }}>
+                  <span>⚠️ {tr('Nobody will do these', '担当者がいません', 'Ninguém vai fazer estes')}</span>
+                  <Link className="btn btn-sm" to="/schedule" style={{ fontSize: 12 }}>📥 {tr('Pending box', '未割当ボックス', 'Caixa de Pendentes')}</Link>
+                </div>
+              )}
               {isManualOrder(col.jobs) && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text3)', margin: '-4px 4px 8px' }}>
                   <span>✋ {tr('Manual order', '手動の順番', 'Ordem manual')}</span>
@@ -340,6 +387,7 @@ export default function DayAgenda({ onChanged, onEditJob }) {
                     onHandleDown={onHandleDown} onNudge={nudge}
                     onStatus={setStatus} onChecklist={saveChecklist} onTime={setTime} onDelete={deleteJob}
                     onEdit={onEditJob} onPhoto={setLightbox} onSaved={refresh} settings={settings}
+                    warnings={warnings[job.id] || []} ack={ackState[job.id]} T={T}
                   />
                 </div>
               ))}
@@ -359,6 +407,10 @@ export default function DayAgenda({ onChanged, onEditJob }) {
         <ProgressChart anchorDate={date} settings={settings} refreshKey={refreshKey} />
       </div>
       <PhotoLightbox url={lightbox} onClose={() => setLightbox(null)} closeLabel={tr('Close', '閉じる', 'Fechar')} />
+      {redistribute && (
+        <RedistributeSheet from={redistribute} date={date} jobs={jobs} employees={employees} availability={availability}
+          onClose={() => setRedistribute(null)} onDone={() => { setRedistribute(null); refresh() }} />
+      )}
     </div>
   )
 }
@@ -380,7 +432,7 @@ function deepTasksText(title, lang) {
   }).join(', ')
 }
 
-function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandleDown, onNudge, onStatus, onChecklist, onTime, onDelete, onEdit, onPhoto, onSaved, settings }) {
+function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandleDown, onNudge, onStatus, onChecklist, onTime, onDelete, onEdit, onPhoto, onSaved, settings, warnings = [], ack, T }) {
   const [open, setOpen] = useState(false)
   const [adjust, setAdjust] = useState(false)
   const [log, setLog] = useState(null)
@@ -429,6 +481,8 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
             {job.closed_manually_at && <span className="ag-badge" style={{ color: '#b45309' }}>🔒 {tr('Closed by admin', '管理者が終了', 'Fechado pelo admin')}</span>}
             {job.photo_ai_score != null && <span className="ag-badge" style={{ color: job.photo_ai_approved ? '#16a34a' : '#ef4444' }}>IA {job.photo_ai_score}/10</span>}
             {aiPending(job) && <span className="ag-badge" style={{ color: '#64748b' }}>IA …</span>}
+            {ack && job.status === 'assigned' && <span className={`ag-seen ${ack}`}>{ack === 'seen' ? `👁 ${tr('Seen', '確認済み', 'Ciente')}` : `⏳ ${tr('Not seen yet', '未確認', 'Ainda não viu')}`}</span>}
+            {warnings.map((c, i) => <span key={i} className={`ag-warn${RED_CONFLICTS.has(c.kind) ? ' red' : ''}`}>⚠️ {conflictLabel(c, T)}</span>)}
           </div>
           {job.closed_manually_at && <div className="ag-meta" style={{ color: '#b45309' }}>{manualCloseStamp(job, lang)}</div>}
           {deep && deepTasksText(job.title, lang) && <div className="ag-meta" style={{ color: '#b7791f', fontWeight: 700 }}>✨ {deepTasksText(job.title, lang)}</div>}
