@@ -37,8 +37,12 @@ export const ROLE_PERMISSIONS = {
 }
 const DEFAULT_PERMISSIONS = ['routes'] // no role / free-text role: same as cleaning staff
 
+// Free-text roles that are clearly not field work (e.g. "MKT") get no cleaning routes.
+const DESK_ROLE = /\b(mkt|marketing|vendas?|sales|seller|office|escrit|admin|事務|営業)/i
+
 export function roleCan(role, permission) {
   const raw = String(role || '').trim()
+  if (!ROLE_PERMISSIONS[raw] && DESK_ROLE.test(raw)) return permission === 'team_day'
   return (ROLE_PERMISSIONS[raw] || DEFAULT_PERMISSIONS).includes(permission)
 }
 

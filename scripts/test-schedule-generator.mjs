@@ -50,3 +50,50 @@ assert.ok(manual.filter(j => j.groupKey === key).every(j => j.employeeId === 'b'
 const dbRows = jobsToRows(nobody.slice(0, 3))
 assert.ok(dbRows.every(r => 'employee_id' in r && 'employee_name' in r))
 console.log(`schedule generator ok · ${base.length} jobs em ${MONTH}`)
+
+// v1.0.97 · preview helpers
+{
+  const { periodDays, canWork, outOfSchedule, contractTargets, coverage, dupKey, jobFulfils, clockSeq, workDaysOf } = await import('../src/lib/schedulePlan.js')
+  assert.deepEqual(periodDays('day', '2026-11-04', '2026-11'), ['2026-11-04'])
+  const wk = periodDays('week', '2026-11-04', '2026-11')
+  assert.equal(wk[0], '2026-11-02'); assert.equal(wk.length, 7)
+  assert.equal(periodDays('month', '2026-11-04', '2026-02').length, 28)
+
+  const gab = { id: 'g', full_name: 'Gabriel', is_active: true, job_role: 'cleaner', work_days: '["Mon","Tue","Wed","Thu","Fri","Sat"]' }
+  const mkt = { id: 'm', full_name: 'Matheus Mkt', is_active: true, job_role: 'MKT' }
+  const old = { id: 'o', full_name: 'André', is_active: false }
+  const tst = { id: 't', full_name: 'TESTE Funcionario', is_active: true, job_role: 'cleaner' }
+  assert.equal(workDaysOf(gab).has(0), false)
+  assert.equal(canWork(gab, '2026-11-08').reason, 'weekday') // Sunday
+  assert.equal(canWork(gab, '2026-11-09').ok, true)
+  assert.equal(canWork(gab, '2026-11-09', { 'g|2026-11-09': { kind: 'off' } }).reason, 'off')
+  assert.equal(canWork(gab, '2026-11-08', { 'g|2026-11-08': { kind: 'extra' } }).ok, true)
+  assert.equal(canWork(mkt, '2026-11-09').reason, 'role')
+  assert.equal(canWork(mkt, '2026-11-09', {}, new Set(['m'])).reason, 'forced')
+  assert.deepEqual(outOfSchedule([gab, mkt, old, tst], ['2026-11-08']).map(o => `${o.emp.id}:${o.reason}`), ['g:unavailable', 'm:role', 'o:inactive', 't:test'])
+
+  const contracts = [
+    { id: 'k1', client_id: 'otp', location_name: 'Kodama Kinshicho', service_type: 'Basic Cleaning', days_of_week: ['Mon', 'Tue'], is_active: true },
+    { id: 'k2', client_id: 'otp', location_name: 'Ibushio — Range Hood', service_type: 'Range Hood', days_of_week: ['Sun'], is_active: true },
+    { id: 'k3', client_id: 'otp', location_name: 'OTP — Floor Wax', service_type: 'Floor Wax', days_of_week: [], is_active: true },
+    { id: 'k4', client_id: 'off', location_name: 'Closed shop', service_type: 'Basic Cleaning', days_of_week: ['Mon'], is_active: true },
+  ]
+  const targets = contractTargets(contracts, [{ id: 'otp', company_name: 'On The Planet', is_active: true }, { id: 'off', company_name: 'Old', is_active: false }])
+  assert.deepEqual(targets.map(t => t.kind), ['weekly', 'periodic', 'nodays'])
+  assert.ok(jobFulfils('Ibushio — Stove + Range Hood + Grating + AC Cleaning', targets[1]))
+  assert.ok(!jobFulfils('Ibushio — Basic Cleaning', targets[1]))
+  assert.ok(jobFulfils('Kodama Kinshicho — Basic Cleaning', targets[0]))
+  const nov = periodDays('month', '', '2026-11')
+  const rowsOk = nov.filter(d => [1, 2].includes(new Date(d + 'T12:00:00Z').getUTCDay())).map(d => ({ date: d, title: 'Kodama Kinshicho — Basic Cleaning' }))
+  const c1 = coverage(targets, nov, rowsOk, { wholeMonth: true })
+  assert.equal(c1.clients[0].done, 1); assert.equal(c1.clients[0].total, 2) // Ibushio periodic missing
+  assert.equal(c1.missing.length, 1); assert.ok(c1.missing[0].periodic)
+  assert.equal(c1.noDays.length, 1)
+  const c2 = coverage(targets, nov, rowsOk.slice(1), { wholeMonth: false })
+  assert.equal(c2.missing.length, 1); assert.equal(c2.missing[0].date, rowsOk[0].date)
+  assert.equal(c2.clients[0].total, 1)
+  assert.equal(dupKey('2026-11-02', 'Tooda — Basic Cleaning'), dupKey('2026-11-02', 'tooda  —  basic cleaning'))
+  const seq = clockSeq([{ key: 'a', employeeId: 'g', date: 'd', time: '21:00', title: 'A' }, { key: 'b', employeeId: 'g', date: 'd', time: '00:30', title: 'B' }])
+  assert.equal(seq.get('b'), 1); assert.equal(seq.get('a'), 2)
+  console.log('schedule plan ok')
+}
