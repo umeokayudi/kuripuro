@@ -2,6 +2,25 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang, fill, localeOf } from '../hooks/useLang'
+import { askConfirm } from '../components/ConfirmDialog'
+import { roleInfo } from '../lib/employeeRoles'
+
+// Roles that never get cleaning routes from the generator.
+const NO_ROUTE_ROLES = ['office']
+
+function addDaysStr(d, n) {
+  const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10)
+}
+/** Dates covered by the chosen scope (day / week Mon–Sun / month). */
+function scopeDays(scope, anchor, month) {
+  if (scope === 'day') return [anchor]
+  if (scope === 'week') {
+    const dow = (new Date(anchor + 'T12:00:00Z').getUTCDay() + 6) % 7
+    const mon = addDaysStr(anchor, -dow)
+    return Array.from({ length: 7 }, (_, i) => addDaysStr(mon, i))
+  }
+  return monthDays(month)
+}
 import {
   DEFAULT_LOCATIONS, SCHEDULE_ROUTES, SCHEDULE_COLORS, buildMonthSchedule, assignEmployees,
   availabilityIndex, defaultScheduleEmployees, scheduleStats, jobsToRows,
@@ -51,13 +70,19 @@ export default function ScheduleGenerator() {
   const [availRows, setAvailRows] = useState([])
   const [locations, setLocations] = useState(DEFAULT_LOCATIONS)
   const [expandedDay, setExpandedDay] = useState(null)
+  const [scope, setScope] = useState('month')
+  const [anchor, setAnchor] = useState(() => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0])
+  const [onlyPeople, setOnlyPeople] = useState(() => new Set())
+  const [jobEdits, setJobEdits] = useState({})
+  const rangeDays = useMemo(() => scopeDays(scope, anchor, month), [scope, anchor, month])
+  const rangeMonths = useMemo(() => [...new Set(rangeDays.map(d => d.slice(0, 7)))], [rangeDays])
 
   useEffect(() => { loadData() }, [])
-  useEffect(() => { loadExisting(); loadAvailability(); setBaseJobs([]); setOverrides({}) }, [month])
+  useEffect(() => { loadExisting(); loadAvailability(); setBaseJobs([]); setOverrides({}); setJobEdits({}) }, [month, scope, anchor, onlyPeople])
 
   const loadData = async () => {
     const [{ data: emps }, { data: serviceContracts }] = await Promise.all([
-      supabase.from('employees').select('id, full_name, is_active').eq('is_active', true).order('full_name'),
+      supabase.from('employees').select('id, full_name, is_active, job_role').eq('is_active', true).order('full_name'),
       supabase.from('service_contracts').select('*').eq('is_active', true),
     ])
     setEmployees(emps || [])
@@ -65,7 +90,7 @@ export default function ScheduleGenerator() {
   }
 
   const loadAvailability = async () => {
-    const days = monthDays(month)
+    const days = rangeMonths.flatMap(monthDays)
     const { data } = await supabase.from('employee_availability')
       .select('employee_id, date, kind, status')
       .gte('date', days[0]).lte('date', days[days.length - 1])
@@ -73,20 +98,24 @@ export default function ScheduleGenerator() {
   }
 
   const loadExisting = async () => {
-    const days = monthDays(month)
-    const { count } = await supabase
+    const days = rangeDays
+    let q = supabase
       .from('jobs')
       .select('id', { count: 'exact', head: true })
       .gte('scheduled_date', days[0])
       .lte('scheduled_date', days[days.length - 1])
+    if (onlyPeople.size) q = q.in('employee_id', [...onlyPeople])
+    const { count } = await q
     setExistingCount(count || 0)
   }
 
   const teamIds = useMemo(() => {
     const valid = new Set(employees.map(e => e.id))
     const ids = team ? team.filter(id => valid.has(id)) : defaultScheduleEmployees(employees).map(e => e.id)
-    return new Set(ids)
+    return new Set(ids.filter(id => !NO_ROUTE_ROLES.includes(employees.find(e => e.id === id)?.job_role)))
   }, [team, employees])
+  // Active people not in the schedule (e.g. just hired): shown with a warning, never silently.
+  const outOfTeam = useMemo(() => employees.filter(e => !teamIds.has(e.id) && !NO_ROUTE_ROLES.includes(e.job_role)), [employees, teamIds])
   const teamEmployees = useMemo(() => employees.filter(e => teamIds.has(e.id)), [employees, teamIds])
 
   const colorOf = useMemo(() =>
@@ -96,9 +125,27 @@ export default function ScheduleGenerator() {
 
   const availability = useMemo(() => availabilityIndex(availRows), [availRows])
 
-  const preview = useMemo(() => (
-    baseJobs.length ? assignEmployees(baseJobs, { employees: teamEmployees, availability, owners, overrides }) : []
-  ), [baseJobs, teamEmployees, availability, owners, overrides])
+  const inRange = useMemo(() => new Set(rangeDays), [rangeDays])
+  const preview = useMemo(() => {
+    if (!baseJobs.length) return []
+    const assigned = assignEmployees(baseJobs, { employees: teamEmployees, availability, owners, overrides })
+    return assigned
+      .filter(j => inRange.has(j.date))
+      .map(j => {
+        const ed = jobEdits[j.id]
+        if (!ed) return j
+        const emp = ed.employeeId !== undefined ? teamEmployees.find(e => e.id === ed.employeeId) : null
+        return {
+          ...j,
+          time: ed.time ?? j.time,
+          ...(ed.employeeId !== undefined ? { employeeId: ed.employeeId || null, employee: emp ? emp.full_name.split(' ')[0] : '', employeeName: emp?.full_name || null, assignReason: 'manual' } : {}),
+          removed: !!ed.removed,
+        }
+      })
+      .filter(j => !onlyPeople.size || onlyPeople.has(j.employeeId || ''))
+  }, [baseJobs, teamEmployees, availability, owners, overrides, jobEdits, inRange, onlyPeople])
+  const kept = useMemo(() => preview.filter(j => !j.removed), [preview])
+  const editJob = (id, patch) => setJobEdits(e => ({ ...e, [id]: { ...(e[id] || {}), ...patch } }))
 
   const toggleTeam = (id) => {
     const next = new Set(teamIds)
@@ -117,13 +164,16 @@ export default function ScheduleGenerator() {
 
   const runPreview = () => {
     if (!teamEmployees.length) { toast.error(s.noTeam); return }
-    const jobs = buildMonthSchedule(month, { locations })
+    // Built per month so routes stay fair, then cut to the chosen day / week / people.
+    const jobs = rangeMonths.flatMap((m, mi) => buildMonthSchedule(m, { locations }).map(j => ({ ...j, id: mi * 100000 + Number(j.id) })))
     setOverrides({})
+    setJobEdits({})
     setBaseJobs(jobs)
-    toast.success(fill(s.previewToast, { count: jobs.length, employees: teamEmployees.length }))
+    const n = jobs.filter(j => inRange.has(j.date)).length
+    toast.success(fill(s.previewToast, { count: n, employees: teamEmployees.length }))
   }
 
-  const stats = useMemo(() => scheduleStats(preview), [preview])
+  const stats = useMemo(() => scheduleStats(kept), [kept])
   const unassigned = stats.byEmployee[''] || 0
   const covered = useMemo(() => new Set(preview.filter(j => j.assignReason === 'ownerOff').map(j => j.groupKey)).size, [preview])
 
@@ -134,21 +184,29 @@ export default function ScheduleGenerator() {
   }, [preview])
 
   const handleGenerate = async () => {
-    if (!preview.length) { toast.error(s.previewFirst); return }
+    if (!kept.length) { toast.error(s.previewFirst); return }
     const summary = Object.entries(stats.byEmployee)
       .map(([id, c]) => `${id ? nameOf(id) : s.nobody}: ${c}`).join(', ')
-    const days = monthDays(month)
+    const days = rangeDays
+    const label = scope === 'month' ? month : `${days[0]} → ${days[days.length - 1]}`
     if (existingCount > 0) {
-      if (!confirm(fill(s.confirmReplace, { existing: existingCount, month, count: preview.length, summary }))) return
-      await supabase.from('jobs').delete()
+      const ok = await askConfirm({ title: tr('Replace jobs?', '作業を置き換えますか？', 'Substituir jobs?'), message: fill(s.confirmReplace, { existing: existingCount, month: label, count: kept.length, summary }), danger: true, confirmLabel: tr('Replace', '置き換え', 'Substituir') })
+      if (!ok) return
+      let del = supabase.from('jobs').delete()
         .gte('scheduled_date', days[0])
         .lte('scheduled_date', days[days.length - 1])
         .eq('status', 'assigned')
         .neq('job_category', 'spot')
-    } else if (!confirm(fill(s.confirmCreate, { count: preview.length, summary }))) return
+      if (onlyPeople.size) del = del.in('employee_id', [...onlyPeople].filter(Boolean))
+      const { error: delErr } = await del
+      if (delErr) { toast.error(delErr.message); return }
+    } else {
+      const ok = await askConfirm({ title: tr('Create jobs?', '作業を作成しますか？', 'Criar jobs?'), message: fill(s.confirmCreate, { count: kept.length, summary }), confirmLabel: tr('Create', '作成', 'Criar') })
+      if (!ok) return
+    }
 
     setLoading(true)
-    const rows = jobsToRows(preview)
+    const rows = jobsToRows(kept)
     for (let i = 0; i < rows.length; i += 50) {
       const { error } = await supabase.from('jobs').insert(rows.slice(i, i + 50))
       if (error) { toast.error(error.message); setLoading(false); return }
@@ -158,18 +216,31 @@ export default function ScheduleGenerator() {
     loadExisting()
   }
 
-  const days = monthDays(month)
+  const calDays = rangeDays
   const routeLabel = (key) => SCHEDULE_ROUTES.find(r => r.key === key)?.label || key
 
   return (
     <div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-title">🗓 {s.generator}</div>
+        <div className="tab-pills" style={{ marginBottom: 12 }}>
+          {[['day', tr('Day', '日', 'Dia')], ['week', tr('Week', '週', 'Semana')], ['month', tr('Month', '月', 'Mês')]].map(([k, l]) => (
+            <button key={k} type="button" className={`tab-pill${scope === k ? ' active' : ''}`} onClick={() => setScope(k)}>{l}</button>
+          ))}
+        </div>
         <div className="grid-2" style={{ marginBottom: 14 }}>
-          <div className="form-group">
-            <label>{s.month}</label>
-            <input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)} />
-          </div>
+          {scope === 'month' ? (
+            <div className="form-group">
+              <label>{s.month}</label>
+              <input type="month" value={month} onChange={e => e.target.value && setMonth(e.target.value)} />
+            </div>
+          ) : (
+            <div className="form-group">
+              <label>{scope === 'day' ? tr('Day', '日', 'Dia') : tr('Any day of the week', '週の任意の日', 'Qualquer dia da semana')}</label>
+              <input type="date" value={anchor} onChange={e => e.target.value && setAnchor(e.target.value)} />
+              {scope === 'week' && <small style={{ color: 'var(--text3)' }}>{rangeDays[0]} → {rangeDays[6]}</small>}
+            </div>
+          )}
           <div className="form-group">
             <label>{s.existingJobs}</label>
             <div style={{ padding: '10px 12px', background: existingCount ? 'rgba(251,191,36,0.1)' : 'var(--surface2)', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
@@ -178,6 +249,24 @@ export default function ScheduleGenerator() {
           </div>
         </div>
       </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-title">🧑 {tr('Generate for', '対象者', 'Gerar para')}</div>
+        <div className="ag-people" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button type="button" className={`tab-pill${onlyPeople.size === 0 ? ' active' : ''}`} onClick={() => setOnlyPeople(new Set())}>{tr('Everyone', '全員', 'Todos')}</button>
+          {teamEmployees.map(e => (
+            <button key={e.id} type="button" className={`tab-pill${onlyPeople.has(e.id) ? ' active' : ''}`}
+              onClick={() => setOnlyPeople(prev => { const n = new Set(prev); n.has(e.id) ? n.delete(e.id) : n.add(e.id); return n })}>{e.full_name}</button>
+          ))}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>{tr('Only these people\'s jobs are created or replaced.', '選んだ人の作業だけを作成・置き換えます。', 'Só os jobs dessas pessoas são criados ou substituídos.')}</div>
+      </div>
+
+      {outOfTeam.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #f59e0b', background: 'rgba(245,158,11,0.08)' }}>
+          ⚠️ <b>{tr('Not in the schedule:', 'スケジュール対象外:', 'Fora da escala:')}</b> {outOfTeam.map(e => e.full_name).join(', ')} — {tr('tick them below to include.', '含めるには下でチェックしてください。', 'marque abaixo para incluir.')}
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-title">👥 {s.teamTitle}</div>
@@ -193,7 +282,7 @@ export default function ScheduleGenerator() {
             <thead>
               <tr>
                 <th style={{ position: 'sticky', left: 0, background: 'var(--surface)', textAlign: 'left', padding: '6px 8px', minWidth: 130 }}>{s.employee}</th>
-                {days.map(d => {
+                {calDays.map(d => {
                   const dow = new Date(d + 'T12:00:00').getDay()
                   return (
                     <th key={d} style={{ padding: '4px 0', minWidth: 24, fontWeight: 500, color: dow === 0 ? 'var(--red, #dc2626)' : 'var(--text3)' }}>
@@ -212,13 +301,16 @@ export default function ScheduleGenerator() {
                   <tr key={e.id} style={{ borderTop: '1px solid var(--border)', opacity: inTeam ? 1 : 0.45 }}>
                     <td style={{ position: 'sticky', left: 0, background: 'var(--surface)', padding: '6px 8px', whiteSpace: 'nowrap' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={inTeam} onChange={() => toggleTeam(e.id)} />
+                        <input type="checkbox" checked={inTeam} disabled={NO_ROUTE_ROLES.includes(e.job_role)} onChange={() => toggleTeam(e.id)} />
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: colorOf[e.id] }} />
                         <span style={{ fontWeight: 600 }}>{e.full_name}</span>
+                        {roleInfo(e.job_role, lang) && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, color: roleInfo(e.job_role, lang).color, background: roleInfo(e.job_role, lang).bg }}>{roleInfo(e.job_role, lang).label}</span>}
                       </label>
+                      {NO_ROUTE_ROLES.includes(e.job_role) && <div style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 22 }}>{tr('Role without cleaning routes', '清掃ルートなしの役割', 'Função sem rotas de limpeza')}</div>}
+                      {!inTeam && !NO_ROUTE_ROLES.includes(e.job_role) && <div style={{ fontSize: 10, color: '#b45309', marginLeft: 22, fontWeight: 700 }}>⚠️ {tr('Not in the schedule', 'スケジュール対象外', 'Fora da escala')}</div>}
                       {inTeam && marks === 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 22 }}>{s.noMarks}</div>}
                     </td>
-                    {days.map(d => {
+                    {calDays.map(d => {
                       const mark = availability[`${e.id}|${d}`]
                       const st = mark ? MARK_STYLE[mark.kind] : null
                       const pending = mark?.status === 'pending'
@@ -262,8 +354,8 @@ export default function ScheduleGenerator() {
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
           <button className="btn" onClick={runPreview} disabled={!teamEmployees.length}>👁 {s.preview}</button>
-          <button className="btn btn-primary" onClick={handleGenerate} disabled={loading || !preview.length}>
-            {loading ? s.creating : `✅ ${fill(s.generate, { count: preview.length || '…' })}`}
+          <button className="btn btn-primary" onClick={handleGenerate} disabled={loading || !kept.length}>
+            {loading ? s.creating : `✅ ${fill(s.generate, { count: kept.length || '…' })}`}
           </button>
         </div>
       </div>
@@ -344,13 +436,18 @@ export default function ScheduleGenerator() {
                           {g.assignReason === 'manual' && g.employeeId && availability[`${g.employeeId}|${date}`]?.kind === 'off' && (
                             <div style={{ fontSize: 11, color: 'var(--red, #dc2626)', marginLeft: 16 }}>⚠️ {s.manualOnOff}</div>
                           )}
-                          {isOpen && (
+                          {(isOpen || scope !== 'month') && (
                             <div style={{ marginLeft: 16, marginTop: 4 }}>
                               {gJobs.map(j => (
-                                <div key={j.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                                  <span style={{ color: 'var(--text3)', width: 42 }}>{j.time}</span>
-                                  <span style={{ flex: 1, minWidth: 0 }}>{j.title.split(' —')[0]}</span>
+                                <div key={j.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 12, opacity: j.removed ? 0.45 : 1 }}>
+                                  <input type="time" value={j.time} onChange={e => editJob(j.id, { time: e.target.value })} style={{ fontSize: 12, padding: '2px 4px', width: 92 }} aria-label={tr('Time', '時刻', 'Horário')} />
+                                  <span style={{ flex: '1 1 140px', minWidth: 0, textDecoration: j.removed ? 'line-through' : 'none' }}>{j.title.split(' —')[0]}</span>
                                   {j.type === 'deep' && <span className="badge badge-amber" style={{ fontSize: 10 }}>{t.jobs.deep}</span>}
+                                  <select value={j.employeeId || ''} onChange={e => editJob(j.id, { employeeId: e.target.value })} style={{ fontSize: 12, padding: '2px 6px', maxWidth: 150 }} aria-label={s.employee}>
+                                    <option value="">{s.nobody}</option>
+                                    {teamEmployees.map(e => <option key={e.id} value={e.id}>{e.full_name}{availability[`${e.id}|${date}`]?.kind === 'off' ? ` (${s.legendOff})` : ''}</option>)}
+                                  </select>
+                                  <button type="button" className="btn btn-sm" onClick={() => editJob(j.id, { removed: !j.removed })} title={j.removed ? tr('Keep', '戻す', 'Manter') : tr('Leave out', '除外', 'Tirar')}>{j.removed ? '↺' : '✕'}</button>
                                 </div>
                               ))}
                             </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import OvertimeAlerts from '../components/OvertimeAlerts'
 import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl, mapsCoordsUrl } from '../lib/mapsLink'
 import { apiFetch } from '../lib/apiFetch'
@@ -260,6 +261,8 @@ export default function LiveTracking() {
           </a>
         ))}
       </div>
+
+      <OvertimeAlerts jobs={jobs} />
 
       {loading && <div className="lt-empty">{L.loading}</div>}
 

@@ -75,6 +75,10 @@ import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
 import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
 import { aiIssuesText } from '../lib/photoAi'
+import { askConfirm } from '../components/ConfirmDialog'
+import AfterPhotoLater from '../components/AfterPhotoLater'
+import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate } from '../lib/agenda'
+import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
 import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
 import {
@@ -572,8 +576,41 @@ export default function EmployeePortal() {
   useEffect(() => {
     if (activeJob?.id && checklist.length) {
       localStorage.setItem(`kp_ck_${activeJob.id}`, JSON.stringify(checklist))
+      // The office sees the progress (x of y) on the Agenda while the job runs.
+      const id = activeJob.id
+      const t = setTimeout(() => {
+        supabase.from('jobs').update(checklistUpdate(checklist)).eq('id', id).eq('status', 'in_progress').then(() => {})
+      }, 1500)
+      return () => clearTimeout(t)
     }
   }, [checklist, activeJob?.id])
+
+  // Automatic ceiling: past N× the planned time the count stops and the worker is asked once.
+  const [agendaSettings, setAgendaSettings] = useState(null)
+  const capAskedRef = useRef(null)
+  const capEndRef = useRef(null)
+  useEffect(() => { loadAgendaSettings().then(setAgendaSettings).catch(() => {}) }, [])
+  useEffect(() => {
+    if (!activeJob?.started_at || !agendaSettings) return
+    const planned = plannedMinutes(activeJob, contractForAgendaJob(activeJob, serviceContracts))
+    const capMin = Math.round(planned * Number(agendaSettings.cap_factor || 2))
+    if (!capMin || elapsed / 60 < capMin || capAskedRef.current === activeJob.id) return
+    capAskedRef.current = activeJob.id
+    const job = activeJob
+    askConfirm({
+      title: L('Still working on this job?', 'まだこの作業中ですか？', 'Ainda está neste serviço?'),
+      message: L(`It passed ${Math.round(capMin / 60 * 10) / 10}h (the ceiling for this job). The time count is paused until you answer.`,
+        `この作業の上限（${Math.round(capMin / 60 * 10) / 10}時間）を超えました。回答までカウントを止めています。`,
+        `Passou de ${Math.round(capMin / 60 * 10) / 10}h (o teto deste serviço). A contagem fica pausada até você responder.`),
+      confirmLabel: L('Yes, still working', 'はい、作業中', 'Sim, ainda trabalhando'),
+      cancelLabel: L('No, I forgot to finish', 'いいえ、終了し忘れ', 'Não, esqueci de finalizar'),
+    }).then(still => {
+      if (still) { logJobAdmin(job.id, 'cap_confirm', { reason: 'employee', newValue: { capMin } }); return }
+      // Time counted stops at the ceiling.
+      capEndRef.current = { jobId: job.id, at: new Date(new Date(job.started_at).getTime() + capMin * 60000).toISOString() }
+      handleCompleteWithSig(job)
+    })
+  }, [elapsed, activeJob?.id, agendaSettings])
 
   const weekSummary = () => {
     const { start, end } = getWeekRange()
@@ -666,6 +703,9 @@ export default function EmployeePortal() {
       const failed = results.find(r => r.error)
       if (failed) throw failed.error
       toast.success(e.orderSaved || 'Order saved', { id: 'kp-order-saved' })
+      const names = order.filter(j => j.status !== 'cancelled').map((j, i) => `${i + 1}. ${businessName(j)}`).join(' · ')
+      supabase.from('messages').insert({ employee_id: user.id, employee_name: user.name, sender: 'employee', read: false,
+        content: `🔀 [Sistema] ${user.name} mudou a ordem dos serviços de ${job.scheduled_date}: ${names}` }).then(() => {})
     } catch (err) {
       setAllJobs(previous)
       toast.error(err?.message || 'Could not save the order')
@@ -1048,10 +1088,7 @@ export default function EmployeePortal() {
   // Checks what finishing needs (After photo, checklist) before the NFC and signature steps,
   // so the worker is not told about a missing photo only after signing.
   const finishBlocked = (job) => {
-    if (!jobPhotos.some(p => p.slot === 'end')) {
-      toast.error(L('Take at least 1 "After" photo before finishing', '終了前に「作業後」の写真を1枚以上撮ってください', 'Tire ao menos 1 foto "Depois" antes de finalizar'))
-      return true
-    }
+    // v1.0.96: the After photo no longer blocks the finish; without it the job waits for the photo.
     const requiredChecklist = resolveChecklistForJob(job, checklist)
     const staleJob = isStaleActiveJob(job, tokyoToday(), elapsed)
     const checklistOk = staleJob
@@ -1086,6 +1123,17 @@ export default function EmployeePortal() {
 
   const handleCompleteWithSig = async (job) => {
     if (finishBlocked(job)) return
+    if (!jobPhotos.some(p => p.slot === 'end')) {
+      const ok = await askConfirm({
+        title: L('Finish without the After photo?', 'After写真なしで完了しますか？', 'Concluir sem a foto Depois?'),
+        message: L('The job is saved as done and shows "waiting for After photo". Send the photo later from the home screen (camera or gallery).',
+          '作業は完了として保存され「After写真待ち」と表示されます。写真はあとでホーム画面から送れます（カメラまたはギャラリー）。',
+          'O serviço fica concluído e aparece como "aguardando foto Depois". Envie a foto depois pela tela inicial (câmera ou galeria).'),
+        confirmLabel: L('Finish now', '今すぐ完了', 'Concluir agora'),
+        cancelLabel: L('Take the photo', '写真を撮る', 'Tirar a foto'),
+      })
+      if (!ok) return
+    }
     const prepared = finishPrepRef.current
     if (!(prepared && prepared.jobId === job.id && prepared.photos === jobPhotos)) startFinishUploads(job)
     const nfc = await askNfc('end', job)
@@ -1127,12 +1175,13 @@ export default function EmployeePortal() {
       // One write marks the job done; the slower extras (photo grade, GPS, report) follow
       // in the background so the worker sees "done" right away.
       const { error: coreErr } = await supabase.from('jobs').update({
-        status:'completed', completed_at:new Date().toISOString(), notes_employee:notes,
+        status:'completed', completed_at:(capEndRef.current?.jobId===job.id ? capEndRef.current.at : new Date().toISOString()), notes_employee:notes,
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
         checklist_total: total || null, checklist_done: total ? done : null,
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
+      capEndRef.current = null
       finishQuoteJob(job.id) // job from an accepted quote → its invoice goes to the client
       window.dispatchEvent(new Event('kp:facility-updated'))
       const nfcEnd = nfcEndRef.current
@@ -1172,6 +1221,7 @@ export default function EmployeePortal() {
       await supabase.from('jobs').update({ end_lat: endPos.lat, end_lng: endPos.lng, end_accuracy: endPos.acc, gps_end_distance: endDist }).eq('id', job.id)
     })().catch(ex => console.log('gps end skipped', ex?.message))
     const aiSaved = (async () => {
+      if (!endPhotoUrl) return
       const resp = await fetch('/api/analyze-photo', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ photoUrl: endPhotoUrl, locationName: job.title }),
@@ -1342,7 +1392,7 @@ export default function EmployeePortal() {
             </div>
           ))}
           {photos.length<10&&(
-            <div onClick={()=>{photoInputRef.current.dataset.slot=slot;photoInputRef.current.click()}} style={{aspectRatio:'1',borderRadius:10,border:'2px dashed rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.03)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:4}}>
+            <div onClick={()=>{const inp=photoInputRef.current;inp.dataset.slot=slot;if(slot==='end')inp.removeAttribute('capture');else inp.setAttribute('capture','environment');inp.click()}} style={{aspectRatio:'1',borderRadius:10,border:'2px dashed rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.03)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:4}}>
               <span style={{fontSize:22}}>📷</span><span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{L('Add', '追加', 'Adicionar')}</span>
             </div>
           )}
@@ -1820,6 +1870,7 @@ export default function EmployeePortal() {
         {tab==='home'&&(
           <div className="emp-home ex-home">
             {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
+            <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-3*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
@@ -2458,14 +2509,14 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
           )}
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder={labels.notes+'...'} style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:60,boxSizing:'border-box',marginBottom:12}} />
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}) — {labels.required}</div>
+            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}) — {labels.afterLater || L('camera or gallery · can be sent later', 'カメラまたはギャラリー・あとで送信可', 'câmera ou galeria · pode enviar depois')}</div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               {afterPhotos.map((p,i)=>(
                 <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.after} />
               ))}
               <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
                 <span style={{fontSize:20}}>📷</span>
-                <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
+                <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
               </label>
             </div>
           </div>
@@ -2653,7 +2704,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
 
                 {/* AFTER photos */}
                 <div style={{marginBottom:12}}>
-                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}) — {labels.required}</div>
+                  <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}) — {labels.afterLater || L('camera or gallery · can be sent later', 'カメラまたはギャラリー・あとで送信可', 'câmera ou galeria · pode enviar depois')}</div>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                     {afterPhotos.map((p,i)=>(
                       <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.after} />
@@ -2661,7 +2712,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                     <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
                       <span style={{fontSize:20}}>📷</span>
                       <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{labels.after}</span>
-                      <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
+                      <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
                     </label>
                   </div>
                 </div>
