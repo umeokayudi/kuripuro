@@ -264,7 +264,7 @@ export default function FacilityWorld({
       setFailed(true)
       return
     }
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1))
+    renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1))
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -298,7 +298,7 @@ export default function FacilityWorld({
     scene.add(hemi)
     const sun = new THREE.DirectionalLight('#fff6e8', 2.1)
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.mapSize.set(1024, 1024)
     sun.shadow.bias = -0.0004
     sun.shadow.normalBias = 0.02
     sun.shadow.radius = 4

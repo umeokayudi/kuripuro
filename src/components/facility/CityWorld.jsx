@@ -130,7 +130,7 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
       onFail?.()
       return
     }
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1))
+    renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1))
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -162,7 +162,7 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
     scene.add(new THREE.HemisphereLight('#dbeafe', '#1e293b', 0.9))
     const sun = new THREE.DirectionalLight('#fff4e0', 2.2)
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.mapSize.set(1024, 1024)
     sun.shadow.bias = -0.0005
     scene.add(sun, sun.target)
 

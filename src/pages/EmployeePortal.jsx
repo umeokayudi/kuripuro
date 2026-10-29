@@ -1406,20 +1406,22 @@ export default function EmployeePortal() {
   const chatSections = teamReady ? buildChatSections({ me:user, employees:coworkers, teamMessages, officeMessages:messages, teamReady }) : null
   const lastTeamUnread = teamMessages.find(m=>m.to_employee_id===user.id&&!m.read)
   const chatMenuPreview = officeUnread>0&&lastAdminMsg ? lastAdminMsg.content : lastTeamUnread ? lastTeamUnread.content : null
+  // v1.0.96 · lean employee menu: My day, My jobs, My salary, My requests, Chat (+ World, AI).
+  // Screens that used to be separate menu entries now open as tabs inside their group.
+  const MENU_GROUPS = {
+    jobs: [['history', e.allJobs], ['calendar', e.calendar], ['spots', e.spotJobs], ['achievements', e.achievements]],
+    requests: [['equipment', e.equipment], ['transport', e.transport], ['availability', e.availability]],
+  }
+  const groupOf = key => Object.keys(MENU_GROUPS).find(g => MENU_GROUPS[g].some(([k]) => k === key))
   const menuItems = [
     {key:'home',icon:'🏠',label:e.dashboard},
-    {key:'shift',icon:'🗺',label:e.todayShift},
-    {key:'ai',icon:'✦',label:e.ai},
-    {key:'spots',icon:'⚡',label:e.spotJobs,badge:spotJobs.length},
-    {key:'history',icon:'📅',label:e.allJobs},
-    {key:'salary',icon:'💴',label:e.salary},
-    {key:'transport',icon:'🚃',label:e.transport},
-    {key:'equipment',icon:'🧰',label:e.equipment},
+    {key:'shift',icon:'🗺',label:L('My day','今日の予定','Meu dia')},
+    {key:'history',group:'jobs',icon:'📅',label:L('My jobs','自分の作業','Meus jobs'),badge:spotJobs.length},
+    {key:'salary',icon:'💴',label:L('My salary','自分の給与','Meu salário')},
+    {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport} · ${e.availability}`,badge:planAlert?1:0},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
-    {key:'calendar',icon:'📆',label:e.calendar},
-    {key:'availability',icon:'🗓',label:e.availability,badge:planAlert?1:0},
-    {key:'achievements',icon:'🏆',label:e.achievements},
-    ...(facilityIndex.some(m=>m.status==='approved') ? [{key:'world',icon:'🌏',label:tr.facility.tab}] : []),
+    {key:'world',icon:'🌏',label:tr.facility.tab},
+    {key:'ai',icon:'✦',label:e.ai},
   ]
 
   const bottomTabs = [
@@ -1436,10 +1438,10 @@ export default function EmployeePortal() {
     {icon:'🚃',label:e.transport,hint:e.transportHint,run:()=>goToTab('transport')},
     {icon:'🧰',label:e.equipment,hint:e.equipmentHint,run:()=>goToTab('equipment')},
     {icon:'✉',label:e.chat,hint:e.chatHint,run:()=>goToTab('chat')},
-    facilityIndex.some(m=>m.status==='approved')&&{icon:'🌏',label:tr.facility.tab,hint:tr.facility.world?.myWork,run:()=>goToTab('world')},
+    {icon:'🌏',label:tr.facility.tab,hint:tr.facility.world?.myWork,run:()=>goToTab('world')},
   ].filter(Boolean)
 
-  const currentTabLabel = menuItems.find(m=>m.key===tab)?.label
+  const currentTabLabel = menuItems.find(m=>m.key===tab)?.label || (groupOf(tab) && menuItems.find(m=>m.group===groupOf(tab))?.label)
 
   const scrollToActiveJob = () => {
     setTimeout(() => {
@@ -1846,11 +1848,11 @@ export default function EmployeePortal() {
             <div className="emp-menu-head"><div><span className="emp-menu-kicker">KURIPURO BY JBM</span><h2>{e.more}</h2></div><button aria-label={e.close} className="emp-menu-close" onClick={()=>setMenuOpen(false)}>×</button></div>
             <div className="emp-menu-items">
             {menuItems.map(item=>(
-              <button key={item.key} onClick={()=>{setTab(item.key);setMenuOpen(false)}} className={`emp-menu-item${tab===item.key?' is-active':''}`}>
+              <button key={item.key} onClick={()=>{setTab(item.key);setMenuOpen(false)}} className={`emp-menu-item${tab===item.key||(item.group&&groupOf(tab)===item.group)?' is-active':''}`}>
                 <span className="emp-menu-item-icon">{item.icon}</span>
                 <div className="emp-menu-item-copy">
                   <div>{item.label}</div>
-                  {item.preview&&<div>{item.preview}</div>}
+                  {(item.preview||item.hint)&&<div>{item.preview||item.hint}</div>}
                 </div>
                 {item.badge>0&&<span className={`emp-menu-badge${item.key==='chat'?' is-alert':''}`}>{item.badge}</span>}
               </button>
@@ -1865,6 +1867,16 @@ export default function EmployeePortal() {
 
       {/* CONTENT */}
       <div className={`emp-content${tab==='ai'?' is-ai':''}${tab==='chat'?' is-chat':''}`} style={{flex:1,padding:'16px 14px 20px',overflowY:'auto',position:'relative',zIndex:1}}>
+
+        {groupOf(tab)&&(
+          <div className="tab-pills" style={{marginBottom:12,flexWrap:'wrap'}}>
+            {MENU_GROUPS[groupOf(tab)].map(([k,label])=>(
+              <button key={k} type="button" className={`tab-pill${tab===k?' active':''}`} onClick={()=>setTab(k)}>
+                {label}{k==='spots'&&spotJobs.length>0?` (${spotJobs.length})`:''}{k==='availability'&&planAlert?' •':''}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* HOME */}
         {tab==='home'&&(
