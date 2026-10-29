@@ -210,6 +210,7 @@ export default function EmployeePortal() {
   // Ponto por NFC (off unless the admin turned it on for everyone or for this worker)
   const [nfcConfig, setNfcConfig] = useState({ active: false, tags: [] })
   const [nfcScan, setNfcScan] = useState(null)
+  const finishPrepRef = useRef(null)
   const nfcEndRef = useRef(null)
   useEffect(() => { if (user?.id) loadNfcConfig(supabase, user.id).then(setNfcConfig) }, [user?.id])
   const [retroSignOpen, setRetroSignOpen] = useState(false)
@@ -886,13 +887,19 @@ export default function EmployeePortal() {
     setRetroBusy(false)
   }
 
+  // All photos of a slot go up at the same time; the first one's path is the job's photo.
   const uploadSlotPhotos = async (jobId, photos, prefix) => {
-    let firstPath = null
-    for (let i = 0; i < photos.length; i++) {
-      const path = await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, photos[i].file)
-      if (i === 0) firstPath = path
+    // Three at a time: compressing ten photos at once can run an older phone out of memory.
+    const paths = new Array(photos.length)
+    let next = 0
+    const worker = async () => {
+      while (next < photos.length) {
+        const i = next++
+        paths[i] = await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, photos[i].file)
+      }
     }
-    return firstPath
+    await Promise.all(Array.from({ length: Math.min(3, photos.length) }, worker))
+    return paths[0] || null
   }
 
   // Resolves null when NFC is off, 'cancel' when the worker closes the sheet, else the read result.
@@ -990,22 +997,12 @@ export default function EmployeePortal() {
       .catch(() => { /* erro de compressão já foi avisado */ })
   }
 
-  const handleCompleteWithSig = async (job) => {
-    const nfc = await askNfc('end', job)
-    if (nfc === 'cancel') return
-    nfcEndRef.current = nfc
-    setSignatureJob(job)
-    setShowSignature(true)
-  }
-
-  const handleComplete = async (sigDataUrl, jobOverride) => {
-    const job = jobOverride || activeJob
-    if (!job) { toast.error('No active job - please refresh'); return }
-    // MÍNIMO: foto Before (start, tirada ao iniciar) + foto After
-    const endPhotosCheck = jobPhotos.filter(p=>p.slot==='end')
-    if (endPhotosCheck.length === 0) {
+  // Checks what finishing needs (After photo, checklist) before the NFC and signature steps,
+  // so the worker is not told about a missing photo only after signing.
+  const finishBlocked = (job) => {
+    if (!jobPhotos.some(p => p.slot === 'end')) {
       toast.error('Tire ao menos 1 foto "After" antes de finalizar')
-      return
+      return true
     }
     const requiredChecklist = resolveChecklistForJob(job, checklist)
     const staleJob = isStaleActiveJob(job, tokyoToday(), elapsed)
@@ -1020,16 +1017,53 @@ export default function EmployeePortal() {
           total: requiredChecklist.length,
         })
         : e.markAllChecklist)
-      return
+      return true
     }
+    return false
+  }
+
+  // Photos and the finish GPS start as soon as the worker taps Finish, so they are mostly
+  // done by the time the signature is confirmed.
+  const startFinishUploads = (job) => {
+    const photos = jobPhotos
+    const startPhotos = photos.filter(p => p.slot === 'start')
+    const uploads = Promise.all([
+      job.photo_start_url || !startPhotos.length ? Promise.resolve(job.photo_start_url || null) : uploadSlotPhotos(job.id, startPhotos, 'start'),
+      uploadSlotPhotos(job.id, photos.filter(p => p.slot === 'end'), 'end'),
+    ])
+    uploads.catch(() => { /* reported when the finish waits for it */ })
+    finishPrepRef.current = { jobId: job.id, photos, uploads, position: capturePosition() }
+    return finishPrepRef.current
+  }
+
+  const handleCompleteWithSig = async (job) => {
+    if (finishBlocked(job)) return
+    const prepared = finishPrepRef.current
+    if (!(prepared && prepared.jobId === job.id && prepared.photos === jobPhotos)) startFinishUploads(job)
+    const nfc = await askNfc('end', job)
+    if (nfc === 'cancel') return
+    nfcEndRef.current = nfc
+    setSignatureJob(job)
+    setShowSignature(true)
+  }
+
+  const handleComplete = async (sigDataUrl, jobOverride) => {
+    const job = jobOverride || activeJob
+    if (!job) { toast.error('No active job - please refresh'); return }
+    if (finishBlocked(job)) return
+    const requiredChecklist = resolveChecklistForJob(job, checklist)
     setSubmitting(true)
-    // Read the finish position while the photos upload
-    const endPositionPromise = capturePosition()
     try {
-      let startPhotoUrl = job.photo_start_url
-      const startPhotos = jobPhotos.filter(p => p.slot === 'start')
-      if (!startPhotoUrl && startPhotos.length > 0) {
-        startPhotoUrl = await uploadSlotPhotos(job.id, startPhotos, 'start')
+      const prepared = finishPrepRef.current
+      const prep = prepared && prepared.jobId === job.id && prepared.photos === jobPhotos ? prepared : startFinishUploads(job)
+      finishPrepRef.current = null
+      let startPhotoUrl, endPhotoUrl
+      try {
+        [startPhotoUrl, endPhotoUrl] = await prep.uploads
+      } catch (upErr) {
+        // A failed upload is tried once more instead of making the worker start over.
+        [startPhotoUrl, endPhotoUrl] = await startFinishUploads(job).uploads.catch(() => { throw upErr })
+        finishPrepRef.current = null
       }
       if (!startPhotoUrl) {
         toast.error(e.missingBeforePhoto)
@@ -1037,80 +1071,24 @@ export default function EmployeePortal() {
         return
       }
 
-      let endPhotoUrl = null
-      const endPhotos = jobPhotos.filter(p=>p.slot==='end')
-      endPhotoUrl = await uploadSlotPhotos(job.id, endPhotos, 'end')
-
-      // Checklist obrigatório — todos os itens devem estar marcados
       const total = requiredChecklist.length
       const done = requiredChecklist.filter(c=>c.done).length
       const missed = total - done
       const missedLabels = requiredChecklist.filter(c=>!c.done).map(c=>c.label)
 
-      // IA analisa as fotos Before/After e dá nota de qualidade
-      let aiScore = null, aiApproved = null, aiIssues = null
-      try {
-        const resp = await fetch('/api/analyze-photo', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photoUrl: endPhotoUrl, locationName: job.title }),
-        })
-        const ev = await resp.json()
-        aiScore = ev.nota ?? null; aiApproved = ev.aprovado ?? null
-        aiIssues = ev.problemas?.length ? ev.problemas.join(', ') : null
-      } catch(e){ console.log('AI photo skipped', e?.message) }
-
+      // One write marks the job done; the slower extras (photo grade, GPS, report) follow
+      // in the background so the worker sees "done" right away.
       const { error: coreErr } = await supabase.from('jobs').update({
         status:'completed', completed_at:new Date().toISOString(), notes_employee:notes,
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
+        checklist_total: total || null, checklist_done: total ? done : null,
+        checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
       }).eq('id',job.id)
       if (coreErr) throw coreErr
       finishQuoteJob(job.id) // job from an accepted quote → its invoice goes to the client
       window.dispatchEvent(new Event('kp:facility-updated'))
-      await saveNfcResult(supabase, job.id, 'end', nfcEndRef.current)
+      const nfcEnd = nfcEndRef.current
       nfcEndRef.current = null
-      try {
-        const endPos = await endPositionPromise
-        if (endPos) {
-          // Distance to the site when its location is known; otherwise to where the job was started.
-          let site = null
-          try { site = await siteCoords(job) } catch { /* offline */ }
-          const refLat = site?.lat ?? job.start_lat, refLng = site?.lng ?? job.start_lng
-          const endDist = refLat != null && refLng != null ? Math.round(distanceMeters(endPos.lat, endPos.lng, Number(refLat), Number(refLng))) : null
-          await supabase.from('jobs').update({ end_lat: endPos.lat, end_lng: endPos.lng, end_accuracy: endPos.acc, gps_end_distance: endDist }).eq('id', job.id)
-        }
-      } catch(ex){ console.log('gps end skipped', ex?.message) }
-      try {
-        await supabase.from('jobs').update({
-          checklist_total: total || null, checklist_done: total ? done : null,
-          checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
-          photo_ai_score: aiScore, photo_ai_approved: aiApproved, photo_ai_issues: aiIssues,
-        }).eq('id',job.id)
-      } catch(ex){ console.log('extra fields skipped', ex?.message) }
-
-      const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).maybeSingle()
-      if (completedJob) {
-        try {
-          await syncServiceReport(supabase, completedJob)
-        } catch (syncErr) {
-          console.error('service_report sync failed', syncErr?.message)
-        }
-      }
-
-      // Multa só se houver checklist parcial (não deveria ocorrer com bloqueio acima)
-      if (missed>0 && total>0 && Number(job.value||0)>0) {
-        const deductionAmount = Math.round(Number(job.value)*(missed/total))
-        if (deductionAmount>0) {
-          const { error: dedErr } = await supabase.from('salary_payments').insert({
-            employee_id: user.id, employee_name: user.name,
-            period: (job.scheduled_date||tokyoToday()).slice(0,7),
-            amount: deductionAmount,
-            payment_date: job.scheduled_date||tokyoToday(),
-            description: `Itens não feitos (${missed}/${total}) — ${job.title}: ${missedLabels.join(', ')}`,
-            status:'scheduled', payment_type:'deduction', is_deduction:true,
-          })
-          if (dedErr) throw new Error('Desconto não registrado: ' + dedErr.message)
-        }
-      }
 
       clearInterval(timerRef.current)
       localStorage.removeItem(`kp_ck_${job.id}`)
@@ -1119,12 +1097,65 @@ export default function EmployeePortal() {
       setJobVideo(null)
       sendJobVideoAfterComplete(job.id, videoTask)
       setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
-      const scoreMsg = aiScore!=null ? ` · IA: ${aiScore}/10${aiApproved?' ✅':' ⚠️'}` : ''
-      if (missed>0) toast(`${fill(e.completePartial, { done, total })}${scoreMsg}`, {icon:'⚠️', duration:5000})
-      else toast.success(`🎉 ${e.completeSuccess}${scoreMsg}`)
+      if (missed>0) toast(fill(e.completePartial, { done, total }), {icon:'⚠️', duration:5000})
+      else toast.success(`🎉 ${e.completeSuccess}`)
+      setSubmitting(false)
       loadAll()
+      finishJobExtras(job, { endPhotoUrl, position: prep.position, nfcEnd, missed, total, missedLabels })
     } catch(e) { toast.error('Error: '+e.message) }
     setSubmitting(false)
+  }
+
+  // After the job is saved as done: NFC, finish GPS, AI photo grade, service report, deduction.
+  const finishJobExtras = async (job, { endPhotoUrl, position, nfcEnd, missed, total, missedLabels }) => {
+    try { await saveNfcResult(supabase, job.id, 'end', nfcEnd) } catch (ex) { console.log('nfc end skipped', ex?.message) }
+    const syncReport = async () => {
+      const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).maybeSingle()
+      if (completedJob) await syncServiceReport(supabase, completedJob)
+    }
+    const gpsSaved = (async () => {
+      const endPos = await position
+      if (!endPos) return
+      // Distance to the site when its location is known; otherwise to where the job was started.
+      let site = null
+      try { site = await siteCoords(job) } catch { /* offline */ }
+      const refLat = site?.lat ?? job.start_lat, refLng = site?.lng ?? job.start_lng
+      const endDist = refLat != null && refLng != null ? Math.round(distanceMeters(endPos.lat, endPos.lng, Number(refLat), Number(refLng))) : null
+      await supabase.from('jobs').update({ end_lat: endPos.lat, end_lng: endPos.lng, end_accuracy: endPos.acc, gps_end_distance: endDist }).eq('id', job.id)
+    })().catch(ex => console.log('gps end skipped', ex?.message))
+    const aiSaved = (async () => {
+      const resp = await fetch('/api/analyze-photo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoUrl: endPhotoUrl, locationName: job.title }),
+      })
+      const ev = await resp.json()
+      if (ev.nota == null) return
+      await supabase.from('jobs').update({
+        photo_ai_score: ev.nota ?? null, photo_ai_approved: ev.aprovado ?? null,
+        photo_ai_issues: ev.problemas?.length ? ev.problemas.join(', ') : null,
+      }).eq('id', job.id)
+      toast(`IA: ${ev.nota}/10${ev.aprovado ? ' ✅' : ' ⚠️'} · ${job.title}`, { duration: 4000 })
+    })().catch(ex => console.log('AI photo skipped', ex?.message))
+    // The report goes out at once with what is known, and again when GPS and the grade arrive.
+    try { await syncReport() } catch (syncErr) { console.error('service_report sync failed', syncErr?.message) }
+    await Promise.all([gpsSaved, aiSaved])
+    try { await syncReport() } catch (syncErr) { console.error('service_report sync failed', syncErr?.message) }
+
+    // Multa só se houver checklist parcial (não deveria ocorrer com bloqueio acima)
+    if (missed>0 && total>0 && Number(job.value||0)>0) {
+      const deductionAmount = Math.round(Number(job.value)*(missed/total))
+      if (deductionAmount>0) {
+        const { error: dedErr } = await supabase.from('salary_payments').insert({
+          employee_id: user.id, employee_name: user.name,
+          period: (job.scheduled_date||tokyoToday()).slice(0,7),
+          amount: deductionAmount,
+          payment_date: job.scheduled_date||tokyoToday(),
+          description: `Itens não feitos (${missed}/${total}) — ${job.title}: ${missedLabels.join(', ')}`,
+          status:'scheduled', payment_type:'deduction', is_deduction:true,
+        })
+        if (dedErr) toast.error('Desconto não registrado: ' + dedErr.message)
+      }
+    }
   }
 
   const addPhoto = (slot, files) => {

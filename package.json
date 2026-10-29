@@ -41,6 +41,8 @@
     "test:schedule": "npx vite-node scripts/test-schedule-generator.mjs",
     "test:ai-guard": "node scripts/test-ai-guard.mjs",
     "test:tool-loop": "node scripts/test-tool-loop.mjs",
+    "test:gemini-thinking": "node scripts/test-gemini-thinking.mjs",
+    "test:employee-ai-pay": "node scripts/test-employee-ai-pay.mjs",
     "test:spot-contract": "node scripts/test-spot-contract.mjs",
     "test:nfc-clock": "node scripts/test-nfc-clock.mjs",
     "test:jobs-period": "node scripts/test-jobs-period.mjs",

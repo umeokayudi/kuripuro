@@ -65,4 +65,30 @@ await ok('stops at the time budget and still answers', async () => {
   assert.ok(reply && reply !== '(sem resposta)', `got a reply: ${reply}`)
 })
 
+await ok('out of time with canContinue: hands the work back, then the next call finishes it', async () => {
+  const { packContinuation, readContinuation, mergeTurns } = await import('../api/_ai-guard.js')
+  script = Array.from({ length: 20 }, () => [{ functionCall: { name: 'query_data', args: { table: 'jobs' } } }])
+  geminiBodies = []
+  delayMs = 400
+  const base = mergeTurns([{ role: 'user', parts: [{ text: 'parte 1' }] }, { role: 'user', parts: [{ text: 'parte 2' }] }])
+  assert.equal(base.length, 1, 'pieces sent in a row become one turn')
+  assert.equal(base[0].parts.length, 2)
+  const contents = [...base]
+  const first = await runGeminiToolLoop({ contents, executeTool: async () => [{ id: 1 }], maxIterations: 20, budgetMs: 6000, canContinue: true })
+  delayMs = 0
+  assert.equal(first.incomplete, true)
+  assert.equal(first.reply, '')
+  const continuation = packContinuation(contents, base.length)
+  assert.ok(continuation.length >= 2 && continuation[0].role === 'model')
+  const back = readContinuation(JSON.parse(JSON.stringify(continuation)))
+  assert.equal(back.length, continuation.length)
+  assert.deepEqual(readContinuation([{ role: 'user', parts: [{ inlineData: { data: 'x' } }] }]), [], 'no files smuggled in')
+  assert.deepEqual(readContinuation([{ role: 'system', parts: [] }]), [])
+  script = [[{ text: 'Tudo pronto.' }]]
+  geminiBodies = []
+  const second = await runGeminiToolLoop({ contents: [...base, ...back], executeTool: async () => [], canContinue: true })
+  assert.equal(second.reply, 'Tudo pronto.')
+  assert.equal(geminiBodies[0].contents.length, base.length + back.length, 'the second call sees the earlier lookups')
+})
+
 console.log(`\n${passed} tool-loop tests passed`)

@@ -1,5 +1,5 @@
-import { tokyoToday, workedDayKey } from './dates'
-import { calcEmployeeMonthlySalary, jobMinutes, jobPay } from './salaryCalc'
+import { tokyoToday, workedDayKey } from './dates.js'
+import { calcEmployeeMonthlySalary, jobMinutes, jobPay } from './salaryCalc.js'
 
 // Earnings history for the Salary screens (employee Salary tab + admin Salary page).
 // Each worked day gets its own amount, like a driver-app earnings screen. A full calendar

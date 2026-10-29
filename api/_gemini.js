@@ -54,6 +54,16 @@ async function resolveModels(key) {
   return cachedModels
 }
 
+/** Asks the model to think briefly. Gemini 3 takes a level, 2.5 takes a token budget. */
+function withLowThinking(model, body) {
+  if (body.generationConfig?.thinkingConfig) return body
+  let thinkingConfig = null
+  if (/gemini-3/.test(model)) thinkingConfig = { thinkingLevel: 'low' }
+  else if (/gemini-2\.5-flash/.test(model)) thinkingConfig = { thinkingBudget: 512 }
+  if (!thinkingConfig) return body
+  return { ...body, generationConfig: { ...(body.generationConfig || {}), thinkingConfig } }
+}
+
 async function callModel(key, model, body, timeoutMs = 25000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -76,8 +86,12 @@ async function callModel(key, model, body, timeoutMs = 25000) {
   }
 }
 
-/** options.timeoutMs: how long one model call may take (default 25 s). */
-export async function geminiGenerate(body, { timeoutMs } = {}) {
+/**
+ * options.timeoutMs: how long one model call may take (default 25 s).
+ * options.lowThinking: ask the model to think briefly. Default thinking made each admin AI
+ * step take several seconds, and a request with many lookups ran out of time.
+ */
+export async function geminiGenerate(body, { timeoutMs, lowThinking = false } = {}) {
   const key = process.env.GEMINI_API_KEY
   if (!key) {
     throw new Error(
@@ -89,7 +103,13 @@ export async function geminiGenerate(body, { timeoutMs } = {}) {
   let lastErr = ''
 
   for (const model of models) {
-    const { ok, text, retryable } = await callModel(key, model, body, timeoutMs)
+    const started = Date.now()
+    let result = await callModel(key, model, lowThinking ? withLowThinking(model, body) : body, timeoutMs)
+    // A model that rejects the thinking setting still gets the request, without it.
+    if (lowThinking && !result.ok && /thinking/i.test(result.text) && /INVALID_ARGUMENT|"code":\s*400/.test(result.text)) {
+      result = await callModel(key, model, body, timeoutMs ? Math.max(1000, timeoutMs - (Date.now() - started)) : undefined)
+    }
+    const { ok, text, retryable } = result
     if (ok) {
       try { return JSON.parse(text) } catch { throw new Error(`Gemini resposta inválida: ${text.slice(0, 200)}`) }
     }
@@ -101,4 +121,4 @@ export async function geminiGenerate(body, { timeoutMs } = {}) {
   throw new Error(`Gemini API error: ${lastErr}`)
 }
 
-export const API_BUILD = '2026-10-25-v1.0.90'
+export const API_BUILD = '2026-10-29-v1.0.91'
