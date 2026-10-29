@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import { fill } from '../../hooks/useLang'
 import { formatDistance, getCurrentPosition } from '../../lib/geocode'
 import { openClientSheet } from '../../lib/clientSheet'
@@ -8,15 +6,23 @@ import { loadCityPlaces, placeCoords, storeForPlace } from '../../lib/cityPlaces
 import {
   bestOrder, carRoute, estimateMinutes, fmtMinutes, legMeters, mapsLegUrl, mapsRouteUrl, minutesMatrix, routeLegs,
 } from '../../lib/cityRoute'
+import { loadGoogleMaps, mapsApiKey, onMapsAuthFailure } from '../../lib/googleMaps'
+import { worstStatus } from '../../lib/pinClusters'
+import { createPinLayer } from './gmapPins'
 import './city-map.css'
 
-const TOKYO = [35.6812, 139.7671]
+const TOKYO = { lat: 35.6812, lng: 139.7671 }
+// tira o excesso de lojas/restaurantes do próprio Google para os nossos pinos aparecerem
+const MAP_STYLE = [{ featureType: 'poi.business', stylers: [{ visibility: 'off' }] }]
 const ME = '__me__'
 const tokyoDay = (offset = 0) => new Date(Date.now() + offset * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
 const esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const short = s => (s.length > 14 ? `${s.slice(0, 13)}…` : s)
+// grupo de pinos próximos: número de locais + o primeiro nome, na cor do pior status
+const clusterHtml = items => `<div class="cm-pin cm-cluster st-${worstStatus(items.map(i => i.status))}"><i>${items.length}</i><span>${esc(short(items[0].name))} +${items.length - 1}</span></div>`
 
 /**
- * Mapa real da cidade (OpenStreetMap, sem chave): todos os locais que a gente atende, abrir cada um,
+ * Mapa real da cidade (Google Maps; sem chave mostra só a lista com um aviso): todos os locais que a gente atende, abrir cada um,
  * medir distância e montar rota de carro ou trem com tempo de deslocamento, inclusive na melhor ordem automática.
  */
 export default function CityMap({ stores, m, lang, query = '', mobile, onOpenStore }) {
@@ -24,6 +30,11 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
   const mapRef = useRef(null)
   const layers = useRef({})
   const measuringRef = useRef(false)
+  const gRef = useRef(null)
+  const pinClickRef = useRef(() => {})
+  const apiKey = mapsApiKey()
+  const [gm, setGm] = useState(apiKey ? 'loading' : 'nokey') // nokey | loading | ready | fail
+  const noMap = gm === 'nokey' || gm === 'fail'
 
   const [places, setPlaces] = useState([])
   const [coords, setCoords] = useState({})
@@ -84,24 +95,37 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
   const totalMin = legs.reduce((s, l) => s + l.minutes, 0)
   const totalM = legs.reduce((s, l) => s + l.meters, 0)
 
-  // ---- mapa ----
+  // ---- mapa (Google Maps JavaScript API) ----
   useEffect(() => {
-    const map = L.map(mapEl.current, { zoomControl: false, attributionControl: true }).setView(TOKYO, 12)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd', maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(map)
-    layers.current = { pins: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map), measure: L.layerGroup().addTo(map) }
-    map.on('click', e => {
-      if (!measuringRef.current) { setSelKey(null); return }
-      setMeasure(prev => (prev.length >= 2 ? [] : prev).concat({ lat: e.latlng.lat, lng: e.latlng.lng }))
-    })
-    mapRef.current = map
-    if (import.meta.env.DEV) window.__cityMap = map
-    const ro = new ResizeObserver(() => map.invalidateSize())
-    ro.observe(mapEl.current)
-    return () => { ro.disconnect(); map.remove(); mapRef.current = null }
-  }, [])
+    if (!apiKey) return
+    let off = false
+    const stopAuth = onMapsAuthFailure(() => setGm('fail'))
+    loadGoogleMaps(apiKey, lang).then(g => {
+      if (off || !mapEl.current) return
+      const map = new g.maps.Map(mapEl.current, {
+        center: TOKYO, zoom: 12, disableDefaultUI: true, zoomControl: !mobile,
+        zoomControlOptions: { position: g.maps.ControlPosition.LEFT_BOTTOM },
+        gestureHandling: 'greedy', clickableIcons: false, styles: MAP_STYLE, backgroundColor: '#dfe6ee',
+      })
+      map.addListener('click', e => {
+        if (!measuringRef.current) { setSelKey(null); return }
+        setMeasure(prev => (prev.length >= 2 ? [] : prev).concat({ lat: e.latLng.lat(), lng: e.latLng.lng() }))
+      })
+      gRef.current = g
+      layers.current = { pins: createPinLayer(g, map, r => pinClickRef.current(r), clusterHtml), lines: [] }
+      mapRef.current = map
+      if (import.meta.env.DEV) window.__cityMap = map
+      setGm('ready')
+    }).catch(() => { if (!off) setGm('fail') })
+    return () => {
+      off = true
+      stopAuth()
+      layers.current.pins?.setMap(null)
+      layers.current.lines?.forEach(l => l.setMap(null))
+      layers.current = {}
+      mapRef.current = null
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { measuringRef.current = measuring }, [measuring])
 
   const statusOf = p => {
@@ -112,13 +136,14 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
   }
 
   // enquadra os pontos deixando livre o espaço do painel (direita no PC, embaixo no celular)
-  const fitPoints = pts => {
-    if (!pts.length || !mapRef.current) return
-    mapRef.current.fitBounds(L.latLngBounds(pts.map(c => [c.lat, c.lng])), {
-      paddingTopLeft: mobile ? [30, 150] : [110, 110],
-      paddingBottomRight: mobile ? [30, 120] : [470, 60],
-      maxZoom: 15,
-    })
+  const fitPoints = (pts, maxZoom = 15) => {
+    const map = mapRef.current
+    const g = gRef.current
+    if (!pts.length || !map || !g) return
+    const b = new g.maps.LatLngBounds()
+    pts.forEach(c => b.extend({ lat: c.lat, lng: c.lng }))
+    map.fitBounds(b, mobile ? { top: 150, left: 30, right: 30, bottom: 120 } : { top: 110, left: 110, right: 470, bottom: 60 })
+    g.maps.event.addListenerOnce(map, 'idle', () => { if (map.getZoom() > maxZoom) map.setZoom(maxZoom) })
   }
   const fitted = useRef(false)
   useEffect(() => {
@@ -126,61 +151,73 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
     if (fitted.current || !mapRef.current || !pts.length || locating.done < locating.total) return
     fitted.current = true
     fitPoints(pts)
-  }, [coords, locating]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [coords, locating, gm]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // pinos
+  // clique num pino ou num grupo (ref para sempre ver o estado atual)
+  pinClickRef.current = r => {
+    const map = mapRef.current
+    if (!map) return
+    if (r.kind === 'cluster') {
+      const near = r.items.every(i => legMeters(i, r.items[0]) < 30)
+      if (near || map.getZoom() >= 18) { select(r.items[0].key); return }
+      fitPoints(r.items, 18)
+      return
+    }
+    if (!r.key || r.key === ME) return
+    if (measuringRef.current) { setMeasure(prev => (prev.length >= 2 ? [] : prev).concat({ lat: r.lat, lng: r.lng, name: r.name })); return }
+    setSelKey(r.key)
+    if (mobile) setPanelOpen(false)
+  }
+
+  // pinos (+ eu + pontos da régua)
   useEffect(() => {
-    const g = layers.current.pins
-    if (!g) return
-    g.clearLayers()
+    const layer = layers.current.pins
+    if (!layer) return
     const order = new Map(stops.map((k, i) => [k, i + 1]))
+    const items = []
     for (const p of places) {
       const c = coords[p.key]
       if (!c) continue
       const n = order.get(p.key)
-      const html = `<div class="cm-pin st-${statusOf(p)}${selKey === p.key ? ' sel' : ''}${n ? ' stop' : ''}"><i>${n || ''}</i><span>${esc(p.name)}</span></div>`
-      const mk = L.marker([c.lat, c.lng], {
-        icon: L.divIcon({ className: 'cm-pin-wrap', html, iconSize: [0, 0], iconAnchor: [0, 0] }),
-        zIndexOffset: selKey === p.key ? 1000 : n ? 500 : 0,
-        keyboard: false,
+      const st = statusOf(p)
+      const isSel = selKey === p.key
+      items.push({
+        key: p.key, name: p.name, lat: c.lat, lng: c.lng, status: st, fixed: isSel || !!n, z: isSel ? 1000 : n ? 500 : 0,
+        html: `<div class="cm-pin st-${st}${isSel ? ' sel' : ''}${n ? ' stop' : ''}"><i>${n || ''}</i><span>${esc(p.name)}</span></div>`,
       })
-      mk.on('click', e => {
-        L.DomEvent.stopPropagation(e)
-        if (measuringRef.current) { setMeasure(prev => (prev.length >= 2 ? [] : prev).concat({ ...c, name: p.name })); return }
-        setSelKey(p.key)
-        if (mobile) setPanelOpen(false)
-      })
-      g.addLayer(mk)
     }
-    if (me) {
-      g.addLayer(L.marker([me.lat, me.lng], { icon: L.divIcon({ className: 'cm-pin-wrap', html: '<div class="cm-me"></div>', iconSize: [0, 0] }) }))
+    if (me) items.push({ key: ME, lat: me.lat, lng: me.lng, fixed: true, z: 900, html: '<div class="cm-me"></div>' })
+    measure.forEach(pt => items.push({ lat: pt.lat, lng: pt.lng, fixed: true, z: 1100, html: '<div class="cm-mpt"></div>' }))
+    layer.setItems(items)
+  }, [places, coords, selKey, stops, me, stores, measure, gm]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // linhas: rota e régua
+  useEffect(() => {
+    const g = gRef.current
+    const map = mapRef.current
+    if (!g || !map) return
+    layers.current.lines.forEach(l => l.setMap(null))
+    const lines = []
+    const draw = (path, color, weight, opacity, dashed) => lines.push(new g.maps.Polyline({
+      map, path, clickable: false, strokeColor: color, strokeWeight: weight, strokeOpacity: dashed ? 0 : opacity,
+      icons: dashed ? [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: opacity, strokeColor: color, scale: weight }, offset: '0', repeat: `${weight * 4}px` }] : [],
+    }))
+    if (routePoints.length >= 2) {
+      const real = road?.key === routeKey && road.line.length > 1
+      const path = (real ? road.line.map(([lat, lng]) => ({ lat, lng })) : routePoints.map(p => ({ lat: p.lat, lng: p.lng })))
+      if (real) draw(path, '#0b1a2e', 9, 0.25, false)
+      draw(path, mode === 'train' ? '#7c3aed' : '#2563eb', real ? 5 : 4, 0.9, !real)
     }
-  }, [places, coords, selKey, stops, me, stores]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // linha da rota
-  useEffect(() => {
-    const g = layers.current.route
-    if (!g) return
-    g.clearLayers()
-    if (routePoints.length < 2) return
-    const real = road?.key === routeKey && road.line.length > 1
-    const line = real ? road.line : routePoints.map(p => [p.lat, p.lng])
-    g.addLayer(L.polyline(line, { color: '#0b1a2e', weight: 9, opacity: 0.25 }))
-    g.addLayer(L.polyline(line, { color: mode === 'train' ? '#7c3aed' : '#2563eb', weight: 5, opacity: 0.9, dashArray: real ? null : '8 10' }))
-  }, [routeKey, road]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // régua
-  useEffect(() => {
-    const g = layers.current.measure
-    if (!g) return
-    g.clearLayers()
-    for (const p of measure) g.addLayer(L.circleMarker([p.lat, p.lng], { radius: 7, color: '#fff', weight: 3, fillColor: '#f59e0b', fillOpacity: 1 }))
-    if (measure.length === 2) g.addLayer(L.polyline(measure.map(p => [p.lat, p.lng]), { color: '#f59e0b', weight: 4, dashArray: '6 8' }))
-  }, [measure])
+    if (measure.length === 2) draw(measure.map(p => ({ lat: p.lat, lng: p.lng })), '#f59e0b', 3, 1, true)
+    layers.current.lines = lines
+  }, [routeKey, road, measure, gm]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const flyTo = key => {
     const c = coords[key]
-    if (c && mapRef.current) mapRef.current.flyTo([c.lat, c.lng], Math.max(mapRef.current.getZoom(), 15), { duration: 0.6 })
+    const map = mapRef.current
+    if (!c || !map) return
+    map.panTo({ lat: c.lat, lng: c.lng })
+    if (map.getZoom() < 15) map.setZoom(15)
   }
   const select = key => { setSelKey(key); flyTo(key); if (mobile) setPanelOpen(false) }
   const toggleStop = key => setStops(s => (s.includes(key) ? s.filter(k => k !== key) : [...s, key]))
@@ -205,7 +242,8 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
       const p = await getCurrentPosition({ maxWait: 8000, goodEnough: 80 })
       setMe(p)
       setFromMe(true)
-      mapRef.current?.flyTo([p.lat, p.lng], 14, { duration: 0.6 })
+      mapRef.current?.panTo({ lat: p.lat, lng: p.lng })
+      mapRef.current?.setZoom(14)
     } catch {
       setFromMe(false)
     }
@@ -222,9 +260,19 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
 
   return (
     <div className="cm-root">
-      <div ref={mapEl} className="cm-map" />
+      <div ref={mapEl} className={`cm-map${noMap ? ' off' : ''}`} />
 
-      {!(mobile && sel) && <div className="cm-tools">
+      {noMap && (
+        <div className="cm-nomap" role="status">
+          <span aria-hidden="true">🗺️</span>
+          <div>
+            <strong>{gm === 'fail' ? m.mapFailTitle : m.noKeyTitle}</strong>
+            <small>{gm === 'fail' ? m.mapFailBody : m.noKeyBody}</small>
+          </div>
+        </div>
+      )}
+
+      {!noMap && !(mobile && sel) && <div className="cm-tools">
         <button type="button" className={measuring ? 'on' : ''} onClick={() => { setMeasuring(v => !v); setMeasure([]) }} title={m.measure}>📏<span>{m.measure}</span></button>
         <button type="button" onClick={locateMe} title={m.myLocation}>📍<span>{m.me}</span></button>
         <button type="button" onClick={fitAll} title={m.fitAll}>🗾<span>{m.all}</span></button>
@@ -275,19 +323,19 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
             <button type="button" className={stops.includes(sel.key) ? 'on' : ''} disabled={!coords[sel.key]} onClick={() => toggleStop(sel.key)}>
               {stops.includes(sel.key) ? `✓ ${m.inRoute}` : `➕ ${m.addRoute}`}
             </button>
-            <button type="button" disabled={!coords[sel.key]} onClick={() => { setMeasuring(true); setMeasure([{ ...coords[sel.key], name: sel.name }]) }}>📏 {m.measureFrom}</button>
+            <button type="button" disabled={!coords[sel.key] || noMap} onClick={() => { setMeasuring(true); setMeasure([{ ...coords[sel.key], name: sel.name }]) }}>📏 {m.measureFrom}</button>
             {coords[sel.key] && <a href={`https://www.google.com/maps/search/?api=1&query=${coords[sel.key].lat},${coords[sel.key].lng}`} target="_blank" rel="noreferrer">🧭 Google Maps</a>}
           </div>
         </div>
       )}
 
-      <aside className={`cm-panel${panelOpen ? ' open' : ''}${mobile ? ' sheet' : ''}`}>
+      <aside className={`cm-panel${panelOpen || noMap ? ' open' : ''}${mobile ? ' sheet' : ''}${noMap ? ' nomap' : ''}`}>
         <button type="button" className="cm-panel-head" onClick={() => setPanelOpen(v => !v)} aria-expanded={panelOpen}>
           <span>{tab === 'route' ? `🧭 ${m.route}` : `📍 ${m.places}`}</span>
           <b>{tab === 'route' ? stops.length : places.length}</b>
-          <i aria-hidden="true">{panelOpen ? '▾' : '▴'}</i>
+          {!noMap && <i aria-hidden="true">{panelOpen ? '▾' : '▴'}</i>}
         </button>
-        {panelOpen && (
+        {(panelOpen || noMap) && (
           <>
             <div className="cm-seg">
               <button type="button" className={tab === 'places' ? 'on' : ''} onClick={() => setTab('places')}>📍 {m.places} · {places.length}</button>
