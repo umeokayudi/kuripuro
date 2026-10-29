@@ -62,6 +62,7 @@ import {
   cleaningTypesForLang,
 } from '../lib/cleaningType'
 import { tokyoToday } from '../lib/dates'
+import { tokyoTomorrow, upcomingJobs, SHIFT_END_LIMIT, validateShiftWindow } from '../lib/nextDayShift'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
 import AIChatPanel from '../components/AIChatPanel'
 import EarningsPanel from '../components/EarningsPanel'
@@ -688,11 +689,10 @@ export default function EmployeePortal() {
   }
 
   const openAddService = async () => {
-    const date = tokyoToday()
     const { data } = await supabase
       .from('jobs')
       .select('id, title, employee_id, employee_name, status, started_at, scheduled_date, retro_report, photo_end_url, completed_at')
-      .eq('scheduled_date', date)
+      .in('scheduled_date', [tokyoToday(), tokyoTomorrow()])
       .in('status', ['assigned', 'in_progress', 'completed'])
     setTodayAllJobs((data || []).filter(j => !isDuskinJob(j)))
     setShowAddService(true)
@@ -795,8 +795,10 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleAddService = async (location, cleaningType, deepComponents, option) => {
+  const handleAddService = async (location, cleaningType, deepComponents, option, plan = null) => {
     if (addServiceBusy) return
+    const date = plan?.date || tokyoToday()
+    const forTomorrow = date !== tokyoToday()
     if (option?.state === 'mine') {
       return toast.error(e.addServiceAlreadyYours)
     }
@@ -804,12 +806,12 @@ export default function EmployeePortal() {
       return toast.error(e.addServiceBlocked)
     }
     if (option?.state === 'done_today') {
+      if (forTomorrow) return toast.error(e.addServiceDoneToday)
       if (isJobFullyRegistered(option.job)) return toast.error(e.pastServiceAlreadyDone)
       setShowAddService(false)
       await handlePastService({ location, date: tokyoToday(), cleaningType, deepComponents })
       return
     }
-    const date = tokyoToday()
     setAddServiceBusy(true)
     try {
       const result = await employeeAddService(supabase, {
@@ -818,6 +820,8 @@ export default function EmployeePortal() {
         date,
         cleaningType,
         deepComponents: cleaningType === 'deep' ? deepComponents : [],
+        shiftStart: plan?.start || null,
+        shiftEnd: plan?.end || null,
       })
       if (!result.ok) {
         if (result.error === 'already_yours') toast.error(e.addServiceAlreadyYours)
@@ -827,10 +831,14 @@ export default function EmployeePortal() {
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable)
         else if (result.error === 'wrong_deep_day') toast.error(e.wrongDeepDay)
+        else if (result.error === 'shift_end_after_limit') toast.error(fill(e.shiftEndLimit, { time: SHIFT_END_LIMIT }))
+        else if (result.error === 'shift_time_invalid') toast.error(e.shiftTimeInvalid)
         else toast.error(result.detail || e.addServiceFailed)
         return
       }
-      if (result.action === 'transferred') {
+      if (forTomorrow) {
+        toast.success(fill(e.tomorrowShiftAdded, { location: location.name, start: plan.start, end: plan.end }))
+      } else if (result.action === 'transferred') {
         toast.success(fill(e.addServiceTransferred, { location: location.name, name: result.fromEmployee || '—' }))
       } else if (result.action === 'claimed') {
         toast.success(fill(e.addServiceClaimed, { location: location.name }))
@@ -1309,6 +1317,10 @@ export default function EmployeePortal() {
   const nearby = activeJob ? null : nearestJob(todayPendingJobs, siteCoordsById, herePos)
   const todayAllDone = todayJobs.length>0 && todayPendingJobs.length===0
   const nextShiftJob = getNextShiftJob(allJobs)
+  const tomorrow = tokyoTomorrow()
+  const laterJobs = upcomingJobs(allJobs, today)
+  const tomorrowJobs = laterJobs.filter(j => j.scheduled_date === tomorrow)
+  const whenLabel = (date) => date === tomorrow ? e.tomorrow : date
 
   const S = {
     card: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:16, marginBottom:12 },
@@ -1865,6 +1877,18 @@ export default function EmployeePortal() {
               </div>
             )}
 
+            {/* Today is finished: the next shift (e.g. tomorrow's job from the admin) */}
+            {todayAllDone&&!activeJob&&laterJobs[0]&&(
+              <div className="emp-no-shift-card">
+                <div className="emp-empty-icon">☾</div>
+                <div className="emp-empty-kicker">{e.nextShiftLabel}</div>
+                <div className="emp-empty-title">{whenLabel(laterJobs[0].scheduled_date)} · {laterJobs[0].scheduled_time||'—'}</div>
+                {laterJobs.filter(j=>j.scheduled_date===laterJobs[0].scheduled_date).map(j=>(
+                  <div key={j.id} className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(j)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(j)}} style={{cursor:'pointer'}}><span>{j.title.split(' —')[0]}</span><span>{j.scheduled_time||'—'}</span></div>
+                ))}
+              </div>
+            )}
+
             <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>goToTab('availability')} />
 
             {/* Summary cards (swipe sideways) */}
@@ -1876,6 +1900,14 @@ export default function EmployeePortal() {
                   <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
                   <div className="ex-progress"><i className="is-green" style={{width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%'}} /><i style={{width:(todayJobs.filter(j=>j.status==='in_progress').length/todayJobs.length*100)+'%'}} /></div>
                   <span className="ex-pill">{todayAllDone?e.tapToReview:e.startArrow}</span>
+                </button>
+              )}
+              {tomorrowJobs.length>0&&(
+                <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('shift')}>
+                  <div className="ex-card-head"><strong>{e.tomorrowShift}</strong><span className="ex-card-icon">☾</span></div>
+                  <div className="ex-card-big">{tomorrowJobs.length} <small>{e.locations}</small></div>
+                  <div className="ex-card-sub">{fill(e.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})} · {tomorrowJobs.map(j=>businessName(j)).slice(0,2).join(', ')}{tomorrowJobs.length>2?'…':''}</div>
+                  <span className="ex-pill">{e.tomorrowSee}</span>
                 </button>
               )}
               <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('salary')}>
@@ -2019,7 +2051,7 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{e.todayShift}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
           {quickRoundOn&&<QuickRound user={user} allJobs={allJobs} onChanged={loadAll} />}
-          <ShiftView allJobs={allJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
+          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} />
           </section>
         )}
 
@@ -2360,7 +2392,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
+function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang }) {
   const todayJobs = allJobs.filter(j=>j.scheduled_date===today).sort((a,b)=>(a.sequence_order||99)-(b.sequence_order||99))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
@@ -2680,6 +2712,22 @@ function ShiftView({ allJobs, activeJob, elapsed, checklist, setChecklist, notes
           </div>
         )
       })}
+
+      {tomorrowJobs.length>0&&(
+        <div style={{marginTop:18}}>
+          <div style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'0 2px 8px'}}>☾ {labels.tomorrowShift} · {fill(labels.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})}</div>
+          {tomorrowJobs.map(job=>(
+            <div key={job.id} role="button" tabIndex={0} onClick={()=>setSelectedJob?.(job)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob?.(job)}}
+              style={{...S.card,marginBottom:8,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{job.title.replace(/ — .*/,'')}</div>
+                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:3}}>{job.scheduled_date} · {job.scheduled_time||'—'}</div>
+              </div>
+              <a href={googleCalendarUrl(job)} target="_blank" rel="noreferrer" onClick={ev=>ev.stopPropagation()} aria-label={labels?.calGoogle} title={labels?.calGoogle} style={{fontSize:18,textDecoration:'none'}}>📅</a>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -2930,13 +2978,21 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   const [cleaningType, setCleaningType] = useState('basic')
   const [deepComponents, setDeepComponents] = useState([...ALL_DEEP_COMPONENT_IDS])
   const [picked, setPicked] = useState(null)
+  const [day, setDay] = useState('today')
+  const [shiftStart, setShiftStart] = useState('00:30')
+  const [shiftEnd, setShiftEnd] = useState('05:00')
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
   const visibleLocations = cleaningType === 'deep'
     ? locations.filter(loc => loc.group === 'OTP')
     : locations.filter(loc => !loc.deepOnly)
-  const options = buildAddServiceOptions(visibleLocations, todayJobs, employeeId, cleaningType)
+  const isTomorrow = day === 'tomorrow'
+  const dayDate = isTomorrow ? tokyoTomorrow() : tokyoToday()
+  const dayJobs = (todayJobs || []).filter(j => j.scheduled_date === dayDate)
+  // Tomorrow is planned by the office: an employee adds free places, never takes a coworker's job.
+  const options = buildAddServiceOptions(visibleLocations, dayJobs, employeeId, cleaningType, { allowTransfer: !isTomorrow })
+  const shiftCheck = isTomorrow ? validateShiftWindow(shiftStart, shiftEnd) : { ok: true }
   const q = search.trim().toLowerCase()
   const filtered = q
     ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
@@ -2972,7 +3028,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
 
   const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
   const doneNeedsRetro = picked?.state === 'done_today' && !isJobFullyRegistered(picked.job)
-  const canConfirm = picked && deepReady && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || doneNeedsRetro)
+  const canConfirm = picked && deepReady && shiftCheck.ok && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || (doneNeedsRetro && !isTomorrow))
 
   const confirmLabel = picked?.state === 'done_today' && doneNeedsRetro
     ? labels.addServiceDoneTodayRetro
@@ -2992,6 +3048,43 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           </div>
           <button type="button" onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: busy ? 'not-allowed' : 'pointer' }}>✕</button>
         </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          {['today', 'tomorrow'].map(d => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => { setDay(d); setPicked(null) }}
+              style={{
+                flex: 1, padding: '10px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                background: day === d ? '#c4b5fd' : 'rgba(255,255,255,0.05)',
+                color: day === d ? '#2e1065' : 'rgba(255,255,255,0.45)',
+              }}
+            >
+              {d === 'today' ? labels.dayToday : labels.tomorrow}
+            </button>
+          ))}
+        </div>
+
+        {isTomorrow && (
+          <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 12, background: 'rgba(167,139,250,0.08)', border: `1px solid ${shiftCheck.ok ? 'rgba(167,139,250,0.25)' : 'rgba(248,113,113,0.45)'}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 700 }}>
+                {labels.shiftStartLabel}
+                <input type="time" value={shiftStart} onChange={e => setShiftStart(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 15, boxSizing: 'border-box' }} />
+              </label>
+              <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 700 }}>
+                {labels.shiftEndLabel}
+                <input type="time" value={shiftEnd} onChange={e => setShiftEnd(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 15, boxSizing: 'border-box' }} />
+              </label>
+            </div>
+            <div style={{ fontSize: 11, marginTop: 8, lineHeight: 1.45, color: shiftCheck.ok ? 'rgba(255,255,255,0.45)' : '#f87171', fontWeight: shiftCheck.ok ? 500 : 700 }}>
+              {shiftCheck.ok
+                ? fill(labels.tomorrowShiftHint, { date: dayDate, time: SHIFT_END_LIMIT })
+                : shiftCheck.error === 'shift_end_after_limit' ? fill(labels.shiftEndLimit, { time: SHIFT_END_LIMIT }) : labels.shiftTimeInvalid}
+            </div>
+          </div>
+        )}
 
         <input
           value={search}
@@ -3076,7 +3169,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
         <button
           type="button"
           disabled={!canConfirm || busy}
-          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked)}
+          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked, isTomorrow ? { date: dayDate, start: shiftStart, end: shiftEnd } : null)}
           style={{
             width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
             background: canConfirm && !busy ? 'linear-gradient(135deg,#60a5fa,#3b82f6)' : 'rgba(255,255,255,0.08)',

@@ -28,6 +28,7 @@ const steps = [
   ['npm run test:facility', 'facility'],
   ['npm run test:employee-theme', 'employee-theme'],
   ['npm run test:quick-round', 'quick-round'],
+  ['npm run test:next-day-shift', 'next-day-shift'],
   ['npm run test:team-chat', 'team-chat'],
   ['npm run test:spot-contract', 'spot-contract'],
   ['npm run test:nfc-clock', 'nfc-clock'],
