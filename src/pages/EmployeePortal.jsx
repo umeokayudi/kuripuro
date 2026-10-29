@@ -1213,13 +1213,28 @@ export default function EmployeePortal() {
 
       // One write marks the job done; the slower extras (photo grade, GPS, report) follow
       // in the background so the worker sees "done" right away.
-      const { error: coreErr } = await supabase.from('jobs').update({
+      const { data: coreRows, error: coreErr } = await supabase.from('jobs').update({
         status:'completed', completed_at:(capEndRef.current?.jobId===job.id ? capEndRef.current.at : new Date().toISOString()), notes_employee:notes,
         photo_start_url: startPhotoUrl, photo_end_url:endPhotoUrl, signature_url:sigDataUrl||null,
         checklist_total: total || null, checklist_done: total ? done : null,
         checklist_missed_items: missedLabels.length ? missedLabels.join(', ') : null,
-      }).eq('id',job.id)
+      }).eq('id',job.id).neq('status','completed').select('id')
       if (coreErr) throw coreErr
+      if (!coreRows?.length) {
+        // The office already closed this job (v1.0.98 "Fechar manualmente"): keep its time, only add the photos.
+        await supabase.from('jobs').update({ photo_end_url: endPhotoUrl }).eq('id', job.id).is('photo_end_url', null)
+        await supabase.from('jobs').update({ photo_start_url: startPhotoUrl }).eq('id', job.id).is('photo_start_url', null)
+        const { data: closedJob } = await supabase.from('jobs').select('*').eq('id', job.id).maybeSingle()
+        if (closedJob) await syncServiceReport(supabase, closedJob).catch(() => {})
+        capEndRef.current = null
+        clearInterval(timerRef.current)
+        localStorage.removeItem(`kp_ck_${job.id}`)
+        setActiveJob(null); setElapsed(0); setChecklist([]); setNotes(''); setJobPhotos([])
+        toast(L('The office already closed this job. Your photos were added; check the message in the chat.', 'この作業は事務所が終了済みです。写真は追加されました。チャットのメッセージを確認してください。', 'O escritório já fechou este job. Suas fotos foram adicionadas; veja a mensagem no chat.'), { icon: '🔒', duration: 6000 })
+        setSubmitting(false)
+        loadAll()
+        return
+      }
       capEndRef.current = null
       finishQuoteJob(job.id) // job from an accepted quote → its invoice goes to the client
       window.dispatchEvent(new Event('kp:facility-updated'))
@@ -1940,7 +1955,7 @@ export default function EmployeePortal() {
         {tab==='home'&&(
           <div className="emp-home ex-home">
             <PendingVideos jobs={allJobs} L={L} />
-            <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-3*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
+            <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-(j.closed_manually_at?14:3)*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
 
             {/* Check-in card with the map of the next location */}
             {(()=>{

@@ -1,0 +1,21 @@
+/* v1.0.98 · "Fechar manualmente" modal (Live Track, Day agenda). Phone first: sheet from the bottom. */
+.mc-overlay{position:fixed;inset:0;z-index:3000;background:rgba(15,23,42,.45);display:flex;align-items:flex-end;justify-content:center;padding:0}
+.mc-box{width:100%;max-width:460px;max-height:92vh;overflow-y:auto;background:var(--surface);color:var(--text);border:1px solid #e7ebf2;border-radius:16px 16px 0 0;box-shadow:0 20px 50px rgba(0,0,0,.25);padding:18px 16px calc(16px + env(safe-area-inset-bottom));box-sizing:border-box}
+@media (min-width:640px){.mc-overlay{align-items:center;padding:16px}.mc-box{border-radius:12px;padding:20px}}
+.mc-title{font-size:17px;font-weight:800}
+.mc-sub{font-size:13px;color:var(--text2);margin:2px 0 12px}
+.mc-facts{background:#f7f9fc;border:1px solid #e7ebf2;border-radius:11px;padding:4px 12px;margin-bottom:12px}
+.mc-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;font-size:13px;border-top:1px solid #e7ebf2}
+.mc-row:first-child{border-top:none}
+.mc-row span{color:var(--text2)}
+.mc-row b{text-align:right}
+.mc-field{display:block;font-size:12px;font-weight:700;color:var(--text2);margin-top:10px}
+.mc-field input{display:block;width:100%;min-height:42px;margin-top:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);font-size:15px;font-family:inherit;background:var(--surface);color:var(--text);box-sizing:border-box}
+.mc-field input.is-bad{border-color:#dc2626}
+.mc-hint{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text2);margin-top:6px}
+.mc-link{background:none;border:none;color:#315cf5;font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 0;min-height:32px}
+.mc-info{font-size:12.5px;color:var(--text2);background:#f7f9fc;border-radius:10px;padding:8px 10px;margin-top:10px;line-height:1.45}
+.mc-error{font-size:13px;color:#dc2626;font-weight:700;margin-top:10px}
+.mc-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.mc-actions .btn{min-height:42px;flex:1}
+@media (min-width:640px){.mc-actions .btn{flex:0 0 auto}}

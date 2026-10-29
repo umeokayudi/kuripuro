@@ -6,6 +6,7 @@ import { aiIssueRows, gradeJobPhoto } from '../lib/photoAi'
 import { contractForAgendaJob } from '../lib/agenda'
 import { supabase } from '../lib/supabase'
 import { fmtDuration, fmtTime, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync, jobToReportView } from '../lib/jobReport'
+import { manualCloseStamp } from '../lib/manualClose'
 import SignatureImage from '../components/SignatureImage'
 import { tokyoToday } from '../lib/dates'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -415,7 +416,7 @@ export default function Reports() {
                     <td style={{ fontWeight: 500 }}>{r.employee_name}</td>
                     <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name || r.job_title}</td>
                     <td>{r.report_date}</td>
-                    <td>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr)}</td>
+                    <td>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr)}{r.closed_manually_at && <span title={manualCloseStamp(r, lang)} aria-label={manualCloseStamp(r, lang)}> 🔒</span>}</td>
                     <td>{fmtDuration(r.duration_min, lang)}</td>
                     <td>{r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</td>
                     <td>
@@ -472,6 +473,10 @@ export default function Reports() {
                 </div>
               ))}
             </div>
+
+            {selected.closed_manually_at && (
+              <div style={{ marginBottom: 12, fontSize: 13, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 8, padding: '8px 12px' }}>🔒 {manualCloseStamp(selected, lang)}</div>
+            )}
 
             <GpsBlock r={selected} tr={tr} lang={lang} />
 

@@ -4,6 +4,8 @@ import { supabase } from './supabase'
 import { syncServiceReport } from './jobReport'
 import { finishQuoteJob } from './quoteFlow'
 import { DEFAULT_AGENDA_SETTINGS } from './agenda'
+import { manualCloseError, manualClosePatch, manualCloseMessage, isMissingColumnError, MANUAL_CLOSE_COLUMNS } from './manualClose'
+import { PT_DEFAULT_EMPLOYEES } from '../hooks/useLang'
 
 const LS_SETTINGS = 'kp_agenda_settings'
 
@@ -58,6 +60,48 @@ export async function adminCompleteJob(job, { reason = null, completedAt = null 
   finishQuoteJob(job.id, { byAdmin: true })
   await logJobAdmin(job.id, 'admin_complete', { reason, oldValue: { status: job.status }, newValue: patch })
   return done
+}
+
+/**
+ * "Fechar manualmente": a job left open (employee forgot to finish) closes as COMPLETED with the
+ * finish the admin chose, an audit stamp and a chat message to the employee. A missing After photo
+ * does not block it: the job shows as "waiting for After photo" and stays on the employee's list.
+ * Returns { job, audit, logged, notified }. Throws 'start' | 'order' | 'future' | 'closed'.
+ */
+export async function adminManualClose(job, { startedAt, completedAt, note = '' }) {
+  const start = startedAt || job.started_at
+  const bad = manualCloseError({ startedAt: start, completedAt })
+  if (bad) throw new Error(bad)
+  const admin = adminName()
+  const now = new Date()
+  // Only an open job: never overwrite a finish the employee saved meanwhile.
+  const write = patch => supabase.from('jobs').update(patch).eq('id', job.id).eq('status', 'in_progress').select('*').maybeSingle()
+  let audit = true
+  let { data, error } = await write(manualClosePatch({ startedAt: start, completedAt, adminName: admin, note, now }))
+  if (error && isMissingColumnError(error)) {
+    audit = false
+    ;({ data, error } = await write(manualClosePatch({ startedAt: start, completedAt, adminName: admin, note, now, audit: false })))
+  }
+  if (error) throw error
+  if (!data) throw new Error('closed')
+  const done = audit ? data : { ...data, ...Object.fromEntries(MANUAL_CLOSE_COLUMNS.map(k => [k, null])) }
+  try { await syncServiceReport(supabase, done) } catch { /* ensureServiceReports makes it at payroll close */ }
+  finishQuoteJob(job.id, { byAdmin: true })
+  const logged = await logJobAdmin(job.id, 'manual_close', {
+    reason: note?.trim() || null,
+    oldValue: { status: job.status, started_at: job.started_at, completed_at: job.completed_at },
+    newValue: { status: 'completed', started_at: start, completed_at: completedAt },
+  })
+  let notified = false
+  if (job.employee_id) {
+    const lang = PT_DEFAULT_EMPLOYEES.includes(job.employee_id) ? 'pt' : 'en'
+    const { error: msgErr } = await supabase.from('messages').insert({
+      employee_id: job.employee_id, employee_name: job.employee_name, sender: 'admin', read: false,
+      content: manualCloseMessage(job, { startedAt: start, completedAt, note, adminName: admin }, lang),
+    })
+    notified = !msgErr
+  }
+  return { job: done, audit, logged, notified }
 }
 
 /** Undo a finish (status back to assigned / in progress) and drop the report, so the three stay in step. */

@@ -87,6 +87,9 @@ export function jobReportExtras(job) {
     gps_acc_out: job.end_accuracy ?? null,
     gps_dist_in: job.gps_start_distance ?? null,
     gps_dist_out: job.gps_end_distance ?? null,
+    closed_manually_by: job.closed_manually_by || null,
+    closed_manually_at: job.closed_manually_at || null,
+    closed_manually_note: job.closed_manually_note || null,
   }
 }
 

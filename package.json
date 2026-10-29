@@ -27,6 +27,7 @@
     "test:deep-clean": "npx vite-node scripts/test-deep-clean-photos.mjs",
     "test:salary-calc": "npx vite-node scripts/test-salary-calc.mjs",
     "test:agenda": "npx vite-node scripts/test-agenda.mjs",
+    "test:manual-close": "npx vite-node scripts/test-manual-close.mjs",
     "test:past-service": "npx vite-node scripts/test-past-service.mjs",
     "test:employee-theme": "node scripts/test-employee-theme.mjs",
     "test:employee-pt": "npx vite-node scripts/test-employee-pt.mjs",
