@@ -19,6 +19,7 @@ import PortalErrorBoundary from './components/PortalErrorBoundary'
 import ConfirmDialogHost from './components/ConfirmDialog'
 import Login from './pages/Login'
 import { supabase } from './lib/supabase'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -330,6 +331,7 @@ export default function App() {
           <AppContent />
           <Toaster position="top-right" toastOptions={{ style:{ fontSize:13 } }} />
           <ConfirmDialogHost />
+          <SpeedInsights />
         </LangProvider>
       </AuthProvider>
     </BrowserRouter>
