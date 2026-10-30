@@ -18,7 +18,7 @@ export function assignText(tr) {
       off: tr('day off', '休み', 'folga'),
       weekday: tr('does not work this weekday', 'この曜日は勤務なし', 'não trabalha nesse dia'),
       overlap: tr('same time as', '同時刻:', 'mesmo horário de'),
-      travel: tr('no time to travel from/to', '移動時間なし:', 'sem tempo de deslocamento com'),
+      travel: tr('not enough time to travel to/from', '移動時間が足りない:', 'sem tempo para se deslocar de/até'),
       unknown: tr('unknown person', '不明', 'pessoa desconhecida'),
     },
     why: {
@@ -45,7 +45,7 @@ export function assignText(tr) {
 /** "same time as Ibushio 00:30" */
 export function conflictLabel(c, T) {
   const base = T.conflict[c.kind] || c.kind
-  return c.with ? `${base} ${c.with}${c.time ? ` ${c.time}` : ''}` : base
+  return c.with ? `${base} ${c.with}${c.time ? ` (${c.time})` : ''}` : base
 }
 
 export const RED_CONFLICTS = new Set(['off', 'overlap', 'role', 'inactive', 'unknown'])

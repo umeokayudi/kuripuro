@@ -229,3 +229,26 @@ export function coverageCounts(targets, days, jobs, { wholeMonth = false, empByI
 /** Remaining jobs of a person on a day (what can still move to someone else). */
 export const movableJobs = (jobs, employeeId) =>
   (jobs || []).filter(j => j.employee_id === employeeId && j.status === 'assigned')
+
+/**
+ * v1.0.111 · Travel window of `item` inside a person's day: free minutes after the previous job and
+ * before the next one, and the minutes needed to get there (same area 10, other area 30).
+ * @returns { before: { place, time, free, need } | null, after: {...} | null, tight: bool }
+ */
+export function travelWindow(item, dayJobs = []) {
+  const start = toMin(item.time)
+  if (start == null) return { before: null, after: null, tight: false }
+  const others = dayJobs.filter(j => j.key !== item.key && j.status !== 'cancelled' && j.date === item.date && toMin(j.time) != null)
+  const need = (x, y) => (x.area && y.area && norm(x.area) === norm(y.area) ? TRAVEL_MINUTES.sameArea : TRAVEL_MINUTES.otherArea)
+  const prev = others.filter(j => toMin(j.time) <= start).sort((a, b) => toMin(b.time) - toMin(a.time))[0]
+  const next = others.filter(j => toMin(j.time) > start).sort((a, b) => toMin(a.time) - toMin(b.time))[0]
+  const before = prev ? { place: prev.place, time: prev.time, free: start - (toMin(prev.time) + prev.span), need: need(prev, item) } : null
+  const after = next ? { place: next.place, time: next.time, free: toMin(next.time) - (start + item.span), need: need(item, next) } : null
+  return { before, after, tight: !!((before && before.free < before.need) || (after && after.free < after.need)) }
+}
+
+/** Pending lines split by day: past days never mix with the next ones (and never go in "confirm all"). */
+export const splitPast = (lines, today) => ({
+  past: lines.filter(l => l.item.date < today),
+  upcoming: lines.filter(l => l.item.date >= today),
+})

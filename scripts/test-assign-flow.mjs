@@ -1,6 +1,7 @@
 // v1.0.101 · Assignment flow (pure, no database): npx vite-node scripts/test-assign-flow.mjs
 import assert from 'node:assert/strict'
-import { asItem, pendingReason, conflictsFor, suggestPeople, planBatch, placeInDay, coverageCounts, requiredRole } from '../src/lib/assignFlow.js'
+import { asItem, pendingReason, conflictsFor, suggestPeople, planBatch, placeInDay, coverageCounts, requiredRole, travelWindow, splitPast } from '../src/lib/assignFlow.js'
+import { assignText, conflictLabel } from '../src/components/assignText.js'
 import { noticesForChange } from '../src/lib/assignNotices.js'
 import { availabilityIndex } from '../src/lib/scheduleGenerator.js'
 import { contractTargets } from '../src/lib/schedulePlan.js'
@@ -83,5 +84,24 @@ assert.deepEqual(noticesForChange(before, { scheduled_time: '01:00' }).map(n => 
 assert.deepEqual(noticesForChange(before, { scheduled_time: '00:30' }), [])
 assert.deepEqual(noticesForChange({ ...before, scheduled_date: '2000-01-01' }, { employee_id: 'b' }), [], 'past days never notify')
 assert.deepEqual(noticesForChange(null, before).map(n => n.kind), ['assigned'])
+
+// v1.0.111 · travel window of a substitute, past days apart, full warning text
+{
+  const it = { key: 'x', date: '2026-10-30', time: '10:00', span: 60, area: 'Ginza', place: 'Ginza' }
+  const day = [
+    { key: 'p', date: '2026-10-30', time: '08:30', span: 60, area: 'Shinjuku', place: 'Shinjuku', status: 'assigned' },
+    { key: 'n', date: '2026-10-30', time: '11:20', span: 60, area: 'Ginza', place: 'Ginza 2', status: 'assigned' },
+  ]
+  const w = travelWindow(it, day)
+  assert.equal(w.before.free, 30); assert.equal(w.before.need, 30)
+  assert.equal(w.after.free, 20); assert.equal(w.after.need, 10)
+  assert.equal(w.tight, false)
+  assert.equal(travelWindow({ ...it, time: '09:45' }, day).tight, true)
+  const lines = [{ item: { date: '2026-10-29' } }, { item: { date: '2026-10-30' } }, { item: { date: '2026-10-31' } }]
+  const sp = splitPast(lines, '2026-10-30')
+  assert.equal(sp.past.length, 1); assert.equal(sp.upcoming.length, 2)
+  const T = assignText((en, ja, pt) => pt)
+  assert.equal(conflictLabel({ kind: 'travel', with: 'Shinbashi', time: '10:00' }, T), 'sem tempo para se deslocar de/até Shinbashi (10:00)')
+}
 
 console.log('assign flow: ok')

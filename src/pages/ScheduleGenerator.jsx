@@ -12,8 +12,10 @@ import {
 } from '../lib/schedulePlan'
 import {
   asItem, pendingReason, conflictsFor, suggestPeople, planBatch, placeInDay, coverageCounts, requiredRole,
-  weekOf, indexByEmp,
+  weekOf, indexByEmp, splitPast, movableJobs,
 } from '../lib/assignFlow'
+import { askConfirm } from '../components/ConfirmDialog'
+import RedistributeSheet from '../components/RedistributeSheet'
 import { roleCan } from '../lib/employeeRoles'
 import { assignJob, assignMany, offerJob, notifyCreated } from '../lib/assignOps'
 import { pendingChanged } from '../lib/adminPending'
@@ -100,6 +102,10 @@ export default function ScheduleGenerator() {
   const [offerFor, setOfferFor] = useState(null)
   const [busy, setBusy] = useState(null)
   const [sqlMissing, setSqlMissing] = useState(false)
+  const [showPast, setShowPast] = useState(false)
+  const [coverPick, setCoverPick] = useState(false)
+  const [cover, setCover] = useState(null) // { id, name } of the absent person
+  const today = tokyoToday()
 
   useEffect(() => {
     Promise.all([
@@ -256,6 +262,9 @@ export default function ScheduleGenerator() {
     return [...fromRows, ...fromJobs].sort((a, b) => byTime(a.item, b.item))
   }, [rows, pendingJobs, jobPlan, choice, jobSkip])
 
+  // v1.0.111 · past days go to their own section ("past, not done"), never mixed with the next ones
+  const { past: pastLines, upcoming } = useMemo(() => splitPast(lines, today), [lines, today])
+
   // Ranked people per line (options of the select + warnings of the chosen one).
   const rankings = useMemo(() => {
     const m = new Map()
@@ -266,7 +275,6 @@ export default function ScheduleGenerator() {
 
   // ---- counts ----
   const counts = useMemo(() => coverageCounts(targets, days, periodJobs, { wholeMonth, empById, availability }), [targets, days, periodJobs, wholeMonth, empById, availability])
-  const ready = liveJobs.filter(j => !pendingReason(j, { empById, availability })).length
 
   // ---- writes ----
   const after = (r) => {
@@ -325,9 +333,24 @@ export default function ScheduleGenerator() {
   }
 
   const confirmAll = async () => {
-    const newOnes = lines.filter(l => l.kind === 'new' && l.checked).map(l => l.row)
-    const jobOnes = lines.filter(l => l.kind === 'job' && l.checked && l.personId)
+    const newOnes = toConfirm.filter(l => l.kind === 'new').map(l => l.row)
+    const jobOnes = toConfirm.filter(l => l.kind === 'job' && l.personId)
     if (!newOnes.length && !jobOnes.length) return
+    // Bulk action: summary of exactly what changes, then confirm.
+    const perPerson = {}
+    for (const l of toConfirm) { const k = l.personId ? empById[l.personId]?.full_name || '—' : tr('no person', '担当なし', 'sem pessoa'); perPerson[k] = (perPerson[k] || 0) + 1 }
+    const withWarn = toConfirm.filter(l => warningsOf(l).length).length
+    const msg = [
+      tr(`${newOnes.length} jobs will be created and ${jobOnes.length} assigned (${fmtDay(toConfirm[0].item.date)} → ${fmtDay(toConfirm[toConfirm.length - 1].item.date)}).`,
+        `作成 ${newOnes.length}件・割当 ${jobOnes.length}件（${fmtDay(toConfirm[0].item.date)} → ${fmtDay(toConfirm[toConfirm.length - 1].item.date)}）。`,
+        `Serão criados ${newOnes.length} jobs e atribuídos ${jobOnes.length} (${fmtDay(toConfirm[0].item.date)} → ${fmtDay(toConfirm[toConfirm.length - 1].item.date)}).`),
+      '',
+      ...Object.entries(perPerson).sort((a, b) => b[1] - a[1]).map(([n, c]) => `• ${n}: ${c}`),
+      withWarn ? `\n⚠️ ${tr(`${withWarn} with a warning`, `警告あり ${withWarn}件`, `${withWarn} com aviso`)}` : '',
+      pastLines.length ? `\n${tr(`Past days are not included (${pastLines.length}).`, `過去の日は含みません（${pastLines.length}件）。`, `Dias passados não entram (${pastLines.length}).`)}` : '',
+      tr('Each person gets a notice.', '各担当者に通知します。', 'Cada pessoa recebe um aviso.'),
+    ].filter(x => x !== '').join('\n')
+    if (!(await askConfirm({ title: tr('Confirm the schedule', 'スケジュールを確定', 'Confirmar a escala'), message: msg, confirmLabel: tr(`Confirm ${toConfirm.length}`, `${toConfirm.length}件を確定`, `Confirmar ${toConfirm.length}`) }))) return
     setBusy('all')
     try {
       const c = await createRows(newOnes)
@@ -367,15 +390,23 @@ export default function ScheduleGenerator() {
   const fmtDay = d => `${dowLabels[dowOf(d)]} ${new Date(d + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}`
   const periodLabel = days.length === 1 ? fmtDay(days[0]) : `${fmtDay(days[0])} → ${fmtDay(days[days.length - 1])}`
   const out = useMemo(() => outOfSchedule(employees, days, availability, forced), [employees, days, availability, forced])
-  const warnCount = lines.filter(l => warningsOf(l).length || !l.personId).length
-  const shown = lines.filter(l => filter === 'all' ? true
+  const warnCount = upcoming.filter(l => warningsOf(l).length || !l.personId).length
+  const shown = upcoming.filter(l => filter === 'all' ? true
     : filter === 'new' ? l.kind === 'new'
       : filter === 'job' ? l.kind === 'job'
         : warningsOf(l).length || !l.personId)
   const page = shown.slice(0, pageSize)
   const byDate = {}
   page.forEach(l => { (byDate[l.item.date] = byDate[l.item.date] || []).push(l) })
-  const toConfirm = lines.filter(l => l.checked && (l.kind === 'new' || l.personId))
+  // "Confirm all" only ever touches today and later.
+  const toConfirm = upcoming.filter(l => l.checked && (l.kind === 'new' || l.personId))
+  const pastByDate = {}
+  pastLines.forEach(l => { (pastByDate[l.item.date] = pastByDate[l.item.date] || []).push(l) })
+  // Today's people with jobs not started yet (for "Cover today's absence").
+  const todayPeople = useMemo(() => {
+    const ids = [...new Set(liveJobs.filter(j => j.scheduled_date === today && j.status === 'assigned' && j.employee_id).map(j => j.employee_id))]
+    return ids.map(id => ({ id, name: empById[id]?.full_name || '—', n: movableJobs(liveJobs.filter(j => j.scheduled_date === today), id).length })).filter(p => p.n)
+  }, [liveJobs, today, empById])
   const accepted = periodJobs.filter(j => j.job_category === 'spot' && j.spot_status === 'accepted' && j.spot_responded_at && Date.now() - new Date(j.spot_responded_at) < 3 * 86400000)
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 100)
 
@@ -441,9 +472,11 @@ export default function ScheduleGenerator() {
           <span className="as-count-hint">{tr('with a person × created', '担当あり × 作成済み', 'com pessoa × programados')}</span>
         </button>
         <div className="as-count as-ready">
-          <span className="as-count-label">{tr('Ready', '準備完了', 'Prontos')}</span>
-          <b className={lines.length ? 'warn' : 'ok'}>{ready}</b>
-          <span className="as-count-hint">{lines.length ? tr(`${lines.length} still pending below`, `未完了 ${lines.length}件（下）`, `${lines.length} ainda pendentes abaixo`) : tr('Everything programmed and assigned ✓', 'すべて完了 ✓', 'Tudo programado e atribuído ✓')}</span>
+          <span className="as-count-label">{tr('Pending', '未完了', 'Pendentes')}</span>
+          <b className={upcoming.length ? 'warn' : 'ok'}>{upcoming.length}</b>
+          <span className="as-count-hint">{upcoming.length || pastLines.length
+            ? tr(`from today on · ${pastLines.length} on past days`, `今日以降 · 過去 ${pastLines.length}件`, `de hoje em diante · ${pastLines.length} em dias passados`)
+            : tr('Everything programmed and assigned ✓', 'すべて完了 ✓', 'Tudo programado e atribuído ✓')}</span>
         </div>
       </div>
 
@@ -463,12 +496,25 @@ export default function ScheduleGenerator() {
       {/* PENDING BOX */}
       <div className="card as-card">
         <div className="as-box-head">
-          <div className="as-box-title">📥 {tr('Pending box', '未割当ボックス', 'Caixa de Pendentes')} <span className="as-pill">{lines.length}</span></div>
+          <div className="as-box-title">📥 {tr('Pending box', '未割当ボックス', 'Caixa de Pendentes')} <span className="as-pill">{upcoming.length}</span></div>
+          {todayPeople.length > 0 && <button type="button" className="btn btn-sm" onClick={() => setCoverPick(v => !v)}>🩹 {tr("Cover today's absence", '今日の欠勤をカバー', 'Cobrir falta de hoje')}</button>}
           <div className="tab-pills" style={{ margin: 0 }}>
             <button type="button" className={`tab-pill${view === 'list' ? ' active' : ''}`} onClick={() => setView('list')}>☰ {tr('List', 'リスト', 'Lista')}</button>
             <button type="button" className={`tab-pill${view === 'board' ? ' active' : ''}`} onClick={() => setView('board')}>▦ {tr('Board', 'ボード', 'Quadro')}</button>
           </div>
         </div>
+
+        {coverPick && (
+          <div className="as-templates">
+            <div className="as-muted">{tr('Who is absent today? Their jobs not started yet get suggested substitutes (with travel time), and you confirm all at once.', '今日休むのは誰？未開始の作業に代わりの人（移動時間つき）を提案し、まとめて確定します。', 'Quem faltou hoje? Os jobs ainda não iniciados dessa pessoa recebem sugestões de substituto (com tempo de deslocamento), e você confirma tudo de uma vez.')}</div>
+            {todayPeople.map(p => (
+              <div key={p.id} className="as-out-row">
+                <span>{p.name} <span className="as-muted">· {tr(`${p.n} jobs today`, `今日 ${p.n}件`, `${p.n} jobs hoje`)}</span></span>
+                <button type="button" className="btn btn-sm btn-primary" onClick={() => { setCover({ id: p.id, name: p.name }); setCoverPick(false) }}>{tr('Cover', 'カバー', 'Cobrir')}</button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {view === 'list' && (
           <>
@@ -478,7 +524,7 @@ export default function ScheduleGenerator() {
               ))}
             </div>
             {!loaded && <div className="as-muted">{tr('Loading…', '読み込み中…', 'Carregando…')}</div>}
-            {loaded && !lines.length && <div className="as-empty">✅ {tr('Nothing pending in this period: every service has a person.', 'この期間の未割当はありません。', 'Nada pendente neste período: todo serviço tem pessoa.')}</div>}
+            {loaded && !upcoming.length && <div className="as-empty">✅ {tr('Nothing pending in this period: every service has a person.', 'この期間の未割当はありません。', 'Nada pendente neste período: todo serviço tem pessoa.')}</div>}
             {Object.keys(byDate).sort().map(date => (
               <div key={date}>
                 <div className={`as-day${dowOf(date) === 0 ? ' sun' : ''}`}>{fmtDay(date)} · {byDate[date].length}</div>
@@ -518,6 +564,33 @@ export default function ScheduleGenerator() {
         )}
       </div>
 
+      {/* PAST DAYS — separate, never in "confirm all" */}
+      {pastLines.length > 0 && (
+        <div className="card as-card">
+          <div className="as-box-head">
+            <div className="as-box-title">🕓 {tr('Past days, not done', '過去の日・未完了', 'Passados não gerados')} <span className="as-pill">{pastLines.length}</span></div>
+            <button type="button" className="btn btn-sm" onClick={() => setShowPast(v => !v)}>{showPast ? tr('Hide', '隠す', 'Esconder') : tr('Show', '表示', 'Mostrar')}</button>
+          </div>
+          <div className="as-muted">{tr('Days that already passed. Decide one by one (create, assign or leave them); "Confirm all" never includes them.', 'すでに過ぎた日です。1件ずつ判断してください（作成・割当・そのまま）。「すべて確定」には含まれません。', 'Dias que já passaram. Decida um por um (criar, atribuir ou deixar); "Confirmar" nunca inclui estes.')}</div>
+          {showPast && Object.keys(pastByDate).sort().map(date => (
+            <div key={date}>
+              <div className="as-day">{fmtDay(date)} · {pastByDate[date].length}</div>
+              {pastByDate[date].map(l => (
+                <PendingLine key={l.key} l={l} T={T} tr={tr} ranking={rankings.get(l.key) || []} warnings={warningsOf(l)} past
+                  busy={busy === l.key} offerOpen={false} employees={employees}
+                  onToggle={() => {}} onPerson={id => choosePerson(l, id)} onTime={t => editRow(l.key, { time: t })}
+                  onDo={() => doLine(l)} onOffer={() => {}} onSendOffer={() => {}} onCancelOffer={() => cancelOffer(l.job)} />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {cover && (
+        <RedistributeSheet from={cover} date={today} jobs={liveJobs.filter(j => j.scheduled_date === today)} employees={activeEmployees} availability={availability}
+          onClose={() => setCover(null)} onDone={() => { setCover(null); fetchExisting() }} />
+      )}
+
       {/* CONFIRM */}
       <div className="as-sticky">
         <span className="as-sticky-text">
@@ -540,10 +613,10 @@ function lineSig(p) {
   const l = p.l
   return [l.key, l.kind, l.personId, l.checked, l.reason, l.item.time, l.item.date, (l.why || []).join(','), p.busy, p.offerOpen, p.T?.type?.basic,
     p.ranking.map(r => `${r.emp.id}:${r.ok}:${r.conflicts.map(c => c.kind).join('+')}`).join('|'),
-    JSON.stringify(p.warnings), p.employees.length].join('§')
+    JSON.stringify(p.warnings), p.employees.length, p.past].join('§')
 }
 
-function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employees, onToggle, onPerson, onTime, onDo, onOffer, onSendOffer, onCancelOffer }) {
+function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employees, past = false, onToggle, onPerson, onTime, onDo, onOffer, onSendOffer, onCancelOffer }) {
   const it = l.item
   const service = it.title.split(' — ')[1] || ''
   const client = l.row?.client || l.job?.client_name || ''
@@ -559,7 +632,7 @@ function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employe
   return (
     <div className={`as-line${isOffer ? ' offer' : warnings.length || !l.personId ? ' warn' : ''}${l.checked || isOffer ? '' : ' off'}`}>
       <div className="as-line-top">
-        {!isOffer && <input type="checkbox" checked={l.checked} onChange={onToggle} aria-label={tr('Select', '選択', 'Selecionar')} />}
+        {!isOffer && !past && <input type="checkbox" checked={l.checked} onChange={onToggle} aria-label={tr('Select', '選択', 'Selecionar')} />}
         <div className="as-line-main">
           <div className="as-place">{it.place} <span className="as-muted">· {service}{client ? ` · ${client}` : ''}</span></div>
           <div className="as-meta">
@@ -584,12 +657,12 @@ function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employe
             <option value="">— {T.reason.noPerson} —</option>
             {okPeople.length > 0 && (
               <optgroup label={tr('Can do it', '担当可能', 'Podem fazer')}>
-                {okPeople.map(r => <option key={r.emp.id} value={r.emp.id}>{r === best ? '★ ' : ''}{r.emp.full_name}{r.conflicts.length ? ` (⚠️ ${r.conflicts.map(c => T.conflict[c.kind]).join(', ')})` : ''}</option>)}
+                {okPeople.map(r => <option key={r.emp.id} value={r.emp.id}>{r === best ? '★ ' : ''}{r.emp.full_name}{r.conflicts.length ? ` (⚠️ ${r.conflicts.map(c => conflictLabel(c, T)).join(', ')})` : ''}</option>)}
               </optgroup>
             )}
             {warnPeople.length > 0 && (
               <optgroup label={tr('With a warning', '警告あり', 'Com aviso')}>
-                {warnPeople.map(r => <option key={r.emp.id} value={r.emp.id}>{r.emp.full_name} (⚠️ {r.conflicts.map(c => T.conflict[c.kind]).join(', ')})</option>)}
+                {warnPeople.map(r => <option key={r.emp.id} value={r.emp.id}>{r.emp.full_name} (⚠️ {r.conflicts.map(c => conflictLabel(c, T)).join(', ')})</option>)}
               </optgroup>
             )}
             {inactive.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
@@ -597,7 +670,7 @@ function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employe
           <button type="button" className="btn btn-sm btn-primary as-do" disabled={busy || (l.kind === 'job' && !l.personId)} onClick={onDo}>
             {busy ? '…' : l.kind === 'new' ? (l.personId ? `✓ ${tr('Create + assign', '作成して割当', 'Criar e atribuir')}` : `+ ${tr('Create', '作成', 'Criar')}`) : `✓ ${tr('Assign', '割当', 'Atribuir')}`}
           </button>
-          <button type="button" className="btn btn-sm as-offer-btn" onClick={onOffer} title={tr('Urgent: offer to everyone with the role', '至急：役割のある全員にオファー', 'Urgente: ofertar para todos com o papel')}>⚡ {tr('Offer', 'オファー', 'Ofertar')}</button>
+          {!past && <button type="button" className="btn btn-sm as-offer-btn" onClick={onOffer} title={tr('Urgent: offer to everyone with the role', '至急：役割のある全員にオファー', 'Urgente: ofertar para todos com o papel')}>⚡ {tr('Offer', 'オファー', 'Ofertar')}</button>}
         </div>
       )}
 
