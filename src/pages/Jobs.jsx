@@ -29,6 +29,7 @@ import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
 import KeyReveal from '../components/KeyReveal'
+import { splitKeyLine } from '../lib/keyReveal'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
 } from '../lib/jobsPeriod'
@@ -301,8 +302,8 @@ export default function Jobs() {
                   onSaved={patch => setJobs(list => list.map(x => x.id === j.id ? { ...x, ...patch } : x))} />
               )}
 
-              {j.description && (
-                <KeyReveal value={j.description.split('\n')[0]} style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }} />
+              {splitKeyLine(j.description).key && (
+                <KeyReveal value={splitKeyLine(j.description).key} source="job" refId={j.id} label={j.title} style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }} />
               )}
 
               {j.status === 'completed' && (
@@ -362,7 +363,11 @@ export default function Jobs() {
                   <span style={{fontSize:14,fontWeight:700,color:'var(--green)'}}>+¥{Number(j.spot_value||j.value||0).toLocaleString()}</span>
                 </div>
               </div>
-              {j.description && <div style={{fontSize:12,color:'var(--text2)',background:'var(--surface2)',borderRadius:6,padding:'7px 10px'}}>{j.description}</div>}
+              {j.description && (() => { const d = splitKeyLine(j.description); return (
+                <div style={{fontSize:12,color:'var(--text2)',background:'var(--surface2)',borderRadius:6,padding:'7px 10px'}}>
+                  {d.key && <KeyReveal value={d.key} source="job" refId={j.id} label={j.title} />}
+                  {d.rest && <div style={{whiteSpace:'pre-line'}}>{d.rest}</div>}
+                </div>) })()}
               <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:8}}>
                 {(() => { const c = spotContracts.find(x => x.job_id === j.id); return c
                   ? <Link className="btn btn-sm" to={`/contracts?spot=${c.id}`}>📄 {c.contract_number} · {({ draft:'awaiting approval', approved:'approved ✓', rejected:'not approved', cancelled:'cancelled' })[contractStatus(c)]}</Link>

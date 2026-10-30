@@ -14,6 +14,8 @@ import { fetchContractSellers } from '../lib/contractSellers'
 import SellerCommissionFields from '../components/SellerCommissionFields'
 import { confirmAndRun } from '../components/ConfirmDialog'
 import SetupChain from '../components/SetupChain'
+import KeyReveal from '../components/KeyReveal'
+import KeyRevealLog from '../components/KeyRevealLog'
 import { splitChecklist } from '../lib/agenda'
 import { ensurePlaceForContract } from '../lib/places'
 import '../components/agenda.css'
@@ -279,6 +281,7 @@ function RecurringContracts() {
             </div>
           )}
 
+          <KeyRevealLog />
           {/* Contracts list */}
           {contracts.length===0&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No locations yet. Add your first service location.</div></div>}
           {contracts.map(c=>(
@@ -288,7 +291,7 @@ function RecurringContracts() {
                   <div style={{fontWeight:600,fontSize:14}}>{c.location_name}{c.area&&<span className="badge badge-navy" style={{marginLeft:8,fontWeight:600}}>📍 {c.area}</span>}</div>
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:1}}>{c.service_type} · {c.hours_per_visit}h/visit · <span style={{color:c.billing_type==='fixed_monthly'?'var(--amber)':'var(--text3)'}}>{c.billing_type==='fixed_monthly'?'Fixed Monthly':'Per Visit'}</span></div>
                   {hasMapsLink(c.location_address, c.location_name)&&<a href={mapsOpenUrl(c.location_address, c.location_name)} target="_blank" rel="noreferrer" style={{fontSize:11,color:'#60a5fa',textDecoration:'none'}}>🗺 Maps</a>}
-                  {c.notes&&<div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>🔑 {c.notes}</div>}
+                  {c.notes&&<KeyReveal value={c.notes} multiline source="contract" refId={c.id} label={c.location_name} style={{fontSize:11,color:'var(--text3)',marginTop:2}} />}
                   {c.training_video_url&&<div style={{fontSize:11,color:'#60a5fa',marginTop:2}}>🎬 Training video configured</div>}
                 </div>
                 <div style={{textAlign:'right'}}>

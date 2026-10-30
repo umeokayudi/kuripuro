@@ -486,7 +486,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
           </div>
           {job.closed_manually_at && <div className="ag-meta" style={{ color: '#b45309' }}>{manualCloseStamp(job, lang)}</div>}
           {deep && deepTasksText(job.title, lang) && <div className="ag-meta" style={{ color: '#b7791f', fontWeight: 700 }}>✨ {deepTasksText(job.title, lang)}</div>}
-          {keyBox && <KeyReveal className="ag-key" value={keyBox} />}
+          {keyBox && <KeyReveal className="ag-key" value={keyBox} source="agenda" refId={job.id} label={job.title} />}
         </div>
         <div className="ag-move">
           <button type="button" disabled={idx === 0} onClick={() => onNudge(job, colId, -1)} aria-label={tr('Move up', '上へ', 'Subir')}>▲</button>

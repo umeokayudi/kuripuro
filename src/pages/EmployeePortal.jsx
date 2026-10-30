@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
+import KeyReveal from '../components/KeyReveal'
+import { splitKeyLine } from '../lib/keyReveal'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { compressVideo, canUseWebCodecs, videoTypeInfo } from '../lib/videoCompress'
 import { uploadJobVideo, videoPoster, writeVideoStatus } from '../lib/jobVideo'
@@ -1723,7 +1725,7 @@ export default function EmployeePortal() {
           </div>
           {instructions&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:5}}>📋 {e.instructionsKeybox}</div>
-            <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{instructions}</div>
+            <KeyReveal value={instructions} multiline icon="" source="employee_job" refId={job.id} label={job.title} linkColor="#c19c56" style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7}} />
           </div>}
           {cl.length>0&&<div style={{marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : fill(e.checklistCount,{n:cl.length})}</div>
@@ -2257,7 +2259,7 @@ export default function EmployeePortal() {
                   <div style={{background:'rgba(193,156,86,0.15)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0}}><div style={{fontSize:9,color:'#c19c56',fontWeight:700,letterSpacing:1}}>{e.extra.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:'#c19c56'}}>+¥{Number(j.spot_value||0).toLocaleString()}</div></div>
                 </div>
                 {j._open&&<div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:10}}>⚡ {L('Offer to the team — the first to accept keeps it','チームへのオファー — 最初に承諾した人が担当','Oferta para a equipe — o primeiro que aceitar fica com o job')}</div>}
-                {j.description&&<div style={{fontSize:13,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.03)',borderRadius:10,padding:'10px 12px',marginBottom:14,lineHeight:1.6}}>{j.description}</div>}
+                {j.description&&(()=>{ const d=splitKeyLine(j.description); return <div style={{fontSize:13,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.03)',borderRadius:10,padding:'10px 12px',marginBottom:14,lineHeight:1.6,whiteSpace:'pre-line'}}>{d.key&&<div>🔑 ••••</div>}{d.rest}</div> })()}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                   <button onClick={()=>handleAcceptSpot(j)} style={{padding:'15px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer'}}>✅ {e.accept}</button>
                   <button onClick={()=>handleDeclineSpot(j)} style={{padding:'15px',borderRadius:14,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.45)',fontSize:15,fontWeight:700,cursor:'pointer'}}>✕ {j._open?L('Not for me','今回はパス','Não posso'):e.decline}</button>
@@ -2654,7 +2656,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
           {activeInstructions && (
             <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
               <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
-              <div style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6,whiteSpace:'pre-line'}}>{activeInstructions}</div>
+              <KeyReveal value={activeInstructions} multiline icon="" source="employee_job" refId={activeJob.id} label={activeJob.title} linkColor="#c19c56" style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6}} />
             </div>
           )}
           {onAskAI&&<button type="button" onClick={()=>onAskAI(activeJob)} style={{width:'100%',padding:'11px',borderRadius:12,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.12)',color:'#d8b4fe',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:12}}>✦ {L('Ask the AI about this job','この作業についてAIに質問','Perguntar à IA sobre este job')}</button>}
@@ -2841,9 +2843,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
             )}
 
             {isNext&&!isActive&&instructions&&(
-              <div style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>
-                🔑 {instructions.split('\n')[0]}
-              </div>
+              <KeyReveal value={instructions.split('\n')[0]} source="employee_job" refId={job.id} label={job.title} linkColor="#c19c56" style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}} />
             )}
 
             {(isNext||isActive)&&hasFacility?.(job)&&(
@@ -2860,7 +2860,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                 {instructions&&(
                   <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
                     <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
-                    <div style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6,whiteSpace:'pre-line'}}>{instructions}</div>
+                    <KeyReveal value={instructions} multiline icon="" source="employee_job" refId={job.id} label={job.title} linkColor="#c19c56" style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6}} />
                   </div>
                 )}
                 {job.photo_start_url&&(
