@@ -21,6 +21,8 @@ import CleaningTimeline from '../components/CleaningTimeline'
 import { rowsForElement } from '../components/facility/CareList'
 import '../components/facility/facility.css'
 import '../components/facility/world.css'
+import '../components/deep-spot.css'
+import { fetchDeepStatusForPlace } from '../lib/deepCoverageData'
 
 // three.js só é baixado quando a tela abre
 const CityWorld = lazy(() => import('../components/facility/CityWorld'))
@@ -591,6 +593,7 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
   const [filter, setFilter] = useState('all')
   const [view, setView] = useState('list')
   const [timeline, setTimeline] = useState(null)
+  const [deep, setDeep] = useState(null)
   const layout = store.full
   const floors = store.levels
   const shown = Math.min(level, floors - 1)
@@ -606,6 +609,12 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
     if (tab !== 'history' || timeline) return
     loadStoreTimeline({ clientId: store.model.client_id, locationName: store.model.location_name, model: store.model, logs })
       .then(setTimeline).catch(() => setTimeline([]))
+  }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // v1.0.104 · Deep state of this restaurant (same data as Jobs → Deep & Spot).
+  useEffect(() => {
+    if (!isAdmin || tab !== 'items' || deep) return
+    fetchDeepStatusForPlace(store.model?.location_name || '').then(d => setDeep(d || false), () => setDeep(false))
   }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const select = (item) => {
@@ -639,6 +648,17 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
               <button type="button" className={filter === 'att' ? 'on' : ''} onClick={() => setFilter('att')}>⚠️ {w.attention} · {attentionN}</button>
               <button type="button" className="kw-view" onClick={() => setView(v => (v === 'list' ? 'cards' : 'list'))} title={view === 'list' ? w.viewCards : w.viewList}>{view === 'list' ? '▦' : '☰'}</button>
             </div>
+            {deep && (() => {
+              const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 10)
+              const next = deep.nextScheduled?.scheduled_date || deep.nextExpected
+              return (
+                <div className="kw-deepstate">
+                  <span>✨ <b>Deep</b></span>
+                  <span>{pickLang(lang, 'Last done', '前回完了', 'Último feito')}: <b>{deep.lastDone ? fmtDate(deep.lastDone.scheduled_date) : w.never}</b>{deep.lastDone?.employee_name ? ` · ${deep.lastDone.employee_name}` : ''}</span>
+                  <span>{pickLang(lang, 'Next', '次回', 'Próximo')}: {next ? <b className={!deep.nextScheduled && next < today ? 'late' : ''}>{fmtDate(next)}</b> : '—'}{next && !deep.nextScheduled ? ` (${pickLang(lang, 'expected, not scheduled', '予定未作成', 'esperado, não agendado')})` : ''}</span>
+                </div>
+              )
+            })()}
             {view === 'list' ? (
               <div className="kw-itemlist">
                 <div className="kw-itemlist-head">
