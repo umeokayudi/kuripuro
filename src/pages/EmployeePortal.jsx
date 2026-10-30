@@ -78,6 +78,7 @@ import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/tim
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
 import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob'
+import { realCoords } from '../lib/placeLocation'
 import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
 import { aiIssuesText } from '../lib/photoAi'
 import { askConfirm } from '../components/ConfirmDialog'
@@ -682,7 +683,7 @@ export default function EmployeePortal() {
     const pos = await capturePosition()
     if (!pos) {
       setGpsStatus(L('⚠️ GPS unavailable', '⚠️ GPSを使用できません', '⚠️ GPS indisponível'))
-      return { ok: true, dist: null, override: Boolean(job.gps_lat && job.gps_lng), pos: null }
+      return { ok: true, dist: null, override: Boolean(realCoords(job)), pos: null }
     }
     // Compare with the store: saved coordinates, else the address / Google Maps link resolved once.
     let site = null

@@ -16,6 +16,9 @@ import { confirmAndRun } from '../components/ConfirmDialog'
 import SetupChain from '../components/SetupChain'
 import { splitChecklist } from '../lib/agenda'
 import { ensurePlaceForContract } from '../lib/places'
+import { storeName } from '../lib/agenda'
+import PlacePicker from '../components/PlacePicker'
+import { coordsFromText, realCoords } from '../lib/placeLocation'
 import '../components/agenda.css'
 
 const NO_SELLER = { salesperson_id:'', salesperson_name:'', commission_type:null, commission_value:null, commission_amount:0 }
@@ -65,6 +68,8 @@ function RecurringContracts() {
   }
 
   const [errors, setErrors] = useState({})
+  // the store's real location (Places / map pin / pasted coordinates): saved on its place, the contract keeps the address
+  const [pin, setPin] = useState(null)
   const upd = (k,v) => { setForm(f=>({...f,[k]:v})); setErrors(e=>({ ...e, [k]: null })) }
   const fieldErr = k => errors[k] && <div className="ag-field-error">{errors[k]}</div>
 
@@ -105,20 +110,25 @@ function RecurringContracts() {
       toast.success('Contract added!')
     }
     // Every contract store is also a place in the single registry (Jobs → Places).
-    await ensurePlaceForContract(supabase, payload)
+    await ensurePlaceForContract(supabase, payload, pin)
 
     // Update client monthly_revenue
     const { data: allContracts } = await supabase.from('service_contracts').select('monthly_revenue').eq('client_id',selectedClient).eq('is_active',true)
     const totalRevenue = (allContracts||[]).reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
     await supabase.from('clients').update({ monthly_revenue: totalRevenue }).eq('id', selectedClient)
 
-    setShowForm(false); setEditing(null)
+    setShowForm(false); setEditing(null); setPin(null)
     setForm({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'', ...NO_SELLER })
     loadContracts(selectedClient)
   }
 
   const handleEdit = (c) => {
     setEditing(c.id)
+    setPin(coordsFromText(c.location_address))
+    supabase.from('locations').select('name,gps_lat,gps_lng').eq('is_active', true).then(({ data }) => {
+      const own = (data || []).find(l => storeName(l.name).toLowerCase() === storeName(c.location_name).toLowerCase())
+      if (realCoords(own)) setPin(realCoords(own))
+    })
     setForm({ location_name:c.location_name||'', location_address:c.location_address||'', area:c.area||'', service_type:c.service_type||'Basic Cleaning', billing_type:c.billing_type||'per_visit', price_per_visit:c.price_per_visit||0, fixed_monthly:c.fixed_monthly||0, discount_percent:c.discount_percent||0, tax_rate:c.tax_rate??10, price_includes_tax:c.price_includes_tax!==false, billing_day:c.billing_day||10, billing_notes:c.billing_notes||'', hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'', salesperson_id:c.salesperson_id||'', salesperson_name:'', commission_type:c.commission_type||null, commission_value:c.commission_value??null, commission_amount:c.commission_amount||0 })
     setShowForm(true)
   }
@@ -211,7 +221,7 @@ function RecurringContracts() {
           {/* Add button */}
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:600}}>{client?.company_name} — Service Locations</div>
-            <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setForm({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })}}>
+            <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setPin(null);setForm({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })}}>
               {showForm?'Cancel':'+ Add Location'}
             </button>
           </div>
@@ -243,7 +253,15 @@ function RecurringContracts() {
                 <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="28" value={form.billing_day||10} onChange={e=>upd('billing_day',e.target.value)} /></div>
                 <SellerCommissionFields monthly sellers={sellers.salespeople} rules={sellers.rules} contract={{ price: form.billing_type==='fixed_monthly' ? form.fixed_monthly : monthlyRevenue, tax_rate: form.tax_rate, price_includes_tax: form.price_includes_tax }} value={form} onChange={patch=>setForm(f=>({...f,...patch}))} />
                 <div className="form-group" style={{gridColumn:'1/-1'}}><label>Billing notes</label><input value={form.billing_notes||''} onChange={e=>upd('billing_notes',e.target.value)} placeholder="Ex.: desconto acordado com o cliente" /></div>
-                <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address / Maps URL</label><input value={form.location_address} onChange={e=>upd('location_address',e.target.value)} placeholder="https://maps.app.goo.gl/..." /></div>
+                <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address / Maps URL</label>
+                  <PlacePicker value={{ address: form.location_address, lat: pin?.lat, lng: pin?.lng }}
+                    onChange={({ address, lat, lng, name }) => {
+                      if (address !== undefined) upd('location_address', address)
+                      if (name && !form.location_name.trim()) upd('location_name', name)
+                      if (lat !== undefined) setPin(lat == null ? null : { lat, lng })
+                    }}
+                    placeholder="Type the store name or address — Google suggests it" />
+                </div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}>
                   <label>Days of Week</label>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>

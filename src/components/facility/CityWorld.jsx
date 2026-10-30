@@ -422,6 +422,7 @@ export default function CityWorld({ stores = [], height = 600, focusId = null, o
               {s.draft ? labels.draft : s.late ? <b className="kw-n late">{s.late}</b> : null}
               {!s.draft && s.soon ? <b className="kw-n soon">{s.soon}</b> : null}
               {!s.draft && !s.late && !s.soon ? <b className="kw-n ok">✓</b> : null}
+              {s.noLocation ? <b className="kw-n noloc" title={labels.noLocation}>📍?</b> : null}
               {s.sub ? <em>{s.sub}</em> : null}
             </span>
           </button>

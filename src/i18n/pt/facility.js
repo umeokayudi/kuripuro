@@ -42,7 +42,7 @@ export const facilityPt = {
       open: 'Mapa da cidade', world3d: 'Mundo 3D', search: 'Procurar local…', places: 'Locais', route: 'Rota', loading: 'Carregando locais…',
       noMatch: 'Nenhum local encontrado.', locating: 'Localizando endereços {n}/{total}…', measure: 'Medir', me: 'Eu', all: 'Todos',
       myLocation: 'Minha localização', fitAll: 'Mostrar todos', measureHint: 'Toque em dois locais ou dois pontos do mapa', close: 'Fechar',
-      last: 'Última', next: 'Próxima', visits: 'Serviços', days180: 'últimos 6 meses', noLocation: 'sem localização (cadastre o endereço)',
+      last: 'Última', next: 'Próxima', visits: 'Serviços', days180: 'últimos 6 meses', noLocation: 'sem localização (cadastre o endereço)', jobOnly: 'job avulso (fora de Locais)',
       openStore: 'Abrir loja', clientSheet: 'Ficha do cliente', client: 'Cliente', addRoute: 'Pôr na rota', inRoute: 'Na rota',
       measureFrom: 'Medir daqui', car: 'Carro', train: 'Trem', day: 'Dia', dayRoute: 'Rota do dia ({n})',
       startMe: 'Sair de onde estou', bestOrder: 'Melhor ordem', routeEmpty: 'Toque no ＋ dos locais, ou use “Rota do dia” para montar sozinho.',

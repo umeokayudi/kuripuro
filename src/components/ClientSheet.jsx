@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import PlacePicker from './PlacePicker'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
 import { useLang, localeOf } from '../hooks/useLang'
@@ -155,7 +156,9 @@ function SheetBody({ client: initial, onClose }) {
       {edit && (
         <div className="cs-form">
           {[['manager_name', tr('Manager', '担当者', 'Gerente')], ['manager_phone', tr('Manager phone', '担当者電話', 'Telefone do gerente')], ['contact_name', tr('Contact', '連絡先', 'Contato')], ['phone', tr('Phone', '電話', 'Telefone')], ['email', 'E-mail'], ['address', tr('Address', '住所', 'Endereço')]].map(([k, label]) => (
-            <label key={k} className={k === 'address' ? 'cs-wide' : ''}>{label}<input value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} /></label>
+            k === 'address'
+              ? <div key={k} className="cs-wide" style={{ display: 'grid', gap: 4 }}><label>{label}</label><PlacePicker withCoords={false} value={{ address: form[k] }} onChange={({ address }) => address !== undefined && setForm(f => ({ ...f, [k]: address }))} /></div>
+              : <label key={k}>{label}<input value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} /></label>
           ))}
           <div className="cs-wide cs-form-act">
             <button type="button" className="btn btn-sm" onClick={() => setEdit(false)}>{tr('Cancel', 'キャンセル', 'Cancelar')}</button>

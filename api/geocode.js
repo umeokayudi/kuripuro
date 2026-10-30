@@ -63,6 +63,9 @@ export function japaneseAddressParts(text) {
       .replace(DASH, '-')
       .replace(/-\s+/g, '-')
       .trim()
+    // A shop name written before the address ("焼肉男マンモス 東京都港区…") makes the search miss: start at the prefecture.
+    const pref = ja.search(/東京都|北海道|大阪府|京都府|[^\s\d]{2,3}県/)
+    if (pref > 0) ja = ja.slice(pref)
     // Keep up to the house number; the floor / building name after a space is dropped.
     const cut = ja.match(/^(.*?\d+(?:-\d+){0,2})/)
     ja = (cut ? cut[1] : ja).replace(/\s+/g, '')

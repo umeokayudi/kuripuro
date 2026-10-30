@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import PlacePicker from '../components/PlacePicker'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
@@ -345,7 +346,7 @@ export default function Clients() {
             </div>
             <div className="form-group"><label>Monthly Revenue (¥)</label><input type="number" value={form.monthly_revenue} onChange={e=>upd('monthly_revenue',e.target.value)} /></div>
             <div className="form-group"><label>Monthly Cost (¥)</label><input type="number" value={form.monthly_cost} onChange={e=>upd('monthly_cost',e.target.value)} /></div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><PlacePicker withCoords={false} value={{ address: form.address }} onChange={({ address }) => address !== undefined && upd('address', address)} placeholder="東京都港区… (Google suggests)" /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><textarea value={form.notes} onChange={e=>upd('notes',e.target.value)} /></div>
           </div>
           <div style={{display:'flex',gap:8}}>
