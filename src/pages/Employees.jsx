@@ -22,6 +22,9 @@ export default function Employees() {
   const [tab, setTab] = useState(() => tabFromUrl(window.location.search) || 'list')
   // Opened from the day-off pop-up ("Open calendar") or Users ("+ Add user") while already on this page
   useEffect(() => { const v = tabFromUrl(location.search); if (v) setTab(v) }, [location.search])
+  // opened from the global search (?search=<employee id>): show only that person, active or not
+  const searchId = new URLSearchParams(location.search).get('search')
+  useEffect(() => { if (searchId) setTab('list') }, [searchId])
   const [employees, setEmployees] = useState([])
   const [evaluated, setEvaluated] = useState(() => new Set())
   const [loading, setLoading] = useState(true)
@@ -178,7 +181,8 @@ export default function Employees() {
               {pickLang(lang,'Show inactive','無効も表示','Mostrar inativos')} ({employees.filter(e=>e.is_active===false).length})
             </label>
           )}
-          {employees.filter(e=>showInactive||e.is_active!==false).map(e=>{
+          {searchId && <button type="button" className="btn btn-sm" style={{marginBottom:12}} onClick={()=>navigate('/employees')}>← {pickLang(lang,'Show everyone','全員を表示','Mostrar todos')}</button>}
+          {employees.filter(e=>searchId ? e.id===searchId : showInactive||e.is_active!==false).map(e=>{
             const days = (() => { try { return e.work_days ? JSON.parse(e.work_days) : [] } catch { return [] } })()
             return (
             <div key={e.id} className="card" style={{marginBottom:12}}>

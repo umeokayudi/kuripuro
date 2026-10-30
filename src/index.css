@@ -1999,3 +1999,5 @@ body { background: var(--hq-bg); }
 .kp-skel-chart{height:96px;margin-top:8px}
 .kp-skel-row{height:56px;margin-bottom:10px}
 @keyframes kp-skel-move{to{background-position:-200% 0}}
+.ref-search-group{padding:8px 10px 4px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ref-muted)}
+@media(max-width:720px){.ref-search-results{position:fixed;top:60px;left:12px;right:12px;width:auto;max-height:70vh}}
