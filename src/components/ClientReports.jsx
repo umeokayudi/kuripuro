@@ -1,4 +1,4 @@
-// v1.0.105 · "Client reports" (Clients → client page, and Reports → "Generate client report").
+// v1.0.106 · "Client reports" (Clients → client page, and Reports → "Generate client report").
 // 3 steps: client → month → preview → [PDF] and/or [Share on the client portal].
 // Nothing reaches the client before the admin presses Share: the month close only makes DRAFTS.
 import { useEffect, useMemo, useState } from 'react'

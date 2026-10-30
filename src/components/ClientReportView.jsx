@@ -1,4 +1,4 @@
-// v1.0.105 · The client report on screen: admin preview and client portal show the same thing.
+// v1.0.106 · The client report on screen: admin preview and client portal show the same thing.
 // Day only (never a time), type, who did it, before/after photos, video player, checklist,
 // notes marked "visible to the client", deep cleaning state and what is scheduled next.
 import JobPhotos from './JobPhotos'

@@ -1,4 +1,4 @@
-// v1.0.105 · Words of the client report, in the three languages. Shared by the screen
+// v1.0.106 · Words of the client report, in the three languages. Shared by the screen
 // (admin preview + client portal) and the PDF. Dates only — never a time.
 
 const T = {

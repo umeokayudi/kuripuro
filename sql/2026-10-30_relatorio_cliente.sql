@@ -1,4 +1,4 @@
--- v1.0.105 Relatório mensal do cliente (2026-10-30)
+-- v1.0.106 Relatório mensal do cliente (2026-10-30)
 -- Só ADICIONA uma tabela; nada é apagado nem alterado.
 -- Para que serve: guarda o relatório de cada cliente por mês. "draft" = rascunho (o sistema monta
 -- no fechamento do mês; o cliente NÃO vê). "shared" = o admin revisou e compartilhou; o portal do

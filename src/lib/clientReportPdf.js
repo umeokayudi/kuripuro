@@ -1,4 +1,4 @@
-// v1.0.105 · Client report as a printable A4 page (the browser's "Save as PDF").
+// v1.0.106 · Client report as a printable A4 page (the browser's "Save as PDF").
 // Same content as the screen; the video becomes a link to the client portal.
 import { escapeHtml as esc } from './escapeHtml.js'
 import { reportDay, reportMonth, rt, typeLabel } from './clientReportText.js'

@@ -20,7 +20,7 @@ export async function runPayrollClose(db, today = new Intl.DateTimeFormat('en-CA
   return { success: true, date: today, ...result }
 }
 
-// v1.0.105 · Same window: one client report DRAFT per client for last month. Never shared here —
+// v1.0.106 · Same window: one client report DRAFT per client for last month. Never shared here —
 // the admin reviews and shares each one by hand. A failure here never blocks the payroll close.
 export async function runClientReportDrafts(db, today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())) {
   if (Number(today.slice(8, 10)) > AUTO_CLOSE_LAST_DAY) return { skipped: 'outside closing window' }
