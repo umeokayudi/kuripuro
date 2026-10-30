@@ -217,7 +217,7 @@ export default function Employees() {
   return (
     <div>
       <div className="tab-pills">
-        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{L('Active','有効','Ativos')} ({employees.filter(e=>e.is_active!==false).length})</button>
+        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>setTab('list')}>{L('Active','有効','Ativos')} ({loading?'…':employees.filter(e=>e.is_active!==false).length})</button>
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>+ {L('Add Employee','スタッフ追加','Novo funcionário')}</button>
         <button className={`tab-pill${tab==='complaints'?' active':''}`} onClick={()=>setTab('complaints')}>{L('Complaints','クレーム','Reclamações')}</button>
         <button className={`tab-pill${tab==='availability'?' active':''}`} onClick={()=>setTab('availability')}>🗓 {L('Availability','勤務可能日','Disponibilidade')}{pendingAvail>0?` (${pendingAvail})`:''}</button>

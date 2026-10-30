@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress } from '../lib/geocode'
@@ -235,7 +236,7 @@ export default function Jobs() {
             </div>
           )}
 
-          {loading && <div style={{color:'var(--text3)',fontSize:13}}>{t.app.loading}</div>}
+          {loading && <SkeletonRows rows={4} label={t.app.loading} />}
           {filteredJobs.length === 0 && !loading && (
             <div className="card">
               <div style={{color:'var(--text3)',fontSize:13}}>

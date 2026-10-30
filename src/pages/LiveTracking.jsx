@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import OvertimeAlerts from '../components/OvertimeAlerts'
 import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl, mapsCoordsUrl } from '../lib/mapsLink'
@@ -317,7 +318,7 @@ export default function LiveTracking() {
 
       <OvertimeAlerts jobs={jobs} onChanged={load} />
 
-      {loading && <div className="lt-empty">{L.loading}</div>}
+      {loading && <SkeletonRows rows={4} label={L.loading} />}
 
       {!loading && people.length > 0 && grouped.attention.length === 0 && (grouped.working.length + grouped.upcoming.length) > 0 && (
         <div className="lt-allgood">✓ {L.allGood}</div>

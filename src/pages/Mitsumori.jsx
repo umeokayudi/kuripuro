@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { usePendingCounts } from '../components/Sidebar'
 import toast from 'react-hot-toast'
@@ -428,7 +429,7 @@ export default function Mitsumori() {
               </button>
             ))}
           </div>
-          {loading && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{t.app.loading}</div>}
+          {loading && <SkeletonRows rows={3} label={t.app.loading} />}
           {!loading && visible.length === 0 && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>{s.emptyQuotes}</div></div>}
           {visible.map(q => (
             <div key={q.id} className="card" style={{ marginBottom: 12 }}>

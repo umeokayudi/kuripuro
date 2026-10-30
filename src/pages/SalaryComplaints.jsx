@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
@@ -70,7 +71,7 @@ export default function SalaryComplaints() {
         ))}
       </div>
 
-      {loading && <div style={{ color: 'var(--text3)' }}>{t.app.loading}</div>}
+      {loading && <SkeletonRows rows={3} label={t.app.loading} />}
       {filtered.length === 0 && !loading && <div className="card"><div style={{ color: 'var(--text3)' }}>{s.empty}</div></div>}
 
       {filtered.map(c => (

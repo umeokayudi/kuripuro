@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { supabase } from '../lib/supabase'
 import { fetchEvaluatedIds, scoreOf, byScore } from '../lib/employeeScore'
 import { isTestEmployee } from '../lib/testData'
@@ -148,7 +149,7 @@ export default function Evaluations() {
             </select>
           </div>
 
-          {loading && <div className="ev-empty">{L('Loading…', '読み込み中…', 'Carregando…')}</div>}
+          {loading && <SkeletonRows rows={3} label={L('Loading…', '読み込み中…', 'Carregando…')} />}
           {!loading && toRate.length === 0 && (
             <div className="ev-empty">✅ {L('All finished jobs in this period are rated.', 'この期間の仕事はすべて評価済みです。', 'Todos os serviços deste período já foram avaliados.')}</div>
           )}

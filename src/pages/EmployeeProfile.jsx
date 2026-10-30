@@ -2,6 +2,7 @@ import { gradeJobPhoto } from '../lib/photoAi'
 import { aiScoreView } from '../lib/aiScore'
 import { sortByOrder } from '../lib/agenda'
 import { useState, useEffect } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -12,6 +13,8 @@ import { RoleBadge, RolePicker } from '../components/EmployeeRole'
 import { useLang, pickLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { phoneTakenMessage } from '../lib/contactMask'
+import { askConfirm } from '../components/ConfirmDialog'
+import { undoToast } from '../components/UndoToast'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -187,18 +190,30 @@ export default function EmployeeProfile() {
   }
 
   const handleDeleteEval = async (evalId, pts) => {
-    await supabase.from('evaluations').delete().eq('id', evalId)
+    const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
+    const row = evals.find(e => e.id === evalId)
+    const before = emp.score ?? 100
     const newScore = Math.max(0, Math.min(100, (emp.score||100) - pts))
+    if (!(await askConfirm({
+      title: L('Remove this evaluation?','この評価を削除しますか？','Remover esta avaliação?'),
+      message: L(`The score goes from ${before} to ${newScore}.`, `スコアが${before}から${newScore}になります。`, `A pontuação vai de ${before} para ${newScore}.`),
+      confirmLabel: L('Remove','削除','Remover'), danger: true,
+    }))) return
+    const { error } = await supabase.from('evaluations').delete().eq('id', evalId)
+    if (error) return toast.error(error.message)
     await supabase.from('employees').update({ score:newScore }).eq('id', id)
-    toast('Evaluation removed.')
     loadAll()
+    undoToast(L('Evaluation removed','評価を削除しました','Avaliação removida'), async () => {
+      if (row) { const res = await supabase.from('evaluations').insert(row); if (res.error) return res }
+      return supabase.from('employees').update({ score: before }).eq('id', id)
+    }, lang, loadAll)
   }
 
   const scoreColor = s => s>=90?'var(--green)':s>=70?'#EF9F27':'var(--red)'
   const statusColor = s => ({assigned:'badge-blue',in_progress:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
   const today = tokyoToday()
 
-  if (loading) return <div style={{color:'var(--text3)',padding:20}}>Loading...</div>
+  if (loading) return <SkeletonRows rows={5} label={pickLang(lang, 'Loading…', '読み込み中…', 'Carregando…')} />
   if (!emp) return <div style={{color:'var(--text3)',padding:20}}>Employee not found</div>
 
   return (

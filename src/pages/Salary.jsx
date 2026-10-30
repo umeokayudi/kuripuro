@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang, pickLang } from '../hooks/useLang'
@@ -92,7 +93,7 @@ export default function Salary() {
                 {months.map(m=><option key={m}>{m}</option>)}
               </select>
             </div>
-            {loading && <div style={{color:'var(--text3)',fontSize:13}}>{L('Loading…', '読み込み中…', 'Carregando…')}</div>}
+            {loading && <SkeletonRows rows={4} label={L('Loading…', '読み込み中…', 'Carregando…')} />}
             {employees.map(e => (
               <div key={e.id} onClick={()=>setSelected(e)} style={{ padding:'10px 12px', borderRadius:8, cursor:'pointer', background: selected?.id===e.id ? 'var(--navy)' : 'var(--surface2)', marginBottom:6, border: selected?.id===e.id ? '1px solid var(--navy)' : '1px solid transparent' }}>
                 <div style={{ fontWeight:500, fontSize:13, color: selected?.id===e.id ? '#fff' : 'var(--text)' }}>{e.full_name}</div>

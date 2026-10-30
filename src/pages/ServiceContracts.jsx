@@ -22,6 +22,7 @@ import { splitChecklist } from '../lib/agenda'
 import { ensurePlaceForContract } from '../lib/places'
 import '../components/agenda.css'
 import { useLang, pickLang } from '../hooks/useLang'
+import SkeletonRows from '../components/SkeletonRows'
 import { undoToast } from '../components/UndoToast'
 
 const NO_SELLER = { salesperson_id:'', salesperson_name:'', commission_type:null, commission_value:null, commission_amount:0 }
@@ -66,6 +67,7 @@ function RecurringContracts() {
   const [details, setDetails] = useState(null)
   const [clients, setClients] = useState([])
   const [contracts, setContracts] = useState([])
+  const [contractsLoading, setContractsLoading] = useState(true)
   const [selectedClient, setSelectedClient] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -79,6 +81,7 @@ function RecurringContracts() {
   const loadClients = async () => {
     const { data } = await supabase.from('clients').select('*').eq('is_active',true).order('company_name')
     setClients(data||[])
+    if (!data?.length) setContractsLoading(false)
     const wanted = new URLSearchParams(window.location.search).get('client')
     if (data?.length>0) setSelectedClient((data.find(c=>c.id===wanted)||data[0]).id)
     // v1.0.116 · ?fromQuote=<mitsumori id> (Quotes → "Convert to job / contract"): form filled from the quote
@@ -98,8 +101,10 @@ function RecurringContracts() {
   }
 
   const loadContracts = async (clientId) => {
+    setContractsLoading(true)
     const { data } = await supabase.from('service_contracts').select('*').eq('client_id',clientId).eq('is_active',true).order('location_name')
     setContracts(data||[])
+    setContractsLoading(false)
   }
 
   const [errors, setErrors] = useState({})
@@ -245,6 +250,8 @@ function RecurringContracts() {
           </div>
         </div>
       )}
+      {!selectedClient && contractsLoading && <SkeletonRows rows={4} label={L('Loading…','読み込み中…','Carregando…')} />}
+      {!selectedClient && !contractsLoading && <div className="card" style={{fontSize:13,color:'var(--text2)'}}>{L('No active clients yet. Register the client in Clients first; then its contracts are added here.','有効な顧客がいません。先に顧客に登録してから、ここで契約を追加してください。','Nenhum cliente ativo ainda. Cadastre o cliente em Clientes primeiro; depois os contratos dele são adicionados aqui.')}</div>}
       {/* Client selector */}
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
         {clients.map(c=>(
@@ -261,7 +268,7 @@ function RecurringContracts() {
           <div className="kp-two-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
             {[[L('Stores','店舗','Lojas'),stores.length],[L('Visits/mo','月の回数','Visitas/mês'),totalVisits],[L('Hours/mo','月の時間','Horas/mês'),totalMonthlyHours.toFixed(0)+'h'],[L('Revenue/mo','月の売上','Receita/mês'),'¥'+totalMonthlyRevenue.toLocaleString()]].map(([l,v])=>(
               <div key={l} className="card" style={{padding:'12px 14px',textAlign:'center'}}>
-                <div style={{fontSize:20,fontWeight:700,color:'var(--green)'}}>{v}</div>
+                <div style={{fontSize:20,fontWeight:700,color:'var(--green)'}}>{contractsLoading ? <span className="kp-skel" style={{display:'inline-block',width:48,height:20}} /> : v}</div>
                 <div style={{fontSize:11,color:'var(--text3)',marginTop:3}}>{l}</div>
               </div>
             ))}
@@ -341,7 +348,8 @@ function RecurringContracts() {
 
           <KeyRevealLog />
           {/* Contracts list */}
-          {contracts.length===0&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>{L('No locations yet. Tap “+ Add Location” to add the first place this client pays for; jobs are generated from it.','拠点はまだありません。「+ 拠点を追加」から、この顧客の最初の拠点を登録してください。作業はここから作成されます。','Nenhum local ainda. Toque em “+ Adicionar local” para cadastrar o primeiro local que este cliente paga; os jobs são gerados a partir dele.')}</div></div>}
+          {contractsLoading&&<SkeletonRows rows={3} label={L('Loading…','読み込み中…','Carregando…')} />}
+          {!contractsLoading&&contracts.length===0&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>{L('No locations yet. Tap “+ Add Location” to add the first place this client pays for; jobs are generated from it.','拠点はまだありません。「+ 拠点を追加」から、この顧客の最初の拠点を登録してください。作業はここから作成されます。','Nenhum local ainda. Toque em “+ Adicionar local” para cadastrar o primeiro local que este cliente paga; os jobs são gerados a partir dele.')}</div></div>}
           {/* v1.0.109 · one card per STORE with its items inside (not one line per component) */}
           {stores.map(g=>(
             <div key={g.store} className="card" style={{marginBottom:12}}>

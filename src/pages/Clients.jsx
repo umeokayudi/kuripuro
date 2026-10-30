@@ -318,7 +318,7 @@ export default function Clients() {
     <div>
       <SetupChain current="client" />
       <div className="tab-pills">
-        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>{setTab('list');setEditing(null);setForm({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })}}>{L('List','一覧','Lista')} ({clients.length})</button>
+        <button className={`tab-pill${tab==='list'?' active':''}`} onClick={()=>{setTab('list');setEditing(null);setForm({ company_name:'', contact_name:'', phone:'', email:'', address:'', service_type:'Daily cleaning', monthly_revenue:0, monthly_cost:0, notes:'' })}}>{L('List','一覧','Lista')} ({loading?'…':clients.length})</button>
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>{editing?`✏️ ${L('Edit','編集','Editar')}`:`+ ${L('Register','登録','Cadastrar')}`}</button>
         <button className={`tab-pill${tab==='services'?' active':''}`} onClick={()=>setTab('services')}>{L('Services','サービス','Serviços')}</button>
         <button className={`tab-pill${tab==='portal'?' active':''}`} onClick={()=>setTab('portal')}>🔐 {L('Portal','ポータル','Portal')}</button>
