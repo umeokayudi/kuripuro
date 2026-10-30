@@ -16,6 +16,9 @@ import { fetchFacilityOffers, offerToClient, offerWhen } from './facility/Facili
 import { ELEMENT_KINDS } from '../lib/facilityModel'
 import { fetchAssignAlerts } from '../lib/assignNotices'
 import { PENDING_CHANGED } from '../lib/adminPending'
+import { fetchDayCoverage, needsAction } from '../lib/dayCoverage'
+
+const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
 
 const SEEN_KEY = 'kp_timeoff_seen_v1'
 const readSeen = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
@@ -50,12 +53,14 @@ export default function TimeOffCenter() {
   // v1.0.101 · who accepted an urgent offer + jobs of today / tomorrow with nobody
   const [taken, setTaken] = useState([])
   const [noPerson, setNoPerson] = useState([])
+  // v1.0.103 · today's contract places not done (no job / nobody / late)
+  const [dayMissing, setDayMissing] = useState([])
   const seen = useRef(readSeen())
 
   // v1.0.102 · a list that fails to load keeps its last value (it used to drop to 0 and come back,
   // so the count went 3 → empty → 3), and only the newest load is applied.
   const loadSeq = useRef(0)
-  const last = useRef({ list: [], periods: [], quoteRows: [], flow: { toBook: [], done: [] }, offerRows: [], assign: { accepted: [], noPerson: [] } })
+  const last = useRef({ list: [], periods: [], quoteRows: [], flow: { toBook: [], done: [] }, offerRows: [], assign: { accepted: [], noPerson: [] }, cov: null })
   const keep = (p, k) => p.then(v => { last.current[k] = v; return v }, () => last.current[k])
   const load = () => {
     const seq = ++loadSeq.current
@@ -66,12 +71,16 @@ export default function TimeOffCenter() {
       keep(fetchQuoteFlowAlerts(), 'flow'),
       keep(fetchFacilityOffers(), 'offerRows'),
       keep(fetchAssignAlerts(), 'assign'),
-    ]).then(([list, periods, quoteRows, flow, offerRows, assign]) => {
+      keep(fetchDayCoverage(tokyoToday(), { nowMin: tokyoMinutes() }), 'cov'),
+    ]).then(([list, periods, quoteRows, flow, offerRows, assign, cov]) => {
     if (seq !== loadSeq.current) return
     setOffers(offerRows)
     const takenUnseen = assign.accepted.filter(a => !seen.current.has(a.id))
     setTaken(takenUnseen)
     setNoPerson(assign.noPerson)
+    const act = cov ? cov.missing.filter(needsAction) : []
+    const covRows = act.length ? [{ id: `daycov-${tokyoToday()}-${act.length}`, done: cov.done, total: cov.total, missing: cov.missing.length, first: act[0] }] : []
+    setDayMissing(covRows)
     setRows(list)
     setPayroll(periods)
     setQuotes(quoteRows)
@@ -80,7 +89,7 @@ export default function TimeOffCenter() {
     const doneUnseen = flow.done.filter(d => !seen.current.has(d.id))
     setFlowDone(doneUnseen)
     // Alert only once per item, ever: after that the number stays in the side menu until it is resolved
-    const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows, ...takenUnseen, ...assign.noPerson].filter(r => !seen.current.has(r.id))
+    const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows, ...takenUnseen, ...assign.noPerson, ...covRows].filter(r => !seen.current.has(r.id))
     if (fresh.length) {
       setNewQuotes(quoteRows.filter(q => fresh.includes(q)))
       setNewFlow([...flow.toBook, ...doneUnseen].filter(q => fresh.includes(q)))
@@ -111,7 +120,7 @@ export default function TimeOffCenter() {
   }, [toastOpen])
 
   const markSeen = () => {
-    rows.concat(payroll, quotes, toBook, flowDone, offers, noPerson).forEach(r => seen.current.add(r.id))
+    rows.concat(payroll, quotes, toBook, flowDone, offers, noPerson, dayMissing).forEach(r => seen.current.add(r.id))
     writeSeen(seen.current)
     setToastOpen(false)
   }
@@ -138,6 +147,7 @@ export default function TimeOffCenter() {
   const openQuotes = () => { setOpen(false); markSeen(); navigate('/mitsumori?tab=requests') }
   const openTrack = (item) => { setOpen(false); markSeen(); navigate(`/mitsumori?track=${item.ref || `${item.kind === 'mitsumori' ? 'mit' : 'req'}:${item.ref_id}`}`) }
   const openAssign = () => { setOpen(false); markSeen(); navigate('/schedule') }
+  const openLive = () => { setOpen(false); markSeen(); navigate('/live') }
   const okTaken = (t) => { seen.current.add(t.id); writeSeen(seen.current); setTaken(list => list.filter(x => x.id !== t.id)) }
   const openStore = (r) => { setOpen(false); markSeen(); navigate(`/facility?model=${r.model_id}`) }
   const offer = async (r) => {
@@ -151,9 +161,9 @@ export default function TimeOffCenter() {
     }
     setBusy(null)
   }
-  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length
+  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length + dayMissing.length
   const kinds = [
-    { key: 'jobs', label: L('Jobs', '作業', 'Jobs'), n: taken.length + noPerson.length },
+    { key: 'jobs', label: L('Jobs', '作業', 'Jobs'), n: taken.length + noPerson.length + dayMissing.length },
     { key: 'quotes', label: L('Quotes', '見積もり', 'Orçamentos'), n: quotes.length + toBook.length + flowDone.length },
     { key: 'payroll', label: L('Payroll', '給与', 'Folha'), n: payroll.length },
     { key: 'dayoff', label: L('Day off', '休み', 'Folgas'), n: rows.length },
@@ -249,7 +259,22 @@ export default function TimeOffCenter() {
               ))}
             </div>}
             <div className="tor-list">
-              {show('jobs') && (taken.length + noPerson.length) > 0 && kind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
+              {show('jobs') && (taken.length + noPerson.length + dayMissing.length) > 0 && kind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
+              {show('jobs') && dayMissing.map(d => (
+                <article key={d.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">📋</div>
+                    <div className="tor-item-main">
+                      <strong>{L(`${d.missing} contract place(s) missing today`, `本日の契約 残り${d.missing}店舗`, `${d.missing} local(is) do contrato faltando hoje`)}</strong>
+                      <span>{L(`${d.done} of ${d.total} done`, `${d.total}店舗中 ${d.done}完了`, `${d.done} de ${d.total} feitos`)} · {d.first.place}{d.first.personName ? ` · ${d.first.personName}` : ''} · {d.first.state === 'noJob' ? L('no job created', '作業未作成', 'sem job criado') : d.first.state === 'noPerson' ? L('nobody assigned', '担当なし', 'sem pessoa') : L('not started', '未開始', 'não iniciado')}</span>
+                    </div>
+                    <span className="tor-kind is-off">{L('Check', '確認', 'Conferir')}</span>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={openLive}>📋 {L('Open Live Track', 'ライブ追跡を開く', 'Abrir o Live Track')}</button>
+                  </div>
+                </article>
+              ))}
               {show('jobs') && noPerson.map(p => (
                 <article key={p.id} className="tor-item">
                   <div className="tor-item-top">
