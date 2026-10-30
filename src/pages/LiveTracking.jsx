@@ -9,6 +9,8 @@ import toast from 'react-hot-toast'
 import { useLang, fill, localeOf } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
 import { ManualCloseButton } from '../components/ManualCloseModal'
+import { useNavigate } from 'react-router-dom'
+import { fetchDayCoverage } from '../lib/dayCoverage'
 
 const TZ = 'Asia/Tokyo'
 const LATE_AFTER_MIN = 5
@@ -81,6 +83,9 @@ export default function LiveTracking() {
   const [cleaning, setCleaning] = useState(false)
   const [retros, setRetros] = useState([])
   const [lightbox, setLightbox] = useState(null)
+  const [cov, setCov] = useState(null)
+  const [showCovDone, setShowCovDone] = useState(false)
+  const navigate = useNavigate()
 
   const checkPhotos = async () => {
     try {
@@ -122,6 +127,8 @@ export default function LiveTracking() {
   const load = useCallback(async () => {
     loadRetros()
     const today = tokyoToday()
+    const n = tokyoNow()
+    fetchDayCoverage(today, { nowMin: n.getHours() * 60 + n.getMinutes() }).then(setCov, () => {})
     const [e, activeRes, todayRes, offRes] = await Promise.all([
       supabase.from('employees').select('id,full_name,phone,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').eq('status','in_progress'),
@@ -255,6 +262,49 @@ export default function LiveTracking() {
         </div>
         <button type="button" className="btn btn-sm" onClick={load}>↻ {updatedAt ? fill(L.updated, { time: updatedAt.toLocaleTimeString('ja-JP', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }) }) : L.refresh}</button>
       </div>
+
+      {cov && cov.total > 0 && (() => {
+        const missing = cov.total - cov.done
+        const shown = showCovDone ? cov.items : cov.missing
+        const stLabel = { noJob: L.covNoJob, noPerson: L.covNoPerson, late: L.covLate, waiting: L.covWaiting, working: L.covWorking, done: L.covDone }
+        return (
+          <section id="lt-contracts" className={`lt-cov ${missing ? 'is-missing' : 'is-alldone'}`}>
+            <div className="lt-cov-head">
+              <div>
+                <div className="lt-cov-label">{L.covTitle}</div>
+                <div className="lt-cov-count">
+                  {fill(L.covCount, { done: cov.done, total: cov.total })}
+                  {missing > 0 && <> · <em>{fill(L.covMissing, { n: missing })}</em></>}
+                </div>
+              </div>
+            </div>
+            <div className="lt-cov-bar" role="progressbar" aria-valuemin={0} aria-valuemax={cov.total} aria-valuenow={cov.done}><i style={{ width: `${Math.round(cov.done / cov.total * 100)}%` }} /></div>
+            {missing === 0 && <p className="lt-cov-hint">✓ {L.covAllDone}</p>}
+            {shown.length > 0 && (
+              <ul className="lt-cov-list">
+                {shown.map(it => (
+                  <li key={it.place}>
+                    <span className="lt-cov-place">
+                      <b>{it.place}</b>
+                      <span>{it.personName ? (it.usual ? fill(L.covUsual, { name: it.personName }) : it.personName) : L.covNobody}{it.job?.scheduled_time ? ` · ${shortTime(it.job.scheduled_time)}` : ''}</span>
+                    </span>
+                    <span className={`lt-cov-chip st-${it.state}`}>{stLabel[it.state]}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {cov.missing.some(it => it.state === 'noJob') && <p className="lt-cov-hint">{L.covNoJobHint}</p>}
+            <div className="lt-cov-actions">
+              {cov.missing.some(it => it.state === 'noJob' || it.state === 'noPerson') && (
+                <button type="button" className="btn btn-sm btn-primary" onClick={() => navigate('/schedule')}>📅 {L.covCreate}</button>
+              )}
+              {cov.done > 0 && (
+                <button type="button" className="btn btn-sm" onClick={() => setShowCovDone(v => !v)}>{showCovDone ? L.covHideDone : fill(L.covShowDone, { n: cov.done })}</button>
+              )}
+            </div>
+          </section>
+        )
+      })()}
 
       <div className="lt-tiles">
         {tiles.map(tile => (

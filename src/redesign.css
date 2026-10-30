@@ -536,6 +536,29 @@
 .lt-tile.is-zero b{color:var(--text3)}
 .lt-allgood{background:var(--green-bg);color:var(--green);border-radius:var(--radius-sm);padding:10px 14px;font-size:13.5px;font-weight:600;margin-bottom:16px}
 .lt-empty{color:var(--text3);font-size:13px;padding:12px 0}
+/* v1.0.103 · today by contract: done vs missing places */
+.lt-cov{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px}
+.lt-cov.is-missing{border-left:4px solid var(--amber)}
+.lt-cov.is-alldone{border-left:4px solid #16a34a}
+.lt-cov-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.lt-cov-label{font-size:12.5px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.lt-cov-count{font-size:18px;font-weight:700;margin-top:2px}
+.lt-cov-count em{font-style:normal;color:var(--red)}
+.lt-cov-bar{height:8px;border-radius:8px;background:var(--surface2);overflow:hidden;margin:10px 0 4px}
+.lt-cov-bar i{display:block;height:100%;background:#16a34a;border-radius:8px}
+.lt-cov-list{list-style:none;margin:10px 0 0;padding:0}
+.lt-cov-list li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:13.5px}
+.lt-cov-place{flex:1;min-width:0;display:flex;flex-direction:column}
+.lt-cov-place b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lt-cov-place span{font-size:12.5px;color:var(--text2)}
+.lt-cov-chip{flex-shrink:0;font-size:12px;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap}
+.lt-cov-chip.st-noJob,.lt-cov-chip.st-noPerson,.lt-cov-chip.st-late{background:var(--red-bg);color:var(--red)}
+.lt-cov-chip.st-waiting{background:#fff4dc;color:#9a6a06}
+.lt-cov-chip.st-working{background:#e8f0ff;color:#3b62f0}
+.lt-cov-chip.st-done{background:#e3f7ea;color:#15803d}
+.lt-cov-hint{font-size:12.5px;color:var(--text2);margin:10px 0 0}
+.lt-cov-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.lt-cov-actions .btn{min-height:40px}
 .lt-group{margin-bottom:20px;scroll-margin-top:80px}
 .lt-group h3{font-size:14px;font-weight:700;color:var(--text2);margin:0 0 8px;display:flex;align-items:center;gap:8px}
 .lt-group h3 span{background:var(--surface2);color:var(--text2);border-radius:20px;padding:1px 8px;font-size:12px}
@@ -588,6 +611,8 @@
   .lt-actions,.lt-timeline{padding-left:12px;padding-right:12px}
   .lt-act{min-height:38px}
   .lt-retro{flex-direction:column}
+  .lt-cov{padding:12px}
+  .lt-cov-list li{flex-wrap:wrap;gap:6px 10px}
 }
 /* v1.0.34 — month-by-month charts replace the small number tiles */
 .mk-wrap{margin-bottom:20px}
