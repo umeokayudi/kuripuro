@@ -1,5 +1,6 @@
 // The app's own confirmation dialog (never window.confirm). Mount <ConfirmDialogHost /> once;
 // call askConfirm({...}) anywhere: resolves true/false, or the typed reason when `reason` is set.
+// v1.0.116 · `altLabel` adds a second choice that resolves 'alt' (Cancel / Escape still resolve false).
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
@@ -71,6 +72,7 @@ export default function ConfirmDialogHost() {
         )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18, flexWrap: 'wrap' }}>
           <button type="button" className="btn" onClick={() => close(false)}>{req.cancelLabel || tr('Cancel', 'キャンセル', 'Cancelar')}</button>
+          {req.altLabel && <button type="button" className="btn" onClick={() => close('alt')}>{req.altLabel}</button>}
           <button type="button" className={`btn ${req.danger ? 'btn-danger' : 'btn-primary'}`} onClick={ok}
             disabled={needsReason && req.reasonRequired !== false && !text.trim()}>
             {req.confirmLabel || (req.danger ? tr('Delete', '削除', 'Excluir') : tr('Confirm', '確認', 'Confirmar'))}

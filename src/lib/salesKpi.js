@@ -3,7 +3,7 @@
 // pages, the seller portal and scripts/test-sales-kpi.mjs.
 
 import { followupQueue } from './salesFollowup.js'
-import { sellerScorecard } from './salesInsights.js'
+import { sellerScorecard, dealValue } from './salesInsights.js'
 
 export const OPEN_STAGES = ['approach', 'followup', 'quote', 'negotiation']
 export const STAGE_ORDER = ['approach', 'followup', 'quote', 'negotiation', 'won']
@@ -65,9 +65,10 @@ export function scopeData(data, salespersonId) {
 }
 
 /** Monthly value of a won lead: its approved contract, else the expected amount. */
-export function leadRevenue(lead, contracts) {
+// v1.0.116 · active contract value, else the deal value (approved quote → latest quote → estimate)
+export function leadRevenue(lead, contracts, quotes = []) {
   const contract = (contracts || []).find(row => row.lead_id === lead.id && isActiveContract(row))
-  return Number(contract?.client_monthly_total || lead.expected_monthly || 0)
+  return Number(contract?.client_monthly_total || 0) || dealValue(lead, (quotes || []).filter(row => row.lead_id === lead.id))
 }
 
 /** Totals for one window of months. */
@@ -91,12 +92,12 @@ export function periodTotals(scoped, range) {
     losses: losses.length,
     contracts: contracts.length,
     revenue,
-    wonValue: sum(wins, lead => leadRevenue(lead, scoped.contracts)),
+    wonValue: sum(wins, lead => leadRevenue(lead, scoped.contracts, scoped.quotes)),
     hours,
     travel: sum(reports, row => row.travel_cost) + sum(approaches, row => row.travel_cost),
     winRate: ratio(wins.length, wins.length + losses.length),
     approachToWin: ratio(wins.length, approaches.length),
-    avgDeal: wins.length ? sum(wins, lead => leadRevenue(lead, scoped.contracts)) / wins.length : null,
+    avgDeal: wins.length ? sum(wins, lead => leadRevenue(lead, scoped.contracts, scoped.quotes)) / wins.length : null,
     approachesPerHour: hours ? approaches.length / hours : null,
   }
 }
@@ -206,7 +207,7 @@ export function sourceBreakdown(scoped, range, channels = []) {
     const key = channelName(lead.marketing_channel_id) || String(lead.source || '').trim() || '—'
     const group = groups.get(key) || { source: key, leads: 0, wins: 0, revenue: 0 }
     group.leads += 1
-    if (lead.stage === 'won') { group.wins += 1; group.revenue += leadRevenue(lead, scoped.contracts) }
+    if (lead.stage === 'won') { group.wins += 1; group.revenue += leadRevenue(lead, scoped.contracts, scoped.quotes) }
     groups.set(key, group)
   }
   return [...groups.values()].map(row => ({ ...row, winRate: ratio(row.wins, row.leads) })).sort((a, b) => b.leads - a.leads)
@@ -243,7 +244,7 @@ export function marketingSeries(data, months) {
     const monthSpend = sum(spend.filter(row => inMonths(row.spent_on, range)), row => row.amount)
     const monthLeads = leads.filter(lead => inMonths(leadStart(lead), range)).length
     const wins = leads.filter(lead => lead.stage === 'won' && inMonths(leadClosed(lead), range))
-    const revenue = sum(wins, lead => leadRevenue(lead, contracts))
+    const revenue = sum(wins, lead => leadRevenue(lead, contracts, data?.quotes))
     return { month, spend: monthSpend, leads: monthLeads, wins: wins.length, revenue, cpl: monthLeads ? monthSpend / monthLeads : null, cac: wins.length ? monthSpend / wins.length : null }
   })
 }
@@ -261,7 +262,7 @@ export function channelPerformance(data, range) {
     const channelSpend = sum(spend.filter(row => campaignChannel.get(row.campaign_id) === channel.id && inMonths(row.spent_on, range)), row => row.amount)
     const channelLeads = leads.filter(lead => channelOf(lead) === channel.id && inMonths(leadStart(lead), range))
     const wins = leads.filter(lead => channelOf(lead) === channel.id && lead.stage === 'won' && inMonths(leadClosed(lead), range))
-    const revenue = sum(wins, lead => leadRevenue(lead, contracts))
+    const revenue = sum(wins, lead => leadRevenue(lead, contracts, data?.quotes))
     return {
       id: channel.id,
       name: channel.name,

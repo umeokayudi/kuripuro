@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router-dom'
+import { contractDraftFromQuote, clientForQuote } from '../lib/quoteContract'
 import SpotContracts from '../components/SpotContracts'
 import DeepCleanTracker from '../components/DeepCleanTracker'
 import { spotContractHtml, recurringToContract, contractDetailsDefaults, cleanContractDetails } from '../lib/spotContract'
@@ -63,11 +64,26 @@ function RecurringContracts() {
   useEffect(() => { loadClients(); fetchContractSellers().then(setSellers) }, [])
   useEffect(() => { if (selectedClient) loadContracts(selectedClient) }, [selectedClient])
 
+  const [quoteNote, setQuoteNote] = useState('')
   const loadClients = async () => {
     const { data } = await supabase.from('clients').select('*').eq('is_active',true).order('company_name')
     setClients(data||[])
     const wanted = new URLSearchParams(window.location.search).get('client')
     if (data?.length>0) setSelectedClient((data.find(c=>c.id===wanted)||data[0]).id)
+    // v1.0.116 · ?fromQuote=<mitsumori id> (Quotes → "Convert to job / contract"): form filled from the quote
+    const fromQuote = new URLSearchParams(window.location.search).get('fromQuote')
+    if (fromQuote) {
+      const { data: q } = await supabase.from('mitsumori').select('*').eq('id', fromQuote).maybeSingle()
+      if (!q) return toast.error('Quote not found')
+      const { data: lead } = q.lead_id ? await supabase.from('sales_leads').select('site_name,address').eq('id', q.lead_id).maybeSingle() : { data: null }
+      const client = clientForQuote(q, data || [])
+      const draft = contractDraftFromQuote(q, lead)
+      if (client) setSelectedClient(client.id)
+      setEditing(null); setForm(f => ({ ...f, ...draft, salesperson_name:'' })); setShowForm(true)
+      setQuoteNote(client
+        ? `Filled from quote ${q.quote_number || ''} (${q.company_name}). Pick the days of the week, check the amount and save.`
+        : `Quote ${q.quote_number || ''}: client "${q.company_name}" is not registered. Create it in Clients first, then convert again.`)
+    }
   }
 
   const loadContracts = async (clientId) => {
@@ -240,6 +256,7 @@ function RecurringContracts() {
           {showForm&&(
             <div className="card" style={{marginBottom:16,border:'1px solid var(--navy)'}}>
               <div className="card-title">{editing?'Edit Location':'New Location'}</div>
+              {quoteNote && !editing && <div style={{fontSize:13,background:'var(--blue-light, #eef3ff)',borderRadius:8,padding:'8px 10px',marginBottom:10}}>🔁 {quoteNote}</div>}
               <div className="grid-2">
                 <div className="form-group"><label>Location Name *</label><input className={errors.location_name?'ag-invalid':''} value={form.location_name} onChange={e=>upd('location_name',e.target.value)} placeholder="Atomic Bar" />{fieldErr('location_name')}{fieldErr('client')}</div>
                 <div className="form-group"><label>Area / zone</label><input list="kp-areas" value={form.area||''} onChange={e=>upd('area',e.target.value)} placeholder="Shinbashi" /><datalist id="kp-areas">{[...new Set(contracts.map(c=>c.area).filter(Boolean))].sort().map(a=><option key={a} value={a} />)}</datalist></div>

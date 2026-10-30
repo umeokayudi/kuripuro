@@ -184,3 +184,17 @@ export function GoalBars({ goal, actual, today, f, compact = false }) {
     </div>
   )
 }
+
+// v1.0.116 · why a client is in the follow-up ALERT (rule: expired quote OR 14+ days without contact)
+const REASON_COPY = {
+  en: { quote_expired: 'Quote expired', no_contact: d => `No contact for ${d} days`, hint: 'Alert = quote expired OR 14+ days without contact.' },
+  ja: { quote_expired: '見積の期限切れ', no_contact: d => `${d}日間連絡なし`, hint: '通知の条件：見積の期限切れ、または14日以上連絡なし。' },
+  pt: { quote_expired: 'Orçamento vencido', no_contact: d => `Sem contato há ${d} dias`, hint: 'Alerta = orçamento vencido OU 14+ dias sem contato.' },
+}
+export const alertReasonCopy = lang => REASON_COPY[lang] || REASON_COPY.en
+
+export function AlertReasons({ alert, lang }) {
+  if (!alert) return null
+  const t = alertReasonCopy(lang)
+  return <>{alert.reasons.map(r => <span key={r} className="sales-chip sales-chip-overdue">{r === 'quote_expired' ? `⏰ ${t.quote_expired}${alert.quote?.valid_until ? ` (${String(alert.quote.valid_until).slice(5, 10).replace('-', '/')})` : ''}` : `📵 ${t.no_contact(alert.sinceContact)}`}</span>)}</>
+}

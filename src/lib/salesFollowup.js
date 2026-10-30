@@ -120,3 +120,42 @@ export function monthElapsedPercent(today) {
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
   return Math.round(d / daysInMonth * 100)
 }
+
+// v1.0.116 · The follow-up ALERT has one rule everywhere (admin page, seller portal, banner):
+// a quote that expired (sent and not answered past its validity, marked expired, or approved
+// past its validity with no contract yet) OR 14+ days without contact. Next-date chips stay as
+// the seller's plan; they no longer raise the alert by themselves.
+const day10 = v => String(v || '').slice(0, 10)
+export function expiredQuote(quotes = [], today, hasContract = false) {
+  return (quotes || []).find(q => q.status === 'expired'
+    || (['sent', 'pending'].includes(q.status) && day10(q.valid_until) && day10(q.valid_until) < today)
+    || (q.status === 'accepted' && !hasContract && day10(q.valid_until) && day10(q.valid_until) < today)) || null
+}
+
+/** → null or { lead, quote, sinceContact, reasons: ['quote_expired' | 'no_contact'] } */
+export function followupAlert(lead, today, { touchpoints = [], quotes = [], contracts = [] } = {}) {
+  if (!lead || (CLOSED.has(lead.stage) && lead.stage !== 'won')) return null
+  const mine = (quotes || []).filter(q => q.lead_id === lead.id)
+  const hasContract = (contracts || []).some(c => c.lead_id === lead.id)
+  if (lead.stage === 'won' && hasContract) return null
+  const quote = expiredQuote(mine, today, hasContract)
+  const last = lastContactDate(lead, touchpoints)
+  const sinceContact = last ? daysBetween(last, today) : null
+  const reasons = []
+  if (quote) reasons.push('quote_expired')
+  if (lead.stage !== 'won' && sinceContact != null && sinceContact >= STALE_AFTER_DAYS) reasons.push('no_contact')
+  return reasons.length ? { lead, quote, sinceContact, last, reasons } : null
+}
+
+export function followupAlerts(leads, today, ctx = {}) {
+  return (leads || []).map(lead => followupAlert(lead, today, ctx)).filter(Boolean)
+    .sort((a, b) => b.reasons.length - a.reasons.length || (b.sinceContact ?? 0) - (a.sinceContact ?? 0))
+}
+
+export function alertRuleCounts(alerts) {
+  return {
+    quoteExpired: (alerts || []).filter(a => a.reasons.includes('quote_expired')).length,
+    noContact: (alerts || []).filter(a => a.reasons.includes('no_contact')).length,
+    total: (alerts || []).length,
+  }
+}

@@ -19,6 +19,7 @@ const steps = [
   ['npm run test:assign-flow', 'assign flow'],
   ['npm run test:sales-kpi', 'sales-kpi'],
   ['npm run test:sales-insights', 'sales-insights'],
+  ['npm run test:sales-rules', 'sales rules (alert, closed value, quote→contract)'],
   ['npm run test:mitsumori', 'mitsumori'],
   ['npm run test:ai-guard', 'ai-guard'],
   ['npm run test:tool-loop', 'tool-loop'],

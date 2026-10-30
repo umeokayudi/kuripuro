@@ -20,6 +20,7 @@
     "test:work-kpis": "node scripts/test-work-kpis.mjs",
     "test:sales-kpi": "node scripts/test-sales-kpi.mjs",
     "test:sales-insights": "node scripts/test-sales-insights.mjs",
+    "test:sales-rules": "node scripts/test-sales-rules.mjs",
     "test:safety-net": "npx vite-node scripts/test-safety-net.mjs",
     "test:portal-auth": "npx vite-node scripts/test-portal-auth.mjs",
     "test:mitsumori": "node scripts/test-mitsumori.mjs",

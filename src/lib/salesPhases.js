@@ -25,7 +25,7 @@ export const mapUrlOf = lead => lead?.maps_url || (lead?.gps_lat != null && lead
 
 const COPY = {
   en: {
-    title: 'Sales funnel', sub: 'Every client from first contact to active contract.', search: 'Search client, shop, contact…', allSellers: 'All sellers', showLost: 'Show lost',
+    title: 'Sales funnel', sub: 'Clients that came in through sales (leads), from first contact to active contract.', search: 'Search client, shop, contact…', allSellers: 'All sellers', showLost: 'Show lost',
     phases: { lead: 'Lead', contact: 'Contact', visit: 'Visit booked', proposal: 'Quote sent', negotiation: 'Negotiation', approved: 'Approved', contract: 'Contract', active: 'Active', lost: 'Lost' },
     clients: n => `${n} client${n === 1 ? '' : 's'}`, contacts: n => `${n} contact${n === 1 ? '' : 's'}`, empty: 'No clients here.', lastContact: 'Last contact',
     addLead: 'Add lead', board: 'Board', list: 'List', moved: s => `Moved to ${s}`, dragHint: 'Drag a card to another column to move it. Approved, Contract and Active follow the quote and the contract.', moveTo: 'Move to', showAll: 'Show all stages', moveHint: 'Tap a stage above to see its clients. Use “Move to” to change a client’s stage. Approved, Contract and Active follow the quote and the contract.',
@@ -59,7 +59,7 @@ const COPY = {
     loading: 'Loading…', seller: 'Seller', area: 'Area', source: 'Source', value: 'Value', gps: 'Registered at', mapsLink: 'Google Maps',
   },
   ja: {
-    title: '営業ファネル', sub: '初回連絡から契約・稼働中まで、すべての顧客を一覧で。', search: '顧客・店舗・担当者で検索…', allSellers: '全営業', showLost: '失注を表示',
+    title: '営業ファネル', sub: '営業経由（リード）の顧客を、初回連絡から契約・稼働中まで表示。', search: '顧客・店舗・担当者で検索…', allSellers: '全営業', showLost: '失注を表示',
     phases: { lead: 'リード', contact: '連絡中', visit: '訪問予定', proposal: '見積送付', negotiation: '交渉中', approved: '承認', contract: '契約', active: '稼働中', lost: '失注' },
     clients: n => `${n}件`, contacts: n => `連絡${n}回`, empty: '該当なし', lastContact: '最終連絡',
     addLead: 'リード追加', board: 'ボード', list: 'リスト', moved: s => `${s}に移動しました`, dragHint: 'カードを別の列へドラッグすると段階を変更できます。承認・契約・稼働中は見積と契約に連動します。', moveTo: '移動', showAll: 'すべての段階を表示', moveHint: '上の段階をタップすると顧客が表示されます。「移動」で段階を変更できます。承認・契約・稼働中は見積と契約に連動します。',
@@ -93,7 +93,7 @@ const COPY = {
     loading: '読み込み中…', seller: '営業担当', area: '地域', source: '流入元', value: '金額', gps: '登録場所', mapsLink: 'Googleマップ',
   },
   pt: {
-    title: 'Funil de vendas', sub: 'Todos os clientes, do primeiro contato ao contrato ativo.', search: 'Buscar cliente, loja, contato…', allSellers: 'Todos os vendedores', showLost: 'Mostrar perdidos',
+    title: 'Funil de vendas', sub: 'Clientes que entraram pelo comercial (leads), do primeiro contato ao contrato ativo.', search: 'Buscar cliente, loja, contato…', allSellers: 'Todos os vendedores', showLost: 'Mostrar perdidos',
     phases: { lead: 'Lead', contact: 'Contato', visit: 'Visita marcada', proposal: 'Orçamento enviado', negotiation: 'Negociação', approved: 'Aprovado', contract: 'Contrato', active: 'Ativo', lost: 'Perdido' },
     clients: n => `${n} cliente${n === 1 ? '' : 's'}`, contacts: n => `${n} contato${n === 1 ? '' : 's'}`, empty: 'Nenhum cliente aqui.', lastContact: 'Último contato',
     addLead: 'Adicionar lead', board: 'Quadro', list: 'Lista', moved: s => `Movido para ${s}`, dragHint: 'Arraste um card para outra coluna para mudar a etapa. Aprovado, Contrato e Ativo seguem o orçamento e o contrato.',
@@ -140,4 +140,12 @@ export function serviceFromQuote(quote) {
   if (/ワックス|wax/i.test(text)) return 'Floor Wax'
   if (/徹底|ディープ|deep/i.test(text)) return 'Deep Cleaning'
   return 'Basic Cleaning'
+}
+
+// v1.0.116 · active clients that never were a lead (came before the funnel): counted apart so the
+// funnel does not claim to show "every client".
+const normName = s => String(s || '').normalize('NFKC').toLowerCase().replace(/\s+/g, '')
+export function clientsOutsideFunnel(data) {
+  const leadNames = new Set((data?.leads || []).flatMap(l => [normName(l.company_name), normName(l.site_name)]).filter(Boolean))
+  return (data?.quoteClients || []).filter(c => c.is_active !== false && !leadNames.has(normName(c.company_name)))
 }
