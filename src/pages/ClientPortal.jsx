@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, pickLang } from '../hooks/useLang'
 import LanguageToggle from '../components/LanguageToggle'
 import {
   buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
@@ -25,6 +25,9 @@ import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { listModels, listRecommendations, decideRecommendation } from '../lib/facilityApi'
 // v1.0.90 · Kuripuro World só para ver (three.js baixa só quando abre)
 const Facility = lazy(() => import('./Facility'))
+import ClientReportView from '../components/ClientReportView'
+import { listSharedForPortal, reportForViewer } from '../lib/clientReport'
+import { reportMonth } from '../lib/clientReportText'
 import './client-portal.css'
 
 function sanitizePostgrestToken(value) {
@@ -71,7 +74,10 @@ export default function ClientPortal() {
     return typeof window !== 'undefined' && window.innerWidth >= 900
   })
 
-  const [tab, setTab] = useState('home')
+  // v1.0.104 · the PDF's video link opens straight on "Reports" (/?tab=reports)
+  const [tab, setTab] = useState(() => (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'reports' ? 'reports' : 'home'))
+  const [sharedReports, setSharedReports] = useState(null)
+  const [openReport, setOpenReport] = useState(null)
   const [jobs, setJobs] = useState([])
   const [contracts, setContracts] = useState([])
   const [messages, setMessages] = useState([])
@@ -119,6 +125,16 @@ export default function ClientPortal() {
   const [facilityRecs, setFacilityRecs] = useState([])
 
   const msgEndRef = useRef()
+
+  useEffect(() => {
+    if (tab !== 'reports' || !user?.client_id || sharedReports) return
+    listSharedForPortal(supabase, user.client_id).then(rows => {
+      // a store login only ever sees its own store
+      const mine = rows.map(r => ({ ...r, content: reportForViewer(r.content, user.location_name) })).filter(r => r.content?.totals?.services)
+      setSharedReports(mine)
+      setOpenReport(cur => cur || mine[0]?.id || null)
+    })
+  }, [tab, user?.client_id, user?.location_name, sharedReports])
 
   const toggleView = () => {
     const next = !desktopMode
@@ -576,6 +592,7 @@ export default function ClientPortal() {
     { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
     { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
     { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab, badge: quotesWaiting },
+    { key: 'reports', icon: <NavIcon name="report" />, label: pickLang(lang, 'Reports', 'レポート', 'Relatórios') },
     { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
     ...(facilityModels.length || pendingFacilityRecs.length
       ? [{ key: 'facility', icon: <NavIcon name="store" />, label: tr.facility.tab, badge: pendingFacilityRecs.length }]
@@ -1094,6 +1111,26 @@ export default function ClientPortal() {
               </div>
             )}
 
+            {tab === 'reports' && (
+              <>
+                <div className="cp-section-title">{pickLang(lang, 'Monthly reports', '月次レポート', 'Relatórios mensais')}</div>
+                {sharedReports == null && <div className="cp-card">…</div>}
+                {sharedReports && !sharedReports.length && (
+                  <div className="cp-card">{pickLang(lang, 'No report yet. The monthly report appears here after the month is closed.', 'まだレポートはありません。月末締めの後にここに表示されます。', 'Ainda não há relatório. O relatório do mês aparece aqui depois do fechamento.')}</div>
+                )}
+                {sharedReports?.length > 0 && (
+                  <>
+                    <div className="cp-period-pills" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+                      {sharedReports.map(r => (
+                        <button key={r.id} type="button" className={`cp-period-pill${openReport === r.id ? ' active' : ''}`} onClick={() => setOpenReport(r.id)}>{reportMonth(r.period, lang)}</button>
+                      ))}
+                    </div>
+                    <ClientReportView content={sharedReports.find(r => r.id === openReport)?.content} lang={lang} onPhoto={setLightbox} />
+                  </>
+                )}
+              </>
+            )}
+
             {tab === 'facility' && (
               <Suspense fallback={null}>
                 <Facility
@@ -1244,6 +1281,7 @@ function FeedbackPhotoField({
 }
 
 const ICON_PATHS = {
+  report: 'M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M9 13h6M9 17h6',
   home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
   visits: 'M8 4h8M8 4a2 2 0 0 0-2 2v0H5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1v0a2 2 0 0 0-2-2M8 12l2.5 2.5L16 9',
   chat: 'M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z',

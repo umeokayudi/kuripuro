@@ -11,6 +11,7 @@ import { tokyoToday } from '../lib/dates'
 import JobPhotos from '../components/JobPhotos'
 import { VideoMark } from '../components/JobVideos'
 import ReportSheet from '../components/ReportSheet'
+import { ClientReportsModal } from '../components/ClientReports'
 import { executionMode, jobNoteCount } from '../lib/reportSheet'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill, pickLang } from '../hooks/useLang'
@@ -125,6 +126,7 @@ export default function Reports() {
   const tr = t.reports
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
+  const [clientReportOpen, setClientReportOpen] = useState(false)
   const [selected, setSelected] = useState(null)
   const [filterEmp, setFilterEmp] = useState('')
   const [filterClient, setFilterClient] = useState('')
@@ -298,6 +300,7 @@ export default function Reports() {
 
   return (
     <div>
+      {clientReportOpen && <ClientReportsModal onClose={() => setClientReportOpen(false)} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
         <div style={{ opacity: filterDay ? 0.45 : 1 }}>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.period}</div>
@@ -335,6 +338,7 @@ export default function Reports() {
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={() => setClientReportOpen(true)}>🏪 {pickLang(lang, 'Generate client report', 'お客様レポートを作成', 'Gerar relatório do cliente')}</button>
           <button className="btn" onClick={() => setSigPad('edit')} title={tr.adminSigTitle}>✍️ {adminSig ? tr.adminSigChange : tr.adminSigAdd}</button>
           {filterDay && <button className="btn" onClick={() => downloadDayPdf()} disabled={pdfBusy || !filtered.length}>{pdfBusy ? tr.loading : tr.dayPdf}</button>}
           <button className="btn btn-primary" onClick={runAiAnalysis} disabled={aiLoading || !filtered.length}>
