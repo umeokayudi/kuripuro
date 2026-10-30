@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import PlacePicker from './PlacePicker'
+import { realCoords } from '../lib/placeLocation'
 import { supabase } from '../lib/supabase'
 import { buildSpotContractRow, emptySpotContractForm, contractPrefillFromClient, spotContractTotals, dueDateAfter, DEFAULT_PAYMENT_DAY, writtenAddress, serviceTypeJa, defaultScopeJa } from '../lib/spotContract'
 import ContractDetailsFields from './ContractDetailsFields'
@@ -42,7 +44,7 @@ export default function NewContractModal({ onClose, onSaved }) {
   const pickLocation = (id) => {
     const loc = locations.find(l => l.id === id)
     setJob(x => loc
-      ? { ...x, location_id: id, location_name: loc.name, address: loc.address || '', gps_lat: loc.gps_lat || '', gps_lng: loc.gps_lng || '', description: x.description || loc.notes || '' }
+      ? { ...x, location_id: id, location_name: loc.name, address: loc.address || '', gps_lat: realCoords(loc)?.lat ?? '', gps_lng: realCoords(loc)?.lng ?? '', description: x.description || loc.notes || '' }
       : { ...x, location_id: '' })
   }
 
@@ -107,7 +109,15 @@ export default function NewContractModal({ onClose, onSaved }) {
             </select>
           </div>
           <div className="form-group"><label>Location name *</label><input value={job.location_name} onChange={e => setJ('location_name', e.target.value)} placeholder="Atomic Bar 新橋" /></div>
-          <div className="form-group"><label>Location address</label><input value={job.address} onChange={e => setJ('address', e.target.value)} placeholder="東京都港区…" /></div>
+          <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Location address</label>
+            <PlacePicker value={{ address: job.address, lat: job.gps_lat, lng: job.gps_lng }} placeholder="Store name or 東京都港区…"
+              onChange={({ address, lat, lng, name }) => setJob(x => ({
+                ...x,
+                ...(address !== undefined ? { address } : {}),
+                ...(name && !x.location_name.trim() ? { location_name: name } : {}),
+                ...(lat !== undefined ? { gps_lat: lat ?? '', gps_lng: lng ?? '' } : {}),
+              }))} />
+          </div>
           <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><input value={contract.client_address} onChange={e => setC('client_address', e.target.value)} /></div>
           <div className="form-group"><label>Representative (代表者)</label><input value={contract.client_representative} onChange={e => setC('client_representative', e.target.value)} /></div>
           <div className="form-group"><label>Contact person · phone</label>

@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
+import PlacePicker from './PlacePicker'
+import { realCoords } from '../lib/placeLocation'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
-import { geocodeAddress } from '../lib/geocode'
-import { isNavigableAddress } from '../lib/mapsLink'
 import {
   DEEP_TASKS, deepTaskName, cleanCustomTask, buildDeepTaskTitle, deepTasksFromTitle,
   applyCleaningTypeToTitle, getCleaningType, locationNameFromTitle, cleaningTypesForLang,
@@ -50,7 +50,6 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
   const [checklistEdited, setChecklistEdited] = useState(false)
   const [showMore, setShowMore] = useState(false)
   const [taskDraft, setTaskDraft] = useState('')
-  const [geocoding, setGeocoding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -101,8 +100,8 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       location_id: loc.id,
       title: loc.name,
       address: loc.address || '',
-      gps_lat: loc.gps_lat || '',
-      gps_lng: loc.gps_lng || '',
+      gps_lat: realCoords(loc)?.lat ?? '',
+      gps_lng: realCoords(loc)?.lng ?? '',
       description: loc.notes || '',
       client_id: loc.client_id || contract?.client_id || last?.client_id || f.client_id,
       employee_id: f.employee_id || last?.employee_id || '',
@@ -164,18 +163,6 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
   const autoChecklist = finalTitle ? (checklistTemplateForJob({ title: finalTitle }) || contractChecklist) : ''
   const checklistText = checklistEdited ? form.checklist_template : autoChecklist
   const employeeSees = finalTitle ? parseChecklistTemplate(checklistTemplateForJob({ title: finalTitle, checklist_template: checklistText })) : []
-
-  const handleGeocode = async () => {
-    if (!form.address) return toast.error(L('Type the address first', '先に住所を入力', 'Digite o endereço primeiro'))
-    setGeocoding(true)
-    const result = await geocodeAddress(form.address)
-    setGeocoding(false)
-    if (result?.lat && result?.lng) {
-      setForm(f => ({ ...f, gps_lat: result.lat, gps_lng: result.lng }))
-    } else if (!result?.mapsLink && !isNavigableAddress(form.address)) {
-      toast.error(L('Address not found', '住所が見つかりません', 'Endereço não encontrado'))
-    }
-  }
 
   const missing = [
     !form.title && L('place', '場所', 'local'),
@@ -271,7 +258,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
               <div className="nj-picked-name">📍 {form.title}</div>
               <div className="nj-picked-sub">
                 {form.address ? (form.address.startsWith('http') ? '🗺 Google Maps' : form.address) : L('No address', '住所なし', 'Sem endereço')}
-                {form.gps_lat ? ' · GPS ✓' : ''}
+                {realCoords(form) ? ' · GPS ✓' : ''}
               </div>
               {pastHere[0] && (
                 <div className="nj-picked-hint">
@@ -289,11 +276,13 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
             </div>
             <div className="form-group">
               <label>{L('Address or Google Maps link', '住所またはGoogleマップのリンク', 'Endereço ou link do Google Maps')} *</label>
-              <div className="nj-row">
-                <input value={form.address} onChange={e => upd('address', e.target.value)} placeholder="東京都新宿区…" />
-                <button type="button" className="btn" onClick={handleGeocode} disabled={geocoding}>{geocoding ? '…' : '📍 GPS'}</button>
-              </div>
-              {form.gps_lat && <div className="nj-ok">✓ GPS {Number(form.gps_lat).toFixed(4)}, {Number(form.gps_lng).toFixed(4)}</div>}
+              <PlacePicker value={{ address: form.address, lat: form.gps_lat, lng: form.gps_lng }} placeholder={L('Store name or 東京都新宿区…', '店名か東京都新宿区…', 'Nome da loja ou 東京都新宿区…')}
+                onChange={({ address, lat, lng, name }) => setForm(f => ({
+                  ...f,
+                  ...(address !== undefined ? { address } : {}),
+                  ...(name && !f.title.trim() ? { title: name } : {}),
+                  ...(lat !== undefined ? { gps_lat: lat ?? '', gps_lng: lng ?? '' } : {}),
+                }))} />
             </div>
             <button type="button" className="nj-link" onClick={() => { setOtherPlace(false); clearLocation() }}>← {L('Back to saved places', '保存した場所に戻る', 'Voltar aos locais salvos')}</button>
           </div>

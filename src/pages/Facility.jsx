@@ -13,6 +13,8 @@ import { listAllModels, listApprovedModels, listModels, listRecommendations, lis
 import { loadStoreTimeline, placePhotosOf, sizeLabel } from '../lib/cleaningTimeline'
 import { openClientSheet } from '../lib/clientSheet'
 import { viewablePhotoUrl } from '../lib/photoUrl'
+import { siteCoords } from '../lib/nearbyJob'
+import { coordsFromText, realCoords } from '../lib/placeLocation'
 import { offerWhen } from '../components/facility/FacilityOffersBell'
 import { WorldView } from '../components/facility/FacilityViewer'
 import ItemSheet from '../components/facility/ItemSheet'
@@ -104,6 +106,8 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   const [places, setPlaces] = useState([])
   const [todayJobs, setTodayJobs] = useState([])
   const [placeOpen, setPlaceOpen] = useState(null)
+  // v1.0.104 · which places have a real location (storeBase → true/false); the 3D marks the missing ones 📍?
+  const [located, setLocated] = useState(() => new Map())
 
   const storeId = params.get('model') || null
   const mapView = !storeId && params.get('view') === 'map'
@@ -161,13 +165,16 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
       supabase.from('jobs').select('id,title,scheduled_date,scheduled_time,status,employee_name,client_id').eq('scheduled_date', tokyoToday()).neq('status', 'cancelled'),
     ])
     const byName = new Map()
-    for (const l of locs || []) byName.set(storeBase(l.name), { name: l.name, client_id: l.client_id, address: l.address, location_id: l.id })
+    for (const l of locs || []) byName.set(storeBase(l.name), { name: l.name, client_id: l.client_id, address: l.address, location_id: l.id, coords: realCoords(l) })
     for (const c of scs || []) {
       const k = storeBase(c.location_name)
       if (!k) continue
       const cur = byName.get(k)
       if (!cur) byName.set(k, { name: c.location_name.split(/\s+[-—–]\s+/)[0].trim(), client_id: c.client_id, address: c.location_address })
-      else if (!cur.client_id) cur.client_id = c.client_id
+      else {
+        if (!cur.client_id) cur.client_id = c.client_id
+        if (!String(cur.address || '').trim() && c.location_address) cur.address = c.location_address
+      }
     }
     setPlaces([...byName.values()])
     setTodayJobs(tj || [])
@@ -187,6 +194,21 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
     setLoaded(true)
   }, [isClient, isEmployee, viewer?.client_id, viewer?.id, viewer?.company_name, viewer?.location_name])
   useEffect(() => { load().catch(() => setLoaded(true)) }, [load])
+  useEffect(() => {
+    if (!isAdmin || !places.length) return undefined
+    let off = false
+    const queue = [...places]
+    const worker = async () => {
+      while (queue.length && !off) {
+        const pl = queue.shift()
+        const addr = String(pl.address || '').trim()
+        const c = pl.coords || coordsFromText(addr) || (addr ? await siteCoords({ address: addr }).catch(() => null) : null)
+        if (!off) setLocated(prev => new Map(prev).set(storeBase(pl.name), Boolean(c)))
+      }
+    }
+    Promise.all([worker(), worker(), worker()])
+    return () => { off = true }
+  }, [isAdmin, places])
   // portais: o que o funcionário acabou de terminar aparece sem precisar reabrir
   useEffect(() => {
     if (isAdmin) return undefined
@@ -270,9 +292,9 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
       layout: null, full: null, levels: 1, elStatus: new Map(),
       status: 'none', late: 0, soon: 0, draft: false, placeOnly: true,
     })))
-    .map(st => ({ ...st, today: todayJobs.filter(j => storeBase(j.title) === storeBase(st.model?.location_name || st.name) || (!st.model?.location_name && j.client_id === st.model?.client_id)) }))
+    .map(st => ({ ...st, noLocation: located.get(storeBase(st.model?.location_name || st.name)) === false, today: todayJobs.filter(j => storeBase(j.title) === storeBase(st.model?.location_name || st.name) || (!st.model?.location_name && j.client_id === st.model?.client_id)) }))
     .filter(st => !isEmployee || st.today.length > 0 || !st.placeOnly)
-    .sort((a, b) => (b.today.length > 0) - (a.today.length > 0) || a.name.localeCompare(b.name)), [models, logs, clients, late, soon, places, todayJobs, isClient, isEmployee])
+    .sort((a, b) => (b.today.length > 0) - (a.today.length > 0) || a.name.localeCompare(b.name)), [models, logs, clients, late, soon, places, todayJobs, isClient, isEmployee, located])
 
   const store = stores.find(s => s.id === storeId) || null
   // links antigos (Clientes → 🏢 3D): ?client= abre a loja desse cliente ou o editor para criar a primeira
@@ -382,7 +404,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                 focusId={focus}
                 onPick={id => enterStore(id)}
                 onFail={() => setListMode(true)}
-                labels={{ draft: w.draft }}
+                labels={{ draft: w.draft, noLocation: pickLang(lang, 'No location — open Places and pick the address', '位置情報なし — 場所で住所を選択', 'Sem localização — abra Locais e escolha o endereço') }}
                 rightInset={!mobile && missionsOpen ? 360 : 0}
               />
             </Suspense>
@@ -392,7 +414,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
             <div className="kw-list">
               {stores.map(s => (
                 <button key={s.id} type="button" className={`kw-list-card st-${s.draft ? 'draft' : s.status}`} onClick={() => enterStore(s.id)}>
-                  <strong>{s.name}</strong>
+                  <strong>{s.name}{s.noLocation ? ' 📍?' : ''}</strong>
                   {s.sub && <span>{s.sub}</span>}
                   <span className="kw-list-meta">
                     {s.placeOnly ? pickLang(lang, 'No 3D plan yet', '3D図面なし', 'Sem planta 3D ainda') : s.draft ? w.draft : s.late ? fill(w.lateN, { n: s.late }) : s.soon ? fill(w.weekN, { n: s.soon }) : w.allOk}

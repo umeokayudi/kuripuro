@@ -38,6 +38,7 @@ const steps = [
   ['npm run test:spot-contract', 'spot-contract'],
   ['npm run test:nfc-clock', 'nfc-clock'],
   ['npm run test:jobs-period', 'jobs-period'],
+  ['npm run test:place-location', 'place-location'],
   ['npm run test:maps-link', 'maps-link'],
 ]
 

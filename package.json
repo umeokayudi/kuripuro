@@ -58,7 +58,8 @@
     "test:next-day-shift": "npx vite-node scripts/test-next-day-shift.mjs",
     "test:job-due-alert": "npx vite-node scripts/test-job-due-alert.mjs",
     "test:team-chat": "node scripts/test-team-chat.mjs",
-    "test:video-compress": "node scripts/test-video-compress.mjs"
+    "test:video-compress": "node scripts/test-video-compress.mjs",
+    "test:place-location": "node scripts/test-place-location.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

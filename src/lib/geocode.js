@@ -1,24 +1,17 @@
-export { isMapsUrl, isNavigableAddress } from './mapsLink.js'
+import { coordsFromText, isRealCoords } from './placeLocation.js'
 
-function parseCoordsFromUrl(url) {
-  if (!url) return null
-  const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
-  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) }
-  const m2 = url.match(/[?&](?:q|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/)
-  if (m2) return { lat: parseFloat(m2[1]), lng: parseFloat(m2[2]) }
-  return null
-}
+export { isMapsUrl, isNavigableAddress } from './mapsLink.js'
 
 export async function geocodeAddress(address) {
   if (!address) return null
 
-  const local = parseCoordsFromUrl(address)
+  const local = coordsFromText(address)
   if (local) return local
 
   try {
     const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`)
     const data = await res.json()
-    if (data.lat != null && data.lng != null) return { lat: data.lat, lng: data.lng }
+    if (isRealCoords(data.lat, data.lng)) return { lat: data.lat, lng: data.lng }
     if (data.mapsLink) return { mapsLink: true }
     if (!res.ok) return null
   } catch {}

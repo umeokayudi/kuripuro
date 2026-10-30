@@ -1,0 +1,34 @@
+.pp { display: grid; gap: 6px; }
+.pp-row { display: flex; gap: 8px; align-items: stretch; }
+.pp-input { position: relative; flex: 1; min-width: 0; }
+.pp-input input { width: 100%; }
+.pp-sugs {
+  position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 28px rgba(12, 28, 48, .16);
+}
+.pp-sugs button {
+  display: grid; gap: 1px; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 8px;
+  background: none; cursor: pointer; color: var(--navy); font: inherit;
+}
+.pp-sugs button:hover, .pp-sugs button:focus { background: rgba(12, 28, 48, .06); }
+.pp-sugs strong { font-size: 13px; font-weight: 650; }
+.pp-sugs small { font-size: 11px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-google { font-size: 10px; color: var(--text3); text-align: right; padding: 2px 8px 0; }
+.pp-status { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 12px; }
+.pp-ok { color: var(--green); font-weight: 600; }
+.pp-ok a { color: inherit; text-decoration: none; margin-left: 2px; }
+.pp-warn { color: #b45309; font-weight: 600; }
+.pp-link { border: 0; background: none; padding: 2px 0; color: var(--navy2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.pp-link:disabled { opacity: .5; }
+.pp-hint { font-size: 12px; color: var(--text3); }
+.pp-pin { display: grid; gap: 6px; }
+.pp-map-wrap { position: relative; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #dfe6ee; }
+.pp-map { height: 240px; }
+.pp-map-tip {
+  position: absolute; left: 8px; top: 8px; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: rgba(255, 255, 255, .92); color: var(--navy); pointer-events: none;
+}
+.pp-map-off { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; font-size: 12px; color: var(--text2, #4a5b70); }
+.pp-paste { display: flex; gap: 6px; }
+.pp-paste input { flex: 1; min-width: 0; }
+@media (max-width: 600px) { .pp-map { height: 220px; } }

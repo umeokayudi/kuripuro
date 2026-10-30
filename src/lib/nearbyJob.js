@@ -1,6 +1,7 @@
 // Employee home map: business name on the map and "service nearby" detection.
 import { distanceMeters, geocodeAddress } from './geocode.js'
 import { isNavigableAddress } from './mapsLink.js'
+import { realCoords } from './placeLocation.js'
 
 export const NEARBY_RADIUS_M = 400
 
@@ -40,7 +41,9 @@ const writeCache = (c) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify
 
 /** Site coordinates of a job: stored gps_lat/gps_lng, else the address geocoded once (cached on the device). */
 export async function siteCoords(job) {
-  if (job?.gps_lat != null && job?.gps_lng != null) return { lat: Number(job.gps_lat), lng: Number(job.gps_lng) }
+  // the seeded stand-in coordinates are skipped: they put every store in Shinbashi
+  const own = realCoords(job)
+  if (own) return own
   const addr = String(job?.address || '').trim()
   if (!addr) return null
   const cache = readCache()

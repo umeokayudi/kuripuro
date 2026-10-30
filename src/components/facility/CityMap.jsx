@@ -351,7 +351,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
                       <i className={`cm-dot st-${statusOf(p)}`} />
                       <span>
                         <strong>{p.name}</strong>
-                        <small>{p.client_name}{p.next ? ` · ${m.next.toLowerCase()} ${fmtDay(p.next.date)}` : p.last ? ` · ${m.last.toLowerCase()} ${fmtDay(p.last.date)}` : ''}</small>
+                        <small>{p.client_name || (!p.registered ? m.jobOnly : '')}{p.next ? ` · ${m.next.toLowerCase()} ${fmtDay(p.next.date)}` : p.last ? ` · ${m.last.toLowerCase()} ${fmtDay(p.last.date)}` : ''}</small>
                       </span>
                       {!coords[p.key] && locating.done >= locating.total && <em title={m.noLocation}>📍?</em>}
                     </button>

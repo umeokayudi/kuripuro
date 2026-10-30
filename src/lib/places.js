@@ -2,6 +2,7 @@
 // point at it. Until the SQL links them (location_id), places are matched by store name, and a
 // store that only exists in Contracts still shows up as a place.
 import { storeName } from './agenda'
+import { realCoords } from './placeLocation.js'
 
 const key = n => storeName(n).toLowerCase()
 
@@ -42,20 +43,26 @@ export function contractForPlace(place, cleaningType = 'basic') {
 
 /**
  * Saving a contract makes sure its store exists in the place registry (Person → Client → Place → Contract).
- * Returns the place id, or null when it could not be created. An existing place only gets its client filled in.
+ * Returns the place id, or null when it could not be created. An existing place only gets its client filled in,
+ * plus the location picked in the contract form (`coords`) and its address when it had none.
  */
-export async function ensurePlaceForContract(supabase, contract) {
+export async function ensurePlaceForContract(supabase, contract, coords = null) {
   const name = storeName(contract?.location_name)
   if (!name) return null
-  const { data: found } = await supabase.from('locations').select('id,name,client_id,is_active')
+  const pin = realCoords({ gps_lat: coords?.lat, gps_lng: coords?.lng })
+  const { data: found } = await supabase.from('locations').select('id,name,address,client_id,is_active')
   const same = (found || []).filter(l => key(l.name) === key(name))
   const place = same.find(l => l.is_active !== false) || same[0] // a removed place stays removed
   if (place) {
-    if (!place.client_id && contract.client_id) await supabase.from('locations').update({ client_id: contract.client_id }).eq('id', place.id)
+    const patch = {}
+    if (!place.client_id && contract.client_id) patch.client_id = contract.client_id
+    if (pin) Object.assign(patch, { gps_lat: pin.lat, gps_lng: pin.lng })
+    if (!String(place.address || '').trim() && contract.location_address) patch.address = contract.location_address
+    if (Object.keys(patch).length) await supabase.from('locations').update(patch).eq('id', place.id)
     return place.id
   }
   const { data, error } = await supabase.from('locations')
-    .insert({ name, address: contract.location_address || '', location_type: 'fixed', client_id: contract.client_id || null })
+    .insert({ name, address: contract.location_address || '', location_type: 'fixed', client_id: contract.client_id || null, gps_lat: pin?.lat ?? null, gps_lng: pin?.lng ?? null })
     .select('id').maybeSingle()
   return error ? null : data?.id || null
 }

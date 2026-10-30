@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { geocodeAddress } from '../lib/geocode'
-import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
+import { mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
   DEEP_TASKS, deepTaskName, parseDeepTaskList,
@@ -29,23 +28,11 @@ import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
 import KeyReveal from '../components/KeyReveal'
+import PlacePicker from '../components/PlacePicker'
+import { realCoords } from '../lib/placeLocation'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
 } from '../lib/jobsPeriod'
-
-function applyGeocodeResult(result, setCoords, mapsMsg) {
-  if (result?.lat != null && result?.lng != null) {
-    setCoords(result)
-    toast.success(`GPS: ${result.lat.toFixed(4)}, ${result.lng.toFixed(4)}`)
-    return true
-  }
-  if (result?.mapsLink) {
-    setCoords(null)
-    toast.success(mapsMsg)
-    return true
-  }
-  return false
-}
 
 /** "Coifa, Fritadeira" from a "Deep Clean (Range Hood, Fryer)" title, or '' when it has no list. */
 function deepTaskList(title, lang) {
@@ -399,7 +386,6 @@ function LocationsTab() {
   const [editingLoc, setEditingLoc] = useState(null)
   const [form, setForm] = useState(() => ({ ...EMPTY_LOC, client_id: clientFromUrl }))
   const [errors, setErrors] = useState({})
-  const [geocoding, setGeocoding] = useState(false)
   const [gps, setGps] = useState(null)
 
   useEffect(() => { load() }, [])
@@ -421,12 +407,11 @@ function LocationsTab() {
 
   const upd = (k,v) => { setForm(f=>({...f,[k]:v})); setErrors(e => ({ ...e, [k]: null })) }
 
-  const handleGeocode = async () => {
-    if (!form.address) { setErrors(e => ({ ...e, address: jt.enterAddressFirst })); return }
-    setGeocoding(true)
-    const result = await geocodeAddress(form.address)
-    setGeocoding(false)
-    if (!applyGeocodeResult(result, setGps, jt.mapsValid)) setErrors(e => ({ ...e, address: t.jobs.addressNotFound }))
+  // Places suggestion / map pin / pasted coordinates: the name is filled only when still empty
+  const onPlace = ({ address, lat, lng, name }) => {
+    if (address !== undefined) upd('address', address)
+    if (name && !form.name.trim()) upd('name', name)
+    if (lat !== undefined) setGps(lat == null ? null : { lat, lng })
   }
 
   const payload = () => {
@@ -465,7 +450,7 @@ function LocationsTab() {
     }
     setEditingLoc(l.id)
     setForm({ ...EMPTY_LOC, name:l.name||'', address:l.address||'', location_type:l.location_type||'fixed', notes:l.notes||'', client_id:l.client_id||'', area:l.area||'', key_box:l.key_box||'', checklist:l.checklist||'' })
-    setGps(l.gps_lat&&l.gps_lng?{lat:l.gps_lat,lng:l.gps_lng}:null)
+    setGps(realCoords(l)) // the seeded Shinbashi stand-in is dropped on the next save
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -496,13 +481,9 @@ function LocationsTab() {
         </div>
         <div className="form-group">
           <label>{t.jobs.addressLabel} *</label>
-          <div style={{display:'flex',gap:8}}>
-            <input className={errors.address?'ag-invalid':''} value={form.address} onChange={e=>upd('address',e.target.value)} placeholder={t.jobs.addressPlaceholder} style={{flex:1,minWidth:0}} />
-            <button className="btn" onClick={handleGeocode} disabled={geocoding}>{geocoding?'...':'📍 GPS'}</button>
-          </div>
+          <PlacePicker value={{ address: form.address, lat: gps?.lat, lng: gps?.lng }} onChange={onPlace} invalid={!!errors.address}
+            placeholder={tr('Type the store name or address — Google suggests it', '店名か住所を入力 — Googleが候補を表示', 'Digite o nome da loja ou o endereço — o Google sugere')} />
           {fieldErr('address')}
-          {gps && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}</div>}
-          {!gps && isNavigableAddress(form.address) && <div style={{fontSize:11,color:'var(--green)',marginTop:4}}>✓ {jt.mapsValid}</div>}
         </div>
         <div className="grid-2">
           <div className="form-group"><label>{tr('Type', '種類', 'Tipo')}</label>
@@ -539,7 +520,7 @@ function LocationsTab() {
                 {l.fromContract && <div style={{fontSize:12,color:'#b45309',fontWeight:700,marginTop:4}}>⚠️ {tr('Only in Contracts — save it as a place', '契約にのみ存在 — 場所として保存してください', 'Só existe em Contratos — salve como local')}</div>}
               </div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                {l.gps_lat ? <span className="badge badge-navy">GPS ✓</span> : hasMapsLink(l.address, l.name) ? <span className="badge badge-green">🗺</span> : null}
+                {realCoords(l) ? <span className="badge badge-navy">GPS ✓</span> : hasMapsLink(l.address, l.name) && l.address ? <span className="badge badge-green">🗺</span> : <span className="badge" style={{color:'#b45309'}} title={tr('No location: open ✏️ and pick the address', '位置情報なし：✏️で住所を選択', 'Sem localização: abra ✏️ e escolha o endereço')}>📍?</span>}
                 <Link className="btn btn-sm" to={`/contracts${l.client_id ? `?client=${l.client_id}` : ''}`}>{l.contracts.length ? tr('Contracts', '契約', 'Contratos') : `+ ${tr('Contract', '契約', 'Contrato')}`}</Link>
                 <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>{l.fromContract ? tr('Save as place', '場所として保存', 'Salvar como local') : '✏️'}</button>
                 {!l.fromContract && <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l)} aria-label={tr('Remove', '削除', 'Remover')}>✕</button>}
