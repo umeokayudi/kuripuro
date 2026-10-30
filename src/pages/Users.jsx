@@ -7,6 +7,7 @@ import { useLang, localeOf } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { RoleBadge } from '../components/EmployeeRole'
 import UserEditDialog from '../components/UserEditDialog'
+import { maskEmail, maskPhone } from '../lib/contactMask'
 
 // v1.0.35 · One place for every login: admins, employees, sellers and client logins.
 // Each type still lives in its own table; this page only lists them together.
@@ -162,7 +163,7 @@ export default function Users() {
           {!r.active && <span className="badge badge-red">{t.inactive}</span>}
         </div>
         <div className="kp-users-meta">
-          {[r.email, r.place, r.phone].filter(Boolean).join(' · ')}
+          {[maskEmail(r.email), r.place, maskPhone(r.phone)].filter(Boolean).join(' · ')}
           {(r.type === 'employee' || r.type === 'client') && <> · {t.lastSeen}: {fmtSeen(r.last_seen)}</>}
         </div>
       </div>

@@ -66,7 +66,23 @@ ${JSON.stringify(rows, null, 0)}`,
 ${JSON.stringify(rows, null, 0)}`,
 }
 
+PROMPTS.pt = (rows, days) => `Você é consultor de operações da KuriPuro (limpeza de restaurantes/bares no Japão).
+Analise os relatórios de serviço abaixo (${rows.length} jobs, filtro atual da tela, até ${days} dias) e escreva em português:
+
+1. **Resumo geral** — volume, tendências
+2. **Tempo por funcionário** — média, mais rápido, mais lento, fora do normal
+3. **Qualidade** — checklist, nota da IA nas fotos, problemas que se repetem
+4. **Padrões** — locais que demoram mais, dias/horários, tipos de serviço
+5. **Metas sugeridas** — 3 a 5 metas SMART para a equipe (tempo, qualidade, checklist)
+6. **Alertas** — funcionários ou locais que precisam de atenção
+
+Use números concretos e tópicos. Não invente dados fora do JSON.
+
+DADOS:
+${JSON.stringify(rows, null, 0)}`
+
 const EMPTY = {
+  pt: 'Nenhum relatório de serviço concluído neste filtro.',
   en: 'No completed service reports in this period.',
   ja: 'この期間に完了したサービスレポートはありません。',
 }
@@ -76,19 +92,24 @@ export default async function handler(req, res) {
 
   if (!(await requireAdmin(req, res))) return
 
-  const { days = 30, employeeName, lang = 'en' } = req.body || {}
-  const locale = lang === 'ja' ? 'ja' : 'en'
+  const { days = 30, employeeName, jobIds, lang = 'en' } = req.body || {}
+  const locale = lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en'
+  // v1.0.115 · the page sends the ids of the jobs on screen, so the analysis uses the same filter as the list
+  const ids = Array.isArray(jobIds) ? jobIds.filter(id => /^[\w-]{1,64}$/.test(String(id))).slice(0, 200) : null
   const sinceIso = new Date(Date.now() - Number(days) * 86400000).toISOString()
 
+  if (ids && !ids.length) return res.status(200).json({ analysis: EMPTY[locale], count: 0 })
   try {
-    const url = `${SUPABASE_URL}/rest/v1/jobs?select=*&status=eq.completed&completed_at=gte.${sinceIso}&order=completed_at.desc&limit=200`
+    const url = ids
+      ? `${SUPABASE_URL}/rest/v1/jobs?select=*&status=eq.completed&id=in.(${ids.join(',')})&order=completed_at.desc&limit=200`
+      : `${SUPABASE_URL}/rest/v1/jobs?select=*&status=eq.completed&completed_at=gte.${sinceIso}&order=completed_at.desc&limit=200`
 
     const resp = await fetch(url, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
     })
     let jobs = await resp.json()
     if (!resp.ok) throw new Error(typeof jobs === 'string' ? jobs : JSON.stringify(jobs))
-    if (employeeName) {
+    if (employeeName && !ids) {
       const q = String(employeeName).toLowerCase()
       jobs = (Array.isArray(jobs) ? jobs : []).filter(j => j.employee_name?.toLowerCase().includes(q))
     } else {
@@ -107,7 +128,7 @@ export default async function handler(req, res) {
       generationConfig: { temperature: 0.3, maxOutputTokens: 2500 },
     })
 
-    const fallback = locale === 'ja' ? '（分析なし）' : '(no analysis)'
+    const fallback = locale === 'ja' ? '（分析なし）' : locale === 'pt' ? '(sem análise)' : '(no analysis)'
     const analysis = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || fallback
     res.status(200).json({ analysis, count: rows.length, periodDays: days })
   } catch (err) {

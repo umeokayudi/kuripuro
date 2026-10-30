@@ -18,8 +18,9 @@ import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import ConfirmDialogHost from './components/ConfirmDialog'
 import Login from './pages/Login'
+import SetPassword from './pages/SetPassword'
 import { supabase } from './lib/supabase'
-import { globalSearch } from './lib/globalSearch'
+import { globalSearch, groupResults } from './lib/globalSearch'
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -150,17 +151,21 @@ function AppContent() {
     return () => window.removeEventListener('kp:open-menu', open)
   }, [])
 
+  // v1.0.114 · results belong to the query they were found for: until the search for what is typed
+  // now has finished, the box says "Buscando…" — never "nada encontrado" for a search still running.
+  const [searchDoneFor, setSearchDoneFor] = React.useState('')
   React.useEffect(() => {
     const q = search.trim()
     if (q.length < 2) {
       setSearchResults([])
       setSearching(false)
       setSearchError(false)
+      setSearchDoneFor('')
       return
     }
     let cancelled = false
+    setSearching(true)
     const timer = setTimeout(async () => {
-      setSearching(true)
       setSearchError(false)
       try {
         const results = await globalSearch(q)
@@ -171,10 +176,13 @@ function AppContent() {
         setSearchResults([])
         setSearchError(true)
       }
+      setSearchDoneFor(q)
       setSearching(false)
-    }, 220)
+    }, 300)
     return () => { cancelled = true; clearTimeout(timer) }
   }, [search])
+  const searchSettled = !searching && searchDoneFor === search.trim()
+  const searchGroups = searchSettled ? groupResults(searchResults) : []
 
   React.useEffect(() => {
     const onKey = e => {
@@ -205,6 +213,7 @@ function AppContent() {
     </div>
   )
 
+  if (window.location.pathname === '/set-password') return <SetPassword />
   if (!user) return <Login />
   if (user.role === 'employee') return (
     <PortalErrorBoundary label="Employee portal">
@@ -250,17 +259,23 @@ function AppContent() {
               placeholder={a.searchPlaceholder}
               aria-label={a.searchPlaceholder}
             />
-            {searching ? <span className="ref-search-loading">…</span> : <kbd>⌘K</kbd>}
+            {searching ? <span className="ref-search-loading" aria-hidden="true">…</span> : <kbd>⌘K</kbd>}
             {search && <button type="button" aria-label={a.clearSearch} className="ref-search-clear" onMouseDown={e => e.preventDefault()} onClick={() => { setSearch(''); setSearchResults([]); setSearchError(false); setSearchOpen(false) }}>×</button>}
             {searchOpen && search.trim().length >= 2 && (
               <div className="ref-search-results">
-                {searchResults.length ? searchResults.map((result, i) => (
-                  <button key={result.type + result.id + i} type="button" className="ref-search-result" onMouseDown={e => e.preventDefault()} onClick={() => goSearchResult(result)}>
-                    <span className="ref-search-type">{a.searchTypes?.[result.type] || result.type}</span>
-                    <span className="ref-search-result-main"><strong>{result.title}</strong><small>{result.meta}</small></span>
-                    <span>→</span>
-                  </button>
-                )) : <div className="ref-search-empty">{searching ? (a.loading || '…') : searchError ? a.searchUnavailable : a.noSearchResults}</div>}
+                {!searchSettled ? <div className="ref-search-empty" aria-live="polite">{a.searching}</div>
+                  : searchGroups.length ? searchGroups.map(g => (
+                  <div key={g.type} role="group" aria-label={a.searchGroups?.[g.type] || g.type}>
+                    <div className="ref-search-group">{a.searchGroups?.[g.type] || g.type} · {g.items.length}</div>
+                    {g.items.map((result, i) => (
+                      <button key={result.type + result.id + i} type="button" className="ref-search-result" onMouseDown={e => e.preventDefault()} onClick={() => goSearchResult(result)}>
+                        <span className="ref-search-type">{a.searchTypes?.[result.type] || result.type}</span>
+                        <span className="ref-search-result-main"><strong>{result.title}</strong><small>{[result.meta, result.contractOnly ? a.searchFromContract : '', result.inactive ? a.searchInactive : ''].filter(Boolean).join(' · ')}</small></span>
+                        <span>→</span>
+                      </button>
+                    ))}
+                  </div>
+                )) : <div className="ref-search-empty">{searchError ? a.searchUnavailable : a.noSearchResults}</div>}
               </div>
             )}
           </div>

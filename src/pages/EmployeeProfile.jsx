@@ -1,6 +1,8 @@
 import { gradeJobPhoto } from '../lib/photoAi'
+import { aiScoreView } from '../lib/aiScore'
 import { sortByOrder } from '../lib/agenda'
 import { useState, useEffect } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -10,6 +12,9 @@ import ContractTab from '../components/ContractTab'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
 import { useLang, pickLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
+import { phoneTakenMessage } from '../lib/contactMask'
+import { askConfirm } from '../components/ConfirmDialog'
+import { undoToast } from '../components/UndoToast'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -155,6 +160,8 @@ export default function EmployeeProfile() {
   const toggleDay = d => setWorkDays(w=>w.includes(d)?w.filter(x=>x!==d):[...w,d])
 
   const handleSave = async () => {
+    const taken = await phoneTakenMessage(supabase, form.phone, id, (en, ja, pt) => pickLang(lang, en, ja, pt))
+    if (taken) return toast.error(taken)
     const { error } = await supabase.from('employees').update({
       full_name:form.full_name, email:form.email, ...(form.password ? { password:form.password } : {}),
       phone:form.phone, address:form.address, contract_type:form.contract_type,
@@ -183,18 +190,30 @@ export default function EmployeeProfile() {
   }
 
   const handleDeleteEval = async (evalId, pts) => {
-    await supabase.from('evaluations').delete().eq('id', evalId)
+    const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
+    const row = evals.find(e => e.id === evalId)
+    const before = emp.score ?? 100
     const newScore = Math.max(0, Math.min(100, (emp.score||100) - pts))
+    if (!(await askConfirm({
+      title: L('Remove this evaluation?','この評価を削除しますか？','Remover esta avaliação?'),
+      message: L(`The score goes from ${before} to ${newScore}.`, `スコアが${before}から${newScore}になります。`, `A pontuação vai de ${before} para ${newScore}.`),
+      confirmLabel: L('Remove','削除','Remover'), danger: true,
+    }))) return
+    const { error } = await supabase.from('evaluations').delete().eq('id', evalId)
+    if (error) return toast.error(error.message)
     await supabase.from('employees').update({ score:newScore }).eq('id', id)
-    toast('Evaluation removed.')
     loadAll()
+    undoToast(L('Evaluation removed','評価を削除しました','Avaliação removida'), async () => {
+      if (row) { const res = await supabase.from('evaluations').insert(row); if (res.error) return res }
+      return supabase.from('employees').update({ score: before }).eq('id', id)
+    }, lang, loadAll)
   }
 
   const scoreColor = s => s>=90?'var(--green)':s>=70?'#EF9F27':'var(--red)'
   const statusColor = s => ({assigned:'badge-blue',in_progress:'badge-amber',completed:'badge-green',cancelled:'badge-red'}[s]||'badge-navy')
   const today = tokyoToday()
 
-  if (loading) return <div style={{color:'var(--text3)',padding:20}}>Loading...</div>
+  if (loading) return <SkeletonRows rows={5} label={pickLang(lang, 'Loading…', '読み込み中…', 'Carregando…')} />
   if (!emp) return <div style={{color:'var(--text3)',padding:20}}>Employee not found</div>
 
   return (
@@ -366,9 +385,9 @@ export default function EmployeeProfile() {
                 {j.completed_at&&<span>🏁 {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
                 {j.started_at&&j.completed_at&&<span>⏱ {Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000)}m</span>}
                 {j.checklist_total!=null&&<span style={{color:j.checklist_done<j.checklist_total?'var(--red)':'var(--green)'}}>✓ {j.checklist_done}/{j.checklist_total}</span>}
-                {j.photo_ai_score!=null&&(
+                {aiScoreView(j)&&(
                   <span style={{color:j.photo_ai_approved?'var(--green)':'var(--red)'}}>
-                    📷 IA: {j.photo_ai_score}/10 {j.photo_ai_approved?'✅':'❌'}
+                    📷 IA: {j.photo_ai_score}/10 {j.photo_ai_approved?'✅':'❌'}{aiScoreView(j).clean?` ${pickLang(lang,'no problems','問題なし','sem problemas')}`:''}
                   </span>
                 )}
               </div>

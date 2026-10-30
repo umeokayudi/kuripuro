@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { useSearchParams, Link } from 'react-router-dom'
 import { tokyoToday } from '../lib/dates'
 import { supabase } from '../lib/supabase'
@@ -146,7 +147,7 @@ export default function Ryoshu() {
         </div>
       )}
 
-      {loading&&<div style={{color:'var(--text3)',fontSize:13}}>{tr('Loading…','読み込み中…','Carregando…')}</div>}
+      {loading&&<SkeletonRows rows={3} label={tr('Loading…','読み込み中…','Carregando…')} />}
       {receipts.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>{tr('No receipts yet.','領収書はまだありません。','Nenhum recibo ainda.')}</div></div>}
       {receipts.map(r=>(
         <div key={r.id} className="card" style={{marginBottom:10}}>

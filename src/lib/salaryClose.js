@@ -1,7 +1,7 @@
 // Payroll close shared by the admin page (manual button) and the daily cron (automatic).
 // Takes any Supabase client: the browser one or the server one with the service role.
 import { getPeriodDates } from './salaryPeriod.js'
-import { monthBase } from './salaryCalc.js'
+import { monthBase, payrollMonth, canCloseMonth } from './salaryCalc.js'
 import { ensureServiceReports } from './jobReport.js'
 
 const tokyoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())
@@ -47,7 +47,9 @@ export function payrollState(statement, salaryLine) {
  * Close one month: period row, one payslip per active employee and the scheduled salary payment.
  * auto=true marks the period 'auto_closed' so the admin bell asks for a review.
  */
-export async function closeSalaryPeriod(db, period, { auto = false, salaryDesc = `Salary ${period}` } = {}) {
+export async function closeSalaryPeriod(db, period, { auto = false, salaryDesc = `Salary ${period}`, today } = {}) {
+  // v1.0.108 · a month closes only from the 1st of the following month.
+  if (!canCloseMonth(period, today)) throw new Error(`${period} can only be closed from the 1st of the next month`)
   const { confirmDeadline, payDate } = getPeriodDates(period)
   const { error: periodErr } = await db.from('salary_periods').upsert({
     period, closed_at: new Date().toISOString(), confirm_deadline: confirmDeadline,
@@ -83,6 +85,7 @@ export async function closeSalaryPeriod(db, period, { auto = false, salaryDesc =
  * @returns {{ net: number, base: number, dedTotal: number, jobs: number, kept: boolean }}
  */
 export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary ${period}` } = {}) {
+  if (!canCloseMonth(period)) throw new Error(`${period} can only be closed from the 1st of the next month`)
   const { closeDate, payDate } = getPeriodDates(period)
   const { data: existing } = await db.from('salary_payments')
     .select('id,status,amount').eq('employee_id', emp.id).eq('period', period).eq('payment_type', 'salary').limit(1)
@@ -100,12 +103,14 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
   // Every job paid here also has its service report (same rule as billing).
   await ensureServiceReports(db, jobs).catch(() => {})
 
-  const { data: deductions } = await db.from('salary_payments').select('amount')
-    .eq('employee_id', emp.id).eq('period', period).eq('is_deduction', true).neq('status', 'cancelled')
+  const { data: lines } = await db.from('salary_payments').select('*')
+    .eq('employee_id', emp.id).eq('period', period)
 
-  const base = computeBase(emp, jobs || [], period)
-  const dedTotal = (deductions || []).reduce((s, d) => s + Number(d.amount || 0), 0)
-  const net = Math.max(0, base - dedTotal)
+  // v1.0.108 · the same calculation every screen shows (base + jobs − deductions).
+  const calc = payrollMonth({ emp, jobs: jobs || [], lines: lines || [], month: period })
+  const base = calc.base
+  const dedTotal = calc.deductions
+  const net = calc.net
 
   const { data: prev } = await db.from('salary_statements').select('*')
     .eq('period', period).eq('employee_id', emp.id).limit(1)
@@ -114,7 +119,7 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
   const statement = {
     period, employee_id: emp.id, employee_name: emp.full_name,
     base_salary: base, deductions: dedTotal, net_total: net,
-    breakdown: { jobs: jobs?.length || 0, salary_type: emp.salary_type },
+    breakdown: { jobs: calc.jobs, jobs_pay: calc.jobsPay, salary_type: emp.salary_type },
   }
   // Same amount as before: keep what the employee / admin already did with it.
   if (!same) Object.assign(statement, { status: 'awaiting_confirmation', employee_confirmed_at: null, employee_disputed_at: null })
@@ -135,5 +140,22 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
     ? await db.from('salary_payments').update(salaryRow).eq('id', existing[0].id)
     : await db.from('salary_payments').insert(salaryRow)
   if (payErr) throw payErr
-  return { net, base, dedTotal, jobs: jobs?.length || 0, kept: false }
+  return { net, base, dedTotal, jobsPay: calc.jobsPay, jobs: calc.jobs, kept: false }
+}
+
+/**
+ * v1.0.108 · The ONE text for a payrollState, used by Fechar folha, Payments and the payslip sheet:
+ * a pagar → confirmado pelo funcionário → pago. "Pago" without the confirmation is flagged, never shown as paid.
+ * `tr` is useLang().tr. Returns { text, tone } with tone green / amber / red.
+ */
+export function payStateText(state, tr, paidOn = '') {
+  switch (state) {
+    case 'paid': return { text: tr(`Paid${paidOn ? ` on ${paidOn}` : ''}`, `支払済${paidOn ? `（${paidOn}）` : ''}`, `Pago${paidOn ? ` em ${paidOn}` : ''}`), tone: 'green' }
+    case 'finalized':
+    case 'confirmed': return { text: tr('Confirmed by the employee — to pay', '本人確認済み — 支払待ち', 'Confirmado pelo funcionário — a pagar'), tone: 'green' }
+    case 'waiting': return { text: tr('To pay — waiting for the employee to confirm', '支払予定 — 本人の確認待ち', 'A pagar — esperando o funcionário confirmar'), tone: 'amber' }
+    case 'disputed': return { text: tr('Disputed by the employee — answer in Salary issues', '本人が異議 — 給与の問題で回答', 'Contestado — responda em Problemas de salário'), tone: 'red' }
+    case 'paid_unconfirmed': return { text: tr('Marked paid WITHOUT the employee’s confirmation — check', '本人確認なしで支払済 — 要確認', 'Marcado pago SEM confirmação do funcionário — conferir'), tone: 'red' }
+    default: return { text: tr('No payslip yet', '明細なし', 'Sem holerite ainda'), tone: 'amber' }
+  }
 }

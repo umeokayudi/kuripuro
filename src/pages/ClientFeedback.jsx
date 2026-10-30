@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { useSearchParams } from 'react-router-dom'
 import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
@@ -193,7 +194,7 @@ export default function ClientFeedback() {
         ))}
       </div>
 
-      {loading && <div className="card" style={{ color: 'var(--text3)', fontSize: 13 }}>{f.loading}</div>}
+      {loading && <SkeletonRows rows={3} label={f.loading} />}
 
       {!loading && tab === 'ratings' && (
         <div>

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
+import EmptyHint from '../components/EmptyHint'
+import { maskEmail, maskPhone } from '../lib/contactMask'
 
 // v1.0.35 · Business partners (parceiros de negócio) — table business_partners.
 // Companies and people the business works with that are not clients, employees or sellers.
@@ -22,7 +25,7 @@ const TXT = {
     add: '+ Add partner', edit: 'Edit', save: 'Save', cancel: 'Cancel', remove: 'Delete', all: 'All',
     name: 'Company / partner name *', category: 'Type', contact: 'Contact person', phone: 'Phone', email: 'E-mail',
     website: 'Website', address: 'Address', commission: 'Referral commission (%)', notes: 'Notes', active: 'Active partner',
-    search: 'Search partners…', empty: 'No partners yet. Add the first one.', noMatch: 'No partners match.', loading: 'Loading…',
+    search: 'Search partners…', empty: 'No partners yet', emptyHow: 'Partners are companies that work with us: subcontractors, suppliers, referral partners. Tap “+ Add partner” above to add the first one with contact, service and conditions.', noMatch: 'No partners match.', loading: 'Loading…',
     saved: 'Partner saved', deleted: 'Partner deleted', needName: 'Write the partner name', confirmDelete: n => `Delete ${n}?`,
     inactive: 'Inactive', showInactive: 'Show inactive', commissionShort: 'commission', newTitle: 'New partner', editTitle: 'Edit partner',
   },
@@ -31,7 +34,7 @@ const TXT = {
     add: '+ パートナー追加', edit: '編集', save: '保存', cancel: 'キャンセル', remove: '削除', all: 'すべて',
     name: '会社名・パートナー名 *', category: '種類', contact: '担当者', phone: '電話', email: 'メール',
     website: 'ウェブサイト', address: '住所', commission: '紹介手数料（%）', notes: 'メモ', active: '取引中',
-    search: 'パートナーを検索…', empty: 'パートナーはまだいません。', noMatch: '該当するパートナーはいません。', loading: '読み込み中…',
+    search: 'パートナーを検索…', empty: 'パートナーはまだいません', emptyHow: 'パートナーは協力会社（外注先・仕入先・紹介元など）です。上の「+ パートナー追加」から連絡先・サービス・条件を登録してください。', noMatch: '該当するパートナーはいません。', loading: '読み込み中…',
     saved: '保存しました', deleted: '削除しました', needName: '名前を入力してください', confirmDelete: n => `${n} を削除しますか？`,
     inactive: '取引停止', showInactive: '停止中も表示', commissionShort: '手数料', newTitle: '新しいパートナー', editTitle: 'パートナーを編集',
   },
@@ -40,7 +43,7 @@ const TXT = {
     add: '+ Adicionar parceiro', edit: 'Editar', save: 'Salvar', cancel: 'Cancelar', remove: 'Excluir', all: 'Todos',
     name: 'Nome da empresa / parceiro *', category: 'Tipo', contact: 'Pessoa de contato', phone: 'Telefone', email: 'E-mail',
     website: 'Site', address: 'Endereço', commission: 'Comissão de indicação (%)', notes: 'Observações', active: 'Parceiro ativo',
-    search: 'Buscar parceiros…', empty: 'Nenhum parceiro ainda. Adicione o primeiro.', noMatch: 'Nenhum parceiro encontrado.', loading: 'Carregando…',
+    search: 'Buscar parceiros…', empty: 'Nenhum parceiro ainda', emptyHow: 'Parceiros são empresas que trabalham com a gente: terceirizados, fornecedores, quem indica clientes. Toque em “+ Adicionar parceiro” acima para cadastrar o primeiro com contato, serviço e condições.', noMatch: 'Nenhum parceiro encontrado.', loading: 'Carregando…',
     saved: 'Parceiro salvo', deleted: 'Parceiro excluído', needName: 'Digite o nome do parceiro', confirmDelete: n => `Excluir ${n}?`,
     inactive: 'Inativo', showInactive: 'Mostrar inativos', commissionShort: 'comissão', newTitle: 'Novo parceiro', editTitle: 'Editar parceiro',
   },
@@ -185,8 +188,8 @@ export default function Partners() {
         </label>
       </div>
 
-      {loading && <div style={{ fontSize: 13, color: 'var(--text3)' }}>{t.loading}</div>}
-      {!loading && !visible.length && <div className="card" style={{ fontSize: 13, color: 'var(--text3)' }}>{partners.length ? t.noMatch : t.empty}</div>}
+      {loading && <SkeletonRows rows={3} label={t.loading} />}
+      {!loading && !visible.length && (partners.length ? <div className="card" style={{ fontSize: 13, color: 'var(--text3)' }}>{t.noMatch}</div> : <EmptyHint icon="🤝" title={t.empty}>{t.emptyHow}</EmptyHint>)}
       <div className="kp-partner-grid">
         {visible.map(p => {
           const c = categoryInfo(p.category, lang)
@@ -205,8 +208,8 @@ export default function Partners() {
               </div>
               <div style={{ fontSize: 13, color: 'var(--text2)', display: 'grid', gap: 3, overflowWrap: 'anywhere' }}>
                 {p.contact_name && <div>👤 {p.contact_name}</div>}
-                {p.phone && <div>📞 <a href={`tel:${p.phone}`}>{p.phone}</a></div>}
-                {p.email && <div>✉️ <a href={`mailto:${p.email}`}>{p.email}</a></div>}
+                {p.phone && <div>📞 <a href={`tel:${p.phone}`}>{maskPhone(p.phone)}</a></div>}
+                {p.email && <div>✉️ <a href={`mailto:${p.email}`}>{maskEmail(p.email)}</a></div>}
                 {p.website && <div>🌐 <a href={websiteHref(p.website)} target="_blank" rel="noopener noreferrer">{p.website}</a></div>}
                 {p.address && <div>📍 {p.address}</div>}
                 {p.notes && <div style={{ color: 'var(--text3)', marginTop: 4, whiteSpace: 'pre-wrap' }}>{p.notes}</div>}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import SkeletonRows from '../components/SkeletonRows'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { usePendingCounts } from '../components/Sidebar'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
@@ -70,6 +71,7 @@ export default function Mitsumori() {
   const [sellers, setSellers] = useState([])
   const [reqFilter, setReqFilter] = useState('open')
   const [reqDossier, setReqDossier] = useState(null)
+  const navigate = useNavigate()
   const [tracking, setTracking] = useState(null)
   const [flow, setFlow] = useState({})
   const [statusFilter, setStatusFilter] = useState('all')
@@ -344,6 +346,22 @@ export default function Mitsumori() {
     load()
   }
 
+  // v1.0.116 · approved quote → one-off job (book the date, same tracker as before) or recurring
+  // contract (Contracts opens its form filled from the quote; the office checks the days and saves).
+  const convertQuote = async (q) => {
+    const recurring = await askConfirm({
+      title: L('Convert the approved quote', '承認済み見積を変換', 'Converter o orçamento aprovado'),
+      message: L(
+        `${q.company_name || ''} · ${yen(q.total)}\n\nRecurring contract: opens Contracts with the form filled from this quote (place, monthly amount, hours, seller). You choose the days and save.\n\nOne-off job: book the date and the person; the invoice goes out when it is done.`,
+        `${q.company_name || ''} · ${yen(q.total)}\n\n定期契約：この見積から入力済みの契約フォームを開きます（場所・月額・時間・担当）。曜日を選んで保存してください。\n\n単発作業：日程と担当を決めます。完了後に請求書が送られます。`,
+        `${q.company_name || ''} · ${yen(q.total)}\n\nContrato recorrente: abre Contracts com o formulário preenchido por este orçamento (local, valor mensal, horas, vendedor). Você escolhe os dias e salva.\n\nJob avulso: marca a data e a pessoa; a fatura sai quando terminar.`),
+      confirmLabel: L('Recurring contract', '定期契約', 'Contrato recorrente'),
+      altLabel: L('One-off job', '単発作業', 'Job avulso'),
+    })
+    if (recurring === true) navigate(`/contracts?fromQuote=${q.id}`)
+    else if (recurring === 'alt') setTracking(quoteFromMitsumori(q))
+  }
+
   const handleDelete = async (id) => {
     if (!(await askConfirm({ message: s.deleteQuoteConfirm, danger: true }))) return
     const { error } = await supabase.from('mitsumori').delete().eq('id', id)
@@ -411,7 +429,7 @@ export default function Mitsumori() {
               </button>
             ))}
           </div>
-          {loading && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{t.app.loading}</div>}
+          {loading && <SkeletonRows rows={3} label={t.app.loading} />}
           {!loading && visible.length === 0 && <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>{s.emptyQuotes}</div></div>}
           {visible.map(q => (
             <div key={q.id} className="card" style={{ marginBottom: 12 }}>
@@ -433,8 +451,11 @@ export default function Mitsumori() {
                 <button type="button" className="btn btn-sm" onClick={() => openPrint(q, false, 'en')}>{s.printEn}</button>
                 {q.status === 'draft' && <button type="button" className="btn btn-sm btn-primary" onClick={() => handleStatus(q, 'sent')}>{s.markSent}</button>}
                 {q.status === 'sent' && <button type="button" className="btn btn-sm" style={{ background: 'var(--green)', color: '#fff' }} onClick={() => handleStatus(q, 'accepted')}>{s.markAccepted}</button>}
-                {q.status === 'accepted' && (
-                  <button type="button" className={`btn btn-sm${flow[q.id] && flow[q.id] !== 'approved' ? '' : ' btn-primary'}`} onClick={() => setTracking(quoteFromMitsumori(q))}>
+                {q.status === 'accepted' && (!flow[q.id] || flow[q.id] === 'approved') && (
+                  <button type="button" className="btn btn-sm btn-primary" onClick={() => convertQuote(q)}>🔁 {L('Convert to job / contract', '作業・契約に変換', 'Converter em job/contrato')}</button>
+                )}
+                {q.status === 'accepted' && flow[q.id] && flow[q.id] !== 'approved' && (
+                  <button type="button" className="btn btn-sm" onClick={() => setTracking(quoteFromMitsumori(q))}>
                     📅 {flow[q.id] === 'done' ? L('Done · see invoice', '完了・請求書を見る', 'Feito · ver nota') : flow[q.id] === 'scheduled' ? L('Scheduled · follow up', '予約済み・進捗を見る', 'Agendado · acompanhar') : L('Book the date and follow up', '日程を決めて進める', 'Marcar a data e acompanhar')}
                   </button>
                 )}

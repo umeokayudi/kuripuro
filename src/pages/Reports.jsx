@@ -3,7 +3,10 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import ProgressChart from '../components/ProgressChart'
 import { confirmAndRun } from '../components/ConfirmDialog'
 import { gradeJobPhoto } from '../lib/photoAi'
-import { contractForAgendaJob } from '../lib/agenda'
+import { contractForAgendaJob, expectedMinutes } from '../lib/agenda'
+import { aiScoreView, aiReasonShort } from '../lib/aiScore'
+import { withDeadline } from '../lib/exceptionQueue'
+import { exceptionDeadline } from '../lib/exceptionText'
 import { supabase } from '../lib/supabase'
 import { fmtDuration, syncServiceReport, mergeReportWithJob, reportNeedsPhotoSync, jobToReportView } from '../lib/jobReport'
 import SignatureImage from '../components/SignatureImage'
@@ -249,6 +252,18 @@ export default function Reports() {
     reports.filter(r => (!filterEmp || r.employee_name === filterEmp) && (!filterClient || clientOfReport(r) === filterClient)),
   [reports, filterEmp, filterClient, contractList])
 
+  // v1.0.115 · same rule as the exception queue: > 2× the planned time, or never started → owner + deadline
+  const rowException = r => {
+    const job = r._job || { title: r.job_title, scheduled_date: r.report_date }
+    const date = job.scheduled_date || r.report_date
+    if (r.job_status && r.job_status !== 'completed') return { kind: 'incomplete', ...withDeadline('incomplete', date, tokyoToday()) }
+    const planned = expectedMinutes(job, contractForAgendaJob(job, contractList))
+    if (planned && r.duration_min != null && r.duration_min > 2 * planned) return { kind: 'long', planned, ...withDeadline('long', date, tokyoToday()) }
+    return null
+  }
+  const L3 = (en, ja, pt) => pickLang(lang, en, ja, pt)
+  const noProblems = L3('no problems', '問題なし', 'sem problemas')
+
   const stats = useMemo(() => {
     const withDur = filtered.filter(r => r.duration_min != null)
     const avg = withDur.length
@@ -284,6 +299,8 @@ export default function Reports() {
       const resp = await apiPost('/api/analyze-reports', {
         days: filterDays,
         employeeName: filterEmp || undefined,
+        // v1.0.115 · exactly the jobs on screen (period / day / employee / client filters)
+        jobIds: filtered.map(r => r.job_id).filter(Boolean).slice(0, 200),
         lang,
       }, { signal: ctrl.signal }).finally(() => clearTimeout(timer))
       const data = await resp.json()
@@ -358,7 +375,8 @@ export default function Reports() {
         </div>
       </div>
 
-      <ProgressChart anchorDate={filterDay || tokyoToday()} defaultUnit="week" />
+      <ProgressChart anchorDate={filterDay || tokyoToday()} defaultUnit={filterDay || filterDays <= 7 ? 'day' : 'week'}
+        filters={{ days: filterDay ? 1 : filterDays, clientId: filterClient, employeeName: filterEmp, label: [clientList.find(c => c.id === filterClient)?.company_name, filterEmp].filter(Boolean).join(' · ') }} />
 
       <ReportsAnalytics reports={filtered} />
 
@@ -371,8 +389,18 @@ export default function Reports() {
 
       <div className="card">
         <div className="card-title">{tr.serviceReports}</div>
-        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>
           {tr.autoHint}
+        </div>
+        <div className="rp-legend" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 12, color: 'var(--text2)', marginBottom: 12 }}>
+          <span>⏱ {L3('time worked', '作業時間', 'tempo trabalhado')}</span>
+          <span>⚠️ 2× {L3('took over double the planned time', '予定の2倍超', 'passou do dobro do previsto')}</span>
+          <span>☑ {L3('checklist done / total', 'チェック済/全体', 'checklist feito / total')}</span>
+          <span>🤖 {L3('AI photo grade (0–10) + reason', 'AI写真評価(0–10)+理由', 'nota da IA da foto (0–10) + motivo')}</span>
+          <span>🎬 {L3('video attached', '動画あり', 'vídeo anexado')} · ⏳ {L3('sending', '送信中', 'enviando')}</span>
+          <span>📝 {L3('notes from the office', '事務所メモ', 'notas do escritório')}</span>
+          <span>🔒 {L3('closed by admin', '管理者が完了', 'fechado pelo admin')}</span>
+          <span>— {L3('nothing recorded', '記録なし', 'nada registrado')}</span>
         </div>
         {loading && <div aria-busy="true" aria-label={tr.loading}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
         {!loading && filtered.length === 0 && (
@@ -390,10 +418,12 @@ export default function Reports() {
                     <div style={{ flexShrink: 0 }}>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr, r._job, lang)}</div>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>👤 {r.employee_name || '—'} · 📅 {r.report_date}</div>
+                  {rowException(r)?.due && <div style={{ fontSize: 12, marginTop: 4, color: rowException(r).overdue ? '#dc2626' : 'var(--text3)', fontWeight: rowException(r).overdue ? 700 : 400 }}>{exceptionDeadline(rowException(r), L3)}</div>}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginTop: 8, fontSize: 13 }}>
                     <span>⏱ {fmtDuration(r.duration_min, lang)}</span>
                     <span>☑ {r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</span>
-                    {r.photo_ai_score != null && <span>🤖 {r.photo_ai_score}/10</span>}
+                    {aiScoreView(r) && <span title={aiReasonShort(aiScoreView(r), noProblems)}>🤖 {r.photo_ai_score}/10 · {aiReasonShort(aiScoreView(r), noProblems)}</span>}
+                    {rowException(r)?.kind === 'long' && <span className="badge badge-red">⚠️ 2×</span>}
                     {r.job_id && <VideoMark jobId={r.job_id} />}
                     {n > 0 && <span className="badge badge-navy">📝 {n}</span>}
                   </div>
@@ -427,10 +457,14 @@ export default function Reports() {
                     <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name || r.job_title}</td>
                     <td>{r.report_date}</td>
                     <td>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr, r._job, lang)}</td>
-                    <td>{fmtDuration(r.duration_min, lang)}</td>
+                    <td>
+                      {fmtDuration(r.duration_min, lang)}
+                      {rowException(r)?.kind === 'long' && <div><span className="badge badge-red" title={L3(`Planned ${rowException(r).planned} min`, `予定${rowException(r).planned}分`, `Previsto ${rowException(r).planned} min`)}>⚠️ 2×</span></div>}
+                      {rowException(r)?.due && <div style={{ fontSize: 11, whiteSpace: 'nowrap', color: rowException(r).overdue ? '#dc2626' : 'var(--text3)', fontWeight: rowException(r).overdue ? 700 : 400 }}>{exceptionDeadline(rowException(r), L3)}</div>}
+                    </td>
                     <td>{r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</td>
                     <td>
-                      {r.photo_ai_score != null && <span style={{ marginRight: 6 }}>{r.photo_ai_score}/10</span>}
+                      {aiScoreView(r) && <div style={{ fontSize: 12, maxWidth: 170 }} title={aiReasonShort(aiScoreView(r), noProblems)}><b>{r.photo_ai_score}/10</b> <span style={{ color: 'var(--text3)' }}>{aiReasonShort(aiScoreView(r), noProblems)}</span></div>}
                       {(r.photo_after_url || r.photo_before_url) ? (
                         <JobPhotos
                           photoStartUrl={r.photo_before_url}
@@ -440,7 +474,7 @@ export default function Reports() {
                           size={44}
                           onPhotoClick={setLightbox}
                         />
-                      ) : (r.photo_ai_score == null ? '—' : null)}
+                      ) : (aiScoreView(r) ? null : '—')}
                     </td>
                     <td><SignatureImage url={r.signature_url} height={34} emptyLabel={r.job_status && r.job_status !== 'completed' ? '—' : tr.noSignature} /></td>
                     <td>{r.job_id ? <VideoMark jobId={r.job_id} /> : '—'}</td>

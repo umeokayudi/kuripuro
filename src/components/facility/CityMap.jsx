@@ -281,6 +281,17 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
       {locating.total > 0 && locating.done < locating.total && (
         <div className="cm-chip">⏳ {fill(m.locating, { n: locating.done, total: locating.total })}</div>
       )}
+      {/* v1.0.113 · places the map could not locate get a "no GPS" chip until their address is completed */}
+      {locating.total > 0 && locating.done >= locating.total && !sel && (() => {
+        const noGps = places.filter(p => !coords[p.key])
+        return noGps.length > 0 && (
+          <div className="cm-chip" style={{ flexWrap: 'wrap', maxWidth: 'min(92vw, 520px)' }}>
+            📍 {lang === 'ja' ? `GPSなし ${noGps.length}件:` : lang === 'pt' ? `${noGps.length} sem GPS:` : `${noGps.length} without GPS:`}
+            {noGps.slice(0, 8).map(p => <button key={p.key} type="button" onClick={() => setSelKey(p.key)} style={{ border: 0, background: 'rgba(245,158,11,.18)', color: 'inherit', borderRadius: 8, padding: '2px 8px', marginLeft: 4, cursor: 'pointer', font: 'inherit' }}>{p.name}</button>)}
+            {noGps.length > 8 && <span style={{ marginLeft: 4 }}>+{noGps.length - 8}</span>}
+          </div>
+        )
+      })()}
       {measuring && (
         <div className="cm-chip cm-measure">
           {mDist == null ? `📏 ${m.measureHint}` : (

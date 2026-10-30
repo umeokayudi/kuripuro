@@ -27,6 +27,21 @@ export function regionFromAddress(address) {
 
 export const regionOf = (lead, quote) => String(lead?.region || '').trim() || regionFromAddress(lead?.address) || regionFromAddress(quote?.address) || '—'
 
+// v1.0.116 · ONE value for a deal: the approved quote (the "Fechado" value), else the latest quote,
+// else the seller's estimate. Board columns, region totals and marketing revenue all use it.
+export function dealValue(lead, quotes = []) {
+  const mine = (quotes || []).filter(q => !q.lead_id || q.lead_id === lead?.id)
+  const accepted = mine.find(q => q.status === 'accepted')
+  if (accepted) return Number(accepted.total || 0)
+  const latest = mine.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0]
+  return Number(latest?.total || 0) || Number(lead?.expected_monthly || 0)
+}
+
+/** Open leads (not won / lost) without a seller: the "to hand out" box and the pipeline's "no seller" filter. */
+export function unassignedOpenLeads(leads) {
+  return (leads || []).filter(row => !row.salesperson_id && !['won', 'lost'].includes(row.stage))
+}
+
 const latestContact = (leadId, touchpoints) => touchpoints
   .filter(row => row.lead_id === leadId)
   .sort((a, b) => String(b.happened_at).localeCompare(String(a.happened_at)) || String(b.created_at).localeCompare(String(a.created_at)))[0] || null
@@ -50,7 +65,7 @@ export function stageBoard(scoped, range, today, sellers = []) {
         company: lead.company_name,
         seller: sellerName(lead.salesperson_id),
         region: regionOf(lead, quotes[0]),
-        value: Number(lead.expected_monthly || 0) || Number(quotes[0]?.total || 0),
+        value: dealValue(lead, quotes),
         quoteStatus: quotes[0]?.status || null,
         lastContact: last?.happened_at || lead.last_contact_date || null,
         lastTag: last?.response_tag || null,
@@ -149,10 +164,11 @@ export function regionBreakdown(scoped, range) {
     groups.set(region, row)
   }
   const leadById = new Map(scoped.leads.map(lead => [lead.id, lead]))
+  const quotesOf = id => scoped.quotes.filter(row => row.lead_id === id)
   for (const lead of scoped.leads) {
     const region = regionOf(lead)
     if (inMonths(lead.first_contact_date || lead.created_at, range)) bump(region, 'leads')
-    if (lead.stage === 'won' && inMonths(lead.closed_at || lead.updated_at, range)) { bump(region, 'wins'); bump(region, 'value', Number(lead.expected_monthly || 0)) }
+    if (lead.stage === 'won' && inMonths(lead.closed_at || lead.updated_at, range)) { bump(region, 'wins'); bump(region, 'value', dealValue(lead, quotesOf(lead.id))) }
     if (lead.stage === 'lost' && inMonths(lead.closed_at || lead.updated_at, range)) bump(region, 'losses')
   }
   for (const quote of scoped.quotes.filter(row => isSent(row) && inMonths(quoteDay(row), range))) bump(regionOf(leadById.get(quote.lead_id), quote), 'quotes')
@@ -244,7 +260,7 @@ export function mediaPerformance(data, range) {
   const leadPlatform = lead => platformOf.get(lead.marketing_channel_id || campaignChannel.get(lead.marketing_campaign_id)) || null
   const revenueOf = lead => {
     const contract = contracts.find(row => row.lead_id === lead.id && ['active', 'approved'].includes(row.status))
-    return Number(contract?.client_monthly_total || lead.expected_monthly || 0)
+    return Number(contract?.client_monthly_total || 0) || dealValue(lead, (data?.quotes || []).filter(row => row.lead_id === lead.id))
   }
   const groups = new Map()
   const group = key => {

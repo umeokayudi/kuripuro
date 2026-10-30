@@ -10,7 +10,8 @@ export function chatPhoto(content) {
 
 /** Short text for lists and toasts. */
 export function chatPreview(content, photoLabel = '📷') {
-  return chatPhoto(content) ? photoLabel : String(content || '')
+  // markers (#job:<id>, #rate:<id>) are for the app, not for people
+  return chatPhoto(content) ? photoLabel : String(content || '').replace(/\n?#(job|rate):[\w-]+\s*$/, '').trim()
 }
 
 /** Day label key for grouping: YYYY-MM-DD in Tokyo time. */

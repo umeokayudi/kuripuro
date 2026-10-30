@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { apiFetch, apiPost } from '../lib/apiFetch'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
-import { useLang, fill, localeOf } from '../hooks/useLang'
+import { useLang, fill, localeOf, pickLang } from '../hooks/useLang'
 import { FACILITY_SETUP_SQL } from '../lib/facilitySetupSql'
 import { SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import {
@@ -261,7 +261,13 @@ export default function FacilityStudio({ clients, initialClientId }) {
   useEffect(() => {
     if (!schemaOk) return
     if (!wantedModel && current) {
-      if (dirty && !confirm('Discard unsaved changes?')) { setParams({ model: current.id }); return }
+      if (dirty) {
+        // keep the model open until the app's own dialog answers
+        setParams({ model: current.id })
+        askConfirm({ title: pickLang(lang, 'Discard unsaved changes?', '保存していない変更を破棄しますか？', 'Descartar as mudanças não salvas?'), message: pickLang(lang, 'What you changed since the last save is lost.', '最後の保存以降の変更は失われます。', 'O que mudou desde o último salvamento se perde.'), confirmLabel: pickLang(lang, 'Discard', '破棄', 'Descartar'), danger: true })
+          .then(ok => { if (ok) { setDirty(false); setCurrent(null); setParams({}) } })
+        return
+      }
       setCurrent(null)
     } else if (wantedModel && current?.id !== wantedModel && allModels) {
       const m = allModels.find(x => x.id === wantedModel)
@@ -856,7 +862,7 @@ export default function FacilityStudio({ clients, initialClientId }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-sm" onClick={() => { if (!dirty || confirm('Discard unsaved changes?')) closeModel() }}>{t.back}</button>
+            <button type="button" className="btn btn-sm" onClick={async () => { if (!dirty || await askConfirm({ title: pickLang(lang, 'Discard unsaved changes?', '保存していない変更を破棄しますか？', 'Descartar as mudanças não salvas?'), message: pickLang(lang, 'What you changed since the last save is lost.', '最後の保存以降の変更は失われます。', 'O que mudou desde o último salvamento se perde.'), confirmLabel: pickLang(lang, 'Discard', '破棄', 'Descartar'), danger: true })) closeModel() }}>{t.back}</button>
             <input value={current.name} onChange={e => updateModel({ name: e.target.value })} style={{ fontWeight: 700, fontSize: 16, padding: '6px 10px', minWidth: 180 }} aria-label={t.modelName} />
             <span className={`badge ${current.status === 'approved' ? 'badge-green' : 'badge-amber'}`}>{current.status === 'approved' ? t.approved : t.draft}</span>
             <span style={{ fontSize: 12, color: 'var(--text3)' }}>{client?.company_name}{current.location_name ? ` · ${current.location_name}` : ''}</span>

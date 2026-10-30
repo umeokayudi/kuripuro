@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { findClientUserForLogin, clientUserToSession } from '../lib/clientCredentials'
+import { isSetupPassword } from '../lib/passwordLink'
 
 const AuthContext = createContext()
 
@@ -45,6 +46,8 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const em = email.trim().toLowerCase()
     const pw = password.trim()
+    // a login still waiting for its "set your password" link has no password yet
+    if (!pw || isSetupPassword(pw)) return { success: false, error: 'Invalid login or password' }
 
     // Commercial roles receive a server-signed HttpOnly session. The browser
     // never gets a service key or a seller password hash.

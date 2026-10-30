@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
+import EmptyHint from '../components/EmptyHint'
 
 const CATEGORY_LABELS = {
   tools: { en: 'Tools', ja: '工具', pt: 'Ferramentas' },
@@ -74,9 +75,13 @@ export default function EquipmentRequests() {
         ))}
       </div>
 
-      {loading && <div style={{ color: 'var(--text3)', fontSize: 13 }}>{tr('Loading...', 'Loading...', 'Carregando...')}</div>}
+      {loading && <div aria-busy="true" aria-label={tr('Loading…', '読み込み中…', 'Carregando…')}>{[0, 1, 2].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
       {filtered.length === 0 && !loading && (
-        <div className="card"><div style={{ color: 'var(--text3)', fontSize: 13 }}>{tr('No requests.', 'リクエストなし', 'Nenhum pedido.')}</div></div>
+        <EmptyHint icon="🧰" title={tr('No requests here', '申請はありません', 'Nenhum pedido aqui')}>
+          {tr('Employees ask for equipment (mop, gloves, chemicals…) from their app, in "Equipment". Each request arrives here to approve or reject, and they see your answer in the app.',
+            'スタッフはアプリの「備品」からモップ・手袋・洗剤などを申請します。申請はここに届き、承認・却下するとアプリに結果が表示されます。',
+            'Os funcionários pedem equipamentos (mop, luvas, produtos…) pelo app, em "Equipamentos". Cada pedido chega aqui para aprovar ou recusar, e eles veem a resposta no app.')}
+        </EmptyHint>
       )}
 
       {filtered.map(r => (

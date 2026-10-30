@@ -2,6 +2,7 @@ import { escapeHtml } from './escapeHtml.js'
 import { PRINT_DOC_CSS } from './printDoc.js'
 import { printIssuer } from './quoteIssuer.js'
 import { tokyoToday } from './dates.js'
+import { clientContact } from './clientContact.js'
 
 // v1.0.21 · Contrato spot = 業務委託契約書. A spot job created in Jobs → New Job also stores a
 // contract with the location (table spot_contracts). Admin keeps them in Contracts → Spot
@@ -180,8 +181,8 @@ export function recurringToContract(sc, client = {}) {
     client_name: client.company_name || '',
     client_address: client.address || '',
     client_representative: client.manager_name || client.contact_person || client.contact_name || '',
-    contact_name: client.contact_person || client.contact_name || '',
-    contact_phone: client.phone || client.manager_phone || '',
+    contact_name: clientContact(client).name,
+    contact_phone: clientContact(client).phone,
     location_name: sc.location_name,
     location_address: sc.location_address,
     service_type: sc.service_type,
@@ -210,8 +211,8 @@ export function contractPrefillFromClient(client) {
   return {
     client_address: client.address || '',
     client_representative: client.manager_name || client.contact_person || client.contact_name || '',
-    contact_name: client.contact_person || client.contact_name || client.manager_name || '',
-    contact_phone: client.phone || client.manager_phone || '',
+    contact_name: clientContact(client).name,
+    contact_phone: clientContact(client).phone,
   }
 }
 

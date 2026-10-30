@@ -4,8 +4,8 @@ import { useAuth } from '../hooks/useAuth'
 import { pickLang, useLang } from '../hooks/useLang'
 import FieldAppShell, { Sheet } from '../components/FieldAppShell'
 import { prepareImageForUpload } from '../lib/imageUpload'
-import { ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
-import { RESPONSE_TAGS, alertCounts, followupQueue, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
+import { ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy, AlertReasons, alertReasonCopy } from '../components/SalesFollowupParts'
+import { RESPONSE_TAGS, alertCounts, followupQueue, followupAlerts, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
 import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
 import SellerContractCommissions from '../components/SellerContractCommissions'
@@ -207,7 +207,10 @@ export default function SalespersonPortal() {
   const today = data?.today || todayJapan()
   const touchpoints = useMemo(() => data?.touchpoints || [], [data?.touchpoints])
   const queue = useMemo(() => followupQueue(leads, today, touchpoints), [leads, today, touchpoints])
-  const counts = useMemo(() => alertCounts(queue), [queue])
+  // v1.0.116 · alert = expired quote OR 14+ days without contact (same rule as the admin page)
+  const alerts = useMemo(() => followupAlerts(leads, today, { touchpoints, quotes: data?.quotes || [], contracts: data?.contracts || [] }), [leads, today, touchpoints, data?.quotes, data?.contracts])
+  const alertOf = useMemo(() => new Map(alerts.map(a => [a.lead.id, a])), [alerts])
+  const counts = useMemo(() => ({ ...alertCounts(queue), needsAction: alerts.length }), [queue, alerts])
   const statusOf = useMemo(() => new Map(queue.map(row => [row.lead.id, row.info])), [queue])
   const month = monthOf(today)
   const myGoal = goalFor(data?.goals, user.id, month)
@@ -469,7 +472,7 @@ export default function SalespersonPortal() {
   const quoteAlerts = quoteRequestsToSend(data).length + quoteRequestsWaiting(data).length
   const offers = data?.facilityOffers || []
   const offersTodo = offers.filter(r => !r.offered)
-  const bellCount = (data?.notifications?.length || 0) + counts.overdue + counts.today + quoteAlerts + (offersTodo.length ? 1 : 0)
+  const bellCount = (data?.notifications?.length || 0) + counts.needsAction + quoteAlerts + (offersTodo.length ? 1 : 0)
   const selectedLead = leads.find(row => row.id === leadId)
   const deals = useMemo(() => buildDeals(data, today), [data, today])
   const dayState = todayRow?.closed_at ? 'closed' : todayRow?.started_at ? 'working' : 'idle'
@@ -534,7 +537,7 @@ export default function SalespersonPortal() {
   const tabs = [
     { key: 'home', label: c.home, icon: 'home' },
     { key: 'leads', label: c.leads, icon: 'funnel', badge: 0 },
-    { key: 'followups', label: c.followups, icon: 'followups', badge: counts.overdue + counts.today },
+    { key: 'followups', label: c.followups, icon: 'followups', badge: counts.needsAction },
     { key: 'more', label: c.more, icon: 'more' },
   ]
   // v1.0.96 · a seller sees four areas: Quotes, Sales funnel, My portfolio and Clients (read-only).
@@ -548,7 +551,7 @@ export default function SalespersonPortal() {
     { section: SEC.quotes, key: 'quotes', icon: '📝', label: pickLang(lang, 'Quote requests', '見積もり依頼', 'Pedidos de orçamento'), hint: pickLang(lang, 'From your clients · add your extra', 'お客様からの依頼・上乗せ額', 'Dos seus clientes · some o seu valor'), badge: quoteAlerts },
     { section: SEC.quotes, key: 'contracts', icon: '✍️', label: c.menuContracts, hint: c.menuHint.contracts },
     { section: SEC.funnel, key: 'leads', icon: '🎯', label: c.leads, hint: pickLang(lang, 'Contact → Proposal → Contract', '連絡 → 提案 → 契約', 'Contato → Proposta → Contrato') },
-    { section: SEC.funnel, key: 'followups', icon: '⏰', label: c.followups, badge: counts.overdue + counts.today },
+    { section: SEC.funnel, key: 'followups', icon: '⏰', label: c.followups, badge: counts.needsAction },
     { section: SEC.funnel, key: 'approaches', icon: '🗒', label: c.menuReports, hint: c.menuHint.approaches },
     { section: SEC.portfolio, key: 'commissions', icon: '💴', label: pickLang(lang, 'Commissions & payments', 'コミッションと支払い', 'Comissões e pagamentos'), hint: pickLang(lang, 'To receive and received', '受取予定・受取済み', 'A receber e recebidos') },
     { section: SEC.portfolio, key: 'offers', icon: '🧽', label: offersCopy(lang).title + (offersTodo.length ? ` (${offersTodo.length})` : ''), hint: pickLang(lang, 'Cleaning & maintenance due at your clients', '清掃・メンテナンスの提案時期', 'Limpeza e manutenção para oferecer aos seus clientes') },
@@ -621,7 +624,9 @@ export default function SalespersonPortal() {
           <div className="fa-screen-head"><h2>{c.followups}</h2></div>
           <div className="sp-chip-row">{[['action', `${f.alertTitle} (${counts.needsAction})`], ['all', `${c.all} (${queue.length})`]].map(([key, label]) => <button type="button" key={key} className={`fa-chip${followFilter === key ? ' is-active' : ''}`} onClick={() => setFollowFilter(key)}>{label}</button>)}</div>
           <section className="fa-card is-list">
-            {queue.filter(row => followFilter === 'all' || ['overdue', 'today', 'stale', 'soon', 'missing'].includes(row.info.status)).map(({ lead: row, info }) => <LeadRow key={row.id} row={row} info={info} action={<button type="button" className="fa-btn fa-btn-sm fa-btn-primary" onClick={() => markFollowup(row)}>{f.logContact}</button>} />)}
+            {followFilter !== 'all' && <p className="fa-muted">{alertReasonCopy(lang).hint}</p>}
+            {queue.filter(row => followFilter === 'all' || alertOf.has(row.lead.id)).map(({ lead: row, info }) => <LeadRow key={row.id} row={row} info={info} action={<>{alertOf.has(row.id) && <AlertReasons alert={alertOf.get(row.id)} lang={lang} />}<button type="button" className="fa-btn fa-btn-sm fa-btn-primary" onClick={() => markFollowup(row)}>{f.logContact}</button></>} />)}
+            {followFilter !== 'all' && alerts.some(a => !queue.some(r => r.lead.id === a.lead.id)) && alerts.filter(a => !queue.some(r => r.lead.id === a.lead.id)).map(a => <LeadRow key={a.lead.id} row={a.lead} info={null} action={<AlertReasons alert={a} lang={lang} />} />)}
             {queue.length === 0 && <p className="fa-muted">{c.noFollowups}</p>}
           </section>
         </div>}
@@ -762,7 +767,7 @@ export default function SalespersonPortal() {
       </Sheet>}
 
       {sheet === 'bell' && <Sheet title={c.notifications} onClose={() => setSheet('')}>
-        {(counts.overdue + counts.today) > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setFollowFilter('action'); setTab('followups') }}><span aria-hidden="true">↻</span><div><strong>{f.alertTitle}</strong><small>{[counts.overdue && `${counts.overdue} ${f.alertOverdue}`, counts.today && `${counts.today} ${f.alertToday}`].filter(Boolean).join(' · ')}</small></div><b>›</b></button>}
+        {counts.needsAction > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setFollowFilter('action'); setTab('followups') }}><span aria-hidden="true">↻</span><div><strong>{f.alertTitle}</strong><small>{[alerts.filter(a => a.reasons.includes('quote_expired')).length && `${alerts.filter(a => a.reasons.includes('quote_expired')).length} ${alertReasonCopy(lang).quote_expired.toLowerCase()}`, alerts.filter(a => a.reasons.includes('no_contact')).length && `${alerts.filter(a => a.reasons.includes('no_contact')).length} ${f.alertStale}`].filter(Boolean).join(' · ')}</small></div><b>›</b></button>}
         {quoteAlerts > 0 && <QuoteRequestsAlert data={data} lang={lang} onOpen={() => { setSheet(''); setTab('quotes') }} />}
         {offersTodo.length > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setTab('offers') }}><span aria-hidden="true">🧽</span><div><strong>{offersCopy(lang).title}</strong><small>{offersCopy(lang).offerTo(offersTodo[0].task_name, offersTodo[0].client_name || offersTodo[0].location)}{offersTodo.length > 1 ? ` +${offersTodo.length - 1}` : ''}</small></div><b>›</b></button>}
         <SalesInbox lang={lang} notifications={data?.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) { setSheet(''); openDeal(row) } }} />

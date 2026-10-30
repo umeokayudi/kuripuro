@@ -5,9 +5,13 @@ import { useLang, pickLang } from '../hooks/useLang'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { chatPhoto, chatPreview, chatDayKey, photoMessage } from '../lib/chatContent'
+import { problemJobId } from '../lib/fieldExec'
+import { rateJobId, stripRateMarker } from '../lib/clientRatingAsk'
 import PhotoLightbox from '../components/PhotoLightbox'
 import ChatIcon from '../components/ChatIcon'
 import toast from 'react-hot-toast'
+import { useSearchParams, Link } from 'react-router-dom'
+import { looksLikeSalaryMessage, salaryIssueFromChat } from '../lib/salaryIssueLink'
 import './admin-chat.css'
 
 const initials = name => String(name || '?').split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
@@ -43,6 +47,9 @@ export default function AdminChat() {
   const [userScrolled, setUserScrolled] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(0)
   const msgEndRef = useRef()
+  const [params] = useSearchParams()
+  const wantedEmp = params.get('employee')
+  const [issued, setIssued] = useState({}) // message id → salary issue created
   const fileRef = useRef()
 
   const isEmp = mode === 'employees'
@@ -88,7 +95,11 @@ export default function AdminChat() {
       if (!last[k]) last[k] = m
       if (m.sender === other && !m.read) unreadMap[k] = (unreadMap[k] || 0) + 1
     }
-    if (isEmp) setEmployees(peopleRes.data || [])
+    if (isEmp) {
+      setEmployees(peopleRes.data || [])
+      // Opened from Salary issues: go straight to that person's conversation.
+      if (wantedEmp) setSelected(s => s || (peopleRes.data || []).find(e => e.id === wantedEmp) || null)
+    }
     else setClients(peopleRes.data || [])
     setLastByKey(last)
     setUnread(unreadMap)
@@ -274,7 +285,15 @@ export default function AdminChat() {
                     <div className={`ac-bubble ${mine ? 'is-mine' : 'is-them'}${photo ? ' is-photo' : ''}`}>
                       {photo
                         ? <button type="button" onClick={() => setLightbox(photo)}><img src={viewablePhotoUrl(photo)} alt="" loading="lazy" /></button>
-                        : m.content}
+                        : problemJobId(m.content) ? m.content.replace(/\n?#job:[\w-]+\s*$/, '') : rateJobId(m.content) ? stripRateMarker(m.content) + ' ⭐' : m.content}
+                      {!photo && problemJobId(m.content) && <Link to={`/jobs?search=${problemJobId(m.content)}`} className="ac-issue-link">🛠 {pickLang(lang, 'Open the job', '作業を開く', 'Abrir o job')} →</Link>}
+                      {isEmp && !mine && !photo && looksLikeSalaryMessage(m.content) && (
+                        issued[m.id]
+                          ? <Link to="/salary-complaints" className="ac-issue-link">💴 {pickLang(lang, 'Sent to Salary issues', '給与の問題に登録済み', 'Enviado para Problemas de salário')} →</Link>
+                          : <button type="button" className="ac-issue-link" onClick={async () => {
+                            try { await salaryIssueFromChat(selected, m); setIssued(x => ({ ...x, [m.id]: true })); pendingChanged(); toast.success(pickLang(lang, 'Salary issue created', '給与の問題を作成しました', 'Problema de salário criado')) } catch (e) { toast.error(e.message) }
+                          }}>💴 {pickLang(lang, 'Open as salary issue', '給与の問題にする', 'Abrir como problema de salário')}</button>
+                      )}
                       <time>
                         {timeOf(m.created_at)}
                         {mine && <span className={m.read ? 'is-read' : ''}>{m.read ? ' ✓✓' : ' ✓'}</span>}

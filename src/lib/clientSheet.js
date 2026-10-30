@@ -1,6 +1,7 @@
 // v1.0.73 · Full client sheet (CRM) that opens from any client name in the admin.
 // openClientSheet({ id } | { name }) → ClientSheetHost (mounted once in App) shows it.
 import { supabase } from './supabase'
+import { contractMonthly, invoiceMonth, billedInMonth } from './money'
 
 export const OPEN_CLIENT_SHEET = 'kp:open-client'
 
@@ -49,8 +50,9 @@ export async function loadClientSheet(client) {
   const fs = faturas.data || []
   const paid = fs.filter(f => PAID.has(f.status)).reduce((s, f) => s + Number(f.total || 0), 0)
   const billed = fs.filter(f => BILLED.has(f.status)).reduce((s, f) => s + Number(f.total || 0), 0)
-  const thisMonth = fs.filter(f => String(f.issue_date || '').startsWith(month) && f.status !== 'cancelled')
-  const monthBilled = thisMonth.filter(f => BILLED.has(f.status)).reduce((s, f) => s + Number(f.total || 0), 0)
+  // v1.0.109 · same month rule as Invoices and Cashflow (billed period, else issue date)
+  const thisMonth = fs.filter(f => invoiceMonth(f) === month && f.status !== 'cancelled')
+  const monthBilled = billedInMonth(fs, month)
   const monthConfirmed = thisMonth.filter(f => f.status === 'draft').reduce((s, f) => s + Number(f.total || 0), 0)
 
   const js = jobs.data || []
@@ -72,7 +74,7 @@ export async function loadClientSheet(client) {
     const key = storeBase(c.location_name) || '—'
     const s = stores.get(key) || { name: key, plans: [], address: c.location_address, active: false, monthly: 0 }
     s.plans.push(c)
-    if (c.is_active) { s.active = true; s.monthly += Number(c.monthly_revenue || c.fixed_monthly || 0) }
+    if (c.is_active) { s.active = true; s.monthly += contractMonthly(c) }
     stores.set(key, s)
   }
   for (const s of stores.values()) {

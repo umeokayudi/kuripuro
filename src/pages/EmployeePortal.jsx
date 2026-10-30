@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
+import KeyReveal from '../components/KeyReveal'
+import { splitKeyLine } from '../lib/keyReveal'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { compressVideo, canUseWebCodecs, videoTypeInfo } from '../lib/videoCompress'
 import { uploadJobVideo, videoPoster, writeVideoStatus } from '../lib/jobVideo'
@@ -32,6 +34,8 @@ import EmployeeChat from '../components/EmployeeChat'
 import { OFFICE_KEY, buildChatSections, officeThread, threadWith, teamUnreadTotal } from '../lib/teamChat'
 import PhotoLightbox from '../components/PhotoLightbox'
 import { photoMessage, chatPreview } from '../lib/chatContent'
+import { shouldAskForgot, employeeSlipState, employeeSlipText, problemMessage } from '../lib/fieldExec'
+import { askClientRating } from '../lib/clientRatingAsk'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
 import { ContractSignModal } from '../components/SpotContracts'
@@ -168,6 +172,11 @@ export default function EmployeePortal() {
   const [checklist, setChecklist] = useState([])
   const [notes, setNotes] = useState('')
   const [jobPhotos, setJobPhotos] = useState([])
+  // v1.0.112 · per-photo upload state: { [photo id]: { state: 'sending'|'sent'|'failed', path } }
+  const [photoStatus, setPhotoStatus] = useState({})
+  const photoStatusRef = useRef({})
+  const setPhotoState = (id, v) => { photoStatusRef.current = { ...photoStatusRef.current, [id]: v }; setPhotoStatus(photoStatusRef.current) }
+  const [problemJob, setProblemJob] = useState(null)
   // Vídeo opcional do serviço: comprimido ao escolher, enviado só depois de finalizar
   const [jobVideo, setJobVideo] = useState(null)
   const videoTaskRef = useRef(null)
@@ -221,6 +230,7 @@ export default function EmployeePortal() {
   const [equipmentPhotoPreview, setEquipmentPhotoPreview] = useState(null)
   const [submittingEquipment, setSubmittingEquipment] = useState(false)
   const [statement, setStatement] = useState(null)
+  const [slipLine, setSlipLine] = useState(null)
   // Payslip to confirm + admin answers to salary disputes, both shown as home pop-ups
   const [salaryAnswers, setSalaryAnswers] = useState([])
   const [myQuestions, setMyQuestions] = useState([]) // every salary question of this employee (hub)
@@ -413,8 +423,8 @@ export default function EmployeePortal() {
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
       supabase.from('equipment_requests').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(30),
       supabase.from('badges').select('*').eq('employee_id',user.id),
-      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
-      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
+      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).neq('status','cancelled').gte('payment_date',weekStart).lte('payment_date',weekEnd),
+      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).neq('status','cancelled').or(`period.eq.${monthStart.slice(0,7)},and(period.is.null,payment_date.gte.${monthStart},payment_date.lte.${today})`),
       supabase.from('service_contracts').select('location_name,price_per_visit,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
     ])
     const visible = (list) => (list || []).filter(j => !isDuskinJob(j))
@@ -482,13 +492,15 @@ export default function EmployeePortal() {
 
   const loadStatement = async () => {
     const period = getConfirmablePeriod()
-    const [{ data }, answers, all] = await Promise.all([
+    const [{ data }, answers, all, line] = await Promise.all([
       supabase.from('salary_statements').select('*').eq('employee_id', user.id).eq('period', period).maybeSingle(),
       supabase.from('salary_complaints').select('*').eq('employee_id', user.id).in('status', ['resolved', 'rejected'])
         .not('resolved_at', 'is', null).order('resolved_at', { ascending: false }).limit(20),
       supabase.from('salary_complaints').select('*').eq('employee_id', user.id).order('created_at', { ascending: false }).limit(50),
+      supabase.from('salary_payments').select('status,payment_date').eq('employee_id', user.id).eq('period', period).eq('payment_type', 'salary').limit(1),
     ])
     setStatement(data)
+    setSlipLine(line.data?.[0] || null)
     setSalaryAnswers(answers.data || [])
     setMyQuestions(all.data || [])
   }
@@ -630,6 +642,75 @@ export default function EmployeePortal() {
       handleCompleteWithSig(job)
     })
   }, [elapsed, activeJob?.id, agendaSettings])
+
+  // v1.0.112 · ~30 min past the planned time and still not finished: ask once (also as a phone
+  // notification when the app is in the background). "Finish now" goes straight to the finish flow.
+  const forgotAskedRef = useRef(null)
+  useEffect(() => {
+    if (!activeJob?.started_at || activeJob.status !== 'in_progress') return
+    const key = `kp_forgot_${activeJob.id}`
+    let asked = forgotAskedRef.current === activeJob.id
+    try { asked = asked || !!sessionStorage.getItem(key) } catch { /* private mode */ }
+    const planned = plannedMinutes(activeJob, contractForAgendaJob(activeJob, serviceContracts))
+    if (!shouldAskForgot({ elapsedSec: elapsed, plannedMin: planned, asked })) return
+    forgotAskedRef.current = activeJob.id
+    try { sessionStorage.setItem(key, '1') } catch { /* private mode */ }
+    const job = activeJob
+    const title = L('Did you forget to finish?', '終了し忘れていませんか？', 'Você esqueceu de finalizar?')
+    const place = String(job.title || '').split(' — ')[0]
+    try { navigator.vibrate?.([200, 100, 200]) } catch { /* not supported */ }
+    if (document.visibilityState !== 'visible' && 'Notification' in window && Notification.permission === 'granted') {
+      navigator.serviceWorker?.getRegistration?.().then(reg => reg?.showNotification(title, { body: place, tag: key })).catch(() => {})
+    }
+    askConfirm({
+      title,
+      message: L(`${place}: it passed ${planned + 30} min (planned ${planned}). If you are done, finish now.`,
+        `${place}：予定${planned}分を30分超えました。終わっていれば今すぐ完了してください。`,
+        `${place}: passou ${planned + 30} min (previsto ${planned}). Se já terminou, finalize agora.`),
+      confirmLabel: L('Finish now', '今すぐ完了', 'Finalizar agora'),
+      cancelLabel: L('Still working', 'まだ作業中', 'Ainda trabalhando'),
+      danger: false,
+    }).then(finish => {
+      if (!finish) return
+      document.getElementById('active-job-finish')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      handleCompleteWithSig(job)
+    })
+  }, [elapsed, activeJob?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Photos that failed go up again by themselves when the network comes back.
+  useEffect(() => {
+    const retry = () => {
+      const job = activeJob
+      if (!job) return
+      for (const slot of ['start', 'end']) {
+        const list = jobPhotos.filter(p => p.slot === slot)
+        if (list.some(p => photoStatusRef.current[p.id]?.state === 'failed')) uploadSlotPhotos(job.id, list, slot).catch(() => {})
+      }
+    }
+    window.addEventListener('online', retry)
+    return () => window.removeEventListener('online', retry)
+  }, [activeJob, jobPhotos]) // eslint-disable-line react-hooks/exhaustive-deps
+  const retryPhotos = () => {
+    if (!activeJob) return
+    for (const slot of ['start', 'end']) {
+      const list = jobPhotos.filter(p => p.slot === slot)
+      if (list.some(p => photoStatusRef.current[p.id]?.state === 'failed'))
+        uploadSlotPhotos(activeJob.id, list, slot).then(() => toast.success(L('Photos sent ✓', '写真を送信しました ✓', 'Fotos enviadas ✓'))).catch(() => toast.error(L('Still failing — check the internet', 'まだ失敗 — 通信を確認', 'Ainda falhou — confira a internet')))
+    }
+  }
+
+  // "Report a problem" inside the job: note + photo to the office chat, marked with the job.
+  const sendProblem = async ({ job, text, file }) => {
+    const place = String(job.title || '').split(' — ')[0]
+    const { error } = await supabase.from('messages').insert({ employee_id: user.id, employee_name: user.name, sender: 'employee', read: false,
+      content: problemMessage({ place, date: job.scheduled_date, text, jobId: job.id }) })
+    if (error) throw error
+    if (file) {
+      const path = await uploadJobPhoto(`jobs/${job.id}/problem_${Date.now()}.jpg`, file)
+      await supabase.from('messages').insert({ employee_id: user.id, employee_name: user.name, sender: 'employee', read: false, content: photoMessage(path) })
+    }
+    loadMessages()
+  }
 
   const weekSummary = () => {
     const { start, end } = getWeekRange()
@@ -988,6 +1069,7 @@ export default function EmployeePortal() {
       }).eq('id', retroJob.id)
       if (error) throw error
       finishQuoteJob(retroJob.id) // job from an accepted quote → its invoice goes to the client
+      askClientRating(retroJob) // v1.0.115 · the client is asked for a rating in the portal chat
       setRetroEval(ev)
       const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).maybeSingle()
       if (completedRetro) {
@@ -1011,7 +1093,17 @@ export default function EmployeePortal() {
     const worker = async () => {
       while (next < photos.length) {
         const i = next++
-        paths[i] = await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, photos[i].file)
+        const ph = photos[i]
+        const known = photoStatusRef.current[ph.id]
+        if (known?.state === 'sent' && known.path) { paths[i] = known.path; continue }
+        setPhotoState(ph.id, { state: 'sending' })
+        try {
+          paths[i] = await uploadJobPhoto(`jobs/${jobId}/${prefix}_${i}.jpg`, ph.file)
+          setPhotoState(ph.id, { state: 'sent', path: paths[i] })
+        } catch (err) {
+          setPhotoState(ph.id, { state: 'failed' })
+          throw err
+        }
       }
     }
     await Promise.all(Array.from({ length: Math.min(3, photos.length) }, worker))
@@ -1274,6 +1366,7 @@ export default function EmployeePortal() {
       }
       capEndRef.current = null
       finishQuoteJob(job.id) // job from an accepted quote → its invoice goes to the client
+      askClientRating(job)
       window.dispatchEvent(new Event('kp:facility-updated'))
       const nfcEnd = nfcEndRef.current
       nfcEndRef.current = null
@@ -1723,7 +1816,7 @@ export default function EmployeePortal() {
           </div>
           {instructions&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px',marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:5}}>📋 {e.instructionsKeybox}</div>
-            <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7,whiteSpace:'pre-line'}}>{instructions}</div>
+            <KeyReveal value={instructions} multiline icon="" source="employee_job" refId={job.id} label={job.title} linkColor="#c19c56" style={{fontSize:13,color:'rgba(255,255,255,0.75)',lineHeight:1.7}} />
           </div>}
           {cl.length>0&&<div style={{marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : fill(e.checklistCount,{n:cl.length})}</div>
@@ -1775,6 +1868,7 @@ export default function EmployeePortal() {
 
       {/* Called as a function, not <JobModal>, so the every-second clock re-render keeps the same DOM and scroll position */}
       {selectedJob&&JobModal({ job: selectedJob, onClose: ()=>setSelectedJob(null) })}
+      {problemJob&&<ProblemSheet job={problemJob} onSend={sendProblem} onClose={()=>setProblemJob(null)} L={L} />}
       {aiJob&&(
         <div className="emp-sheet-backdrop" style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:210,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={()=>setAiJob(null)}>
           <div className="emp-sheet" style={{background:'#0d1f35',borderRadius:'24px 24px 0 0',padding:'14px 12px 20px',height:'85vh',display:'flex',flexDirection:'column'}} onClick={ev=>ev.stopPropagation()}>
@@ -2225,7 +2319,7 @@ export default function EmployeePortal() {
         {tab==='shift'&&(
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{L('My day','今日の予定','Meu dia')}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
-          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} />
+          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} photoStatus={photoStatus} onRetryPhotos={retryPhotos} onReportProblem={setProblemJob} />
           <TeamDay userId={user.id} L={L} />
           </section>
         )}
@@ -2257,7 +2351,7 @@ export default function EmployeePortal() {
                   <div style={{background:'rgba(193,156,86,0.15)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0}}><div style={{fontSize:9,color:'#c19c56',fontWeight:700,letterSpacing:1}}>{e.extra.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:'#c19c56'}}>+¥{Number(j.spot_value||0).toLocaleString()}</div></div>
                 </div>
                 {j._open&&<div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:10}}>⚡ {L('Offer to the team — the first to accept keeps it','チームへのオファー — 最初に承諾した人が担当','Oferta para a equipe — o primeiro que aceitar fica com o job')}</div>}
-                {j.description&&<div style={{fontSize:13,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.03)',borderRadius:10,padding:'10px 12px',marginBottom:14,lineHeight:1.6}}>{j.description}</div>}
+                {j.description&&(()=>{ const d=splitKeyLine(j.description); return <div style={{fontSize:13,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.03)',borderRadius:10,padding:'10px 12px',marginBottom:14,lineHeight:1.6,whiteSpace:'pre-line'}}>{d.key&&<div>🔑 ••••</div>}{d.rest}</div> })()}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                   <button onClick={()=>handleAcceptSpot(j)} style={{padding:'15px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer'}}>✅ {e.accept}</button>
                   <button onClick={()=>handleDeclineSpot(j)} style={{padding:'15px',borderRadius:14,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.45)',fontSize:15,fontWeight:700,cursor:'pointer'}}>✕ {j._open?L('Not for me','今回はパス','Não posso'):e.decline}</button>
@@ -2289,14 +2383,11 @@ export default function EmployeePortal() {
                 <div className="earn-card">
                   <h4>📋 {fill(L('Payslip {period}','{period} 給与明細','Holerite {period}'),{period:fmtPeriod(statement.period)})}</h4>
                   <div className="earn-card-row"><div><b>¥{Number(statement.net_total||0).toLocaleString()}</b><small>{fill(e.confirmBy, { deadline: getPeriodDates(statement.period).confirmDeadline, payDate: getPeriodDates(statement.period).payDate })}</small></div>
-                    <span className={`earn-pill${statement.employee_confirmed_at?' is-ok':''}`}>{statement.employee_confirmed_at?`✓ ${L('Confirmed','確認済み','Confirmado')}`:statement.employee_disputed_at?`⚠ ${L('Disputed','異議あり','Contestado')}`:L('Waiting for you','確認待ち','Aguardando você')}</span>
+                    {(() => { const st = employeeSlipState(statement, slipLine); const t = employeeSlipText(st, L, String(slipLine?.payment_date || '').slice(0, 10)); return <span className={`earn-pill${t.tone === 'ok' ? ' is-ok' : ''}`}>{t.tone === 'ok' ? '✓ ' : t.tone === 'bad' ? '⚠ ' : ''}{t.text}</span> })()}
                   </div>
                   {statement.employee_confirmed_at&&<div className="earn-status is-ok">✓ {fill(e.salaryConfirmed, { period: fmtPeriod(statement.period), payDate: getPeriodDates(statement.period).payDate })}</div>}
                   {statement.employee_disputed_at&&<div className="earn-status is-bad">⚠ {fill(e.salaryDisputed, { period: fmtPeriod(statement.period) })}</div>}
-                  {payslipPending&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:10}}>
-                    <button type="button" className="earn-secondary" style={{margin:0}} onClick={()=>setPayslipOpen(true)}>⚠ {L('Dispute','異議を申し立てる','Contestar')}</button>
-                    <button type="button" className="earn-secondary" style={{margin:0,background:'#22c55e',color:'#0a1929',fontWeight:800}} onClick={()=>setPayslipOpen(true)}>✓ {L('Review and confirm','確認して承認','Ver e confirmar')}</button>
-                  </div>}
+                  {payslipPending&&<button type="button" className="earn-secondary" style={{marginTop:10,background:'#22c55e',color:'#0a1929',fontWeight:800}} onClick={()=>setPayslipOpen(true)}>✓ {L('Confirm','確認する','Confirmar')}</button>}
                   {!payslipPending&&<button type="button" className="earn-secondary" style={{marginTop:10}} onClick={()=>setPayslipOpen(true)}>{L('Open payslip','明細を開く','Abrir holerite')} ›</button>}
                 </div>
               ) : <div className="earn-card"><small>{L('No payslip to confirm yet.','確認する給与明細はまだありません。','Ainda não há holerite para confirmar.')}</small></div>}
@@ -2604,7 +2695,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
-function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId, onAskAI }) {
+function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId, onAskAI, photoStatus = {}, onRetryPhotos, onReportProblem }) {
   const todayJobs = sortByOrder(allJobs.filter(j=>j.scheduled_date===today))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
@@ -2654,9 +2745,10 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
           {activeInstructions && (
             <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
               <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
-              <div style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6,whiteSpace:'pre-line'}}>{activeInstructions}</div>
+              <KeyReveal value={activeInstructions} multiline icon="" source="employee_job" refId={activeJob.id} label={activeJob.title} linkColor="#c19c56" style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6}} />
             </div>
           )}
+          {onReportProblem&&<button type="button" onClick={()=>onReportProblem(activeJob)} style={{width:'100%',padding:'11px',borderRadius:12,border:'1px solid rgba(248,113,113,0.4)',background:'rgba(248,113,113,0.1)',color:'#fca5a5',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:8}}>🛠 {L('Report a problem','問題を報告','Reportar problema')}</button>}
           {onAskAI&&<button type="button" onClick={()=>onAskAI(activeJob)} style={{width:'100%',padding:'11px',borderRadius:12,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.12)',color:'#d8b4fe',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:12}}>✦ {L('Ask the AI about this job','この作業についてAIに質問','Perguntar à IA sobre este job')}</button>}
           {hasFacility?.(activeJob)&&(
             <button type="button" onClick={ev=>{ ev.stopPropagation(); onOpenFacility(activeJob) }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.45)',background:'rgba(193,156,86,0.14)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
@@ -2668,7 +2760,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
               <div style={{fontSize:10,color:activeJob.photo_required?'#f87171':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({activeJob.photo_required?labels.required:L('optional','任意','opcional')})</div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                 {beforePhotos.map((p,i)=>(
-                  <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.before} />
+                  <PhotoThumb key={i} p={p} st={photoStatus[p.id]} alt={labels.before} onRetry={onRetryPhotos} L={L} />
                 ))}
                 <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(248,113,113,0.4)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
                   <span style={{fontSize:20}}>📷</span>
@@ -2682,7 +2774,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
             <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}) — {labels.afterLater || L('camera or gallery · can be sent later', 'カメラまたはギャラリー・あとで送信可', 'câmera ou galeria · pode enviar depois')}</div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               {afterPhotos.map((p,i)=>(
-                <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.after} />
+                <PhotoThumb key={i} p={p} st={photoStatus[p.id]} alt={labels.after} onRetry={onRetryPhotos} L={L} />
               ))}
               <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
                 <span style={{fontSize:20}}>📷</span>
@@ -2697,9 +2789,11 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
             </div>
           )}
           <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} labels={labels} lang={lang} />
-          <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
+          <div id="active-job-finish" style={{position:'sticky',bottom:'calc(74px + env(safe-area-inset-bottom,0px))',zIndex:20,paddingTop:6}}>
+          <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked?'#64748b':'linear-gradient(135deg,#4ade80,#22c55e)',color:submitting||activeChecklistBlocked?'#fff':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8,boxShadow:'0 6px 18px rgba(0,0,0,0.18)'}}>
             {submitting?L('Saving...','保存中...','Salvando...'):activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
           </button>
+          </div>
           <button type="button" onClick={()=>handleAbandonStale?.(activeJob)} disabled={submitting} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(251,191,36,0.35)',background:'rgba(251,191,36,0.08)',color:'#fbbf24',fontSize:13,fontWeight:600,cursor:submitting?'not-allowed':'pointer'}}>
             {labels.staleShiftReset}
           </button>
@@ -2841,9 +2935,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
             )}
 
             {isNext&&!isActive&&instructions&&(
-              <div style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}}>
-                🔑 {instructions.split('\n')[0]}
-              </div>
+              <KeyReveal value={instructions.split('\n')[0]} source="employee_job" refId={job.id} label={job.title} linkColor="#c19c56" style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}} />
             )}
 
             {(isNext||isActive)&&hasFacility?.(job)&&(
@@ -2860,7 +2952,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                 {instructions&&(
                   <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
                     <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
-                    <div style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6,whiteSpace:'pre-line'}}>{instructions}</div>
+                    <KeyReveal value={instructions} multiline icon="" source="employee_job" refId={job.id} label={job.title} linkColor="#c19c56" style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6}} />
                   </div>
                 )}
                 {job.photo_start_url&&(
@@ -3181,6 +3273,48 @@ function TrainingModal({ job, contract, onClose, lang, labels }) {
         <button onClick={onClose} style={{ width: '100%', marginTop: 16, padding: 14, borderRadius: 12, border: 'none', background: '#c19c56', color: '#0a1929', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
           {labels?.closeAndStart || pickLang(lang, 'Close and start work', '閉じて作業を開始', 'Fechar e começar o serviço')}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// v1.0.112 · photo with its upload state: sending… / sent ✓ / failed — tap to try again
+function PhotoThumb({ p, st, alt, onRetry, L }) {
+  const badge = st?.state === 'sent' ? { t: '✓', bg: '#22c55e' } : st?.state === 'failed' ? { t: '!', bg: '#ef4444' } : st?.state === 'sending' ? { t: '…', bg: '#64748b' } : null
+  return (
+    <div style={{ position: 'relative', width: 64 }}>
+      <img src={p.preview} style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover', opacity: st?.state === 'sending' ? 0.6 : 1 }} alt={alt} />
+      {badge && <span style={{ position: 'absolute', top: 3, right: 3, minWidth: 18, height: 18, borderRadius: 9, background: badge.bg, color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{badge.t}</span>}
+      {st?.state === 'failed' && <button type="button" onClick={onRetry} style={{ width: '100%', marginTop: 3, border: 'none', borderRadius: 6, background: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontSize: 9, fontWeight: 700, padding: '3px 0', cursor: 'pointer' }}>{L('Failed — retry', '失敗 — 再送', 'Falhou — tentar de novo')}</button>}
+      {st?.state === 'sent' && <div style={{ fontSize: 9, color: '#86efac', textAlign: 'center', marginTop: 2 }}>{L('sent', '送信済み', 'enviado')}</div>}
+    </div>
+  )
+}
+
+function ProblemSheet({ job, onSend, onClose, L }) {
+  const [text, setText] = useState('')
+  const [file, setFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const send = async () => {
+    if (!text.trim()) return toast.error(L('Write what happened', '何があったか書いてください', 'Escreva o que aconteceu'))
+    setBusy(true)
+    try { await onSend({ job, text, file }); toast.success(L('Sent to the office', '事務所に送信しました', 'Enviado ao escritório')); onClose() } catch (err) { toast.error(err.message) }
+    setBusy(false)
+  }
+  return (
+    <div className="emp-sheet-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 260, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end' }} onClick={() => !busy && onClose()}>
+      <div className="emp-sheet" onClick={ev => ev.stopPropagation()} style={{ width: '100%', maxWidth: 430, margin: '0 auto', background: '#0a1525', borderRadius: '20px 20px 0 0', padding: '18px 16px calc(18px + env(safe-area-inset-bottom,0px))' }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 4 }}>🛠 {L('Report a problem', '問題を報告', 'Reportar problema')}</div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 12 }}>{String(job.title || '').split(' — ')[0]} · {job.scheduled_date} — {L('goes to the office with this job', 'この作業と一緒に事務所へ送ります', 'vai para o escritório junto com este job')}</div>
+        <textarea value={text} onChange={ev => setText(ev.target.value)} placeholder={L('What happened? (broken item, no key, client asked…)', '何がありましたか？（故障・鍵がない・お客様の依頼…）', 'O que aconteceu? (item quebrado, sem chave, pedido do cliente…)')} style={{ width: '100%', height: 90, padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 14, resize: 'none', boxSizing: 'border-box', marginBottom: 10 }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, border: '1.5px dashed rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.7)', fontSize: 13, cursor: 'pointer', marginBottom: 12 }}>
+          📷 {file ? file.name : L('Add a photo (optional)', '写真を追加（任意）', 'Adicionar foto (opcional)')}
+          <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={ev => setFile(ev.target.files?.[0] || null)} />
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button type="button" onClick={onClose} disabled={busy} style={{ padding: 14, borderRadius: 12, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: '#fff', fontWeight: 700 }}>{L('Cancel', 'キャンセル', 'Cancelar')}</button>
+          <button type="button" onClick={send} disabled={busy} style={{ padding: 14, borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800 }}>{busy ? '…' : L('Send', '送信', 'Enviar')}</button>
+        </div>
       </div>
     </div>
   )

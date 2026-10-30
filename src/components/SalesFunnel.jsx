@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { salesPost } from '../lib/salesApi'
 import { FollowupChip, followupCopy } from './SalesFollowupParts'
-import { followupStatus } from '../lib/salesFollowup'
+import { followupStatus, expiredQuote } from '../lib/salesFollowup'
 import ClientPage from './ClientPage'
 import { PHASES, funnelCopy, initials, phaseOf, shortDay, yen } from '../lib/salesPhases'
 import { pickLang } from '../hooks/useLang'
@@ -34,7 +34,8 @@ export function buildDeals(data, today) {
     const value = Number(activeSub?.client_monthly_total || accepted?.total || q[0]?.total || lead.expected_monthly || 0)
     const last = [lead.last_contact_date, ...t.map(r => r.happened_at), ...v.map(r => r.work_date)].map(x => String(x || '').slice(0, 10)).filter(Boolean).sort().pop() || String(lead.first_contact_date || lead.created_at || '').slice(0, 10)
     // Approved quote past its validity with no contract yet: its own state, needs a follow-up.
-    const expired = Boolean(accepted?.valid_until && today && String(accepted.valid_until).slice(0, 10) < today && !subs.length)
+    // v1.0.116 · same rule as the follow-up alert: a sent quote past its validity counts too
+    const expired = Boolean(today && expiredQuote(q, today, subs.length > 0))
     return {
       lead, quotes: q, accepted, submissions: subs, value, expired,
       quoteValue: Number(accepted?.total || q[0]?.total || 0), touchpoints: t, visits: v,
@@ -49,7 +50,7 @@ export function buildDeals(data, today) {
 function ExpiredBadge({ d, lang, onFollowup }) {
   const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
   return <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
-    <span className="fn-badge is-lost">⏰ {L('Approved quote expired', '承認済み見積の期限切れ', 'Orçamento aprovado vencido')}</span>
+    <span className="fn-badge is-lost">⏰ {d.accepted ? L('Approved quote expired', '承認済み見積の期限切れ', 'Orçamento aprovado vencido') : L('Quote expired', '見積の期限切れ', 'Orçamento vencido')}</span>
     {onFollowup && <button type="button" className="fn-col-add is-list" style={{ padding: '2px 8px', margin: 0, width: 'auto' }} onClick={() => onFollowup(d)}>{L('Follow up today', '今日フォロー', 'Follow-up hoje')}</button>}
   </span>
 }

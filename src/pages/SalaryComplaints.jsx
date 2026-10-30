@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import SkeletonRows from '../components/SkeletonRows'
 import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { fmtPeriod } from '../lib/salaryPeriod'
 import { useLang } from '../hooks/useLang'
+import { Link } from 'react-router-dom'
 
 // Employees read EN or JA, so the chat note carries both.
 function salaryAnswerMessage(c, status, answer) {
@@ -69,7 +71,7 @@ export default function SalaryComplaints() {
         ))}
       </div>
 
-      {loading && <div style={{ color: 'var(--text3)' }}>{t.app.loading}</div>}
+      {loading && <SkeletonRows rows={3} label={t.app.loading} />}
       {filtered.length === 0 && !loading && <div className="card"><div style={{ color: 'var(--text3)' }}>{s.empty}</div></div>}
 
       {filtered.map(c => (
@@ -77,11 +79,12 @@ export default function SalaryComplaints() {
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <div>
               <div style={{ fontWeight: 600 }}>{c.employee_name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtPeriod(c.period)} · {c.category === 'contact' ? tr('📞 Asks to be contacted', '📞 連絡希望', '📞 Pede contato') : c.category === 'reply' ? tr('↩ Reply to your answer', '↩ 回答への返信', '↩ Resposta à sua resposta') : (c.category || s.general)}</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtPeriod(c.period)} · {c.category === 'contact' ? tr('📞 Asks to be contacted', '📞 連絡希望', '📞 Pede contato') : c.category === 'reply' ? tr('↩ Reply to your answer', '↩ 回答への返信', '↩ Resposta à sua resposta') : c.category === 'chat' ? tr('💬 From the chat', '💬 チャットから', '💬 Veio do chat') : (c.category || s.general)}</div>
             </div>
             <span className={`badge ${c.status === 'resolved' ? 'badge-green' : c.status === 'rejected' ? 'badge-red' : 'badge-amber'}`}>{c.status}</span>
           </div>
           <div style={{ fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>{c.description}</div>
+          <Link to={`/adminchat?employee=${c.employee_id}`} className="btn btn-sm" style={{ marginBottom: 10, marginRight: 6 }}>💬 {tr('Open chat', 'チャットを開く', 'Abrir conversa')}</Link>
           {c.attachment_url && <a href={c.attachment_url} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ marginBottom: 10 }}>📎 {s.attachment}</a>}
           {c.admin_response && <div style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', padding: 8, borderRadius: 8, marginBottom: 8 }}>{s.response}: {c.admin_response}</div>}
           {c.status === 'pending' && (

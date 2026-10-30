@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
-import { asItem, movableJobs, planBatch, suggestPeople, weekOf } from '../lib/assignFlow'
+import { asItem, movableJobs, planBatch, suggestPeople, weekOf, travelWindow } from '../lib/assignFlow'
+import { askConfirm } from './ConfirmDialog'
 import { assignMany } from '../lib/assignOps'
 import { pendingChanged } from '../lib/adminPending'
 import { assignText, conflictLabel, RED_CONFLICTS } from './assignText'
@@ -43,13 +44,22 @@ export default function RedistributeSheet({ from, date, jobs, employees, availab
     const pid = personOf(j)
     const extra = movable.filter(o => o.id !== j.id && personOf(o) === pid && pid).map(o => ({ ...asItem(o), employeeId: pid }))
     const rank = suggestPeople(asItem(j), { ...ctx, jobs: [...ctx.jobs, ...extra] })
-    return { job: j, pid, rank, warn: pid ? rank.find(r => r.emp.id === pid)?.conflicts || [] : [], why: Object.prototype.hasOwnProperty.call(choice, j.id) ? [] : plan.get(j.id)?.why || [] }
+    // v1.0.111 · travel time of the substitute: free minutes after their previous job / before the next one
+    const it = asItem(j)
+    const travel = pid ? travelWindow(it, [...ctx.jobs, ...extra].filter(o => o.employeeId === pid && o.date === it.date)) : null
+    return { job: j, pid, rank, travel, warn: pid ? rank.find(r => r.emp.id === pid)?.conflicts || [] : [], why: Object.prototype.hasOwnProperty.call(choice, j.id) ? [] : plan.get(j.id)?.why || [] }
   })
   const picked = rows.filter(r => !skip.has(r.job.id) && r.pid)
 
   const confirm = async () => {
-    setSaving(true)
     const byId = Object.fromEntries(employees.map(e => [e.id, e]))
+    // Summary of exactly what moves, then confirm.
+    const lines = picked.map(x => `• ${String(x.job.scheduled_time || '').slice(0, 5)} ${asItem(x.job).place}: ${from.name} → ${byId[x.pid]?.full_name || '—'}${x.warn.length ? ' ⚠️' : ''}`)
+    const left = movable.length - picked.length
+    const msg = [...lines, left ? tr(`\n${left} stay with nobody chosen (offer them in the Pending box).`, `\n${left}件は未選択のまま（未割当ボックスでオファー）。`, `\n${left} ficam sem escolha (oferte na Caixa de Pendentes).`) : '',
+      tr(`${from.name} and the new people get a notice.`, `${from.name}さんと新しい担当者に通知します。`, `${from.name} e as novas pessoas recebem aviso.`)].filter(Boolean).join('\n')
+    if (!(await askConfirm({ title: tr(`Move ${picked.length} jobs?`, `${picked.length}件を移動しますか？`, `Passar ${picked.length} jobs?`), message: msg, confirmLabel: tr(`Move ${picked.length}`, `${picked.length}件を移動`, `Passar ${picked.length}`) }))) return
+    setSaving(true)
     const r = await assignMany(picked.map(x => ({ job: x.job, emp: byId[x.pid] })))
     setSaving(false)
     pendingChanged()
@@ -68,7 +78,7 @@ export default function RedistributeSheet({ from, date, jobs, employees, availab
         </div>
         <div className="as-muted" style={{ marginBottom: 10 }}>{tr('Jobs not started yet. Suggestion = role, day off, same area today and lightest week. Change any line.', '未開始の作業。提案＝役割・休み・同じ地域・今週の負荷。行ごとに変更可。', 'Jobs ainda não iniciados. Sugestão = papel, folga, mesma área no dia e semana mais leve. Troque qualquer linha.')}</div>
         {!movable.length && <div className="as-empty">{tr('No job left to move.', '移動できる作業はありません。', 'Nenhum job para passar.')}</div>}
-        {rows.map(({ job, pid, rank, warn, why }) => (
+        {rows.map(({ job, pid, rank, warn, why, travel }) => (
           <div key={job.id} className="rd-row">
             <div className="rd-row-top">
               <input type="checkbox" checked={!skip.has(job.id)} onChange={() => setSkip(s => { const n = new Set(s); n.has(job.id) ? n.delete(job.id) : n.add(job.id); return n })} aria-label={tr('Move this job', 'この作業を移動', 'Passar este job')} />
@@ -78,7 +88,7 @@ export default function RedistributeSheet({ from, date, jobs, employees, availab
             </div>
             <select className="as-input" value={pid} onChange={e => setChoice(c => ({ ...c, [job.id]: e.target.value }))} aria-label={tr('New person', '新しい担当', 'Nova pessoa')}>
               <option value="">— {T.reason.noPerson} —</option>
-              {rank.map(r => <option key={r.emp.id} value={r.emp.id}>{r.ok && r === rank[0] ? '★ ' : ''}{r.emp.full_name}{r.conflicts.length ? ` (⚠️ ${r.conflicts.map(c => T.conflict[c.kind]).join(', ')})` : ''}</option>)}
+              {rank.map(r => <option key={r.emp.id} value={r.emp.id}>{r.ok && r === rank[0] ? '★ ' : ''}{r.emp.full_name}{r.conflicts.length ? ` (⚠️ ${r.conflicts.map(c => conflictLabel(c, T)).join(', ')})` : ''}</option>)}
             </select>
             {(why.length > 0 || warn.length > 0) && (
               <div className="as-why">
@@ -86,6 +96,13 @@ export default function RedistributeSheet({ from, date, jobs, employees, availab
                 {warn.map((c, i) => <span key={i} className={`as-warn${RED_CONFLICTS.has(c.kind) ? ' red' : ''}`}>⚠️ {conflictLabel(c, T)}</span>)}
               </div>
             )}
+            {travel && (travel.before || travel.after) && (
+              <div className="as-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                🚃 {[travel.before && tr(`${travel.before.free} min free after ${travel.before.place} (${travel.before.time}), needs ${travel.before.need}`, `${travel.before.place}（${travel.before.time}）の後 ${travel.before.free}分空き・必要 ${travel.before.need}分`, `${travel.before.free} min livres depois de ${travel.before.place} (${travel.before.time}), precisa ${travel.before.need}`),
+                  travel.after && tr(`${travel.after.free} min free before ${travel.after.place} (${travel.after.time}), needs ${travel.after.need}`, `${travel.after.place}（${travel.after.time}）の前 ${travel.after.free}分空き・必要 ${travel.after.need}分`, `${travel.after.free} min livres antes de ${travel.after.place} (${travel.after.time}), precisa ${travel.after.need}`)].filter(Boolean).join(' · ')}
+              </div>
+            )}
+            {pid && travel && !travel.before && !travel.after && <div className="as-muted" style={{ fontSize: 12, marginTop: 4 }}>🚃 {tr('No other job that day — free to go', 'その日は他の作業なし — 移動に余裕', 'Sem outro job no dia — livre para ir')}</div>}
             {!pid && <span className="as-warn red">⚠️ {tr('Nobody free — pick someone with a warning, or leave it unticked and offer it in the Pending box.', '空きなし — 警告付きで選ぶか、チェックを外して未割当ボックスでオファー。', 'Ninguém livre — escolha alguém com aviso, ou deixe desmarcado e oferte na Caixa de Pendentes.')}</span>}
           </div>
         ))}

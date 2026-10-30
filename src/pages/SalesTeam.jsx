@@ -3,13 +3,15 @@ import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { salesGet, salesPost } from '../lib/salesApi'
-import { FollowupChip, GoalBars, LastContactLine, followupCopy } from '../components/SalesFollowupParts'
-import { GOAL_KEYS, alertCounts, followupQueue, goalFor, monthResults } from '../lib/salesFollowup'
+import { FollowupChip, GoalBars, LastContactLine, followupCopy, AlertReasons, alertReasonCopy } from '../components/SalesFollowupParts'
+import { GOAL_KEYS, followupQueue, followupAlerts, goalFor, monthResults } from '../lib/salesFollowup'
 import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
-import { regionOf, suggestSeller } from '../lib/salesInsights'
+import { regionOf, suggestSeller, unassignedOpenLeads } from '../lib/salesInsights'
 import { buildDeals } from '../components/SalesFunnel'
 import { funnelCopy } from '../lib/salesPhases'
+import { maskEmail, phoneTakenMessage } from '../lib/contactMask'
+import { supabase } from '../lib/supabase'
 
 const TXT = {
   en: { title:'Sales performance', create:'Create seller login', name:'Name', email:'Email', password:'Temporary password (10+ characters)', phone:'Phone', add:'Create access', team:'Team', approaches:'Approaches', leads:'Leads', quotes:'Quotes', average:'Avg. quote', conversion:'Approach→won', contracts:'Active contracts', newContracts:'New contracts', commission:'Commission', followups:'Follow-ups', due:'Due', pipeline:'Pipeline', assign:'Assign seller', none:'Unassigned', review:'Contract approvals', approve:'Approve', changes:'Request changes', reject:'Reject', note:'Review note', openPdf:'Signed PDF', active:'Active', inactive:'Inactive', commissionRule:'Commission default', percent:'Percent', fixed:'Fixed', value:'Value', saveRule:'Save rule', reports:'Field reports', travel:'Travel', hours:'Hours', noRows:'No records yet.', loading:'Loading…', goals:'Monthly goals', goalsHint:'Set each seller\'s goals for the month. Sellers see them in their portal; progress uses real records.', goalMonth:'Month', saveGoals:'Save goals', alerts:'Follow-up alerts', alertsHint:'Open clients that are overdue, due today or without contact for 14+ days.', seller:'Seller', allClear:'No client needs attention right now.', contacts:'Contacts', newLeads:'New leads', period:'Period', today:'Today', month:'This month', year:'This year', all:'All time', target:'Target', progress:'Progress', savedHere:'Targets are saved in this browser.', revenue:'Monthly contract value', routing:'New leads to hand out', routingHint:'Leads without a seller (e.g. from marketing). The suggestion uses each seller\'s results in the same region and source, their open clients and late follow-ups.', suggested:'Suggested', askAi:'Ask AI', aiPick:'AI pick', assignTo:'Assign', noUnassigned:'Every lead has a seller.', handNote:'Note for the seller (optional)', winIn:(r,n)=>`${r}% won in region (${n})`, load:(o,d)=>`${o} open · ${d} late`, today2:'Seller day today', notStarted:'Not started', working:'Working since', finished:'Finished', report:'Automatic report', noReport:'No report yet.', approachesShort:'approaches', contactsShort:'contacts', quotesShort:'quotes' },
@@ -53,6 +55,8 @@ export default function SalesTeam() {
 
   const createSeller = async e => {
     e.preventDefault()
+    const taken = await phoneTakenMessage(supabase, form.phone, null, tr)
+    if (taken) return toast.error(taken)
     if (await act({ action:'create-salesperson', ...form })) setForm({ full_name:'', email:'', password:'', phone:'' })
   }
 
@@ -72,7 +76,7 @@ export default function SalesTeam() {
   const leads = data?.leads || []
   const seller = sellers.find(x => x.id === selectedId)
   const contracts = (data?.contracts || []).filter(x => x.status === 'pending_review' || x.status === 'changes_requested')
-  const reports = (data?.reports || []).filter(x => !selectedId || x.salesperson_id === selectedId)
+  const reports = (data?.reports || []).filter(x => !selectedId || selectedId === '__none' || x.salesperson_id === selectedId)
   const today = japanToday()
   // Funnel phase and the real quote value of each lead (same rules as the funnel board).
   const dealOf = new Map(buildDeals(data, today).map(d => [d.lead.id, d]))
@@ -102,15 +106,16 @@ export default function SalesTeam() {
   const periodOptions = [['today',t.today],['month',t.month],['year',t.year],['all',t.all]]
   const f = followupCopy(lang)
   const queue = followupQueue(leads, data?.today || today, data?.touchpoints || [])
-  const alertRows = queue.filter(row => ['overdue', 'today', 'stale'].includes(row.info.status))
-  const counts = alertCounts(queue)
+  // v1.0.116 · one alert rule (expired quote OR 14+ days without contact), same as the seller portal
+  const alertRows = followupAlerts(leads, data?.today || today, { touchpoints: data?.touchpoints || [], quotes: data?.quotes || [], contracts: data?.contracts || [] })
   const statusOf = new Map(queue.map(row => [row.lead.id, row.info]))
   const sellerName = id => sellers.find(p => p.id === id)?.full_name || t.none
   const draftFor = personId => goalDrafts[`${personId}:${goalMonth}`] || goalFor(data?.goals, personId, goalMonth) || {}
   const setDraft = (personId, key, value) => setGoalDrafts(current => ({ ...current, [`${personId}:${goalMonth}`]: { ...draftFor(personId), [key]: value } }))
   const saveGoal = personId => act({ action:'save-goal', salesperson_id:personId, period_month:goalMonth, goal:draftFor(personId) })
   const goalLabels = f.goalLabels
-  const unassigned = leads.filter(row => !row.salesperson_id && !['won', 'lost'].includes(row.stage))
+  const unassigned = unassignedOpenLeads(leads)
+  const noSellerClosed = leads.filter(row => !row.salesperson_id && ['won', 'lost'].includes(row.stage)).length
   const dayToday = data?.today || today
   const todayReports = sellers.filter(p => p.is_active !== false).map(person => ({ person, report: (data?.reports || []).find(r => r.salesperson_id === person.id && r.work_date === dayToday) }))
 
@@ -131,7 +136,7 @@ export default function SalesTeam() {
       <SalesInbox lang={lang} notifications={data.notifications || []} sellers={sellers} onChanged={load} canSend preset={messageTo} />
       <section className="card sales-routing">
         <div className="sales-section-head"><div><div className="card-title">{t.routing} ({unassigned.length})</div><p className="sales-muted">{t.routingHint}</p></div></div>
-        {unassigned.length === 0 && <p className="sales-muted">{t.noUnassigned}</p>}
+        {unassigned.length === 0 && <p className="sales-muted">{t.noUnassigned}{noSellerClosed ? ` ${tr(`(${noSellerClosed} won/lost without seller stay in the pipeline.)`, `（担当なしの成約・失注${noSellerClosed}件は案件一覧に残ります）`, `(${noSellerClosed} fechados/perdidos sem vendedor ficam no pipeline.)`)}` : ''}</p>}
         {unassigned.slice(0, 20).map(row => {
           const options = suggestSeller(row, data, sellers, dayToday)
           const best = options[0]
@@ -166,9 +171,9 @@ export default function SalesTeam() {
       </section>
       <SalesKpiPanel data={data} lang={lang} sellers={sellers} today={data.today || today} channels={data.marketing?.channels || []} onMessage={row => setMessageTo({ id: row.id, title: '', at: Date.now() })} />
       <section className="card sales-alerts-section">
-        <div className="sales-section-head"><div><div className="card-title">{t.alerts} ({counts.needsAction})</div><p className="sales-muted">{t.alertsHint}</p></div></div>
+        <div className="sales-section-head"><div><div className="card-title">{t.alerts} ({alertRows.length})</div><p className="sales-muted">{alertReasonCopy(lang).hint}</p></div></div>
         {alertRows.length === 0 && <p className="sales-muted">{t.allClear}</p>}
-        {alertRows.map(({ lead:row, info }) => <div className={`sales-followup sales-followup-${info.status}`} key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{t.seller}: {sellerName(row.salesperson_id)}{row.contact_name ? ` · ${row.contact_name}` : ''}</small><LastContactLine info={info} lead={row} f={f} /><FollowupChip info={info} f={f} /></div></div>)}
+        {alertRows.map(a => { const row = a.lead; return <div className="sales-followup sales-followup-overdue" key={row.id}><div><strong>{row.site_name || row.company_name}</strong><small>{t.seller}: {sellerName(row.salesperson_id)}{row.contact_name ? ` · ${row.contact_name}` : ''}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={data?.today || today} /><AlertReasons alert={a} lang={lang} /></div></div> })}
       </section>
       <section className="card sales-goals-section">
         <div className="sales-section-head"><div><div className="card-title">{t.goals}</div><p className="sales-muted">{t.goalsHint}</p></div><label className="sales-period-filter"><span>{t.goalMonth}</span><input type="month" value={goalMonth} onChange={e=>setGoalMonth(e.target.value || japanToday().slice(0, 7))}/></label></div>
@@ -194,7 +199,7 @@ export default function SalesTeam() {
           const rule = data.commissionRules?.find(x=>x.salesperson_id===person.id)
           const value = rules[person.id] || { commission_type:rule?.commission_type || 'percent', commission_value:rule?.commission_value ?? 0, percent_basis:rule?.percent_basis || 'base_monthly' }
           return <div className={`sales-manager-person${selectedId===person.id?' selected':''}`} key={person.id}>
-            <button className="sales-manager-person-select" onClick={()=>setSelectedId(person.id)}><strong>{person.full_name}</strong><small>{person.email} · {person.is_active?t.active:t.inactive}</small></button>
+            <button className="sales-manager-person-select" onClick={()=>setSelectedId(person.id)}><strong>{person.full_name}</strong><small>{maskEmail(person.email)} · {person.is_active?t.active:t.inactive}</small></button>
             <div className="sales-manager-mini-metrics">{[[t.approaches,pm.approaches],[t.leads,pm.leads],[t.quotes,pm.quotes],[t.average,yen(pm.quoteAverage)],[t.conversion,`${Number(pm.conversion||0).toFixed(1)}%`],[t.newContracts,pm.activeContracts],[t.commission,yen(m.commission_pending)],[tr('Spot commission to pay','スポット報酬（未払）','Comissão avulsa a pagar'),yen(m.spot_commission_due)],[tr('Fixed commission/mo','定期報酬/月','Comissão fixa/mês'),yen(m.fixed_commission_monthly)]].map(([label,num])=><span key={label}><b>{num}</b>{label}</span>)}</div>
             <div className="sales-rule-row"><span>{t.commissionRule}</span><select value={value.commission_type} onChange={e=>setRules(v=>({...v,[person.id]:{...value,commission_type:e.target.value}}))}><option value="percent">{t.percent}</option><option value="fixed">{t.fixed}</option></select><input aria-label={t.value} type="number" min="0" step="0.1" value={value.commission_value} onChange={e=>setRules(v=>({...v,[person.id]:{...value,commission_value:e.target.value}}))}/><button className="btn btn-sm" disabled={busy} onClick={()=>act({action:'set-commission-rule',salesperson_id:person.id,...value})}>{t.saveRule}</button></div>
             <button className="btn btn-sm" onClick={()=>act({action:'set-salesperson-active',salesperson_id:person.id,is_active:!person.is_active})}>{person.is_active?t.inactive:t.active}</button>
@@ -202,8 +207,8 @@ export default function SalesTeam() {
         })}</section>
       </div>
 
-      <section className="card"><div className="sales-section-head"><div><div className="card-title">{t.pipeline}</div><p className="sales-muted">{tr('Leads, assignments, and due dates', 'Leads, assignments, and due dates', 'Leads, atribuições e prazos')}</p></div><select aria-label={t.assign} value={selectedId} onChange={e=>setSelectedId(e.target.value)}><option value="">{t.none}</option>{sellers.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>
-        {leads.filter(row=>!selectedId || row.salesperson_id===selectedId).map(row=>{ const d = dealOf.get(row.id); return <div className="sales-row" key={row.id}><div><strong>{row.site_name||row.company_name}</strong><small>{[row.contact_name, d ? fc.phases[d.phase] : row.stage, d?.quoteValue ? `${yen(d.quoteValue)} (${tr('quote','見積','orçamento')})` : null, d?.expired ? `⏰ ${tr('quote expired','見積期限切れ','orçamento vencido')}` : null].filter(Boolean).join(' · ')}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={data?.today || today} /><FollowupChip info={statusOf.get(row.id)} f={f} /></div><select value={row.salesperson_id||''} onChange={e=>act({action:'assign-lead',lead_id:row.id,salesperson_id:e.target.value||null})}><option value="">{t.none}</option>{sellers.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>})}
+      <section className="card"><div className="sales-section-head"><div><div className="card-title">{t.pipeline}</div><p className="sales-muted">{tr('Leads, assignments, and due dates', 'Leads, assignments, and due dates', 'Leads, atribuições e prazos')}</p></div><select aria-label={t.seller} value={selectedId} onChange={e=>setSelectedId(e.target.value)}><option value="">{tr('All sellers','全担当','Todos os vendedores')}</option><option value="__none">{t.none} ({unassigned.length})</option>{sellers.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>
+        {leads.filter(row=>!selectedId || (selectedId==='__none' ? unassigned.includes(row) : row.salesperson_id===selectedId)).map(row=>{ const d = dealOf.get(row.id); return <div className="sales-row" key={row.id}><div><strong>{row.site_name||row.company_name}</strong><small>{[row.contact_name, d ? fc.phases[d.phase] : row.stage, d?.quoteValue ? `${yen(d.quoteValue)} (${tr('quote','見積','orçamento')})` : null, d?.expired ? `⏰ ${tr('quote expired','見積期限切れ','orçamento vencido')}` : null].filter(Boolean).join(' · ')}</small><LastContactLine info={statusOf.get(row.id)} lead={row} f={f} today={data?.today || today} /><FollowupChip info={statusOf.get(row.id)} f={f} /></div><select value={row.salesperson_id||''} onChange={e=>act({action:'assign-lead',lead_id:row.id,salesperson_id:e.target.value||null})}><option value="">{t.none}</option>{sellers.map(p=><option key={p.id} value={p.id}>{p.full_name}</option>)}</select></div>})}
       </section>
 
       <section className="card"><div className="card-title">{t.review}</div>{contracts.length===0&&<p className="sales-muted">{t.noRows}</p>}{contracts.map(row=><div className="sales-review-card" key={row.id}>

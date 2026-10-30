@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase'
 import { fmtDuration, fmtTime } from '../lib/jobReport'
 import { agendaChecklistItems, checklistProgress, contractForAgendaJob, expectedMinutes } from '../lib/agenda'
 import { checklistDisplayLabel, splitChecklist } from '../lib/jobChecklist'
+import { aiScoreView } from '../lib/aiScore'
 import { aiIssueRows } from '../lib/photoAi'
 import { appendJobNote, executionMode, jobAudit, jobNotes, manualClose } from '../lib/reportSheet'
 import { loadJobLog } from '../lib/jobAdminOps'
@@ -264,14 +265,16 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
       {/* 7 · AI grade */}
       <Section title={L('AI review', 'AI評価', 'Avaliação da IA')}
         right={row.photo_after_url && row.job_id ? <button type="button" className="btn btn-sm" disabled={regrading} onClick={onRegrade}>{regrading ? tr.analyzing : L('Analyse again', '再分析', 'Analisar de novo')}</button> : null}>
-        {row.photo_ai_score != null ? (
+        {aiScoreView(row) ? (
           <div style={{ fontSize: 13.5, borderRadius: 10, padding: '10px 12px', background: row.photo_ai_approved ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)' }}>
             <b>🤖 {row.photo_ai_score}/10 {row.photo_ai_approved ? '✅' : '⚠️'}</b>
             {issues.length > 0
               ? <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{issues.map((r, i) => <li key={i}>{r.issue}{r.fix && <> — <b>{L('fix', '直す', 'corrigir')}:</b> {r.fix}</>}</li>)}</ul>
               : <div style={{ marginTop: 4, color: 'var(--text2)' }}>{L('No problems found in the photo.', '写真に問題は見つかりませんでした。', 'Nenhum problema encontrado na foto.')}</div>}
           </div>
-        ) : <span style={missingTag}>{row.photo_after_url ? L('AI grade pending', 'AI評価待ち', 'Análise da IA pendente') : L('No After photo to grade', '評価する写真なし', 'Sem foto After para avaliar')}</span>}
+        ) : <span style={missingTag}>{row.photo_ai_score != null
+          ? L('The AI gave no reason for its grade — analyse again.', 'AIの評価に理由がありません。再分析してください。', 'A IA não deu motivo para a nota — analise de novo.')
+          : row.photo_after_url ? L('AI grade pending', 'AI評価待ち', 'Análise da IA pendente') : L('No After photo to grade', '評価する写真なし', 'Sem foto After para avaliar')}</span>}
       </Section>
 
       {/* 8 · audit */}
