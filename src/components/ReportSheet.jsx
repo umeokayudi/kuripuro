@@ -9,7 +9,7 @@ import { fmtDuration, fmtTime } from '../lib/jobReport'
 import { agendaChecklistItems, checklistProgress, contractForAgendaJob, expectedMinutes } from '../lib/agenda'
 import { checklistDisplayLabel, splitChecklist } from '../lib/jobChecklist'
 import { aiIssueRows } from '../lib/photoAi'
-import { appendJobNote, executionMode, jobAudit, jobNotes, manualClose } from '../lib/reportSheet'
+import { appendJobNote, executionMode, jobAudit, jobNotes, manualClose, setNoteVisibility } from '../lib/reportSheet'
 import { loadJobLog } from '../lib/jobAdminOps'
 import { formatDistance } from '../lib/geocode'
 import { mapsCoordsUrl } from '../lib/mapsLink'
@@ -90,6 +90,7 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
   const [logs, setLogs] = useState([])
   const [noteText, setNoteText] = useState('')
   const [noteOpen, setNoteOpen] = useState(false)
+  const [noteClient, setNoteClient] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -123,11 +124,12 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
     try {
       const { data: fresh, error: readErr } = await supabase.from('jobs').select('*').eq('id', row.job_id).maybeSingle()
       if (readErr || !fresh) throw readErr || new Error(L('Job not found', 'ジョブが見つかりません', 'Job não encontrado'))
-      const description = appendJobNote(fresh.description, user?.name || 'Admin', text)
+      const description = appendJobNote(fresh.description, user?.name || 'Admin', text, new Date(), { client: noteClient })
       const { data: saved, error } = await supabase.from('jobs').update({ description }).eq('id', row.job_id).select('*').maybeSingle()
       if (error) throw error
       setNoteText('')
       setNoteOpen(false)
+      setNoteClient(false)
       toast.success(L('Note added to the job', 'ジョブにメモを追加しました', 'Nota adicionada ao job'))
       onJobSaved?.(saved || { ...fresh, description })
     } catch (err) {
@@ -135,6 +137,29 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
     }
     setSaving(false)
   }
+
+  // v1.0.106 · "visible to the client" ↔ "internal" (only visible notes go into the client report)
+  const toggleVisibility = async n => {
+    if (!row.job_id || n.line == null) return
+    setSaving(true)
+    try {
+      const { data: fresh, error: readErr } = await supabase.from('jobs').select('*').eq('id', row.job_id).maybeSingle()
+      if (readErr || !fresh) throw readErr || new Error(L('Job not found', 'ジョブが見つかりません', 'Job não encontrado'))
+      const description = setNoteVisibility(fresh.description, n.line, !n.client)
+      const { data: saved, error } = await supabase.from('jobs').update({ description }).eq('id', row.job_id).select('*').maybeSingle()
+      if (error) throw error
+      onJobSaved?.(saved || { ...fresh, description })
+    } catch (err) {
+      toast.error(err?.message || String(err))
+    }
+    setSaving(false)
+  }
+  const visChip = n => n.kind === 'note' && n.line != null
+    ? <button type="button" disabled={saving} onClick={() => toggleVisibility(n)} title={L('Tap to change', 'タップで切替', 'Toque para trocar')}
+        style={{ marginLeft: 6, border: 0, cursor: 'pointer', borderRadius: 999, padding: '2px 9px', fontSize: 12, fontWeight: 700, background: n.client ? 'rgba(34,197,94,.14)' : 'var(--surface2)', color: n.client ? '#15803d' : 'var(--text2)' }}>
+        {n.client ? '👁 ' + L('visible to the client', '顧客に表示', 'visível ao cliente') : '🔒 ' + L('internal', '社内のみ', 'interna')}
+      </button>
+    : <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--text3)' }}>🔒 {L('internal', '社内のみ', 'interna')}</span>
 
   const badge = (cls, text) => <span className={`badge ${cls}`}>{text}</span>
   const modeBadge = mode === 'manual'
@@ -223,9 +248,13 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
             <textarea value={noteText} onChange={e => setNoteText(e.target.value)} rows={3} autoFocus
               placeholder={L('Write a note for this job…', 'このジョブへのメモ…', 'Escreva uma nota para este job…')}
               style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, resize: 'vertical' }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 13, minHeight: 40 }}>
+              <input type="checkbox" checked={noteClient} onChange={e => setNoteClient(e.target.checked)} style={{ width: 18, height: 18 }} />
+              {L('Visible to the client (goes into the client report)', '顧客に表示（お客様レポートに載る）', 'Visível ao cliente (entra no relatório do cliente)')}
+            </label>
             <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
               <button type="button" className="btn btn-primary" disabled={saving || !noteText.trim()} onClick={addNote} style={{ minHeight: 40 }}>{saving ? '…' : L('Save note', 'メモを保存', 'Salvar nota')}</button>
-              <button type="button" className="btn" onClick={() => { setNoteOpen(false); setNoteText('') }} style={{ minHeight: 40 }}>{L('Cancel', 'キャンセル', 'Cancelar')}</button>
+              <button type="button" className="btn" onClick={() => { setNoteOpen(false); setNoteText(''); setNoteClient(false) }} style={{ minHeight: 40 }}>{L('Cancel', 'キャンセル', 'Cancelar')}</button>
             </div>
           </div>
         )}
@@ -238,6 +267,7 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
                   {' · '}{n.role === 'employee' ? L('employee', 'スタッフ', 'funcionário') : 'admin'}
                   {n.kind === 'retro' ? ` · ${tr.typeRetro}` : ''}
                   {' · '}{fmtStamp(n.at, lang)}
+                  {visChip(n)}
                 </div>
                 <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{n.text}</div>
               </div>

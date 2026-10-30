@@ -8,6 +8,7 @@ import { loadStoreTimeline, placePhotosOf, sizeLabel } from '../lib/cleaningTime
 import { loadApprovedModel } from '../lib/facilityApi'
 import CleaningTimeline from './CleaningTimeline'
 import StoreDossier from './facility/StoreDossier'
+import ClientReports from './ClientReports'
 import './client-sheet.css'
 
 // v1.0.73 · Full client sheet (CRM). Opens beside the page (full screen on phones)
@@ -46,7 +47,7 @@ function SheetBody({ client: initial, onClose }) {
   const { lang, tr } = useLang()
   const [client, setClient] = useState(initial)
   const [data, setData] = useState(null)
-  const [tab, setTab] = useState('summary')
+  const [tab, setTab] = useState(initial._tab || 'summary')
   const [sellers, setSellers] = useState([])
   const [edit, setEdit] = useState(false)
   const [form, setForm] = useState({})
@@ -101,6 +102,7 @@ function SheetBody({ client: initial, onClose }) {
     ['contacts', tr('Contacts', '連絡', 'Contatos')],
     ['stores', tr('Stores & plans', '店舗・プラン', 'Lojas e planos')],
     ['notes', tr('Notes', 'メモ', 'Notas')],
+    ['reports', tr('Client reports', 'お客様レポート', 'Relatórios do cliente')],
   ]
 
   const purchaseRow = p => (
@@ -257,6 +259,8 @@ function SheetBody({ client: initial, onClose }) {
                 {!stores.length && <p className="cs-muted">{tr('No store or plan yet.', '店舗・プランはまだありません。', 'Nenhuma loja ou plano ainda.')}</p>}
               </div>
             )}
+
+            {tab === 'reports' && <ClientReports client={client} />}
 
             {tab === 'notes' && (
               <section>

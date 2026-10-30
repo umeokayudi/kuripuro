@@ -12,11 +12,22 @@ export function tokyoStamp(date = new Date()) {
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`
 }
 
+// v1.0.106 · A note is internal unless its text starts with this tag ("visible to the client").
+// Only those go into the client's monthly report. Old notes have no tag, so they stay internal.
+export const CLIENT_NOTE_TAG = '{client}'
+const TAG_RE = /^\{client\}\s*/i
+
+/** { client, text } from a note text that may start with the client tag. */
+export function noteVisibility(text) {
+  const t = String(text || '')
+  return TAG_RE.test(t) ? { client: true, text: t.replace(TAG_RE, '').trim() } : { client: false, text: t.trim() }
+}
+
 /** Description with one more stamped note at the end: "[time] Author: text". */
-export function appendJobNote(description, author, text, date = new Date()) {
+export function appendJobNote(description, author, text, date = new Date(), { client = false } = {}) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim()
   if (!clean) return description || ''
-  const line = `[${tokyoStamp(date)}] ${author ? `${String(author).trim()}: ` : ''}${clean}`
+  const line = `[${tokyoStamp(date)}] ${author ? `${String(author).trim()}: ` : ''}${client ? `${CLIENT_NOTE_TAG} ` : ''}${clean}`
   return description ? `${String(description).replace(/\s+$/, '')}\n${line}` : line
 }
 
@@ -27,19 +38,42 @@ const byTime = (a, b) => (Date.parse(a.at || '') || 0) - (Date.parse(b.at || '')
 const HANDOVER = /\b(assumiu de|took over from|から引き継ぎ)\b/i
 
 function stampedLines(description) {
-  return String(description || '').split('\n').map(l => l.trim()).map(l => {
-    const m = l.match(STAMPED_LINE)
+  return String(description || '').split('\n').map((l, line) => {
+    const m = l.trim().match(STAMPED_LINE)
     if (!m) return null
     const body = m[3]
     const colon = body.match(/^([^:]{2,60}):\s+(.+)$/)
+    const vis = noteVisibility(colon ? colon[2] : body)
     return {
       at: `${m[1]}T${m[2]}:00+09:00`,
+      day: m[1],
       author: colon ? colon[1].trim() : null,
-      text: colon ? colon[2].trim() : body.trim(),
+      text: vis.text,
+      client: vis.client,
       raw: body,
+      line,
       handover: HANDOVER.test(body),
     }
   }).filter(Boolean)
+}
+
+/** Same description with the stamped note on `line` marked visible to the client (or internal again). */
+export function setNoteVisibility(description, line, client) {
+  const lines = String(description || '').split('\n')
+  const cur = lines[line]
+  const m = cur != null && cur.trim().match(STAMPED_LINE)
+  if (!m) return description || ''
+  const body = m[3]
+  const colon = body.match(/^([^:]{2,60}):\s+(.+)$/)
+  const text = noteVisibility(colon ? colon[2] : body).text
+  const next = `${client ? `${CLIENT_NOTE_TAG} ` : ''}${text}`
+  lines[line] = cur.replace(body, colon ? `${colon[1]}: ${next}` : next)
+  return lines.join('\n')
+}
+
+/** Notes the admin marked "visible to the client": day only (never the time), text without author. */
+export function clientVisibleNotes(job) {
+  return stampedLines(job?.description).filter(l => l.client && !l.handover && l.text).map(l => ({ day: l.day, text: l.text }))
 }
 
 /**
@@ -52,7 +86,7 @@ export function jobNotes(job, logs = []) {
   const out = []
   for (const l of stampedLines(job.description)) {
     if (l.handover) continue
-    out.push({ at: l.at, author: l.author, role: 'admin', text: l.text, kind: 'note' })
+    out.push({ at: l.at, author: l.author, role: 'admin', text: l.text, kind: 'note', client: l.client, line: l.line })
   }
   const emp = String(job.notes_employee || '').trim()
   if (emp) out.push({ at: job.completed_at || null, author: job.employee_name || null, role: 'employee', text: emp, kind: 'finish' })

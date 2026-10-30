@@ -23,7 +23,7 @@ export default function ClientSheetHost() {
   useEffect(() => {
     const onOpen = async e => {
       const row = await findClientRow(e.detail || {})
-      if (row) setClient(row)
+      if (row) setClient(e.detail?.tab ? { ...row, _tab: e.detail.tab } : row)
       else toast(tr('Not a client yet (no client record with this name).', 'まだ顧客ではありません。', 'Ainda não é cliente (sem cadastro com esse nome).'))
     }
     window.addEventListener(OPEN_CLIENT_SHEET, onOpen)

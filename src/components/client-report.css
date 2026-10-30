@@ -1,0 +1,57 @@
+/* v1.0.106 · Client report (ClientReportView.jsx, ClientReports.jsx). Same look in the admin and the client portal. */
+.crp{color:#122033;font-size:13.5px}
+.crp-cover{background:#fff;border:1px solid #e7ebf2;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(18,32,55,.05);margin-bottom:12px}
+.crp-brand{font-family:Fraunces,serif;color:#c19c56;font-weight:700;letter-spacing:.06em;font-size:12px}
+.crp-cover h3{margin:4px 0 2px;font-size:18px;font-weight:800;color:#0b1b2d}
+.crp-cover p{margin:0;color:#4b5768;font-size:13px}
+.crp-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.crp-kpi{background:#f7f9fc;border-radius:11px;padding:10px;min-width:0}
+.crp-kpi small{display:block;font-size:12px;color:#4b5768;font-weight:700}
+.crp-kpi b{display:block;font-size:20px;font-weight:800;color:#0b1b2d;white-space:nowrap}
+.crp-kpi span{font-size:12px;color:#4b5768}
+.crp-loc{background:#fff;border:1px solid #e7ebf2;border-radius:12px;padding:12px 14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(18,32,55,.05)}
+.crp-loc-h{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}
+.crp-loc-h b{font-size:15px;color:#0b1b2d}
+.crp-loc-h span{font-size:12px;color:#4b5768}
+.crp-deep{margin:6px 0 4px;font-size:12.5px;color:#4b5768}
+.crp-svc{border-top:1px solid #e7ebf2;padding:10px 0}
+.crp-svc-h{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-weight:700}
+.crp-svc-h em{font-style:normal;font-weight:500;color:#4b5768}
+.crp-tag{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800;background:#eef2ff;color:#315cf5;margin-left:6px}
+.crp-tag.deep{background:#fff6e5;color:#8a5d0c}
+.crp-tag.spot{background:#f3e8ff;color:#7e22ce}
+.crp-line{font-size:12.5px;color:#4b5768;margin-top:6px}
+.crp-note{margin-top:6px;padding:8px 10px;border-radius:9px;background:#f7f9fc;font-size:13px;line-height:1.5}
+.crp-media{margin-top:8px}
+.crp-next{margin-top:8px;font-size:12.5px;color:#4b5768}
+.crp-next b{color:#122033}
+.crp-empty{color:#4b5768;font-size:13px;padding:6px 0}
+
+/* admin flow */
+.crf-steps{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.crf-steps span{font-size:12px;font-weight:800;padding:5px 11px;border-radius:999px;background:#eef1f6;color:#4b5768}
+.crf-steps span.on{background:#315cf5;color:#fff}
+.crf-steps span.done{background:rgba(34,197,94,.14);color:#15803d}
+.crf-chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.crf-chips button{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid #e7ebf2;background:#fff;font:inherit;font-size:13px;font-weight:700;color:#122033;cursor:pointer}
+.crf-chips button.on{background:#315cf5;border-color:#315cf5;color:#fff}
+.crf-chips button em{font-style:normal;font-size:11px;font-weight:800;margin-left:6px;color:#8a5d0c}
+.crf-chips button.on em{color:#fff}
+.crf-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+.crf-bar .btn{min-height:40px}
+.crf-status{font-size:12px;font-weight:800;border-radius:999px;padding:4px 10px;background:#eef1f6;color:#4b5768}
+.crf-status.shared{background:rgba(34,197,94,.14);color:#15803d}
+.crf-warn{font-size:12.5px;padding:8px 10px;border-radius:9px;background:rgba(245,158,11,.12);color:#8a5d0c;margin-bottom:10px;line-height:1.45}
+.crf-list{display:grid;gap:6px;margin-bottom:12px}
+.crf-row{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:8px 12px;border:1px solid #e7ebf2;border-radius:11px;background:#fff;font:inherit;color:#122033;cursor:pointer;text-align:left;width:100%}
+.crf-row b{font-size:13.5px}
+.crf-pick input,.crf-pick select{width:100%;min-height:42px;padding:8px 10px;border-radius:10px;border:1px solid #e7ebf2;font:inherit;font-size:14px;background:#fff;box-sizing:border-box}
+.crf-modal{position:fixed;inset:0;z-index:470;background:rgba(15,27,47,.38);display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;padding:24px 12px}
+.crf-modal-box{width:min(760px,100%);background:#f7f9fc;border-radius:14px;padding:16px;box-shadow:0 20px 60px rgba(12,28,48,.22)}
+.crf-modal-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
+.crf-modal-h h3{margin:0;font-size:17px;color:#0b1b2d}
+@media (max-width:600px){
+  .crf-modal{padding:0}
+  .crf-modal-box{border-radius:0;min-height:100%}
+  .crp-kpi b{font-size:17px}
+}
