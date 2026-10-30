@@ -1,4 +1,4 @@
-// v1.0.104 · Monthly report the restaurant receives (Clients → client page → "Client reports").
+// v1.0.105 · Monthly report the restaurant receives (Clients → client page → "Client reports").
 // The admin picks client → month → sees the preview → PDF and/or share on the client portal.
 // What the client sees is a SNAPSHOT saved in client_reports.content when the admin shares it:
 // later edits on the jobs never change a report already shared.

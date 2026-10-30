@@ -138,7 +138,7 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
     setSaving(false)
   }
 
-  // v1.0.104 · "visible to the client" ↔ "internal" (only visible notes go into the client report)
+  // v1.0.105 · "visible to the client" ↔ "internal" (only visible notes go into the client report)
   const toggleVisibility = async n => {
     if (!row.job_id || n.line == null) return
     setSaving(true)

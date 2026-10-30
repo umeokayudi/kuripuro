@@ -12,7 +12,7 @@ export function tokyoStamp(date = new Date()) {
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`
 }
 
-// v1.0.104 · A note is internal unless its text starts with this tag ("visible to the client").
+// v1.0.105 · A note is internal unless its text starts with this tag ("visible to the client").
 // Only those go into the client's monthly report. Old notes have no tag, so they stay internal.
 export const CLIENT_NOTE_TAG = '{client}'
 const TAG_RE = /^\{client\}\s*/i

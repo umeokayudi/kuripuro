@@ -74,7 +74,7 @@ export default function ClientPortal() {
     return typeof window !== 'undefined' && window.innerWidth >= 900
   })
 
-  // v1.0.104 · the PDF's video link opens straight on "Reports" (/?tab=reports)
+  // v1.0.105 · the PDF's video link opens straight on "Reports" (/?tab=reports)
   const [tab, setTab] = useState(() => (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'reports' ? 'reports' : 'home'))
   const [sharedReports, setSharedReports] = useState(null)
   const [openReport, setOpenReport] = useState(null)
