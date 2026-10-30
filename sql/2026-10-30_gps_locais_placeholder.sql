@@ -7,18 +7,18 @@
 
 begin;
 
--- 1) Locais: tira o ponto falso (o app passa a usar o endereço).
+-- 1) Distâncias já gravadas contra o ponto falso (ex.: 829 m / 809 m) deixam de contar como "fora do local".
+--    O GPS do funcionário (start_lat/end_lat) continua guardado. Roda antes do passo 3.
+update jobs set gps_start_distance = null, gps_end_distance = null
+where gps_lat = 35.6585 and gps_lng = 139.7514
+  and (gps_start_distance is not null or gps_end_distance is not null);
+
+-- 2) Locais: tira o ponto falso (o app passa a usar o endereço).
 update locations set gps_lat = null, gps_lng = null
 where gps_lat = 35.6585 and gps_lng = 139.7514;
 
--- 2) Serviços que copiaram o ponto falso.
+-- 3) Serviços que copiaram o ponto falso.
 update jobs set gps_lat = null, gps_lng = null
 where gps_lat = 35.6585 and gps_lng = 139.7514;
-
--- 3) Distâncias já gravadas contra o ponto falso (ex.: 829 m / 809 m) deixam de contar como "fora do local".
---    Só nos serviços que tinham o ponto falso; o GPS do funcionário (start_lat/end_lat) continua guardado.
-update jobs set gps_start_distance = null, gps_end_distance = null
-where id in ('e742644d-e461-4e81-a436-767a72da767d', '5d8a6592-610f-4e25-95d7-3836e420945f',
-             '4717a833-8f11-485f-bd56-17eeb3a58a74', '97052d4d-745f-4d10-8834-ff0e7692dd83');
 
 commit;
