@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
-import { geocodeAddress } from '../lib/geocode'
+import { geocodeAddress, isPlaceholderCoords } from '../lib/geocode'
 import { isNavigableAddress } from '../lib/mapsLink'
 import {
   DEEP_TASKS, deepTaskName, cleanCustomTask, buildDeepTaskTitle, deepTasksFromTitle,
@@ -103,8 +103,9 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       location_id: loc.id,
       title: loc.name,
       address: loc.address || '',
-      gps_lat: loc.gps_lat || '',
-      gps_lng: loc.gps_lng || '',
+      // A placeholder point on the place is not copied: the job then uses the address.
+      gps_lat: !isPlaceholderCoords(loc.gps_lat, loc.gps_lng) ? loc.gps_lat : '',
+      gps_lng: !isPlaceholderCoords(loc.gps_lat, loc.gps_lng) ? loc.gps_lng : '',
       description: loc.notes || '',
       client_id: loc.client_id || contract?.client_id || last?.client_id || f.client_id,
       employee_id: f.employee_id || last?.employee_id || '',

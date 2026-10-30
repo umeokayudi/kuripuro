@@ -81,6 +81,22 @@ export function holdQueuedVideo(id, hold = true) {
   if (hold) inFlight.add(id)
   else inFlight.delete(id)
 }
+// Live state for the home card: id → progress 0..1 while sending. Listeners re-read the queue.
+const progressById = new Map()
+const listeners = new Set()
+const notify = () => listeners.forEach(fn => { try { fn() } catch { /* ignora */ } })
+
+/** Avisa quando a fila muda (entrou, enviando %, saiu). Devolve a função para parar de ouvir. */
+export function onVideoQueueChange(fn) {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+
+/** Progresso 0..1 do vídeo que está sendo enviado agora, ou null se não está enviando. */
+export function sendingProgress(id) {
+  return inFlight.has(id) && progressById.has(id) ? progressById.get(id) : null
+}
+
 const isLimitError = (err) => /Limite/.test(err?.message || '')
 
 async function saveResume(item, resume) {
@@ -99,10 +115,19 @@ async function compressRaw(item) {
 
 async function sendItem(item, upload, onProgress) {
   inFlight.add(item.id)
+  progressById.set(item.id, 0)
+  notify()
+  let lastPct = -1
+  const track = (p) => {
+    progressById.set(item.id, p)
+    const pct = Math.round(p * 100)
+    if (pct !== lastPct) { lastPct = pct; notify() }
+    onProgress?.(p)
+  }
   try {
     if (item.raw) item = await compressRaw(item)
     // resume = { path, url } of the resumable upload: a new try continues from the last part sent
-    const path = await upload(item.jobId, item, { onProgress, resume: item.resume, onResume: r => { item.resume = r; saveResume(item, r) } })
+    const path = await upload(item.jobId, item, { onProgress: track, resume: item.resume, onResume: r => { item.resume = r; saveResume(item, r) } })
     await removeQueuedVideo(item.id)
     return path
   } catch (err) {
@@ -114,6 +139,8 @@ async function sendItem(item, upload, onProgress) {
     throw err
   } finally {
     inFlight.delete(item.id)
+    progressById.delete(item.id)
+    notify()
   }
 }
 
@@ -124,6 +151,7 @@ async function sendItem(item, upload, onProgress) {
 export async function enqueueAndSend(jobId, video, upload, { onProgress } = {}) {
   const id = await enqueueVideo(jobId, video)
   if (!id) return upload(jobId, video, { onProgress })
+  notify()
   try {
     return await sendItem({ id, jobId, ...video, attempts: 0, createdAt: Date.now() }, upload, onProgress)
   } catch (err) {
@@ -139,7 +167,7 @@ let running = null
  * Vídeos com mais de 7 dias são descartados. Chamadas ao mesmo tempo reaproveitam a mesma rodada.
  * @returns {Promise<{sent: number, failed: number}>}
  */
-export function flushVideoQueue(upload) {
+export function flushVideoQueue(upload, { alreadySent } = {}) {
   if (running) return running
   running = (async () => {
     let sent = 0
@@ -148,6 +176,13 @@ export function flushVideoQueue(upload) {
       if (inFlight.has(item.id)) continue
       if (Date.now() - (item.createdAt || 0) > MAX_AGE_MS || !item.blob) {
         await removeQueuedVideo(item.id)
+        continue
+      }
+      // O envio terminou no Storage mas o app fechou antes de tirar da fila: não manda de novo.
+      if (alreadySent && item.resume?.path && await alreadySent(item).catch(() => false)) {
+        await removeQueuedVideo(item.id)
+        notify()
+        sent++
         continue
       }
       try {

@@ -189,6 +189,12 @@ export async function readVideoStatus(jobId) {
   }
 }
 
+/** True when the server already has this queued video (status file says uploaded, same path). */
+export async function videoAlreadyUploaded(item) {
+  const st = await readVideoStatus(item.jobId)
+  return st?.status === 'uploaded' && !!item.resume?.path && st.path === item.resume.path
+}
+
 async function nextVideoPath(jobId, ext) {
   const existing = await listFromStorage(jobId).catch(() => [])
   const next = existing.reduce((n, v) => Math.max(n, v.index + 1), 0)

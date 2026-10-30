@@ -9,16 +9,27 @@ function parseCoordsFromUrl(url) {
   return null
 }
 
+// A fake point that 11 places got in Oct 2026 (35.6585, 139.7514, near Shiba-koen): every
+// store showed ~800 m away while the worker was inside. Never use it as a store's location.
+const PLACEHOLDER_POINTS = [[35.6585, 139.7514]]
+
+/** True for coordinates that are a known placeholder, not a real store location. */
+export function isPlaceholderCoords(lat, lng) {
+  const a = Number(lat), b = Number(lng)
+  if (!Number.isFinite(a) || !Number.isFinite(b) || (a === 0 && b === 0)) return true
+  return PLACEHOLDER_POINTS.some(([pl, pg]) => Math.abs(a - pl) < 0.0002 && Math.abs(b - pg) < 0.0002)
+}
+
 export async function geocodeAddress(address) {
   if (!address) return null
 
   const local = parseCoordsFromUrl(address)
-  if (local) return local
+  if (local && !isPlaceholderCoords(local.lat, local.lng)) return local
 
   try {
     const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`)
     const data = await res.json()
-    if (data.lat != null && data.lng != null) return { lat: data.lat, lng: data.lng }
+    if (data.lat != null && data.lng != null && !isPlaceholderCoords(data.lat, data.lng)) return { lat: data.lat, lng: data.lng }
     if (data.mapsLink) return { mapsLink: true }
     if (!res.ok) return null
   } catch {}

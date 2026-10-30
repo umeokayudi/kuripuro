@@ -1,6 +1,7 @@
 // Locais que a gente atende (para o mapa da cidade): serviços dos últimos 180 dias e dos próximos 60, agrupados por local.
 import { supabase } from './supabase'
 import { businessName, siteCoords } from './nearbyJob.js'
+import { isPlaceholderCoords } from './geocode.js'
 
 const dayStr = offset => new Date(Date.now() + offset * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
 const keyOf = name => String(name || '').trim().toLowerCase()
@@ -29,7 +30,7 @@ export async function loadCityPlaces() {
     if (!p.client_name && j.client_name) p.client_name = j.client_name
     const addr = String(j.address || '').trim()
     if (addr && !p.addresses.includes(addr)) p.addresses.push(addr)
-    if (j.gps_lat != null && j.gps_lng != null) p.gps.push([Number(j.gps_lat), Number(j.gps_lng)])
+    if (j.gps_lat != null && j.gps_lng != null && !isPlaceholderCoords(j.gps_lat, j.gps_lng)) p.gps.push([Number(j.gps_lat), Number(j.gps_lng)])
     p.jobs.push(j)
     const d = String(j.scheduled_date || '').slice(0, 10)
     if (d < today || j.status === 'completed') {
