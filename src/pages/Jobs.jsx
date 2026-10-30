@@ -19,6 +19,7 @@ import { fetchContractSellers } from '../lib/contractSellers'
 import JobsPeriodPanel from '../components/JobsPeriodPanel'
 import NewJobForm from '../components/NewJobForm'
 import DayAgenda from '../components/DayAgenda'
+import DeepSpotTab from '../components/DeepSpotTab'
 import { confirmAndRun } from '../components/ConfirmDialog'
 import SetupChain from '../components/SetupChain'
 import { buildPlaces } from '../lib/places'
@@ -84,7 +85,7 @@ export default function Jobs() {
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const [tab, setTab] = useState(() => searchId ? 'list' : searchParams.get('tab') === 'locations' ? 'locations' : 'agenda')
+  const [tab, setTab] = useState(() => searchId ? 'list' : ({ locations: 'locations', 'deep-spot': 'deepspot' })[searchParams.get('tab')] || 'agenda')
   const [cleaningFilter, setCleaningFilter] = useState('all')
   const [period, setPeriod] = useState('7d')
   const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
@@ -183,11 +184,14 @@ export default function Jobs() {
         <button className={`tab-pill${tab==='spot'?' active':''}`} onClick={()=>setTab('spot')}>
           ⚡ {jt.spotJobs} {spotJobs.filter(j=>j.spot_status==='pending').length > 0 && <span className="badge badge-amber" style={{marginLeft:4}}>{spotJobs.filter(j=>j.spot_status==='pending').length}</span>}
         </button>
+        <button className={`tab-pill${tab==='deepspot'?' active':''}`} onClick={()=>setTab('deepspot')}>✨ Deep &amp; Spot</button>
         <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>+ {jt.newJob}</button>
         <button className={`tab-pill${tab==='locations'?' active':''}`} onClick={()=>setTab('locations')}>📍 {jt.locations}</button>
       </div>
 
       {tab==='agenda' && <DayAgenda onChanged={loadAll} />}
+
+      {tab==='deepspot' && <DeepSpotTab />}
 
       {tab==='list' && (
         <div>

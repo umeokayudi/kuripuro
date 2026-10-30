@@ -1,0 +1,102 @@
+/* v1.0.104 · Jobs → Deep & Spot (same cards, chips and colours as the rest of the admin). */
+.ds { display: grid; gap: 14px; }
+.ds .card { margin-bottom: 0; }
+.ds-muted { font-size: 12px; color: var(--text3); line-height: 1.45; }
+.ds-error { color: var(--red); background: var(--red-bg); font-size: 13px; }
+
+.ds-filters { display: grid; gap: 12px; }
+.ds-period { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.ds-seg { display: inline-flex; background: var(--surface2); border-radius: 999px; padding: 3px; gap: 2px; }
+.ds-seg button { border: 0; background: transparent; padding: 8px 14px; border-radius: 999px; font-weight: 700; font-size: 13px; color: var(--text2); cursor: pointer; min-height: 36px; }
+.ds-seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(15, 30, 50, .12); }
+.ds-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ds-nav b { font-size: 14px; min-width: 120px; text-align: center; }
+.ds-nav button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; min-width: 36px; min-height: 36px; cursor: pointer; color: var(--text2); font-weight: 700; }
+.ds-nav .ds-today { padding: 0 12px; }
+.ds-nav input { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; }
+.ds-selects { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.ds-selects label { display: grid; gap: 4px; font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .03em; min-width: 0; }
+.ds-selects select { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0; min-height: 40px; }
+
+.ds-cov-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.ds-pill { flex-shrink: 0; font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
+.ds-pill.ok { background: var(--green-bg); color: var(--green); }
+.ds-pill.bad { background: var(--red-bg); color: var(--red); }
+.ds-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.ds-tiles div { background: var(--surface2); border-radius: 10px; padding: 10px 12px; }
+.ds-tiles small { display: block; font-size: 11px; color: var(--text3); font-weight: 600; }
+.ds-tiles b { font-size: 22px; font-weight: 800; color: var(--text); }
+.ds-tiles b.blue { color: var(--blue); }
+.ds-tiles b.green { color: var(--green); }
+.ds-tiles b.red { color: var(--red); }
+
+.ds-places { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ds-place { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.ds-place.bad { border-color: rgba(163, 45, 45, .3); background: rgba(252, 235, 235, .35); }
+.ds-place-head { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; color: var(--text); }
+.ds-place-name { display: grid; min-width: 0; }
+.ds-place-name b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-place-name small { font-size: 11px; color: var(--text3); }
+.ds-place-nums { display: flex; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text2); white-space: nowrap; }
+.ds-bar { position: relative; height: 6px; border-radius: 3px; background: var(--surface2); margin-top: 8px; overflow: hidden; }
+.ds-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.ds-bar i.sch { background: #93c5fd; }
+.ds-bar i.done { background: #4ade80; }
+.ds-items { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ds-item { display: inline-flex; gap: 6px; align-items: baseline; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.ds-item small { font-weight: 500; opacity: .8; }
+.ds-item.ok { background: var(--green-bg); color: var(--green); }
+.ds-item.bad { background: var(--amber-bg); color: var(--amber); }
+
+.ds-mlist { display: grid; gap: 8px; }
+.ds-mrow { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); border-left: 4px solid #f59e0b; }
+.ds-mrow.r-passed, .ds-mrow.r-notDone { border-left-color: #ef4444; }
+.ds-mrow-main { display: grid; gap: 2px; min-width: 0; flex: 1 1 220px; }
+.ds-mrow-main b { font-size: 14px; }
+.ds-mrow-main small { font-size: 12px; color: var(--text3); }
+.ds-reason { font-size: 12px; font-weight: 700; color: var(--red); }
+.ds-mrow.r-notCreated .ds-reason { color: var(--amber); }
+.ds-mrow-act { display: flex; gap: 6px; align-items: center; }
+.ds-mrow-act input { padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--surface); color: var(--text); min-height: 36px; }
+.ds-mrow .btn { min-height: 36px; }
+.ds-more { margin-top: 10px; width: 100%; min-height: 40px; }
+
+.ds-line { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); border-left: 4px solid #fbbf24; margin-bottom: 8px; }
+.ds-line.t-spot { border-left-color: #a855f7; }
+.ds-line-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ds-line-place { font-size: 15px; flex: 1; min-width: 0; }
+.ds-type { font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; }
+.ds-type.t-deep { background: rgba(251, 191, 36, .18); color: #b45309; }
+.ds-type.t-spot { background: rgba(168, 85, 247, .14); color: #7e22ce; }
+.ds-state { font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; background: var(--surface2); color: var(--text2); }
+.ds-state.s-done { background: var(--green-bg); color: var(--green); }
+.ds-state.s-assigned { background: var(--blue-bg); color: var(--blue); }
+.ds-state.s-scheduled { background: var(--amber-bg); color: var(--amber); }
+.ds-state.s-missing { background: var(--red-bg); color: var(--red); }
+.ds-line-sub { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text2); margin-top: 4px; }
+.ds-line-spot { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 6px; font-size: 12px; }
+.ds-origin { font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--surface2); color: var(--text2); }
+.ds-origin.o-client { background: var(--blue-bg); color: var(--blue); }
+.ds-offer { font-weight: 600; color: var(--text); }
+
+.ds-skel { height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--surface2), #f8fafc, var(--surface2)); background-size: 200% 100%; animation: ds-shine 1.2s infinite; margin: 8px 0; }
+.ds-skel.short { width: 55%; }
+@keyframes ds-shine { to { background-position: -200% 0; } }
+
+/* World (Items): deep state of the restaurant */
+.kw-deepstate { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; padding: 8px 12px; border-radius: 10px; background: rgba(251, 191, 36, .12); color: inherit; margin-bottom: 10px; }
+.kw-deepstate b { font-weight: 800; }
+.kw-deepstate .late { color: #f87171; font-weight: 800; }
+
+@media (max-width: 760px) {
+  .ds-selects { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ds-selects label:last-child { grid-column: 1 / -1; }
+  .ds-places { grid-template-columns: 1fr; }
+  .ds-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ds-period { flex-direction: column; align-items: stretch; }
+  .ds-seg { justify-content: space-between; }
+  .ds-seg button { flex: 1; padding: 8px 6px; }
+  .ds-nav { justify-content: center; }
+  .ds-mrow-act { width: 100%; }
+  .ds-mrow-act input { flex: 1; }
+}
