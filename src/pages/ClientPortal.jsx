@@ -18,6 +18,7 @@ import {
   clientStoreNames, storeContact, storeCrew,
 } from '../lib/clientPortal'
 import { chatPhoto, chatDayKey, photoMessage } from '../lib/chatContent'
+import { rateJobId, stripRateMarker } from '../lib/clientRatingAsk'
 import { updateClientCredentials } from '../lib/clientCredentials'
 import toast from 'react-hot-toast'
 import { tokyoToday } from '../lib/dates'
@@ -980,6 +981,9 @@ export default function ClientPortal() {
                 sendingPhoto={sendingPhoto}
                 onPhotoClick={setLightbox}
                 endRef={msgEndRef}
+                ratingOf={ratingForJob}
+                rateBusy={quickRating}
+                onRateJob={(jobId, stars) => { const job = jobs.find(j => j.id === jobId); if (job) quickRate([job], stars); else toast.error(c.ratingUnavailable || '—') }}
               />
             )}
 
@@ -1438,7 +1442,7 @@ function QuickRatePanel({ visits, labels, busy, onRate, onOpen }) {
   )
 }
 
-function ClientChat({ messages, contact, labels, lang, desktop, value, onChange, onSend, onPhoto, sendingPhoto, onPhotoClick, endRef }) {
+function ClientChat({ messages, contact, labels, lang, desktop, value, onChange, onSend, onPhoto, sendingPhoto, onPhotoClick, endRef, ratingOf, onRateJob, rateBusy }) {
   const fileRef = useRef()
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
   const todayKey = chatDayKey(new Date().toISOString())
@@ -1477,7 +1481,10 @@ function ClientChat({ messages, contact, labels, lang, desktop, value, onChange,
               <div className={`cpx-bubble ${mine ? 'is-mine' : 'is-them'}${photo ? ' is-photo' : ''}`}>
                 {photo
                   ? <button type="button" onClick={() => onPhotoClick(photo)}><img src={viewablePhotoUrl(photo)} alt="" loading="lazy" /></button>
-                  : m.content}
+                  : rateJobId(m.content) ? <>
+                    {stripRateMarker(m.content)}
+                    {onRateJob && <ChatStars jobId={rateJobId(m.content)} current={ratingOf?.(rateJobId(m.content))?.stars || 0} busy={rateBusy === rateJobId(m.content)} onRate={onRateJob} label={labels.quickRateTitle} />}
+                  </> : m.content}
                 <time>{new Date(m.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}</time>
               </div>
             </div>
@@ -1509,5 +1516,18 @@ function ClientChat({ messages, contact, labels, lang, desktop, value, onChange,
         </div>
       </div>
     </div>
+  )
+}
+
+// v1.0.115 · stars inside the "how was it?" message sent when a job ends (#rate:<job id>)
+function ChatStars({ jobId, current, busy, onRate, label }) {
+  return (
+    <span role="group" aria-label={label} style={{ display: 'flex', gap: 2, marginTop: 6 }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <button key={n} type="button" disabled={busy} aria-label={`${n}/5`} aria-pressed={current === n}
+          onClick={() => onRate(jobId, n)}
+          style={{ border: 0, background: 'transparent', padding: '2px 3px', fontSize: 22, lineHeight: 1, cursor: 'pointer', color: n <= current ? '#f5b301' : '#c7cdd6' }}>★</button>
+      ))}
+    </span>
   )
 }

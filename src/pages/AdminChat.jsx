@@ -6,6 +6,7 @@ import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { chatPhoto, chatPreview, chatDayKey, photoMessage } from '../lib/chatContent'
 import { problemJobId } from '../lib/fieldExec'
+import { rateJobId, stripRateMarker } from '../lib/clientRatingAsk'
 import PhotoLightbox from '../components/PhotoLightbox'
 import ChatIcon from '../components/ChatIcon'
 import toast from 'react-hot-toast'
@@ -284,7 +285,7 @@ export default function AdminChat() {
                     <div className={`ac-bubble ${mine ? 'is-mine' : 'is-them'}${photo ? ' is-photo' : ''}`}>
                       {photo
                         ? <button type="button" onClick={() => setLightbox(photo)}><img src={viewablePhotoUrl(photo)} alt="" loading="lazy" /></button>
-                        : problemJobId(m.content) ? m.content.replace(/\n?#job:[\w-]+\s*$/, '') : m.content}
+                        : problemJobId(m.content) ? m.content.replace(/\n?#job:[\w-]+\s*$/, '') : rateJobId(m.content) ? stripRateMarker(m.content) + ' ⭐' : m.content}
                       {!photo && problemJobId(m.content) && <Link to={`/jobs?search=${problemJobId(m.content)}`} className="ac-issue-link">🛠 {pickLang(lang, 'Open the job', '作業を開く', 'Abrir o job')} →</Link>}
                       {isEmp && !mine && !photo && looksLikeSalaryMessage(m.content) && (
                         issued[m.id]

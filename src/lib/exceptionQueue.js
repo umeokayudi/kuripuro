@@ -15,13 +15,27 @@ export const URGENCY = { late: 95, no_person: 90, problem: 85, incomplete: 80, d
 
 const place = j => String(j?.title || '').split(' — ')[0]
 
+// v1.0.115 · job exceptions that need a decision have an owner and a deadline (days after the job date).
+// incomplete → the office closes or reschedules it by the next day; long (> 2× planned) → the office
+// reviews it with the employee within 3 days. Past the deadline the row goes up the queue as "vencido".
+export const EXCEPTION_RULES = { incomplete: { owner: 'office', dueDays: 1 }, long: { owner: 'office', dueDays: 3 } }
+export function withDeadline(kind, date, today) {
+  const rule = EXCEPTION_RULES[kind]
+  if (!rule || !date) return {}
+  const due = addDays(date, rule.dueDays)
+  return { owner: rule.owner, due, overdue: today > due }
+}
+
 /**
  * jobs: last 14 days → next 2 days; contracts for the expected duration; payroll: { autoClosed, disputed, paidUnconfirmed }.
- * Returns [{ id, kind, urgency, title, detail, date, action: { label, to } }] sorted most urgent first.
+ * Returns [{ id, kind, urgency, date, place, who, jobId, owner?, due?, overdue? }] sorted most urgent first.
  */
 export function buildExceptions({ jobs = [], contracts = [], payroll = {}, problems = [], today = tokyoToday(), now = new Date(), hideTests = true }) {
   const out = []
-  const push = (kind, j, extra) => out.push({ id: `${kind}:${j?.id || extra.key}`, kind, urgency: URGENCY[kind], date: j?.scheduled_date || '', place: j ? place(j) : '', who: j?.employee_name || '', jobId: j?.id || null, ...extra })
+  const push = (kind, j, extra) => {
+    const dl = withDeadline(kind, j?.scheduled_date, today)
+    out.push({ id: `${kind}:${j?.id || extra.key}`, kind, urgency: URGENCY[kind] + (dl.overdue ? 10 : 0), date: j?.scheduled_date || '', place: j ? place(j) : '', who: j?.employee_name || '', jobId: j?.id || null, ...dl, ...extra })
+  }
   for (const j of jobs) {
     if (j.status === 'cancelled') continue
     if (hideTests && (isTestName(j.employee_name) || isTestName(j.client_name))) continue

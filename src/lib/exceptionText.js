@@ -14,3 +14,11 @@ export function exceptionInfo(L) {
     ai_waiting: { icon: '🤖', title: () => L('Photo waiting for the AI check', 'AI確認待ちの写真', 'Foto aguardando a IA'), action: L('Open job', '作業を開く', 'Abrir job'), to: x => `/jobs?search=${x.jobId}` },
   }
 }
+
+/** v1.0.115 · "Resp.: Escritório · prazo 31/10" (+ "vencido") for exceptions that carry a deadline, else '' */
+export function exceptionDeadline(x, L) {
+  if (!x?.due) return ''
+  const owner = x.owner === 'office' ? L('Office', '事務所', 'Escritório') : x.owner
+  const d = x.due.slice(8, 10) + '/' + x.due.slice(5, 7)
+  return `${L('Owner', '担当', 'Resp.')}: ${owner} · ${x.overdue ? L(`overdue since ${d}`, `${d}期限切れ`, `vencido em ${d}`) : L(`due ${d}`, `期限 ${d}`, `prazo ${d}`)}`
+}

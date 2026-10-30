@@ -12,7 +12,7 @@ import toast from 'react-hot-toast'
 import { askConfirm } from '../components/ConfirmDialog'
 import { ensureServiceReports } from '../lib/jobReport'
 import { fetchExceptions } from '../lib/exceptionQueue'
-import { exceptionInfo } from '../lib/exceptionText'
+import { exceptionInfo, exceptionDeadline } from '../lib/exceptionText'
 import { billedInMonth } from '../lib/money'
 import { isTestJob, isTestClient, isTestName } from '../lib/testData'
 import { useHideTests } from '../hooks/useHideTests'
@@ -237,7 +237,7 @@ export default function Dashboard() {
             )}
             {actionRows.slice(0, 8).map(x => (
               <div key={x.id} style={rowStyle}>
-                <span style={{ fontSize: 13, minWidth: 0 }}>{EXC[x.kind].icon} <strong>{EXC[x.kind].title(x)}</strong><small style={{ display: 'block', color: 'var(--text3)', fontSize: 11 }}>{[x.place, x.who, x.date].filter(Boolean).join(' · ')}</small></span>
+                <span style={{ fontSize: 13, minWidth: 0 }}>{EXC[x.kind].icon} <strong>{EXC[x.kind].title(x)}</strong><small style={{ display: 'block', color: 'var(--text3)', fontSize: 11 }}>{[x.place, x.who, x.date].filter(Boolean).join(' · ')}</small>{x.due && <small style={{ display: 'block', fontSize: 11, color: x.overdue ? '#dc2626' : 'var(--text3)', fontWeight: x.overdue ? 700 : 400 }}>{exceptionDeadline(x, tr)}</small>}</span>
                 <button type="button" className="btn btn-sm btn-primary" style={{ flexShrink: 0 }} onClick={() => navigate(EXC[x.kind].to(x))}>{EXC[x.kind].action}</button>
               </div>
             ))}

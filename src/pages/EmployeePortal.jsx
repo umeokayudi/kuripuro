@@ -35,6 +35,7 @@ import { OFFICE_KEY, buildChatSections, officeThread, threadWith, teamUnreadTota
 import PhotoLightbox from '../components/PhotoLightbox'
 import { photoMessage, chatPreview } from '../lib/chatContent'
 import { shouldAskForgot, employeeSlipState, employeeSlipText, problemMessage } from '../lib/fieldExec'
+import { askClientRating } from '../lib/clientRatingAsk'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl, downloadJobIcs, fetchCalendarFeedUrl } from '../lib/calendar'
 import { ContractSignModal } from '../components/SpotContracts'
@@ -1068,6 +1069,7 @@ export default function EmployeePortal() {
       }).eq('id', retroJob.id)
       if (error) throw error
       finishQuoteJob(retroJob.id) // job from an accepted quote → its invoice goes to the client
+      askClientRating(retroJob) // v1.0.115 · the client is asked for a rating in the portal chat
       setRetroEval(ev)
       const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).maybeSingle()
       if (completedRetro) {
@@ -1364,6 +1366,7 @@ export default function EmployeePortal() {
       }
       capEndRef.current = null
       finishQuoteJob(job.id) // job from an accepted quote → its invoice goes to the client
+      askClientRating(job)
       window.dispatchEvent(new Event('kp:facility-updated'))
       const nfcEnd = nfcEndRef.current
       nfcEndRef.current = null

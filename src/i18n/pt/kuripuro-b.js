@@ -552,6 +552,7 @@ export const kuripuroPtB = {
     ratingPhotoOptional: 'Foto com sua avaliação (opcional)',
     updateRating: 'Atualizar avaliação',
     ratingSent: 'Obrigado pela sua avaliação!',
+    ratingUnavailable: 'Esta visita não está mais na lista — avalie em Visitas.',
     settings: 'Conta',
     settingsTitle: 'Login e segurança',
     currentPassword: 'Senha atual',

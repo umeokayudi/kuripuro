@@ -1,4 +1,5 @@
 import { gradeJobPhoto } from '../lib/photoAi'
+import { aiScoreView } from '../lib/aiScore'
 import { sortByOrder } from '../lib/agenda'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -366,9 +367,9 @@ export default function EmployeeProfile() {
                 {j.completed_at&&<span>🏁 {new Date(j.completed_at).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</span>}
                 {j.started_at&&j.completed_at&&<span>⏱ {Math.round((new Date(j.completed_at)-new Date(j.started_at))/60000)}m</span>}
                 {j.checklist_total!=null&&<span style={{color:j.checklist_done<j.checklist_total?'var(--red)':'var(--green)'}}>✓ {j.checklist_done}/{j.checklist_total}</span>}
-                {j.photo_ai_score!=null&&(
+                {aiScoreView(j)&&(
                   <span style={{color:j.photo_ai_approved?'var(--green)':'var(--red)'}}>
-                    📷 IA: {j.photo_ai_score}/10 {j.photo_ai_approved?'✅':'❌'}
+                    📷 IA: {j.photo_ai_score}/10 {j.photo_ai_approved?'✅':'❌'}{aiScoreView(j).clean?` ${pickLang(lang,'no problems','問題なし','sem problemas')}`:''}
                   </span>
                 )}
               </div>

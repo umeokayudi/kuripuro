@@ -32,6 +32,7 @@ import { notifyChanges, fetchAckState } from '../lib/assignNotices'
 import { pendingChanged } from '../lib/adminPending'
 import { assignText, conflictLabel, RED_CONFLICTS } from './assignText'
 import './assign.css'
+import { aiScoreView, aiReasonShort } from '../lib/aiScore'
 
 const STATUS_COLOR = { assigned: '#60a5fa', in_progress: '#f59e0b', completed: '#22c55e', cancelled: '#ef4444' }
 
@@ -479,7 +480,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
             {info.bucket === 'late' && !missed && <span className="ag-badge" style={{ color: '#ef4444' }}>{tr('Late', '遅れ', 'Atrasado')}</span>}
             {after && <span className="ag-badge" style={{ color: '#a855f7' }}>📷 {tr('Waiting After photo', 'After写真待ち', 'Aguardando foto After')}</span>}
             {job.closed_manually_at && <span className="ag-badge" style={{ color: '#b45309' }}>🔒 {tr('Closed by admin', '管理者が終了', 'Fechado pelo admin')}</span>}
-            {job.photo_ai_score != null && <span className="ag-badge" style={{ color: job.photo_ai_approved ? '#16a34a' : '#ef4444' }}>IA {job.photo_ai_score}/10</span>}
+            {aiScoreView(job) && <span className="ag-badge" title={aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))} style={{ color: job.photo_ai_approved ? '#16a34a' : '#ef4444' }}>IA {job.photo_ai_score}/10 · {aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))}</span>}
             {aiPending(job) && <span className="ag-badge" style={{ color: '#64748b' }}>IA …</span>}
             {ack && job.status === 'assigned' && <span className={`ag-seen ${ack}`}>{ack === 'seen' ? `👁 ${tr('Seen', '確認済み', 'Ciente')}` : `⏳ ${tr('Not seen yet', '未確認', 'Ainda não viu')}`}</span>}
             {warnings.map((c, i) => <span key={i} className={`ag-warn${RED_CONFLICTS.has(c.kind) ? ' red' : ''}`}>⚠️ {conflictLabel(c, T)}</span>)}
@@ -515,7 +516,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
       )}
       {p.total === 0 && <div className="ag-meta" style={{ marginTop: 6 }}>{tr('No checklist in the contract for this place.', 'この場所の契約にチェックリストがありません。', 'Sem checklist no contrato deste local.')}</div>}
 
-      {(job.photo_ai_score != null && (issues.length || !job.photo_ai_approved)) && (
+      {(aiScoreView(job) && issues.length > 0) && (
         <div className="ag-ai" style={{ background: job.photo_ai_approved ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)' }}>
           <b>IA {job.photo_ai_score}/10 {job.photo_ai_approved ? '✅' : '⚠️'}</b>
           {issues.length > 0 && <ul>{issues.map((r, i) => <li key={i}>{r.issue}{r.fix && <> — <b>{tr('fix', '直す', 'corrigir')}:</b> {r.fix}</>}</li>)}</ul>}

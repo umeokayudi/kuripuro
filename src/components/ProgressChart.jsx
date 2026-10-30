@@ -15,9 +15,12 @@ function addDays(d, n) {
   const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10)
 }
 
-export default function ProgressChart({ anchorDate, settings = DEFAULT_AGENDA_SETTINGS, refreshKey = 0, defaultUnit = 'day', onOpenJob }) {
+// v1.0.115 · `filters` ({ clientId, employeeName, label }) = the page's own filters (Reports): the chart
+// follows them instead of showing its own selects, so the chart and the list count the same jobs.
+export default function ProgressChart({ anchorDate, settings = DEFAULT_AGENDA_SETTINGS, refreshKey = 0, defaultUnit = 'day', onOpenJob, filters }) {
   const { lang, tr } = useLang()
   const [unit, setUnit] = useState(defaultUnit)
+  useEffect(() => { setUnit(defaultUnit) }, [defaultUnit])
   const [clientId, setClientId] = useState('')
   const [employeeId, setEmployeeId] = useState('')
   const [jobs, setJobs] = useState([])
@@ -27,7 +30,9 @@ export default function ProgressChart({ anchorDate, settings = DEFAULT_AGENDA_SE
   const [picked, setPicked] = useState(null)
   const [error, setError] = useState(null)
   const end = anchorDate || tokyoToday()
-  const start = unit === 'month' ? `${addDays(end, -SPAN.month).slice(0, 7)}-01` : bucketKey(addDays(end, -SPAN[unit] + 1), unit)
+  const start = filters?.days
+    ? addDays(end, -filters.days + 1)
+    : unit === 'month' ? `${addDays(end, -SPAN.month).slice(0, 7)}-01` : bucketKey(addDays(end, -SPAN[unit] + 1), unit)
 
   useEffect(() => {
     let alive = true
@@ -57,8 +62,9 @@ export default function ProgressChart({ anchorDate, settings = DEFAULT_AGENDA_SE
   }, [start, end, refreshKey])
 
   const clientOf = j => j.client_id || contractForAgendaJob(j, contracts)?.client_id || ''
-  const filtered = useMemo(() => jobs.filter(j =>
-    (!clientId || clientOf(j) === clientId) && (!employeeId || j.employee_id === employeeId)), [jobs, clientId, employeeId, contracts])
+  const filtered = useMemo(() => jobs.filter(j => filters
+    ? (!filters.clientId || clientOf(j) === filters.clientId) && (!filters.employeeName || j.employee_name === filters.employeeName)
+    : (!clientId || clientOf(j) === clientId) && (!employeeId || j.employee_id === employeeId)), [jobs, clientId, employeeId, contracts, filters?.clientId, filters?.employeeName]) // eslint-disable-line react-hooks/exhaustive-deps
   const series = useMemo(() => progressSeries(filtered, {
     unit, settings, expectedOf: j => expectedMinutes(j, contractForAgendaJob(j, contracts)),
   }), [filtered, unit, settings, contracts])
@@ -82,7 +88,11 @@ export default function ProgressChart({ anchorDate, settings = DEFAULT_AGENDA_SE
           ))}
         </div>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+      {filters ? (
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+          {tr('Filter of this page', 'このページの絞り込み', 'Filtro desta página')}: <b style={{ color: 'var(--text2)' }}>{filters.label || tr('everyone, all clients', '全員・全顧客', 'todos, todos os clientes')}</b>
+        </div>
+      ) : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <select className="ag-select" style={{ flex: '1 1 160px', minWidth: 0 }} value={clientId} onChange={e => { setClientId(e.target.value); setPicked(null) }} aria-label={tr('Client', '顧客', 'Cliente')}>
           <option value="">{tr('All clients', '全顧客', 'Todos os clientes')}</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
@@ -91,7 +101,7 @@ export default function ProgressChart({ anchorDate, settings = DEFAULT_AGENDA_SE
           <option value="">{tr('Everyone', '全員', 'Todos')}</option>
           {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
         </select>
-      </div>
+      </div>}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, marginBottom: 8 }}>
         {Object.keys(COLORS).map(k => (
           <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>

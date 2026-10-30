@@ -18,7 +18,7 @@ import { fetchAssignAlerts } from '../lib/assignNotices'
 import { PENDING_CHANGED } from '../lib/adminPending'
 import { fetchDayCoverage, needsAction } from '../lib/dayCoverage'
 import { fetchExceptions } from '../lib/exceptionQueue'
-import { exceptionInfo } from '../lib/exceptionText'
+import { exceptionInfo, exceptionDeadline } from '../lib/exceptionText'
 import { hideTests, HIDE_TESTS_CHANGED } from '../lib/testData'
 
 const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
@@ -280,6 +280,7 @@ export default function TimeOffCenter() {
                     <div className="tor-item-main">
                       <strong>{EXC[x.kind].title(x)}</strong>
                       <span>{[x.place, x.who, x.date && x.date.length === 10 ? fmtDay(x.date, lang, { weekday: 'short', day: 'numeric', month: 'short' }) : ''].filter(Boolean).join(' · ')}</span>
+                      {x.due && <span style={x.overdue ? { color: '#dc2626', fontWeight: 700 } : undefined}>{exceptionDeadline(x, L)}</span>}
                     </div>
                   </div>
                   <div className="tor-actions">

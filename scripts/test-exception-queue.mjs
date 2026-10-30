@@ -48,3 +48,17 @@ assert(problemJobId(msg) === 'abc-123', 'problem marker')
 const withProblem = buildExceptions({ jobs: [], problems: [{ id: 'm1', employee_id: 'e1', employee_name: 'Ana', content: msg, created_at: today + 'T03:00:00Z' }], today, now })
 assert(withProblem[0].kind === 'problem' && withProblem[0].place === `Shinbashi (${today})` && withProblem[0].text === 'Torneira quebrada' && withProblem[0].jobId === 'abc-123', 'reported problem in the queue')
 console.log('exception queue OK')
+
+// v1.0.115 · owner + deadline on incomplete / long
+{
+  const { withDeadline } = await import('../src/lib/exceptionQueue.js')
+  const { exceptionDeadline } = await import('../src/lib/exceptionText.js')
+  const a = withDeadline('incomplete', '2026-10-28', '2026-10-30')
+  if (!(a.owner === 'office' && a.due === '2026-10-29' && a.overdue)) throw new Error('incomplete deadline')
+  const b = withDeadline('long', '2026-10-29', '2026-10-30')
+  if (!(b.due === '2026-11-01' && !b.overdue)) throw new Error('long deadline')
+  if (Object.keys(withDeadline('late', '2026-10-30', '2026-10-30')).length) throw new Error('no deadline for late')
+  const L = (en, ja, pt) => pt
+  if (exceptionDeadline({ ...a }, L) !== 'Resp.: Escritório · vencido em 29/10') throw new Error('deadline text ' + exceptionDeadline(a, L))
+  console.log('exception deadlines: ok')
+}
