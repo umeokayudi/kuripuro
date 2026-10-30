@@ -3,6 +3,7 @@
 import { buildExceptions } from '../src/lib/exceptionQueue.js'
 import { isTestName } from '../src/lib/testData.js'
 import { scoreOf, byScore } from '../src/lib/employeeScore.js'
+import { shouldAskForgot, employeeSlipState, problemMessage, problemJobId } from '../src/lib/fieldExec.js'
 
 const assert = (c, m) => { if (!c) throw new Error(m) }
 const today = '2026-10-30'
@@ -39,4 +40,11 @@ const evaluated = new Set(['e1'])
 assert(scoreOf({ id: 'e1', score: 85 }, evaluated) === 85 && scoreOf({ id: 'e2', score: 100 }, evaluated) === null, 'score only with evaluations')
 const order = [{ id: 'e2', full_name: 'Ana' }, { id: 'e1', full_name: 'Zé', score: 70 }].sort(byScore(evaluated)).map(e => e.id)
 assert(order.join() === 'e1,e2', 'rated people first in the ranking')
+// v1.0.112 · field execution
+assert(!shouldAskForgot({ elapsedSec: 89 * 60, plannedMin: 60 }) && shouldAskForgot({ elapsedSec: 90 * 60, plannedMin: 60 }) && !shouldAskForgot({ elapsedSec: 999 * 60, plannedMin: 60, asked: true }), 'forgot-to-finish after planned + 30')
+assert(employeeSlipState({}, null) === 'to_confirm' && employeeSlipState({ employee_confirmed_at: 'x' }, null) === 'confirmed' && employeeSlipState({ employee_confirmed_at: 'x' }, { status: 'paid' }) === 'paid' && employeeSlipState({ employee_disputed_at: 'x' }, null) === 'disputed', 'payslip states')
+const msg = problemMessage({ place: 'Shinbashi', date: today, text: 'Torneira quebrada', jobId: 'abc-123' })
+assert(problemJobId(msg) === 'abc-123', 'problem marker')
+const withProblem = buildExceptions({ jobs: [], problems: [{ id: 'm1', employee_id: 'e1', employee_name: 'Ana', content: msg, created_at: today + 'T03:00:00Z' }], today, now })
+assert(withProblem[0].kind === 'problem' && withProblem[0].place === `Shinbashi (${today})` && withProblem[0].text === 'Torneira quebrada' && withProblem[0].jobId === 'abc-123', 'reported problem in the queue')
 console.log('exception queue OK')

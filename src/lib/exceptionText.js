@@ -3,6 +3,7 @@
 export function exceptionInfo(L) {
   return {
     late: { icon: '⏰', title: x => L(`Late: not started (${x.minutes} min)`, `遅れ: 未開始（${x.minutes}分）`, `Atrasado: não iniciado (${x.minutes} min)`), action: L('Open Live Track', 'ライブ追跡', 'Abrir Live Track'), to: () => '/live' },
+    problem: { icon: '🛠', title: x => L(`Problem reported: ${x.text || '—'}`, `問題の報告: ${x.text || '—'}`, `Problema reportado: ${x.text || '—'}`), action: L('Answer', '回答', 'Responder'), to: x => `/adminchat?employee=${x.employeeId}` },
     no_person: { icon: '⚠️', title: () => L('No person assigned', '担当なし', 'Sem pessoa'), action: L('Assign', '割当', 'Atribuir'), to: () => '/schedule' },
     incomplete: { icon: '🚫', title: () => L('Incomplete — never started', '未完了 — 未開始のまま', 'Incompleto — nunca iniciado'), action: L('Close or reschedule', '終了・再予定', 'Fechar ou reagendar'), to: x => `/jobs?search=${x.jobId}` },
     disputed: { icon: '💬', title: x => L(`Payslip disputed (${x.period})`, `明細に異議（${x.period}）`, `Holerite contestado (${x.period})`), action: L('Answer', '回答', 'Responder'), to: () => '/salary-complaints' },
