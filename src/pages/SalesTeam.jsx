@@ -10,6 +10,8 @@ import SalesInbox from '../components/SalesInbox'
 import { regionOf, suggestSeller, unassignedOpenLeads } from '../lib/salesInsights'
 import { buildDeals } from '../components/SalesFunnel'
 import { funnelCopy } from '../lib/salesPhases'
+import { maskEmail, phoneTakenMessage } from '../lib/contactMask'
+import { supabase } from '../lib/supabase'
 
 const TXT = {
   en: { title:'Sales performance', create:'Create seller login', name:'Name', email:'Email', password:'Temporary password (10+ characters)', phone:'Phone', add:'Create access', team:'Team', approaches:'Approaches', leads:'Leads', quotes:'Quotes', average:'Avg. quote', conversion:'Approach→won', contracts:'Active contracts', newContracts:'New contracts', commission:'Commission', followups:'Follow-ups', due:'Due', pipeline:'Pipeline', assign:'Assign seller', none:'Unassigned', review:'Contract approvals', approve:'Approve', changes:'Request changes', reject:'Reject', note:'Review note', openPdf:'Signed PDF', active:'Active', inactive:'Inactive', commissionRule:'Commission default', percent:'Percent', fixed:'Fixed', value:'Value', saveRule:'Save rule', reports:'Field reports', travel:'Travel', hours:'Hours', noRows:'No records yet.', loading:'Loading…', goals:'Monthly goals', goalsHint:'Set each seller\'s goals for the month. Sellers see them in their portal; progress uses real records.', goalMonth:'Month', saveGoals:'Save goals', alerts:'Follow-up alerts', alertsHint:'Open clients that are overdue, due today or without contact for 14+ days.', seller:'Seller', allClear:'No client needs attention right now.', contacts:'Contacts', newLeads:'New leads', period:'Period', today:'Today', month:'This month', year:'This year', all:'All time', target:'Target', progress:'Progress', savedHere:'Targets are saved in this browser.', revenue:'Monthly contract value', routing:'New leads to hand out', routingHint:'Leads without a seller (e.g. from marketing). The suggestion uses each seller\'s results in the same region and source, their open clients and late follow-ups.', suggested:'Suggested', askAi:'Ask AI', aiPick:'AI pick', assignTo:'Assign', noUnassigned:'Every lead has a seller.', handNote:'Note for the seller (optional)', winIn:(r,n)=>`${r}% won in region (${n})`, load:(o,d)=>`${o} open · ${d} late`, today2:'Seller day today', notStarted:'Not started', working:'Working since', finished:'Finished', report:'Automatic report', noReport:'No report yet.', approachesShort:'approaches', contactsShort:'contacts', quotesShort:'quotes' },
@@ -53,6 +55,8 @@ export default function SalesTeam() {
 
   const createSeller = async e => {
     e.preventDefault()
+    const taken = await phoneTakenMessage(supabase, form.phone, null, tr)
+    if (taken) return toast.error(taken)
     if (await act({ action:'create-salesperson', ...form })) setForm({ full_name:'', email:'', password:'', phone:'' })
   }
 
@@ -195,7 +199,7 @@ export default function SalesTeam() {
           const rule = data.commissionRules?.find(x=>x.salesperson_id===person.id)
           const value = rules[person.id] || { commission_type:rule?.commission_type || 'percent', commission_value:rule?.commission_value ?? 0, percent_basis:rule?.percent_basis || 'base_monthly' }
           return <div className={`sales-manager-person${selectedId===person.id?' selected':''}`} key={person.id}>
-            <button className="sales-manager-person-select" onClick={()=>setSelectedId(person.id)}><strong>{person.full_name}</strong><small>{person.email} · {person.is_active?t.active:t.inactive}</small></button>
+            <button className="sales-manager-person-select" onClick={()=>setSelectedId(person.id)}><strong>{person.full_name}</strong><small>{maskEmail(person.email)} · {person.is_active?t.active:t.inactive}</small></button>
             <div className="sales-manager-mini-metrics">{[[t.approaches,pm.approaches],[t.leads,pm.leads],[t.quotes,pm.quotes],[t.average,yen(pm.quoteAverage)],[t.conversion,`${Number(pm.conversion||0).toFixed(1)}%`],[t.newContracts,pm.activeContracts],[t.commission,yen(m.commission_pending)],[tr('Spot commission to pay','スポット報酬（未払）','Comissão avulsa a pagar'),yen(m.spot_commission_due)],[tr('Fixed commission/mo','定期報酬/月','Comissão fixa/mês'),yen(m.fixed_commission_monthly)]].map(([label,num])=><span key={label}><b>{num}</b>{label}</span>)}</div>
             <div className="sales-rule-row"><span>{t.commissionRule}</span><select value={value.commission_type} onChange={e=>setRules(v=>({...v,[person.id]:{...value,commission_type:e.target.value}}))}><option value="percent">{t.percent}</option><option value="fixed">{t.fixed}</option></select><input aria-label={t.value} type="number" min="0" step="0.1" value={value.commission_value} onChange={e=>setRules(v=>({...v,[person.id]:{...value,commission_value:e.target.value}}))}/><button className="btn btn-sm" disabled={busy} onClick={()=>act({action:'set-commission-rule',salesperson_id:person.id,...value})}>{t.saveRule}</button></div>
             <button className="btn btn-sm" onClick={()=>act({action:'set-salesperson-active',salesperson_id:person.id,is_active:!person.is_active})}>{person.is_active?t.inactive:t.active}</button>

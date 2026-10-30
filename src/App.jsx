@@ -18,6 +18,7 @@ import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import ConfirmDialogHost from './components/ConfirmDialog'
 import Login from './pages/Login'
+import SetPassword from './pages/SetPassword'
 import { supabase } from './lib/supabase'
 import { globalSearch, groupResults } from './lib/globalSearch'
 
@@ -212,6 +213,7 @@ function AppContent() {
     </div>
   )
 
+  if (window.location.pathname === '/set-password') return <SetPassword />
   if (!user) return <Login />
   if (user.role === 'employee') return (
     <PortalErrorBoundary label="Employee portal">

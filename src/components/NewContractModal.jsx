@@ -7,6 +7,9 @@ import { checklistTemplateForJob } from '../lib/jobChecklist'
 import { fetchContractSellers } from '../lib/contractSellers'
 import SellerCommissionFields from './SellerCommissionFields'
 import toast from 'react-hot-toast'
+import ClientContactField from './ClientContactField'
+import { fillClientContact } from '../lib/clientContact'
+import { useLang } from '../hooks/useLang'
 
 // v1.0.21 · Contracts → Spot → "+ New contract": one form creates the job for the worker,
 // the 業務委託契約書, its invoice (payment on day N of next month) and the saved PDF.
@@ -14,6 +17,7 @@ import toast from 'react-hot-toast'
 const EMPTY_JOB = { client_id: '', location_id: '', location_name: '', address: '', gps_lat: '', gps_lng: '', scheduled_date: '', scheduled_time: '', employee_id: '', spot_value: '', description: '', create_job: true }
 
 export default function NewContractModal({ onClose, onSaved }) {
+  const { lang } = useLang()
   const [clients, setClients] = useState([])
   const [locations, setLocations] = useState([])
   const [employees, setEmployees] = useState([])
@@ -76,6 +80,7 @@ export default function NewContractModal({ onClose, onSaved }) {
       }
       const row = buildSpotContractRow({ contract, job: inserted, form, location: locations.find(l => l.id === job.location_id), client: cli, employee: emp })
       const result = await saveSpotContractWithInvoice(row)
+      if (cli) fillClientContact(supabase, cli, contract).catch(() => {})
       toast.success(`📄 Contract ${result.contract.contract_number} created${inserted ? ' · job sent to ' + (emp?.full_name || 'staff') : ''}`)
       if (result.invoice) toast.success(`💴 Invoice · payment due ${result.invoice.due_date}`)
       if (result.invoiceError) toast.error(`Invoice not created: ${result.invoiceError.message}`)
@@ -110,12 +115,7 @@ export default function NewContractModal({ onClose, onSaved }) {
           <div className="form-group"><label>Location address</label><input value={job.address} onChange={e => setJ('address', e.target.value)} placeholder="東京都港区…" /></div>
           <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><input value={contract.client_address} onChange={e => setC('client_address', e.target.value)} /></div>
           <div className="form-group"><label>Representative (代表者)</label><input value={contract.client_representative} onChange={e => setC('client_representative', e.target.value)} /></div>
-          <div className="form-group"><label>Contact person · phone</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input value={contract.contact_name} onChange={e => setC('contact_name', e.target.value)} placeholder="山田" />
-              <input value={contract.contact_phone} onChange={e => setC('contact_phone', e.target.value)} placeholder="03-…" />
-            </div>
-          </div>
+          <ClientContactField client={clients.find(c => c.id === job.client_id)} lang={lang} name={contract.contact_name} phone={contract.contact_phone} onName={v => setC('contact_name', v)} onPhone={v => setC('contact_phone', v)} />
         </div>
 
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', margin: '6px 0 6px' }}>2 · When and who does it</div>

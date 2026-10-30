@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { phoneOwner } from '../lib/contactMask'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { salesPost } from '../lib/salesApi'
@@ -16,7 +17,7 @@ const TXT = {
     title: 'Edit login', newTitle: 'New login', created: 'Login created', needPassword: n => `Set a password with at least ${n} characters`, newPasswordLabel: 'Password', name: 'Name', contact: 'Contact name', email: 'E-mail (login)', phone: 'Phone', role: 'Role', team: 'Portal', teamSales: 'Sales (seller portal)', teamMarketing: 'Marketing (marketing portal)',
     password: 'New password', passwordHint: n => `Leave empty to keep the current password. At least ${n} characters.`,
     generate: 'Generate', copy: 'Copy', copied: 'Copied', active: 'Can sign in (active)', save: 'Save', cancel: 'Cancel',
-    saved: 'Saved', saving: 'Saving…', needName: 'Write the name', badEmail: 'Write a valid e-mail', emailUsed: 'This e-mail already has a login',
+    saved: 'Saved', saving: 'Saving…', needName: 'Write the name', badEmail: 'Write a valid e-mail', emailUsed: 'This e-mail already has a login', phoneUsed: n => `This phone already belongs to ${n}. Each person needs their own number.`,
     shortPassword: n => `The password needs at least ${n} characters`,
     tellUser: 'Send the new password to the person; it is not shown again.', storeHint: 'Store logins can also sign in with the store name.',
   },
@@ -24,7 +25,7 @@ const TXT = {
     title: 'ログインを編集', newTitle: '新しいログイン', created: 'ログインを作成しました', needPassword: n => `${n}文字以上のパスワードを設定してください`, newPasswordLabel: 'パスワード', name: '氏名', contact: '担当者名', email: 'メール（ログイン）', phone: '電話', role: '役割', team: 'ポータル', teamSales: '営業（営業ポータル）', teamMarketing: 'マーケティング（マーケティングポータル）',
     password: '新しいパスワード', passwordHint: n => `空欄なら現在のパスワードのままです。${n}文字以上。`,
     generate: '自動生成', copy: 'コピー', copied: 'コピーしました', active: 'ログイン可能（有効）', save: '保存', cancel: 'キャンセル',
-    saved: '保存しました', saving: '保存中…', needName: '氏名を入力してください', badEmail: '正しいメールを入力してください', emailUsed: 'このメールはすでに使われています',
+    saved: '保存しました', saving: '保存中…', needName: '氏名を入力してください', badEmail: '正しいメールを入力してください', emailUsed: 'このメールはすでに使われています', phoneUsed: n => `この電話番号はすでに${n}さんが使っています。1人1番号にしてください。`,
     shortPassword: n => `パスワードは${n}文字以上必要です`,
     tellUser: '新しいパスワードを本人に伝えてください。再表示はされません。', storeHint: '店舗ログインは店舗名でもログインできます。',
   },
@@ -32,7 +33,7 @@ const TXT = {
     title: 'Editar login', newTitle: 'Novo login', created: 'Login criado', needPassword: n => `Defina uma senha com pelo menos ${n} caracteres`, newPasswordLabel: 'Senha', name: 'Nome', contact: 'Nome do contato', email: 'E-mail (login)', phone: 'Telefone', role: 'Função', team: 'Portal', teamSales: 'Vendas (portal do vendedor)', teamMarketing: 'Marketing (portal de marketing)',
     password: 'Nova senha', passwordHint: n => `Deixe em branco para manter a senha atual. Pelo menos ${n} caracteres.`,
     generate: 'Gerar', copy: 'Copiar', copied: 'Copiado', active: 'Pode entrar (ativo)', save: 'Salvar', cancel: 'Cancelar',
-    saved: 'Salvo', saving: 'Salvando…', needName: 'Digite o nome', badEmail: 'Digite um e-mail válido', emailUsed: 'Este e-mail já tem um login',
+    saved: 'Salvo', saving: 'Salvando…', needName: 'Digite o nome', badEmail: 'Digite um e-mail válido', emailUsed: 'Este e-mail já tem um login', phoneUsed: n => `Este telefone já é de ${n}. Cada pessoa precisa do próprio número.`,
     shortPassword: n => `A senha precisa ter pelo menos ${n} caracteres`,
     tellUser: 'Envie a nova senha para a pessoa; ela não será exibida de novo.', storeHint: 'Logins de loja também podem entrar com o nome da loja.',
   },
@@ -76,6 +77,11 @@ export default function UserEditDialog({ user, allRows, lang = 'en', typeLabel, 
     if (!email.includes('@') && !(user.type === 'client' && !email && !user.email)) return toast.error(t.badEmail)
     if (email && allRows.some(r => !(r.type === user.type && r.id === user.id) && String(r.email || '').toLowerCase() === email)) return toast.error(t.emailUsed)
     if (password && password.length < min) return toast.error(t.shortPassword(min))
+    // v1.0.117 · one phone = one person (employees and sellers)
+    if (user.type === 'employee' || user.type === 'salesperson') {
+      const owner = phoneOwner(allRows.filter(r => r.type === 'employee' || r.type === 'salesperson').map(r => ({ id: `${r.type}:${r.id}`, name: r.name, phone: r.phone })), form.phone, `${user.type}:${user.id}`)
+      if (owner) return toast.error(t.phoneUsed(owner.name))
+    }
     if (isNew && !password) return toast.error(t.needPassword(min))
     setSaving(true)
     try {

@@ -9,6 +9,8 @@ import {
 } from '../lib/cleaningType'
 import { checklistTemplateForJob, parseChecklistTemplate, checklistDisplayLabel, resolveChecklistLocationName, LOCATION_CHECKLISTS } from '../lib/jobChecklist'
 import { useLang, pickLang, localeOf } from '../hooks/useLang'
+import ClientContactField from './ClientContactField'
+import { fillClientContact } from '../lib/clientContact'
 import { tokyoToday } from '../lib/dates'
 import { emptySpotContractForm, buildSpotContractRow, contractPrefillFromClient } from '../lib/spotContract'
 import { saveSpotContractWithInvoice } from '../lib/spotContractOps'
@@ -223,6 +225,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       const row = buildSpotContractRow({ contract: contractForm, job: inserted, form: { ...form, title: finalTitle }, location: selectedLoc, client: cli, employee: emp })
       try {
         const { contract: saved, invoice, invoiceError } = await saveSpotContractWithInvoice(row)
+        if (cli) fillClientContact(supabase, cli, contractForm).catch(() => {})
         toast.success(`📄 Contract ${saved.contract_number} saved in Contracts → Spot`)
         if (invoice) toast.success(`💴 Invoice created · payment due ${invoice.due_date}`)
         if (invoiceError) toast.error(`Invoice not created: ${invoiceError.message}`)
@@ -461,8 +464,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
                     <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><input value={contractForm.client_address} onChange={e => updContract('client_address', e.target.value)} placeholder="東京都港区…" /></div>
                     <div className="form-group"><label>Representative (代表者)</label><input value={contractForm.client_representative} onChange={e => updContract('client_representative', e.target.value)} placeholder="代表取締役 山田 太郎" /></div>
                     <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="31" value={contractForm.payment_day} onChange={e => updContract('payment_day', e.target.value)} /></div>
-                    <div className="form-group"><label>Contact person (location)</label><input value={contractForm.contact_name} onChange={e => updContract('contact_name', e.target.value)} placeholder="山田様 / Store manager" /></div>
-                    <div className="form-group"><label>Contact phone</label><input value={contractForm.contact_phone} onChange={e => updContract('contact_phone', e.target.value)} placeholder="03-1234-5678" /></div>
+                    <ClientContactField client={clients.find(c => c.id === form.client_id)} lang={lang} name={contractForm.contact_name} phone={contractForm.contact_phone} onName={v => updContract('contact_name', v)} onPhone={v => updContract('contact_phone', v)} />
                     <div className="form-group"><label>Price charged to the location (¥)</label><input type="number" value={contractForm.price} onChange={e => updContract('price', e.target.value)} placeholder="30000" /></div>
                     <div className="form-group"><label>Tax</label>
                       <div style={{ display: 'flex', gap: 8 }}>

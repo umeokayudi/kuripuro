@@ -63,6 +63,8 @@ export default async function handler(req, res) {
   const email = String(req.body?.email || '').trim().toLowerCase()
   const password = String(req.body?.password || '')
   if (!email || !password) return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' })
+  // v1.0.117 · a login still waiting for its set-password link ("setup:<token>") never opens a session
+  if (password.startsWith('setup:')) return res.status(401).json({ error: 'E-mail ou senha incorretos.' })
 
   try {
     const db = salesDb()

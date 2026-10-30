@@ -11,6 +11,7 @@ import ContractTab from '../components/ContractTab'
 import { RoleBadge, RolePicker } from '../components/EmployeeRole'
 import { useLang, pickLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
+import { phoneTakenMessage } from '../lib/contactMask'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -156,6 +157,8 @@ export default function EmployeeProfile() {
   const toggleDay = d => setWorkDays(w=>w.includes(d)?w.filter(x=>x!==d):[...w,d])
 
   const handleSave = async () => {
+    const taken = await phoneTakenMessage(supabase, form.phone, id, (en, ja, pt) => pickLang(lang, en, ja, pt))
+    if (taken) return toast.error(taken)
     const { error } = await supabase.from('employees').update({
       full_name:form.full_name, email:form.email, ...(form.password ? { password:form.password } : {}),
       phone:form.phone, address:form.address, contract_type:form.contract_type,
