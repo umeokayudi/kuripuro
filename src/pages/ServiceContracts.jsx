@@ -16,11 +16,20 @@ import { confirmAndRun } from '../components/ConfirmDialog'
 import SetupChain from '../components/SetupChain'
 import KeyReveal from '../components/KeyReveal'
 import KeyRevealLog from '../components/KeyRevealLog'
+import { contractMonthly, contractGross, contractIssues, groupByStore } from '../lib/money'
+import { askConfirm } from '../components/ConfirmDialog'
 import { splitChecklist } from '../lib/agenda'
 import { ensurePlaceForContract } from '../lib/places'
 import '../components/agenda.css'
 
 const NO_SELLER = { salesperson_id:'', salesperson_name:'', commission_type:null, commission_value:null, commission_amount:0 }
+
+const ISSUE_TEXT = {
+  zero_value: '¥0/month — remove or merge into the store',
+  zero_visits: '0 visits/month — inflates nothing but bills nothing: remove or set the days',
+  generic_deep: 'Generic "Deep Clean ¥5,000" — merge into the store contract or describe it',
+  stored_mismatch: 'Saved total differs from visits × price — open and save to fix',
+}
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const SERVICE_TYPES = ['Basic Cleaning','Deep Cleaning','Range Hood','AC Cleaning','Grease Trap','Window Cleaning','Floor Wax','Spot Cleaning']
@@ -92,6 +101,13 @@ function RecurringContracts() {
     if (Object.keys(errs).length) return
     const visits = calcVisits(form.days_of_week)
     const revenue = form.billing_type==='fixed_monthly' ? parseFloat(form.fixed_monthly||0) : visits * parseFloat(form.price_per_visit||0)
+    // v1.0.109 · visits × price must match the monthly total; when it does not, show the difference first.
+    const byVisits = visits * (parseFloat(form.price_per_visit)||0)
+    if (form.billing_type==='fixed_monthly' && byVisits > 0 && Math.round(byVisits) !== Math.round(revenue)) {
+      const ok = await askConfirm({ title: 'Visits × price ≠ monthly total', message: `${visits} visits × ¥${Number(form.price_per_visit).toLocaleString()} = ¥${Math.round(byVisits).toLocaleString()}\nFixed monthly: ¥${Math.round(revenue).toLocaleString()}\nDifference: ¥${Math.round(revenue - byVisits).toLocaleString()}\n\nSave anyway? The invoice uses the fixed monthly amount.`, confirmLabel: 'Save' })
+      if (!ok) return
+    }
+    if (!(revenue > 0)) { setErrors({ price_per_visit: 'This contract would be ¥0/month — pick the days or enter the price' }); return }
     const payload = { client_id:selectedClient, ...form, location_name:form.location_name.trim(), training_checklist:splitChecklist(form.training_checklist).join('\n')||null, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, area:(form.area||'').trim()||null, monthly_revenue:revenue }
     // Seller of this location: monthly commission (salesperson_name is only on spot contracts).
     Object.assign(payload, sellerFields(form))
@@ -110,8 +126,8 @@ function RecurringContracts() {
     await ensurePlaceForContract(supabase, payload)
 
     // Update client monthly_revenue
-    const { data: allContracts } = await supabase.from('service_contracts').select('monthly_revenue').eq('client_id',selectedClient).eq('is_active',true)
-    const totalRevenue = (allContracts||[]).reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
+    const { data: allContracts } = await supabase.from('service_contracts').select('*').eq('client_id',selectedClient).eq('is_active',true)
+    const totalRevenue = (allContracts||[]).reduce((s,c)=>s+contractMonthly(c),0)
     await supabase.from('clients').update({ monthly_revenue: totalRevenue }).eq('id', selectedClient)
 
     setShowForm(false); setEditing(null)
@@ -136,12 +152,14 @@ function RecurringContracts() {
     if (!ok) return
     loadContracts(selectedClient)
     // Recalculate client revenue
-    const { data } = await supabase.from('service_contracts').select('monthly_revenue').eq('client_id',selectedClient).eq('is_active',true).neq('id',id)
-    const total = (data||[]).reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
+    const { data } = await supabase.from('service_contracts').select('*').eq('client_id',selectedClient).eq('is_active',true).neq('id',id)
+    const total = (data||[]).reduce((s,c)=>s+contractMonthly(c),0)
     await supabase.from('clients').update({ monthly_revenue:total }).eq('id',selectedClient)
   }
 
-  const totalMonthlyRevenue = contracts.reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
+  // v1.0.109 · one rule for the monthly value (lib/money): same number as Clients and Dashboard
+  const totalMonthlyRevenue = contracts.reduce((s,c)=>s+contractMonthly(c),0)
+  const stores = groupByStore(contracts)
   const totalMonthlyHours = contracts.reduce((s,c)=>s+Number(c.visits_per_month||0)*Number(c.hours_per_visit||0),0)
   const totalVisits = contracts.reduce((s,c)=>s+Number(c.visits_per_month||0),0)
   const client = clients.find(c=>c.id===selectedClient)
@@ -202,7 +220,7 @@ function RecurringContracts() {
         <>
           {/* Summary */}
           <div className="kp-two-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
-            {[['Locations',contracts.length],['Visits/mo',totalVisits],['Hours/mo',totalMonthlyHours.toFixed(0)+'h'],['Revenue/mo','¥'+totalMonthlyRevenue.toLocaleString()]].map(([l,v])=>(
+            {[['Stores',stores.length],['Visits/mo',totalVisits],['Hours/mo',totalMonthlyHours.toFixed(0)+'h'],['Revenue/mo','¥'+totalMonthlyRevenue.toLocaleString()]].map(([l,v])=>(
               <div key={l} className="card" style={{padding:'12px 14px',textAlign:'center'}}>
                 <div style={{fontSize:20,fontWeight:700,color:'var(--green)'}}>{v}</div>
                 <div style={{fontSize:11,color:'var(--text3)',marginTop:3}}>{l}</div>
@@ -284,8 +302,15 @@ function RecurringContracts() {
           <KeyRevealLog />
           {/* Contracts list */}
           {contracts.length===0&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>No locations yet. Add your first service location.</div></div>}
-          {contracts.map(c=>(
-            <div key={c.id} className="card" style={{marginBottom:10}}>
+          {/* v1.0.109 · one card per STORE with its items inside (not one line per component) */}
+          {stores.map(g=>(
+            <div key={g.store} className="card" style={{marginBottom:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}}>
+                <div style={{fontWeight:700,fontSize:15}}>🏪 {g.store} <span style={{fontSize:12,fontWeight:500,color:'var(--text3)'}}>· {g.items.length} item{g.items.length>1?'s':''} · {g.visits} visits/mo · {g.hours.toFixed(0)}h/mo</span></div>
+                <div style={{fontSize:16,fontWeight:700,color:'var(--green)'}}>¥{g.monthly.toLocaleString()}/mo</div>
+              </div>
+          {g.items.map(c=>(
+            <div key={c.id} style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:10}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
                 <div>
                   <div style={{fontWeight:600,fontSize:14}}>{c.location_name}{c.area&&<span className="badge badge-navy" style={{marginLeft:8,fontWeight:600}}>📍 {c.area}</span>}</div>
@@ -295,10 +320,12 @@ function RecurringContracts() {
                   {c.training_video_url&&<div style={{fontSize:11,color:'#60a5fa',marginTop:2}}>🎬 Training video configured</div>}
                 </div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:15,fontWeight:700,color:'var(--green)'}}>¥{Number(c.monthly_revenue||0).toLocaleString()}/mo</div>
+                  <div style={{fontSize:15,fontWeight:700,color:'var(--green)'}}>¥{contractMonthly(c).toLocaleString()}/mo</div>
+                  {contractMonthly(c)!==contractGross(c)&&<div style={{fontSize:11,color:'var(--text3)'}}>−{c.discount_percent}% of ¥{contractGross(c).toLocaleString()}</div>}
                   <div style={{fontSize:11,color:'var(--text3)'}}>¥{Number(c.price_per_visit||0).toLocaleString()}/visit</div>
                 </div>
               </div>
+              {contractIssues(c).length>0&&<div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>{contractIssues(c).map(k=><span key={k} className="badge badge-amber" style={{whiteSpace:'normal'}}>⚠️ {k==='stored_mismatch'?`${ISSUE_TEXT[k]} (saved ¥${Number(c.monthly_revenue||0).toLocaleString()})`:ISSUE_TEXT[k]}</span>)}</div>}
               <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
                 {(c.days_of_week||[]).map(d=><span key={d} style={{background:'var(--navy)',color:'#fff',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:500}}>{d}</span>)}
                 <span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text3)'}}>{c.visits_per_month} visits/mo</span>
@@ -314,6 +341,8 @@ function RecurringContracts() {
                 <button className="btn btn-sm" onClick={()=>handleEdit(c)}>✏️ Edit</button>
                 <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(c.id)}>✕ Remove</button>
               </div>
+            </div>
+          ))}
             </div>
           ))}
         </>

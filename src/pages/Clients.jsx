@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { loadClientMoney, withClientMoney } from '../lib/moneyData'
+import { marginPct } from '../lib/money'
 import { PORTAL_SETUP_SQL, SUPABASE_SQL_URL } from '../lib/portalSetupSql'
 import { provisionAllStoreAccounts, getPortalStores } from '../lib/portalStores'
 import { apiFetch } from '../lib/apiFetch'
@@ -205,10 +207,14 @@ export default function Clients() {
     setBulkProvisionBusy(false)
   }
 
+  const [costMonth, setCostMonth] = useState('')
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('clients').select('*').order('company_name')
-    setClients(data||[])
+    // v1.0.109 · revenue = active contracts, cost = real team cost of last month (same as Dashboard / Contracts)
+    const money = await loadClientMoney().catch(() => null)
+    setCostMonth(money?.costMonth || '')
+    setClients(withClientMoney(data||[], money))
     setLoading(false)
   }
 
@@ -256,9 +262,11 @@ export default function Clients() {
     load()
   }
 
-  const totalRevenue = clients.reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
-  const totalCost = clients.reduce((s,c)=>s+Number(c.monthly_cost||0),0)
-  const totalProfit = totalRevenue - totalCost
+  const totalRevenue = clients.filter(c=>c.is_active).reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
+  // Profit only over clients whose real cost is known (never revenue − ¥0).
+  const costed = clients.filter(c=>c.is_active && c.monthly_cost != null)
+  const totalCost = costed.reduce((s,c)=>s+Number(c.monthly_cost||0),0)
+  const totalProfit = costed.reduce((s,c)=>s+Number(c.monthly_revenue||0),0) - totalCost
 
   return (
     <div>
@@ -279,8 +287,8 @@ export default function Clients() {
         <div>
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {(searchId ? clients.filter(c => c.id === searchId) : clients).map(c=>{
-            const profit = Number(c.monthly_revenue||0) - Number(c.monthly_cost||0)
-            const margin = c.monthly_revenue ? Math.round(profit/c.monthly_revenue*100) : 0
+            const profit = c.monthly_cost == null ? null : Number(c.monthly_revenue||0) - Number(c.monthly_cost||0)
+            const margin = marginPct(c.monthly_revenue, c.monthly_cost)
             return (
               <div key={c.id} className="card" style={{marginBottom:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
@@ -297,11 +305,11 @@ export default function Clients() {
                     <div style={{fontSize:10,color:'var(--text3)'}}>Revenue</div>
                   </div>
                   <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
-                    <div style={{fontSize:14,fontWeight:700,color:'var(--green)'}}>¥{profit.toLocaleString()}</div>
-                    <div style={{fontSize:10,color:'var(--text3)'}}>Profit</div>
+                    <div style={{fontSize:14,fontWeight:700,color:profit != null && profit < 0 ? 'var(--red)' : 'var(--green)'}}>{profit == null ? '—' : `${profit < 0 ? '−' : ''}¥${Math.abs(profit).toLocaleString()}`}</div>
+                    <div style={{fontSize:10,color:'var(--text3)'}}>Profit{costMonth ? ` (${costMonth})` : ''}</div>
                   </div>
                   <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
-                    <div style={{fontSize:14,fontWeight:700,color:margin>=70?'var(--green)':margin>=50?'#EF9F27':'var(--red)'}}>{margin}%</div>
+                    <div style={{fontSize:14,fontWeight:700,color:margin==null?'var(--text3)':margin>=70?'var(--green)':margin>=50?'#EF9F27':'var(--red)'}} title={margin==null?'No completed job last month: cost unknown':''}>{margin == null ? '—' : `${margin}%`}</div>
                     <div style={{fontSize:10,color:'var(--text3)'}}>Margin</div>
                   </div>
                 </div>
@@ -343,8 +351,7 @@ export default function Clients() {
                 {SERVICE_TYPES.map(s=><option key={s}>{s}</option>)}
               </select>
             </div>
-            <div className="form-group"><label>Monthly Revenue (¥)</label><input type="number" value={form.monthly_revenue} onChange={e=>upd('monthly_revenue',e.target.value)} /></div>
-            <div className="form-group"><label>Monthly Cost (¥)</label><input type="number" value={form.monthly_cost} onChange={e=>upd('monthly_cost',e.target.value)} /></div>
+            <div className="form-group" style={{gridColumn:'1/-1',fontSize:12,color:'var(--text3)'}}>💴 Monthly revenue comes from the client's contracts (Contracts) and the cost from the team's real work — they are not typed here.</div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>Notes</label><textarea value={form.notes} onChange={e=>upd('notes',e.target.value)} /></div>
           </div>
@@ -365,16 +372,16 @@ export default function Clients() {
             </thead>
             <tbody>
               {clients.filter(c=>c.is_active).map(c=>{
-                const profit = Number(c.monthly_revenue||0)-Number(c.monthly_cost||0)
-                const margin = c.monthly_revenue?Math.round(profit/c.monthly_revenue*100):0
+                const profit = c.monthly_cost == null ? null : Number(c.monthly_revenue||0)-Number(c.monthly_cost||0)
+                const margin = marginPct(c.monthly_revenue, c.monthly_cost)
                 return (
                   <tr key={c.id}>
                     <td style={{fontWeight:500}}><ClientLink id={c.id} name={c.company_name} /></td>
                     <td>{c.service_type}</td>
                     <td>¥{Number(c.monthly_revenue||0).toLocaleString()}</td>
-                    <td style={{color:'var(--red)'}}>¥{Number(c.monthly_cost||0).toLocaleString()}</td>
-                    <td style={{color:'var(--green)',fontWeight:600}}>¥{profit.toLocaleString()}</td>
-                    <td><span className={`badge ${margin>=70?'badge-green':margin>=50?'badge-amber':'badge-red'}`}>{margin}%</span></td>
+                    <td style={{color:'var(--red)'}}>{c.monthly_cost == null ? '—' : `¥${Number(c.monthly_cost).toLocaleString()}`}</td>
+                    <td style={{color:profit != null && profit < 0 ? 'var(--red)' : 'var(--green)',fontWeight:600}}>{profit == null ? '—' : `${profit < 0 ? '−' : ''}¥${Math.abs(profit).toLocaleString()}`}</td>
+                    <td>{margin == null ? '—' : <span className={`badge ${margin>=70?'badge-green':margin>=50?'badge-amber':'badge-red'}`}>{margin}%</span>}</td>
                   </tr>
                 )
               })}

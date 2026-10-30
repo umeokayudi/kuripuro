@@ -119,7 +119,7 @@ export default function MonthlyKpiCharts({ lang, snapshot = {}, snapshotLoading 
   const snapshots = [
     { id: 'today', value: snapshot.today ?? '—', note: tr('today', '本日', 'hoje') },
     { id: 'revenue', value: snapshot.revenue ?? '—', note: tr('Estimated from contracts, per month', '契約データに基づく推定・月額', 'Estimativa pelos contratos, por mês') },
-    { id: 'profit', value: snapshot.profit ?? '—', note: tr('Contract revenue − estimated cost', '契約売上 − 推定コスト', 'Receita de contratos − custo estimado') },
+    { id: 'profit', value: snapshot.profit ?? '—', note: tr('Contracts − real team cost of last month (clients with jobs)', '契約 − 先月の実人件費（作業のある顧客）', 'Contratos − custo real da equipe do mês passado (clientes com serviço)') },
   ]
   const toggle = (id, on) => {
     const next = on ? [...visible, id] : visible.filter(x => x !== id)

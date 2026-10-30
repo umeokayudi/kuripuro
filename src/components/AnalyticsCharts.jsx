@@ -121,9 +121,12 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
   const { t } = useLang()
   const d = t.executive || {}
   const financial = useMemo(() => {
+    // v1.0.109 · clients come with money from lib/moneyData; profit/margin only where the real cost is known.
     const revenue = clients.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0)
-    const cost = clients.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
-    return { revenue, cost, profit: revenue - cost, margin: revenue ? ((revenue - cost) / revenue) * 100 : 0 }
+    const costed = clients.filter(c => c.monthly_cost != null)
+    const cost = costed.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
+    const costedRevenue = costed.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0)
+    return { revenue, cost, profit: costedRevenue - cost, margin: costedRevenue ? ((costedRevenue - cost) / costedRevenue) * 100 : 0 }
   }, [clients])
 
   const trend = useMemo(() => {
@@ -170,7 +173,7 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
   const assignedToday = todayJobs.filter(j => j.status === 'assigned').length
   const todayProgress = todayJobs.length ? Math.round((completedToday / todayJobs.length) * 100) : 0
   const profitTone = financial.profit >= 0 ? 'positive' : 'negative'
-  const topClient = [...clients]
+  const topClient = [...clients].filter(c => c.monthly_cost != null)
     .map(c => ({ name: c.company_name || d.client, profit: Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0) }))
     .sort((a,b) => b.profit - a.profit)[0]
 
@@ -255,7 +258,7 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
       <div className="card executive-card client-profit-card">
         <div className="chart-card-head"><div><div className="card-title">{d.clientProfitability}</div><div className="chart-subtitle">{d.highestContribution}</div></div></div>
         <BarChart
-          data={[...clients].map(c => ({
+          data={[...clients].filter(c => c.monthly_cost != null).map(c => ({
             label: c.company_name || 'Client',
             value: Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0)
           })).sort((a, b) => b.value - a.value).slice(0, 8)}

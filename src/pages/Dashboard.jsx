@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { loadClientMoney, withClientMoney } from '../lib/moneyData'
 import { useLang, fill, localeOf } from '../hooks/useLang'
 import OverviewChart from '../components/OverviewChart'
 import MonthlyKpiCharts from '../components/MonthlyKpiCharts'
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
   const [lastUpdate, setLastUpdate] = useState(null)
+  const moneyRef = useRef(null)
 
   const load = async () => {
     const today = tokyoToday()
@@ -45,7 +47,10 @@ export default function Dashboard() {
       supabase.from('jobs').select('id,scheduled_date,scheduled_time,status,employee_id,employee_name,started_at,completed_at,gps_start_distance,start_lat,checklist_total,checklist_done,photo_ai_score').gte('scheduled_date', trendStart).lt('scheduled_date', trendEnd).neq('status', 'cancelled'),
       supabase.from('cashflow').select('entry_type,amount,entry_date').gte('entry_date', trendStart).lt('entry_date', trendEnd),
     ])
-    setClients(c.data || [])
+    // v1.0.109 · monthly value from the active contracts + real team cost (same numbers as Clients / Contracts)
+    if (!moneyRef.current) moneyRef.current = await loadClientMoney().catch(() => null) // once per visit, not every refresh
+    const money = moneyRef.current
+    setClients(withClientMoney(c.data || [], money))
     setTodayJobs(j.data || [])
     setEvals(ev.data || [])
     setStaleCount(stale.count || 0)
@@ -84,8 +89,10 @@ export default function Dashboard() {
 
   const fmt = n => '¥' + Number(n || 0).toLocaleString()
   const revenue = clients.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0)
-  const cost = clients.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
-  const profit = revenue - cost
+  // Cost known only for clients with completed jobs last month; profit counts only those (never revenue − ¥0).
+  const costed = clients.filter(c => c.monthly_cost != null)
+  const cost = costed.reduce((s, c) => s + Number(c.monthly_cost || 0), 0)
+  const profit = costed.length ? costed.reduce((s, c) => s + Number(c.monthly_revenue || 0), 0) - cost : null
 
   const byEmp = {}
   todayJobs.forEach(j => {
@@ -94,10 +101,10 @@ export default function Dashboard() {
     byEmp[k].push(j)
   })
 
-  const sortedClients = [...clients].sort((a, b) =>
+  const sortedClients = [...clients].filter(c => c.monthly_cost != null).sort((a, b) =>
     (Number(b.monthly_revenue || 0) - Number(b.monthly_cost || 0)) - (Number(a.monthly_revenue || 0) - Number(a.monthly_cost || 0))
   )
-  const maxProfit = Math.max(...clients.map(c => Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0)), 1)
+  const maxProfit = Math.max(...sortedClients.map(c => Number(c.monthly_revenue || 0) - Number(c.monthly_cost || 0)), 1)
   const statusColor = s => ({ assigned: '#60a5fa', in_progress: '#fbbf24', completed: '#4ade80', cancelled: 'rgba(255,255,255,0.2)' }[s] || '#60a5fa')
 
   const rangeDays = daysBetween(range.from, range.to)
@@ -168,7 +175,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <MonthlyKpiCharts lang={lang} snapshotLoading={loading && !lastUpdate} snapshot={{ today: todayJobs.length, revenue: fmt(revenue), profit: fmt(profit) }} />
+      <MonthlyKpiCharts lang={lang} snapshotLoading={loading && !lastUpdate} snapshot={{ today: todayJobs.length, revenue: fmt(revenue), profit: profit == null ? '—' : fmt(profit) }} />
 
       <section className="card dx-overview">
         <div className="dx-overview-head">

@@ -3,11 +3,13 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
+import { billedInMonth, isReceivable } from '../lib/money'
+import { askConfirm } from '../components/ConfirmDialog'
 
 const CF_TEXT = {
-  en: { overview:'Overview', confirmedToDo:'Confirmed (job still to do)', addEntry:'+ Add Entry', history:'History', title:'Financial overview', subtitle:'Real cash + invoicing + amounts still to come in.', invoiced:'Invoiced', received:'Received', receivable:'Receivable', overdue:'Overdue', expenses:'Expenses', projection:'Projection', realProfit:'Real profit', realMargin:'Real margin', monthStatus:'This month', recordedIncome:'Recorded income', recordedExpenses:'Recorded expenses', realCosts:'Real costs', billing:'Billing', issuedInvoices:'Invoices issued', open:'Open', whereMoneyGoes:'Where the money goes', salariesPaid:'Salaries paid', transport:'Transport', otherExpenses:'Other expenses', totalRealCosts:'Total real costs', monthMovements:'This month\'s movements', income:'💴 Income', expense:'💸 Expenses', balance:'💰 Balance', thisMonth:'This Month', noEntries:'No entries this month.', loading:'loading…' },
-  ja: { overview:'概要', confirmedToDo:'確定（作業予定）', addEntry:'+ 記帳', history:'履歴', title:'財務の概要', subtitle:'実際の現金 + 請求 + これから入る金額。', invoiced:'請求額', received:'入金済み', receivable:'未入金', overdue:'期限超過', expenses:'経費', projection:'見込み', realProfit:'実利益', realMargin:'実利益率', monthStatus:'今月の状況', recordedIncome:'記録済み収入', recordedExpenses:'記録済み経費', realCosts:'実コスト', billing:'請求', issuedInvoices:'発行済み請求書', open:'未回収', whereMoneyGoes:'お金の使い道', salariesPaid:'支払済み給与', transport:'交通費', otherExpenses:'その他の経費', totalRealCosts:'実コスト合計', monthMovements:'今月の入出金', income:'💴 収入', expense:'💸 支出', balance:'💰 残高', thisMonth:'今月', noEntries:'今月の記録はありません。', loading:'読み込み中…' },
-  pt: { overview:'Visão geral', confirmedToDo:'Confirmado (serviço a fazer)', addEntry:'+ Novo lançamento', history:'Histórico', title:'Visão financeira', subtitle:'Caixa real + faturamento + valores a receber.', invoiced:'Faturado', received:'Recebido', receivable:'A receber', overdue:'Vencido', expenses:'Despesas', projection:'Projeção', realProfit:'Lucro real', realMargin:'Margem real', monthStatus:'Este mês', recordedIncome:'Receitas registradas', recordedExpenses:'Despesas registradas', realCosts:'Custos reais', billing:'Faturamento', issuedInvoices:'Faturas emitidas', open:'Em aberto', whereMoneyGoes:'Para onde vai o dinheiro', salariesPaid:'Salários pagos', transport:'Transporte', otherExpenses:'Outras despesas', totalRealCosts:'Total de custos reais', monthMovements:'Movimentações do mês', income:'💴 Receitas', expense:'💸 Despesas', balance:'💰 Saldo', thisMonth:'Este mês', noEntries:'Nenhum lançamento este mês.', loading:'carregando…' },
+  en: { overview:'Overview', confirmedToDo:'Confirmed (job still to do)', addEntry:'+ Add Entry', history:'History', title:'Financial overview', subtitle:'Real cash + invoicing + amounts still to come in.', invoiced:'Invoiced', received:'Received', receivable:'Receivable', overdue:'Overdue', expenses:'Expenses', projection:'Projection', realProfit:'Real profit', realMargin:'Real margin', monthStatus:'This month', recordedIncome:'Recorded income', recordedExpenses:'Recorded expenses', realCosts:'Real costs', billing:'Billing', issuedInvoices:'Invoices issued', open:'Open', whereMoneyGoes:'Where the money goes', salariesPaid:'Salaries paid', transport:'Transport', otherExpenses:'Other expenses', totalRealCosts:'Total real costs', monthMovements:'This month\'s movements', income:'💴 Income', expense:'💸 Expenses', balance:'💰 Balance', thisMonth:'This Month', noEntries:'No entries this month.', loading:'loading…', mo:' (month)', acc:' (to date)', proj:' (month + open to date)', deleteHint:'The entry is deleted for good.', historyMonth:'Entries of the month', total:'Total' },
+  ja: { overview:'概要', confirmedToDo:'確定（作業予定）', addEntry:'+ 記帳', history:'履歴', title:'財務の概要', subtitle:'実際の現金 + 請求 + これから入る金額。', invoiced:'請求額', received:'入金済み', receivable:'未入金', overdue:'期限超過', expenses:'経費', projection:'見込み', realProfit:'実利益', realMargin:'実利益率', monthStatus:'今月の状況', recordedIncome:'記録済み収入', recordedExpenses:'記録済み経費', realCosts:'実コスト', billing:'請求', issuedInvoices:'発行済み請求書', open:'未回収', whereMoneyGoes:'お金の使い道', salariesPaid:'支払済み給与', transport:'交通費', otherExpenses:'その他の経費', totalRealCosts:'実コスト合計', monthMovements:'今月の入出金', income:'💴 収入', expense:'💸 支出', balance:'💰 残高', thisMonth:'今月', noEntries:'今月の記録はありません。', loading:'読み込み中…', mo:'（今月）', acc:'（累計）', proj:'（今月 + 未入金累計）', deleteHint:'この記録は完全に削除されます。', historyMonth:'今月の記録', total:'合計' },
+  pt: { overview:'Visão geral', confirmedToDo:'Confirmado (serviço a fazer)', addEntry:'+ Novo lançamento', history:'Histórico', title:'Visão financeira', subtitle:'Caixa real + faturamento + valores a receber.', invoiced:'Faturado', received:'Recebido', receivable:'A receber', overdue:'Vencido', expenses:'Despesas', projection:'Projeção', realProfit:'Lucro real', realMargin:'Margem real', monthStatus:'Este mês', recordedIncome:'Receitas registradas', recordedExpenses:'Despesas registradas', realCosts:'Custos reais', billing:'Faturamento', issuedInvoices:'Faturas emitidas', open:'Em aberto', whereMoneyGoes:'Para onde vai o dinheiro', salariesPaid:'Salários pagos', transport:'Transporte', otherExpenses:'Outras despesas', totalRealCosts:'Total de custos reais', monthMovements:'Movimentações do mês', income:'💴 Receitas', expense:'💸 Despesas', balance:'💰 Saldo', thisMonth:'Este mês', noEntries:'Nenhum lançamento este mês.', loading:'carregando…', mo:' (mês)', acc:' (acumulado)', proj:' (mês + a receber acumulado)', deleteHint:'O lançamento é apagado de vez.', historyMonth:'Lançamentos do mês', total:'Total' },
 }
 
 /** Normaliza linha do DB (entry_type/entry_date) para UI (type/date) */
@@ -58,7 +60,7 @@ export default function Cashflow() {
     setLoading(true)
     const [{ data, error }, { data: invoiceData }, { data: salaryData }, { data: transportData }] = await Promise.all([
       supabase.from('cashflow').select('*').order('entry_date', { ascending:false }).limit(500),
-      supabase.from('faturas').select('id,client_id,client_name,issue_date,due_date,total,status').order('issue_date', { ascending:false }).limit(500),
+      supabase.from('faturas').select('id,client_id,client_name,issue_date,period_start,due_date,total,status').order('issue_date', { ascending:false }).limit(500),
       supabase.from('salary_payments').select('id,employee_name,amount,payment_date,status,payment_type,is_deduction').order('payment_date', { ascending:false }).limit(1000),
       supabase.from('transport_claims').select('id,employee_id,employee_name,job_id,amount,claim_date,status').order('claim_date', { ascending:false }).limit(1000),
     ])
@@ -88,6 +90,8 @@ export default function Cashflow() {
   }
 
   const handleDelete = async (id) => {
+    const e = entries.find(x => x.id === id)
+    if (!(await askConfirm({ message: `${e?.description || ''}\n${e?.type === 'income' ? '+' : '-'}¥${Number(e?.amount || 0).toLocaleString()} · ${e?.date || ''}\n\n${L.deleteHint}`, danger: true }))) return
     await supabase.from('cashflow').delete().eq('id', id)
     toast('Entry removed.'); load()
   }
@@ -99,12 +103,13 @@ export default function Cashflow() {
   const balance = income - expense
   // v1.0.96 · a draft invoice is not billing yet: it only counts from "sent".
   // v1.0.102 · and a draft counts in NO line of the Cashflow (not in "Confirmed" either).
-  const issued = invoices.filter(f=>f.issue_date?.startsWith(month) && f.status !== 'cancelled' && f.status !== 'draft').reduce((s,f)=>s+Number(f.total||0),0)
+  // v1.0.109 · the same rule as Invoices: month of the billed period (else issue date), drafts/cancelled out
+  const issued = billedInMonth(invoices, month)
   // v1.0.70 · accepted quotes booked this month: draft invoice dated on the job day, sent when the job is done
   const confirmedToDo = monthJobs.reduce((s,j)=>s+Number(j.retro_value ?? j.value ?? 0),0)
-  const receivable = invoices.filter(f=>['sent','pending','overdue'].includes(f.status)).reduce((s,f)=>s+Number(f.total||0),0)
+  const receivable = invoices.filter(isReceivable).reduce((s,f)=>s+Number(f.total||0),0)
   const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0,10)
-  const overdue = invoices.filter(f=>(['sent','pending','overdue'].includes(f.status)) && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
+  const overdue = invoices.filter(f=>isReceivable(f) && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
   const paidSalary = salaryPayments
     .filter(p => p.status === 'paid' && !p.is_deduction && p.payment_date?.startsWith(month))
     .reduce((s,p)=>s+Number(p.amount||0),0)
@@ -147,12 +152,12 @@ export default function Cashflow() {
           </div>
           <div className="finance-kpis">
             {[
-              [L.invoiced, issued, 'var(--navy)'],
-              [L.received, income, 'var(--green)'],
-              [L.receivable, receivable, 'var(--hq-blue)'],
-              [L.overdue, overdue, 'var(--red)'],
-              [L.expenses, expense, 'var(--red)'],
-              [L.projection, projected, projected >= 0 ? 'var(--green)' : 'var(--red)'],
+              [L.invoiced + L.mo, issued, 'var(--navy)'],
+              [L.received + L.mo, income, 'var(--green)'],
+              [L.receivable + L.acc, receivable, 'var(--hq-blue)'],
+              [L.overdue + L.acc, overdue, 'var(--red)'],
+              [L.expenses + L.mo, expense, 'var(--red)'],
+              [L.projection + L.proj, projected, projected >= 0 ? 'var(--green)' : 'var(--red)'],
             ].map(([label,value,color]) => (
               <div className="finance-kpi" key={label}>
                 <span>{label}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color}}>{money(value)}</strong>}
@@ -160,9 +165,9 @@ export default function Cashflow() {
             ))}
           </div>
           <div className="finance-kpis" style={{marginTop:12}}>
-            <div className="finance-kpi"><span>{L.realProfit}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:realProfit>=0?'var(--green)':'var(--red)'}}>{money(realProfit)}</strong>}</div>
-            <div className="finance-kpi"><span>{L.confirmedToDo}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:'var(--amber)'}}>{money(confirmedToDo)}</strong>}</div>
-            <div className="finance-kpi"><span>{L.realMargin}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:realMargin>=0?'var(--green)':'var(--red)'}}>{realMargin.toFixed(1)}%</strong>}</div>
+            <div className="finance-kpi"><span>{L.realProfit}{L.mo}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:realProfit>=0?'var(--green)':'var(--red)'}}>{money(realProfit)}</strong>}</div>
+            <div className="finance-kpi"><span>{L.confirmedToDo}{L.mo}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:'var(--amber)'}}>{money(confirmedToDo)}</strong>}</div>
+            <div className="finance-kpi"><span>{L.realMargin}{L.mo}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color:realMargin>=0?'var(--green)':'var(--red)'}}>{realMargin.toFixed(1)}%</strong>}</div>
           </div>
           <div className="finance-summary-grid">
             <div className="card finance-focus-card">
@@ -174,9 +179,9 @@ export default function Cashflow() {
             </div>
             <div className="card finance-focus-card">
               <div className="card-title">{L.billing}</div>
-              <div className="finance-big-row"><span>{L.issuedInvoices}</span><strong>¥{issued.toLocaleString()}</strong></div>
-              <div className="finance-big-row"><span>{L.open}</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
-              <div className="finance-big-row finance-total"><span>{L.overdue}</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>{L.issuedInvoices}{L.mo}</span><strong>¥{issued.toLocaleString()}</strong></div>
+              <div className="finance-big-row"><span>{L.open}{L.acc}</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
+              <div className="finance-big-row finance-total"><span>{L.overdue}{L.acc}</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
             </div>
           </div>
           <div className="card" style={{marginBottom:14}}>
@@ -241,10 +246,21 @@ export default function Cashflow() {
 
       {tab==='history'&&(
         <div className="card">
-          <div className="card-title">All Entries</div>
-          {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
-          {entries.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>No entries yet.</div>}
-          {entries.map(e=>(
+          <div className="finance-month" style={{marginBottom:10}}>
+            <button type="button" aria-label="‹" onClick={()=>shiftPeriod(-1)}>‹</button>
+            <input type="month" value={period} onChange={e=>e.target.value&&setPeriod(e.target.value)} />
+            <button type="button" aria-label="›" onClick={()=>shiftPeriod(1)}>›</button>
+          </div>
+          <div className="card-title">{L.historyMonth}</div>
+          {/* v1.0.109 · the history of the month adds up to the cards (income / expenses / balance) */}
+          {!loading&&<div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:13,marginBottom:10}}>
+            <span>{L.income} <b style={{color:'var(--green)'}}>{money(income)}</b></span>
+            <span>{L.expense} <b style={{color:'var(--red)'}}>{money(expense)}</b></span>
+            <span>{L.balance} <b>{money(balance)}</b></span>
+          </div>}
+          {loading&&<div style={{color:'var(--text3)',fontSize:13}}>{L.loading}</div>}
+          {thisMonth.length===0&&!loading&&<div style={{color:'var(--text3)',fontSize:13}}>{L.noEntries}</div>}
+          {thisMonth.map(e=>(
             <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
               <div>
                 <div style={{fontSize:13,fontWeight:500}}>{e.description}</div>
