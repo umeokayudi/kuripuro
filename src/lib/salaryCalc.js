@@ -86,31 +86,16 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [],
   const isCurrentMonth = month === todayStr.slice(0, 7)
   const completed = completedJobsInMonth(allJobs, month, todayStr)
   const totalMins = completed.reduce((s, j) => s + jobMinutes(j), 0)
-  const spotEarned = completed
-    .filter(j => j.job_category === 'spot')
-    .reduce((s, j) => s + Number(j.spot_value || 0), 0)
-  const deductions = (deductionsList || []).reduce((s, d) => s + Number(d.amount || 0), 0)
+  // v1.0.108 · base, jobs and deductions come from payrollMonth (same numbers as Payroll close).
+  const one = payrollMonth({ emp: empInfo, jobs: completed, lines: (deductionsList || []).map(d => ({ ...d, period: d.period || month })), month })
+  const spotEarned = one.jobsPay
+  const deductions = one.deductions
   const workedDays = countWorkedDays(completed)
   const fixedMax = yenAmount(empInfo?.fixed_salary)
   const monthlyDays = empInfo?.monthly_work_days || 22
   const dailyRate = fixedMax / monthlyDays
-  const bonusRate = (empInfo?.job_bonus_rate || 100) / 100
 
-  let base = 0
-  if (empInfo?.salary_type === 'fixed') {
-    base = fixedMonthBase(empInfo, month)
-  } else if (empInfo?.salary_type === 'hourly') {
-    base = Math.round((totalMins / 60) * (empInfo?.hourly_rate || 0))
-  } else if (empInfo?.salary_type === 'per_job') {
-    base = completed.reduce((s, j) => s + Math.round(jobPay(j) * bonusRate), 0)
-  } else if (empInfo?.salary_type === 'mixed') {
-    const fixedPart = fixedMonthBase(empInfo, month)
-    const hourlyPart = Math.round((totalMins / 60) * (empInfo?.hourly_rate || 0))
-    const bonusPart = completed.reduce((s, j) => s + Math.round(jobPay(j) * ((empInfo?.job_bonus_rate || 0) / 100)), 0)
-    base = fixedPart + hourlyPart + bonusPart
-  } else {
-    base = Math.round(fixedMax + (totalMins / 60) * (empInfo?.hourly_rate || 0))
-  }
+  const base = one.base
 
   const now = tokyoNow()
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -153,4 +138,54 @@ export function payRatesMissing(empInfo) {
     case 'mixed': return fixed <= 0 && hourly <= 0 && bonus <= 0
     default: return fixed <= 0 && hourly <= 0
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v1.0.108 · ONE calculation of a person's month, used by Payroll close, Payments, Salary,
+// Deductions, the payslip sheet and the employee app. Never show a stored snapshot instead.
+//   base (fixed never zeroes) + jobs (spot extras) − deductions = net
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Month a salary_payments row belongs to: its period, else the month of its date. */
+export const lineMonth = row => row?.period || String(row?.payment_date || row?.created_at || '').slice(0, 7)
+
+/** A deduction that counts in pay: not cancelled (automatic suggestions wait as cancelled until approved). */
+export const countsAsDeduction = row => !!row?.is_deduction && row.status !== 'cancelled'
+
+/** Last day of a YYYY-MM month. */
+export function monthLastDay(month) {
+  const [y, m] = month.split('-').map(Number)
+  return `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+}
+
+/** Spot jobs pay their own extra on top of the base (the "+¥" offered to the employee). */
+export const spotExtra = job => (job?.job_category === 'spot' ? yenAmount(job.spot_value) : 0)
+
+/**
+ * @param emp employees row
+ * @param jobs that person's jobs (any status / dates — filtered here)
+ * @param lines that person's salary_payments rows (any month — filtered here)
+ * @param month YYYY-MM
+ */
+export function payrollMonth({ emp, jobs = [], lines = [], month }) {
+  const last = monthLastDay(month)
+  const done = (jobs || []).filter(j => j.status === 'completed' && j.scheduled_date >= `${month}-01` && j.scheduled_date <= last)
+  const base = monthBase(emp, done, month)
+  const jobsPay = done.reduce((s, j) => s + spotExtra(j), 0)
+  const mine = (lines || []).filter(l => lineMonth(l) === month)
+  const dedRows = mine.filter(countsAsDeduction)
+  const deductions = dedRows.reduce((s, d) => s + yenAmount(d.amount), 0)
+  return {
+    month, base, jobsPay, deductions, dedRows,
+    gross: base + jobsPay,
+    net: Math.max(0, base + jobsPay - deductions),
+    jobs: done.length,
+    minutes: done.reduce((s, j) => s + jobMinutes(j), 0),
+    salaryLine: mine.find(l => l.payment_type === 'salary' && l.status !== 'cancelled') || null,
+  }
+}
+
+/** First day a month may be closed: the 1st of the following month (Tokyo). */
+export function canCloseMonth(month, today = tokyoToday()) {
+  return today.slice(0, 7) > month
 }

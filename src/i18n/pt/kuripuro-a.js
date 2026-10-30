@@ -29,7 +29,7 @@ export const kuripuroPtA = {
     clients: 'Clientes',
     facility: 'Mundo Kuripuro',
     salary: 'Salários',
-    payrollClose: 'Fechamento',
+    payrollClose: 'Fechar folha',
     payments: 'Pagamentos',
     salaryIssues: 'Problemas salário',
     cashflow: 'Fluxo de caixa',
@@ -84,7 +84,7 @@ export const kuripuroPtA = {
     loginHint: 'Admin, e-mail do funcionário ou nome da loja — em inglês ou japonês.',
   },
   payroll: {
-    title: 'Fechamento da folha',
+    title: 'Fechar folha',
     hint: 'Fecha automaticamente no dia 1º (mês anterior) → funcionários confirmam até o dia 5 → pagamento no dia 15. Você ainda pode fechar ou reabrir manualmente.',
     setupNeeded: 'Configuração inicial necessária',
     setupHint: 'Rode o schema-extensions.sql no SQL Editor do Supabase para ativar contratos em PDF e o fechamento da folha.',

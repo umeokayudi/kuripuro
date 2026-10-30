@@ -31,7 +31,7 @@ export const kuripuroEn = {
     clients: 'Clients',
     facility: 'Kuripuro World',
     salary: 'Salary',
-    payrollClose: 'Payroll Close',
+    payrollClose: 'Close payroll',
     payments: 'Payments',
     salaryIssues: 'Salary Issues',
     cashflow: 'Cashflow',
@@ -86,7 +86,7 @@ export const kuripuroEn = {
     loginHint: 'Admin, employee email, or store name — English and Japanese.',
   },
   payroll: {
-    title: 'Payroll close',
+    title: 'Close payroll',
     hint: 'Closes automatically on the 1st (last month) → staff confirm by the 5th → pay on the 15th. You can still close or reopen by hand.',
     setupNeeded: 'One-time setup required',
     setupHint: 'Run schema-extensions.sql in the Supabase SQL Editor to enable PDF contracts and payroll close.',

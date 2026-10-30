@@ -6,7 +6,8 @@ import { getPeriodDates } from '../lib/salaryPeriod'
 import '../components/SalaryPopups.css'
 import './Payments.css'
 import PayrollCloseSheet from '../components/PayrollCloseSheet'
-import { payrollState } from '../lib/salaryClose'
+import { payrollState, payStateText } from '../lib/salaryClose'
+import { payrollMonth, monthLastDay } from '../lib/salaryCalc'
 
 // One month (= month worked, salary_payments.period) at a time, one row per employee.
 // ¥0 people fold away, "Mark paid" pays every open line of that person in that month.
@@ -49,6 +50,7 @@ export default function Payments() {
   const [form, setForm] = useState(null) // null = closed
   const [editingId, setEditingId] = useState(null)
   const [closing, setClosing] = useState(null) // employee whose month is open in PayrollCloseSheet
+  const [monthJobs, setMonthJobs] = useState({ month: null, jobs: [] })
 
   // Same list as the salary_payments check constraint.
   const TYPES = ['salary','advance','bonus','extra','deduction']
@@ -71,7 +73,7 @@ export default function Payments() {
 
   const load = async () => {
     const [e, p, st] = await Promise.all([
-      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days,salary_type,hourly_rate,is_active').order('full_name'),
+      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days,salary_type,hourly_rate,job_bonus_rate,contract_start,contract_end,is_active').order('full_name'),
       supabase.from('salary_payments').select('*').order('payment_date',{ascending:true}),
       supabase.from('salary_statements').select('id,employee_id,period,status,net_total,employee_confirmed_at,employee_disputed_at'),
     ])
@@ -83,6 +85,14 @@ export default function Payments() {
 
   const today = tokyoToday()
   const thisMonth = today.slice(0, 7)
+
+  // v1.0.108 · completed jobs of the month, so each row shows the same payslip numbers as Fechar folha.
+  useEffect(() => {
+    if (!month) return
+    supabase.from('jobs').select('id,employee_id,status,scheduled_date,started_at,completed_at,retro_time_min,retro_value,value,job_category,spot_value')
+      .eq('status', 'completed').gte('scheduled_date', `${month}-01`).lte('scheduled_date', monthLastDay(month))
+      .then(({ data }) => setMonthJobs({ month, jobs: data || [] }))
+  }, [month])
 
   // Always opens on the current month (Tokyo); open amounts of other months show in "Still to pay".
   useEffect(() => {
@@ -118,22 +128,25 @@ export default function Payments() {
       const st = statements.find(s => s.employee_id === id && s.period === month)
       // v1.0.102 · same truth as Payroll close: a salary is "Paid" only with the payslip confirmed.
       const pstate = payrollState(st, salaryLine)
+      const calc = monthJobs.month === month ? payrollMonth({ emp, jobs: monthJobs.jobs.filter(j => j.employee_id === id), lines: mine, month }) : null
+      // The salary line was calculated earlier: when today's numbers differ (and it is not paid), it needs a recalculation.
+      const outdated = !!(calc && salaryLine && salaryLine.status !== 'paid' && Number(salaryLine.amount) !== calc.net)
       const paidUnconfirmed = pstate === 'paid_unconfirmed'
       let state
       if (!mine.length) state = 'none'
-      else if (fixedZero || paidUnconfirmed) state = 'check'
+      else if (fixedZero || paidUnconfirmed || outdated) state = 'check'
       else if (earn === 0) state = 'zero'
       else if (toPay > 0) state = open.some(p => p.payment_date && p.payment_date < today) ? 'late' : 'open'
       else state = 'paid'
       const payDate = salaryLine?.payment_date || open[0]?.payment_date || mine[0]?.payment_date
       const paidOn = state === 'paid' ? mine.filter(p => !p.is_deduction && p.status === 'paid').map(p => p.payment_date).sort().pop() : null
       // Payroll close already takes deductions out of the salary row, so they are shown, not subtracted again.
-      return { emp, lines: mine, earn, ded, net: earn, toPay, open, state, payDate, paidOn, slip: statementState(st), st, fixedZero, paidUnconfirmed, salaryLine }
+      return { emp, lines: mine, earn, ded, net: earn, toPay, open, state, payDate, paidOn, slip: statementState(st), st, fixedZero, paidUnconfirmed, salaryLine, pstate, calc, outdated }
     }).sort((a, b) => {
       const order = { late:0, check:1, open:2, none:3, paid:4, zero:5 }
       return order[a.state] - order[b.state] || a.emp.full_name.localeCompare(b.emp.full_name)
     })
-  }, [payments, employees, statements, month, today])
+  }, [payments, employees, statements, month, today, monthJobs])
 
   const visible = rows.filter(r => !who || r.emp.id === who)
   const byFilter = {
@@ -169,12 +182,6 @@ export default function Payments() {
     check: tr('Check','要確認','Conferir'),
     zero: tr('No amount','金額なし','Sem valor'),
     none: tr('Not closed','未締め','Sem fechamento'),
-  }
-  const slipShort = {
-    confirmed: tr('Payslip confirmed','明細確認済','Holerite confirmado'),
-    disputed: tr('Payslip disputed','明細に異議','Holerite contestado'),
-    waiting: tr('Payslip not confirmed','明細未確認','Holerite não confirmado'),
-    none: tr('No payslip','明細なし','Sem holerite'),
   }
   const slipLong = {
     confirmed: tr('Employee confirmed the payslip','従業員が明細を確認済み','Funcionário confirmou o holerite'),
@@ -276,7 +283,7 @@ export default function Payments() {
           </div>
           <div className="pm-tags">
             <span className={`pm-pill is-${r.state}`}>{statePill[r.state]}</span>
-            {r.lines.some(p => p.payment_type === 'salary') && <span className={`pay-st is-${r.slip}`} title={slipLong[r.slip]}>{slipShort[r.slip]}</span>}
+            {r.state !== 'paid' && r.lines.some(p => p.payment_type === 'salary') && <span className={`pay-st is-${r.slip}`} title={slipLong[r.slip]}>{payStateText(r.pstate, tr).text}</span>}
           </div>
           <div className="pm-act" onClick={ev => ev.stopPropagation()}>
             {r.toPay > 0 && !blocked(r, r.open)
@@ -307,8 +314,19 @@ export default function Payments() {
           </div>
         )}
 
+        {r.outdated && !r.fixedZero && (
+          <div className="pm-note">
+            {tr(
+              `The salary line says ${fmt(r.salaryLine.amount)}, today's payslip gives ${fmt(r.calc.net)} (base ${fmt(r.calc.base)} + jobs ${fmt(r.calc.jobsPay)} − deductions ${fmt(r.calc.deductions)}). Recalculate.`,
+              `給与行は ${fmt(r.salaryLine.amount)}、現在の明細は ${fmt(r.calc.net)}（基本 ${fmt(r.calc.base)} + ジョブ ${fmt(r.calc.jobsPay)} − 控除 ${fmt(r.calc.deductions)}）。再計算してください。`,
+              `A linha do salário diz ${fmt(r.salaryLine.amount)}, o holerite de hoje dá ${fmt(r.calc.net)} (base ${fmt(r.calc.base)} + jobs ${fmt(r.calc.jobsPay)} − descontos ${fmt(r.calc.deductions)}). Recalcule.`)}
+            <button className="pm-note-btn" onClick={() => setClosing(r.emp)}>{tr('Recalculate','再計算','Recalcular')}</button>
+          </div>
+        )}
+
         {expanded && (
           <div className="pm-lines">
+            {r.calc && <div className="pm-hint" style={{ margin: '0 0 8px' }}>{tr('Payslip','明細','Holerite')}: {tr('base','基本','base')} {fmt(r.calc.base)} + {tr('jobs','ジョブ','jobs')} {fmt(r.calc.jobsPay)} − {tr('deductions','控除','descontos')} {fmt(r.calc.deductions)} = <b>{fmt(r.calc.net)}</b></div>}
             {r.lines.map(p => (
               <div key={p.id} className={`pm-line${p.status === 'cancelled' ? ' is-cancel' : ''}`}>
                 <div className="pm-line-l">

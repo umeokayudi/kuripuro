@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
-import { computeBase, closeEmployeeMonth, payrollState } from '../lib/salaryClose'
+import { closeEmployeeMonth, payrollState, payStateText } from '../lib/salaryClose'
+import { payrollMonth, canCloseMonth } from '../lib/salaryCalc'
 import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
 import { isDeductionToReview, reviewText } from '../lib/deductionReview'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
@@ -29,7 +30,9 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
       supabase.from('salary_statements').select('*').eq('employee_id', emp.id).eq('period', period).maybeSingle(),
     ])
     const person = full.data || emp
-    setData({ person, jobs: jobs.data || [], lines: lines.data || [], st: st.data || null, base: computeBase(person, jobs.data || [], period) })
+    // v1.0.108 · same calculation as Fechar folha / Payments / employee app.
+    const calc = payrollMonth({ emp: person, jobs: jobs.data || [], lines: lines.data || [], month: period })
+    setData({ person, jobs: jobs.data || [], lines: lines.data || [], st: st.data || null, base: calc.base, calc })
   }
   useEffect(() => { load() }, [emp.id, period])
 
@@ -59,6 +62,8 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
   }
 
   const pay = async () => {
+    // A salary is paid only after the employee confirmed the payslip.
+    if (!['confirmed', 'finalized'].includes(pstate)) return toast.error(tr('The employee has not confirmed the payslip yet.', '本人がまだ明細を確認していません。', 'O funcionário ainda não confirmou o holerite.'))
     const ids = data.lines.filter(p => !p.is_deduction && p.status === 'scheduled').map(p => p.id)
     if (!ids.length) return
     setBusy(true)
@@ -75,7 +80,7 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
   const salaryLine = live.find(p => p.payment_type === 'salary')
   const extras = live.filter(p => ['extra', 'bonus', 'transport', 'other'].includes(p.payment_type) && !p.is_deduction)
   const advances = live.filter(p => p.payment_type === 'advance')
-  const deductions = live.filter(p => p.is_deduction)
+  const deductions = data?.calc.dedRows || []
   const toReview = L.filter(isDeductionToReview)
   const st = data?.st
   const slip = !st ? 'none' : st.employee_confirmed_at ? 'confirmed' : (st.employee_disputed_at || st.status === 'disputed') ? 'disputed' : 'waiting'
@@ -84,8 +89,8 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
   const paid = pstate === 'paid'
   const paidUnconfirmed = pstate === 'paid_unconfirmed'
   const openToPay = live.filter(p => !p.is_deduction && p.status === 'scheduled')
-  const dedTotal = sum(deductions)
-  const preview = Math.max(0, (data?.base || 0) - dedTotal)
+  const jobsPay = data?.calc.jobsPay || 0
+  const preview = data?.calc.net || 0
   const outdated = st && !paid && !paidUnconfirmed && (Number(st.net_total) !== preview || Number(st.base_salary) !== data.base)
 
   const kind = data?.person?.salary_type
@@ -126,6 +131,7 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
 
             <dl className="sp-rows">
               <div><dt>{baseHow}</dt><dd>{fmt(data.base)}</dd></div>
+              {jobsPay > 0 && <div><dt>{tr('Spot jobs', 'スポット', 'Jobs spot')}</dt><dd>+{fmt(jobsPay)}</dd></div>}
               {deductions.map(p => <div key={p.id}><dt>{tr('Deduction', '控除', 'Desconto')} · {p.description || ''}</dt><dd style={{ color: 'var(--red, #dc2626)' }}>−{fmt(p.amount)}</dd></div>)}
               <div><dt><b>{tr('Payslip (net salary)', '明細（差引支給）', 'Holerite (salário líquido)')}</b></dt><dd className="sp-big">{fmt(paid || paidUnconfirmed ? salaryLine.amount : preview)}</dd></div>
               {extras.map(p => <div key={p.id}><dt>{p.payment_type === 'bonus' ? tr('Bonus', 'ボーナス', 'Bônus') : tr('Extra', '追加', 'Extra')} · {p.description || ''}</dt><dd>+{fmt(p.amount)}</dd></div>)}
@@ -141,13 +147,11 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
             )}
             {outdated && <p className="pm-hint" style={{ marginTop: 10 }}>⚠️ {tr(`The payslip sent says ${fmt(st.net_total)}; today’s numbers give ${fmt(preview)}. Recalculate and the employee confirms again.`, `送付済み明細は ${fmt(st.net_total)}、現在の計算は ${fmt(preview)} です。再計算すると本人が再確認します。`, `O holerite enviado diz ${fmt(st.net_total)}; com os números de hoje dá ${fmt(preview)}. Recalcule e o funcionário confirma de novo.`)}</p>}
 
-            <div className={`sp-state is-${paidUnconfirmed ? 'disputed' : slip}`}><b>{paid ? tr('Paid', '支払済', 'Pago')
-              : paidUnconfirmed ? tr('Marked paid, but the payslip is NOT confirmed yet — it only counts as paid after the employee confirms', '支払済ですが明細は未確認です — 本人の確認後に支払済になります', 'Marcado pago, mas o holerite AINDA NÃO foi confirmado — só conta como pago depois que o funcionário confirmar')
-              : slipText[slip]}</b></div>
+            <div className={`sp-state is-${paidUnconfirmed ? 'disputed' : slip}`}><b>{payStateText(pstate, tr, paid ? salaryLine?.payment_date : '').text}</b>{!paid && !paidUnconfirmed && slip !== 'confirmed' && <small>{slipText[slip]}</small>}</div>
 
             <div className="sp-actions" style={{ flexWrap: 'wrap' }}>
               <button className="btn" disabled={busy} onClick={onClose}>{tr('Close', '閉じる', 'Fechar')}</button>
-              {!paid && !paidUnconfirmed && <button className={`btn${step === 0 ? ' btn-primary' : ''}`} disabled={busy} onClick={calculate}>{st ? tr('Recalculate', '再計算', 'Recalcular') : tr('Calculate payslip', '明細を計算', 'Calcular holerite')}</button>}
+              {!paid && !paidUnconfirmed && canCloseMonth(period) && <button className={`btn${step === 0 ? ' btn-primary' : ''}`} disabled={busy} onClick={calculate}>{st ? tr('Recalculate', '再計算', 'Recalcular') : tr('Calculate payslip', '明細を計算', 'Calcular holerite')}</button>}
               {step === 2 && <button className="btn btn-primary" disabled={busy} onClick={finalize}>{tr('Finalize payslip', '明細を確定', 'Finalizar holerite')}</button>}
               {step === 3 && openToPay.length > 0 && <button className="btn btn-primary" disabled={busy} onClick={pay}>✓ {tr(`Mark paid ${fmt(sum(openToPay))}`, `${fmt(sum(openToPay))} を支払済に`, `Marcar pago ${fmt(sum(openToPay))}`)}</button>}
             </div>

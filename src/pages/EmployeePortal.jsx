@@ -415,8 +415,8 @@ export default function EmployeePortal() {
       supabase.from('transport_claims').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(20),
       supabase.from('equipment_requests').select('*').eq('employee_id',user.id).order('created_at',{ascending:false}).limit(30),
       supabase.from('badges').select('*').eq('employee_id',user.id),
-      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',weekStart).lte('payment_date',weekEnd),
-      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).gte('payment_date',monthStart).lte('payment_date',today),
+      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).neq('status','cancelled').gte('payment_date',weekStart).lte('payment_date',weekEnd),
+      supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).neq('status','cancelled').or(`period.eq.${monthStart.slice(0,7)},and(period.is.null,payment_date.gte.${monthStart},payment_date.lte.${today})`),
       supabase.from('service_contracts').select('location_name,price_per_visit,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
     ])
     const visible = (list) => (list || []).filter(j => !isDuskinJob(j))

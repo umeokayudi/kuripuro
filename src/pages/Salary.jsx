@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
 import EarningsPanel from '../components/EarningsPanel'
 import { tokyoToday } from '../lib/dates'
+import { payrollMonth, monthLastDay } from '../lib/salaryCalc'
+import { isPayrollActive } from '../lib/salaryClose'
 
 export default function Salary() {
   const { lang } = useLang()
@@ -12,6 +14,7 @@ export default function Salary() {
   const [period, setPeriod] = useState(tokyoToday().slice(0, 7))
   const [jobs, setJobs] = useState([])
   const [advances, setAdvances] = useState([])
+  const [lines, setLines] = useState([])
   const [newAdv, setNewAdv] = useState({ amount:'', desc:'' })
   const [loading, setLoading] = useState(true)
 
@@ -19,8 +22,8 @@ export default function Salary() {
   useEffect(() => { if (selected) { loadJobs(); loadAdvances() } }, [selected, period])
 
   const loadEmployees = async () => {
-    const { data } = await supabase.from('employees').select('*').eq('is_active', true).order('full_name')
-    setEmployees(data || [])
+    const { data } = await supabase.from('employees').select('*').order('full_name')
+    setEmployees((data || []).filter(isPayrollActive))
     setLoading(false)
   }
 
@@ -29,7 +32,7 @@ export default function Salary() {
       .eq('employee_id', selected.id)
       .eq('status', 'completed')
       .gte('scheduled_date', period + '-01')
-      .lte('scheduled_date', period + '-31')
+      .lte('scheduled_date', monthLastDay(period))
     setJobs(data || [])
   }
 
@@ -37,9 +40,9 @@ export default function Salary() {
     const { data } = await supabase.from('salary_payments').select('*')
       .eq('employee_id', selected.id)
       .eq('period', period)
-      .eq('payment_type', 'advance')
       .order('created_at')
-    setAdvances(data || [])
+    setLines(data || [])
+    setAdvances((data || []).filter(p => p.payment_type === 'advance'))
   }
 
   const addAdvance = async () => {
@@ -59,45 +62,12 @@ export default function Salary() {
     loadAdvances()
   }
 
+  // v1.0.108 · same calculation as Fechar folha / Payments / employee app (payrollMonth).
   const calcSalary = () => {
     if (!selected) return {}
-    const [year, month] = period.split('-').map(Number)
-    const daysInMonth = new Date(year, month, 0).getDate()
-
-    let base = 0
-    if (selected.salary_type === 'fixed') {
-      // Pro-rata if contract started this month
-      if (selected.contract_start) {
-        const start = new Date(selected.contract_start)
-        const startMonth = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}`
-        if (startMonth === period) {
-          const workedDays = daysInMonth - start.getDate() + 1
-          base = Math.round((selected.fixed_salary / daysInMonth) * workedDays)
-        } else base = selected.fixed_salary || 0
-      } else base = selected.fixed_salary || 0
-    } else if (selected.salary_type === 'hourly') {
-      const totalMins = jobs.reduce((s,j) => {
-        if (!j.started_at || !j.completed_at) return s
-        return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
-      }, 0)
-      base = Math.round((totalMins / 60) * (selected.hourly_rate || 0))
-    } else if (selected.salary_type === 'per_job') {
-      base = jobs.reduce((s,j) => s + Math.round(Number(j.retro_value ?? j.value ?? 0) * ((selected.job_bonus_rate||100)/100)), 0)
-    } else {
-      // mixed
-      const totalMins = jobs.reduce((s,j) => {
-        if (!j.started_at || !j.completed_at) return s
-        return s + (new Date(j.completed_at) - new Date(j.started_at)) / 60000
-      }, 0)
-      const jobValue = jobs.reduce((s,j) => s + Number(j.value||0), 0)
-      base = (selected.fixed_salary || 0) + Math.round((totalMins/60)*(selected.hourly_rate||0)) + Math.round(jobValue * ((selected.job_bonus_rate||0)/100))
-    }
-
-    const transport = jobs.reduce((s,j) => s + 0, 0) // transport from checkins if needed
-    const totalAdvances = advances.reduce((s,a) => s + Number(a.amount), 0)
-    const net = base - totalAdvances
-
-    return { base, transport, totalAdvances, net, daysInMonth }
+    const one = payrollMonth({ emp: selected, jobs, lines, month: period })
+    const totalAdvances = advances.filter(a => a.status !== 'cancelled').reduce((s, a) => s + Number(a.amount || 0), 0)
+    return { ...one, totalAdvances }
   }
 
   const salary = calcSalary()
@@ -166,8 +136,8 @@ export default function Salary() {
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 {[
                   ['Base salary', `¥${salary.base?.toLocaleString()}`],
-                  ['Jobs completed', jobs.length],
-                  ['Advances deducted', `-¥${salary.totalAdvances?.toLocaleString()}`],
+                  [`Jobs (${salary.jobs ?? jobs.length} completed · spot extras)`, `+¥${salary.jobsPay?.toLocaleString()}`],
+                  ['Deductions', `-¥${salary.deductions?.toLocaleString()}`],
                 ].map(([l,v]) => (
                   <div key={l} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
                     <span style={{ color:'var(--text2)' }}>{l}</span>
@@ -178,6 +148,7 @@ export default function Salary() {
                   <span>NET TOTAL</span>
                   <span style={{ color:'var(--green)' }}>¥{salary.net?.toLocaleString()}</span>
                 </div>
+                {salary.totalAdvances > 0 && <div style={{ fontSize:12, color:'var(--text3)' }}>Advances this month: ¥{salary.totalAdvances.toLocaleString()} (paid separately; to take one out of the salary, add a deduction)</div>}
               </div>
             </div>
 
