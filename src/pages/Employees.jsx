@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { fetchEvaluatedIds, scoreOf } from '../lib/employeeScore'
+import { isTestEmployee } from '../lib/testData'
 import toast from 'react-hot-toast'
 import AvailabilityAdmin from '../components/AvailabilityAdmin'
 import NfcClockAdmin from '../components/NfcClockAdmin'
@@ -21,6 +23,7 @@ export default function Employees() {
   // Opened from the day-off pop-up ("Open calendar") or Users ("+ Add user") while already on this page
   useEffect(() => { const v = tabFromUrl(location.search); if (v) setTab(v) }, [location.search])
   const [employees, setEmployees] = useState([])
+  const [evaluated, setEvaluated] = useState(() => new Set())
   const [loading, setLoading] = useState(true)
   // Same rule as Users: the count is active people; inactive ones only when asked.
   const [showInactive, setShowInactive] = useState(false)
@@ -56,8 +59,9 @@ export default function Employees() {
 
   const loadEmployees = async () => {
     setLoading(true)
-    const { data } = await supabase.from('employees').select('*').order('full_name')
+    const [{ data }, scored] = await Promise.all([supabase.from('employees').select('*').order('full_name'), fetchEvaluatedIds().catch(() => new Set())])
     setEmployees(data || [])
+    setEvaluated(scored)
     setLoading(false)
   }
 
@@ -183,7 +187,7 @@ export default function Employees() {
                   {e.full_name?.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:15,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{e.full_name}<RoleBadge value={e.job_role} lang={lang} /></div>
+                  <div style={{fontWeight:600,fontSize:15,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{e.full_name}{isTestEmployee(e) && <span className="badge">TESTE</span>}<RoleBadge value={e.job_role} lang={lang} /></div>
                   <div style={{fontSize:12,color:'var(--text3)'}}>{e.email} · {e.contract_type}</div>
                   {e.leader_id && <div style={{fontSize:12,color:'var(--text2)'}}>{pickLang(lang, 'Leader', 'リーダー', 'Líder')}: <b>{employees.find(x=>x.id===e.leader_id)?.full_name || '—'}</b></div>}
                 </div>
@@ -192,7 +196,7 @@ export default function Employees() {
 
               <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:12}}>
                 <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px',textAlign:'center'}}>
-                  <div style={{fontSize:20,fontWeight:700,color:scoreColor(e.score||100)}}>{e.score||100}</div>
+                  <div style={{fontSize:20,fontWeight:700,color:scoreOf(e,evaluated)==null?'var(--text3)':scoreColor(scoreOf(e,evaluated))}}>{scoreOf(e,evaluated) ?? '—'}</div>
                   <div style={{fontSize:10,color:'var(--text3)'}}>Score</div>
                 </div>
                 <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px',textAlign:'center'}}>

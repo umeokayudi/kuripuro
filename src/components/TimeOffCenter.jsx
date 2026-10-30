@@ -17,6 +17,9 @@ import { ELEMENT_KINDS } from '../lib/facilityModel'
 import { fetchAssignAlerts } from '../lib/assignNotices'
 import { PENDING_CHANGED } from '../lib/adminPending'
 import { fetchDayCoverage, needsAction } from '../lib/dayCoverage'
+import { fetchExceptions } from '../lib/exceptionQueue'
+import { exceptionInfo } from '../lib/exceptionText'
+import { hideTests, HIDE_TESTS_CHANGED } from '../lib/testData'
 
 const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
 
@@ -55,12 +58,14 @@ export default function TimeOffCenter() {
   const [noPerson, setNoPerson] = useState([])
   // v1.0.103 · today's contract places not done (no job / nobody / late)
   const [dayMissing, setDayMissing] = useState([])
+  // v1.0.110 · one queue of exceptions ordered by urgency, each row with the action that resolves it
+  const [exceptions, setExceptions] = useState([])
   const seen = useRef(readSeen())
 
   // v1.0.102 · a list that fails to load keeps its last value (it used to drop to 0 and come back,
   // so the count went 3 → empty → 3), and only the newest load is applied.
   const loadSeq = useRef(0)
-  const last = useRef({ list: [], periods: [], quoteRows: [], flow: { toBook: [], done: [] }, offerRows: [], assign: { accepted: [], noPerson: [] }, cov: null })
+  const last = useRef({ list: [], periods: [], quoteRows: [], flow: { toBook: [], done: [] }, offerRows: [], assign: { accepted: [], noPerson: [] }, cov: null, exc: [] })
   const keep = (p, k) => p.then(v => { last.current[k] = v; return v }, () => last.current[k])
   const load = () => {
     const seq = ++loadSeq.current
@@ -72,8 +77,10 @@ export default function TimeOffCenter() {
       keep(fetchFacilityOffers(), 'offerRows'),
       keep(fetchAssignAlerts(), 'assign'),
       keep(fetchDayCoverage(tokyoToday(), { nowMin: tokyoMinutes() }), 'cov'),
-    ]).then(([list, periods, quoteRows, flow, offerRows, assign, cov]) => {
+      keep(fetchExceptions({ hideTests: hideTests() }), 'exc'),
+    ]).then(([list, periods, quoteRows, flow, offerRows, assign, cov, exc]) => {
     if (seq !== loadSeq.current) return
+    setExceptions(exc || [])
     setOffers(offerRows)
     const takenUnseen = assign.accepted.filter(a => !seen.current.has(a.id))
     setTaken(takenUnseen)
@@ -109,7 +116,8 @@ export default function TimeOffCenter() {
     window.addEventListener(QUOTE_REQUESTS_CHANGED, load)
     window.addEventListener(QUOTE_FLOW_CHANGED, load)
     window.addEventListener(PENDING_CHANGED, load)
-    return () => { clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load); window.removeEventListener(QUOTE_REQUESTS_CHANGED, load); window.removeEventListener(QUOTE_FLOW_CHANGED, load); window.removeEventListener(PENDING_CHANGED, load) }
+    window.addEventListener(HIDE_TESTS_CHANGED, load)
+    return () => { window.removeEventListener(HIDE_TESTS_CHANGED, load); clearInterval(id); window.removeEventListener(TIME_OFF_CHANGED, load); window.removeEventListener(PAYROLL_CHANGED, load); window.removeEventListener(QUOTE_REQUESTS_CHANGED, load); window.removeEventListener(QUOTE_FLOW_CHANGED, load); window.removeEventListener(PENDING_CHANGED, load) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The pop-up alert goes away on its own; the bell and the side-menu numbers stay.
@@ -161,8 +169,13 @@ export default function TimeOffCenter() {
     }
     setBusy(null)
   }
-  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length + dayMissing.length
+  // Rows already counted by their own block (Pending box, auto-closed payroll) are not counted twice.
+  const excOwn = exceptions.filter(x => x.kind !== 'no_person' && x.kind !== 'payroll_review')
+  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length + dayMissing.length + excOwn.length
+  const EXC = exceptionInfo(L)
+  const openExc = (x) => { setOpen(false); markSeen(); navigate(EXC[x.kind].to(x)) }
   const kinds = [
+    { key: 'exceptions', label: L('Exceptions', '例外', 'Exceções'), n: exceptions.length },
     { key: 'jobs', label: L('Jobs', '作業', 'Jobs'), n: taken.length + noPerson.length + dayMissing.length },
     { key: 'quotes', label: L('Quotes', '見積もり', 'Orçamentos'), n: quotes.length + toBook.length + flowDone.length },
     { key: 'payroll', label: L('Payroll', '給与', 'Folha'), n: payroll.length },
@@ -259,6 +272,22 @@ export default function TimeOffCenter() {
               ))}
             </div>}
             <div className="tor-list">
+              {show('exceptions') && exceptions.length > 0 && <div className="tor-section">🚨 {L('Exceptions — most urgent first', '例外 — 緊急度順', 'Exceções — mais urgentes primeiro')}</div>}
+              {show('exceptions') && exceptions.slice(0, kind === 'exceptions' ? 200 : 12).map(x => (
+                <article key={x.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">{EXC[x.kind].icon}</div>
+                    <div className="tor-item-main">
+                      <strong>{EXC[x.kind].title(x)}</strong>
+                      <span>{[x.place, x.who, x.date && x.date.length === 10 ? fmtDay(x.date, lang, { weekday: 'short', day: 'numeric', month: 'short' }) : ''].filter(Boolean).join(' · ')}</span>
+                    </div>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openExc(x)}>{EXC[x.kind].action}</button>
+                  </div>
+                </article>
+              ))}
+              {show('exceptions') && kind === 'all' && exceptions.length > 12 && <button type="button" className="tor-btn" style={{ margin: '4px 18px 10px' }} onClick={() => setKind('exceptions')}>{L(`See all ${exceptions.length}`, `全${exceptions.length}件を見る`, `Ver todas (${exceptions.length})`)}</button>}
               {show('jobs') && (taken.length + noPerson.length + dayMissing.length) > 0 && kind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
               {show('jobs') && dayMissing.map(d => (
                 <article key={d.id} className="tor-item">

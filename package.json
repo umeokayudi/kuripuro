@@ -28,6 +28,7 @@
     "test:salary-calc": "npx vite-node scripts/test-salary-calc.mjs",
     "test:payroll-close": "node scripts/test-payroll-close.mjs",
     "test:money": "node scripts/test-money.mjs",
+    "test:exception-queue": "npx vite-node scripts/test-exception-queue.mjs",
     "test:global-search": "npx vite-node scripts/test-global-search.mjs",
     "test:agenda": "npx vite-node scripts/test-agenda.mjs",
     "test:manual-close": "npx vite-node scripts/test-manual-close.mjs",

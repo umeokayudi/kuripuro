@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchEvaluatedIds, scoreOf, byScore } from '../lib/employeeScore'
+import { isTestEmployee } from '../lib/testData'
+import { useHideTests } from '../hooks/useHideTests'
 import toast from 'react-hot-toast'
 import { useLang, pickLang, localeOf } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
@@ -33,17 +36,21 @@ export default function Evaluations() {
   const [filterEmp, setFilterEmp] = useState('')
   const [lightbox, setLightbox] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [evaluated, setEvaluated] = useState(() => new Set())
+  const [hideTests] = useHideTests()
 
   useEffect(() => { loadAll() }, [])
 
   const loadAll = async () => {
     const since = addDays(today, -7)
-    const [e, j, ev] = await Promise.all([
+    const [e, j, ev, scored] = await Promise.all([
       supabase.from('employees').select('id,full_name,score,is_active').eq('is_active', true).order('full_name'),
       supabase.from('jobs').select('id,title,description,employee_id,employee_name,scheduled_date,scheduled_time,started_at,completed_at,photo_start_url,photo_end_url,status')
         .eq('status', 'completed').gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(300),
       supabase.from('evaluations').select('*').order('created_at', { ascending: false }).limit(200),
+      fetchEvaluatedIds(),
     ])
+    setEvaluated(scored)
     setEmployees(e.data || [])
     setJobs(j.data || [])
     setEvals(ev.data || [])
@@ -186,19 +193,19 @@ export default function Evaluations() {
       {tab === 'ranking' && (
         <div className="card">
           <div className="card-title">🏆 {L('Employee ranking', 'スタッフランキング', 'Ranking dos funcionários')}</div>
-          {[...employees].sort((a, b) => (b.score ?? 100) - (a.score ?? 100)).map((e, i) => {
-            const s = e.score ?? 100
-            const color = s >= 90 ? 'var(--green)' : s >= 70 ? '#EF9F27' : 'var(--red)'
+          {employees.filter(e => !hideTests || !isTestEmployee(e)).sort(byScore(evaluated)).map((e, i) => {
+            const s = scoreOf(e, evaluated)
+            const color = s == null ? 'var(--text3)' : s >= 90 ? 'var(--green)' : s >= 70 ? '#EF9F27' : 'var(--red)'
             return (
               <div key={e.id} className="ev-rank">
                 <div className={`ev-rank-pos p${i}`}>{i + 1}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{e.full_name}</div>
-                  <div className="ev-bar"><div style={{ width: `${s}%`, background: color }} /></div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{e.full_name}{isTestEmployee(e) && <span className="badge" style={{ marginLeft: 6 }}>TESTE</span>}</div>
+                  <div className="ev-bar"><div style={{ width: `${s ?? 0}%`, background: color }} /></div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color }}>{s}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{L('score', 'スコア', 'pontos')}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color }}>{s ?? '—'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s == null ? L('not rated yet', '未評価', 'sem avaliação') : L('score', 'スコア', 'pontos')}</div>
                 </div>
               </div>
             )
