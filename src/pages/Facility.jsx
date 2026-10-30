@@ -12,6 +12,7 @@ import {
 import { listAllModels, listApprovedModels, listModels, listRecommendations, listServiceLog, logElementService, offerService } from '../lib/facilityApi'
 import { loadStoreTimeline, placePhotosOf, sizeLabel } from '../lib/cleaningTimeline'
 import { openClientSheet } from '../lib/clientSheet'
+import { fetchDayCoverage, needsAction } from '../lib/dayCoverage'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { offerWhen } from '../components/facility/FacilityOffersBell'
 import { WorldView } from '../components/facility/FacilityViewer'
@@ -103,6 +104,10 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   // even without a 3D plan yet (those show as a plain building and open a simple sheet).
   const [places, setPlaces] = useState([])
   const [todayJobs, setTodayJobs] = useState([])
+  // v1.0.113 · today's contract places (same fact as Live Track "Today by contract")
+  const [coverage, setCoverage] = useState(null)
+  const [placeTab, setPlaceTab] = useState('map')
+  const [placeTimeline, setPlaceTimeline] = useState(null)
   const [placeOpen, setPlaceOpen] = useState(null)
 
   const storeId = params.get('model') || null
@@ -171,6 +176,8 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
     }
     setPlaces([...byName.values()])
     setTodayJobs(tj || [])
+    const tokyoNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+    fetchDayCoverage(tokyoToday(), { nowMin: tokyoNow.getHours() * 60 + tokyoNow.getMinutes() }).then(setCoverage).catch(() => setCoverage(null))
     const [ms, ls, rs, { data: cl }, { data: js }] = await Promise.all([
       listAllModels(),
       listServiceLog({ limit: 3000 }),
@@ -271,8 +278,14 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
       status: 'none', late: 0, soon: 0, draft: false, placeOnly: true,
     })))
     .map(st => ({ ...st, today: todayJobs.filter(j => storeBase(j.title) === storeBase(st.model?.location_name || st.name) || (!st.model?.location_name && j.client_id === st.model?.client_id)) }))
+    .map(st => {
+      // A contract place still missing today makes the store "late" here too, never "all ok".
+      const miss = (coverage?.missing || []).filter(it => storeBase(it.place) === storeBase(st.model?.location_name || st.name))
+      const act = miss.filter(needsAction)
+      return { ...st, todayMissing: miss, status: act.length ? 'overdue' : miss.length && st.status === 'ok' ? 'due' : st.status, noGps: !!st.placeOnly && !st.place?.address }
+    })
     .filter(st => !isEmployee || st.today.length > 0 || !st.placeOnly)
-    .sort((a, b) => (b.today.length > 0) - (a.today.length > 0) || a.name.localeCompare(b.name)), [models, logs, clients, late, soon, places, todayJobs, isClient, isEmployee])
+    .sort((a, b) => (b.today.length > 0) - (a.today.length > 0) || a.name.localeCompare(b.name)), [models, logs, clients, late, soon, places, todayJobs, isClient, isEmployee, coverage])
 
   const store = stores.find(s => s.id === storeId) || null
   // links antigos (Clientes → 🏢 3D): ?client= abre a loja desse cliente ou o editor para criar a primeira
@@ -284,7 +297,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
     else navigate(`/facility/edit?client=${wantClient}`, { replace: true })
   }, [loaded, wantClient]) // eslint-disable-line react-hooks/exhaustive-deps
   const enterStore = (id, sel = null) => {
-    if (String(id).startsWith('place:')) { setPlaceOpen(stores.find(s => s.id === id) || null); return }
+    if (String(id).startsWith('place:')) { setPlaceTab('map'); setPlaceTimeline(null); setPlaceOpen(stores.find(s => s.id === id) || null); return }
     setPendingSel(sel)
     setParams(mapView ? { model: id, from: 'map' } : { model: id })
   }
@@ -395,7 +408,9 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                   <strong>{s.name}</strong>
                   {s.sub && <span>{s.sub}</span>}
                   <span className="kw-list-meta">
-                    {s.placeOnly ? pickLang(lang, 'No 3D plan yet', '3D図面なし', 'Sem planta 3D ainda') : s.draft ? w.draft : s.late ? fill(w.lateN, { n: s.late }) : s.soon ? fill(w.weekN, { n: s.soon }) : w.allOk}
+                    {s.todayMissing?.length ? `⚠️ ${pickLang(lang, `${s.todayMissing.length} missing today`, `今日未完了 ${s.todayMissing.length}`, `${s.todayMissing.length} faltando hoje`)} · ` : ''}
+                    {s.placeOnly ? pickLang(lang, 'No 3D plan yet', '3D図面なし', 'Sem planta 3D ainda') : s.draft ? w.draft : s.late ? fill(w.lateN, { n: s.late }) : s.soon ? fill(w.weekN, { n: s.soon }) : s.todayMissing?.length ? '' : w.allOk}
+                    {s.noGps && <> · 📍 {pickLang(lang, 'no GPS', 'GPSなし', 'sem GPS')}</>}
                     {s.today.length > 0 && <> · 🧹 {pickLang(lang, `${s.today.length} today`, `今日${s.today.length}件`, `${s.today.length} hoje`)}</>}
                   </span>
                 </button>
@@ -442,7 +457,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
           {!mapView && <aside className={`kw-missions${missionsOpen ? ' open' : ''}${mobile ? ' sheet' : ''}`}>
             <button type="button" className="kw-missions-head" onClick={() => setMissionsOpen(v => !v)} aria-expanded={missionsOpen}>
               <span>{isEmployee ? `✅ ${w.myWork}` : isClient ? `🧽 ${w.care}` : `🎯 ${w.missions}`}</span>
-              <b className={late.length && !isEmployee ? 'late' : ''}>{isEmployee ? myWork.length : missions.length + pendingRecs.length}</b>
+              <b className={(late.length || (isAdmin && coverage?.missing?.some(needsAction))) && !isEmployee ? 'late' : ''}>{isEmployee ? myWork.length : missions.length + pendingRecs.length + (isAdmin ? coverage?.missing?.length || 0 : 0)}</b>
               <i aria-hidden="true">{missionsOpen ? '▾' : '▴'}</i>
             </button>
             {missionsOpen && (
@@ -467,7 +482,20 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                       <time>{x.date.slice(5).replace('-', '/')}</time>
                     </button>
                   ))}
-                  {missionTab !== 'mine' && shownMissions.length === 0 && <div className="kw-empty">{w.missionsEmpty}</div>}
+                  {isAdmin && missionTab !== 'mine' && coverage && coverage.total > 0 && (
+                    <div className="kw-recs fac-dark">
+                      <div className="kw-recs-title">📋 {tr.live?.covTitle || 'Today by contract'} · {fill(tr.live?.covCount || '{done} of {total}', { done: coverage.done, total: coverage.total })}</div>
+                      {coverage.missing.map(it => (
+                        <div key={it.place} className="kw-mywork" style={{ cursor: 'default' }}>
+                          <span className="kw-mywork-text"><strong>{it.place}</strong><small>{({ noJob: tr.live?.covNoJob, noPerson: tr.live?.covNoPerson, late: tr.live?.covLate, waiting: tr.live?.covWaiting, working: tr.live?.covWorking })[it.state] || it.state}{it.personName ? ` · ${it.personName}` : ''}</small></span>
+                        </div>
+                      ))}
+                      {coverage.missing.length > 0 && <button type="button" className="kw-pill" style={{ marginTop: 6 }} onClick={() => navigate('/live')}>{pickLang(lang, 'Open Live Track', 'ライブ追跡を開く', 'Abrir Live Track')} →</button>}
+                    </div>
+                  )}
+                  {missionTab !== 'mine' && shownMissions.length === 0 && <div className="kw-empty">{isAdmin && coverage?.missing?.length
+                    ? pickLang(lang, `No maintenance due. Today ${coverage.missing.length} contract place(s) still missing (above).`, `期限のメンテナンスなし。今日の契約先 ${coverage.missing.length}件が未完了（上）。`, `Nenhuma manutenção pendente. Hoje ainda faltam ${coverage.missing.length} local(is) do contrato (acima).`)
+                    : w.missionsEmpty}</div>}
                   {shownMissions.map(r => {
                     const k = ELEMENT_KINDS[r.element_kind] || ELEMENT_KINDS.other
                     return (
@@ -512,15 +540,33 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
               <div><div style={{ fontSize: 18, fontWeight: 800 }}>{placeOpen.name}</div>{placeOpen.sub && <div style={{ fontSize: 13, opacity: .7 }}>{placeOpen.sub}</div>}</div>
               <button type="button" className="kw-back" onClick={() => setPlaceOpen(null)}>✕</button>
             </div>
-            {placeOpen.place?.address && isAdmin && <div style={{ fontSize: 12, opacity: .7, marginTop: 6 }}>📍 {placeOpen.place.address}</div>}
-            <div style={{ marginTop: 14, fontWeight: 700, fontSize: 13 }}>🧹 {pickLang(lang, "Today's jobs", '今日の作業', 'Jobs de hoje')} ({placeOpen.today.length})</div>
-            {placeOpen.today.length === 0 && <div style={{ fontSize: 13, opacity: .7, marginTop: 6 }}>{pickLang(lang, 'Nothing today.', '今日はありません。', 'Nada hoje.')}</div>}
-            {placeOpen.today.map(j => (
-              <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, padding: '7px 0', borderTop: '1px solid rgba(255,255,255,.08)' }}>
-                <span>{j.scheduled_time || '—'} · {j.title.split(/\s+[—–]\s+/).slice(1).join(' — ') || j.title}</span>
-                <span style={{ opacity: .75 }}>{isEmployee ? '' : (j.employee_name || '—') + ' · '}{j.status === 'completed' ? '✅' : j.status === 'in_progress' ? '▶' : '○'}</span>
-              </div>
-            ))}
+            {/* v1.0.113 · the same three tabs as a store with a plan: Map / Items / History */}
+            <div className="kw-seg kw-seg-inline" style={{ marginTop: 12 }}>
+              <button type="button" className={placeTab === 'map' ? 'on' : ''} onClick={() => setPlaceTab('map')}>🗺 {w.map}</button>
+              <button type="button" className={placeTab === 'items' ? 'on' : ''} onClick={() => setPlaceTab('items')}>🧰 {w.items}</button>
+              <button type="button" className={placeTab === 'history' ? 'on' : ''} onClick={() => { setPlaceTab('history'); if (!placeTimeline) loadStoreTimeline({ clientId: placeOpen.model.client_id, locationName: placeOpen.name, logs: [] }).then(setPlaceTimeline).catch(() => setPlaceTimeline([])) }}>🕘 {w.history}</button>
+            </div>
+            {placeTab === 'map' && <>
+              {placeOpen.place?.address
+                ? <div style={{ fontSize: 13, marginTop: 10 }}>📍 {isAdmin ? placeOpen.place.address : placeOpen.name} · <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeOpen.place.address)}`} target="_blank" rel="noreferrer" style={{ color: '#7fb0ff' }}>Google Maps</a></div>
+                : <div style={{ fontSize: 13, marginTop: 10, color: '#fbbf24' }}>📍 {pickLang(lang, 'No GPS: this place has no address yet. Add it in the contract (or search it on the map).', 'GPSなし：住所が未登録です。契約に追加してください（または地図で検索）。', 'Sem GPS: este local ainda não tem endereço. Complete no contrato (ou busque no mapa).')}</div>}
+              {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 8 }} onClick={() => { setPlaceOpen(null); setParams({ view: 'map' }) }}>🗺️ {w.cityMap?.open || 'Map'}</button>}
+              {placeOpen.todayMissing?.length > 0 && <div style={{ fontSize: 13, marginTop: 10, color: '#fca5a5' }}>⚠️ {tr.live?.covTitle}: {placeOpen.todayMissing.map(it => ({ noJob: tr.live?.covNoJob, noPerson: tr.live?.covNoPerson, late: tr.live?.covLate, waiting: tr.live?.covWaiting, working: tr.live?.covWorking })[it.state] || it.state).join(', ')}</div>}
+              <div style={{ marginTop: 14, fontWeight: 700, fontSize: 13 }}>🧹 {pickLang(lang, "Today's jobs", '今日の作業', 'Jobs de hoje')} ({placeOpen.today.length})</div>
+              {placeOpen.today.length === 0 && <div style={{ fontSize: 13, opacity: .7, marginTop: 6 }}>{pickLang(lang, 'Nothing today.', '今日はありません。', 'Nada hoje.')}</div>}
+              {placeOpen.today.map(j => (
+                <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, padding: '7px 0', borderTop: '1px solid rgba(255,255,255,.08)' }}>
+                  <span>{j.scheduled_time || '—'} · {j.title.split(/\s+[—–]\s+/).slice(1).join(' — ') || j.title}</span>
+                  <span style={{ opacity: .75 }}>{isEmployee ? '' : (j.employee_name || '—') + ' · '}{j.status === 'completed' ? '✅' : j.status === 'in_progress' ? '▶' : '○'}</span>
+                </div>
+              ))}
+            </>}
+            {placeTab === 'items' && <div style={{ fontSize: 13, opacity: .75, marginTop: 12 }}>{pickLang(lang, 'Items (equipment, care dates) appear here once the 3D plan of this place is drawn.', '設備やお手入れ日は、この場所の3D図面を作ると表示されます。', 'Os itens (equipamentos e datas de cuidado) aparecem aqui quando a planta 3D deste local for desenhada.')}</div>}
+            {placeTab === 'history' && (placeTimeline === null
+              ? <div className="kw-empty">{w.loading}</div>
+              : placeTimeline.length === 0
+                ? <div className="kw-empty">{w.storeHistoryEmpty}</div>
+                : <CleaningTimeline dark entries={placeTimeline} placePhotos={[]} title={placeOpen.name} />)}
             <div style={{ fontSize: 12, opacity: .6, marginTop: 12 }}>{pickLang(lang, 'This place has no 3D plan yet.', 'この場所の3D図面はまだありません。', 'Este local ainda não tem planta 3D.')}</div>
             {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 10 }} onClick={() => navigate(placeOpen.model.client_id ? `/facility/edit?client=${placeOpen.model.client_id}` : '/facility/edit')}>＋ {w.newStore}</button>}
           </div>
