@@ -44,6 +44,21 @@ export function quoteFromMitsumori(q) {
   }
 }
 
+/**
+ * v1.0.122 · The accepted 見積's own lines and totals, so the session's 請求書 copies them exactly.
+ * Only 'mit:' quotes have lines; a client-portal request is a single amount (null → one line).
+ */
+export async function quoteInvoiceSource(ref) {
+  const m = /^mit:(.+)$/.exec(String(ref || ''))
+  if (!m) return null
+  const [q, its] = await Promise.all([
+    supabase.from('mitsumori').select('subtotal,tax_amount,total,tax_rate').eq('id', m[1]).maybeSingle(),
+    supabase.from('mitsumori_items').select('description,quantity,unit_price,total').eq('mitsumori_id', m[1]),
+  ])
+  if (!q.data || !(its.data || []).length) return null
+  return { ...q.data, items: its.data }
+}
+
 /** Sessions of a quote: contract + job + invoice, oldest first. */
 export async function fetchQuoteSessions(ref) {
   const { data, error } = await supabase.from('spot_contracts')
@@ -118,7 +133,9 @@ export async function scheduleQuoteSession(quote, form, sessionsSoFar = []) {
   const row = buildSpotContractRow({ contract, job, form: jobForm, client: client || { company_name: quote.client_name }, employee: form.employee })
   // The seller of the quote already earns through the quote; no second commission on the contract.
   row.commission_type = null; row.commission_value = null; row.commission_amount = 0
-  const saved = await saveSpotContractWithInvoice(row)
+  // Session priced exactly as the quote → its invoice repeats the quote's lines (else one line).
+  const source = await quoteInvoiceSource(quote.ref).catch(() => null)
+  const saved = await saveSpotContractWithInvoice(row, source)
   // Invoice dated on the session day → it lands in that month's revenue as confirmed (draft = not sent yet).
   if (saved.invoice?.id) await supabase.from('faturas').update({ issue_date: form.date }).eq('id', saved.invoice.id)
 
