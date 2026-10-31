@@ -124,15 +124,6 @@ export const ATOMIC_LOCATION = {
   scheduledTime: '21:00',
 }
 
-/** Duskin — domingos especiais do mês */
-export const DUSKIN_SITES = {
-  sugitaTeiLamen: { name: 'Sugita Tei Lamen', notes: '1º dom: cera no chão + range hood' },
-  sugitaRestaurant: { name: 'Sugita Restaurant', notes: '1º dom: polidora + banheiro; 3ª sem: polidora + range hood + banheiro' },
-  building1: { name: 'Duskin Building 1 — Common Area', notes: 'Área comum + lixo' },
-  building2: { name: 'Duskin Building 2 — Common Area', notes: 'Área comum + lixo' },
-  building3: { name: 'Duskin Building 3 — Common Area', notes: 'Área comum + lixo' },
-}
-
 /** Matsunaga — somente spot (sem escala fixa) */
 export const MATSUNAGA_SPOT = {
   name: 'Matsunaga',

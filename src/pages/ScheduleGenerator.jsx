@@ -298,7 +298,8 @@ export default function ScheduleGenerator() {
     }
     const { seqOf, updates } = sequenceFor(toCreate, existing)
     const payload = jobsToRows(toCreate.map(r => ({ ...r, seq: seqOf.get(r.key) || 1 })))
-      .map(p => (asOffer ? { ...p, job_category: 'spot', spot_status: 'pending', spot_value: Number(asOffer.value) || 0 } : p))
+      // v1.0.120 · a contract visit sent as an offer stays a routine job (normal pay of the place), not a spot.
+      .map(p => (asOffer ? { ...p, spot_status: 'pending' } : p))
     const inserted = []
     let error = null
     for (let i = 0; i < payload.length; i += 50) {
@@ -367,7 +368,7 @@ export default function ScheduleGenerator() {
   const sendOffer = async (l, value) => {
     setBusy(l.key)
     try {
-      if (l.kind === 'new') await createRows([l.row], { asOffer: { value } })
+      if (l.kind === 'new') await createRows([l.row], { asOffer: true })
       else after(await offerJob(l.job, { value }))
       toast.success(tr('Offer sent to everyone with the role', '役割のある全員にオファーを送信', 'Oferta enviada para todos com o papel'))
       setOfferFor(null)
@@ -376,7 +377,8 @@ export default function ScheduleGenerator() {
     setBusy(null)
   }
   const cancelOffer = async job => {
-    const { error } = await supabase.from('jobs').update({ job_category: 'regular', spot_status: null }).eq('id', job.id)
+    // Back to the Pending box as what it was: a routine job stays routine, an offered spot goes back to normal (as before).
+    const { error } = await supabase.from('jobs').update({ job_category: job.job_category === 'spot' ? 'regular' : job.job_category, spot_status: null }).eq('id', job.id)
     if (error) toast.error(error.message)
     await fetchExisting()
   }
@@ -407,7 +409,7 @@ export default function ScheduleGenerator() {
     const ids = [...new Set(liveJobs.filter(j => j.scheduled_date === today && j.status === 'assigned' && j.employee_id).map(j => j.employee_id))]
     return ids.map(id => ({ id, name: empById[id]?.full_name || '—', n: movableJobs(liveJobs.filter(j => j.scheduled_date === today), id).length })).filter(p => p.n)
   }, [liveJobs, today, empById])
-  const accepted = periodJobs.filter(j => j.job_category === 'spot' && j.spot_status === 'accepted' && j.spot_responded_at && Date.now() - new Date(j.spot_responded_at) < 3 * 86400000)
+  const accepted = periodJobs.filter(j => j.spot_status === 'accepted' && j.spot_responded_at && Date.now() - new Date(j.spot_responded_at) < 3 * 86400000)
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 100)
 
   return (
@@ -687,9 +689,13 @@ function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employe
 
       {offerOpen && (
         <div className="as-offer">
-          <label className="as-muted">⚡ {tr('Spot value (¥) — added to salary', 'スポット額（¥）— 給与に加算', 'Valor do spot (¥) — vai pro salário')}
-            <input type="number" min="0" className="as-input" value={value} onChange={e => setValue(e.target.value)} />
-          </label>
+          {type === 'spot' ? (
+            <label className="as-muted">⚡ {tr('Spot value (¥) — added to salary', 'スポット額（¥）— 給与に加算', 'Valor do spot (¥) — vai pro salário')}
+              <input type="number" min="0" className="as-input" value={value} onChange={e => setValue(e.target.value)} />
+            </label>
+          ) : (
+            <span className="as-muted">📋 {tr('Routine job of the contract — it stays routine, with the normal pay of the place (not a spot).', '契約の定期作業 — スポットにはならず、通常の報酬のままです。', 'Serviço de rotina do contrato — continua rotina, com o pagamento normal do local (não vira spot).')}</span>
+          )}
           <span className="as-muted">{tr(`Goes to ${canTake} people with the role and free that day. The first to accept keeps it; the others see it closed.`, `役割があり当日空いている${canTake}人に送ります。最初に承諾した人が担当、他の人には締切を通知。`, `Vai para ${canTake} pessoas com o papel e livres no dia. O primeiro que aceitar fica com o job; os outros veem que fechou.`)}</span>
           <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => onSendOffer(value)}>⚡ {tr('Send offer', 'オファー送信', 'Enviar oferta')}</button>
         </div>

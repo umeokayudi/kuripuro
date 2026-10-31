@@ -7,7 +7,6 @@ import {
   otpBasicScheduleLocations,
   otpDeepOnlyLocations,
   ATOMIC_LOCATION,
-  DUSKIN_SITES,
   SEVEN_DAY_MONDAY_MORNING,
   isOtpDeepOnlyLocation,
 } from './serviceCatalog.js'
@@ -62,12 +61,6 @@ export const SCHEDULE_ROUTES = [
     label: 'OTP · deep-only seg+qua + manutenção folga',
     detail: 'Ibushio, Nyu Ibushio, Horumon, Manmosu — deep seg+qua; grease trap 2x/mês; fogão, range hood, grelha e ar 1x/mês no dia de folga.',
     template: 'otp_deep_only',
-  },
-  {
-    key: 'duskin_sunday',
-    label: 'Duskin · domingos do mês',
-    detail: '1º dom (cera/polidora/banheiros/prédios), 3º dom (prédios + Sugita Restaurant), penúltimo dom (limpeza geral).',
-    template: 'duskin_sunday',
   },
 ]
 
@@ -193,10 +186,6 @@ function getDaysInMonth(yearMonth) {
   return days
 }
 
-function sundaysInMonth(yearMonth) {
-  return getDaysInMonth(yearMonth).filter(d => d.getDay() === 0)
-}
-
 function jobInstructions(location, serviceLabel) {
   const parts = []
   if (location.notes) parts.push(location.notes)
@@ -226,28 +215,6 @@ function makeJob({ id, date, time, employee, empId, client, location, seq, servi
     description: jobInstructions(location, serviceLabel),
     value,
   }
-}
-
-function duskinJobsForSunday(dateStr, emp, empId, jobIdStart) {
-  const jobs = []
-  let jobId = jobIdStart
-  const b = DUSKIN_SITES
-  const add = (site, time, label, seq) => {
-    jobs.push(makeJob({
-      id: jobId++,
-      date: dateStr,
-      time,
-      employee: emp,
-      empId,
-      client: 'Duskin',
-      location: { name: site.name, address: '', notes: site.notes },
-      seq,
-      serviceLabel: label,
-      category: 'duskin',
-    }))
-  }
-
-  return { jobs, nextId: jobId, add }
 }
 
 function restDayDatesInMonth(month, restDow) {
@@ -327,11 +294,6 @@ export function buildMonthSchedule(month, {
     days: ATOMIC_LOCATION.days,
   }
 
-  const sundays = sundaysInMonth(month)
-  const firstSun = sundays[0] ? dateStrLocal(sundays[0]) : null
-  const thirdSun = sundays[2] ? dateStrLocal(sundays[2]) : null
-  const penultimateSun = sundays.length >= 2 ? dateStrLocal(sundays[sundays.length - 2]) : null
-
   days.forEach(date => {
     const dow = date.getDay()
     const dateStr = dateStrLocal(date)
@@ -390,54 +352,11 @@ export function buildMonthSchedule(month, {
         })
       }
 
-      if (contract.template === 'duskin_sunday' && dow === 0) {
-        const b = DUSKIN_SITES
-
-        if (dateStr === firstSun) {
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.sugitaTeiLamen, '09:00', 'Floor Wax + Range Hood', 1)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.sugitaRestaurant, '10:30', 'Floor Polisher + Bathroom', 2)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.sugitaTeiLamen, '11:30', 'Bathroom Cleaning', 3)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building1, '13:00', 'Common Area + Garbage', 4)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building2, '14:00', 'Common Area + Garbage', 5)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building3, '15:00', 'Common Area + Garbage', 6)
-        }
-
-        if (dateStr === thirdSun) {
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building1, '09:00', 'Common Area + Garbage', 1)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building2, '10:00', 'Common Area + Garbage', 2)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building3, '11:00', 'Common Area + Garbage', 3)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.sugitaRestaurant, '13:00', 'Floor Polisher + Range Hood + Bathroom', 4)
-        }
-
-        if (dateStr === penultimateSun && dateStr !== firstSun) {
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.sugitaTeiLamen, '09:00', 'Monthly Cleaning', 1)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.sugitaRestaurant, '11:00', 'Monthly Cleaning', 2)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building1, '13:00', 'Monthly Cleaning', 3)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building2, '14:00', 'Monthly Cleaning', 4)
-          addDuskin(jobs, () => jobId++, dateStr, emp, empId, b.building3, '15:00', 'Monthly Cleaning', 5)
-        }
-      }
       tagRoute(from, contract)
     })
   })
 
   return jobs
-}
-
-function addDuskin(jobs, nextId, dateStr, emp, empId, site, time, label, seq) {
-  const id = nextId()
-  jobs.push(makeJob({
-    id,
-    date: dateStr,
-    time,
-    employee: emp,
-    empId,
-    client: 'Duskin',
-    location: { name: site.name, address: '', notes: site.notes },
-    seq,
-    serviceLabel: label,
-    category: 'duskin',
-  }))
 }
 
 export function scheduleStats(jobs) {
