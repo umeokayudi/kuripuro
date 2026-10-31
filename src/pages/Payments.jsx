@@ -6,11 +6,13 @@ import { getPeriodDates } from '../lib/salaryPeriod'
 import '../components/SalaryPopups.css'
 import './Payments.css'
 import PayrollCloseSheet from '../components/PayrollCloseSheet'
-import { payrollState, payStateText } from '../lib/salaryClose'
-import { payrollMonth, monthLastDay } from '../lib/salaryCalc'
+import { payrollState } from '../lib/salaryClose'
+import { payrollMonth, monthLastDay, canCloseMonth } from '../lib/salaryCalc'
+import { useNavigate } from 'react-router-dom'
 
 // One month (= month worked, salary_payments.period) at a time, one row per employee.
 // ¥0 people fold away, "Mark paid" pays every open line of that person in that month.
+// v1.0.124: grouped by what to do (review / ready / waiting / payslip to make / paid), one sentence + one button per row.
 // v1.0.96: opens on the current month, every active employee has a row, a salary is only paid after
 // the employee confirmed the payslip, and "Payroll" opens the one-screen close of that person.
 
@@ -32,16 +34,19 @@ function statementState(st) {
   return 'waiting'
 }
 
+// A salary line is only paid after the employee confirmed the payslip of that month.
+const blocked = (slip, lines) => lines.some(p => p.payment_type === 'salary') && slip !== 'confirmed'
+
 const emptyForm = (period) => ({ employee_id:'', amount:'', payment_date:'', period, description:'', payment_type:'salary', status:'scheduled' })
 
 export default function Payments() {
   const { tr, locale } = useLang()
+  const navigate = useNavigate()
   const [employees, setEmployees] = useState([])
   const [payments, setPayments] = useState([])
   const [statements, setStatements] = useState([])
   const [loaded, setLoaded] = useState(false)
   const [month, setMonth] = useState(null)
-  const [filter, setFilter] = useState('all') // all | open | paid | check
   const [who, setWho] = useState('')
   const [openRow, setOpenRow] = useState(null)
   const [showZero, setShowZero] = useState(false)
@@ -132,41 +137,41 @@ export default function Payments() {
       // The salary line was calculated earlier: when today's numbers differ (and it is not paid), it needs a recalculation.
       const outdated = !!(calc && salaryLine && salaryLine.status !== 'paid' && Number(salaryLine.amount) !== calc.net)
       const paidUnconfirmed = pstate === 'paid_unconfirmed'
-      let state
-      if (!mine.length) state = 'none'
-      else if (fixedZero || paidUnconfirmed || outdated) state = 'check'
-      else if (earn === 0) state = 'zero'
-      else if (toPay > 0) state = open.some(p => p.payment_date && p.payment_date < today) ? 'late' : 'open'
-      else state = 'paid'
+      const slip = statementState(st)
+      const late = toPay > 0 && open.some(p => p.payment_date && p.payment_date < today)
+      // v1.0.124 · ONE group per person, each with one sentence and one action:
+      // review (something is wrong) → ready (confirmed, pay it) → waiting (employee must confirm) → todo (no payslip) → paid.
+      // ¥0 with nothing wrong folds away, even when an old ¥0 line says "paid" without confirmation: no money is involved.
+      let group
+      if (fixedZero || outdated || (slip === 'disputed' && earn > 0) || (paidUnconfirmed && earn > 0) || late) group = 'review'
+      else if (toPay > 0) group = !blocked(slip, open) ? 'ready' : slip === 'none' ? 'todo' : 'waiting'
+      else if (earn > 0) group = 'paid'
+      else if (!mine.length && calc && calc.net > 0) group = 'todo'
+      else group = 'zero'
+      const state = group
       const payDate = salaryLine?.payment_date || open[0]?.payment_date || mine[0]?.payment_date
-      const paidOn = state === 'paid' ? mine.filter(p => !p.is_deduction && p.status === 'paid').map(p => p.payment_date).sort().pop() : null
+      const paidOn = mine.filter(p => !p.is_deduction && p.status === 'paid').map(p => p.payment_date).sort().pop() || null
+      const paid = live.filter(p => !p.is_deduction && p.status === 'paid').reduce((s, p) => s + Number(p.amount||0), 0)
       // Payroll close already takes deductions out of the salary row, so they are shown, not subtracted again.
-      return { emp, lines: mine, earn, ded, net: earn, toPay, open, state, payDate, paidOn, slip: statementState(st), st, fixedZero, paidUnconfirmed, salaryLine, pstate, calc, outdated }
-    }).sort((a, b) => {
-      const order = { late:0, check:1, open:2, none:3, paid:4, zero:5 }
-      return order[a.state] - order[b.state] || a.emp.full_name.localeCompare(b.emp.full_name)
-    })
+      return { emp, lines: mine, earn, ded, net: earn, paid, toPay, open, group, state, late, payDate, paidOn, slip, st, fixedZero, paidUnconfirmed, salaryLine, pstate, calc, outdated }
+    }).sort((a, b) => a.emp.full_name.localeCompare(b.emp.full_name))
   }, [payments, employees, statements, month, today, monthJobs])
 
   const visible = rows.filter(r => !who || r.emp.id === who)
-  const byFilter = {
-    all: visible.filter(r => r.state !== 'zero'),
-    open: visible.filter(r => r.state === 'open' || r.state === 'late'),
-    paid: visible.filter(r => r.state === 'paid'),
-    check: visible.filter(r => r.state === 'check' || r.slip === 'disputed'),
-  }
-  const shown = byFilter[filter]
-  const zeroRows = filter === 'all' ? visible.filter(r => r.state === 'zero') : []
+  const GROUPS = ['review', 'ready', 'waiting', 'todo', 'paid']
+  const inGroup = (g) => visible.filter(r => r.group === g)
+  const zeroRows = inGroup('zero')
 
+  // v1.0.124 · totals that add up: month total = already paid + still to pay.
   const totals = {
     toPay: visible.reduce((s, r) => s + r.toPay, 0),
-    toPayPeople: visible.filter(r => r.toPay > 0).length,
-    paid: visible.filter(r => !r.paidUnconfirmed).reduce((s, r) => s + r.lines.filter(p => !p.is_deduction && p.status === 'paid').reduce((a, p) => a + Number(p.amount||0), 0), 0),
-    paidPeople: visible.filter(r => r.state === 'paid').length,
-    ded: visible.reduce((s, r) => s + r.ded, 0),
-    dedCount: visible.reduce((s, r) => s + r.lines.filter(p => p.is_deduction && counts(p)).length, 0),
+    paid: visible.reduce((s, r) => s + r.paid, 0),
+    ready: inGroup('ready').reduce((s, r) => s + r.toPay, 0),
+    waiting: inGroup('waiting').reduce((s, r) => s + r.toPay, 0) + inGroup('todo').reduce((s, r) => s + r.toPay, 0),
   }
+  totals.month = totals.toPay + totals.paid
   const payDay = month ? getPeriodDates(month).payDate : null
+  const daysTo = (d) => Math.ceil((new Date(d) - new Date(today)) / 86400000)
 
   // Open amounts left in other months, so moving month never hides a debt.
   const elsewhere = useMemo(() => {
@@ -175,13 +180,12 @@ export default function Payments() {
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b))
   }, [payments, month])
 
-  const statePill = {
-    late: tr('Late','遅延','Atrasado'),
-    open: tr('To pay','未払い','A pagar'),
-    paid: tr('Paid','支払済','Pago'),
-    check: tr('Check','要確認','Conferir'),
-    zero: tr('No amount','金額なし','Sem valor'),
-    none: tr('Not closed','未締め','Sem fechamento'),
+  const groupInfo = {
+    review: { title: tr('Needs your review','確認が必要','Precisa revisar'), hint: tr('Something does not add up. Fix it before paying.','合っていない所があります。支払う前に直してください。','Algo não bate. Arrume antes de pagar.') },
+    ready: { title: tr('Ready to pay','支払OK','Pronto para pagar'), hint: tr('The employee confirmed the payslip. Pay and mark it paid.','本人が明細を確認済み。支払って「支払済」にしてください。','O funcionário confirmou o holerite. Pague e marque como pago.') },
+    waiting: { title: tr('Waiting for the employee','本人の確認待ち','Esperando o funcionário'), hint: tr('Payslip sent. Nothing to do until the employee confirms it.','明細送付済み。本人が確認するまで作業はありません。','Holerite enviado. Nada a fazer até o funcionário confirmar.') },
+    todo: { title: tr('Payslip not made yet','明細未作成','Holerite ainda não feito'), hint: tr('Make the payslip so the employee can confirm it.','明細を作って本人に確認してもらいます。','Faça o holerite para o funcionário confirmar.') },
+    paid: { title: tr('Paid','支払済','Pago'), hint: '' },
   }
   const slipLong = {
     confirmed: tr('Employee confirmed the payslip','従業員が明細を確認済み','Funcionário confirmou o holerite'),
@@ -253,14 +257,44 @@ export default function Payments() {
     return Object.entries(bits).filter(([, v]) => v !== 0).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
   }
 
-  // A salary line is only paid after the employee confirmed the payslip of that month.
-  const blocked = (r, lines) => lines.some(p => p.payment_type === 'salary') && r.slip !== 'confirmed'
+
+  // v1.0.124 · the one sentence + the one button of a row.
+  const rowPlan = (r) => {
+    const open = () => setClosing(r.emp)
+    const pay = () => setAsk({ kind:'pay', emp:r.emp, lines:r.open, r })
+    if (r.fixedZero) return {
+      why: tr(`Fixed salary is ${fmt(r.emp.fixed_salary)}/month, but the saved payslip is ¥0 (an old close).`, `固定給は ${fmt(r.emp.fixed_salary)}/月ですが、保存された明細は ¥0 です（古い締め）。`, `O fixo é ${fmt(r.emp.fixed_salary)}/mês, mas o holerite gravado está ¥0 (fechamento antigo).`),
+      btn: tr('Recalculate','再計算','Recalcular'), act: open }
+    if (r.outdated) return {
+      why: tr(`Saved payslip ${fmt(r.salaryLine.amount)}, but today's jobs give ${fmt(r.calc.net)}.`, `保存された明細は ${fmt(r.salaryLine.amount)}、今日のジョブでは ${fmt(r.calc.net)} です。`, `Holerite gravado ${fmt(r.salaryLine.amount)}, mas pelos serviços de hoje dá ${fmt(r.calc.net)}.`),
+      btn: tr('Recalculate','再計算','Recalcular'), act: open }
+    if (r.slip === 'disputed') return {
+      why: tr('The employee disputed the payslip.', '本人が明細に異議を出しました。', 'O funcionário contestou o holerite.'),
+      btn: tr('Answer','回答する','Responder'), act: () => navigate('/salary-complaints') }
+    if (r.paidUnconfirmed) return {
+      why: tr('Marked paid, but the employee never confirmed the payslip.', '支払済になっていますが、本人は明細を確認していません。', 'Está como pago, mas o funcionário nunca confirmou o holerite.'),
+      btn: tr('Back to "to pay"','「未払い」に戻す','Voltar para "a pagar"'), act: () => undoPaid(r) }
+    if (r.late) return {
+      why: tr(`Was due on ${fmtDay(r.open[0]?.payment_date)}.`, `${fmtDay(r.open[0]?.payment_date)} が支払日でした。`, `Era para pagar em ${fmtDay(r.open[0]?.payment_date)}.`),
+      ...(blocked(r.slip, r.open) ? { btn: tr('Open payroll','給与締めを開く','Abrir folha'), act: open } : { btn: tr('Mark paid','支払済にする','Marcar pago'), act: pay, go: true }) }
+    if (r.group === 'ready') return { why: tr(`Pay on ${fmtDay(r.open[0]?.payment_date)}.`, `${fmtDay(r.open[0]?.payment_date)} に支払い。`, `Pagar em ${fmtDay(r.open[0]?.payment_date)}.`), btn: tr('Mark paid','支払済にする','Marcar pago'), act: pay, go: true }
+    if (r.group === 'waiting') return { why: tr('Payslip sent, the employee has not confirmed yet.', '明細送付済み、本人はまだ確認していません。', 'Holerite enviado, o funcionário ainda não confirmou.') }
+    if (r.group === 'todo') return canCloseMonth(month, today)
+      ? { why: tr('No payslip for this month yet.', 'この月の明細はまだありません。', 'Ainda não tem holerite deste mês.'), btn: tr('Make payslip','明細を作る','Fazer holerite'), act: open }
+      : { why: tr(`The month closes on the 1st; then make the payslip.`, '月末締め後（1日〜）に明細を作ります。', 'O mês fecha no dia 1º; aí é só fazer o holerite.') }
+    if (r.group === 'paid') return { why: r.paidOn ? tr(`Paid on ${fmtDay(r.paidOn)}.`, `${fmtDay(r.paidOn)} に支払済。`, `Pago em ${fmtDay(r.paidOn)}.`) : '', done: true }
+    return { why: tr('Nothing to pay this month.', '今月の支払いはありません。', 'Nada a pagar neste mês.') }
+  }
 
   const rowView = (r) => {
     const expanded = openRow === r.emp.id
     const bits = lineBits(r)
+    const plan = rowPlan(r)
+    // No payslip yet: show what today's jobs give, marked as an estimate.
+    const estimate = !r.lines.length && r.calc && r.calc.net > 0
+    const amount = r.toPay > 0 ? r.toPay : estimate ? r.calc.net : r.net
     return (
-      <div key={r.emp.id} className={`pm-row is-${r.state}${expanded ? ' is-expanded' : ''}`}>
+      <div key={r.emp.id} className={`pm-row is-${r.group}${expanded ? ' is-expanded' : ''}`}>
         <div className="pm-main" onClick={() => setOpenRow(expanded ? null : r.emp.id)}>
           <div className="pm-av">{initials(r.emp.full_name)}</div>
           <div className="pm-who">
@@ -269,60 +303,19 @@ export default function Payments() {
               {payKind[r.emp.salary_type] || ''}
               {r.emp.salary_type === 'fixed' && Number(r.emp.fixed_salary) > 0 && ` · ${fmt(r.emp.fixed_salary)}/${tr('mo','月','mês')}`}
             </small>
-            {bits.length > 0 && (
-              <div className="pm-bits">
-                {bits.map(([k, v]) => <span key={k} className={k === 'deduction' ? 'is-neg' : ''}>{typeLabel[k] || k} {k === 'deduction' ? '−' : ''}{fmt(v)}</span>)}
-              </div>
-            )}
+            {plan.why && <p className={`pm-why is-${r.group}`}>{plan.why}</p>}
           </div>
           <div className="pm-net">
-            <b>{fmt(r.toPay > 0 ? r.toPay : r.net)}</b>
-            <small>{r.state === 'paid'
-              ? `${tr('paid','支払','pago')} ${fmtDay(r.paidOn)}`
-              : r.toPay > 0 ? `${tr('to pay','支払予定','a pagar')} ${fmtDay(r.open[0]?.payment_date)}${r.toPay !== r.net ? ` · ${tr('total','合計','total')} ${fmt(r.net)}` : ''}` : tr('this month','今月','no mês')}</small>
-          </div>
-          <div className="pm-tags">
-            <span className={`pm-pill is-${r.state}`}>{statePill[r.state]}</span>
-            {r.state !== 'paid' && r.lines.some(p => p.payment_type === 'salary') && <span className={`pay-st is-${r.slip}`} title={`${payStateText(r.pstate, tr).text}${slipLong[r.slip] ? ` · ${slipLong[r.slip]}` : ''}`}>{payStateText(r.pstate, tr).short}</span>}
+            <b>{estimate ? '≈ ' : ''}{fmt(amount)}</b>
+            {estimate && <small>{tr('estimate from jobs','ジョブからの見込み','estimativa pelos serviços')}</small>}
+            {bits.length > 1 && <small>{bits.map(([k, v]) => `${typeLabel[k] || k} ${k === 'deduction' ? '−' : ''}${fmt(v)}`).join(' · ')}</small>}
           </div>
           <div className="pm-act" onClick={ev => ev.stopPropagation()}>
-            {r.toPay > 0 && !blocked(r, r.open)
-              ? <button className="pm-pay" onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:r.open, r })}>✓ {tr('Mark paid','支払済にする','Marcar pago')}</button>
-              : r.state === 'paid' ? <span className="pm-done">✓</span>
-              : <button className="pm-pay" style={{ background:'transparent', color:'var(--text2)', border:'1px solid var(--border)' }} onClick={() => setClosing(r.emp)}>{tr('Payroll','給与締め','Folha')}</button>}
+            {plan.btn && <button className={`pm-pay${plan.go ? '' : ' is-alt'}`} disabled={busy} onClick={plan.act}>{plan.go ? '✓ ' : ''}{plan.btn}</button>}
+            {plan.done && <span className="pm-done">✓</span>}
             <button className="pm-chev" aria-label={tr('Details','詳細','Detalhes')} onClick={() => setOpenRow(expanded ? null : r.emp.id)}>{expanded ? '▴' : '▾'}</button>
           </div>
         </div>
-
-        {r.paidUnconfirmed && (
-          <div className="pm-note">
-            {tr(
-              'The salary is marked paid, but the employee has NOT confirmed the payslip yet. It only counts as paid after the confirmation.',
-              '給与は支払済になっていますが、本人がまだ明細を確認していません。確認後に支払済として扱われます。',
-              'O salário está marcado como pago, mas o funcionário AINDA NÃO confirmou o holerite. Só conta como pago depois da confirmação.')}
-            <button className="pm-note-btn" disabled={busy} onClick={() => undoPaid(r)}>{tr('Back to "to pay"', '「未払い」に戻す', 'Voltar para "a pagar"')}</button>
-          </div>
-        )}
-
-        {r.fixedZero && (
-          <div className="pm-note">
-            {tr(
-              `Fixed salary is ${fmt(r.emp.fixed_salary)}/month but this line is ¥0 (an old close). The fixed salary is the whole month, with or without jobs: recalculate.`,
-              `固定給 ${fmt(r.emp.fixed_salary)}/月ですが、この行は ¥0 です（古い締め）。固定給はジョブの有無に関係なく1か月分です。再計算してください。`,
-              `Salário fixo de ${fmt(r.emp.fixed_salary)}/mês, mas esta linha está ¥0 (fechamento antigo). O fixo é o mês inteiro, com ou sem serviços: recalcule.`)}
-            <button className="pm-note-btn" onClick={() => setClosing(r.emp)}>{tr('Recalculate','再計算','Recalcular')}</button>
-          </div>
-        )}
-
-        {r.outdated && !r.fixedZero && (
-          <div className="pm-note">
-            {tr(
-              `The salary line says ${fmt(r.salaryLine.amount)}, today's payslip gives ${fmt(r.calc.net)} (base ${fmt(r.calc.base)} + jobs ${fmt(r.calc.jobsPay)} − deductions ${fmt(r.calc.deductions)}). Recalculate.`,
-              `給与行は ${fmt(r.salaryLine.amount)}、現在の明細は ${fmt(r.calc.net)}（基本 ${fmt(r.calc.base)} + ジョブ ${fmt(r.calc.jobsPay)} − 控除 ${fmt(r.calc.deductions)}）。再計算してください。`,
-              `A linha do salário diz ${fmt(r.salaryLine.amount)}, o holerite de hoje dá ${fmt(r.calc.net)} (base ${fmt(r.calc.base)} + jobs ${fmt(r.calc.jobsPay)} − descontos ${fmt(r.calc.deductions)}). Recalcule.`)}
-            <button className="pm-note-btn" onClick={() => setClosing(r.emp)}>{tr('Recalculate','再計算','Recalcular')}</button>
-          </div>
-        )}
 
         {expanded && (
           <div className="pm-lines">
@@ -338,7 +331,7 @@ export default function Payments() {
                 </div>
                 <b className={p.is_deduction ? 'is-neg' : ''}>{p.is_deduction ? '−' : ''}{fmt(p.amount)}</b>
                 <div className="pm-line-act">
-                  {isOpen(p) && !blocked(r, [p]) && <button title={tr('Mark paid','支払済にする','Marcar pago')} onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:[p], r })}>✓</button>}
+                  {isOpen(p) && !blocked(r.slip, [p]) && <button title={tr('Mark paid','支払済にする','Marcar pago')} onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:[p], r })}>✓</button>}
                   <button title={tr('Edit','編集','Editar')} onClick={() => openEdit(p)}>✎</button>
                   {p.payment_type !== 'salary' && <button className="is-del" title={tr('Delete','削除','Apagar')} onClick={() => setAsk({ kind:'delete', emp:r.emp, lines:[p], r })}>🗑</button>}
                 </div>
@@ -351,13 +344,6 @@ export default function Payments() {
       </div>
     )
   }
-
-  const chips = [
-    ['all', tr('All','すべて','Todos'), byFilter.all.length],
-    ['open', tr('To pay','未払い','A pagar'), byFilter.open.length],
-    ['paid', tr('Paid','支払済','Pagos'), byFilter.paid.length],
-    ['check', tr('Check','要確認','Conferir'), byFilter.check.length],
-  ]
 
   return (
     <div className="pm">
@@ -381,53 +367,46 @@ export default function Payments() {
         </select>
       </div>
 
-      {elsewhere.length > 0 && (
-        <div className="pm-elsewhere">
-          <span>{tr('Still to pay in other months:','他の月の未払い:','Ainda a pagar em outros meses:')}</span>
-          {elsewhere.map(([m, v]) => <button key={m} onClick={() => { setMonth(m); setFilter('open') }}>{fmtMonth(m)} · {fmt(v)}</button>)}
-        </div>
-      )}
-
+      {/* v1.0.124 · one summary: still to pay + already paid = month total, and when it is paid. */}
       <div className="pm-sum">
-        <div className="pm-card is-open">
-          <small>{tr('To pay','支払予定','A pagar')}</small>
-          <b>{loaded ? fmt(totals.toPay) : <span className="kp-skel-text">{tr('loading…','読み込み中…','carregando…')}</span>}</b>
-          <span>{totals.toPayPeople ? tr(`${totals.toPayPeople} people`,`${totals.toPayPeople}人`,`${totals.toPayPeople} pessoa${totals.toPayPeople>1?'s':''}`) : tr('nothing open','未払いなし','nada em aberto')}</span>
+        <div className="pm-sum-head">
+          {payDay && <b>{tr('Payday','支払日','Pagamento em')} {fmtDay(payDay)}</b>}
+          {payDay && <span>{payDay < today ? tr('already passed','過ぎています','já passou') : tr(`in ${daysTo(payDay)} days`,`あと${daysTo(payDay)}日`,`faltam ${daysTo(payDay)} dias`)}</span>}
         </div>
-        <div className="pm-card is-paid">
-          <small>{tr('Already paid','支払済','Já pago')}</small>
-          <b>{loaded ? fmt(totals.paid) : <span className="kp-skel-text">{tr('loading…','読み込み中…','carregando…')}</span>}</b>
-          <span>{tr(`${totals.paidPeople} people`,`${totals.paidPeople}人`,`${totals.paidPeople} pessoa${totals.paidPeople===1?'':'s'}`)}</span>
-        </div>
-        <div className="pm-card is-ded">
-          <small>{tr('Deductions','控除','Descontos')}</small>
-          <b>{loaded ? <>{totals.ded ? '−' : ''}{fmt(totals.ded)}</> : <span className="kp-skel-text">{tr('loading…','読み込み中…','carregando…')}</span>}</b>
-          <span>{tr(`${totals.dedCount} entries`,`${totals.dedCount}件`,`${totals.dedCount} lançamento${totals.dedCount===1?'':'s'}`)}</span>
-        </div>
-        <div className="pm-card is-day">
-          <small>{tr('Payday','支払日','Dia do pagamento')}</small>
-          <b>{fmtDay(payDay)}</b>
-          <span>{payDay && payDay < today ? tr('already passed','過ぎています','já passou') : payDay ? tr(`in ${Math.ceil((new Date(payDay) - new Date(today)) / 86400000)} days`,`あと${Math.ceil((new Date(payDay) - new Date(today)) / 86400000)}日`,`faltam ${Math.ceil((new Date(payDay) - new Date(today)) / 86400000)} dias`) : ''}</span>
-        </div>
-      </div>
-
-      <div className="pm-chips">
-        {chips.map(([k, label, n]) => (
-          <button key={k} className={filter === k ? 'is-on' : ''} onClick={() => setFilter(k)}>{label}<i>{n}</i></button>
-        ))}
-      </div>
-
-      <div className="pm-list">
-        {!loaded && <div aria-busy="true" aria-label={tr('Loading…','読み込み中…','Carregando…')}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
-        {loaded && shown.length === 0 && (
-          <div className="pm-empty">
-            {filter === 'open' ? tr('Nothing left to pay this month 🎉','今月の未払いはありません 🎉','Nada para pagar neste mês 🎉')
-              : filter === 'check' ? tr('Nothing to check','確認事項なし','Nada para conferir')
-              : tr('No entries this month','今月の登録なし','Nenhum lançamento neste mês')}
+        {loaded ? (
+          <div className="pm-sum-eq">
+            <div className="is-open"><small>{tr('Still to pay','未払い','Falta pagar')}</small><b>{fmt(totals.toPay)}</b>
+              {totals.toPay > 0 && <span>{[totals.ready > 0 && `${fmt(totals.ready)} ${tr('ready','支払OK','pronto')}`, totals.waiting > 0 && `${fmt(totals.waiting)} ${tr('waiting for employee','本人確認待ち','esperando funcionário')}`, totals.toPay - totals.ready - totals.waiting > 0 && `${fmt(totals.toPay - totals.ready - totals.waiting)} ${tr('to review','要確認','a revisar')}`].filter(Boolean).join(' · ')}</span>}
+            </div>
+            <i>+</i>
+            <div className="is-paid"><small>{tr('Already paid','支払済','Já pago')}</small><b>{fmt(totals.paid)}</b></div>
+            <i>=</i>
+            <div><small>{tr('Month total','月合計','Total do mês')}</small><b>{fmt(totals.month)}</b></div>
+          </div>
+        ) : <div className="kp-skel kp-skel-row" />}
+        {elsewhere.length > 0 && (
+          <div className="pm-elsewhere">
+            <span>{tr('Also still to pay from other months:','他の月の未払いもあります:','Também falta pagar de outros meses:')}</span>
+            {elsewhere.map(([m, v]) => <button key={m} onClick={() => setMonth(m)}>{fmtMonth(m)} · {fmt(v)} ›</button>)}
           </div>
         )}
-        {shown.map(rowView)}
       </div>
+
+      {!loaded && <div aria-busy="true" aria-label={tr('Loading…','読み込み中…','Carregando…')}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
+      {loaded && GROUPS.every(g => !inGroup(g).length) && (
+        <div className="pm-empty">{tr('Nothing to pay this month','今月の支払いはありません','Nada a pagar neste mês')}</div>
+      )}
+      {loaded && GROUPS.map(g => {
+        const list = inGroup(g)
+        if (!list.length) return null
+        return (
+          <section key={g} className={`pm-group is-${g}`}>
+            <h3>{groupInfo[g].title} <i>{list.length}</i></h3>
+            {groupInfo[g].hint && <p>{groupInfo[g].hint}</p>}
+            <div className="pm-list">{list.map(rowView)}</div>
+          </section>
+        )
+      })}
 
       {zeroRows.length > 0 && (
         <div className="pm-zero">
