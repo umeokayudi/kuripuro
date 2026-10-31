@@ -61,6 +61,9 @@ export function roleFits(emp, required) {
   return true
 }
 
+/** Open offer to the team: nobody yet, waiting for the first accept. Routine or spot (v1.0.120). */
+export const isOpenOffer = job => !!job && !job.employee_id && job.spot_status === 'pending'
+
 /**
  * Why an existing job is waiting for a person (null = it has a valid owner).
  * Completed / running jobs never come back to the box.
@@ -71,7 +74,7 @@ export function pendingReason(job, { empById = {}, availability = {} } = {}) {
     // A spot the only person declined is cancelled: it still needs someone.
     return job.job_category === 'spot' && job.spot_status === 'declined' ? 'spotDeclined' : null
   }
-  if (!job.employee_id) return job.job_category === 'spot' && job.spot_status === 'pending' ? 'offerOpen' : 'noPerson'
+  if (!job.employee_id) return isOpenOffer(job) ? 'offerOpen' : 'noPerson'
   const emp = empById[job.employee_id]
   if (!emp || emp.is_active === false) return 'personGone'
   if (availability[`${emp.id}|${job.scheduled_date}`]?.kind === 'off') return 'personOff'

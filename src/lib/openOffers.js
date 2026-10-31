@@ -1,4 +1,4 @@
-// v1.0.101 · Employee side of the urgent offer: open spots (no person yet) shown to everyone whose
+// v1.0.101 · Employee side of the urgent offer: open jobs (no person yet; routine or spot, v1.0.120) shown to everyone whose
 // role fits and who works that day. The first accept wins (assignOps.takeOffer); the others see
 // "closed" in the bell the next time the app loads.
 import { supabase } from './supabase'
@@ -22,7 +22,7 @@ export function offerFits(job, emp, availability = {}) {
 export async function fetchOpenOffers(userId) {
   const today = tokyoToday()
   const [jobs, emp, av] = await Promise.all([
-    supabase.from('jobs').select('*').is('employee_id', null).eq('job_category', 'spot').eq('spot_status', 'pending')
+    supabase.from('jobs').select('*').is('employee_id', null).eq('spot_status', 'pending')
       .eq('status', 'assigned').gte('scheduled_date', today).order('scheduled_date').order('scheduled_time').limit(50),
     supabase.from('employees').select('id,full_name,job_role,work_days,is_active').eq('id', userId).maybeSingle(),
     supabase.from('employee_availability').select('employee_id,date,kind,status').eq('employee_id', userId).gte('date', today),

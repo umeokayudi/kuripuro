@@ -17,6 +17,8 @@ function ownerFields(job, emp) {
   const f = { employee_id: emp?.id || null, employee_name: emp?.full_name || null }
   if (job.status === 'cancelled') f.status = 'assigned'
   if (job.job_category === 'spot' && emp && job.spot_status !== 'accepted') { f.spot_status = 'pending'; f.spot_responded_at = null }
+  // v1.0.120 · a routine job that was an open offer: given to someone, it is just their job again.
+  if (job.job_category !== 'spot' && job.spot_status === 'pending') { f.spot_status = null; f.spot_responded_at = null }
   return f
 }
 
@@ -61,13 +63,16 @@ export async function notifyCreated(rows) {
 }
 
 /**
- * Urgent job as an offer to everyone with the role: no person, spot pending. The first who accepts
- * in the portal keeps it (the accept only works while employee_id is still empty).
+ * Urgent job as an offer to everyone with the role: no person, spot_status pending. The first who
+ * accepts in the portal keeps it (the accept only works while employee_id is still empty).
+ * v1.0.120 · the offer only changes WHO does it, never the kind of job: a routine (contract) visit
+ * stays a routine job with the place's normal pay; only a job that already is a spot carries a value.
  */
 export async function offerJob(job, { value } = {}) {
+  const spot = job.job_category === 'spot'
   const fields = {
-    employee_id: null, employee_name: null, status: 'assigned', job_category: 'spot', spot_status: 'pending', spot_responded_at: null,
-    ...(value != null ? { spot_value: Number(value) || 0 } : {}),
+    employee_id: null, employee_name: null, status: 'assigned', spot_status: 'pending', spot_responded_at: null,
+    ...(spot && value != null ? { spot_value: Number(value) || 0 } : {}),
   }
   const { error } = await supabase.from('jobs').update(fields).eq('id', job.id)
   if (error) throw error
