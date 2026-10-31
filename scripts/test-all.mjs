@@ -17,6 +17,7 @@ const steps = [
   ['npm run test:availability', 'availability'],
   ['npm run test:schedule', 'schedule generator'],
   ['npm run test:assign-flow', 'assign flow'],
+  ['npm run test:offer-text', 'offer text (pay not twice)'],
   ['npm run test:sales-kpi', 'sales-kpi'],
   ['npm run test:sales-insights', 'sales-insights'],
   ['npm run test:sales-rules', 'sales rules (alert, closed value, quote→contract)'],

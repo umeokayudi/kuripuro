@@ -68,11 +68,12 @@ export async function notifyCreated(rows) {
  * v1.0.120 · the offer only changes WHO does it, never the kind of job: a routine (contract) visit
  * stays a routine job with the place's normal pay; only a job that already is a spot carries a value.
  */
-export async function offerJob(job, { value } = {}) {
+export async function offerJob(job, { value, description } = {}) {
   const spot = job.job_category === 'spot'
   const fields = {
     employee_id: null, employee_name: null, status: 'assigned', spot_status: 'pending', spot_responded_at: null,
     ...(spot && value != null ? { spot_value: Number(value) || 0 } : {}),
+    ...(description !== undefined ? { description: description || null } : {}),
   }
   const { error } = await supabase.from('jobs').update(fields).eq('id', job.id)
   if (error) throw error

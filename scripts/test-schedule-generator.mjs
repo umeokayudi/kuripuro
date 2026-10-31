@@ -5,7 +5,7 @@ const MONTH = '2026-11'
 const base = buildMonthSchedule(MONTH)
 assert.ok(base.length > 0, 'gera jobs')
 assert.ok(base.every(j => j.routeKey), 'todo job tem rota')
-assert.ok(base.some(j => j.category === 'duskin'), 'Duskin sempre incluído (sem caixa de seleção)')
+assert.ok(!base.some(j => j.category === 'duskin'), 'Duskin saiu da escala (v1.0.121)')
 assert.ok(base.every(j => !j.employeeId), 'rotas não têm funcionário fixo')
 
 const ana = { id: 'a', full_name: 'Ana Silva', is_active: true }
@@ -96,4 +96,36 @@ console.log(`schedule generator ok · ${base.length} jobs em ${MONTH}`)
   const seq = clockSeq([{ key: 'a', employeeId: 'g', date: 'd', time: '21:00', title: 'A' }, { key: 'b', employeeId: 'g', date: 'd', time: '00:30', title: 'B' }])
   assert.equal(seq.get('b'), 1); assert.equal(seq.get('a'), 2)
   console.log('schedule plan ok')
+}
+
+// v1.0.123 · conferência por contrato + navegação de período
+{
+  const { contractCheck, shiftPeriod, contractTargets, periodDays } = await import('../src/lib/schedulePlan.js')
+  const targets = contractTargets([
+    { id: 'k', client_id: 'c1', location_name: 'Kodama Kinshicho', service_type: 'Basic Cleaning', days_of_week: ['Mon', 'Wed', 'Fri'] },
+    { id: 'd', client_id: 'c1', location_name: 'Kodama Kinshicho — Deep Clean', service_type: 'Deep Clean', days_of_week: ['Tue'] },
+  ], [{ id: 'c1', company_name: 'Kodama', is_active: true }])
+  const week = periodDays('week', '2026-11-04', '2026-11') // Mon 02 → Sun 08
+  const jobsW = [
+    { scheduled_date: '2026-11-02', title: 'Kodama Kinshicho — Basic Cleaning', employee_id: 'a', status: 'assigned' },
+    { scheduled_date: '2026-11-02', title: 'Kodama Kinshicho — Basic Cleaning', employee_id: 'b', status: 'assigned' },
+    { scheduled_date: '2026-11-04', title: 'Kodama Kinshicho — Basic Cleaning', employee_id: null, status: 'pending' },
+    { scheduled_date: '2026-11-05', title: 'Bacana — Spot', employee_id: 'a', status: 'assigned' },
+  ]
+  const rowsW = [{ date: '2026-11-06', title: 'Kodama Kinshicho — Basic Cleaning', employeeId: 'a' }]
+  const chk = contractCheck(targets, week, jobsW, rowsW)
+  assert.equal(chk.places.length, 1, 'periódico só entra no mês')
+  const k = chk.places[0]
+  assert.equal(k.total, 3); assert.equal(k.done, 1)
+  assert.deepEqual(k.slots.map(s => s.state), ['ok', 'noPerson', 'toCreate'])
+  assert.equal(chk.dups.length, 1, 'duplicado detectado')
+  assert.equal(chk.extras.length, 1, 'job sem contrato aparece como extra')
+  const m = contractCheck(targets, periodDays('month', '', '2026-11'), jobsW, [], { wholeMonth: true })
+  const deepP = m.places.find(p => p.target.id === 'd')
+  assert.equal(deepP.total, 1); assert.equal(deepP.state, 'missing')
+  assert.equal(m.places[0].state, 'missing', 'faltando vem primeiro')
+  assert.deepEqual(shiftPeriod('week', '2026-10-31', '2026-10', 1), { anchor: '2026-11-07', month: '2026-10' })
+  assert.deepEqual(shiftPeriod('day', '2026-10-31', '2026-10', -1), { anchor: '2026-10-30', month: '2026-10' })
+  assert.deepEqual(shiftPeriod('month', '2026-10-31', '2026-12', 1), { anchor: '2026-10-31', month: '2027-01' })
+  console.log('✓ conferência por contrato + navegação de período')
 }
