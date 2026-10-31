@@ -136,7 +136,8 @@ export default function TimeOffCenter() {
     setToastOpen(false)
   }
   const openPopup = () => {
-    markSeen(); setOpen(true)
+    // v1.0.129 · always opens on "All": a chip chosen before could hide every row once its items were gone
+    markSeen(); setKind('all'); setOpen(true)
     fetchDayContext(rows.map(r => r.date)).then(setDayCtx).catch(() => {})
   }
 
@@ -201,7 +202,9 @@ export default function TimeOffCenter() {
     { key: 'dayoff', label: L('Day off', '休み', 'Folgas'), n: rows.length },
     { key: 'offers', label: L('Offers', '提案', 'Ofertas'), n: offers.length },
   ]
-  const show = key => kind === 'all' || kind === key
+  // v1.0.129 · a chosen chip whose items are gone falls back to "All" (the popup said "35 waiting" and listed nothing)
+  const activeKind = kind === 'all' || kinds.some(k => k.key === kind && k.n) ? kind : 'all'
+  const show = key => activeKind === 'all' || activeKind === key
 
   return (
     <>
@@ -285,14 +288,14 @@ export default function TimeOffCenter() {
             {kinds.filter(k => k.n).length > 1 && <div className="tor-kinds" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '0 18px 10px' }}>
               {[{ key: 'all', label: L('All', 'すべて', 'Todos'), n }, ...kinds.filter(k => k.n)].map(k => (
                 <button key={k.key} type="button" onClick={() => setKind(k.key)}
-                  style={{ border: '1px solid var(--border)', borderRadius: 999, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: kind === k.key ? 'var(--navy)' : 'var(--surface)', color: kind === k.key ? '#fff' : 'var(--text2)' }}>
+                  style={{ border: '1px solid var(--border)', borderRadius: 999, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: activeKind === k.key ? 'var(--navy)' : 'var(--surface)', color: activeKind === k.key ? '#fff' : 'var(--text2)' }}>
                   {k.label} · {k.n}
                 </button>
               ))}
             </div>}
             <div className="tor-list">
               {show('exceptions') && exceptions.length > 0 && <div className="tor-section">🚨 {L('Exceptions — most urgent first', '例外 — 緊急度順', 'Exceções — mais urgentes primeiro')}</div>}
-              {show('exceptions') && excCards.slice(0, kind === 'exceptions' ? 200 : 12).map(x => x.group ? (
+              {show('exceptions') && excCards.slice(0, activeKind === 'exceptions' ? 200 : 12).map(x => x.group ? (
                 <article key={x.id} className="tor-item">
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">{EXC[x.kind].icon}</div>
@@ -332,8 +335,8 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('exceptions') && kind === 'all' && excCards.length > 12 && <button type="button" className="tor-btn" style={{ margin: '4px 18px 10px' }} onClick={() => setKind('exceptions')}>{L(`See all ${exceptions.length}`, `全${exceptions.length}件を見る`, `Ver todas (${exceptions.length})`)}</button>}
-              {show('jobs') && (taken.length + noPerson.length + dayMissing.length) > 0 && kind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
+              {show('exceptions') && activeKind === 'all' && excCards.length > 12 && <button type="button" className="tor-btn" style={{ margin: '4px 18px 10px' }} onClick={() => setKind('exceptions')}>{L(`See all ${exceptions.length}`, `全${exceptions.length}件を見る`, `Ver todas (${exceptions.length})`)}</button>}
+              {show('jobs') && (taken.length + noPerson.length + dayMissing.length) > 0 && activeKind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
               {show('jobs') && dayMissing.map(d => (
                 <article key={d.id} className="tor-item">
                   <div className="tor-item-top">
@@ -378,7 +381,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('quotes') && (quotes.length + toBook.length + flowDone.length) > 0 && kind === 'all' && <div className="tor-section">📝 {L('Quotes', '見積もり', 'Orçamentos')}</div>}
+              {show('quotes') && (quotes.length + toBook.length + flowDone.length) > 0 && activeKind === 'all' && <div className="tor-section">📝 {L('Quotes', '見積もり', 'Orçamentos')}</div>}
               {show('quotes') && quotes.map(q => (
                 <article key={q.id} className="tor-item">
                   <div className="tor-item-top">
@@ -423,7 +426,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('payroll') && payroll.length > 0 && kind === 'all' && <div className="tor-section">💴 {L('Payroll', '給与', 'Folha')}</div>}
+              {show('payroll') && payroll.length > 0 && activeKind === 'all' && <div className="tor-section">💴 {L('Payroll', '給与', 'Folha')}</div>}
               {show('payroll') && payroll.map(pr => (
                 <article key={pr.id} className="tor-item">
                   <div className="tor-item-top">
@@ -439,7 +442,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('dayoff') && rows.length > 0 && kind === 'all' && <div className="tor-section">🗓 {L('Day-off requests', '休み申請', 'Pedidos de folga')}</div>}
+              {show('dayoff') && rows.length > 0 && activeKind === 'all' && <div className="tor-section">🗓 {L('Day-off requests', '休み申請', 'Pedidos de folga')}</div>}
               {show('dayoff') && rows.map(r => (
                 <article key={r.id} className="tor-item">
                   <div className="tor-item-top">
@@ -466,7 +469,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('offers') && offers.length > 0 && kind === 'all' && <div className="tor-section">🧽 {ft.offersTitle} · {offers.length}</div>}
+              {show('offers') && offers.length > 0 && activeKind === 'all' && <div className="tor-section">🧽 {ft.offersTitle} · {offers.length}</div>}
               {show('offers') && offers.map(r => {
                 const k = ELEMENT_KINDS[r.element_kind] || ELEMENT_KINDS.other
                 return (
