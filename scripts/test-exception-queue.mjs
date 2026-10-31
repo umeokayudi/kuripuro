@@ -62,3 +62,16 @@ console.log('exception queue OK')
   if (exceptionDeadline({ ...a }, L) !== 'Resp.: Escritório · vencido em 29/10') throw new Error('deadline text ' + exceptionDeadline(a, L))
   console.log('exception deadlines: ok')
 }
+
+// v1.0.123 · many of the same kind = one card in the bell
+{
+  const { groupExceptions } = await import('../src/lib/exceptionQueue.js')
+  const inc = d => ({ id: `incomplete:${d}`, kind: 'incomplete', urgency: 90, date: d, place: 'P', who: 'Gabriel', jobId: d, overdue: true, due: d, owner: 'office' })
+  const g = groupExceptions([inc('2026-10-27'), { id: 'late:1', kind: 'late', urgency: 95, date: '2026-10-31' }, inc('2026-10-29'), inc('2026-10-28'), { id: 'no_photo:1', kind: 'no_photo', urgency: 50, date: '2026-10-30' }])
+  assert(g.length === 3, 'grupos')
+  assert(g[0].kind === 'late', 'late primeiro')
+  assert(g[1].group && g[1].items.length === 3 && g[1].from === '2026-10-27' && g[1].to === '2026-10-29', 'grupo incompleto')
+  assert(g[1].who.join() === 'Gabriel', 'pessoas')
+  assert(g[2].kind === 'no_photo', 'menos de 3 continua um por um')
+  console.log('✓ bell groups exceptions of the same kind')
+}
