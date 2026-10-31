@@ -81,7 +81,7 @@ export async function fetchAssignAlerts(today = tokyoToday()) {
   const since = new Date(Date.now() - 3 * 86400000).toISOString()
   const [acc, none] = await Promise.all([
     supabase.from('jobs').select('id,title,scheduled_date,scheduled_time,employee_name,spot_responded_at')
-      .eq('job_category', 'spot').eq('spot_status', 'accepted').gte('spot_responded_at', since).order('spot_responded_at', { ascending: false }).limit(20),
+      .eq('spot_status', 'accepted').gte('spot_responded_at', since).order('spot_responded_at', { ascending: false }).limit(20),
     supabase.from('jobs').select('id,title,scheduled_date,scheduled_time')
       .is('employee_id', null).eq('status', 'assigned').gte('scheduled_date', today).lte('scheduled_date', tomorrow).limit(100),
   ])
