@@ -284,9 +284,7 @@ export default function Dashboard() {
           </div>}
         <div className="dx-attention-ai">
           <AIChatPanel compact mode="admin" historyId="dashboard" hideHero
-            welcomeText={attentionTotal
-              ? tr(`${attentionTotal} things need attention. Ask me anything, or tell me what to do — I answer with buttons that open the right tab.`, `要対応が${attentionTotal}件あります。何でも聞いてください。指示も受けます — 該当タブを開くボタンで答えます。`, `Tem ${attentionTotal} coisas precisando de atenção. Me pergunte qualquer coisa ou mande um comando — eu respondo com botões que abrem a aba certa.`)
-              : tr('All clear for now. Ask me anything or send a command.', '今は問題ありません。何でも聞いてください。', 'Tudo em dia por agora. Me pergunte qualquer coisa ou mande um comando.')}
+            welcomeText={tr('Ask me what needs attention, anything else, or send a command — I answer with buttons that open the right tab.', '要対応のこと、その他何でも聞いてください。指示も受けます — 該当タブを開くボタンで答えます。', 'Me pergunte o que precisa de atenção, qualquer outra coisa, ou mande um comando — eu respondo com botões que abrem a aba certa.')}
             suggestions={attentionSuggestions}
             context={attentionContext}
             commands={aiCommands} />
