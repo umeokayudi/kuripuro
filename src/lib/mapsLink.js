@@ -18,16 +18,24 @@ export function mapsCoordsUrl(lat, lng) {
   return searchUrl(`${lat},${lng}`)
 }
 
+const cidUrl = (cid) => `https://maps.google.com/?cid=${/^0x/i.test(cid) ? BigInt(cid).toString() : cid}`
+
 /**
  * Turn a long google.com/maps link into the official cross-platform form.
  * Links like /maps/place/<name>/data=!4m2!3m1!1s0x..:0x..!18m1!1e1 open
- * "google.com/maps/undefined&cid=..." (404) in Android browsers, so we keep
- * only the place text (name + address), else the coordinates, else the cid.
+ * "google.com/maps/undefined&cid=..." (404) in Android browsers. When the link
+ * carries the place id (0x..:0x..) we open that exact place by its cid; a text
+ * search ("name + address") made Google show a list of options instead of the pin.
+ * Then the place text, else the coordinates.
  */
 function normalizeGoogleMapsUrl(url, placeName) {
   let u
   try { u = new URL(url) } catch { return null }
   if (u.searchParams.get('api') === '1') return url
+  const placeCid = u.searchParams.get('cid') || (url.match(/0x[0-9a-f]+:(0x[0-9a-f]+)/i) || [])[1]
+  if (placeCid) {
+    try { return cidUrl(placeCid) } catch { /* bad hex: fall back to the text */ }
+  }
   const placeMatch = u.pathname.match(/\/maps\/(?:place|search)\/([^/]+)/)
   let text = ''
   if (placeMatch) { try { text = decodeURIComponent(placeMatch[1].replace(/\+/g, ' ')).trim() } catch { text = '' } }
@@ -35,8 +43,6 @@ function normalizeGoogleMapsUrl(url, placeName) {
   if (text) return searchUrl(text)
   const at = u.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
   if (at) return mapsCoordsUrl(at[1], at[2])
-  const cid = u.searchParams.get('cid') || (u.pathname.match(/0x[0-9a-f]+:(0x[0-9a-f]+)/i) || [])[1]
-  if (cid) return `https://maps.google.com/?cid=${/^0x/i.test(cid) ? BigInt(cid).toString() : cid}`
   return searchUrl(placeName ? `${placeName} Tokyo` : 'Tokyo')
 }
 
@@ -60,6 +66,21 @@ export function mapsOpenUrl(address, placeName) {
   }
 
   return searchUrl(trimmed)
+}
+
+/** Text for an embedded map (iframe q=): the place text inside a Maps link, never the link itself. */
+export function mapsEmbedQuery(address, placeName) {
+  const a = String(address || '').trim()
+  if (!/^https?:\/\//i.test(a)) return a || (placeName ? `${placeName} Tokyo` : '')
+  try {
+    const u = new URL(a)
+    const m = u.pathname.match(/\/maps\/(?:place|search)\/([^/]+)/)
+    const text = m ? decodeURIComponent(m[1].replace(/\+/g, ' ')).trim() : (u.searchParams.get('query') || u.searchParams.get('q') || '').trim()
+    if (text) return text
+    const at = u.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+    if (at) return `${at[1]},${at[2]}`
+  } catch { /* not a URL */ }
+  return placeName ? `${placeName} Tokyo` : ''
 }
 
 /** Whether address should show a Maps button */

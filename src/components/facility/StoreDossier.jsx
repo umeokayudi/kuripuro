@@ -8,6 +8,7 @@ import CleaningTimeline from '../CleaningTimeline'
 import { loadStoreTimeline, placePhotosOf, sizeLabel } from '../../lib/cleaningTimeline'
 import CareList from './CareList'
 import FacilityViewer from './FacilityViewer'
+import { mapsEmbedQuery, mapsOpenUrl } from '../../lib/mapsLink'
 
 /** Acha o cliente pelo id ou, no orçamento (lead), pelo nome da empresa. */
 async function findClient(clientId, companyName) {
@@ -126,8 +127,8 @@ export default function StoreDossier({ clientId, companyName, locationName, onUs
           {address ? <>
             <div style={{ fontSize: 13, marginBottom: 6 }}>{address}</div>
             <iframe title="map" className="fac-dossier-map" loading="lazy" referrerPolicy="no-referrer"
-              src={`https://maps.google.com/maps?q=${encodeURIComponent(address)}&z=16&output=embed`} />
-            <a className="fac-dossier-link" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`} target="_blank" rel="noreferrer">{t.dossierOpenMap} ↗</a>
+              src={`https://maps.google.com/maps?q=${encodeURIComponent(mapsEmbedQuery(address, contract?.location_name))}&z=16&output=embed`} />
+            <a className="fac-dossier-link" href={mapsOpenUrl(address, contract?.location_name)} target="_blank" rel="noreferrer">{t.dossierOpenMap} ↗</a>
           </> : <div className="fac-muted">—</div>}
         </div>
       </div>

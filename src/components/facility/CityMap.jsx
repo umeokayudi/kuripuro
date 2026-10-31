@@ -8,6 +8,7 @@ import {
 } from '../../lib/cityRoute'
 import { loadGoogleMaps, mapsApiKey, onMapsAuthFailure } from '../../lib/googleMaps'
 import { worstStatus } from '../../lib/pinClusters'
+import { mapsOpenUrl } from '../../lib/mapsLink'
 import { createPinLayer } from './gmapPins'
 import './city-map.css'
 
@@ -335,7 +336,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
               {stops.includes(sel.key) ? `✓ ${m.inRoute}` : `➕ ${m.addRoute}`}
             </button>
             <button type="button" disabled={!coords[sel.key] || noMap} onClick={() => { setMeasuring(true); setMeasure([{ ...coords[sel.key], name: sel.name }]) }}>📏 {m.measureFrom}</button>
-            {coords[sel.key] && <a href={`https://www.google.com/maps/search/?api=1&query=${coords[sel.key].lat},${coords[sel.key].lng}`} target="_blank" rel="noreferrer">🧭 Google Maps</a>}
+            {(sel.addresses?.[0] || coords[sel.key]) && <a href={sel.addresses?.[0] ? mapsOpenUrl(sel.addresses[0], sel.name) : `https://www.google.com/maps/search/?api=1&query=${coords[sel.key].lat},${coords[sel.key].lng}`} target="_blank" rel="noreferrer">🧭 Google Maps</a>}
           </div>
         </div>
       )}

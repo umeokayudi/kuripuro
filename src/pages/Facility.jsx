@@ -22,6 +22,7 @@ import CleaningTimeline from '../components/CleaningTimeline'
 import { rowsForElement } from '../components/facility/CareList'
 import '../components/facility/facility.css'
 import '../components/facility/world.css'
+import { mapsOpenUrl } from '../lib/mapsLink'
 
 // three.js só é baixado quando a tela abre
 const CityWorld = lazy(() => import('../components/facility/CityWorld'))
@@ -548,7 +549,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
             </div>
             {placeTab === 'map' && <>
               {placeOpen.place?.address
-                ? <div style={{ fontSize: 13, marginTop: 10 }}>📍 {isAdmin ? placeOpen.place.address : placeOpen.name} · <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeOpen.place.address)}`} target="_blank" rel="noreferrer" style={{ color: '#7fb0ff' }}>Google Maps</a></div>
+                ? <div style={{ fontSize: 13, marginTop: 10 }}>📍 {isAdmin ? placeOpen.place.address : placeOpen.name} · <a href={mapsOpenUrl(placeOpen.place.address, placeOpen.name)} target="_blank" rel="noreferrer" style={{ color: '#7fb0ff' }}>Google Maps</a></div>
                 : <div style={{ fontSize: 13, marginTop: 10, color: '#fbbf24' }}>📍 {pickLang(lang, 'No GPS: this place has no address yet. Add it in the contract (or search it on the map).', 'GPSなし：住所が未登録です。契約に追加してください（または地図で検索）。', 'Sem GPS: este local ainda não tem endereço. Complete no contrato (ou busque no mapa).')}</div>}
               {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 8 }} onClick={() => { setPlaceOpen(null); setParams({ view: 'map' }) }}>🗺️ {w.cityMap?.open || 'Map'}</button>}
               {placeOpen.todayMissing?.length > 0 && <div style={{ fontSize: 13, marginTop: 10, color: '#fca5a5' }}>⚠️ {tr.live?.covTitle}: {placeOpen.todayMissing.map(it => ({ noJob: tr.live?.covNoJob, noPerson: tr.live?.covNoPerson, late: tr.live?.covLate, waiting: tr.live?.covWaiting, working: tr.live?.covWorking })[it.state] || it.state).join(', ')}</div>}
