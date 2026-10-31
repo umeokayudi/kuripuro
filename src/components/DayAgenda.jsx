@@ -463,9 +463,9 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
           <div className="ag-title">{loc}</div>
           <div className="ag-meta">
             {info.client && <>🏢 {info.client} · </>}
-            🕐 <input type="time" value={job.scheduled_time || ''} onChange={e => onTime(job, e.target.value)}
-              style={{ border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', padding: 0, width: 96 }} aria-label={tr('Time', '時刻', 'Horário')} />
-            · ⏱ {fmtMin(info.expected)} {tr('planned', '予定', 'previsto')}
+            <span className="ag-nowrap">🕐 <input type="time" className="ag-time" value={job.scheduled_time || ''} onChange={e => onTime(job, e.target.value)}
+              aria-label={tr('Time', '時刻', 'Horário')} /></span>
+            {' '}<span className="ag-nowrap">· ⏱ {fmtMin(info.expected)} {tr('planned', '予定', 'previsto')}</span>
           </div>
           {job.started_at && (
             <div className="ag-meta" style={{ fontWeight: 700, color: alert ? '#ef4444' : 'var(--text)' }}>
@@ -480,7 +480,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
             {info.bucket === 'late' && !missed && <span className="ag-badge" style={{ color: '#ef4444' }}>{tr('Late', '遅れ', 'Atrasado')}</span>}
             {after && <span className="ag-badge" style={{ color: '#a855f7' }}>📷 {tr('Waiting After photo', 'After写真待ち', 'Aguardando foto After')}</span>}
             {job.closed_manually_at && <span className="ag-badge" style={{ color: '#b45309' }}>🔒 {tr('Closed by admin', '管理者が終了', 'Fechado pelo admin')}</span>}
-            {aiScoreView(job) && <span className="ag-badge" title={aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))} style={{ color: job.photo_ai_approved ? '#16a34a' : '#ef4444' }}>IA {job.photo_ai_score}/10 · {aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))}</span>}
+            {aiScoreView(job) && <span className="ag-badge" title={aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))} style={{ color: job.photo_ai_approved ? '#16a34a' : '#ef4444' }}>IA {job.photo_ai_score}/10 {job.photo_ai_approved ? '✅' : '⚠️'}{!issues.length && ` · ${aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))}`}</span>}
             {aiPending(job) && <span className="ag-badge" style={{ color: '#64748b' }}>IA …</span>}
             {ack && job.status === 'assigned' && <span className={`ag-seen ${ack}`}>{ack === 'seen' ? `👁 ${tr('Seen', '確認済み', 'Ciente')}` : `⏳ ${tr('Not seen yet', '未確認', 'Ainda não viu')}`}</span>}
             {warnings.map((c, i) => <span key={i} className={`ag-warn${RED_CONFLICTS.has(c.kind) ? ' red' : ''}`}>⚠️ {conflictLabel(c, T)}</span>)}

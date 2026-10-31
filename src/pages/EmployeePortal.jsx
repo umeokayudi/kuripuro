@@ -5,7 +5,7 @@ import KeyReveal from '../components/KeyReveal'
 import { splitKeyLine } from '../lib/keyReveal'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
 import { compressVideo, canUseWebCodecs, videoTypeInfo } from '../lib/videoCompress'
-import { uploadJobVideo, videoPoster, writeVideoStatus } from '../lib/jobVideo'
+import { uploadJobVideo, videoPoster, writeVideoStatus, videoAlreadyUploaded } from '../lib/jobVideo'
 import { enqueueAndSend, enqueueVideo, flushVideoQueue, holdQueuedVideo, removeQueuedVideo } from '../lib/videoQueue'
 import JobVideoPicker from '../components/JobVideoPicker'
 import { viewablePhotoUrl } from '../lib/photoUrl'
@@ -1274,7 +1274,7 @@ export default function EmployeePortal() {
   useEffect(() => {
     const flush = () => {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-      flushVideoQueue(uploadJobVideo).then(({ sent }) => {
+      flushVideoQueue(uploadJobVideo, { alreadySent: videoAlreadyUploaded }).then(({ sent }) => {
         if (sent) toast.success(fill(vt.queueSent || 'Pending video sent ({n})', { n: sent }))
       }).catch(() => {})
     }

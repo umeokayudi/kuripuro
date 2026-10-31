@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import ClientContactField from './ClientContactField'
 import { fillClientContact } from '../lib/clientContact'
 import { useLang } from '../hooks/useLang'
+import { isPlaceholderCoords } from '../lib/geocode'
 
 // v1.0.21 · Contracts → Spot → "+ New contract": one form creates the job for the worker,
 // the 業務委託契約書, its invoice (payment on day N of next month) and the saved PDF.
@@ -46,7 +47,7 @@ export default function NewContractModal({ onClose, onSaved }) {
   const pickLocation = (id) => {
     const loc = locations.find(l => l.id === id)
     setJob(x => loc
-      ? { ...x, location_id: id, location_name: loc.name, address: loc.address || '', gps_lat: loc.gps_lat || '', gps_lng: loc.gps_lng || '', description: x.description || loc.notes || '' }
+      ? { ...x, location_id: id, location_name: loc.name, address: loc.address || '', gps_lat: !isPlaceholderCoords(loc.gps_lat, loc.gps_lng) ? loc.gps_lat : '', gps_lng: !isPlaceholderCoords(loc.gps_lat, loc.gps_lng) ? loc.gps_lng : '', description: x.description || loc.notes || '' }
       : { ...x, location_id: '' })
   }
 

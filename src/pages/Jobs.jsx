@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import SkeletonRows from '../components/SkeletonRows'
 import { useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { geocodeAddress } from '../lib/geocode'
+import { geocodeAddress, isPlaceholderCoords } from '../lib/geocode'
 import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
@@ -471,7 +471,7 @@ function LocationsTab() {
     }
     setEditingLoc(l.id)
     setForm({ ...EMPTY_LOC, name:l.name||'', address:l.address||'', location_type:l.location_type||'fixed', notes:l.notes||'', client_id:l.client_id||'', area:l.area||'', key_box:l.key_box||'', checklist:l.checklist||'' })
-    setGps(l.gps_lat&&l.gps_lng?{lat:l.gps_lat,lng:l.gps_lng}:null)
+    setGps(l.gps_lat&&l.gps_lng&&!isPlaceholderCoords(l.gps_lat,l.gps_lng)?{lat:l.gps_lat,lng:l.gps_lng}:null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -545,7 +545,7 @@ function LocationsTab() {
                 {l.fromContract && <div style={{fontSize:12,color:'#b45309',fontWeight:700,marginTop:4}}>⚠️ {tr('Only in Contracts — save it as a place', '契約にのみ存在 — 場所として保存してください', 'Só existe em Contratos — salve como local')}</div>}
               </div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                {l.gps_lat ? <span className="badge badge-navy">GPS ✓</span> : hasMapsLink(l.address, l.name) ? <span className="badge badge-green">🗺</span> : null}
+                {l.gps_lat && !isPlaceholderCoords(l.gps_lat, l.gps_lng) ? <span className="badge badge-navy">GPS ✓</span> : hasMapsLink(l.address, l.name) ? <span className="badge badge-green">🗺</span> : null}
                 <Link className="btn btn-sm" to={`/contracts${l.client_id ? `?client=${l.client_id}` : ''}`}>{l.contracts.length ? tr('Contracts', '契約', 'Contratos') : `+ ${tr('Contract', '契約', 'Contrato')}`}</Link>
                 <button className="btn btn-sm btn-primary" onClick={()=>handleEditLoc(l)}>{l.fromContract ? tr('Save as place', '場所として保存', 'Salvar como local') : '✏️'}</button>
                 {!l.fromContract && <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(l)} aria-label={tr('Remove', '削除', 'Remover')}>✕</button>}

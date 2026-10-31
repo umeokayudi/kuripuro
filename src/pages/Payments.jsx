@@ -283,7 +283,7 @@ export default function Payments() {
           </div>
           <div className="pm-tags">
             <span className={`pm-pill is-${r.state}`}>{statePill[r.state]}</span>
-            {r.state !== 'paid' && r.lines.some(p => p.payment_type === 'salary') && <span className={`pay-st is-${r.slip}`} title={slipLong[r.slip]}>{payStateText(r.pstate, tr).text}</span>}
+            {r.state !== 'paid' && r.lines.some(p => p.payment_type === 'salary') && <span className={`pay-st is-${r.slip}`} title={`${payStateText(r.pstate, tr).text}${slipLong[r.slip] ? ` · ${slipLong[r.slip]}` : ''}`}>{payStateText(r.pstate, tr).short}</span>}
           </div>
           <div className="pm-act" onClick={ev => ev.stopPropagation()}>
             {r.toPay > 0 && !blocked(r, r.open)

@@ -146,16 +146,17 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
 /**
  * v1.0.108 · The ONE text for a payrollState, used by Fechar folha, Payments and the payslip sheet:
  * a pagar → confirmado pelo funcionário → pago. "Pago" without the confirmation is flagged, never shown as paid.
- * `tr` is useLang().tr. Returns { text, tone } with tone green / amber / red.
+ * `tr` is useLang().tr. Returns { text, tone, short } with tone green / amber / red; `short` fits a chip
+ * next to buttons (v1.0.119), the full text goes in its title.
  */
 export function payStateText(state, tr, paidOn = '') {
   switch (state) {
-    case 'paid': return { text: tr(`Paid${paidOn ? ` on ${paidOn}` : ''}`, `支払済${paidOn ? `（${paidOn}）` : ''}`, `Pago${paidOn ? ` em ${paidOn}` : ''}`), tone: 'green' }
+    case 'paid': return { text: tr(`Paid${paidOn ? ` on ${paidOn}` : ''}`, `支払済${paidOn ? `（${paidOn}）` : ''}`, `Pago${paidOn ? ` em ${paidOn}` : ''}`), tone: 'green', short: tr('Paid', '支払済', 'Pago') }
     case 'finalized':
-    case 'confirmed': return { text: tr('Confirmed by the employee — to pay', '本人確認済み — 支払待ち', 'Confirmado pelo funcionário — a pagar'), tone: 'green' }
-    case 'waiting': return { text: tr('To pay — waiting for the employee to confirm', '支払予定 — 本人の確認待ち', 'A pagar — esperando o funcionário confirmar'), tone: 'amber' }
-    case 'disputed': return { text: tr('Disputed by the employee — answer in Salary issues', '本人が異議 — 給与の問題で回答', 'Contestado — responda em Problemas de salário'), tone: 'red' }
-    case 'paid_unconfirmed': return { text: tr('Marked paid WITHOUT the employee’s confirmation — check', '本人確認なしで支払済 — 要確認', 'Marcado pago SEM confirmação do funcionário — conferir'), tone: 'red' }
-    default: return { text: tr('No payslip yet', '明細なし', 'Sem holerite ainda'), tone: 'amber' }
+    case 'confirmed': return { text: tr('Confirmed by the employee — to pay', '本人確認済み — 支払待ち', 'Confirmado pelo funcionário — a pagar'), tone: 'green', short: tr('Confirmed · to pay', '確認済・支払待ち', 'Confirmado · a pagar') }
+    case 'waiting': return { text: tr('To pay — waiting for the employee to confirm', '支払予定 — 本人の確認待ち', 'A pagar — esperando o funcionário confirmar'), tone: 'amber', short: tr('Waiting for confirmation', '本人確認待ち', 'Esperando confirmação') }
+    case 'disputed': return { text: tr('Disputed by the employee — answer in Salary issues', '本人が異議 — 給与の問題で回答', 'Contestado — responda em Problemas de salário'), tone: 'red', short: tr('Disputed', '異議あり', 'Contestado') }
+    case 'paid_unconfirmed': return { text: tr('Marked paid WITHOUT the employee’s confirmation — check', '本人確認なしで支払済 — 要確認', 'Marcado pago SEM confirmação do funcionário — conferir'), tone: 'red', short: tr('Paid · not confirmed', '支払済・未確認', 'Pago · sem confirmação') }
+    default: return { text: tr('No payslip yet', '明細なし', 'Sem holerite ainda'), tone: 'amber', short: tr('No payslip yet', '明細なし', 'Sem holerite') }
   }
 }
