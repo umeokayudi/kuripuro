@@ -43,6 +43,16 @@ export default function Dashboard() {
   const [monthMoney, setMonthMoney] = useState({ billed: 0, received: 0 })
   const [hideTests, setHideTests] = useHideTests()
   const [more, setMore] = useState(false)
+  // v1.0.130 · the AI opens in a side panel from the "Ask the AI" bar
+  const [askText, setAskText] = useState('')
+  const [aiOpen, setAiOpen] = useState(null)
+  const openAI = prompt => { setAiOpen({ id: Date.now(), prompt }); setAskText('') }
+  useEffect(() => {
+    if (!aiOpen) return
+    const onKey = e => { if (e.key === 'Escape') setAiOpen(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [aiOpen])
   const navigate = useNavigate()
 
   const load = async () => {
@@ -263,33 +273,60 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* v1.0.125 · "Needs action today": one line per kind (tap opens the tab) + the AI right here —
-          ask anything, it answers with buttons that open the right tab or run a command after you confirm */}
+      {/* v1.0.130 · "Needs attention": a clean list, one row per kind (count + who + one button).
+          The AI is a small bar under it that opens in a side panel with the same items as context. */}
       <section className="card dx-overview">
         <div className="dx-overview-head">
-          <div><h2>{tr('Needs attention', '要対応', 'Precisa de atenção')}</h2><p>{tr('Tap to open · or ask the AI below', 'タップで開く · または下のAIに質問', 'Toque para abrir · ou pergunte para a IA aqui embaixo')}</p></div>
+          <div><h2>{tr('Needs attention', '要対応', 'Precisa de atenção')}</h2><p>{tr('One line per kind · the button opens the right tab', '種類ごとに1行 · ボタンで該当タブへ', 'Uma linha por tipo · o botão abre a aba certa')}</p></div>
           {attentionTotal > 0 && <span className="badge badge-red">{attentionTotal}</span>}
         </div>
         {attentionTotal === 0
-          ? <div className="ov-empty" style={{ padding: '10px 0 4px' }}>✅ {tr('Nothing needs action now', '今は対応不要です', 'Nada exige ação agora')}</div>
-          : <div className="dx-attention-chips">
+          ? <div className="ov-empty" style={{ padding: '14px 0 6px' }}>✅ {tr('Nothing needs action now', '今は対応不要です', 'Nada exige ação agora')}</div>
+          : <ul className="dx-att-list">
             {staleCount > 0 && (
-              <button type="button" onClick={cancelStaleJobs} title={d.cancelStale}>🗂 <b>{staleCount}</b> {tr('old jobs never started · cancel', '未開始の古い作業 · キャンセル', 'serviços antigos não iniciados · cancelar')}</button>
+              <li>
+                <span className="dx-att-icon" aria-hidden="true">🗂</span>
+                <span className="dx-att-text"><strong><b>{staleCount}</b> {tr('old jobs never started', '未開始の古い作業', 'serviços antigos não iniciados')}</strong><small>{tr('still "assigned" with a past date', '過去の日付で「割当済み」のまま', 'ainda "atribuídos" com data passada')}</small></span>
+                <button type="button" className="btn btn-sm" onClick={cancelStaleJobs}>{tr('Review & cancel', '確認してキャンセル', 'Revisar e cancelar')}</button>
+              </li>
             )}
-            {attentionGroups.map(g => (
-              <button type="button" key={g.kind} className={g.overdue ? 'is-urgent' : ''} onClick={() => navigate(g.to)}>
-                {EXC[g.kind].icon} <b>{g.items.length}</b> {g.items.length === 1 ? EXC[g.kind].title(g.items[0]) : (GROUP_LABEL[g.kind] || EXC[g.kind].title(g.items[0]))}
-              </button>
-            ))}
-          </div>}
-        <div className="dx-attention-ai">
-          <AIChatPanel compact mode="admin" historyId="dashboard" hideHero
-            welcomeText={tr('Ask me what needs attention, anything else, or send a command — I answer with buttons that open the right tab.', '要対応のこと、その他何でも聞いてください。指示も受けます — 該当タブを開くボタンで答えます。', 'Me pergunte o que precisa de atenção, qualquer outra coisa, ou mande um comando — eu respondo com botões que abrem a aba certa.')}
-            suggestions={attentionSuggestions}
-            context={attentionContext}
-            commands={aiCommands} />
-        </div>
+            {attentionGroups.map(g => {
+              const names = [...new Set(g.items.map(x => x.who || x.place).filter(Boolean))]
+              return (
+                <li key={g.kind} className={g.overdue ? 'is-urgent' : ''}>
+                  <span className="dx-att-icon" aria-hidden="true">{EXC[g.kind].icon}</span>
+                  <span className="dx-att-text">
+                    <strong>{g.items.length > 1 && <b>{g.items.length}</b>} {g.items.length === 1 ? EXC[g.kind].title(g.items[0]) : (GROUP_LABEL[g.kind] || EXC[g.kind].title(g.items[0]))}</strong>
+                    {names.length > 0 && <small>{names.slice(0, 3).join(', ')}{names.length > 3 ? tr(` +${names.length - 3}`, ` ほか${names.length - 3}`, ` +${names.length - 3}`) : ''}</small>}
+                  </span>
+                  <button type="button" className="btn btn-sm btn-primary" onClick={() => navigate(g.to)}>{EXC[g.kind].action}</button>
+                </li>
+              )
+            })}
+          </ul>}
+        <form className="dx-ask-ai" onSubmit={e => { e.preventDefault(); openAI(askText.trim()) }}>
+          <span className="ai-orb ai-orb-xs" aria-hidden="true" />
+          <input value={askText} onChange={e => setAskText(e.target.value)} placeholder={tr('Ask the AI or send a command…', 'AIに質問・指示…', 'Pergunte à IA ou mande um comando…')} aria-label={tr('Ask the AI', 'AIに質問', 'Perguntar à IA')} />
+          <button type="submit" aria-label={tr('Ask the AI', 'AIに質問', 'Perguntar à IA')}>{askText.trim() ? '↑' : tr('Ask AI', 'AIに聞く', 'Perguntar à IA')}</button>
+        </form>
       </section>
+
+      {aiOpen && (
+        <div className="dx-ai-drawer" role="dialog" aria-modal="true" aria-label="Kuripuro AI" onClick={e => { if (e.target === e.currentTarget) setAiOpen(null) }}>
+          <div className="dx-ai-drawer-panel">
+            <div className="dx-ai-drawer-top">
+              <span>{tr('Needs attention · AI', '要対応 · AI', 'Precisa de atenção · IA')}</span>
+              <button type="button" onClick={() => setAiOpen(null)} aria-label={tr('Close', '閉じる', 'Fechar')}>✕</button>
+            </div>
+            <AIChatPanel key={aiOpen.id} compact mode="admin" historyId="dashboard"
+              initialPrompt={aiOpen.prompt}
+              welcomeText={tr('Ask me about what needs attention, anything else, or send a command. I answer with buttons that open the right tab.', '要対応のこと、その他何でも聞いてください。指示も受けます。該当タブを開くボタンで答えます。', 'Me pergunte sobre o que precisa de atenção, qualquer outra coisa, ou mande um comando. Eu respondo com botões que abrem a aba certa.')}
+              suggestions={attentionSuggestions}
+              context={attentionContext}
+              commands={aiCommands && Object.fromEntries(Object.entries(aiCommands).map(([k, c]) => [k, { run: () => { setAiOpen(null); c.run() } }]))} />
+          </div>
+        </div>
+      )}
 
       <div className="dash-split">
         <section className="card">

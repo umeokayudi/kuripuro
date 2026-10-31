@@ -241,15 +241,29 @@
 .ai-quick-chips{display:flex;flex-wrap:wrap;gap:6px;padding-left:34px}
 .ai-quick-chips button{min-height:32px;padding:0 12px;border:1px solid var(--border,#dfe5ee);border-radius:16px;background:#fff;color:var(--text,#1c2a3f);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
 .ai-quick-chips button:hover{border-color:#3b62f0;color:#3b62f0}
-/* Dashboard: the AI sits where the "Needs action today" list was */
-.dx-attention-ai{height:460px;margin-top:10px;border:1px solid var(--border,#dfe5ee);border-radius:14px;overflow:hidden}
-.dx-attention-ai .ai-chat-panel{height:100%}
-.dx-attention-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-.dx-attention-chips button{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px;border:1px solid var(--border,#dfe5ee);border-radius:17px;background:#fff;color:var(--text,#1c2a3f);font:inherit;font-size:13px;cursor:pointer}
-.dx-attention-chips button b{font-weight:800}
-.dx-attention-chips button:hover{border-color:#3b62f0}
-.dx-attention-chips button.is-urgent{border-color:#fca5a5;background:#fef2f2}
-@media (max-width:640px){.dx-attention-ai{height:420px}.ai-quick-chips{padding-left:0}}
+/* v1.0.130 · Dashboard "Needs attention": clean list + small "ask the AI" bar; the AI opens in a side panel */
+.dx-att-list{list-style:none;margin:6px 0 0;padding:0}
+.dx-att-list li{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border,#e6ebf2)}
+.dx-att-list li:last-child{border-bottom:0}
+.dx-att-icon{flex:0 0 36px;height:36px;display:grid;place-items:center;border-radius:10px;background:#f1f5fb;font-size:17px}
+.dx-att-list li.is-urgent .dx-att-icon{background:#fdecec}
+.dx-att-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.dx-att-text strong{font-size:14px;font-weight:600;color:var(--text,#1c2a3f)}
+.dx-att-text strong b{font-weight:800;margin-right:2px}
+.dx-att-list li.is-urgent .dx-att-text strong b{color:#dc2626}
+.dx-att-text small{font-size:12px;color:var(--text3,#7a879a);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dx-att-list .btn{flex-shrink:0}
+.dx-ask-ai{display:flex;align-items:center;gap:10px;margin-top:12px;padding:6px 6px 6px 12px;border:1px solid var(--border,#e0e6ef);border-radius:999px;background:#f8fafd}
+.dx-ask-ai:focus-within{border-color:#3b62f0;background:#fff}
+.dx-ask-ai input{flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:13.5px;color:var(--text,#1c2a3f);outline:none;padding:6px 0}
+.dx-ask-ai button{flex-shrink:0;min-width:34px;height:34px;padding:0 14px;border:0;border-radius:17px;background:#3b62f0;color:#fff;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.dx-ai-drawer{position:fixed;inset:0;z-index:1000;background:rgba(14,31,57,.28);display:flex;justify-content:flex-end}
+.dx-ai-drawer-panel{display:flex;flex-direction:column;width:min(460px,100vw);height:100dvh;background:#f7f9fc;box-shadow:-12px 0 40px rgba(14,31,57,.18)}
+.dx-ai-drawer-top{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 0 18px;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--text3,#7a879a)}
+.dx-ai-drawer-top button{width:34px;height:34px;border:0;border-radius:17px;background:transparent;font-size:16px;color:var(--text,#1c2a3f);cursor:pointer}
+.dx-ai-drawer-top button:hover{background:#e9eef6}
+.dx-ai-drawer-panel .ai-chat-panel{flex:1;min-height:0;height:auto}
+@media (max-width:640px){.dx-att-list li{gap:10px}.dx-att-icon{flex-basis:32px;height:32px}.ai-quick-chips{padding-left:0}}
 .ai-msg-actions button:disabled{opacity:.5;cursor:default}
 .ai-typing{display:flex;gap:4px;align-items:center;height:36px;padding:0 14px;border-radius:4px 18px 18px 18px;background:#fff;border:1px solid #e6ebf2}
 .ai-typing i{width:6px;height:6px;border-radius:50%;background:#3b62f0;animation:aiDot 1s infinite ease-in-out}
