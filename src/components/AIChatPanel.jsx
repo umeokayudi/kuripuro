@@ -118,7 +118,7 @@ function buttonsOf(toolLog, commands) {
 // Requests still running per chat (survive the panel closing).
 const PENDING = new Map()
 
-export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0, context = '', commands = null, historyId, welcomeText, hideHero = false }) {
+export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0, context = '', commands = null, historyId, welcomeText, hideHero = false, initialPrompt = '' }) {
   const navigate = useNavigate()
   // v1.0.125 · the Dashboard keeps its own conversation (historyId) and sends what it shows as context.
   const historyKey = historyId || employeeId
@@ -434,6 +434,20 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     await sendRequest([...messages, userMsg], userMsg)
   }
 
+  // v1.0.130 · opened from the Dashboard's "Ask the AI" bar: the typed question goes out right away
+  const initialSentRef = useRef(false)
+  useEffect(() => {
+    if (!initialPrompt) return
+    // after mount settles (a dev double-mount would otherwise send it from a panel that is thrown away)
+    const timer = setTimeout(() => {
+      if (initialSentRef.current) return
+      initialSentRef.current = true
+      const userMsg = { role: 'user', content: initialPrompt }
+      sendRequest([...messagesRef.current, userMsg], userMsg)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const sendRequest = async (newMessages, userMsg) => {
     if (userMsg) setMessages(m => [...m, userMsg])
     retryRequestRef.current = newMessages
@@ -521,7 +535,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   }
 
   const lastAssistant = messages.map(m => m.role).lastIndexOf('assistant')
-  const isEmpty = messages.length <= 1 && !loading && !hideHero
+  const isEmpty = messages.length <= 1 && !loading && !hideHero && !initialPrompt
 
   const userBubble = mode === 'employee'
     ? 'linear-gradient(135deg,#7651dc,#5a38bd)'
