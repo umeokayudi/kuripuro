@@ -820,7 +820,7 @@ export default function EmployeePortal() {
       try {
         const r = await takeOffer(job, user)
         if (r === 'taken') toast(L('Someone else already accepted this one.', '他の人が先に承諾しました。', 'Outra pessoa já aceitou este.'), { icon: '⚡' })
-        else toast.success(`${e.spotAccepted || L('Accepted!', '承諾しました！', 'Aceito!')} +¥${Number(job.spot_value||0).toLocaleString()}`)
+        else toast.success(job.job_category==='spot' ? `${e.spotAccepted || L('Accepted!', '承諾しました！', 'Aceito!')} +¥${Number(job.spot_value||0).toLocaleString()}` : L('Accepted! It is in your day now.', '承諾しました！今日の予定に入りました。', 'Aceito! Já está no seu dia.'))
       } catch (err) { toast.error(err.message) }
       loadAll(); return
     }
@@ -2348,9 +2348,10 @@ export default function EmployeePortal() {
               <div key={j.id} style={{background:'rgba(193,156,86,0.06)',border:'1px solid rgba(193,156,86,0.15)',borderRadius:22,padding:18,marginBottom:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
                   <div style={{flex:1,marginRight:12}}><div style={{fontSize:17,fontWeight:700,color:'#fff',marginBottom:4}}>{j.title}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:1}}>📅 {displayDate(j)} · {j.scheduled_time}</div>{hasMapsLink(j.address, j.title)&&<a href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 {e.openMaps}</a>}</div>
-                  <div style={{background:'rgba(193,156,86,0.15)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0}}><div style={{fontSize:9,color:'#c19c56',fontWeight:700,letterSpacing:1}}>{e.extra.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:'#c19c56'}}>+¥{Number(j.spot_value||0).toLocaleString()}</div></div>
+                  {j.job_category==='spot'?<div style={{background:'rgba(193,156,86,0.15)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0}}><div style={{fontSize:9,color:'#c19c56',fontWeight:700,letterSpacing:1}}>{e.extra.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:'#c19c56'}}>+¥{Number(j.spot_value||0).toLocaleString()}</div></div>
+                  :<div style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0,fontSize:12,fontWeight:700,color:'#93c5fd'}}>📋 {L('Routine','定期','Rotina')}</div>}
                 </div>
-                {j._open&&<div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:10}}>⚡ {L('Offer to the team — the first to accept keeps it','チームへのオファー — 最初に承諾した人が担当','Oferta para a equipe — o primeiro que aceitar fica com o job')}</div>}
+                {j._open&&<div style={{fontSize:12,fontWeight:700,color:'#c19c56',marginBottom:10}}>⚡ {L('Offer to the team — the first to accept keeps it','チームへのオファー — 最初に承諾した人が担当','Oferta para a equipe — o primeiro que aceitar fica com o job')}{j.job_category!=='spot'&&<div style={{fontWeight:500,color:'rgba(255,255,255,0.5)',marginTop:2}}>{L('Routine job of the contract · normal pay of the place','契約の定期作業・通常の報酬','Serviço de rotina do contrato · pagamento normal do local')}</div>}</div>}
                 {j.description&&(()=>{ const d=splitKeyLine(j.description); return <div style={{fontSize:13,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.03)',borderRadius:10,padding:'10px 12px',marginBottom:14,lineHeight:1.6,whiteSpace:'pre-line'}}>{d.key&&<div>🔑 ••••</div>}{d.rest}</div> })()}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                   <button onClick={()=>handleAcceptSpot(j)} style={{padding:'15px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#0F6E56,#16a37e)',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer'}}>✅ {e.accept}</button>

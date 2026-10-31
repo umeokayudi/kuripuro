@@ -1,6 +1,6 @@
 // v1.0.101 · Assignment flow (pure, no database): npx vite-node scripts/test-assign-flow.mjs
 import assert from 'node:assert/strict'
-import { asItem, pendingReason, conflictsFor, suggestPeople, planBatch, placeInDay, coverageCounts, requiredRole, travelWindow, splitPast } from '../src/lib/assignFlow.js'
+import { asItem, pendingReason, conflictsFor, suggestPeople, planBatch, placeInDay, coverageCounts, requiredRole, travelWindow, splitPast, isOpenOffer } from '../src/lib/assignFlow.js'
 import { assignText, conflictLabel } from '../src/components/assignText.js'
 import { noticesForChange } from '../src/lib/assignNotices.js'
 import { availabilityIndex } from '../src/lib/scheduleGenerator.js'
@@ -25,6 +25,11 @@ assert.equal(pendingReason(job({ employee_id: 'b' }), { empById, availability })
 assert.equal(pendingReason(job({ employee_id: 'zz' }), { empById }), 'personGone')
 assert.equal(pendingReason(job({ employee_id: 'a' }), { empById, availability }), null)
 assert.equal(pendingReason(job({ status: 'completed' }), { empById }), null)
+// v1.0.120 · a routine (contract) visit offered to the team is an open offer but stays routine
+assert.equal(pendingReason(job({ job_category: 'regular', spot_status: 'pending' }), { empById }), 'offerOpen')
+assert.equal(isOpenOffer(job({ job_category: 'regular', spot_status: 'pending' })), true)
+assert.equal(isOpenOffer(job({ job_category: 'regular', spot_status: 'pending', employee_id: 'a' })), false)
+assert.equal(isOpenOffer(job({ job_category: 'regular', spot_status: null })), false)
 
 // Role + conflicts
 const deep = asItem(job({ id: 'd', title: 'Horumon — Deep Clean', scheduled_time: '01:00', expected_minutes: 240 }))
