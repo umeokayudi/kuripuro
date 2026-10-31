@@ -17,6 +17,7 @@ import {
 import { askConfirm } from '../components/ConfirmDialog'
 import RedistributeSheet from '../components/RedistributeSheet'
 import OffersPanel from '../components/OffersPanel'
+import WeekGrid from '../components/WeekGrid'
 import { payMentions, stripPay } from '../lib/offerText'
 import { roleCan } from '../lib/employeeRoles'
 import { assignJob, assignMany, offerJob, notifyCreated } from '../lib/assignOps'
@@ -278,8 +279,8 @@ export default function ScheduleGenerator() {
 
   // ---- counts ----
   const counts = useMemo(() => coverageCounts(targets, days, periodJobs, { wholeMonth, empById, availability }), [targets, days, periodJobs, wholeMonth, empById, availability])
-  // v1.0.123 · per place: expected dates × what exists (created / in the box to confirm / missing)
-  const check = useMemo(() => contractCheck(targets, days, periodJobs, rows.filter(r => r.checked), { wholeMonth }), [targets, days, periodJobs, rows, wholeMonth])
+  // v1.0.123 · per place: expected dates × what exists (created / in the box to confirm / missing); a past day not created = missing
+  const check = useMemo(() => contractCheck(targets, days, periodJobs, rows.filter(r => r.checked && r.date >= today), { wholeMonth }), [targets, days, periodJobs, rows, wholeMonth, today])
 
   // ---- writes ----
   const after = (r) => {
@@ -381,6 +382,19 @@ export default function ScheduleGenerator() {
       await fetchExisting()
     } catch (err) { toast.error(err.message) }
     setBusy(null)
+  }
+  // v1.0.123 · grid: change person and/or day/time of an existing job (not started ones only)
+  const moveJob = async (job, emp, date, time) => {
+    if (job.status === 'in_progress' || job.status === 'completed') { toast.error(tr('Only jobs not started can change.', '開始前の作業のみ変更できます。', 'Só job não iniciado pode mudar.')); return }
+    try {
+      const patch = {}
+      if (date && date !== job.scheduled_date) patch.scheduled_date = date
+      if (time !== undefined && time !== String(job.scheduled_time || '').slice(0, 5)) patch.scheduled_time = time || null
+      if (Object.keys(patch).length) { const { error } = await supabase.from('jobs').update(patch).eq('id', job.id); if (error) throw error }
+      if ((emp?.id || null) !== (job.employee_id || null) || patch.scheduled_date) after(await assignJob({ ...job, ...patch }, emp))
+      toast.success(emp ? tr(`Moved to ${firstName(emp)}`, `${firstName(emp)}さんへ移動`, `Movido para ${firstName(emp)}`) : tr('Back to no person', '担当なしに戻しました', 'Voltou para sem pessoa'))
+      await fetchExisting()
+    } catch (err) { toast.error(err.message) }
   }
   const cancelOffer = async job => {
     // Back to the Pending box as what it was: a routine job stays routine, an offered spot goes back to normal (as before).
@@ -520,7 +534,7 @@ export default function ScheduleGenerator() {
       </div>
 
       {/* v1.0.123 · CHECK PER PLACE — expected × created for the period, missing ones first */}
-      {loaded && check.places.length > 0 && (
+      {loaded && wholeMonth && check.places.length > 0 && (
         <div className="card as-card">
           <div className="as-box-head">
             <div className="as-box-title">📋 {tr('Check per place', '場所ごとの確認', 'Conferência por local')}
@@ -582,6 +596,24 @@ export default function ScheduleGenerator() {
           {accepted.map(j => (
             <div key={j.id} className="as-muted">✓ <b>{j.employee_name}</b> {tr('took', 'が承諾:', 'pegou')} {asItem(j).place} · {fmtDay(j.scheduled_date)} {String(j.scheduled_time || '').slice(0, 5)} · {new Date(j.spot_responded_at).toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}</div>
           ))}
+        </div>
+      )}
+
+      {/* v1.0.123 · the week at a glance: people × days / places × days */}
+      {!wholeMonth && (
+        <div className="card as-card">
+          <div className="as-box-head">
+            <div className="as-box-title">📅 {tr('Schedule of the period', '期間のスケジュール', 'Escala do período')}
+              <span className={`as-pill${check.totals.ok === check.totals.expected ? ' ok' : ''}`}>{check.totals.ok}/{check.totals.expected}</span>
+              {check.totals.missing > 0 && <span className="as-reason r-red">❌ {tr(`${check.totals.missing} missing`, `不足 ${check.totals.missing}`, `${check.totals.missing} faltando`)}</span>}
+              {check.dups.length > 0 && <span className="as-reason r-red">⧉ {tr(`${check.dups.length} duplicated`, `重複 ${check.dups.length}`, `${check.dups.length} duplicado(s)`)}</span>}
+            </div>
+          </div>
+          {!loaded ? <div className="as-muted">{tr('Loading…', '読み込み中…', 'Carregando…')}</div> : (
+            <WeekGrid tr={tr} days={days} today={today} fmtDay={fmtDay} employees={activeEmployees.filter(e => roleCan(e.job_role, 'routes') || liveJobs.some(j => j.employee_id === e.id))}
+              empById={empById} availability={availability} liveJobs={liveJobs} pendingJobs={pendingJobs} rows={rows.filter(r => r.checked && r.date >= today)} check={check}
+              onMoveJob={moveJob} onMoveRow={(row, emp, date, time) => editRow(row.key, { date, time: time ?? row.time, employeeId: emp?.id || null, employee: firstName(emp), employeeName: emp?.full_name || null, assignReason: 'manual', why: [] })} />
+          )}
         </div>
       )}
 

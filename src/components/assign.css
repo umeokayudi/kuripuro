@@ -151,3 +151,47 @@ label.as-day input { width: 18px; height: 18px; margin: 0; }
 .rd-foot .btn { min-height: 42px; }
 .as-more { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; padding: 12px 4px 4px; }
 .as-more .btn { min-height: 40px; }
+
+/* v1.0.123 · Week grid (people × days, places × days) */
+.wg-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 12px; }
+.wg { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 860px; table-layout: fixed; }
+.wg th, .wg td { border-bottom: 1px solid var(--border); padding: 6px; vertical-align: top; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.wg td + td, .wg th + td, .wg thead th + th { border-left: 1px solid var(--border); }
+.wg thead th { background: var(--surface2); color: var(--text2); text-align: left; font-weight: 800; position: sticky; top: 0; z-index: 1; }
+.wg thead th.today { color: var(--navy2, #315cf5); }
+.wg thead th.sun { color: #dc2626; }
+.wg .wg-corner, .wg tbody th { width: 112px; }
+.wg tbody th { text-align: left; font-size: 13px; position: sticky; left: 0; background: var(--surface); z-index: 1; }
+.wg tbody th small { display: block; color: var(--text3); font-weight: 600; font-size: 11px; }
+.wg-nobody th { color: #b45309; }
+.wg-nobody td { background: #fffaf3; }
+.wg td.off { background: repeating-linear-gradient(45deg, var(--surface), var(--surface) 6px, var(--surface2) 6px, var(--surface2) 12px); }
+.wg td.na { background: var(--surface2); opacity: .5; }
+.wg td.drop { outline: 2px dashed var(--navy2, #315cf5); outline-offset: -3px; }
+.wg-off { color: var(--text3); font-size: 11px; }
+.wg-card { display: flex; flex-direction: column; gap: 1px; padding: 4px 6px; margin-bottom: 4px; border-radius: 7px; border-left: 3px solid #315cf5; background: #eef4ff; font-size: 11px; cursor: pointer; touch-action: none; user-select: none; }
+.wg-card b { min-width: 0; line-height: 1.25; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wg-card span { white-space: nowrap; color: var(--text2); flex-shrink: 0; }
+.wg-card.s-done { background: #ecfdf3; border-color: #22c55e; }
+.wg-card.s-doing { background: #ecfeff; border-color: #06b6d4; }
+.wg-card.s-missed { background: #fef2f2; border-color: #dc2626; }
+.wg-card.s-nobody { background: #fff7ed; border-color: #f59e0b; }
+.wg-card.s-new { background: var(--surface); border: 1px dashed #94a3b8; border-left: 3px dashed #64748b; }
+.wg-card.sel { box-shadow: 0 0 0 2px var(--navy2, #315cf5); }
+.wg-card.dragging { opacity: .4; }
+.wg-dot { display: inline-block; border-radius: 999px; padding: 2px 8px; font-weight: 700; font-size: 11px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.wg-dot.s-done { background: #dcfce7; color: #15803d; }
+.wg-dot.s-planned { background: #e0e7ff; color: #3730a3; }
+.wg-dot.s-missed, .wg-dot.s-missing { background: #fee2e2; color: #b91c1c; }
+.wg-dot.s-toCreate, .wg-dot.s-noPerson { background: #fef3c7; color: #92400e; }
+.wg-n { width: 54px; text-align: right; font-weight: 800; font-size: 14px; }
+.wg-n.ok { color: #16a34a; }
+.wg-n.bad { color: #dc2626; }
+.wg-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text2); margin-top: 8px; align-items: center; }
+.wg-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; border-left: 3px solid; }
+.wg-legend i.s-done { background: #ecfdf3; border-color: #22c55e; }
+.wg-legend i.s-planned { background: #eef4ff; border-color: #315cf5; }
+.wg-legend i.s-missed { background: #fef2f2; border-color: #dc2626; }
+.wg-legend i.s-nobody { background: #fff7ed; border-color: #f59e0b; }
+.wg-legend i.s-new { background: #fff; border: 1px dashed #64748b; }
+.wg-editor { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface2); }
