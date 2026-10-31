@@ -308,7 +308,7 @@ export const kuripuroPtB = {
     beforeRequired: 'ANTES (obrigatório)',
     afterRequired: 'DEPOIS ({n}) — obrigatório',
     todayShiftDone: 'TURNO DE HOJE CONCLUÍDO',
-    tapToReview: 'Tudo feito. Toque para revisar os serviços.',
+    tapToReview: 'Tudo feito · ver serviços',
     nextShift: 'Próximo turno: {date} · {time}',
     noShiftToday: 'Sem turno hoje',
     nextPayment: 'Próximo pagamento',

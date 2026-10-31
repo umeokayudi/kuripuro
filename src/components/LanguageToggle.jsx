@@ -1,7 +1,9 @@
 import { useLang } from '../hooks/useLang'
 
 export default function LanguageToggle({ variant = 'dark', compact = false }) {
-  const { lang, switchLang, ptAllowed } = useLang()
+  const { lang, switchLang, ptAllowed, langLocked } = useLang()
+  // Portuguese-speaking employees always see PT: no switcher at all.
+  if (langLocked) return null
   const dark = variant === 'dark'
   return (
     <div className={`kp-lang ${dark ? 'kp-lang-dark' : 'kp-lang-light'}`} role="group" aria-label="Language">

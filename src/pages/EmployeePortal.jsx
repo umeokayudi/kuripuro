@@ -1976,7 +1976,7 @@ export default function EmployeePortal() {
       <div className="emp-app-header">
         <div className="emp-header-top">
           <div className="emp-header-identity">
-            <div className="emp-brand"><span className="emp-kp-mark">KP</span><span>KURIPURO BY JBM</span></div>
+            <div className="emp-brand"><span className="emp-kp-mark">KP</span><span className="emp-brand-text">KURIPURO<br />BY JBM</span></div>
           </div>
           <div className="emp-header-actions">
             <div className={`emp-score-card ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}>
@@ -2185,10 +2185,10 @@ export default function EmployeePortal() {
 
             <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>openAvailability()} />
 
-            {/* Summary cards (swipe sideways) */}
+            {/* Summary cards: today's shift across, the others two per row (no sideways scroll) */}
             <div className="ex-cards" role="list">
               {todayJobs.length>0&&(
-                <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('shift')}>
+                <button type="button" role="listitem" className="ex-card is-wide" onClick={()=>goToTab('shift')}>
                   <div className="ex-card-head"><strong>{todayAllDone?e.todayShiftDone:e.todayShift}</strong><span className="ex-card-icon">▶</span></div>
                   <div className="ex-card-big">{todayJobs.length} <small>{e.locations}</small></div>
                   <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
