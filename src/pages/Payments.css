@@ -56,14 +56,14 @@
 .pm-net b { display: block; font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
 .pm-net small { display: block; font-size: 11.5px; color: var(--text3); }
 .is-neg { color: var(--red) !important; }
-.pm-tags { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.pm-tags { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
 .pm-pill { font-size: 12px; font-weight: 800; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
 .pm-pill.is-open { background: #fff4e0; color: #b45309; }
 .pm-pill.is-late { background: var(--red-bg); color: var(--red); }
 .pm-pill.is-paid { background: var(--green-bg); color: var(--green); }
 .pm-pill.is-check { background: #f1ebff; color: #6d28d9; }
 .pm-pill.is-zero { background: var(--surface2); color: var(--text3); }
-.pm-tags .pay-st { font-size: 11px; padding: 2px 8px; }
+.pm-tags .pay-st { font-size: 11px; padding: 2px 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pm-act { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .pm-pay { border: 0; background: #16a34a; color: #fff; font: inherit; font-weight: 800; font-size: 13px; border-radius: 10px; padding: 0 14px; min-height: 38px; cursor: pointer; white-space: nowrap; }
 .pm-pay:hover { background: #15803d; }
