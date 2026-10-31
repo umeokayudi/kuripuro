@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
+import { printInvoiceDoc } from '../lib/invoicePrintOps'
 import { escapeHtml } from '../lib/escapeHtml'
 import { fill, pickLang, localeOf } from '../hooks/useLang'
 import {
@@ -98,19 +99,9 @@ export function printReceipt(inv, clientName) {
     <div class="foot">KuriPuro by JBM</div>`)
 }
 
-export async function printInvoice(inv, clientName) {
-  const { data: items } = await supabase.from('fatura_items').select('*').eq('fatura_id', inv.id)
-  const rows = (items || []).map(it => `<tr><td>${escapeHtml(it.description || '')}</td><td>${escapeHtml(String(it.quantity ?? ''))}</td><td style="text-align:right">${yen(it.unit_price)}</td><td style="text-align:right">${yen(it.total)}</td></tr>`).join('')
-  printDoc(`請求書 ${escapeHtml(clientName || '')}`, `
-    <h1>請求書</h1><div class="sub">INVOICE · ${escapeHtml(inv.issue_date || '')}</div>
-    <div class="to">${escapeHtml(clientName || inv.client_name || '')} 御中</div>
-    <table><tr><td>対象期間</td><td style="text-align:right">${escapeHtml(inv.period_start || '—')} 〜 ${escapeHtml(inv.period_end || '—')}</td></tr>
-    <tr><td>支払期限</td><td style="text-align:right">${escapeHtml(inv.due_date || '—')}</td></tr></table>
-    <div class="amount">${yen(inv.total)}</div>
-    <table>${rows || '<tr><td>—</td></tr>'}
-      <tr><td colspan="3">小計</td><td style="text-align:right">${yen(inv.subtotal)}</td></tr>
-      <tr><td colspan="3">消費税 (${escapeHtml(String(inv.tax_rate ?? 10))}%)</td><td style="text-align:right">${yen(inv.tax_amount)}</td></tr></table>
-    <div class="foot">KuriPuro by JBM</div>`)
+// v1.0.122 · the client prints the same 請求書 as the office (quote lines, bank account).
+export function printInvoice(inv, _clientName, lang = 'ja') {
+  return printInvoiceDoc(inv, lang)
 }
 
 function DueCalendar({ invoices, today, labels, lang }) {

@@ -1,3 +1,10 @@
+/** v1.0.122 · Where clients pay (請求書 footer + 支払方法 in the contracts). */
+export const BANK_TRANSFER = {
+  ja: '三菱UFJ銀行 西尾支店（449） 普通 0181001 ウメオカアレサンドレユウジ',
+  en: 'MUFG Bank, Nishio Branch (449) · Ordinary 0181001 · ウメオカアレサンドレユウジ',
+}
+export const bankTransferFor = lang => (lang === 'en' || lang === 'pt' ? BANK_TRANSFER.en : BANK_TRANSFER.ja)
+
 /** Issuer shown on 見積書 / 請求書. Wordmark only — no image. */
 export const QUOTE_ISSUER = {
   company: 'クリプロ',

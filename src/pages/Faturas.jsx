@@ -3,7 +3,6 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { tokyoToday } from '../lib/dates'
 import { ensureServiceReports } from '../lib/jobReport'
 import { supabase } from '../lib/supabase'
-import { escapeHtml } from '../lib/escapeHtml'
 import toast from 'react-hot-toast'
 import { dueDateAfter } from '../lib/spotContract'
 import { useLang, fill } from '../hooks/useLang'
@@ -11,6 +10,7 @@ import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAuto
 import { ClientLink } from '../components/ClientSheetHost'
 import { askConfirm } from '../components/ConfirmDialog'
 import { invoiceMonth } from '../lib/money'
+import { printInvoiceDoc, loadInvoiceView } from '../lib/invoicePrintOps'
 
 export default function Faturas() {
   const [searchParams] = useSearchParams()
@@ -193,9 +193,9 @@ export default function Faturas() {
   // v1.0.109 · clicking an invoice opens ITS detail (lines × value × discount × tax), not the client.
   const [detail, setDetail] = useState(null) // { f, items }
   const openDetail = async (f) => {
-    setDetail({ f, items: null })
-    const { data } = await supabase.from('fatura_items').select('*').eq('fatura_id', f.id)
-    setDetail(d => (d?.f.id === f.id ? { f, items: data || [] } : d))
+    setDetail({ f, items: null, view: null })
+    const view = await loadInvoiceView(f).catch(() => null)
+    setDetail(d => (d?.f.id === f.id ? { f, items: view?.lines || [], view } : d))
   }
 
   const handleCreate = async () => {
@@ -236,58 +236,8 @@ export default function Faturas() {
     toast.success(`Status: ${status}`); load()
   }
 
-  const handlePrint = async (f) => {
-    const { data: printItems } = await supabase.from('fatura_items').select('*').eq('fatura_id', f.id)
-    const w = window.open('', '_blank')
-    const clientName = escapeHtml(f.client_name)
-    const issueDate = escapeHtml(f.issue_date)
-    const periodStart = escapeHtml(f.period_start || '—')
-    const periodEnd = escapeHtml(f.period_end || '—')
-    const dueDate = escapeHtml(f.due_date || '—')
-    const notes = escapeHtml(f.notes)
-    const rows = (printItems || []).map(it => `
-      <tr>
-        <td>${escapeHtml(it.description || '')}</td>
-        <td>${escapeHtml(String(it.quantity ?? ''))}</td>
-        <td>¥${Number(it.unit_price || 0).toLocaleString()}</td>
-        <td>¥${Number(it.total || 0).toLocaleString()}</td>
-      </tr>`).join('')
-    w.document.write(`
-      <html><head><title>請求書 - ${clientName}</title>
-      <style>
-        body{font-family:'Hiragino Sans',sans-serif;padding:40px;max-width:600px;margin:0 auto;color:#333}
-        h1{text-align:center;font-size:22px;margin-bottom:6px}
-        .sub{text-align:center;color:#666;font-size:13px;margin-bottom:30px}
-        table{width:100%;border-collapse:collapse;margin:20px 0}
-        th{background:#001028;color:#fff;padding:8px 12px;text-align:left;font-size:12px}
-        td{padding:8px 12px;border-bottom:1px solid #eee;font-size:13px}
-        .total-row{font-weight:bold;font-size:15px}
-        .badge{display:inline-block;background:#001028;color:#c19c56;padding:2px 10px;border-radius:20px;font-size:11px}
-        .footer{margin-top:40px;text-align:right;font-size:12px;color:#666}
-      </style></head>
-      <body>
-        <h1>請求書</h1>
-        <div class="sub">KuriPuro by JBM</div>
-        <table style="border:none">
-          <tr><td style="border:none"><strong>請求先:</strong> ${clientName} 御中</td><td style="border:none;text-align:right"><strong>発行日:</strong> ${issueDate}</td></tr>
-          <tr><td style="border:none"><strong>対象期間:</strong> ${periodStart} 〜 ${periodEnd}</td><td style="border:none;text-align:right"><strong>支払期限:</strong> ${dueDate}</td></tr>
-        </table>
-        <table>
-          <thead><tr><th>内容</th><th>数量</th><th>単価</th><th>金額</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="4">—</td></tr>'}</tbody>
-        </table>
-        <table style="border:none;width:300px;margin-left:auto">
-          <tr><td style="border:none">小計</td><td style="border:none;text-align:right">¥${Number(f.subtotal||0).toLocaleString()}</td></tr>
-          <tr><td style="border:none">消費税 (${f.tax_rate}%)</td><td style="border:none;text-align:right">¥${Number(f.tax_amount||0).toLocaleString()}</td></tr>
-          <tr class="total-row"><td style="border-top:2px solid #333">合計金額</td><td style="border-top:2px solid #333;text-align:right">¥${Number(f.total||0).toLocaleString()}</td></tr>
-        </table>
-        ${f.notes?`<p style="margin-top:20px;font-size:13px;color:#666">備考: ${notes}</p>`:''}
-        <div class="footer">KuriPuro by JBM<br>振込先等については別途ご連絡いたします</div>
-      </body></html>
-    `)
-    w.document.close()
-    w.print()
-  }
+  // v1.0.122 · same A4 layout as the 見積書, quote lines when it came from one, bank account in the footer
+  const handlePrint = (f) => printInvoiceDoc(f, 'ja')
 
   // v1.0.102 · the list shows only the invoices of the month chosen above (billing period, else issue date)
   const monthList = faturas.filter(f => invoiceMonth(f) === autoPeriod)
@@ -438,7 +388,8 @@ export default function Faturas() {
       )}
 
       {detail && (() => {
-        const { f, items: its } = detail
+        const { f, items: its, view } = detail
+        const shown = view || { subtotal: Number(f.subtotal||0), tax: Number(f.tax_amount||0), total: Number(f.total||0), taxIncluded: false }
         return (
           <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={()=>setDetail(null)}>
             <div className="card" style={{ width:'min(620px,100%)', maxHeight:'92vh', overflowY:'auto' }} onClick={e=>e.stopPropagation()}>
@@ -450,8 +401,8 @@ export default function Faturas() {
                 <table style={{ width:'100%', fontSize:12 }}>
                   <thead><tr><th style={{textAlign:'left'}}>{tr('Service','内容','Serviço')}</th><th>{tr('Qty × price','数量×単価','Qtd × preço')}</th><th>{tr('Discount','割引','Desconto')}</th><th style={{textAlign:'right'}}>{tr('Value','金額','Valor')}</th></tr></thead>
                   <tbody>
-                    {its.map(it => (
-                      <tr key={it.id}>
+                    {its.map((it, i) => (
+                      <tr key={it.id || i}>
                         <td style={{ overflowWrap:'anywhere' }}>{it.description}</td>
                         <td style={{ textAlign:'center', whiteSpace:'nowrap' }}>{it.quantity} × ¥{Number(it.unit_price||0).toLocaleString()}</td>
                         <td style={{ textAlign:'center' }}>{Number(it.discount_amount||0) > 0 ? `−¥${Number(it.discount_amount).toLocaleString()}` : '—'}</td>
@@ -462,10 +413,11 @@ export default function Faturas() {
                 </table>
               )}
               <div style={{ marginTop:10, fontSize:13 }}>
-                <div style={{ display:'flex', justifyContent:'space-between' }}><span>{tr('Subtotal','小計','Subtotal')}</span><span>¥{Number(f.subtotal||0).toLocaleString()}</span></div>
-                <div style={{ display:'flex', justifyContent:'space-between' }}><span>{tr('Tax','消費税','Imposto')} ({f.tax_rate}%)</span><span>¥{Number(f.tax_amount||0).toLocaleString()}</span></div>
-                <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:15 }}><span>{tr('Total','合計','Total')}</span><span>¥{Number(f.total||0).toLocaleString()}</span></div>
-                {its && its.length > 0 && Math.abs(its.reduce((s,it)=>s+Number(it.total||0),0) - Number(f.total||0)) > 1 && Math.abs(its.reduce((s,it)=>s+Number(it.total||0),0) - Number(f.subtotal||0)) > 1 && (
+                {view?.fromQuote && <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{tr('Lines copied from the accepted quote','承認済み見積の明細','Linhas iguais ao orçamento aceito')}</div>}
+                <div style={{ display:'flex', justifyContent:'space-between' }}><span>{shown.taxIncluded ? tr('Subtotal (tax incl.)','小計（税込）','Subtotal (com imposto)') : tr('Subtotal','小計','Subtotal')}</span><span>¥{(shown.taxIncluded ? shown.total : shown.subtotal).toLocaleString()}</span></div>
+                <div style={{ display:'flex', justifyContent:'space-between' }}><span>{shown.taxIncluded ? tr('of which tax','うち消費税','dos quais imposto') : tr('Tax','消費税','Imposto')} ({f.tax_rate}%)</span><span>¥{shown.tax.toLocaleString()}</span></div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:15 }}><span>{tr('Total','合計','Total')}</span><span>¥{shown.total.toLocaleString()}</span></div>
+                {!view && its && its.length > 0 && Math.abs(its.reduce((s,it)=>s+Number(it.total||0),0) - Number(f.total||0)) > 1 && Math.abs(its.reduce((s,it)=>s+Number(it.total||0),0) - Number(f.subtotal||0)) > 1 && (
                   <div className="badge badge-amber" style={{ marginTop:6 }}>{tr(`Lines add up to ¥${its.reduce((s,it)=>s+Number(it.total||0),0).toLocaleString()} — check`, `明細合計 ¥${its.reduce((s,it)=>s+Number(it.total||0),0).toLocaleString()} — 要確認`, `As linhas somam ¥${its.reduce((s,it)=>s+Number(it.total||0),0).toLocaleString()} — conferir`)}</div>
                 )}
               </div>

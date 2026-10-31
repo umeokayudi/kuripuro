@@ -6,24 +6,25 @@ import { viewablePhotoUrl } from './photoUrl'
 
 // Database steps shared by Jobs (New Job / spot list) and Contracts → Spot contracts.
 
-/** Creates the draft invoice (faturas + item) due on the contract's payment day and links it. */
-export async function createSpotInvoice(contract) {
-  const { fatura, item } = spotInvoiceRows(contract)
+/** Creates the draft invoice (faturas + items) due on the contract's payment day and links it.
+ *  `quote` = the accepted 見積 ({ items, subtotal, tax_amount, total }) to copy line by line. */
+export async function createSpotInvoice(contract, quote = null) {
+  const { fatura, items } = spotInvoiceRows(contract, quote)
   const { data: f, error } = await supabase.from('faturas').insert(fatura).select('id,due_date').single()
   if (error) throw error
-  const { error: itemErr } = await supabase.from('fatura_items').insert({ ...item, fatura_id: f.id })
+  const { error: itemErr } = await supabase.from('fatura_items').insert(items.map(it => ({ ...it, fatura_id: f.id })))
   if (itemErr) throw itemErr
   await supabase.from('spot_contracts').update({ fatura_id: f.id }).eq('id', contract.id)
   return f
 }
 
 /** Saves a contract row and its invoice. Returns { contract, invoice, invoiceError }. */
-export async function saveSpotContractWithInvoice(row) {
+export async function saveSpotContractWithInvoice(row, quote = null) {
   const { data: contract, error } = await supabase.from('spot_contracts').insert(row).select().single()
   if (error) throw error
   // The PDF copy is saved in the background once the invoice is linked.
   try {
-    const invoice = await createSpotInvoice(contract)
+    const invoice = await createSpotInvoice(contract, quote)
     const pdf = refreshSpotContractPdf(contract.id)
     return { contract: { ...contract, fatura_id: invoice.id }, invoice, pdf }
   } catch (invoiceError) {

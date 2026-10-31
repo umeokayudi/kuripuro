@@ -57,6 +57,7 @@
     "test:gemini-thinking": "node scripts/test-gemini-thinking.mjs",
     "test:employee-ai-pay": "node scripts/test-employee-ai-pay.mjs",
     "test:spot-contract": "node scripts/test-spot-contract.mjs",
+    "test:invoice-quote": "node scripts/test-invoice-quote.mjs",
     "test:nfc-clock": "node scripts/test-nfc-clock.mjs",
     "test:jobs-period": "node scripts/test-jobs-period.mjs",
     "test:maps-link": "node scripts/test-maps-link.mjs",
