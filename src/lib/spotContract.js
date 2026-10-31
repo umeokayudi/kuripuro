@@ -1,6 +1,6 @@
 import { escapeHtml } from './escapeHtml.js'
 import { PRINT_DOC_CSS } from './printDoc.js'
-import { printIssuer } from './quoteIssuer.js'
+import { printIssuer, bankTransferFor } from './quoteIssuer.js'
 import { tokyoToday } from './dates.js'
 import { clientContact } from './clientContact.js'
 
@@ -23,10 +23,33 @@ export function dueDateAfter(ymd, day = 10) {
   return new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10)
 }
 
-/** Draft invoice (faturas + one fatura_items line) for a spot contract, due on the payment day. */
-export function spotInvoiceRows(c) {
+/** "K.K. Bacana — エアコン分解洗浄" when the place already holds the service, never the same text twice. */
+export function spotLineTitle(c) {
+  const place = String(c?.location_name || '').trim()
+  const service = String(c?.service_type || '').trim()
+  if (!service || service === 'Spot' || place.includes(service)) return place || service || 'Spot'
+  if (!place || service.includes(place)) return service
+  return `${place} — ${service}`
+}
+
+/**
+ * Draft invoice (faturas + fatura_items) for a spot contract, due on the payment day.
+ * v1.0.122 · Lines are always tax-exclusive so 小計 = sum of lines. When the session comes from an
+ * accepted 見積 and costs exactly the quote, `quote` ({ items, subtotal, tax_amount, total }) is copied
+ * line by line (same description / qty / unit price, discount lines included) with the quote's totals.
+ */
+export function spotInvoiceRows(c, quote = null) {
   const t = spotContractTotals(c)
   const day = c.service_date || tokyoToday()
+  const qItems = (quote?.items || []).filter(it => String(it.description || '').trim())
+  const useQuote = qItems.length > 0 && Math.round(Number(quote.total)) === Math.round(t.total)
+  const totals = useQuote
+    ? { subtotal: Math.round(Number(quote.subtotal)), tax: Math.round(Number(quote.tax_amount)), total: Math.round(Number(quote.total)) }
+    : t
+  const base = { job_id: c.job_id || null, discount_percent: 0, discount_amount: 0, job_ids: c.job_id || null }
+  const items = useQuote
+    ? qItems.map(it => ({ ...base, description: String(it.description).trim(), quantity: Number(it.quantity) || 1, unit_price: Number(it.unit_price) || 0, total: Number(it.total ?? (Number(it.quantity) || 1) * (Number(it.unit_price) || 0)) }))
+    : [{ ...base, description: `${spotLineTitle(c)} (${day})`, quantity: 1, unit_price: t.subtotal, total: t.subtotal }]
   return {
     fatura: {
       client_id: c.client_id || null,
@@ -35,23 +58,15 @@ export function spotInvoiceRows(c) {
       period_end: day,
       issue_date: tokyoToday(),
       due_date: dueDateAfter(day, c.payment_day),
-      subtotal: t.subtotal,
-      tax_amount: t.tax,
-      total: t.total,
+      subtotal: totals.subtotal,
+      tax_amount: totals.tax,
+      total: totals.total,
       tax_rate: Number(c.tax_rate ?? 10),
       status: 'draft',
-      notes: `Spot ${c.contract_number || ''} · 業務委託契約書 · ${c.location_name || ''}`.trim(),
+      notes: `Spot ${c.contract_number || ''} · 業務委託契約書 · ${spotLineTitle(c)}`.trim(),
     },
-    item: {
-      job_id: c.job_id || null,
-      description: `${c.location_name || ''} — ${c.service_type || 'Spot'} (${day})`,
-      quantity: 1,
-      unit_price: t.total,
-      total: t.total,
-      discount_percent: 0,
-      discount_amount: 0,
-      job_ids: c.job_id || null,
-    },
+    items,
+    item: items[0],
   }
 }
 
@@ -288,7 +303,7 @@ export function spotContractArticles(c, lang = 'ja') {
     ['Purpose', 'The Client (Party A) entrusts KuriPuro (Party B) with the cleaning service set out in Article 2 (the "Service"), and Party B accepts it.'],
     ['Service', `Place: ${place || '—'}${note('place')}\nDate: ${when || '—'}\nService: ${service || 'Spot cleaning'} (details under "Scope of work").${note('service')}`],
     ['Fee', `The fee for this one-time Service is JPY ${yen(t.total)} (incl. consumption tax ${c?.tax_rate ?? 10}%; subtotal JPY ${yen(t.subtotal)}, tax JPY ${yen(t.tax)}).${note('fee')}`],
-    ['Payment', `Party B issues an invoice after completing the Service. Party A pays the fee by the ${day}th of the month following the month in which the Service was completed, by bank transfer to the account designated by Party B. Transfer fees are borne by Party A. If the due date falls on a bank holiday, payment is due on the preceding business day.${note('payment')}`],
+    ['Payment', `Party B issues an invoice after completing the Service. Party A pays the fee by the ${day}th of the month following the month in which the Service was completed, by bank transfer to the account designated by Party B (${bankTransferFor('en')}). Transfer fees are borne by Party A. If the due date falls on a bank holiday, payment is due on the preceding business day.${note('payment')}`],
     ['Subcontracting', 'Party B does not subcontract the Service to a third party without Party A\'s prior consent. Performance by Party B\'s own employees and registered staff is not subcontracting.'],
     ['Access and keys', 'Party A provides the entry method, keys and use of facilities needed for the Service. Party B manages them with the care of a prudent manager and returns them after the Service.'],
     ['Changes and cancellation', 'If Party A wishes to change the date or cancel the Service, Party A notifies Party B by the day before the service date.'],
@@ -302,7 +317,7 @@ export function spotContractArticles(c, lang = 'ja') {
     ['目的', '甲は、乙に対し、第2条に定める清掃業務（以下「本業務」という。）を委託し、乙はこれを受託する。'],
     ['業務内容', `作業場所：${place || '—'}${note('place')}\n作業日：${when || '—'}\n作業内容：${service || 'スポット清掃'}（詳細は別記「作業範囲」のとおり）${note('service')}`],
     ['委託料', `本業務（1回）の委託料は、金${yen(t.total)}円（消費税${c?.tax_rate ?? 10}%込、税抜金額${yen(t.subtotal)}円、消費税額${yen(t.tax)}円）とする。${note('fee')}`],
-    ['支払方法', `乙は本業務の完了後に請求書を発行し、甲は、本業務完了日の属する月の翌月${day}日までに、乙の指定する銀行口座へ振り込む方法により委託料を支払う。振込手数料は甲の負担とする。支払期日が金融機関の休業日にあたる場合は、その前営業日までに支払う。${note('payment')}`],
+    ['支払方法', `乙は本業務の完了後に請求書を発行し、甲は、本業務完了日の属する月の翌月${day}日までに、乙の指定する銀行口座（${bankTransferFor('ja')}）へ振り込む方法により委託料を支払う。振込手数料は甲の負担とする。支払期日が金融機関の休業日にあたる場合は、その前営業日までに支払う。${note('payment')}`],
     ['再委託', '乙は、甲の事前の承諾なく本業務を第三者に再委託しない。ただし、乙の従業員および登録スタッフによる実施はこの限りでない。'],
     ['入館・鍵の管理', '甲は、本業務に必要な入館方法、鍵および設備の使用を乙に提供し、乙はこれらを善良な管理者の注意をもって管理し、本業務終了後に返還する。'],
     ['日程変更・中止', '甲が作業日の変更または本業務の中止を希望する場合は、作業日の前日までに乙に連絡する。'],
@@ -325,7 +340,7 @@ function recurringArticles(c, lang, t, day, { place, service, note }) {
     ['Fee', c.fixed || !visits
       ? `The fee is JPY ${yen(t.total)} per ${c.fixed ? 'month' : 'visit'} (incl. consumption tax ${c.tax_rate}%).${disc}${note('fee')}`
       : `The fee is JPY ${yen(monthly)} per month (incl. consumption tax ${c.tax_rate}%; JPY ${yen(t.total)} per visit × ${visits} visits a month). If the number of visits in a month changes, the fee is adjusted at JPY ${yen(t.total)} per visit.${disc}${note('fee')}`],
-    ['Payment', `Party B issues an invoice each month for the previous month. Party A pays it by the ${day}th of the month following the month of service, by bank transfer to the account designated by Party B. Transfer fees are borne by Party A. If the due date falls on a bank holiday, payment is due on the preceding business day.${note('payment')}`],
+    ['Payment', `Party B issues an invoice each month for the previous month. Party A pays it by the ${day}th of the month following the month of service, by bank transfer to the account designated by Party B (${bankTransferFor('en')}). Transfer fees are borne by Party A. If the due date falls on a bank holiday, payment is due on the preceding business day.${note('payment')}`],
     ['Subcontracting', 'Party B does not subcontract the Service to a third party without Party A\'s prior consent. Performance by Party B\'s own employees and registered staff is not subcontracting.'],
     ['Access and keys', 'Party A provides the entry method, keys and use of facilities needed for the Service. Party B manages them with the care of a prudent manager.'],
     ['Changes and cancellation', 'If Party A wishes to change or skip a visit, Party A notifies Party B by the day before the visit.'],
@@ -343,7 +358,7 @@ function recurringArticles(c, lang, t, day, { place, service, note }) {
       : visits
         ? `本業務の委託料は、月額金${yen(monthly)}円（消費税${c.tax_rate}%込）とする（内訳：1回あたり金${yen(t.total)}円 × 月${visits}回）。月の実施回数が増減した場合は、1回あたりの金額により精算する。${disc}${note('fee')}`
         : `本業務の委託料は、1回あたり金${yen(t.total)}円（消費税${c.tax_rate}%込）とし、当月に実施した回数分を請求する。${disc}${note('fee')}`],
-    ['支払方法', `乙は毎月、前月分の請求書を発行し、甲は、業務実施月の翌月${day}日までに、乙の指定する銀行口座へ振り込む方法により委託料を支払う。振込手数料は甲の負担とする。支払期日が金融機関の休業日にあたる場合は、その前営業日までに支払う。${note('payment')}`],
+    ['支払方法', `乙は毎月、前月分の請求書を発行し、甲は、業務実施月の翌月${day}日までに、乙の指定する銀行口座（${bankTransferFor('ja')}）へ振り込む方法により委託料を支払う。振込手数料は甲の負担とする。支払期日が金融機関の休業日にあたる場合は、その前営業日までに支払う。${note('payment')}`],
     ['再委託', '乙は、甲の事前の承諾なく本業務を第三者に再委託しない。ただし、乙の従業員および登録スタッフによる実施はこの限りでない。'],
     ['入館・鍵の管理', '甲は、本業務に必要な入館方法、鍵および設備の使用を乙に提供し、乙はこれらを善良な管理者の注意をもって管理する。'],
     ['日程変更・中止', '甲が作業日の変更または休止を希望する場合は、作業日の前日までに乙に連絡する。'],
