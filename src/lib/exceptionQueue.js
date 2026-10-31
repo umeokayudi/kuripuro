@@ -81,3 +81,30 @@ export async function fetchExceptions({ hideTests = true } = {}) {
     payroll: { autoClosed: periods.data || [], disputed: disputed.data || [], paidUnconfirmed },
   })
 }
+
+/**
+ * v1.0.123 · The bell shows many exceptions of the same kind as ONE card ("11 never started —
+ * review"), not 11 cards. Kinds about a job group from `min` items on; the group keeps the urgency
+ * of its most urgent item and lists the dates, the people and the items to review one by one.
+ */
+const GROUPABLE = new Set(['incomplete', 'no_photo', 'ai_waiting', 'long'])
+export function groupExceptions(list = [], { min = 3 } = {}) {
+  const byKind = {}
+  for (const x of list) if (GROUPABLE.has(x.kind)) (byKind[x.kind] = byKind[x.kind] || []).push(x)
+  const out = []
+  const done = new Set()
+  for (const x of list) {
+    if (done.has(x.kind)) continue
+    const same = byKind[x.kind]
+    if (same && same.length >= min) {
+      done.add(x.kind)
+      const dates = same.map(i => i.date).filter(Boolean).sort()
+      out.push({
+        id: `group:${x.kind}`, kind: x.kind, group: true, items: same, urgency: Math.max(...same.map(i => i.urgency)),
+        from: dates[0] || '', to: dates[dates.length - 1] || '', who: [...new Set(same.map(i => i.who).filter(Boolean))],
+        overdue: same.some(i => i.overdue),
+      })
+    } else out.push(x)
+  }
+  return out.sort((a, b) => b.urgency - a.urgency || String(a.date || a.from).localeCompare(String(b.date || b.from)))
+}

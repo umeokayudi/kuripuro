@@ -5,7 +5,7 @@ import { syncServiceReport } from './jobReport'
 import { finishQuoteJob } from './quoteFlow'
 import { DEFAULT_AGENDA_SETTINGS } from './agenda'
 import { manualCloseError, manualClosePatch, manualCloseMessage, isMissingColumnError, MANUAL_CLOSE_COLUMNS } from './manualClose'
-import { PT_DEFAULT_EMPLOYEES } from '../hooks/useLang'
+import { employeeMessageLang } from './employeeLang'
 
 const LS_SETTINGS = 'kp_agenda_settings'
 
@@ -94,7 +94,7 @@ export async function adminManualClose(job, { startedAt, completedAt, note = '' 
   })
   let notified = false
   if (job.employee_id) {
-    const lang = PT_DEFAULT_EMPLOYEES.includes(job.employee_id) ? 'pt' : 'en'
+    const lang = await employeeMessageLang(job.employee_id)
     const { error: msgErr } = await supabase.from('messages').insert({
       employee_id: job.employee_id, employee_name: job.employee_name, sender: 'admin', read: false,
       content: manualCloseMessage(job, { startedAt: start, completedAt, note, adminName: admin }, lang),

@@ -155,6 +155,66 @@ export function coverage(targets, days, rows, { wholeMonth = false } = {}) {
   return { clients: list, missing, noDays }
 }
 
+/**
+ * v1.0.123 · Check per contract (place) for the period: which dates are expected and what exists
+ * on each one, so the admin sees "Kodama Kinshicho 3/3 — Mon Wed Fri" instead of checking job by job.
+ * `jobs` = live jobs of the period ({ scheduled_date, title, employee_id }), `rows` = preview lines
+ * still to create ({ date, title, employeeId }). Weekly contracts: one per contract weekday.
+ * Periodic contracts: one visit in the month (only when the period is the whole month).
+ * Also returns the extra jobs (no contract) and duplicates (two jobs of the same visit).
+ * @returns {{ places: Array<{ target, slots: Array<{ date, jobs, rows, state }>, done, total, state }>, extras: Array, dups: Array, totals }}
+ */
+export function contractCheck(targets, days, jobs = [], rows = [], { wholeMonth = false } = {}) {
+  const live = (jobs || []).filter(j => j.status !== 'cancelled')
+  const byDate = {}
+  for (const j of live) (byDate[j.scheduled_date] = byDate[j.scheduled_date] || []).push(j)
+  const rowsByDate = {}
+  for (const r of rows || []) (rowsByDate[r.date] = rowsByDate[r.date] || []).push(r)
+  const used = new Set()
+  const places = []
+  for (const t of targets || []) {
+    if (t.kind === 'nodays') continue
+    if (t.kind === 'periodic' && !wholeMonth) continue
+    const slotDates = t.kind === 'weekly' ? days.filter(d => t.days.includes(dowOf(d))) : [null]
+    const slots = slotDates.map(date => {
+      const inDays = date ? [date] : days
+      const js = inDays.flatMap(d => (byDate[d] || []).filter(j => jobFulfils(j.title, t)))
+      const rs = inDays.flatMap(d => (rowsByDate[d] || []).filter(r => jobFulfils(r.title, t)))
+      js.forEach(j => used.add(j))
+      const state = js.length ? (js.some(j => j.employee_id) ? 'ok' : 'noPerson') : rs.length ? 'toCreate' : 'missing'
+      return { date: date || js[0]?.scheduled_date || rs[0]?.date || null, jobs: js, rows: rs, state }
+    })
+    const done = slots.filter(s => s.state === 'ok').length
+    const state = done === slots.length ? 'ok' : slots.some(s => s.state === 'missing') ? 'missing' : slots.some(s => s.state === 'toCreate') ? 'toCreate' : 'noPerson'
+    places.push({ target: t, slots, done, total: slots.length, state })
+  }
+  // Same visit (date + place + service) created twice.
+  const seen = {}
+  for (const j of live) (seen[dupKey(j.scheduled_date, j.title)] = seen[dupKey(j.scheduled_date, j.title)] || []).push(j)
+  const dups = Object.values(seen).filter(l => l.length > 1)
+  const extras = live.filter(j => !used.has(j))
+  const order = { missing: 0, toCreate: 1, noPerson: 2, ok: 3 }
+  places.sort((a, b) => order[a.state] - order[b.state] || String(a.target.location).localeCompare(String(b.target.location)))
+  const totals = {
+    expected: places.reduce((s, p) => s + p.total, 0),
+    ok: places.reduce((s, p) => s + p.done, 0),
+    missing: places.reduce((s, p) => s + p.slots.filter(x => x.state === 'missing').length, 0),
+    toCreate: places.reduce((s, p) => s + p.slots.filter(x => x.state === 'toCreate').length, 0),
+    noPerson: places.reduce((s, p) => s + p.slots.filter(x => x.state === 'noPerson').length, 0),
+  }
+  return { places, extras, dups, totals }
+}
+
+/** v1.0.123 · Move the period back / forward one step (day, Mon–Sun week, or month). */
+export function shiftPeriod(kind, anchor, month, step) {
+  if (kind === 'month') {
+    const [y, m] = month.split('-').map(Number)
+    const d = new Date(Date.UTC(y, m - 1 + step, 1))
+    return { anchor, month: d.toISOString().slice(0, 7) }
+  }
+  return { anchor: addDays(anchor, kind === 'week' ? 7 * step : step), month }
+}
+
 /** sequence_order 1..n per person and day, in clock order (the Agenda's canonical order). */
 export function clockSeq(rows) {
   const groups = {}

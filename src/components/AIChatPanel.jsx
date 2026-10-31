@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { apiPost } from '../lib/apiFetch'
 import AICallMode from './AICallMode'
 import { loadVoices, pickDefaultVoice, speakText, getSavedVoiceName, saveVoiceName } from '../lib/voice'
@@ -99,10 +100,30 @@ function ApprovalCard({ approval, lang, onAuthorize, onCancel }) {
   )
 }
 
+// v1.0.125 · buttons the AI asked to show (show_buttons tool): open a screen, or run a panel command.
+function buttonsOf(toolLog, commands) {
+  const out = []
+  for (const t of toolLog || []) {
+    if (!t.ok || t.name !== 'show_buttons') continue
+    for (const b of t.args?.buttons || []) {
+      const label = String(b?.label || '').slice(0, 60)
+      const path = typeof b?.path === 'string' && /^\/(?!\/)/.test(b.path) ? b.path : null
+      const command = b?.command && commands?.[b.command] ? b.command : null
+      if (label && (path || command) && !out.some(o => o.label === label)) out.push({ label, path: command ? null : path, command })
+    }
+  }
+  return out.slice(0, 6)
+}
+
 // Requests still running per chat (survive the panel closing).
 const PENDING = new Map()
 
-export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0 }) {
+export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0, context = '', commands = null, historyId, welcomeText, hideHero = false }) {
+  const navigate = useNavigate()
+  // v1.0.125 · the Dashboard keeps its own conversation (historyId) and sends what it shows as context.
+  const historyKey = historyId || employeeId
+  const contextRef = useRef(context)
+  contextRef.current = context
   const { t, lang } = useLang()
   const { user } = useAuth() || {}
   const ai = t.ai || {}
@@ -110,21 +131,21 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   const cards = (suggestions.length ? suggestions : (mode === 'employee' ? ai.employeeSuggestions : ai.adminSuggestions) || []).slice(0, compact ? 4 : 6)
   const [copiedIndex, setCopiedIndex] = useState(null)
   const welcome = useMemo(() => (
-    [{ role: 'assistant', content: (mode === 'employee' ? ai.employeeWelcome : ai.adminWelcome) || '' }]
-  ), [mode, ai.employeeWelcome, ai.adminWelcome])
+    [{ role: 'assistant', content: welcomeText || (mode === 'employee' ? ai.employeeWelcome : ai.adminWelcome) || '' }]
+  ), [mode, ai.employeeWelcome, ai.adminWelcome, welcomeText])
 
   const [messages, setMessagesState] = useState(() =>
-    newChatId ? welcome : loadChatHistory(mode, employeeId, welcome)
+    newChatId ? welcome : loadChatHistory(mode, historyKey, welcome)
   )
   // v1.0.96 · closing the panel while the AI is answering must not lose the answer:
   // after unmount, updates go straight to the saved history, which the panel reloads when reopened.
   const mountedRef = useRef(true)
-  const chatKey = `${mode}:${employeeId || ''}`
+  const chatKey = `${mode}:${historyKey || ''}`
   const setMessages = updater => {
     if (mountedRef.current) return setMessagesState(updater)
     const next = typeof updater === 'function' ? updater(messagesRef.current) : updater
     messagesRef.current = next
-    saveChatHistory(mode, employeeId, next.map(message => { const stored = { ...message }; delete stored.attachmentsData; return stored }))
+    saveChatHistory(mode, historyKey, next.map(message => { const stored = { ...message }; delete stored.attachmentsData; return stored }))
   }
   useEffect(() => {
     mountedRef.current = true
@@ -134,7 +155,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
       setLoading(true)
       pending.finally(() => {
         if (!mountedRef.current) return
-        setMessagesState(loadChatHistory(mode, employeeId, welcome))
+        setMessagesState(loadChatHistory(mode, historyKey, welcome))
         setLoading(false)
       })
     }
@@ -183,7 +204,11 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     if (v) { voiceRef.current = v; saveVoiceName(v.name) }
   }, [voiceName, voices])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
+  // v1.0.125 · scroll only the chat's own list (inside the Dashboard, scrollIntoView moved the whole page)
+  useEffect(() => {
+    const list = bottomRef.current?.parentElement
+    if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
+  }, [messages, loading])
 
   // Grow the input with its content up to a max height, then scroll inside it
   useEffect(() => {
@@ -196,8 +221,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   }, [input, compact])
 
   useEffect(() => {
-    saveChatHistory(mode, employeeId, messages.map(message => { const stored = { ...message }; delete stored.attachmentsData; return stored }))
-  }, [messages, mode, employeeId])
+    saveChatHistory(mode, historyKey, messages.map(message => { const stored = { ...message }; delete stored.attachmentsData; return stored }))
+  }, [messages, mode, historyKey])
 
   const speakReply = (text) => speakText(text, { voice: voiceRef.current })
 
@@ -205,6 +230,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     const endpoint = mode === 'employee' ? '/api/employee-ai' : '/api/admin-ai'
     const body = { messages: allMessages.filter(m => !m.isError), ...extra }
     if (mode === 'employee') body.language = lang
+    if (mode !== 'employee' && contextRef.current) body.context = typeof contextRef.current === 'function' ? contextRef.current() : contextRef.current
     const controller = new AbortController()
     // A bit longer than the server's own 52 s budget (Vercel maxDuration is 60 s), so the
     // browser never gives up while the server is still finishing a long request.
@@ -495,7 +521,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   }
 
   const lastAssistant = messages.map(m => m.role).lastIndexOf('assistant')
-  const isEmpty = messages.length <= 1 && !loading
+  const isEmpty = messages.length <= 1 && !loading && !hideHero
 
   const userBubble = mode === 'employee'
     ? 'linear-gradient(135deg,#7651dc,#5a38bd)'
@@ -566,10 +592,20 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
                 {m.attachments?.length > 0 && <div className="ai-attachment-list">{m.attachments.map((file, j) => <span key={j}>📎 {file.name}</span>)}</div>}
                 {m.isError && i === messages.length - 1 && <button type="button" className="ai-retry-button" onClick={retryLastRequest} disabled={loading}>{lang === 'ja' ? '↻ 再試行' : '↻ Tentar novamente'}</button>}
                 {m.approval && <ApprovalCard approval={m.approval} lang={lang} onAuthorize={password => authorizeChanges(i, password)} onCancel={() => setApproval(i, { state: 'cancelled', token: null })} />}
-                {m.toolLog?.length > 0 && (
+                {m.role === 'assistant' && buttonsOf(m.toolLog, commands).length > 0 && (
+                  <div className="ai-action-buttons">
+                    {buttonsOf(m.toolLog, commands).map((b, j) => (
+                      <button type="button" key={j} className={b.command ? 'is-command' : ''} disabled={loading && !!b.command}
+                        onClick={() => (b.command ? commands[b.command].run() : navigate(b.path))}>
+                        {b.label}{!b.command && <span aria-hidden="true">→</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {m.toolLog?.filter(t => t.name !== 'show_buttons').length > 0 && (
                   <details style={{ marginTop: 6 }}>
-                    <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {fill(ai.toolQueries || '{n}', { n: m.toolLog.length })}</summary>
-                    {m.toolLog.map((t, j) => (
+                    <summary style={{ fontSize: 10, opacity: 0.6, cursor: 'pointer' }}>🔧 {fill(ai.toolQueries || '{n}', { n: m.toolLog.filter(t => t.name !== 'show_buttons').length })}</summary>
+                    {m.toolLog.filter(t => t.name !== 'show_buttons').map((t, j) => (
                       <div key={j} style={{ fontSize: 10, color: t.ok ? '#4ade80' : '#f87171', fontFamily: 'monospace' }}>
                         {t.ok ? '✓' : '✗'} {t.name}
                       </div>
@@ -587,6 +623,15 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
           </div>
         ))}
         {loading && <div className="ai-msg is-bot"><span className="ai-orb ai-orb-xs ai-msg-avatar is-thinking" aria-hidden="true" /><div className="ai-typing" aria-label={ai.thinking}><i /><i /><i /></div>{progressPart > 1 && <small style={{ alignSelf: 'center', fontSize: 11, opacity: 0.7, marginLeft: 8 }}>{fill(progressText.part, { n: progressPart })}</small>}</div>}
+        {hideHero && messages.length <= 1 && !loading && cards.length > 0 && (
+          <div className="ai-quick-chips">
+            {cards.map((card, i) => (
+              <button type="button" key={i} onClick={() => { const userMsg = { role: 'user', content: card.prompt }; sendRequest([...messages, userMsg], userMsg) }}>
+                {card.icon && <span aria-hidden="true">{card.icon} </span>}{card.title}
+              </button>
+            ))}
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
       )}

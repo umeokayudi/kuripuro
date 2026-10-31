@@ -2,6 +2,7 @@ const TTL_MS = 30 * 60 * 1000 // 30 minutos
 
 function storageKey(mode, employeeId) {
   if (mode === 'employee' && employeeId) return `kp_ai_chat_employee_${employeeId}`
+  if (employeeId) return `kp_ai_chat_${mode || 'admin'}_${employeeId}` // v1.0.125 · e.g. the Dashboard's own chat
   return `kp_ai_chat_${mode || 'admin'}`
 }
 

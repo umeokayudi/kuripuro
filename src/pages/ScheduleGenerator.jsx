@@ -8,7 +8,7 @@ import {
   locationsFromContracts, DEFAULT_LOCATIONS, DOW_EN, DOW_JA,
 } from '../lib/scheduleGenerator'
 import {
-  periodDays, canWork, outOfSchedule, contractTargets, dupKey, dowOf, isTestAccount, addDays,
+  periodDays, canWork, outOfSchedule, contractTargets, dupKey, dowOf, isTestAccount, addDays, contractCheck, shiftPeriod,
 } from '../lib/schedulePlan'
 import {
   asItem, pendingReason, conflictsFor, suggestPeople, planBatch, placeInDay, coverageCounts, requiredRole,
@@ -16,6 +16,9 @@ import {
 } from '../lib/assignFlow'
 import { askConfirm } from '../components/ConfirmDialog'
 import RedistributeSheet from '../components/RedistributeSheet'
+import OffersPanel from '../components/OffersPanel'
+import WeekGrid from '../components/WeekGrid'
+import { payMentions, stripPay } from '../lib/offerText'
 import { roleCan } from '../lib/employeeRoles'
 import { assignJob, assignMany, offerJob, notifyCreated } from '../lib/assignOps'
 import { pendingChanged } from '../lib/adminPending'
@@ -105,6 +108,7 @@ export default function ScheduleGenerator() {
   const [showPast, setShowPast] = useState(false)
   const [coverPick, setCoverPick] = useState(false)
   const [cover, setCover] = useState(null) // { id, name } of the absent person
+  const [checkAll, setCheckAll] = useState(false) // v1.0.123 · show places already OK in the check too
   const today = tokyoToday()
 
   useEffect(() => {
@@ -275,6 +279,8 @@ export default function ScheduleGenerator() {
 
   // ---- counts ----
   const counts = useMemo(() => coverageCounts(targets, days, periodJobs, { wholeMonth, empById, availability }), [targets, days, periodJobs, wholeMonth, empById, availability])
+  // v1.0.123 · per place: expected dates × what exists (created / in the box to confirm / missing); a past day not created = missing
+  const check = useMemo(() => contractCheck(targets, days, periodJobs, rows.filter(r => r.checked && r.date >= today), { wholeMonth }), [targets, days, periodJobs, rows, wholeMonth, today])
 
   // ---- writes ----
   const after = (r) => {
@@ -369,12 +375,26 @@ export default function ScheduleGenerator() {
     setBusy(l.key)
     try {
       if (l.kind === 'new') await createRows([l.row], { asOffer: true })
-      else after(await offerJob(l.job, { value }))
+      // v1.0.123 · the extra lives only in the value field: a pay amount typed in the text leaves it (no double value)
+      else after(await offerJob(l.job, { value, description: payMentions(l.job.description).length ? stripPay(l.job.description) : undefined }))
       toast.success(tr('Offer sent to everyone with the role', '役割のある全員にオファーを送信', 'Oferta enviada para todos com o papel'))
       setOfferFor(null)
       await fetchExisting()
     } catch (err) { toast.error(err.message) }
     setBusy(null)
+  }
+  // v1.0.123 · grid: change person and/or day/time of an existing job (not started ones only)
+  const moveJob = async (job, emp, date, time) => {
+    if (job.status === 'in_progress' || job.status === 'completed') { toast.error(tr('Only jobs not started can change.', '開始前の作業のみ変更できます。', 'Só job não iniciado pode mudar.')); return }
+    try {
+      const patch = {}
+      if (date && date !== job.scheduled_date) patch.scheduled_date = date
+      if (time !== undefined && time !== String(job.scheduled_time || '').slice(0, 5)) patch.scheduled_time = time || null
+      if (Object.keys(patch).length) { const { error } = await supabase.from('jobs').update(patch).eq('id', job.id); if (error) throw error }
+      if ((emp?.id || null) !== (job.employee_id || null) || patch.scheduled_date) after(await assignJob({ ...job, ...patch }, emp))
+      toast.success(emp ? tr(`Moved to ${firstName(emp)}`, `${firstName(emp)}さんへ移動`, `Movido para ${firstName(emp)}`) : tr('Back to no person', '担当なしに戻しました', 'Voltou para sem pessoa'))
+      await fetchExisting()
+    } catch (err) { toast.error(err.message) }
   }
   const cancelOffer = async job => {
     // Back to the Pending box as what it was: a routine job stays routine, an offered spot goes back to normal (as before).
@@ -387,10 +407,31 @@ export default function ScheduleGenerator() {
     ? editRow(l.key, { checked: !l.checked })
     : setJobSkip(s => { const n = new Set(s); n.has(l.key) ? n.delete(l.key) : n.add(l.key); return n }))
   const choosePerson = (l, id) => (l.kind === 'new' ? setRowPerson(l.key, id) : setChoice(c => ({ ...c, [l.key]: id })))
+  // v1.0.123 · tick / untick many lines at once (all, one person, one day); offers never get a tick.
+  const setChecked = (list, on) => {
+    const sel = list.filter(l => l.reason !== 'offerOpen')
+    const newKeys = new Set(sel.filter(l => l.kind === 'new').map(l => l.key))
+    const jobKeys = sel.filter(l => l.kind === 'job').map(l => l.key)
+    if (newKeys.size) setRows(rs => rs.map(r => newKeys.has(r.key) ? { ...r, checked: on } : r))
+    if (jobKeys.length) setJobSkip(s => { const n = new Set(s); jobKeys.forEach(k => (on ? n.delete(k) : n.add(k))); return n })
+  }
+  const onlyPerson = id => { setChecked(upcoming, false); setChecked(upcoming.filter(l => l.personId === id), true) }
+  const goPeriod = step => { const n = shiftPeriod(kind, anchor, month, step); setAnchor(n.anchor); setMonth(n.month) }
 
   // ---- view helpers ----
   const fmtDay = d => `${dowLabels[dowOf(d)]} ${new Date(d + 'T12:00:00').toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}`
   const periodLabel = days.length === 1 ? fmtDay(days[0]) : `${fmtDay(days[0])} → ${fmtDay(days[days.length - 1])}`
+  const thisMonth = today.slice(0, 7)
+  const quickJumps = (kind === 'day'
+    ? [[tr('Today', '今日', 'Hoje'), 0], [tr('Tomorrow', '明日', 'Amanhã'), 1], ['+2', 2], ['+3', 3]]
+    : kind === 'week'
+      ? [[tr('This week', '今週', 'Esta semana'), 0], [tr('Next week', '来週', 'Próxima'), 1], ['+2', 2], ['+3', 3], ['+4', 4]]
+      : [[tr('This month', '今月', 'Este mês'), 0], [tr('Next month', '来月', 'Próximo mês'), 1], ['+2', 2]]
+  ).map(([label, n]) => {
+    const t = shiftPeriod(kind, today, thisMonth, n)
+    const on = kind === 'month' ? t.month === month : periodDays(kind, t.anchor, month)[0] === days[0]
+    return { label, anchor: t.anchor, month: t.month, on }
+  })
   const out = useMemo(() => outOfSchedule(employees, days, availability, forced), [employees, days, availability, forced])
   const warnCount = upcoming.filter(l => warningsOf(l).length || !l.personId).length
   const shown = upcoming.filter(l => filter === 'all' ? true
@@ -422,10 +463,20 @@ export default function ScheduleGenerator() {
               <button key={k} type="button" className={`tab-pill${kind === k ? ' active' : ''}`} onClick={() => setKind(k)}>{l}</button>
             ))}
           </div>
-          {kind === 'month'
-            ? <input type="month" className="as-input" value={month} onChange={e => e.target.value && setMonth(e.target.value)} />
-            : <input type="date" className="as-input" value={anchor} onChange={e => e.target.value && setAnchor(e.target.value)} />}
+          <div className="as-nav">
+            <button type="button" className="btn btn-sm as-arrow" onClick={() => goPeriod(-1)} aria-label={tr('Previous', '前へ', 'Anterior')}>‹</button>
+            {kind === 'month'
+              ? <input type="month" className="as-input" value={month} onChange={e => e.target.value && setMonth(e.target.value)} />
+              : <input type="date" className="as-input" value={anchor} onChange={e => e.target.value && setAnchor(e.target.value)} />}
+            <button type="button" className="btn btn-sm as-arrow" onClick={() => goPeriod(1)} aria-label={tr('Next', '次へ', 'Próximo')}>›</button>
+          </div>
           <b className="as-period-label">{periodLabel}</b>
+        </div>
+        {/* v1.0.123 · quick jumps: no calendar needed to plan the next weeks */}
+        <div className="as-filters as-quick">
+          {quickJumps.map(q => (
+            <button key={q.label} type="button" className={q.on ? 'on' : ''} onClick={() => { setAnchor(q.anchor); setMonth(q.month) }}>{q.label}</button>
+          ))}
           <button type="button" className="btn btn-sm" onClick={() => setShowTemplates(s => !s)}>⚙️ {tr('Templates', 'テンプレート', 'Modelos')}</button>
         </div>
         {showTemplates && (
@@ -482,6 +533,59 @@ export default function ScheduleGenerator() {
         </div>
       </div>
 
+      {/* v1.0.123 · CHECK PER PLACE — expected × created for the period, missing ones first */}
+      {loaded && wholeMonth && check.places.length > 0 && (
+        <div className="card as-card">
+          <div className="as-box-head">
+            <div className="as-box-title">📋 {tr('Check per place', '場所ごとの確認', 'Conferência por local')}
+              <span className={`as-pill${check.totals.ok === check.totals.expected ? ' ok' : ''}`}>{check.totals.ok}/{check.totals.expected}</span>
+            </div>
+            <button type="button" className="btn btn-sm" onClick={() => setCheckAll(v => !v)}>{checkAll ? tr('Only problems', '問題のみ', 'Só problemas') : tr(`Show all (${check.places.length})`, `すべて表示（${check.places.length}）`, `Ver todos (${check.places.length})`)}</button>
+          </div>
+          <div className="as-check-sum">
+            {check.totals.missing > 0 && <span className="as-reason r-red">❌ {tr(`${check.totals.missing} missing`, `不足 ${check.totals.missing}`, `${check.totals.missing} faltando`)}</span>}
+            {check.totals.toCreate > 0 && <span className="as-reason r-amber">📥 {tr(`${check.totals.toCreate} in the box (confirm)`, `ボックス内 ${check.totals.toCreate}（確定待ち）`, `${check.totals.toCreate} na caixa (confirmar)`)}</span>}
+            {check.totals.noPerson > 0 && <span className="as-reason r-amber">👤 {tr(`${check.totals.noPerson} without a person`, `担当なし ${check.totals.noPerson}`, `${check.totals.noPerson} sem pessoa`)}</span>}
+            {check.dups.length > 0 && <span className="as-reason r-red">⧉ {tr(`${check.dups.length} duplicated`, `重複 ${check.dups.length}`, `${check.dups.length} duplicado(s)`)}</span>}
+            {check.totals.ok === check.totals.expected && !check.dups.length && <span className="as-sug">✓ {tr('Every contract visit of the period is created and has a person.', '期間中の契約訪問はすべて作成・割当済みです。', 'Todas as visitas de contrato do período estão criadas e com pessoa.')}</span>}
+            {!wholeMonth && <span className="as-muted">{tr('Monthly visits (deep etc.) are checked in Month.', '月1回の訪問（ディープ等）は「月」で確認。', 'Visitas mensais (deep etc.) são conferidas no Mês.')}</span>}
+          </div>
+          <div className="as-check">
+            {check.places.filter(p => checkAll || p.state !== 'ok').map(p => (
+              <div key={p.target.id} className={`as-check-row s-${p.state}`}>
+                <div className="as-check-name">
+                  <b>{p.target.base}</b> <span className="as-muted">· {p.target.service}</span>
+                </div>
+                <b className={`as-check-n ${p.state === 'ok' ? 'ok' : 'bad'}`}>{p.done}/{p.total}</b>
+                <div className="as-check-slots">
+                  {p.slots.map((x, i) => (
+                    <span key={i} className={`as-slot s-${x.state}`} title={x.jobs.map(j => j.employee_name || '—').join(', ')}>
+                      {x.date ? fmtDay(x.date) : tr('in the month', '月内', 'no mês')}
+                      {' '}{x.state === 'ok' ? '✓' : x.state === 'missing' ? '✗' : x.state === 'toCreate' ? '📥' : '👤?'}
+                      {x.state === 'ok' && x.jobs[0]?.employee_name ? ` ${firstName({ full_name: x.jobs[0].employee_name })}` : ''}
+                      {x.jobs.length > 1 ? ` ×${x.jobs.length}` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {!checkAll && check.places.every(p => p.state === 'ok') && <div className="as-empty">✅ {tr('Nothing missing.', '不足なし。', 'Nada faltando.')}</div>}
+          </div>
+          {check.dups.length > 0 && (
+            <div className="as-check-extra">
+              <b>⧉ {tr('Same visit created twice', '同じ訪問が2件', 'Mesma visita criada 2 vezes')}</b>
+              {check.dups.map(l => <div key={l[0].id} className="as-muted">{fmtDay(l[0].scheduled_date)} · {asItem(l[0]).place} — {l.map(j => j.employee_name || tr('no person', '担当なし', 'sem pessoa')).join(' + ')}</div>)}
+            </div>
+          )}
+          {check.extras.length > 0 && (
+            <details className="as-check-extra">
+              <summary className="as-muted">{tr(`${check.extras.length} jobs outside the contracts (spot, extra)`, `契約外の作業 ${check.extras.length}件（スポット等）`, `${check.extras.length} jobs fora dos contratos (spot, extra)`)}</summary>
+              {check.extras.map(j => <div key={j.id} className="as-muted">{fmtDay(j.scheduled_date)} · {asItem(j).place} · {j.employee_name || tr('no person', '担当なし', 'sem pessoa')}</div>)}
+            </details>
+          )}
+        </div>
+      )}
+
       {sqlMissing && (
         <div className="as-note">ℹ️ {tr('Saved. Notices to employees start after the database update (SQL) is applied.', '保存しました。従業員への通知はDB更新（SQL）後に有効になります。', 'Salvo. Os avisos ao funcionário começam depois que o SQL do banco for aplicado.')}</div>
       )}
@@ -494,6 +598,26 @@ export default function ScheduleGenerator() {
           ))}
         </div>
       )}
+
+      {/* v1.0.123 · the week at a glance: people × days / places × days */}
+      {!wholeMonth && (
+        <div className="card as-card">
+          <div className="as-box-head">
+            <div className="as-box-title">📅 {tr('Schedule of the period', '期間のスケジュール', 'Escala do período')}
+              <span className={`as-pill${check.totals.ok === check.totals.expected ? ' ok' : ''}`}>{check.totals.ok}/{check.totals.expected}</span>
+              {check.totals.missing > 0 && <span className="as-reason r-red">❌ {tr(`${check.totals.missing} missing`, `不足 ${check.totals.missing}`, `${check.totals.missing} faltando`)}</span>}
+              {check.dups.length > 0 && <span className="as-reason r-red">⧉ {tr(`${check.dups.length} duplicated`, `重複 ${check.dups.length}`, `${check.dups.length} duplicado(s)`)}</span>}
+            </div>
+          </div>
+          {!loaded ? <div className="as-muted">{tr('Loading…', '読み込み中…', 'Carregando…')}</div> : (
+            <WeekGrid tr={tr} days={days} today={today} fmtDay={fmtDay} employees={activeEmployees.filter(e => roleCan(e.job_role, 'routes') || liveJobs.some(j => j.employee_id === e.id))}
+              empById={empById} availability={availability} liveJobs={liveJobs} pendingJobs={pendingJobs} rows={rows.filter(r => r.checked && r.date >= today)} check={check}
+              onMoveJob={moveJob} onMoveRow={(row, emp, date, time) => editRow(row.key, { date, time: time ?? row.time, employeeId: emp?.id || null, employee: firstName(emp), employeeName: emp?.full_name || null, assignReason: 'manual', why: [] })} />
+          )}
+        </div>
+      )}
+
+      <OffersPanel tr={tr} today={today} employees={employees} fmtDay={fmtDay} refreshKey={existing} onChanged={fetchExisting} />
 
       {/* PENDING BOX */}
       <div className="card as-card">
@@ -525,11 +649,32 @@ export default function ScheduleGenerator() {
                 <button key={k} type="button" className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l}</button>
               ))}
             </div>
+            {/* v1.0.123 · select many at once, then one Confirm */}
+            {upcoming.length > 0 && (
+              <div className="as-select">
+                <button type="button" className="btn btn-sm" onClick={() => setChecked(upcoming, true)}>☑ {tr('Select all', 'すべて選択', 'Marcar todos')} ({upcoming.filter(l => l.reason !== 'offerOpen').length})</button>
+                <button type="button" className="btn btn-sm" onClick={() => setChecked(upcoming, false)}>☐ {tr('Clear', '選択解除', 'Desmarcar todos')}</button>
+                <select className="as-input" value="" onChange={e => e.target.value && onlyPerson(e.target.value === '-' ? '' : e.target.value)} aria-label={tr('Only one person', '1人だけ', 'Só de uma pessoa')}>
+                  <option value="">👤 {tr('Only of…', '担当者で選択…', 'Marcar só de…')}</option>
+                  {[...new Set(upcoming.map(l => l.personId).filter(Boolean))].map(id => (
+                    <option key={id} value={id}>{empById[id]?.full_name || '—'} ({upcoming.filter(l => l.personId === id).length})</option>
+                  ))}
+                  <option value="-">— {tr('no person', '担当なし', 'sem pessoa')} ({upcoming.filter(l => !l.personId).length})</option>
+                </select>
+              </div>
+            )}
             {!loaded && <div className="as-muted">{tr('Loading…', '読み込み中…', 'Carregando…')}</div>}
             {loaded && !upcoming.length && <div className="as-empty">✅ {tr('Nothing pending in this period: every service has a person.', 'この期間の未割当はありません。', 'Nada pendente neste período: todo serviço tem pessoa.')}</div>}
             {Object.keys(byDate).sort().map(date => (
               <div key={date}>
-                <div className={`as-day${dowOf(date) === 0 ? ' sun' : ''}`}>{fmtDay(date)} · {byDate[date].length}</div>
+                <label className={`as-day${dowOf(date) === 0 ? ' sun' : ''}`}>
+                  {(() => {
+                    const dayLines = upcoming.filter(l => l.item.date === date && l.reason !== 'offerOpen')
+                    const all = dayLines.length > 0 && dayLines.every(l => l.checked)
+                    return dayLines.length > 0 && <input type="checkbox" checked={all} onChange={() => setChecked(dayLines, !all)} aria-label={tr('Select the day', 'この日を選択', 'Marcar o dia')} />
+                  })()}
+                  {fmtDay(date)} · {byDate[date].length}
+                </label>
                 {byDate[date].map(l => (
                   <PendingLine key={l.key} l={l} T={T} tr={tr} ranking={rankings.get(l.key) || []} warnings={warningsOf(l)}
                     busy={busy === l.key} offerOpen={offerFor === l.key} employees={employees}
@@ -695,6 +840,10 @@ function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employe
             </label>
           ) : (
             <span className="as-muted">📋 {tr('Routine job of the contract — it stays routine, with the normal pay of the place (not a spot).', '契約の定期作業 — スポットにはならず、通常の報酬のままです。', 'Serviço de rotina do contrato — continua rotina, com o pagamento normal do local (não vira spot).')}</span>
+          )}
+          {payMentions(l.job?.description || l.row?.description).length > 0 && (
+            <span className="as-warn red">⚠️ {tr('The text of this job also has a pay amount — the employee would see the value twice:', 'この作業の本文にも報酬額があります（二重表示）:', 'O texto deste job também tem valor — o funcionário veria 2 vezes:')} {payMentions(l.job?.description || l.row?.description).join(' / ')}
+              {l.job && <> · {tr('it is removed from the text when you send.', '送信時に本文から削除されます。', 'ao enviar, o valor sai do texto.')}</>}</span>
           )}
           <span className="as-muted">{tr(`Goes to ${canTake} people with the role and free that day. The first to accept keeps it; the others see it closed.`, `役割があり当日空いている${canTake}人に送ります。最初に承諾した人が担当、他の人には締切を通知。`, `Vai para ${canTake} pessoas com o papel e livres no dia. O primeiro que aceitar fica com o job; os outros veem que fechou.`)}</span>
           <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => onSendOffer(value)}>⚡ {tr('Send offer', 'オファー送信', 'Enviar oferta')}</button>

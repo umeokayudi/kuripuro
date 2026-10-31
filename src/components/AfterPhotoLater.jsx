@@ -37,7 +37,7 @@ export default function AfterPhotoLater({ jobs, L, onChanged }) {
 
   return (
     <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 16, background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.35)' }}>
-      <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>📷 {L('Waiting for the After photo', 'After写真待ち', 'Aguardando foto Depois')} ({waiting.length})</div>
+      <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>📷 {L('Waiting for the After photo', 'After写真待ち', 'Falta a foto de depois')} ({waiting.length})</div>
       {waiting.map(j => (
         <div key={j.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 0', fontSize: 13 }}>
           <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{locationNameFromTitle(j.title)} · {j.scheduled_date?.slice(5)}</span>

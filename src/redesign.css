@@ -231,6 +231,25 @@
 .ai-msg-actions{display:flex;gap:4px;padding-left:2px}
 .ai-msg-actions button{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px!important;border:0!important;border-radius:13px!important;background:transparent!important;color:#4a5d78!important;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
 .ai-msg-actions button:hover{background:#e6f1fb!important;color:#3b62f0!important}
+/* v1.0.125 · buttons the AI sends with its answer (open a tab / run a panel command) */
+.ai-action-buttons{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ai-action-buttons button{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:0 12px;border:1px solid #3b62f0;border-radius:16px;background:#fff;color:#3b62f0;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;text-align:left}
+.ai-action-buttons button:hover{background:#eef3ff}
+.ai-action-buttons button.is-command{background:#3b62f0;color:#fff}
+.ai-action-buttons button.is-command:hover{background:#2f50cc}
+.ai-action-buttons button:disabled{opacity:.5;cursor:default}
+.ai-quick-chips{display:flex;flex-wrap:wrap;gap:6px;padding-left:34px}
+.ai-quick-chips button{min-height:32px;padding:0 12px;border:1px solid var(--border,#dfe5ee);border-radius:16px;background:#fff;color:var(--text,#1c2a3f);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.ai-quick-chips button:hover{border-color:#3b62f0;color:#3b62f0}
+/* Dashboard: the AI sits where the "Needs action today" list was */
+.dx-attention-ai{height:460px;margin-top:10px;border:1px solid var(--border,#dfe5ee);border-radius:14px;overflow:hidden}
+.dx-attention-ai .ai-chat-panel{height:100%}
+.dx-attention-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.dx-attention-chips button{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px;border:1px solid var(--border,#dfe5ee);border-radius:17px;background:#fff;color:var(--text,#1c2a3f);font:inherit;font-size:13px;cursor:pointer}
+.dx-attention-chips button b{font-weight:800}
+.dx-attention-chips button:hover{border-color:#3b62f0}
+.dx-attention-chips button.is-urgent{border-color:#fca5a5;background:#fef2f2}
+@media (max-width:640px){.dx-attention-ai{height:420px}.ai-quick-chips{padding-left:0}}
 .ai-msg-actions button:disabled{opacity:.5;cursor:default}
 .ai-typing{display:flex;gap:4px;align-items:center;height:36px;padding:0 14px;border-radius:4px 18px 18px 18px;background:#fff;border:1px solid #e6ebf2}
 .ai-typing i{width:6px;height:6px;border-radius:50%;background:#3b62f0;animation:aiDot 1s infinite ease-in-out}
@@ -683,3 +702,35 @@
 .emp-bell-item.is-agenda ul{margin:4px 0 0;padding:0;list-style:none}
 .emp-bell-item.is-agenda li{font-size:12px;color:#334155;padding:3px 0;overflow-wrap:anywhere}
 .emp-bell-item.is-agenda li b{font-weight:800}
+
+/* v1.0.126 · employee phone: header never cuts the logo, summary cards without sideways scroll,
+   pill buttons wrap instead of spilling out, admin "Portal language" switch */
+.emp-header-identity{flex:0 1 auto}
+.emp-header-actions{flex:0 0 auto}
+.emp-app-header .emp-brand{margin:0!important;white-space:nowrap}
+.emp-brand-text{line-height:1.25}
+@media(max-width:350px){
+  /* with the EN / JA switcher there is no room for the words: the KP mark stays */
+  .emp-header-top:has(.kp-lang) .emp-brand-text{display:none}
+}
+.ex-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;overflow:visible;scroll-snap-type:none;margin:0;padding:0}
+.ex-card{max-width:none;min-width:0;flex:none;padding:14px}
+.ex-card.is-wide,
+.ex-cards:not(:has(.is-wide))>.ex-card:last-child:nth-child(odd),
+.ex-cards:has(.is-wide)>.ex-card:last-child:nth-child(even){grid-column:1/-1}
+.ex-card-head{gap:8px;align-items:flex-start}
+.ex-card-head strong{min-width:0;overflow-wrap:anywhere;line-height:1.25}
+.ex-card-icon{flex:0 0 28px}
+.ex-card-sub{overflow-wrap:anywhere;line-height:1.45}
+.ex-pill{height:auto;min-height:30px;max-width:100%;padding:6px 14px;line-height:1.25;white-space:normal;text-align:center;margin-top:auto}
+.emp-portal-lang{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px;font-size:12px;color:var(--text2)}
+.emp-portal-lang>span{font-weight:600;margin-right:2px}
+.emp-portal-lang button{min-height:32px;padding:4px 12px;border:1px solid var(--border);border-radius:16px;background:var(--surface2);color:var(--text2);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.emp-portal-lang button.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.emp-portal-lang small{font-size:11px;color:var(--text3)}
+@media(max-width:420px){
+  .emp-shell .av-alert{flex-wrap:wrap}
+  .emp-shell .av-alert-copy{flex:1 1 0;min-width:0}
+  .emp-shell .av-alert-copy strong{font-size:14px;line-height:1.35}
+  .emp-shell .av-alert-cta{flex:1 0 100%;text-align:center;justify-content:center}
+}

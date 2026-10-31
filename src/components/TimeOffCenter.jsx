@@ -17,7 +17,10 @@ import { ELEMENT_KINDS } from '../lib/facilityModel'
 import { fetchAssignAlerts } from '../lib/assignNotices'
 import { PENDING_CHANGED } from '../lib/adminPending'
 import { fetchDayCoverage, needsAction } from '../lib/dayCoverage'
-import { fetchExceptions } from '../lib/exceptionQueue'
+import { fetchExceptions, groupExceptions } from '../lib/exceptionQueue'
+import { supabase } from '../lib/supabase'
+import { askConfirm } from './ConfirmDialog'
+import { pendingChanged } from '../lib/adminPending'
 import { exceptionInfo, exceptionDeadline } from '../lib/exceptionText'
 import { hideTests, HIDE_TESTS_CHANGED } from '../lib/testData'
 
@@ -133,7 +136,8 @@ export default function TimeOffCenter() {
     setToastOpen(false)
   }
   const openPopup = () => {
-    markSeen(); setOpen(true)
+    // v1.0.129 · always opens on "All": a chip chosen before could hide every row once its items were gone
+    markSeen(); setKind('all'); setOpen(true)
     fetchDayContext(rows.map(r => r.date)).then(setDayCtx).catch(() => {})
   }
 
@@ -173,6 +177,22 @@ export default function TimeOffCenter() {
   const excOwn = exceptions.filter(x => x.kind !== 'no_person' && x.kind !== 'payroll_review')
   const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length + dayMissing.length + excOwn.length
   const EXC = exceptionInfo(L)
+  // v1.0.123 · same kind of exception from 3 on = one card ("11 never started — review")
+  const [openGroup, setOpenGroup] = useState(null)
+  const excCards = groupExceptions(exceptions)
+  const dShort = d => (d && d.length === 10 ? fmtDay(d, lang, { weekday: 'short', day: 'numeric', month: 'short' }) : '')
+  const cancelNeverStarted = async (items) => {
+    const lines = items.map(i => `• ${dShort(i.date)} · ${i.place} · ${i.who || '—'}`).join('\n')
+    if (!(await askConfirm({
+      title: L('Cancel the jobs that were not done', '実施されなかった作業を取消', 'Cancelar os serviços que não foram feitos'),
+      message: `${L(`${items.length} jobs never started will be cancelled (they do not count for salary or invoice).`, `未開始の${items.length}件を取消します（給与・請求に含まれません）。`, `${items.length} serviços nunca iniciados serão cancelados (não contam para salário nem fatura).`)}\n\n${lines}\n\n${L('If one of them WAS done, close it in Jobs instead.', '実施済みのものがあれば「作業」で完了にしてください。', 'Se algum FOI feito, feche ele em Jobs em vez de cancelar.')}`,
+      confirmLabel: L(`Cancel ${items.length}`, `${items.length}件を取消`, `Cancelar ${items.length}`), danger: true,
+    }))) return
+    const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).in('id', items.map(i => i.jobId)).is('started_at', null).neq('status', 'completed')
+    if (error) { toast.error(error.message); return }
+    toast.success(L(`${items.length} cancelled`, `${items.length}件取消`, `${items.length} cancelados`))
+    setOpenGroup(null); pendingChanged(); load()
+  }
   const openExc = (x) => { setOpen(false); markSeen(); navigate(EXC[x.kind].to(x)) }
   const kinds = [
     { key: 'exceptions', label: L('Exceptions', '例外', 'Exceções'), n: exceptions.length },
@@ -182,7 +202,9 @@ export default function TimeOffCenter() {
     { key: 'dayoff', label: L('Day off', '休み', 'Folgas'), n: rows.length },
     { key: 'offers', label: L('Offers', '提案', 'Ofertas'), n: offers.length },
   ]
-  const show = key => kind === 'all' || kind === key
+  // v1.0.129 · a chosen chip whose items are gone falls back to "All" (the popup said "35 waiting" and listed nothing)
+  const activeKind = kind === 'all' || kinds.some(k => k.key === kind && k.n) ? kind : 'all'
+  const show = key => activeKind === 'all' || activeKind === key
 
   return (
     <>
@@ -266,14 +288,39 @@ export default function TimeOffCenter() {
             {kinds.filter(k => k.n).length > 1 && <div className="tor-kinds" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '0 18px 10px' }}>
               {[{ key: 'all', label: L('All', 'すべて', 'Todos'), n }, ...kinds.filter(k => k.n)].map(k => (
                 <button key={k.key} type="button" onClick={() => setKind(k.key)}
-                  style={{ border: '1px solid var(--border)', borderRadius: 999, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: kind === k.key ? 'var(--navy)' : 'var(--surface)', color: kind === k.key ? '#fff' : 'var(--text2)' }}>
+                  style={{ border: '1px solid var(--border)', borderRadius: 999, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: activeKind === k.key ? 'var(--navy)' : 'var(--surface)', color: activeKind === k.key ? '#fff' : 'var(--text2)' }}>
                   {k.label} · {k.n}
                 </button>
               ))}
             </div>}
             <div className="tor-list">
               {show('exceptions') && exceptions.length > 0 && <div className="tor-section">🚨 {L('Exceptions — most urgent first', '例外 — 緊急度順', 'Exceções — mais urgentes primeiro')}</div>}
-              {show('exceptions') && exceptions.slice(0, kind === 'exceptions' ? 200 : 12).map(x => (
+              {show('exceptions') && excCards.slice(0, activeKind === 'exceptions' ? 200 : 12).map(x => x.group ? (
+                <article key={x.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">{EXC[x.kind].icon}</div>
+                    <div className="tor-item-main">
+                      <strong>{x.items.length} × {EXC[x.kind].title(x.items[0])}</strong>
+                      <span>{[x.from === x.to ? dShort(x.from) : `${dShort(x.from)} → ${dShort(x.to)}`, x.who.join(', ')].filter(Boolean).join(' · ')}</span>
+                      {x.overdue && <span style={{ color: '#dc2626', fontWeight: 700 }}>{exceptionDeadline(x.items.find(i => i.overdue), L)}</span>}
+                    </div>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => setOpenGroup(g => g === x.id ? null : x.id)}>{openGroup === x.id ? L('Hide', '閉じる', 'Esconder') : L('Review the list', '一覧で確認', 'Revisar a lista')}</button>
+                    {x.kind === 'incomplete' && <button type="button" className="tor-btn" onClick={() => cancelNeverStarted(x.items)}>{L('Not done → cancel all', '未実施 → すべて取消', 'Não foram feitos → cancelar todos')}</button>}
+                  </div>
+                  {openGroup === x.id && (
+                    <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                      {x.items.map(i => (
+                        <div key={i.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', fontSize: 13, borderTop: '1px solid var(--border, #e5e7eb)', paddingTop: 6 }}>
+                          <span>{[dShort(i.date), i.place, i.who].filter(Boolean).join(' · ')}</span>
+                          <button type="button" className="tor-btn" onClick={() => openExc(i)}>{EXC[i.kind].action}</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              ) : (
                 <article key={x.id} className="tor-item">
                   <div className="tor-item-top">
                     <div className="tor-avatar" aria-hidden="true">{EXC[x.kind].icon}</div>
@@ -288,8 +335,8 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('exceptions') && kind === 'all' && exceptions.length > 12 && <button type="button" className="tor-btn" style={{ margin: '4px 18px 10px' }} onClick={() => setKind('exceptions')}>{L(`See all ${exceptions.length}`, `全${exceptions.length}件を見る`, `Ver todas (${exceptions.length})`)}</button>}
-              {show('jobs') && (taken.length + noPerson.length + dayMissing.length) > 0 && kind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
+              {show('exceptions') && activeKind === 'all' && excCards.length > 12 && <button type="button" className="tor-btn" style={{ margin: '4px 18px 10px' }} onClick={() => setKind('exceptions')}>{L(`See all ${exceptions.length}`, `全${exceptions.length}件を見る`, `Ver todas (${exceptions.length})`)}</button>}
+              {show('jobs') && (taken.length + noPerson.length + dayMissing.length) > 0 && activeKind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
               {show('jobs') && dayMissing.map(d => (
                 <article key={d.id} className="tor-item">
                   <div className="tor-item-top">
@@ -334,7 +381,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('quotes') && (quotes.length + toBook.length + flowDone.length) > 0 && kind === 'all' && <div className="tor-section">📝 {L('Quotes', '見積もり', 'Orçamentos')}</div>}
+              {show('quotes') && (quotes.length + toBook.length + flowDone.length) > 0 && activeKind === 'all' && <div className="tor-section">📝 {L('Quotes', '見積もり', 'Orçamentos')}</div>}
               {show('quotes') && quotes.map(q => (
                 <article key={q.id} className="tor-item">
                   <div className="tor-item-top">
@@ -379,7 +426,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('payroll') && payroll.length > 0 && kind === 'all' && <div className="tor-section">💴 {L('Payroll', '給与', 'Folha')}</div>}
+              {show('payroll') && payroll.length > 0 && activeKind === 'all' && <div className="tor-section">💴 {L('Payroll', '給与', 'Folha')}</div>}
               {show('payroll') && payroll.map(pr => (
                 <article key={pr.id} className="tor-item">
                   <div className="tor-item-top">
@@ -395,7 +442,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('dayoff') && rows.length > 0 && kind === 'all' && <div className="tor-section">🗓 {L('Day-off requests', '休み申請', 'Pedidos de folga')}</div>}
+              {show('dayoff') && rows.length > 0 && activeKind === 'all' && <div className="tor-section">🗓 {L('Day-off requests', '休み申請', 'Pedidos de folga')}</div>}
               {show('dayoff') && rows.map(r => (
                 <article key={r.id} className="tor-item">
                   <div className="tor-item-top">
@@ -422,7 +469,7 @@ export default function TimeOffCenter() {
                   </div>
                 </article>
               ))}
-              {show('offers') && offers.length > 0 && kind === 'all' && <div className="tor-section">🧽 {ft.offersTitle} · {offers.length}</div>}
+              {show('offers') && offers.length > 0 && activeKind === 'all' && <div className="tor-section">🧽 {ft.offersTitle} · {offers.length}</div>}
               {show('offers') && offers.map(r => {
                 const k = ELEMENT_KINDS[r.element_kind] || ELEMENT_KINDS.other
                 return (

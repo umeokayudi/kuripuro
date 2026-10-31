@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { loadClientMoney, withClientMoney } from '../lib/moneyData'
-import { useLang, fill, localeOf } from '../hooks/useLang'
+import { useLang, localeOf } from '../hooks/useLang'
 import OverviewChart from '../components/OverviewChart'
 import MonthlyKpiCharts from '../components/MonthlyKpiCharts'
 import DateRangeSheet, { presetRange, formatRangeLabel, tokyoToday } from '../components/DateRangeSheet'
@@ -12,10 +12,11 @@ import toast from 'react-hot-toast'
 import { askConfirm } from '../components/ConfirmDialog'
 import { ensureServiceReports } from '../lib/jobReport'
 import { fetchExceptions } from '../lib/exceptionQueue'
-import { exceptionInfo, exceptionDeadline } from '../lib/exceptionText'
+import { exceptionInfo } from '../lib/exceptionText'
 import { billedInMonth } from '../lib/money'
 import { isTestJob, isTestClient, isTestName } from '../lib/testData'
 import { useHideTests } from '../hooks/useHideTests'
+import AIChatPanel from '../components/AIChatPanel'
 
 const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
 const daysBetween = (from, to) => Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5) + 1
@@ -102,7 +103,7 @@ export default function Dashboard() {
     const today = tokyoToday()
     const { data: list, error: e1 } = await supabase.from('jobs').select('id,title,scheduled_date,employee_name').eq('status', 'assigned').lt('scheduled_date', today).order('scheduled_date').limit(500)
     if (e1) return toast.error(e1.message)
-    if (!list?.length) { setStaleCount(0); return }
+    if (!list?.length) { setStaleCount(0); toast(tr('No old jobs to cancel', 'キャンセルする古い作業はありません', 'Nenhum serviço antigo para cancelar')); return }
     const lines = list.slice(0, 20).map(j => `• ${j.scheduled_date} · ${String(j.title || '').split(' — ')[0]} · ${j.employee_name || tr('no person', '担当なし', 'sem pessoa')}`)
     if (list.length > 20) lines.push(tr(`…and ${list.length - 20} more`, `…ほか${list.length - 20}件`, `…e mais ${list.length - 20}`))
     const head = tr(`Cancel these ${list.length} jobs that were never started (before ${today})?`, `${today}より前の未開始の作業 ${list.length}件をキャンセルしますか？`, `Cancelar estes ${list.length} jobs que nunca foram iniciados (antes de ${today})?`)
@@ -180,9 +181,51 @@ export default function Dashboard() {
 
   // Today-only rows of the exception queue (+ payroll items, which have no date), same rows as the bell.
   const EXC = exceptionInfo(tr)
-  const actionRows = exceptions.filter(x => !x.jobId || x.date >= addDays(tokyoToday(), -1))
   const todayActive = todayJobs.filter(j => j.status !== 'cancelled')
   const todayDone = todayActive.filter(j => j.status === 'completed')
+  const actionRows = exceptions.filter(x => !x.jobId || x.date >= addDays(tokyoToday(), -1))
+  // v1.0.125 · one line per kind instead of one row per item; the tab opens filtered when all items point to the same place
+  const GROUP_LABEL = {
+    late: tr('late, not started', '遅れ・未開始', 'atrasados, não iniciados'),
+    problem: tr('problems reported', '問題の報告', 'problemas reportados'),
+    no_person: tr('jobs without a person', '担当なしの作業', 'serviços sem pessoa'),
+    incomplete: tr('incomplete, never started', '未完了・未開始', 'incompletos, nunca iniciados'),
+    disputed: tr('payslips disputed', '明細への異議', 'holerites contestados'),
+    paid_unconfirmed: tr('paid without confirmation', '確認なしの支払', 'pagos sem confirmação'),
+    payroll_review: tr('payrolls closed automatically', '自動締めの給与', 'folhas fechadas automaticamente'),
+    long: tr('took much longer than planned', '予定より長くかかった作業', 'demoraram muito mais que o previsto'),
+    no_photo: tr('done without the final photo', '完了写真なし', 'concluídos sem foto final'),
+    ai_waiting: tr('photos waiting for the AI', 'AI確認待ちの写真', 'fotos aguardando a IA'),
+  }
+  const attentionGroups = []
+  for (const x of actionRows) {
+    if (!EXC[x.kind]) continue
+    let g = attentionGroups.find(a => a.kind === x.kind)
+    if (!g) attentionGroups.push(g = { kind: x.kind, items: [], overdue: false })
+    g.items.push(x)
+    g.overdue = g.overdue || !!x.overdue
+  }
+  for (const g of attentionGroups) {
+    const paths = [...new Set(g.items.map(x => EXC[g.kind].to(x)))]
+    g.to = paths.length === 1 ? paths[0] : paths[0].split('?')[0]
+  }
+  const attentionTotal = actionRows.length + (staleCount > 0 ? 1 : 0)
+  // What the AI gets with each question: the same items as on screen, with ids so its buttons open the exact record.
+  const attentionContext = [
+    `Today (Tokyo): ${tokyoToday()}. Screen: admin Dashboard.`,
+    `Jobs today: ${todayDone.length} done of ${todayActive.length} planned.`,
+    staleCount > 0 ? `${staleCount} old jobs still 'assigned' with a date before today (never started).` : '',
+    actionRows.length ? 'Items needing attention (same as the bell):' : 'No items need attention.',
+    ...actionRows.slice(0, 60).map(x => `- ${x.kind}: ${EXC[x.kind].title(x)}${x.who ? ` · ${x.who}` : ''}${x.place ? ` · ${x.place}` : ''}${x.date ? ` · ${x.date}` : ''}${x.jobId ? ` · job ${x.jobId}` : ''}${x.employeeId ? ` · employee ${x.employeeId}` : ''}${x.due ? ` · due ${x.due}${x.overdue ? ' (overdue)' : ''}` : ''} · screen ${EXC[x.kind].to(x)}`),
+    staleCount > 0 ? `Panel commands (button "command"; the panel shows the exact list and asks the admin to confirm before changing anything):\n- cancel_stale_jobs: cancel the ${staleCount} jobs still 'assigned' dated before today.` : 'Panel commands: none right now.',
+  ].filter(Boolean).join('\n')
+  const aiCommands = staleCount > 0 ? { cancel_stale_jobs: { run: cancelStaleJobs } } : null
+  const attentionSuggestions = [
+    { icon: '🔎', title: tr('What needs attention first?', 'まず何に対応すべき？', 'O que resolver primeiro?'), prompt: tr('Summarize in a few lines what needs my attention today, most urgent first, with buttons to open each one.', '今日対応が必要なことを緊急度順に短くまとめて、それぞれを開くボタンを付けてください。', 'Resuma em poucas linhas o que precisa da minha atenção hoje, o mais urgente primeiro, com botões para abrir cada coisa.') },
+    actionRows.some(x => x.kind === 'paid_unconfirmed') && { icon: '💴', title: tr('Who was paid without confirming?', '確認なしで支払った人は？', 'Quem recebeu sem confirmar?'), prompt: tr('Who was paid without confirming the payslip, and what should I do?', '明細の確認なしで支払われたのは誰？どうすればいい？', 'Quem recebeu sem confirmar o holerite e o que eu devo fazer?') },
+    staleCount > 0 && { icon: '🗂', title: tr('Cancel old jobs never started', '未開始の古い作業をキャンセル', 'Cancelar serviços antigos não iniciados'), prompt: tr('Cancel the old jobs that were never started.', '未開始の古い作業をキャンセルして。', 'Cancela os serviços antigos que não foram iniciados.') },
+    { icon: '📅', title: tr("How is tomorrow?", '明日の状況は？', 'Como está amanhã?'), prompt: tr("How is tomorrow's schedule? Anything without a person?", '明日の予定は？担当なしはある？', 'Como está a escala de amanhã? Tem algo sem pessoa?') },
+  ].filter(Boolean)
   const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }
   const costMonth = moneyRef.current?.costMonth
   // Cards without data are hidden (never "¥0" or "—" as if it were a number).
@@ -220,29 +263,32 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* v1.0.110 · three blocks first: what needs action today, what is done today, money of the month (one source) */}
+      {/* v1.0.125 · "Needs action today": one line per kind (tap opens the tab) + the AI right here —
+          ask anything, it answers with buttons that open the right tab or run a command after you confirm */}
       <section className="card dx-overview">
         <div className="dx-overview-head">
-          <div><h2>{tr('Needs action today', '今日対応が必要', 'Hoje exige ação')}</h2><p>{tr('Most urgent first · each row has the button that resolves it', '緊急度順 · 各行に解決ボタン', 'Mais urgente primeiro · cada linha tem o botão que resolve')}</p></div>
-          {actionRows.length > 0 && <span className="badge badge-red">{actionRows.length}</span>}
+          <div><h2>{tr('Needs attention', '要対応', 'Precisa de atenção')}</h2><p>{tr('Tap to open · or ask the AI below', 'タップで開く · または下のAIに質問', 'Toque para abrir · ou pergunte para a IA aqui embaixo')}</p></div>
+          {attentionTotal > 0 && <span className="badge badge-red">{attentionTotal}</span>}
         </div>
-        {actionRows.length === 0 && staleCount === 0
-          ? <div className="ov-empty" style={{ padding: '18px 0' }}>✅ {tr('Nothing needs action now', '今は対応不要です', 'Nada exige ação agora')}</div>
-          : <div>
+        {attentionTotal === 0
+          ? <div className="ov-empty" style={{ padding: '10px 0 4px' }}>✅ {tr('Nothing needs action now', '今は対応不要です', 'Nada exige ação agora')}</div>
+          : <div className="dx-attention-chips">
             {staleCount > 0 && (
-              <div style={rowStyle}>
-                <span style={{ fontSize: 13 }}>🗂 {fill(d.staleJobs, { count: staleCount })}</span>
-                <button type="button" onClick={cancelStaleJobs} className="btn btn-sm" style={{ flexShrink: 0 }}>{d.cancelStale}</button>
-              </div>
+              <button type="button" onClick={cancelStaleJobs} title={d.cancelStale}>🗂 <b>{staleCount}</b> {tr('old jobs never started · cancel', '未開始の古い作業 · キャンセル', 'serviços antigos não iniciados · cancelar')}</button>
             )}
-            {actionRows.slice(0, 8).map(x => (
-              <div key={x.id} style={rowStyle}>
-                <span style={{ fontSize: 13, minWidth: 0 }}>{EXC[x.kind].icon} <strong>{EXC[x.kind].title(x)}</strong><small style={{ display: 'block', color: 'var(--text3)', fontSize: 11 }}>{[x.place, x.who, x.date].filter(Boolean).join(' · ')}</small>{x.due && <small style={{ display: 'block', fontSize: 11, color: x.overdue ? '#dc2626' : 'var(--text3)', fontWeight: x.overdue ? 700 : 400 }}>{exceptionDeadline(x, tr)}</small>}</span>
-                <button type="button" className="btn btn-sm btn-primary" style={{ flexShrink: 0 }} onClick={() => navigate(EXC[x.kind].to(x))}>{EXC[x.kind].action}</button>
-              </div>
+            {attentionGroups.map(g => (
+              <button type="button" key={g.kind} className={g.overdue ? 'is-urgent' : ''} onClick={() => navigate(g.to)}>
+                {EXC[g.kind].icon} <b>{g.items.length}</b> {g.items.length === 1 ? EXC[g.kind].title(g.items[0]) : (GROUP_LABEL[g.kind] || EXC[g.kind].title(g.items[0]))}
+              </button>
             ))}
-            {actionRows.length > 8 && <div style={{ fontSize: 12, color: 'var(--text3)', paddingTop: 8 }}>{tr(`+${actionRows.length - 8} more in the bell 🔔`, `ほか${actionRows.length - 8}件はベル🔔に`, `+${actionRows.length - 8} no sino 🔔`)}</div>}
           </div>}
+        <div className="dx-attention-ai">
+          <AIChatPanel compact mode="admin" historyId="dashboard" hideHero
+            welcomeText={tr('Ask me what needs attention, anything else, or send a command — I answer with buttons that open the right tab.', '要対応のこと、その他何でも聞いてください。指示も受けます — 該当タブを開くボタンで答えます。', 'Me pergunte o que precisa de atenção, qualquer outra coisa, ou mande um comando — eu respondo com botões que abrem a aba certa.')}
+            suggestions={attentionSuggestions}
+            context={attentionContext}
+            commands={aiCommands} />
+        </div>
       </section>
 
       <div className="dash-split">

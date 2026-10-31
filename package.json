@@ -51,6 +51,7 @@
     "test:client-care": "npx vite-node scripts/test-client-care.mjs",
     "test:availability": "npx vite-node scripts/test-availability.mjs",
     "test:schedule": "npx vite-node scripts/test-schedule-generator.mjs",
+    "test:offer-text": "node scripts/test-offer-text.mjs",
     "test:ai-guard": "node scripts/test-ai-guard.mjs",
     "test:tool-loop": "node scripts/test-tool-loop.mjs",
     "test:gemini-thinking": "node scripts/test-gemini-thinking.mjs",
