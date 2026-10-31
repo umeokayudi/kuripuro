@@ -15,6 +15,7 @@ import { maskEmail, phoneTakenMessage } from '../lib/contactMask'
 import { newSetupToken, setupPassword, setupLink } from '../lib/passwordLink'
 import { undoToast } from '../components/UndoToast'
 import SetupLinkCard from '../components/SetupLinkCard'
+import { speaksPt, hasPtColumn, saveSpeaksPt } from '../lib/employeeLang'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 // saved values stay in EN (other screens read them); the screen shows the translation
@@ -50,7 +51,7 @@ export default function Employees() {
     hours_per_shift:0, shifts_per_week:5,
     advance_per_week:0, attendance_bonus:0, transport_reimbursed:true,
     bank_name:'', bank_branch:'', account_type:'普通', account_number:'', account_holder_katakana:'',
-    notes:''
+    notes:'', speaks_pt:false
   })
   const [recEmpId, setRecEmpId] = useState('')
   const [recClient, setRecClient] = useState('')
@@ -89,7 +90,7 @@ export default function Employees() {
     // v1.0.117 · the office does not type the password: the person sets it through a one-time link
     const token = newSetupToken()
     const email = form.email.trim().toLowerCase()
-    const { error } = await supabase.from('employees').insert({
+    const { data: created, error } = await supabase.from('employees').insert({
       full_name: form.full_name,
       email,
       password: setupPassword(token),
@@ -117,14 +118,33 @@ export default function Employees() {
       notes: form.notes,
       score: 100,
       is_active: true,
-    })
+    }).select('id').maybeSingle()
     if (error) return toast.error(error.message)
+    if (form.speaks_pt && created?.id) {
+      const saved = await saveSpeaksPt(created.id, true)
+      if (!saved.ok) toast.error(L('Portal language not saved yet: the database update (SQL) is still pending.','ポータルの言語はまだ保存できません（データベースの更新待ち）。','O idioma do portal ainda não foi salvo: falta aplicar a atualização do banco (SQL).'))
+    }
     toast.success(L('Employee registered','スタッフを登録しました','Funcionário cadastrado'))
     setNewLink({ name: form.full_name, url: setupLink('employee', email, token) })
-    setForm({ full_name:'', email:'', phone:'', address:'', job_role:'', contract_type:'Full-time', contract_start:'', contract_end:'', salary_type:'fixed', hourly_rate:0, fixed_salary:0, job_bonus_rate:0, hours_per_shift:0, shifts_per_week:5, advance_per_week:0, attendance_bonus:0, transport_reimbursed:true, bank_name:'', bank_branch:'', account_type:'普通', account_number:'', account_holder_katakana:'', notes:'' })
+    setForm({ full_name:'', email:'', phone:'', address:'', job_role:'', contract_type:'Full-time', contract_start:'', contract_end:'', salary_type:'fixed', hourly_rate:0, fixed_salary:0, job_bonus_rate:0, hours_per_shift:0, shifts_per_week:5, advance_per_week:0, attendance_bonus:0, transport_reimbursed:true, bank_name:'', bank_branch:'', account_type:'普通', account_number:'', account_holder_katakana:'', notes:'', speaks_pt:false })
     setWorkDays([])
     loadEmployees()
     setTab('list')
+  }
+
+  // Portal language: Portuguese speakers always get PT (no switcher); the others choose EN / JA.
+  const setPortalLang = async (emp, pt) => {
+    if (speaksPt(emp) === pt) return
+    const saved = await saveSpeaksPt(emp.id, pt)
+    if (!saved.ok) {
+      return toast.error(saved.missingColumn
+        ? L('Not saved: the database update (SQL) for portal language is still pending.','保存できません：ポータル言語のデータベース更新（SQL）がまだです。','Não salvou: falta aplicar a atualização do banco (SQL) do idioma do portal.')
+        : saved.error?.message || 'Error')
+    }
+    setEmployees(list => list.map(x => x.id === emp.id ? { ...x, speaks_portuguese: pt } : x))
+    toast.success(pt
+      ? L(`${emp.full_name}: portal always in Portuguese`,`${emp.full_name}：ポータルは常にポルトガル語`,`${emp.full_name}: portal sempre em português`)
+      : L(`${emp.full_name}: portal in English / Japanese`,`${emp.full_name}：ポータルは英語／日本語`,`${emp.full_name}: portal em inglês / japonês`))
   }
 
   const handleDeactivate = async (id, current, name) => {
@@ -283,6 +303,13 @@ export default function Employees() {
                 </div>
               )}
 
+              <div className="emp-portal-lang" role="group" aria-label={L('Portal language','ポータルの言語','Idioma do portal')}>
+                <span>{L('Portal language','ポータルの言語','Idioma do portal')}</span>
+                <button type="button" className={speaksPt(e)?'on':''} aria-pressed={speaksPt(e)} onClick={()=>setPortalLang(e,true)}>🇧🇷 {L('Portuguese','ポルトガル語','Português')}</button>
+                <button type="button" className={!speaksPt(e)?'on':''} aria-pressed={!speaksPt(e)} onClick={()=>setPortalLang(e,false)}>EN / 日本語</button>
+                {!hasPtColumn(e) && <small>{L('provisional — SQL pending','仮設定 — SQL未適用','provisório — falta o SQL')}</small>}
+              </div>
+
               {e.contract_start && <div style={{fontSize:11,color:'var(--text3)',marginBottom:8}}>{L('Contract','契約','Contrato')}: {e.contract_start} → {e.contract_end||L('open','期限なし','sem fim')}</div>}
 
               <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -307,6 +334,13 @@ export default function Employees() {
             <div className="form-group"><label>{L('Phone','電話','Telefone')}</label><input value={form.phone} onChange={e=>upd('phone',e.target.value)} placeholder="090-1234-5678" /></div>
             <div style={{gridColumn:'1/-1',fontSize:12,color:'var(--text3)',marginTop:-4,marginBottom:8}}>🔑 {L('No password here: after saving you get a link for the person to create their own password.','ここではパスワードを入力しません。保存後、本人がパスワードを作成するリンクが表示されます。','Sem senha aqui: depois de salvar aparece um link para a pessoa criar a própria senha.')}</div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Address','住所','Endereço')}</label><input value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
+          </div>
+
+          <div className="form-group">
+            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+              <input type="checkbox" checked={form.speaks_pt} onChange={e=>upd('speaks_pt',e.target.checked)} style={{width:16,height:16}} />
+              🇧🇷 {L('Speaks Portuguese — portal always in Portuguese (otherwise English / Japanese)','ポルトガル語を話す — ポータルは常にポルトガル語（それ以外は英語／日本語）','Fala português — portal sempre em português (senão inglês / japonês)')}
+            </label>
           </div>
 
           <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',margin:'16px 0 10px',borderTop:'1px solid var(--border)',paddingTop:14}}>{L('Role','役割','Função')}</div>
