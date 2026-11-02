@@ -18,13 +18,14 @@ import { notifyCreated } from '../lib/assignOps'
 import SellerCommissionFields from './SellerCommissionFields'
 import { splitChecklist } from '../lib/agenda'
 import { contractForPlace } from '../lib/places'
+import { parseEmployeePay, isMissingColumn } from '../lib/jobEmployeePay'
 import './new-job.css'
 
 const EMPTY = {
   title: '', client_id: '', employee_id: '', scheduled_date: '', scheduled_time: '',
   address: '', gps_lat: '', gps_lng: '', value: 0, description: '', checklist_template: '',
   photo_required: false, location_id: '', job_category: 'regular', spot_value: 0, cleaning_type: 'basic',
-  deep_tasks: [], custom_tasks: [],
+  employee_pay: '', deep_tasks: [], custom_tasks: [],
 }
 
 function addDays(dateStr, n) {
@@ -194,6 +195,15 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       setTimeout(() => document.querySelector('.nj-field-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30)
       return
     }
+    // v1.0.131 · Pagamento do funcionário: optional whole yen ≥ 0, separate from the contract Valor.
+    let employeePay = null
+    if (!isSpot) {
+      try { employeePay = parseEmployeePay(form.employee_pay) } catch (e) {
+        return toast.error(e.message === 'negative'
+          ? L('Employee pay cannot be negative', '作業者への支払いはマイナスにできません', 'Pagamento do funcionário não pode ser negativo')
+          : L('Employee pay: whole yen only', '作業者への支払いは整数の円で', 'Pagamento do funcionário: só número inteiro de ¥'))
+      }
+    }
     setSaving(true)
     const emp = employees.find(e => e.id === form.employee_id)
     const cli = clients.find(c => c.id === form.client_id)
@@ -216,8 +226,15 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       job_category: form.job_category,
       status: 'assigned',
       spot_status: isSpot ? 'pending' : null,
+      // only sent when filled, so the form keeps working before the SQL adds the column
+      ...(employeePay !== null ? { employee_pay: employeePay } : {}),
     }).select().single()
-    if (error) { setSaving(false); return toast.error(error.message) }
+    if (error) {
+      setSaving(false)
+      return toast.error(isMissingColumn(error)
+        ? L('Employee pay needs the SQL 2026-11-02_pagamento_funcionario_job.sql — leave it empty for now', 'SQL未適用のため作業者への支払いは保存できません', 'O pagamento do funcionário precisa do SQL 2026-11-02_pagamento_funcionario_job.sql — deixe vazio por enquanto')
+        : error.message)
+    }
     if (!isSpot) notifyCreated([inserted]).catch(() => {})
     toast.success(isSpot
       ? L('Spot job sent! Waiting for the employee to accept.', 'スポット送信！担当者の承認待ち', 'Spot enviado! Esperando o funcionário aceitar.')
@@ -421,6 +438,13 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
               </button>
             )}
           </label>
+          {!isSpot && (
+            <label>
+              {L('Employee pay (¥)', '作業者への支払い（¥）', 'Pagamento do funcionário (¥)')}
+              <input type="number" inputMode="numeric" min="0" step="1" value={form.employee_pay}
+                onChange={e => upd('employee_pay', e.target.value)} placeholder={L('to be defined', '未定', 'a definir')} />
+            </label>
+          )}
           <label>
             {L('Client', '顧客', 'Cliente')}
             <select value={form.client_id} onChange={e => { upd('client_id', e.target.value); setContractForm(f => ({ ...f, ...contractPrefillFromClient(clients.find(c => c.id === e.target.value)) })) }}>

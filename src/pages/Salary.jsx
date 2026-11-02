@@ -7,6 +7,7 @@ import EarningsPanel from '../components/EarningsPanel'
 import { tokyoToday } from '../lib/dates'
 import { payrollMonth, monthLastDay } from '../lib/salaryCalc'
 import { isPayrollActive } from '../lib/salaryClose'
+import { loadPayBasis } from '../lib/jobEmployeePay'
 
 export default function Salary() {
   const { lang } = useLang()
@@ -19,6 +20,7 @@ export default function Salary() {
   const [lines, setLines] = useState([])
   const [newAdv, setNewAdv] = useState({ amount:'', desc:'' })
   const [loading, setLoading] = useState(true)
+  const [basis, setBasis] = useState(null)
 
   useEffect(() => { loadEmployees() }, [])
   useEffect(() => { if (selected) { loadJobs(); loadAdvances() } }, [selected, period])
@@ -36,6 +38,8 @@ export default function Salary() {
       .gte('scheduled_date', period + '-01')
       .lte('scheduled_date', monthLastDay(period))
     setJobs(data || [])
+    // v1.0.131 · fixed or sum per job, as chosen in Payroll close
+    loadPayBasis(supabase, period, selected.id).then(b => setBasis(b[selected.id] || null))
   }
 
   const loadAdvances = async () => {
@@ -67,7 +71,7 @@ export default function Salary() {
   // v1.0.108 · same calculation as Fechar folha / Payments / employee app (payrollMonth).
   const calcSalary = () => {
     if (!selected) return {}
-    const one = payrollMonth({ emp: selected, jobs, lines, month: period })
+    const one = payrollMonth({ emp: selected, jobs, lines, month: period, basis })
     const totalAdvances = advances.filter(a => a.status !== 'cancelled').reduce((s, a) => s + Number(a.amount || 0), 0)
     return { ...one, totalAdvances }
   }

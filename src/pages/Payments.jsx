@@ -8,6 +8,7 @@ import './Payments.css'
 import PayrollCloseSheet from '../components/PayrollCloseSheet'
 import { payrollState } from '../lib/salaryClose'
 import { payrollMonth, monthLastDay, canCloseMonth } from '../lib/salaryCalc'
+import { loadPayBasis } from '../lib/jobEmployeePay'
 import { useNavigate } from 'react-router-dom'
 
 // One month (= month worked, salary_payments.period) at a time, one row per employee.
@@ -56,6 +57,7 @@ export default function Payments() {
   const [editingId, setEditingId] = useState(null)
   const [closing, setClosing] = useState(null) // employee whose month is open in PayrollCloseSheet
   const [monthJobs, setMonthJobs] = useState({ month: null, jobs: [] })
+  const [jobsTick, setJobsTick] = useState(0)
 
   // Same list as the salary_payments check constraint.
   const TYPES = ['salary','advance','bonus','extra','deduction']
@@ -94,10 +96,13 @@ export default function Payments() {
   // v1.0.108 · completed jobs of the month, so each row shows the same payslip numbers as Fechar folha.
   useEffect(() => {
     if (!month) return
-    supabase.from('jobs').select('id,employee_id,status,scheduled_date,started_at,completed_at,retro_time_min,retro_value,value,job_category,spot_value')
-      .eq('status', 'completed').gte('scheduled_date', `${month}-01`).lte('scheduled_date', monthLastDay(month))
-      .then(({ data }) => setMonthJobs({ month, jobs: data || [] }))
-  }, [month])
+    // v1.0.131 · '*' brings employee_pay when the column exists; bases = fixed / per job chosen in Payroll close.
+    Promise.all([
+      supabase.from('jobs').select('*')
+        .eq('status', 'completed').gte('scheduled_date', `${month}-01`).lte('scheduled_date', monthLastDay(month)),
+      loadPayBasis(supabase, month),
+    ]).then(([{ data }, bases]) => setMonthJobs({ month, jobs: data || [], bases }))
+  }, [month, jobsTick])
 
   // Always opens on the current month (Tokyo); open amounts of other months show in "Still to pay".
   useEffect(() => {
@@ -133,7 +138,7 @@ export default function Payments() {
       const st = statements.find(s => s.employee_id === id && s.period === month)
       // v1.0.102 · same truth as Payroll close: a salary is "Paid" only with the payslip confirmed.
       const pstate = payrollState(st, salaryLine)
-      const calc = monthJobs.month === month ? payrollMonth({ emp, jobs: monthJobs.jobs.filter(j => j.employee_id === id), lines: mine, month }) : null
+      const calc = monthJobs.month === month ? payrollMonth({ emp, jobs: monthJobs.jobs.filter(j => j.employee_id === id), lines: mine, month, basis: monthJobs.bases?.[id] || null }) : null
       // The salary line was calculated earlier: when today's numbers differ (and it is not paid), it needs a recalculation.
       const outdated = !!(calc && salaryLine && salaryLine.status !== 'paid' && Number(salaryLine.amount) !== calc.net)
       const paidUnconfirmed = pstate === 'paid_unconfirmed'
@@ -291,7 +296,9 @@ export default function Payments() {
     const bits = lineBits(r)
     const plan = rowPlan(r)
     // No payslip yet: show what today's jobs give, marked as an estimate.
-    const estimate = !r.lines.length && r.calc && r.calc.net > 0
+    // v1.0.131 · jobs carry an employee pay and nobody chose fixed / per job yet: show both, no single estimate.
+    const choose = !r.lines.length && r.calc?.needsBasis
+    const estimate = !choose && !r.lines.length && r.calc && r.calc.net > 0
     const amount = r.toPay > 0 ? r.toPay : estimate ? r.calc.net : r.net
     return (
       <div key={r.emp.id} className={`pm-row is-${r.group}${expanded ? ' is-expanded' : ''}`}>
@@ -306,7 +313,9 @@ export default function Payments() {
             {plan.why && <p className={`pm-why is-${r.group}`}>{plan.why}</p>}
           </div>
           <div className="pm-net">
-            <b>{estimate ? '≈ ' : ''}{fmt(amount)}</b>
+            {choose
+              ? <><b style={{ fontSize: 14 }}>{tr('Fixed','固定','Fixo')} {fmt(r.calc.fixedTotal)} · {tr('per job','件数','por job')} {fmt(r.calc.perJob.total)}</b><small>{tr('choose in Payroll of the month','月の給与締めで選択','escolha na Folha do mês')}</small></>
+              : <b>{estimate ? '≈ ' : ''}{fmt(amount)}</b>}
             {estimate && <small>{tr('estimate from jobs','ジョブからの見込み','estimativa pelos serviços')}</small>}
             {bits.length > 1 && <small>{bits.map(([k, v]) => `${typeLabel[k] || k} ${k === 'deduction' ? '−' : ''}${fmt(v)}`).join(' · ')}</small>}
           </div>
@@ -455,7 +464,7 @@ export default function Payments() {
         </div>
       )}
 
-      {closing && <PayrollCloseSheet emp={closing} period={month} onClose={() => setClosing(null)} onChanged={load} />}
+      {closing && <PayrollCloseSheet emp={closing} period={month} onClose={() => setClosing(null)} onChanged={() => { load(); setJobsTick(t => t + 1) }} />}
 
       {ask && (() => {
         const { kind, emp, lines, r } = ask

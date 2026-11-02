@@ -22,6 +22,7 @@ import ProgressChart from './ProgressChart'
 import JobVideos from './JobVideos'
 import JobPhotos from './JobPhotos'
 import PhotoLightbox from './PhotoLightbox'
+import EmployeePayEdit from './EmployeePayEdit'
 import KeyReveal from './KeyReveal'
 import { ManualCloseButton } from './ManualCloseModal'
 import { manualCloseStamp } from '../lib/manualClose'
@@ -488,6 +489,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
           {job.closed_manually_at && <div className="ag-meta" style={{ color: '#b45309' }}>{manualCloseStamp(job, lang)}</div>}
           {deep && deepTasksText(job.title, lang) && <div className="ag-meta" style={{ color: '#b7791f', fontWeight: 700 }}>✨ {deepTasksText(job.title, lang)}</div>}
           {keyBox && <KeyReveal className="ag-key" value={keyBox} source="agenda" refId={job.id} label={job.title} />}
+          {job.job_category !== 'spot' && <EmployeePayEdit job={job} onSaved={() => onSaved()} style={{ marginTop: 4, fontSize: 12 }} />}
         </div>
         <div className="ag-move">
           <button type="button" disabled={idx === 0} onClick={() => onNudge(job, colId, -1)} aria-label={tr('Move up', '上へ', 'Subir')}>▲</button>
