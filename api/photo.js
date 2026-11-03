@@ -1,5 +1,6 @@
 // Serve fotos do Supabase Storage (bucket pode ser privado)
 
+import { requireAdmin } from './_auth.js'
 import { createSignedUploadUrl, createSignedUrls, fetchStorageBuffer, listJobVideos, parseStorageRef, uploadStorageObject } from './_storage.js'
 
 // Only job/claim photos go through here. Private buckets (signed contracts,
@@ -32,14 +33,52 @@ async function videoUploadUrl(req, res) {
   }
 }
 
+// v1.0.132 · download name: kuripuro_<name>_<n>.<ext> (letters, numbers, - and _ only)
+const safeName = (s) => String(s || '').normalize('NFKD').replace(/[^\w-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 80)
+function downloadName(base, v) {
+  const ext = (v.path.split('.').pop() || 'mp4').toLowerCase()
+  return `kuripuro_${safeName(base) || 'video'}_${v.index + 1}.${ext}`
+}
+// Signed URL + &download= → the browser saves the file instead of opening it.
+const withDownload = (url, name) => url ? `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(name)}` : null
+
+async function signVideos(videos, base) {
+  const urls = await createSignedUrls(videos.map(v => v.path), 3600)
+  return videos.map(v => ({ ...v, url: urls[v.path] || null, download_url: withDownload(urls[v.path], downloadName(base, v)), file_name: downloadName(base, v) }))
+}
+
 async function videoList(req, res) {
   const jobId = req.query.videos
   if (!validJobId(jobId)) return res.status(400).json({ error: 'jobId inválido' })
   res.setHeader('Cache-Control', 'no-store')
   try {
     const videos = await listJobVideos(jobId)
-    const urls = await createSignedUrls(videos.map(v => v.path), 3600)
-    return res.status(200).json({ videos: videos.map(v => ({ ...v, url: urls[v.path] || null })) })
+    return res.status(200).json({ videos: await signVideos(videos, req.query.name || jobId.slice(0, 8)) })
+  } catch (err) {
+    return res.status(502).json({ error: err.message })
+  }
+}
+
+// v1.0.132 · admin "Videos" page: which of these jobs have a video, with play + download links.
+// Videos are found by path (jobs/<id>/video_n.*), so we look in each job's folder, 8 at a time.
+async function videoIndex(req, res) {
+  if (!(await requireAdmin(req, res))) return
+  const jobs = (Array.isArray(req.body?.jobs) ? req.body.jobs : []).filter(j => validJobId(j?.id)).slice(0, 600)
+  res.setHeader('Cache-Control', 'no-store')
+  const out = []
+  let i = 0
+  const worker = async () => {
+    while (i < jobs.length) {
+      const job = jobs[i++]
+      try {
+        const videos = await listJobVideos(job.id)
+        if (videos.length) out.push({ job_id: job.id, videos: await signVideos(videos, job.name || job.id.slice(0, 8)) })
+      } catch { /* one folder failing does not hide the others */ }
+    }
+  }
+  try {
+    await Promise.all(Array.from({ length: 8 }, worker))
+    return res.status(200).json({ checked: jobs.length, items: out })
   } catch (err) {
     return res.status(502).json({ error: err.message })
   }
@@ -47,6 +86,7 @@ async function videoList(req, res) {
 
 export default async function handler(req, res) {
   if (req.method === 'POST' && req.body?.action === 'video-upload-url') return videoUploadUrl(req, res)
+  if (req.method === 'POST' && req.body?.action === 'video-index') return videoIndex(req, res)
   if (req.method === 'GET' && req.query.videos) return videoList(req, res)
   if (req.method === 'POST') {
     const { path, data, contentType } = req.body || {}

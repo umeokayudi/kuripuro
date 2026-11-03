@@ -528,7 +528,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
           <JobPhotos photoStartUrl={job.photo_start_url} photoEndUrl={job.photo_end_url} beforeLabel="Before" afterLabel="After" variant="compact" onPhotoClick={onPhoto} />
         </div>
       )}
-      {job.status === 'completed' && <JobVideos jobId={job.id} lazy style={{ marginTop: 8 }} />}
+      {job.status === 'completed' && <JobVideos jobId={job.id} lazy name={`${job.scheduled_date || ''}_${String(job.title || job.client_name || '').replace(/ — .*/, '')}_${job.employee_name || ''}`} style={{ marginTop: 8 }} />}
 
       <div className="ag-actions">
         <select className="ag-select" style={{ minHeight: 30, padding: '4px 8px', fontSize: 12 }} value={job.status} onChange={e => onStatus(job, e.target.value)} aria-label={tr('Status', 'ステータス', 'Status')}>

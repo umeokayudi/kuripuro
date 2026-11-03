@@ -249,10 +249,10 @@ async function finishUpload(jobId, path, { blob, poster, duration }) {
 }
 
 /** Lista os vídeos de um serviço com URLs assinadas (1h) para tocar no <video>. */
-export async function listJobVideos(jobId) {
+export async function listJobVideos(jobId, name = '') {
   if (!jobId) return []
   try {
-    const resp = await fetch(`/api/photo?videos=${encodeURIComponent(jobId)}`, { cache: 'no-store' })
+    const resp = await fetch(`/api/photo?videos=${encodeURIComponent(jobId)}${name ? `&name=${encodeURIComponent(name)}` : ''}`, { cache: 'no-store' })
     if (resp.ok) {
       const result = await resp.json()
       if (Array.isArray(result.videos)) return result.videos.filter(v => v.url).map(withPoster)
@@ -264,10 +264,41 @@ export async function listJobVideos(jobId) {
   if (!videos.length) return []
   const { data } = await supabase.storage.from(BUCKET).createSignedUrls(videos.map(v => v.path), 3600)
   const signed = Object.fromEntries((data || []).filter(d => d.signedUrl).map(d => [d.path, d.signedUrl]))
-  return videos.map(v => ({
-    ...v,
-    url: signed[v.path] || supabase.storage.from(BUCKET).getPublicUrl(v.path).data?.publicUrl || null,
-  })).filter(v => v.url).map(withPoster)
+  return videos.map(v => {
+    const file_name = videoFileName(name || String(jobId).slice(0, 8), v)
+    return {
+      ...v,
+      url: signed[v.path] || supabase.storage.from(BUCKET).getPublicUrl(v.path).data?.publicUrl || null,
+      download_url: supabase.storage.from(BUCKET).getPublicUrl(v.path, { download: file_name }).data?.publicUrl || null,
+      file_name,
+    }
+  }).filter(v => v.url).map(withPoster)
+}
+
+/** kuripuro_<name>_<n>.<ext> — same rule as the server (api/photo.js). */
+export function videoFileName(base, v) {
+  const clean = String(base || '').normalize('NFKD').replace(/[^\w-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 80)
+  const ext = (String(v.path).split('.').pop() || 'mp4').toLowerCase()
+  return `kuripuro_${clean || 'video'}_${(v.index ?? 0) + 1}.${ext}`
+}
+
+/**
+ * v1.0.132 · Saves the video on this device. The download link makes the server answer
+ * "attachment", so the page stays where it is; without it, fetch the file and save the blob.
+ */
+export async function downloadVideo(v) {
+  const name = v.file_name || videoFileName('', v)
+  const click = (href) => {
+    const a = document.createElement('a')
+    a.href = href; a.download = name; a.rel = 'noopener'
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+  if (v.download_url) return click(v.download_url)
+  const r = await fetch(v.url, { cache: 'no-store' })
+  if (!r.ok) throw new Error(`Download falhou (${r.status})`)
+  const href = URL.createObjectURL(await r.blob())
+  click(href)
+  setTimeout(() => URL.revokeObjectURL(href), 60000)
 }
 
 // Poster saved next to the video (video_<n>.jpg); lists show only this until someone taps play.

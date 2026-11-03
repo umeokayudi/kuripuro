@@ -35,6 +35,7 @@ const FacilityEdit = lazy(() => import('./pages/FacilityEdit'))
 const FacilityBuilder = lazy(() => import('./pages/FacilityBuilder'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
+const Videos = lazy(() => import('./pages/Videos'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
 const Evaluations = lazy(() => import('./pages/Evaluations'))
 const ServiceContracts = lazy(() => import('./pages/ServiceContracts'))
@@ -104,6 +105,7 @@ const PAGE_KEYS = {
   '/client-feedback': 'clientFeedback',
   '/cashflow': 'cashflow',
   '/reports': 'reports',
+  '/videos': 'videos',
   '/ryoshu': 'ryoshu',
   '/evaluations': 'evaluations',
   '/schedule': 'schedule',
@@ -296,6 +298,7 @@ function AppContent() {
               <Route path="/client-feedback" element={<ClientFeedback />} />
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/videos" element={<Videos />} />
               <Route path="/ryoshu" element={<Ryoshu />} />
               <Route path="/evaluations" element={<Evaluations />} />
               <Route path="/schedule" element={<ScheduleGenerator />} />

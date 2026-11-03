@@ -34,6 +34,7 @@ export const kuripuroPtA = {
     salaryIssues: 'Problemas salário',
     cashflow: 'Fluxo de caixa',
     reports: 'Relatórios',
+    videos: 'Vídeos',
     schedule: 'Atribuir e gerar',
     contracts: 'Contratos',
     faturas: 'Faturas',

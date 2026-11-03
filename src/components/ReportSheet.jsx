@@ -211,7 +211,7 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
         <div style={{ ...box, marginTop: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 6 }}>🎬 {L('Post-cleaning video', '清掃後の動画', 'Vídeo pós-limpeza')}</div>
           {row.job_id
-            ? <JobVideos jobId={row.job_id} label={L('Video', '動画', 'Vídeo')} emptyLabel={<span style={missingTag}>{L('No video sent', '動画なし', 'Nenhum vídeo enviado')}</span>} />
+            ? <JobVideos jobId={row.job_id} name={`${row.report_date || ''}_${loc}_${row.employee_name || ''}`} label={L('Video', '動画', 'Vídeo')} emptyLabel={<span style={missingTag}>{L('No video sent', '動画なし', 'Nenhum vídeo enviado')}</span>} />
             : <span style={missingTag}>{L('No video sent', '動画なし', 'Nenhum vídeo enviado')}</span>}
         </div>
       </Section>
