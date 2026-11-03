@@ -18,6 +18,7 @@ import { askConfirm } from '../components/ConfirmDialog'
 import RedistributeSheet from '../components/RedistributeSheet'
 import OffersPanel from '../components/OffersPanel'
 import WeekGrid from '../components/WeekGrid'
+import { dismissKey, loadDismissals, dismissRow, restoreDismissal } from '../lib/scheduleDismissals'
 import { payMentions, stripPay } from '../lib/offerText'
 import { roleCan } from '../lib/employeeRoles'
 import { assignJob, assignMany, offerJob, notifyCreated } from '../lib/assignOps'
@@ -95,6 +96,9 @@ export default function ScheduleGenerator() {
 
   // ---- pending box ----
   const [rows, setRows] = useState([]) // not created yet (generator preview)
+  // v1.0.133 · suggestions the admin discarded: never come back for that date / store / type (trash = undo)
+  const [dismissed, setDismissed] = useState([])
+  const [trashOpen, setTrashOpen] = useState(false)
   const [choice, setChoice] = useState({}) // existing job id → employee id ('' = nobody)
   const [jobSkip, setJobSkip] = useState(() => new Set())
   const [forced, setForced] = useState(() => new Set())
@@ -138,6 +142,7 @@ export default function ScheduleGenerator() {
         .not('employee_id', 'is', null).neq('status', 'cancelled').limit(3000),
     ])
     setAvailRows(av.data || [])
+    setDismissed((await loadDismissals(supabase, range[0], range[1]).catch(() => ({ rows: [] }))).rows)
     setHistory(hist.data || [])
     setChoice({}); setJobSkip(new Set())
     setLoaded(true)
@@ -214,9 +219,23 @@ export default function ScheduleGenerator() {
       const p = plan.get(r.key)
       if (p) Object.assign(r, { employeeId: p.emp.id, employee: firstName(p.emp), employeeName: p.emp.full_name, why: p.why })
     }
-    setRows([...next, ...extra].sort(byTime))
+    const gone = new Set(dismissed.map(d => d.dismiss_key))
+    setRows([...next, ...extra].filter(r => !gone.has(dismissKey(r))).sort(byTime))
   }
-  useEffect(() => { if (loaded) buildRows() }, [loaded, employees, locations, templates, owners, forced])
+  useEffect(() => { if (loaded) buildRows() }, [loaded, employees, locations, templates, owners, forced, dismissed])
+
+  const dismissSuggestion = async (row) => {
+    if (!row) return
+    let who = 'admin'
+    try { who = JSON.parse(localStorage.getItem('kp_user') || '{}').name || 'admin' } catch { /* private mode */ }
+    const rec = await dismissRow(supabase, row, who)
+    setDismissed(list => [...list.filter(d => d.dismiss_key !== rec.dismiss_key), rec])
+    toast.success(tr(`Discarded: ${rec.location_name} · ${fmtDay(row.date)} — it will not come back (trash to undo)`, `破棄：${rec.location_name}・${fmtDay(row.date)} — 再表示されません（ゴミ箱で元に戻せます）`, `Descartado: ${rec.location_name} · ${fmtDay(row.date)} — não volta mais (lixeira para desfazer)`))
+  }
+  const restoreSuggestion = async (key) => {
+    await restoreDismissal(supabase, key)
+    setDismissed(list => list.filter(d => d.dismiss_key !== key))
+  }
 
   const setRowPerson = (key, id) => {
     const emp = empById[id]
@@ -680,7 +699,7 @@ export default function ScheduleGenerator() {
                     busy={busy === l.key} offerOpen={offerFor === l.key} employees={employees}
                     onToggle={() => toggleLine(l)} onPerson={id => choosePerson(l, id)} onTime={t => editRow(l.key, { time: t })}
                     onDo={() => doLine(l)} onOffer={() => setOfferFor(o => o === l.key ? null : l.key)} onSendOffer={v => sendOffer(l, v)}
-                    onCancelOffer={() => cancelOffer(l.job)} />
+                    onCancelOffer={() => cancelOffer(l.job)} onDismiss={l.kind === 'new' ? () => dismissSuggestion(l.row) : null} />
                 ))}
               </div>
             ))}
@@ -707,7 +726,20 @@ export default function ScheduleGenerator() {
                 await fetchExisting()
               } catch (err) { toast.error(err.message) }
             }}
-            onMoveRow={(row, emp) => setRowPerson(row.key, emp?.id || '')} />
+            onMoveRow={(row, emp) => setRowPerson(row.key, emp?.id || '')} onDismissRow={dismissSuggestion} />
+        )}
+
+        {/* v1.0.133 · trash of the preview: discarded suggestions of this period, with undo */}
+        {dismissed.length > 0 && (
+          <div className="as-templates" style={{ marginTop: 10 }}>
+            <button type="button" className="btn btn-sm" onClick={() => setTrashOpen(v => !v)}>🗑 {tr(`Discarded suggestions (${dismissed.length})`, `破棄した提案（${dismissed.length}）`, `Sugestões descartadas (${dismissed.length})`)} {trashOpen ? '▴' : '▾'}</button>
+            {trashOpen && [...dismissed].sort((a, b) => String(a.scheduled_date).localeCompare(String(b.scheduled_date))).map(d => (
+              <div key={d.dismiss_key} className="as-out-row">
+                <span>{fmtDay(d.scheduled_date)} · {d.location_name}{d.service_type ? ` · ${d.service_type}` : ''} <span className="as-muted">· {d.dismissed_by || ''}</span></span>
+                <button type="button" className="btn btn-sm" onClick={() => restoreSuggestion(d.dismiss_key)}>↩ {tr('Undo', '元に戻す', 'Desfazer')}</button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -726,7 +758,7 @@ export default function ScheduleGenerator() {
                 <PendingLine key={l.key} l={l} T={T} tr={tr} ranking={rankings.get(l.key) || []} warnings={warningsOf(l)} past
                   busy={busy === l.key} offerOpen={false} employees={employees}
                   onToggle={() => {}} onPerson={id => choosePerson(l, id)} onTime={t => editRow(l.key, { time: t })}
-                  onDo={() => doLine(l)} onOffer={() => {}} onSendOffer={() => {}} onCancelOffer={() => cancelOffer(l.job)} />
+                  onDo={() => doLine(l)} onOffer={() => {}} onSendOffer={() => {}} onCancelOffer={() => cancelOffer(l.job)} onDismiss={l.kind === 'new' ? () => dismissSuggestion(l.row) : null} />
               ))}
             </div>
           ))}
@@ -763,7 +795,7 @@ function lineSig(p) {
     JSON.stringify(p.warnings), p.employees.length, p.past].join('§')
 }
 
-function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employees, past = false, onToggle, onPerson, onTime, onDo, onOffer, onSendOffer, onCancelOffer }) {
+function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employees, past = false, onToggle, onPerson, onTime, onDo, onOffer, onSendOffer, onCancelOffer, onDismiss = null }) {
   const it = l.item
   const service = it.title.split(' — ')[1] || ''
   const client = l.row?.client || l.job?.client_name || ''
@@ -817,6 +849,7 @@ function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employe
           <button type="button" className="btn btn-sm btn-primary as-do" disabled={busy || (l.kind === 'job' && !l.personId)} onClick={onDo}>
             {busy ? '…' : l.kind === 'new' ? (l.personId ? `✓ ${tr('Create + assign', '作成して割当', 'Criar e atribuir')}` : `+ ${tr('Create', '作成', 'Criar')}`) : `✓ ${tr('Assign', '割当', 'Atribuir')}`}
           </button>
+          {onDismiss && <button type="button" className="btn btn-sm" onClick={onDismiss} title={tr('Discard this suggestion: it will not come back for this date / store / type', 'この提案を破棄：この日・店舗・種類では再表示しません', 'Descartar esta sugestão: não volta para esta data / loja / tipo')}>🗑 {tr('Discard', '破棄', 'Descartar')}</button>}
           {!past && <button type="button" className="btn btn-sm as-offer-btn" onClick={onOffer} title={tr('Urgent: offer to everyone with the role', '至急：役割のある全員にオファー', 'Urgente: ofertar para todos com o papel')}>⚡ {tr('Offer', 'オファー', 'Ofertar')}</button>}
         </div>
       )}
@@ -854,7 +887,7 @@ function PendingLineView({ l, T, tr, ranking, warnings, busy, offerOpen, employe
 }
 
 /** Board: one column per person (+ Pending). Drag a card to a column, or use the "→" picker on phones. */
-function AssignBoard({ T, tr, days, fmtDay, wholeMonth, employees, empById, availability, liveJobs, pendingJobs, rows, onMoveJob, onMoveRow }) {
+function AssignBoard({ T, tr, days, fmtDay, wholeMonth, employees, empById, availability, liveJobs, pendingJobs, rows, onMoveJob, onMoveRow, onDismissRow = null }) {
   const [drag, setDrag] = useState(null)
   const dragRef = useRef(null)
   const cards = useMemo(() => {
@@ -927,6 +960,7 @@ function AssignBoard({ T, tr, days, fmtDay, wholeMonth, employees, empById, avai
                     <div className="as-bcard-meta">
                       <span className={`as-tag t-${c.job?.job_category === 'spot' ? 'spot' : c.item.deep ? 'deep' : 'basic'}`}>{T.type[c.job?.job_category === 'spot' ? 'spot' : c.item.deep ? 'deep' : 'basic']}</span>
                       {c.row && <span className="as-tag">{T.reason.notCreated}</span>}
+                      {c.row && onDismissRow && <button type="button" className="btn btn-sm" style={{ padding: '0 6px', minHeight: 22 }} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onDismissRow(c.row) }} aria-label={tr('Discard', '破棄', 'Descartar')} title={tr('Discard this suggestion', 'この提案を破棄', 'Descartar esta sugestão')}>🗑</button>}
                       {!col.id && c.job && <span className="as-reason r-red">{T.reason[pendingJobs.find(p => p.job.id === c.job.id)?.reason] || ''}</span>}
                     </div>
                     {w.map((x, i) => <div key={i} className={`as-warn${RED_CONFLICTS.has(x.kind) ? ' red' : ''}`}>⚠️ {conflictLabel(x, T)}</div>)}
