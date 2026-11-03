@@ -1,0 +1,62 @@
+// v1.0.148 · "Coberto por outro" — node scripts/test-job-coverage.mjs
+import assert from 'node:assert/strict'
+import { coveredJobs, coverKey, removeCoverPatch, keepCoverPatch, suggestedPayForB, withoutCovered } from '../src/lib/jobCoverage.js'
+import { countJobs } from '../src/lib/jobCounts.js'
+
+const A = 'guilherme', B = 'gabriel'
+const jobs = [
+  { id: 'a1', employee_id: A, employee_name: 'Guilherme', status: 'assigned', scheduled_date: '2026-11-02', title: 'Kodama Shinbashi — Basic Cleaning', employee_pay: 1000 },
+  { id: 'b1', employee_id: B, employee_name: 'Gabriel', status: 'completed', scheduled_date: '2026-11-02', title: 'Kodama Shinbashi — Basic Cleaning', employee_pay: null },
+  // deep on A vs basic done by B: NOT the same service
+  { id: 'a2', employee_id: A, employee_name: 'Guilherme', status: 'assigned', scheduled_date: '2026-11-03', title: 'Nyu Sakana Yakio — Deep Clean (Grease Trap)' },
+  { id: 'b2', employee_id: B, employee_name: 'Gabriel', status: 'completed', scheduled_date: '2026-11-03', title: 'Nyu Sakana Yakio — Basic Cleaning' },
+  // same person twice is not a cover
+  { id: 'a3', employee_id: B, employee_name: 'Gabriel', status: 'assigned', scheduled_date: '2026-11-03', title: 'Nyu Sakana Yakio — Basic Cleaning' },
+  // kept by the owner: never flagged again
+  { id: 'a4', employee_id: A, employee_name: 'Guilherme', status: 'assigned', scheduled_date: '2026-11-02', title: 'Kodama Shinbashi — Basic Cleaning', description: '⟲ Cobertura: mantido (dono) em 03/11/2026' },
+]
+const cov = coveredJobs(jobs)
+assert.equal(cov.size, 1, 'only a1 is covered')
+assert.equal(cov.get('a1').id, 'b1')
+assert.notEqual(coverKey(jobs[2]), coverKey(jobs[3]), 'deep ≠ basic')
+assert.equal(withoutCovered(jobs).length, jobs.length - 1)
+
+// counters: the covered job is not pending or late, the service counts once
+const c = countJobs(jobs.filter(j => j.scheduled_date === '2026-11-02'), { from: '2026-11-02', to: '2026-11-02', today: '2026-11-03', nowMin: 600, keepTests: true })
+assert.equal(c.covered, 1)
+assert.equal(c.scheduled, 2, 'b1 + a4 (kept) — a1 not counted twice')
+assert.equal(c.completed, 1)
+assert.equal(c.late, 1, 'only the kept a4 can be late')
+
+// owner decisions
+const rm = removeCoverPatch(jobs[0], jobs[1], { owner: 'Yudi', today: '2026-11-05' })
+assert.equal(rm.status, 'cancelled')
+assert.match(rm.description, /Baixado por autorização do dono \(Yudi\) em 05\/11\/2026 — executado por Gabriel/)
+const keep = keepCoverPatch(jobs[0], jobs[1], { owner: 'Yudi', today: '2026-11-05' })
+assert.equal(keep.status, undefined, 'keep never changes the status')
+assert.equal(coveredJobs([{ ...jobs[0], ...keep }, jobs[1]]).size, 0, 'kept → not asked again')
+assert.equal(suggestedPayForB(jobs[0], jobs[1]), 1000)
+assert.equal(suggestedPayForB(jobs[0], { ...jobs[1], employee_pay: 900 }), null, 'B already has pay')
+console.log('job coverage: all passed')
+
+// v1.0.148 · section 8: pay read from the description until the field is filled + monthly package apart
+{
+  const { payrollMonth } = await import('../src/lib/salaryCalc.js')
+  const emp = { id: 'g', salary_type: 'per_job', fixed_salary: 0, pay_packages: [{ client_name: 'Atomic Bar', amount: 35000, from: '2026-11' }] }
+  const j = (id, client, desc, extra = {}) => ({ id, employee_id: 'g', client_name: client, status: 'completed', scheduled_date: '2026-11-05', title: `${client} — Basic`, description: desc, ...extra })
+  const jobs = [
+    j('1', 'On The Planet', 'Pagamento do funcionário (Guilherme): ¥1.000 — Limpeza básica'),
+    j('2', 'On The Planet', 'Pagamento do funcionário (Guilherme): ¥1.471 — Manutenção'),
+    j('3', 'On The Planet', 'sem linha'),                       // a definir, never ¥0
+    j('4', 'Atomic Bar', ''),                                  // in the package
+    j('5', 'On The Planet', 'Pagamento do funcionário (Guilherme): ¥1.000', { employee_pay: 1200 }), // field wins
+  ]
+  const c = payrollMonth({ emp, jobs, month: '2026-11' })
+  assert.equal(c.perJob.total, 1000 + 1471 + 1200)
+  assert.equal(c.perJob.undefinedCount, 1, 'only the job without a line is "a definir"')
+  assert.equal(c.packageTotal, 35000)
+  assert.equal(c.packageJobs, 1)
+  assert.equal(c.base, 3671 + 35000)
+  assert.equal(payrollMonth({ emp, jobs, month: '2026-10' }).packageTotal, 0, 'package only from its month')
+  console.log('per-job pay from description + monthly package: all passed')
+}

@@ -12,6 +12,7 @@ function dur(min, L) {
 export function exceptionInfo(L) {
   return {
     late: { icon: '⏰', title: x => x.deadline ? L(`Late: not finished by ${x.deadline} (${dur(x.minutes, L)})`, `遅れ: ${x.deadline}までに未完了（${dur(x.minutes, L)}）`, `Atrasado: não concluído até ${x.deadline} (${dur(x.minutes, L)})`) : L(`Late: not started (${dur(x.minutes, L)})`, `遅れ: 未開始（${dur(x.minutes, L)}）`, `Atrasado: não iniciado (${dur(x.minutes, L)})`), action: L('Open Live Track', 'ライブ追跡', 'Abrir Live Track'), to: () => '/live' },
+    covered: { icon: '🔁', title: x => L(`Covered by ${x.by} — remove from ${x.who}?`, `${x.by}が実施 — ${x.who}から外しますか？`, `Coberto por ${x.by} — retirar de ${x.who}?`), action: L('Decide', '決める', 'Decidir'), to: () => '/live' },
     problem: { icon: '🛠', title: x => L(`Problem reported: ${x.text || '—'}`, `問題の報告: ${x.text || '—'}`, `Problema reportado: ${x.text || '—'}`), action: L('Answer', '回答', 'Responder'), to: x => `/adminchat?employee=${x.employeeId}` },
     no_person: { icon: '⚠️', title: () => L('No person assigned', '担当なし', 'Sem pessoa'), action: L('Assign', '割当', 'Atribuir'), to: () => '/schedule' },
     incomplete: { icon: '🚫', title: () => L('Incomplete — never started', '未完了 — 未開始のまま', 'Incompleto — nunca iniciado'), action: L('Close or reschedule', '終了・再予定', 'Fechar ou reagendar'), to: x => `/jobs?search=${x.jobId}` },

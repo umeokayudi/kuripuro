@@ -75,3 +75,26 @@ console.log('exception queue OK')
   assert(g[2].kind === 'no_photo', 'menos de 3 continua um por um')
   console.log('✓ bell groups exceptions of the same kind')
 }
+
+// v1.0.148 · B did A's service: A is "covered" (owner decides), never "late" / "incomplete"
+{
+  const day = '2026-10-29'
+  const list = buildExceptions({ today, now, hideTests: false, jobs: [
+    { id: 'A', title: 'Kodama Shinbashi — Basic Cleaning', employee_id: 'g', employee_name: 'Guilherme', status: 'assigned', scheduled_date: day, scheduled_time: '09:00' },
+    { id: 'B', title: 'Kodama Shinbashi — Basic Cleaning', employee_id: 'b', employee_name: 'Gabriel', status: 'completed', scheduled_date: day, scheduled_time: '09:00', started_at: '2026-10-29T00:10:00Z', completed_at: '2026-10-29T01:00:00Z', photo_end_url: 'x', photo_ai_score: 9 },
+  ] })
+  const a = list.filter(x => x.jobId === 'A')
+  assert(a.length === 1 && a[0].kind === 'covered' && a[0].by === 'Gabriel' && a[0].who === 'Guilherme', 'A deve aparecer só como coberto')
+  console.log('✓ covered job goes to the owner, not to late/incomplete')
+}
+
+// v1.0.149 · a finished job the admin already checked (accepted without photo) leaves no_photo / ai_waiting / long
+{
+  const list = buildExceptions({ today, now, hideTests: false, jobs: [
+    { id: 'R', title: 'X — Basic', employee_id: 'e', employee_name: 'Gabriel', status: 'completed', scheduled_date: today, admin_reviewed: true },
+    { id: 'N', title: 'Y — Basic', employee_id: 'e', employee_name: 'Gabriel', status: 'completed', scheduled_date: today },
+  ] })
+  assert(!list.some(x => x.jobId === 'R'), 'conferido sai da lista')
+  assert(list.some(x => x.jobId === 'N' && x.kind === 'no_photo'), 'sem foto continua')
+  console.log('✓ reviewed finished job leaves the queue')
+}

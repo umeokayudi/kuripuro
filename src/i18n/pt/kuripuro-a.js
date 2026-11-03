@@ -620,6 +620,7 @@ export const kuripuroPtA = {
   status: {
     assigned: 'Pendente',
     in_progress: 'Em andamento',
+    covered: 'Coberto por colega',
     completed: 'Concluído',
     cancelled: 'Cancelado',
   },

@@ -210,7 +210,8 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
             )}
 
             <dl className="sp-rows">
-              <div><dt>{baseHow}</dt><dd>{data.calc.needsBasis ? tr('choose above', '上で選択', 'escolha acima') : fmt(data.base)}</dd></div>
+              <div><dt>{baseHow}</dt><dd>{data.calc.needsBasis ? tr('choose above', '上で選択', 'escolha acima') : fmt(data.base - (data.calc.packageTotal || 0))}</dd></div>
+              {(data.calc.packages || []).map((p, i) => <div key={`pkg${i}`}><dt>{tr('Monthly package', '月額パッケージ', 'Pacote mensal')} · {p.client_name || '—'}{data.calc.packageJobs ? ` (${tr(`${data.calc.packageJobs} jobs in the package`, `${data.calc.packageJobs}件含む`, `${data.calc.packageJobs} jobs no pacote`)})` : ''}</dt><dd>+{fmt(p.amount)}</dd></div>)}
               {jobsPay > 0 && <div><dt>{tr('Spot jobs', 'スポット', 'Jobs spot')}</dt><dd>+{fmt(jobsPay)}</dd></div>}
               {deductions.map(p => <div key={p.id}><dt>{tr('Deduction', '控除', 'Desconto')} · {cancelText(p)}</dt><dd style={{ color: 'var(--red, #dc2626)' }}>−{fmt(p.amount)}</dd></div>)}
               {cancelledDeds.map(p => <div key={p.id} style={{ opacity: .7 }}><dt>{tr('Deduction', '控除', 'Desconto')} · <s>{cancelText(p)}</s> · <b>{isSilentCancel(p) ? tr('cancelled with no confirmation', '確認なしで取消', 'cancelado sem confirmação') : tr('cancelled', '取消', 'cancelado')}</b>

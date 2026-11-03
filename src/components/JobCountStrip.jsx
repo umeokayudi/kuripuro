@@ -18,7 +18,7 @@ export default function JobCountStrip({ from, to, style }) {
   useEffect(() => {
     if (!from || !to) return
     let alive = true
-    supabase.from('jobs').select('id,status,employee_id,employee_name,client_name,scheduled_date,scheduled_time,started_at')
+    supabase.from('jobs').select('id,title,description,job_category,status,employee_id,employee_name,client_id,client_name,scheduled_date,scheduled_time,started_at')
       .gte('scheduled_date', from).lte('scheduled_date', to).limit(5000)
       .then(({ data }) => { if (alive) setC(countJobs(data || [], { from, to, keepTests: !hideTests() })) })
     return () => { alive = false }

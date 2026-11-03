@@ -24,6 +24,7 @@ import { pendingChanged } from '../lib/adminPending'
 import { exceptionInfo, exceptionDeadline } from '../lib/exceptionText'
 import { hideTests, HIDE_TESTS_CHANGED } from '../lib/testData'
 import { fetchOtpRouteAlerts, otpRouteAlertText } from '../lib/jobDeadline'
+import { decideCoverFlow } from '../lib/coverageOps'
 
 const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
 
@@ -182,7 +183,7 @@ export default function TimeOffCenter() {
     setBusy(null)
   }
   // Rows already counted by their own block (Pending box, auto-closed payroll) are not counted twice.
-  const excOwn = exceptions.filter(x => x.kind !== 'no_person' && x.kind !== 'payroll_review')
+  const excOwn = exceptions.filter(x => x.kind !== 'no_person' && x.kind !== 'payroll_review' && !x.waiting)
   const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length + dayMissing.length + routeAlerts.length + excOwn.length
   const EXC = exceptionInfo(L)
   // v1.0.123 · same kind of exception from 3 on = one card ("11 never started — review")
@@ -202,6 +203,8 @@ export default function TimeOffCenter() {
     setOpenGroup(null); pendingChanged(); load()
   }
   const openExc = (x) => { setOpen(false); markSeen(); navigate(EXC[x.kind].to(x)) }
+  // v1.0.148 · "Coberto por outro": only the owner takes the job off A's agenda (or keeps it)
+  const decideCover = async (x, remove) => { if (await decideCoverFlow(x, remove, { L, dShort })) { pendingChanged(); load() } else load() }
   const kinds = [
     { key: 'exceptions', label: L('Exceptions', '例外', 'Exceções'), n: exceptions.length },
     { key: 'jobs', label: L('Jobs', '作業', 'Jobs'), n: taken.length + noPerson.length + dayMissing.length + routeAlerts.length },
@@ -339,7 +342,10 @@ export default function TimeOffCenter() {
                     </div>
                   </div>
                   <div className="tor-actions">
-                    <button type="button" className="tor-btn tor-btn-approve" onClick={() => openExc(x)}>{EXC[x.kind].action}</button>
+                    {x.kind === 'covered' ? (<>
+                      <button type="button" className="tor-btn tor-btn-approve" onClick={() => decideCover(x, true)}>{L(`Remove from ${x.who}`, `${x.who}から外す`, `Retirar de ${x.who}`)}</button>
+                      <button type="button" className="tor-btn" onClick={() => decideCover(x, false)}>{L(`Keep on ${x.who}`, `${x.who}に残す`, `Manter em ${x.who}`)}</button>
+                    </>) : <button type="button" className="tor-btn tor-btn-approve" onClick={() => openExc(x)}>{EXC[x.kind].action}</button>}
                   </div>
                 </article>
               ))}

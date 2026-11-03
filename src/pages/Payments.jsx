@@ -82,7 +82,7 @@ export default function Payments() {
 
   const load = async () => {
     const [e, p, st] = await Promise.all([
-      supabase.from('employees').select('id,full_name,fixed_salary,monthly_work_days,salary_type,hourly_rate,job_bonus_rate,contract_start,contract_end,is_active').order('full_name'),
+      supabase.from('employees').select('*').order('full_name'),
       supabase.from('salary_payments').select('*').order('payment_date',{ascending:true}),
       supabase.from('salary_statements').select('id,employee_id,period,status,net_total,employee_confirmed_at,employee_disputed_at'),
     ])

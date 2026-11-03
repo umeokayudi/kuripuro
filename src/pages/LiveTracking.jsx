@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { coveredJobs, withoutCovered } from '../lib/jobCoverage'
 import SkeletonRows from '../components/SkeletonRows'
 import OvertimeAlerts from '../components/OvertimeAlerts'
 import { supabase } from '../lib/supabase'
@@ -158,8 +159,11 @@ export default function LiveTracking() {
   const today = tokyoToday()
   const nowMinT = now.getHours() * 60 + now.getMinutes()
   // v1.0.147 · 05:00 alert: OTP route of the day with no start by 05:00 (one per person per day)
-  const routeAlerts = otpRouteAlerts(jobs, { today, nowMin: nowMinT })
-  const people = employees.map(emp => classify(emp, jobs, offToday, now, today, routeAlerts))
+  const routeAlerts = otpRouteAlerts(withoutCovered(jobs), { today, nowMin: nowMinT })
+  // v1.0.148 · a job covered by another person (same day/store/service done by B) is not A's late/next
+  const covered = coveredJobs(jobs)
+  const ownJobs = covered.size ? jobs.filter(j => !covered.has(j.id)) : jobs
+  const people = employees.map(emp => classify(emp, ownJobs, offToday, now, today, routeAlerts))
   const grouped = Object.fromEntries(GROUPS.map(g => [g, people.filter(p => p.group === g)]))
   grouped.attention.sort((a, b) => b.lateMin - a.lateMin)
   grouped.upcoming.sort((a, b) => (a.nextIn ?? 9999) - (b.nextIn ?? 9999))

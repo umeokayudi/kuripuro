@@ -1,6 +1,7 @@
 // Agenda do Dia — the default Jobs screen. One column per person, in execution order
 // (jobs.sequence_order). Drag the number to reorder or move to someone else; it saves at once.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { coveredJobs } from '../lib/jobCoverage'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
 import './agenda.css'
@@ -77,7 +78,7 @@ export default function DayAgenda({ onChanged, onEditJob }) {
     const { data, error } = await supabase.from('jobs').select('*').eq('scheduled_date', d)
     if (seq !== loadSeq.current) return
     if (error) setLoadError(error.message)
-    else { setLoadError(null); setJobs(data || []); fetchAckState(data || []).then(setAckState).catch(() => {}) }
+    else { setLoadError(null); const cov = coveredJobs(data || []); setJobs((data || []).map(j => cov.has(j.id) ? { ...j, covered_by: cov.get(j.id).employee_name || '—' } : j)); fetchAckState(data || []).then(setAckState).catch(() => {}) }
     setLoading(false)
     supabase.from('employee_availability').select('employee_id,date,kind,status').eq('date', d)
       .then(({ data: av }) => { if (seq === loadSeq.current) setAvailRows(av || []) })
@@ -462,7 +463,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
         <button type="button" className="ag-handle" title={tr('Drag to change the order', 'ドラッグで順番を変更', 'Arraste para mudar a ordem')}
           aria-label={`${idx + 1}`} onPointerDown={e => onHandleDown(e, job, colId)}>{idx + 1}</button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="ag-title">{loc}</div>
+          <div className="ag-title" style={job.covered_by ? { textDecoration: 'line-through', opacity: 0.6 } : undefined}>{loc}</div>
           <div className="ag-meta">
             {info.client && <>🏢 {info.client} · </>}
             {isDeadlineJob(job)
@@ -481,7 +482,8 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
           <div className="ag-badges">
             <span className="ag-badge" style={{ color: STATUS_COLOR[job.status] }}>{missed ? tr('Not done', '未実施', 'Não feito') : statusLabel[job.status] || job.status}</span>
             <span className="ag-badge" style={{ color: deep ? '#b7791f' : '#64748b' }}>{deep ? 'Deep Cleaning' : 'Basic'}</span>
-            {info.bucket === 'late' && !missed && <span className="ag-badge" style={{ color: '#ef4444' }}>{tr('Late', '遅れ', 'Atrasado')}</span>}
+            {job.covered_by && <span className="ag-badge" style={{ color: '#6366f1' }}>🔁 {tr(`Covered by ${job.covered_by} — decide in the bell`, `${job.covered_by}が実施 — ベルで決定`, `Coberto por ${job.covered_by} — decida no sino`)}</span>}
+            {info.bucket === 'late' && !missed && !job.covered_by && <span className="ag-badge" style={{ color: '#ef4444' }}>{tr('Late', '遅れ', 'Atrasado')}</span>}
             {after && <span className="ag-badge" style={{ color: '#a855f7' }}>📷 {tr('Waiting After photo', 'After写真待ち', 'Aguardando foto After')}</span>}
             {job.closed_manually_at && <span className="ag-badge" style={{ color: '#b45309' }}>🔒 {tr('Closed by admin', '管理者が終了', 'Fechado pelo admin')}</span>}
             {aiScoreView(job) && <span className="ag-badge" title={aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))} style={{ color: job.photo_ai_approved ? '#16a34a' : '#ef4444' }}>IA {job.photo_ai_score}/10 {job.photo_ai_approved ? '✅' : '⚠️'}{!issues.length && ` · ${aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))}`}</span>}
