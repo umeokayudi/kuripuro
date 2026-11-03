@@ -158,10 +158,13 @@ export async function compressVideo(file, { onProgress, signal } = {}) {
   if (!file || !(String(file.type).startsWith('video/') || videoTypeInfo(file.type, file.name))) {
     throw new VideoCompressError('not_video')
   }
-  if (file.size <= SKIP_BYTES && videoTypeInfo(file.type, file.name)) return originalResult(file)
+  // v1.0.142: iPhone .mov (often HEVC) does not play in Chrome/Android/LINE, so even a small one
+  // is turned into H.264 MP4 when the phone can; small MP4/WebM still go as they are.
+  const isMov = /quicktime/i.test(String(file.type)) || /\.mov$/i.test(String(file.name || ''))
+  if (file.size <= SKIP_BYTES && videoTypeInfo(file.type, file.name) && !isMov) return originalResult(file)
 
   const fast = await compressWithWebCodecs(file, { onProgress, signal })
-  if (fast && fast.size < file.size) return fast
+  if (fast && (fast.size < file.size || (isMov && fast.size < MAX_RESULT_BYTES))) return fast
   if (fast) {
     try { return originalResult(file) } catch { return fast }
   }

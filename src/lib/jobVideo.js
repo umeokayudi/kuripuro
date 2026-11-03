@@ -182,8 +182,13 @@ export async function readVideoStatus(jobId) {
   try {
     const url = supabase.storage.from(BUCKET).getPublicUrl(statusPath(jobId)).data?.publicUrl
     if (!url) return null
-    const r = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' })
-    return r.ok ? await r.json() : null
+    // v1.0.142: never hang the Videos page on one slow file
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null
+    const timer = ctl ? setTimeout(() => ctl.abort(), 8000) : null
+    try {
+      const r = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store', signal: ctl?.signal })
+      return r.ok ? await r.json() : null
+    } finally { if (timer) clearTimeout(timer) }
   } catch {
     return null
   }
@@ -252,7 +257,10 @@ async function finishUpload(jobId, path, { blob, poster, duration }) {
 export async function listJobVideos(jobId, name = '') {
   if (!jobId) return []
   try {
-    const resp = await fetch(`/api/photo?videos=${encodeURIComponent(jobId)}${name ? `&name=${encodeURIComponent(name)}` : ''}`, { cache: 'no-store' })
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null
+    const timer = ctl ? setTimeout(() => ctl.abort(), 12000) : null
+    const resp = await fetch(`/api/photo?videos=${encodeURIComponent(jobId)}${name ? `&name=${encodeURIComponent(name)}` : ''}`, { cache: 'no-store', signal: ctl?.signal })
+      .finally(() => { if (timer) clearTimeout(timer) })
     if (resp.ok) {
       const result = await resp.json()
       if (Array.isArray(result.videos)) return result.videos.filter(v => v.url).map(withPoster)
