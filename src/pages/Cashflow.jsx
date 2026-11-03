@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
-import { billedInMonth, isReceivable } from '../lib/money'
+import { billedInMonth, isReceivable, isOverdueInvoice } from '../lib/money'
 import { askConfirm } from '../components/ConfirmDialog'
 
 const CF_TEXT = {
@@ -25,6 +26,7 @@ function normalizeEntry(row) {
 export default function Cashflow() {
   const { lang } = useLang()
   const L = CF_TEXT[lang] || CF_TEXT.en
+  const navigate = useNavigate()
   const [entries, setEntries] = useState([])
   const [invoices, setInvoices] = useState([])
   const [salaryPayments, setSalaryPayments] = useState([])
@@ -107,9 +109,12 @@ export default function Cashflow() {
   const issued = billedInMonth(invoices, month)
   // v1.0.70 · accepted quotes booked this month: draft invoice dated on the job day, sent when the job is done
   const confirmedToDo = monthJobs.reduce((s,j)=>s+Number(j.retro_value ?? j.value ?? 0),0)
-  const receivable = invoices.filter(isReceivable).reduce((s,f)=>s+Number(f.total||0),0)
+  // v1.0.133 · "A receber" / "Vencido" = the sum of the invoices listed in Faturas (click → that list).
+  const receivableList = invoices.filter(isReceivable)
+  const receivable = receivableList.reduce((s,f)=>s+Number(f.total||0),0)
   const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0,10)
-  const overdue = invoices.filter(f=>isReceivable(f) && f.due_date && f.due_date < today).reduce((s,f)=>s+Number(f.total||0),0)
+  const overdueList = invoices.filter(f=>isOverdueInvoice(f, today))
+  const overdue = overdueList.reduce((s,f)=>s+Number(f.total||0),0)
   const paidSalary = salaryPayments
     .filter(p => p.status === 'paid' && !p.is_deduction && p.payment_date?.startsWith(month))
     .reduce((s,p)=>s+Number(p.amount||0),0)
@@ -154,13 +159,14 @@ export default function Cashflow() {
             {[
               [L.invoiced + L.mo, issued, 'var(--navy)'],
               [L.received + L.mo, income, 'var(--green)'],
-              [L.receivable + L.acc, receivable, 'var(--hq-blue)'],
-              [L.overdue + L.acc, overdue, 'var(--red)'],
+              [L.receivable + L.acc, receivable, 'var(--hq-blue)', 'open', receivableList.length],
+              [L.overdue + L.acc, overdue, 'var(--red)', 'overdue', overdueList.length],
               [L.expenses + L.mo, expense, 'var(--red)'],
               [L.projection + L.proj, projected, projected >= 0 ? 'var(--green)' : 'var(--red)'],
-            ].map(([label,value,color]) => (
-              <div className="finance-kpi" key={label}>
+            ].map(([label,value,color,view,n]) => (
+              <div className="finance-kpi" key={label} {...(view ? { role:'button', tabIndex:0, style:{ cursor:'pointer' }, title:`${n} → /faturas`, onClick:()=>navigate(`/faturas?view=${view}`), onKeyDown:e=>e.key==='Enter'&&navigate(`/faturas?view=${view}`) } : {})}>
                 <span>{label}</span>{loading ? <strong className="kp-skel-text">{L.loading}</strong> : <strong style={{color}}>{money(value)}</strong>}
+                {view && !loading && <small style={{ fontSize: 11, color: 'var(--text3)' }}>{n} ›</small>}
               </div>
             ))}
           </div>
@@ -180,8 +186,8 @@ export default function Cashflow() {
             <div className="card finance-focus-card">
               <div className="card-title">{L.billing}</div>
               <div className="finance-big-row"><span>{L.issuedInvoices}{L.mo}</span><strong>¥{issued.toLocaleString()}</strong></div>
-              <div className="finance-big-row"><span>{L.open}{L.acc}</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
-              <div className="finance-big-row finance-total"><span>{L.overdue}{L.acc}</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
+              <div className="finance-big-row" role="button" style={{cursor:'pointer'}} onClick={()=>navigate('/faturas?view=open')}><span>{L.open}{L.acc} · {receivableList.length} ›</span><strong className="finance-blue">¥{receivable.toLocaleString()}</strong></div>
+              <div className="finance-big-row finance-total" role="button" style={{cursor:'pointer'}} onClick={()=>navigate('/faturas?view=overdue')}><span>{L.overdue}{L.acc} · {overdueList.length} ›</span><strong className="finance-negative">¥{overdue.toLocaleString()}</strong></div>
             </div>
           </div>
           <div className="card" style={{marginBottom:14}}>

@@ -351,7 +351,7 @@ export default function Clients() {
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
                   <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
                     <div style={{fontSize:14,fontWeight:700}}>¥{Number(c.monthly_revenue||0).toLocaleString()}</div>
-                    <div style={{fontSize:10,color:'var(--text3)'}}>{L('Revenue','売上','Receita')}</div>
+                    <div style={{fontSize:10,color:'var(--text3)'}} title={L('Sum of the active contracts (what the contracts say per month)','有効な契約の合計（契約上の月額）','Soma dos contratos ativos (o que os contratos dizem por mês)')}>{L('Contract/mo','契約月額','Contrato/mês')}</div>
                   </div>
                   <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
                     <div style={{fontSize:14,fontWeight:700,color:profit != null && profit < 0 ? 'var(--red)' : 'var(--green)'}}>{profit == null ? '—' : `${profit < 0 ? '−' : ''}¥${Math.abs(profit).toLocaleString()}`}</div>
@@ -362,6 +362,7 @@ export default function Clients() {
                     <div style={{fontSize:10,color:'var(--text3)'}}>{L('Margin','利益率','Margem')}</div>
                   </div>
                 </div>
+                {costMonth && <div style={{fontSize:11,color:'var(--text3)',marginBottom:10}}>{L(`Billed ${costMonth}`,`${costMonth} 請求`,`Faturado ${costMonth}`)} ¥{Number(c.billed_month||0).toLocaleString()} · {L(`Received ${costMonth}`,`${costMonth} 入金`,`Recebido ${costMonth}`)} ¥{Number(c.received_month||0).toLocaleString()}</div>}
                 {c.notes&&<div style={{fontSize:12,color:'var(--text2)',background:'var(--surface2)',borderRadius:8,padding:'8px 10px',marginBottom:10}}>{c.notes}</div>}
                 <label className="client-seller-row">
                   <span>👤 {L('Seller','営業担当','Vendedor')}</span>
@@ -418,7 +419,7 @@ export default function Clients() {
           <div className="card-title">{L('Services Overview','サービス概要','Resumo dos serviços')}</div>
           <table>
             <thead>
-              <tr><th>{L('Company','会社','Empresa')}</th><th>{L('Service','サービス','Serviço')}</th><th>{L('Revenue','売上','Receita')}</th><th>{L('Cost','原価','Custo')}</th><th>{L('Profit','利益','Lucro')}</th><th>{L('Margin','利益率','Margem')}</th></tr>
+              <tr><th>{L('Company','会社','Empresa')}</th><th>{L('Service','サービス','Serviço')}</th><th>{L('Contract/mo','契約月額','Contrato/mês')}</th><th>{L(`Billed ${costMonth}`,`請求 ${costMonth}`,`Faturado ${costMonth}`)}</th><th>{L('Cost','原価','Custo')}</th><th>{L('Profit','利益','Lucro')}</th><th>{L('Margin','利益率','Margem')}</th></tr>
             </thead>
             <tbody>
               {clients.filter(c=>c.is_active).map(c=>{
@@ -429,6 +430,7 @@ export default function Clients() {
                     <td style={{fontWeight:500}}><ClientLink id={c.id} name={c.company_name} /></td>
                     <td>{serviceText(c.service_type)}</td>
                     <td>¥{Number(c.monthly_revenue||0).toLocaleString()}</td>
+                    <td>¥{Number(c.billed_month||0).toLocaleString()}</td>
                     <td style={{color:'var(--red)'}}>{c.monthly_cost == null ? '—' : `¥${Number(c.monthly_cost).toLocaleString()}`}</td>
                     <td style={{color:profit != null && profit < 0 ? 'var(--red)' : 'var(--green)',fontWeight:600}}>{profit == null ? '—' : `${profit < 0 ? '−' : ''}¥${Math.abs(profit).toLocaleString()}`}</td>
                     <td>{margin == null ? '—' : <span className={`badge ${margin>=70?'badge-green':margin>=50?'badge-amber':'badge-red'}`}>{margin}%</span>}</td>
@@ -438,7 +440,7 @@ export default function Clients() {
             </tbody>
           </table>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginTop:16}}>
-            {[[L('Total Revenue','売上合計','Receita total'),totalRevenue,'var(--text)'],[L('Total Cost','原価合計','Custo total'),totalCost,'var(--red)'],[L('Total Profit','利益合計','Lucro total'),totalProfit,'var(--green)']].map(([l,v,color])=>(
+            {[[L('Contracts / month (total)','契約月額合計','Contratos / mês (total)'),totalRevenue,'var(--text)'],[L('Total Cost','原価合計','Custo total'),totalCost,'var(--red)'],[L('Total Profit','利益合計','Lucro total'),totalProfit,'var(--green)']].map(([l,v,color])=>(
               <div key={l} style={{background:'var(--surface2)',borderRadius:10,padding:'12px 14px'}}>
                 <div style={{fontSize:11,color:'var(--text3)',marginBottom:4}}>{l}</div>
                 <div style={{fontSize:18,fontWeight:700,color}}>{v<0?'-':''}¥{Math.abs(v).toLocaleString()}</div>

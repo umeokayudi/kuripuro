@@ -9,7 +9,7 @@ import { useLang, fill } from '../hooks/useLang'
 import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAutomation'
 import { ClientLink } from '../components/ClientSheetHost'
 import { askConfirm } from '../components/ConfirmDialog'
-import { invoiceMonth } from '../lib/money'
+import { invoiceMonth, isReceivable, isOverdueInvoice } from '../lib/money'
 import { printInvoiceDoc, loadInvoiceView } from '../lib/invoicePrintOps'
 
 export default function Faturas() {
@@ -27,6 +27,8 @@ export default function Faturas() {
   const [items, setItems] = useState([])
   const [form, setForm] = useState({ client_id:'', period_start:'', period_end:'', due_date:'', tax_rate:10, notes:'' })
   const [autoPeriod, setAutoPeriod] = useState(tokyoToday().slice(0,7))
+  const [listView, setListView] = useState(() => searchParams.get('view') || 'all')
+  useEffect(() => { const v = searchParams.get('view'); if (v) setListView(v) }, [searchParams])
   const [autoLoading, setAutoLoading] = useState(false)
 
   useEffect(() => { load() }, [])
@@ -240,7 +242,19 @@ export default function Faturas() {
   const handlePrint = (f) => printInvoiceDoc(f, 'ja')
 
   // v1.0.102 · the list shows only the invoices of the month chosen above (billing period, else issue date)
-  const monthList = faturas.filter(f => invoiceMonth(f) === autoPeriod)
+  const monthOnly = faturas.filter(f => invoiceMonth(f) === autoPeriod)
+  // v1.0.133 · every invoice is reachable here: open (to receive) / overdue / this month / all.
+  // The Cashflow "A receber" / "Vencido" totals are these same lists (click there → here).
+  const today = tokyoToday()
+  const views = {
+    open: faturas.filter(isReceivable),
+    overdue: faturas.filter(f => isOverdueInvoice(f, today)),
+    month: monthOnly,
+    all: faturas,
+  }
+  const view = views[listView] ? listView : 'all'
+  const monthList = views[view]
+  const viewSum = monthList.filter(f => f.status !== 'cancelled').reduce((s, f) => s + Number(f.total || 0), 0)
 
   const statusBadge = s => ({draft:'badge-amber',sent:'badge-blue',paid:'badge-green',cancelled:'badge-red',overdue:'badge-red'}[s]||'badge-navy')
 
@@ -267,9 +281,22 @@ export default function Faturas() {
               </div>
             </div>
           </div>
+          {!searchId && (
+            <div className="tab-pills" style={{ marginBottom: 10 }}>
+              {[
+                ['open', tr('To receive', '未入金', 'A receber')],
+                ['overdue', tr('Overdue', '期限切れ', 'Vencidas')],
+                ['month', tr(`Month ${autoPeriod}`, `${autoPeriod}`, `Mês ${autoPeriod}`)],
+                ['all', tr('All', 'すべて', 'Todas')],
+              ].map(([k, label]) => (
+                <button key={k} type="button" className={`tab-pill${view === k ? ' active' : ''}`} onClick={() => setListView(k)}>{label} ({views[k].length})</button>
+              ))}
+              {!loading && <span style={{ fontSize: 12, color: 'var(--text3)', alignSelf: 'center' }}>{tr('Total', '合計', 'Total')} ¥{viewSum.toLocaleString()}</span>}
+            </div>
+          )}
           {loading&&<div style={{color:'var(--text3)',fontSize:13}}>Loading...</div>}
           {faturas.length===0&&!loading&&<div className="card"><div style={{color:'var(--text3)',fontSize:13}}>{tr('No invoices yet.','請求書はまだありません。','Nenhuma fatura ainda.')}</div></div>}
-          {!loading && !searchId && faturas.length > 0 && monthList.length === 0 && <div className="card"><div style={{color:'var(--text2)',fontSize:13}}>{tr('No invoices for this month.','この月の請求書はありません。','Nenhuma fatura neste mês.')}</div></div>}
+          {!loading && !searchId && faturas.length > 0 && monthList.length === 0 && <div className="card"><div style={{color:'var(--text2)',fontSize:13}}>{view === 'month' ? tr('No invoices for this month.','この月の請求書はありません。','Nenhuma fatura neste mês.') : tr('No invoices in this list.','この一覧に請求書はありません。','Nenhuma fatura nesta lista.')}</div></div>}
           {(searchId ? faturas.filter(f => f.id === searchId) : monthList).map(f=>(
             <div key={f.id} className="card" style={{marginBottom:12,cursor:'pointer'}} onClick={()=>openDetail(f)}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>

@@ -202,7 +202,8 @@ function RecurringContracts() {
   }
 
   // v1.0.109 · one rule for the monthly value (lib/money): same number as Clients and Dashboard
-  const totalMonthlyRevenue = contracts.reduce((s,c)=>s+contractMonthly(c),0)
+  // v1.0.133 · only ACTIVE contracts, labelled "Contrato/mês" (what the contracts say; billed/received are in Clients)
+  const totalMonthlyRevenue = contracts.filter(c=>c.is_active!==false).reduce((s,c)=>s+contractMonthly(c),0)
   const stores = groupByStore(contracts)
   const totalMonthlyHours = contracts.reduce((s,c)=>s+Number(c.visits_per_month||0)*Number(c.hours_per_visit||0),0)
   const totalVisits = contracts.reduce((s,c)=>s+Number(c.visits_per_month||0),0)
@@ -266,7 +267,7 @@ function RecurringContracts() {
         <>
           {/* Summary */}
           <div className="kp-two-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
-            {[[L('Stores','店舗','Lojas'),stores.length],[L('Visits/mo','月の回数','Visitas/mês'),totalVisits],[L('Hours/mo','月の時間','Horas/mês'),totalMonthlyHours.toFixed(0)+'h'],[L('Revenue/mo','月の売上','Receita/mês'),'¥'+totalMonthlyRevenue.toLocaleString()]].map(([l,v])=>(
+            {[[L('Stores','店舗','Lojas'),stores.length],[L('Visits/mo','月の回数','Visitas/mês'),totalVisits],[L('Hours/mo','月の時間','Horas/mês'),totalMonthlyHours.toFixed(0)+'h'],[L('Contract/mo (active)','契約月額（有効）','Contrato/mês (ativos)'),'¥'+totalMonthlyRevenue.toLocaleString()]].map(([l,v])=>(
               <div key={l} className="card" style={{padding:'12px 14px',textAlign:'center'}}>
                 <div style={{fontSize:20,fontWeight:700,color:'var(--green)'}}>{contractsLoading ? <span className="kp-skel" style={{display:'inline-block',width:48,height:20}} /> : v}</div>
                 <div style={{fontSize:11,color:'var(--text3)',marginTop:3}}>{l}</div>
