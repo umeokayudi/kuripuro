@@ -11,6 +11,8 @@ import { ClientLink } from '../components/ClientSheetHost'
 import { askConfirm } from '../components/ConfirmDialog'
 import { invoiceMonth, isReceivable, isOverdueInvoice } from '../lib/money'
 import { printInvoiceDoc, loadInvoiceView } from '../lib/invoicePrintOps'
+import InvoiceDatesDialog from '../components/InvoiceDatesDialog'
+import { suggestedInvoiceDates, dayOfNextMonth, periodLabel } from '../lib/invoiceDates'
 
 export default function Faturas() {
   const [searchParams] = useSearchParams()
@@ -25,7 +27,9 @@ export default function Faturas() {
   const [tab, setTab] = useState('list')
   const [selected, setSelected] = useState(null)
   const [items, setItems] = useState([])
-  const [form, setForm] = useState({ client_id:'', period_start:'', period_end:'', due_date:'', tax_rate:10, notes:'' })
+  const [form, setForm] = useState({ client_id:'', issue_date:tokyoToday(), period_start:'', period_end:'', due_date:'', tax_rate:10, notes:'' })
+  // v1.0.146 · { f, mode: 'edit' | 'send' } — the admin picks 発行日 / 対象期間 / 支払期限
+  const [datesFor, setDatesFor] = useState(null)
   const [autoPeriod, setAutoPeriod] = useState(tokyoToday().slice(0,7))
   const [listView, setListView] = useState(() => searchParams.get('view') || 'all')
   useEffect(() => { const v = searchParams.get('view'); if (v) setListView(v) }, [searchParams])
@@ -209,7 +213,7 @@ export default function Faturas() {
       client_name: client.company_name,
       period_start: form.period_start||null,
       period_end: form.period_end||null,
-      issue_date: tokyoToday(),
+      issue_date: form.issue_date||tokyoToday(),
       due_date: form.due_date||null,
       subtotal, tax_amount:tax, total,
       tax_rate: parseInt(form.tax_rate)||10,
@@ -236,6 +240,26 @@ export default function Faturas() {
     // paid_at drives the client's thank-you message and receipt date
     await supabase.from('faturas').update({ status, paid_at: status === 'paid' ? new Date().toISOString() : null }).eq('id', id)
     toast.success(`Status: ${status}`); load()
+  }
+
+  // v1.0.146 · 発行日 / 対象期間 / 支払期限 chosen by the admin (edit any time; checked before sending).
+  const openDates = (f, mode) => {
+    const today = tokyoToday()
+    const base = mode === 'send'
+      ? { ...f, issue_date: today, due_date: f.due_date && f.due_date >= today ? f.due_date : '' }
+      : f
+    setDatesFor({ f, mode, initial: suggestedInvoiceDates(base, { today }) })
+  }
+  const saveDates = async (d) => {
+    const { f, mode } = datesFor
+    const patch = { issue_date: d.issue_date, period_start: d.period_start, period_end: d.period_end, due_date: d.due_date }
+    if (mode === 'send') patch.status = 'sent'
+    const { error } = await supabase.from('faturas').update(patch).eq('id', f.id)
+    if (error) return toast.error(error.message)
+    toast.success(mode === 'send' ? tr('Sent with these dates','この日付で送付済にしました','Marcada enviada com essas datas') : tr('Dates saved','日付を保存しました','Datas salvas'))
+    setDatesFor(null)
+    setDetail(x => (x?.f.id === f.id ? { ...x, f: { ...x.f, ...patch } } : x))
+    load()
   }
 
   // v1.0.122 · same A4 layout as the 見積書, quote lines when it came from one, bank account in the footer
@@ -302,7 +326,7 @@ export default function Faturas() {
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                 <div>
                   <div style={{fontWeight:700,fontSize:15}}>{f.client_name} <span onClick={ev=>ev.stopPropagation()} style={{fontSize:12,fontWeight:500}}><ClientLink id={f.client_id} name={tr('client ›','顧客 ›','cliente ›')} /></span></div>
-                  <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{f.period_start} 〜 {f.period_end}</div>
+                  <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{tr('Period','対象期間','Período')}: {periodLabel(f.period_start, f.period_end) || '—'}</div>
                   <div style={{fontSize:12,color:'var(--text3)'}}>{tr('Issued', '発行', 'Emitida')}: {f.issue_date} · {tr('Due', '期限', 'Vencimento')}: {f.due_date||'—'}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
@@ -313,7 +337,8 @@ export default function Faturas() {
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}} onClick={ev=>ev.stopPropagation()}>
                 <button className="btn btn-sm" onClick={()=>openDetail(f)}>📄 {tr('Details','明細','Detalhe')}</button>
                 <button className="btn btn-sm" onClick={()=>handlePrint(f)}>🖨️ {tr('Print','印刷','Imprimir')}</button>
-                {f.status==='draft'&&<button className="btn btn-sm btn-primary" onClick={()=>handleStatusChange(f.id,'sent')}>📤 {tr('Mark sent','送付済にする','Marcar enviada')}</button>}
+                {f.status==='draft'&&<button className="btn btn-sm btn-primary" onClick={()=>openDates(f,'send')}>📤 {tr('Mark sent','送付済にする','Marcar enviada')}</button>}
+                {f.status!=='cancelled'&&<button className="btn btn-sm" onClick={()=>openDates(f,'edit')}>📅 {tr('Dates','日付','Datas')}</button>}
                 {['sent','pending','overdue'].includes(f.status)&&<button className="btn btn-sm" style={{background:'var(--green)',color:'#fff'}} onClick={()=>handleStatusChange(f.id,'paid')}>✅ {tr('Mark paid','入金済にする','Marcar paga')}</button>}
                 {['sent','pending','overdue','paid'].includes(f.status)&&<button className="btn btn-sm" onClick={()=>navigate(`/ryoshu?fatura=${f.id}`)}>🧾 {tr('Receipt','領収書','Recibo')}</button>}
                 {f.status!=='cancelled'&&<button className="btn btn-sm btn-danger" onClick={()=>handleStatusChange(f.id,'cancelled')}>{tr('Cancel','取消','Cancelar')}</button>}
@@ -341,9 +366,13 @@ export default function Faturas() {
                   )}
                 </select>
               </div>
+              <div className="form-group"><label>{tr('Issue date','発行日','Data de emissão')}</label><input type="date" value={form.issue_date} onChange={e=>upd('issue_date',e.target.value)} /></div>
               <div className="form-group"><label>{tr('Period start','期間開始','Início do período')}</label><input type="date" value={form.period_start} onChange={e=>upd('period_start',e.target.value)} /></div>
               <div className="form-group"><label>{tr('Period end','期間終了','Fim do período')}</label><input type="date" value={form.period_end} onChange={e=>upd('period_end',e.target.value)} /></div>
-              <div className="form-group"><label>{tr('Due date','支払期限','Vencimento')}</label><input type="date" value={form.due_date} onChange={e=>upd('due_date',e.target.value)} /></div>
+              <div className="form-group"><label>{tr('Due date','支払期限','Vencimento')}</label><input type="date" value={form.due_date} onChange={e=>upd('due_date',e.target.value)} />
+                {!form.due_date && <button type="button" className="btn btn-sm" style={{marginTop:6}} onClick={()=>upd('due_date', dayOfNextMonth(form.issue_date||tokyoToday(), 10))}>{tr('10th next month','翌月10日','Dia 10 do mês seguinte')}</button>}
+                {form.due_date && form.issue_date && form.due_date < form.issue_date && <div className="badge badge-red" style={{marginTop:6}}>{tr('Due is before the issue date','支払期限が発行日より前です','Vencimento antes da emissão')}</div>}
+              </div>
               <div className="form-group"><label>{tr('Tax rate (%)','税率 (%)','Imposto (%)')}</label>
                 <select value={form.tax_rate} onChange={e=>upd('tax_rate',e.target.value)}>
                   <option value={10}>10%</option><option value={8}>8%</option><option value={0}>0%</option>
@@ -420,7 +449,7 @@ export default function Faturas() {
         return (
           <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={()=>setDetail(null)}>
             <div className="card" style={{ width:'min(620px,100%)', maxHeight:'92vh', overflowY:'auto' }} onClick={e=>e.stopPropagation()}>
-              <div className="card-title">📄 {f.client_name} · {f.period_start || f.issue_date} 〜 {f.period_end || ''}</div>
+              <div className="card-title">📄 {f.client_name} · {periodLabel(f.period_start, f.period_end) || f.issue_date}</div>
               <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>{tr('Issued','発行','Emitida')} {f.issue_date} · {tr('Due','期限','Vencimento')} {f.due_date || '—'} · <span className={`badge ${statusBadge(f.status)}`}>{f.status}</span></div>
               {its === null && <div className="kp-skel-text">{tr('Loading…','読み込み中…','Carregando…')}</div>}
               {its && its.length === 0 && <div style={{ fontSize:13, color:'var(--text3)' }}>{tr('This invoice has no lines.','明細行がありません。','Esta fatura não tem linhas.')}</div>}
@@ -449,6 +478,7 @@ export default function Faturas() {
                 )}
               </div>
               <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12, flexWrap:'wrap' }}>
+                {f.status!=='cancelled'&&<button className="btn" onClick={()=>openDates(f,'edit')}>📅 {tr('Dates','日付','Datas')}</button>}
                 <button className="btn" onClick={()=>handlePrint(f)}>🖨️ {tr('Print','印刷','Imprimir')}</button>
                 <button className="btn" onClick={()=>setDetail(null)}>{tr('Close','閉じる','Fechar')}</button>
               </div>
@@ -456,6 +486,17 @@ export default function Faturas() {
           </div>
         )
       })()}
+
+      {datesFor && (
+        <InvoiceDatesDialog
+          initial={datesFor.initial}
+          title={datesFor.mode === 'send' ? tr('Check the dates and send','日付を確認して送付','Conferir as datas e enviar') : tr('Invoice dates','請求書の日付','Datas da fatura')}
+          intro={`${datesFor.f.client_name || ''} · ¥${Number(datesFor.f.total||0).toLocaleString()}${datesFor.f.status !== 'draft' ? ' · ' + tr('The INV number follows the issue date.','請求書番号は発行日に連動します。','O número INV acompanha a data de emissão.') : ''}`}
+          saveLabel={datesFor.mode === 'send' ? tr('Mark sent','送付済にする','Marcar enviada') : undefined}
+          onSave={saveDates}
+          onClose={() => setDatesFor(null)}
+        />
+      )}
     </div>
   )
 }
