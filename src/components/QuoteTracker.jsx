@@ -8,6 +8,9 @@ import { tokyoToday } from '../lib/dates'
 import { fetchQuoteSessions, quoteStage, scheduleQuoteSession, cancelQuoteSession, finishQuoteJob, syncQuoteSessions } from '../lib/quoteFlow'
 import './quote-tracker.css'
 import AddressInput from './AddressInput'
+import InvoiceDatesDialog from './InvoiceDatesDialog'
+import { askConfirm } from './ConfirmDialog'
+import { suggestedInvoiceDates, looksLikeYearTypo } from '../lib/invoiceDates'
 
 const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString()}`
 
@@ -24,6 +27,9 @@ export default function QuoteTracker({ quote, onClose }) {
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ date: '', time: '', employee_id: '', price: '', employee_pay: '', client_id: quote.client_id || '', address: quote.address || '', notes: '' })
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  // v1.0.146 · "Mark done" first shows the 請求書 dates (発行日 / 対象期間 / 支払期限) to confirm
+  const [doneFor, setDoneFor] = useState(null) // { s, initial, future }
+  const [moveDate, setMoveDate] = useState(true)
 
   const load = async () => {
     try {
@@ -75,6 +81,10 @@ export default function QuoteTracker({ quote, onClose }) {
   const book = async () => {
     const employee = employees.find(e => e.id === form.employee_id)
     if (!form.date || !employee) return toast.error(L('Pick the date and who does it.', '日付と担当者を選んでください。', 'Escolha a data e quem vai fazer.'))
+    if (looksLikeYearTypo(form.date) && !(await askConfirm({
+      message: L(`The date is ${form.date} — more than 45 days ahead. Is the date right?`, `日付は ${form.date}（45日以上先）です。日付は正しいですか？`, `A data é ${form.date} — mais de 45 dias daqui. A data está certa?`),
+      confirmLabel: L('Yes, book it', 'はい、予約する', 'Sim, marcar'),
+    }))) return
     if (!Number(form.price)) return toast.error(L('Enter the price of this session.', 'この回の金額を入力してください。', 'Informe o valor desta sessão.'))
     setBusy(true)
     try {
@@ -90,9 +100,21 @@ export default function QuoteTracker({ quote, onClose }) {
     setBusy(false)
   }
 
-  const markDone = async (s) => {
+  const markDone = (s) => {
+    const today = tokyoToday()
+    const future = s.service_date > today
+    const inv = s.invoice
+    if (!inv || inv.status !== 'draft') return finishDone(s, null, '')
+    // Session booked for a future day but done now → suggest today as the period.
+    const initial = suggestedInvoiceDates({ period_start: future ? today : s.service_date, period_end: future ? today : s.service_date }, { today })
+    setMoveDate(future)
+    setDoneFor({ s, initial, future })
+  }
+
+  const finishDone = async (s, dates, moveTo) => {
     setBusy(true)
-    const r = await finishQuoteJob(s.job_id, { byAdmin: true })
+    const r = await finishQuoteJob(s.job_id, { byAdmin: true, dates, moveTo })
+    setDoneFor(null)
     if (r?.sent) toast.success(L('Done. The invoice was sent to the client.', '完了。請求書をお客様に送付しました。', 'Feito. A nota de cobrança foi enviada ao cliente.'))
     await load()
     setBusy(false)
@@ -174,7 +196,10 @@ export default function QuoteTracker({ quote, onClose }) {
           <section className="qt-block">
             <div className="qt-block-title">{live.length ? L('Add another session', '次回を追加', 'Adicionar outra sessão') : L('Book the service', '作業日を予約', 'Marcar o serviço')}</div>
             <div className="qt-form">
-              <label>{L('Date', '日付', 'Data')}<input type="date" min={tokyoToday()} value={form.date} onChange={e => upd('date', e.target.value)} /></label>
+              <label>{L('Date', '日付', 'Data')}<input type="date" min={tokyoToday()} value={form.date} onChange={e => upd('date', e.target.value)} />
+                {form.date !== tokyoToday() && <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 4 }} onClick={() => upd('date', tokyoToday())}>{L('Today', '今日', 'Hoje')}</button>}
+                {looksLikeYearTypo(form.date) && <span className="badge badge-amber" style={{ marginTop: 4, whiteSpace: 'normal' }}>{L('More than 45 days ahead — check the date', '45日以上先です。日付を確認', 'Mais de 45 dias daqui — confira a data')}</span>}
+              </label>
               <label>{L('Time', '時間', 'Horário')}<input type="time" value={form.time} onChange={e => upd('time', e.target.value)} /></label>
               <label className="qt-wide">{L('Who does it', '担当者', 'Quem faz')}
                 <select value={form.employee_id} onChange={e => upd('employee_id', e.target.value)}>
@@ -203,6 +228,23 @@ export default function QuoteTracker({ quote, onClose }) {
           </section>
         ) : null}
       </div>
+      {doneFor && (
+        <InvoiceDatesDialog
+          initial={doneFor.initial}
+          title={L('Done — invoice dates', '完了 — 請求書の日付', 'Feito — datas da nota')}
+          intro={L(`Session booked for ${doneFor.s.service_date}. Check the dates printed on the invoice before it goes to the client.`, `${doneFor.s.service_date} 予約の回です。お客様に送る前に請求書の日付を確認してください。`, `Sessão marcada para ${doneFor.s.service_date}. Confira as datas que saem na nota antes de ir para o cliente.`)}
+          saveLabel={L('Mark done and send', '完了にして送付', 'Marcar feito e enviar')}
+          onSave={d => finishDone(doneFor.s, d, doneFor.future && moveDate ? d.period_start : '')}
+          onClose={() => setDoneFor(null)}
+        >
+          {doneFor.future && (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, marginTop: 10 }}>
+              <input type="checkbox" checked={moveDate} onChange={e => setMoveDate(e.target.checked)} />
+              <span>{L(`The session was booked for a future day (${doneFor.s.service_date}). Also move the service to the period start date.`, `この回は先の日付（${doneFor.s.service_date}）で予約されています。作業日も対象期間の開始日に変更する。`, `A sessão foi marcada para um dia futuro (${doneFor.s.service_date}). Mudar também a data do serviço para o início do período.`)}</span>
+            </label>
+          )}
+        </InvoiceDatesDialog>
+      )}
     </div>,
     document.body,
   )
