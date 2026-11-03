@@ -17,6 +17,7 @@ import { maskEmail, maskPhone } from '../lib/contactMask'
 import { clientContact } from '../lib/clientContact'
 import { newSetupToken, setupPassword, setupLink } from '../lib/passwordLink'
 import { undoToast } from '../components/UndoToast'
+import { isTestClient } from '../lib/testData'
 import SetupLinkCard from '../components/SetupLinkCard'
 
 export default function Clients() {
@@ -308,9 +309,10 @@ export default function Clients() {
     if (current) undoToast(L('Client deactivated','顧客を無効にしました','Cliente desativado'), () => supabase.from('clients').update({ is_active: true }).eq('id', id), lang, load)
   }
 
-  const totalRevenue = clients.filter(c=>c.is_active).reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
+  // v1.0.133 · test clients never count in totals (kept in the list with a TESTE badge)
+  const totalRevenue = clients.filter(c=>c.is_active && !isTestClient(c)).reduce((s,c)=>s+Number(c.monthly_revenue||0),0)
   // Profit only over clients whose real cost is known (never revenue − ¥0).
-  const costed = clients.filter(c=>c.is_active && c.monthly_cost != null)
+  const costed = clients.filter(c=>c.is_active && !isTestClient(c) && c.monthly_cost != null)
   const totalCost = costed.reduce((s,c)=>s+Number(c.monthly_cost||0),0)
   const totalProfit = costed.reduce((s,c)=>s+Number(c.monthly_revenue||0),0) - totalCost
 
@@ -346,7 +348,7 @@ export default function Clients() {
                     <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{[clientContact(c).name, maskPhone(clientContact(c).phone)].filter(Boolean).join(' · ') || '—'}</div>
                     <div style={{fontSize:12,color:'var(--text3)'}}>{serviceText(c.service_type)}</div>
                   </div>
-                  <span className={`badge ${c.is_active?'badge-green':'badge-red'}`}>{c.is_active?L('Active','有効','Ativo'):L('Inactive','無効','Inativo')}</span>
+                  {isTestClient(c) ? <span className="badge badge-amber" title={L('Test client: not counted in any total','テスト用：合計に含めません','Cliente de teste: não conta em nenhum total')}>TESTE</span> : <span className={`badge ${c.is_active?'badge-green':'badge-red'}`}>{c.is_active?L('Active','有効','Ativo'):L('Inactive','無効','Inativo')}</span>}
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
                   <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
@@ -422,7 +424,7 @@ export default function Clients() {
               <tr><th>{L('Company','会社','Empresa')}</th><th>{L('Service','サービス','Serviço')}</th><th>{L('Contract/mo','契約月額','Contrato/mês')}</th><th>{L(`Billed ${costMonth}`,`請求 ${costMonth}`,`Faturado ${costMonth}`)}</th><th>{L('Cost','原価','Custo')}</th><th>{L('Profit','利益','Lucro')}</th><th>{L('Margin','利益率','Margem')}</th></tr>
             </thead>
             <tbody>
-              {clients.filter(c=>c.is_active).map(c=>{
+              {clients.filter(c=>c.is_active && !isTestClient(c)).map(c=>{
                 const profit = c.monthly_cost == null ? null : Number(c.monthly_revenue||0)-Number(c.monthly_cost||0)
                 const margin = marginPct(c.monthly_revenue, c.monthly_cost)
                 return (

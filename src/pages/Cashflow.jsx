@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { billedInMonth, isReceivable, isOverdueInvoice } from '../lib/money'
+import { isTestInvoice } from '../lib/testData'
 import { askConfirm } from '../components/ConfirmDialog'
 
 const CF_TEXT = {
@@ -68,7 +69,7 @@ export default function Cashflow() {
     ])
     if (error) return toast.error(error.message)
     setEntries((data || []).map(normalizeEntry))
-    setInvoices(invoiceData || [])
+    setInvoices((invoiceData || []).filter(f => !isTestInvoice(f))) // v1.0.133 · test clients never count
     setSalaryPayments(salaryData || [])
     setTransportClaims(transportData || [])
     setLoading(false)

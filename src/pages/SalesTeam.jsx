@@ -11,6 +11,7 @@ import { regionOf, suggestSeller, unassignedOpenLeads } from '../lib/salesInsigh
 import { buildDeals } from '../components/SalesFunnel'
 import { funnelCopy } from '../lib/salesPhases'
 import { maskEmail, phoneTakenMessage } from '../lib/contactMask'
+import { isTestSeller } from '../lib/testData'
 import { supabase } from '../lib/supabase'
 
 const TXT = {
@@ -117,7 +118,7 @@ export default function SalesTeam() {
   const unassigned = unassignedOpenLeads(leads)
   const noSellerClosed = leads.filter(row => !row.salesperson_id && ['won', 'lost'].includes(row.stage)).length
   const dayToday = data?.today || today
-  const todayReports = sellers.filter(p => p.is_active !== false).map(person => ({ person, report: (data?.reports || []).find(r => r.salesperson_id === person.id && r.work_date === dayToday) }))
+  const todayReports = sellers.filter(p => p.is_active !== false && !isTestSeller(p)).map(person => ({ person, report: (data?.reports || []).find(r => r.salesperson_id === person.id && r.work_date === dayToday) }))
 
   const askAiRoute = async (lead, options) => {
     setAiPicks(v => ({ ...v, [lead.id]: { busy: true } }))

@@ -78,7 +78,8 @@ export default function Dashboard() {
     if (!moneyRef.current) moneyRef.current = await loadClientMoney().catch(() => null) // once per visit, not every refresh
     const money = moneyRef.current
     // v1.0.110 · "hide tests" (ON by default) takes test accounts out of every count on this screen
-    const keep = (rows, isTest) => hideTests ? (rows || []).filter(r => !isTest(r)) : (rows || [])
+    // v1.0.133 · test rows never count in a total, whatever the switch (it only shows/hides them in lists)
+    const keep = (rows, isTest) => (rows || []).filter(r => !isTest(r))
     setClients(withClientMoney(keep(c.data, isTestClient), money))
     setTodayJobs(keep(j.data, isTestJob))
     setEvals(keep(ev.data, e => isTestName(e.employee_name)))

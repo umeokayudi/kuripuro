@@ -7,6 +7,7 @@ import { useLang, localeOf } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { RoleBadge } from '../components/EmployeeRole'
 import UserEditDialog from '../components/UserEditDialog'
+import { isTestEmployee, isTestSeller, isTestClientUser } from '../lib/testData'
 import { maskEmail, maskPhone } from '../lib/contactMask'
 
 // v1.0.35 · One place for every login: admins, employees, sellers and client logins.
@@ -88,9 +89,9 @@ export default function Users() {
     ])
     setRows([
       ...(admins.data || []).map(a => ({ type: 'admin', id: a.id, name: a.name || a.email, email: a.email, active: true, created_at: a.created_at })),
-      ...(employees.data || []).map(e => ({ type: 'employee', id: e.id, name: e.full_name, email: e.email, phone: e.phone, active: e.is_active !== false, role: e.job_role, last_seen: e.last_seen, created_at: e.created_at })),
-      ...(sellers.data || []).map(s => ({ type: 'salesperson', id: s.id, name: s.full_name, email: s.email, phone: s.phone, active: s.is_active !== false, team: s.team === 'marketing' ? 'marketing' : 'sales', created_at: s.created_at })),
-      ...(clients.data || []).map(c => ({ type: 'client', id: c.id, client_id: c.client_id, name: c.contact_name || c.location_name || c.client_name || c.email, contact_name: c.contact_name, email: c.email, place: [c.client_name, c.location_name].filter(Boolean).join(' · '), active: c.is_active !== false, last_seen: c.last_seen, created_at: c.created_at })),
+      ...(employees.data || []).map(e => ({ type: 'employee', id: e.id, name: e.full_name, email: e.email, phone: e.phone, active: e.is_active !== false, test: isTestEmployee(e), role: e.job_role, last_seen: e.last_seen, created_at: e.created_at })),
+      ...(sellers.data || []).map(s => ({ type: 'salesperson', id: s.id, name: s.full_name, email: s.email, phone: s.phone, active: s.is_active !== false, test: isTestSeller(s), team: s.team === 'marketing' ? 'marketing' : 'sales', created_at: s.created_at })),
+      ...(clients.data || []).map(c => ({ type: 'client', id: c.id, client_id: c.client_id, name: c.contact_name || c.location_name || c.client_name || c.email, contact_name: c.contact_name, email: c.email, place: [c.client_name, c.location_name].filter(Boolean).join(' · '), active: c.is_active !== false, test: isTestClientUser(c), last_seen: c.last_seen, created_at: c.created_at })),
     ])
     setLoading(false)
   }, [])
@@ -99,7 +100,8 @@ export default function Users() {
   const counts = useMemo(() => {
     const c = { all: 0 }
     for (const type of TYPES) c[type] = 0
-    for (const r of rows) if (r.active || showInactive) { c.all += 1; c[r.type] += 1 }
+    // v1.0.133 · test accounts are listed (with a TESTE badge) but never counted as active users
+    for (const r of rows) if (!r.test && (r.active || showInactive)) { c.all += 1; c[r.type] += 1 }
     return c
   }, [rows, showInactive])
 
@@ -161,6 +163,7 @@ export default function Users() {
           {r.type === 'employee' && <RoleBadge value={r.role} lang={lang} size="sm" />}
           {r.type === 'salesperson' && <span className={`kp-team-badge is-${r.team}`}>{r.team === 'marketing' ? tr('Marketing', 'マーケティング', 'Marketing') : tr('Sales', '営業', 'Vendas')}</span>}
           {!r.active && <span className="badge badge-red">{t.inactive}</span>}
+          {r.test && <span className="badge badge-amber" title={tr('Test account: not counted in any total', 'テスト用：合計に含めません', 'Conta de teste: não conta em nenhum total')}>TESTE</span>}
         </div>
         <div className="kp-users-meta">
           {[maskEmail(r.email), r.place, maskPhone(r.phone)].filter(Boolean).join(' · ')}

@@ -6,7 +6,8 @@ import { getPeriodDates } from '../lib/salaryPeriod'
 import '../components/SalaryPopups.css'
 import './Payments.css'
 import PayrollCloseSheet from '../components/PayrollCloseSheet'
-import { payrollState } from '../lib/salaryClose'
+import { payrollState, isPayrollActive } from '../lib/salaryClose'
+import { isTestEmployee } from '../lib/testData'
 import { payrollMonth, monthLastDay, canCloseMonth } from '../lib/salaryCalc'
 import { loadPayBasis } from '../lib/jobEmployeePay'
 import { isSilentCancel, isDeductionToReview, cancelText, reviewText, cancelPatch } from '../lib/deductionReview'
@@ -124,7 +125,8 @@ export default function Payments() {
   const rows = useMemo(() => {
     if (!month) return []
     const lines = payments.filter(p => monthOf(p) === month)
-    const ids = [...new Set([...employees.filter(e => e.is_active !== false).map(e => e.id), ...lines.map(p => p.employee_id)])]
+    const ids = [...new Set([...employees.filter(isPayrollActive).map(e => e.id), ...lines.map(p => p.employee_id)])]
+      .filter(id => !isTestEmployee(employees.find(e => e.id === id) || { full_name: lines.find(p => p.employee_id === id)?.employee_name }))
     return ids.map(id => {
       const emp = employees.find(e => e.id === id) || { id, full_name: lines.find(p => p.employee_id === id)?.employee_name || '—', is_active: false }
       const mine = lines.filter(p => p.employee_id === id).sort((a, b) => (a.payment_date||'').localeCompare(b.payment_date||''))

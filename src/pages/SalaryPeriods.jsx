@@ -7,6 +7,7 @@ import { closeSalaryPeriod, closeEmployeeMonth, isPayrollActive, payrollState, p
 import { payrollMonth, canCloseMonth, monthLastDay } from '../lib/salaryCalc'
 import { loadPayBasis } from '../lib/jobEmployeePay'
 import { tokyoToday } from '../lib/dates'
+import { isTestEmployee } from '../lib/testData'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { useLang, fill } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
@@ -74,7 +75,7 @@ export default function SalaryPeriods() {
   const rows = useMemo(() => {
     if (!data) return []
     const ids = new Set([...employees.filter(isPayrollActive).map(e => e.id), ...data.statements.map(s => s.employee_id)])
-    return [...ids].map(id => {
+    return [...ids].filter(id => !isTestEmployee(employees.find(e => e.id === id) || { full_name: data.statements.find(s => s.employee_id === id)?.employee_name })).map(id => {
       const emp = employees.find(e => e.id === id) || { id, full_name: data.statements.find(s => s.employee_id === id)?.employee_name || '—', is_active: false }
       const calc = payrollMonth({ emp, jobs: data.jobs.filter(j => j.employee_id === id), lines: data.lines.filter(l => l.employee_id === id), month: period, basis: data.bases?.[id] || null })
       const st = data.statements.find(s => s.employee_id === id) || null

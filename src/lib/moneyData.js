@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { monthlyByClient, teamCostByClient, isBilled, invoiceMonth } from './money'
 import { monthLastDay } from './salaryCalc'
 import { tokyoToday } from './dates'
+import { isTestClient, isTestJob } from './testData'
 
 // v1.0.133 · '*' so employee_pay counts as the job cost when the column exists
 const JOB_COLS = '*'
@@ -16,13 +17,16 @@ export const previousMonth = (today = tokyoToday()) => {
  * team cost of the last full month. Returns { monthly, cost, costMonth, contracts }.
  */
 export async function loadClientMoney({ costMonth = previousMonth() } = {}) {
-  const [c, j, e, f] = await Promise.all([
+  const [c, j, e, f, cl] = await Promise.all([
     supabase.from('service_contracts').select('*').eq('is_active', true),
     supabase.from('jobs').select(JOB_COLS).eq('status', 'completed').gte('scheduled_date', `${costMonth}-01`).lte('scheduled_date', monthLastDay(costMonth)).limit(5000),
     supabase.from('employees').select('*'),
     supabase.from('faturas').select('id,client_id,status,total,issue_date,period_start,paid_at'),
+    supabase.from('clients').select('*'),
   ])
-  const contracts = c.data || []
+  // v1.0.133 · contracts / invoices of test clients never count
+  const testIds = new Set((cl.data || []).filter(isTestClient).map(x => x.id))
+  const contracts = (c.data || []).filter(x => !testIds.has(x.client_id))
   // v1.0.133 · three different numbers, each with its own label on screen:
   //  contract/month (active contracts) · billed in the month (invoices sent) · received in the month (paid)
   const billed = {}, received = {}
@@ -34,7 +38,7 @@ export async function loadClientMoney({ costMonth = previousMonth() } = {}) {
   return {
     contracts, billed, received,
     monthly: monthlyByClient(contracts),
-    cost: teamCostByClient({ jobs: j.data || [], employees: e.data || [], month: costMonth }),
+    cost: teamCostByClient({ jobs: (j.data || []).filter(x => !isTestJob(x) && !testIds.has(x.client_id)), employees: e.data || [], month: costMonth }),
     costMonth,
   }
 }

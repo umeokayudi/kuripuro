@@ -4,6 +4,7 @@ import { getPeriodDates } from './salaryPeriod.js'
 import { monthBase, payrollMonth, canCloseMonth } from './salaryCalc.js'
 import { ensureServiceReports } from './jobReport.js'
 import { loadPayBasis } from './jobEmployeePay.js'
+import { isTestEmployee } from './testData.js'
 
 const tokyoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())
 
@@ -20,7 +21,8 @@ export function computeBase(emp, jobs, period) {
 }
 
 /** v1.0.102 · Who is in a payroll: every employee not switched off (is_active true OR empty). */
-export const isPayrollActive = emp => emp?.is_active !== false
+// v1.0.133 · test accounts are never in a payroll / total (records are kept).
+export const isPayrollActive = emp => emp?.is_active !== false && !isTestEmployee(emp)
 
 /**
  * v1.0.102 · ONE state for the salary of a person in a month, read by Payments, Payroll close and the
