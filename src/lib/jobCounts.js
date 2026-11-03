@@ -9,6 +9,7 @@
 //   não começou  pendentes still 'assigned' (not started), today or earlier
 //   atrasados    not started and past its time (today, LATE_AFTER_MIN after the hour) or of a past day
 import { isTestJob } from './testData.js'
+import { coveredJobs } from './jobCoverage.js'
 import { tokyoToday, tokyoNow } from './dates.js'
 import { isDeadlineJob, isDeadlineLate } from './jobDeadline.js'
 
@@ -41,10 +42,13 @@ export function isLateJob(j, today = tokyoToday(), nowMin = nowMinutes()) {
  * @param opts { from, to } (YYYY-MM-DD, inclusive; omit for all), today, nowMin, keepTests
  */
 export function countJobs(jobs, { from = null, to = null, today = tokyoToday(), nowMin = nowMinutes(), keepTests = false } = {}) {
-  const list = (jobs || []).filter(j => isCountable(j, { keepTests })
+  let list = (jobs || []).filter(j => isCountable(j, { keepTests })
     && (!from || (j.scheduled_date && j.scheduled_date >= from))
     && (!to || (j.scheduled_date && j.scheduled_date <= to)))
-  const c = { scheduled: list.length, assigned: 0, unassigned: 0, completed: 0, inProgress: 0, pending: 0, notStarted: 0, late: 0, list }
+  // v1.0.148 · a service covered by another person counts once (B's completed job), never as A's pending/late
+  const cov = coveredJobs(list)
+  if (cov.size) list = list.filter(j => !cov.has(j.id))
+  const c = { scheduled: list.length, covered: cov.size, assigned: 0, unassigned: 0, completed: 0, inProgress: 0, pending: 0, notStarted: 0, late: 0, list }
   for (const j of list) {
     if (j.employee_id) c.assigned++; else c.unassigned++
     if (j.status === 'completed') { c.completed++; continue }

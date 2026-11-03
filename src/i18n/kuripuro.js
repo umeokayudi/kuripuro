@@ -622,6 +622,7 @@ export const kuripuroEn = {
   status: {
     assigned: 'Pending',
     in_progress: 'In progress',
+    covered: 'Covered by a coworker',
     completed: 'Completed',
     cancelled: 'Cancelled',
   },
@@ -1915,6 +1916,7 @@ export const kuripuroJa = {
   status: {
     assigned: '予定',
     in_progress: '作業中',
+    covered: '他のスタッフが実施',
     completed: '完了',
     cancelled: 'キャンセル',
   },

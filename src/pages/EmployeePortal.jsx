@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { coveredJobs } from '../lib/jobCoverage'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
 import KeyReveal from '../components/KeyReveal'
@@ -429,6 +430,19 @@ export default function EmployeePortal() {
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).neq('status','cancelled').or(`period.eq.${monthStart.slice(0,7)},and(period.is.null,payment_date.gte.${monthStart},payment_date.lte.${today})`),
       supabase.from('service_contracts').select('location_name,price_per_visit,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
     ])
+    // v1.0.148 · a job of mine that another person already completed (same day/store/service) shows
+    // "Coberto por [B]", struck, not pending — it only leaves my agenda when the owner removes it.
+    const mineOpen = [...(active.data || []), ...(all.data || [])].filter(j => ['assigned', 'in_progress'].includes(j.status) && j.scheduled_date >= addDaysIso(today, -31) && j.scheduled_date <= today)
+    if (mineOpen.length) {
+      const days = [...new Set(mineOpen.map(j => j.scheduled_date))]
+      const { data: others } = await supabase.from('jobs').select('id,title,description,job_category,status,employee_id,employee_name,scheduled_date').in('scheduled_date', days).eq('status', 'completed').neq('employee_id', user.id).limit(2000)
+      const cov = coveredJobs([...mineOpen, ...(others || [])])
+      if (cov.size) {
+        const mark = list => (list || []).map(j => cov.has(j.id) ? { ...j, status: 'covered', covered_by: cov.get(j.id).employee_name || '—' } : j)
+        active.data = mark(active.data).filter(j => j.status !== 'covered')
+        all.data = mark(all.data)
+      }
+    }
     const visible = (list) => (list || []).filter(j => !isDuskinJob(j))
     const regular = visible(active.data).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = visible(active.data).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
@@ -2918,8 +2932,9 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                   {isDone?'✓':idx+1}
                 </div>
                 <div>
-                  <div style={{fontSize:14,fontWeight:600,color:isDone?'rgba(255,255,255,0.4)':'#fff',textDecoration:isDone?'line-through':'none'}}>{job.title.replace(/ — .*/,'')}</div>
+                  <div style={{fontSize:14,fontWeight:600,color:isDone||job.covered_by?'rgba(255,255,255,0.4)':'#fff',textDecoration:isDone||job.covered_by?'line-through':'none'}}>{job.title.replace(/ — .*/,'')}</div>
                   <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3,flexWrap:'wrap'}}>
+                    {job.covered_by&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#a5b4fc',background:'rgba(165,180,252,0.15)'}}>🔁 {L(`Covered by ${job.covered_by}`,`${job.covered_by}が実施`,`Coberto por ${job.covered_by}`)}</span>}
                     {(() => {
                       const ct = getCleaningType(job)
                       const cfg = cleaningTypesForLang(lang)[ct]
@@ -2931,8 +2946,8 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                       )
                     })()}
                     {isRetroJob(job)&&<RetroBadge labels={labels} />}
-                    {!isDone&&photoRule(job)}
-                    {!isDone&&deadlineLateText(job,lang)&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#f87171',background:'rgba(248,113,113,0.15)'}}>{deadlineLateText(job,lang)}</span>}
+                    {!isDone&&!job.covered_by&&photoRule(job)}
+                    {!isDone&&!job.covered_by&&deadlineLateText(job,lang)&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#f87171',background:'rgba(248,113,113,0.15)'}}>{deadlineLateText(job,lang)}</span>}
                     <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{jobTimeText(job,lang,'')}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
                     {job.job_category!=='spot'&&<PayChip job={job} L={L} lang={lang} />}
                     {canOpen&&<span style={{fontSize:10,color:'#60a5fa',fontWeight:700}}>{L('Tap to open','タップして開く','Toque para abrir')} ›</span>}

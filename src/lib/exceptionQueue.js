@@ -9,10 +9,11 @@ import { jobMinutes } from './salaryCalc'
 import { expectedMinutes, contractForAgendaJob } from './agenda'
 import { isTestName } from './testData'
 import { problemJobId } from './fieldExec'
+import { coveredJobs } from './jobCoverage.js'
 
-const JOB_COLS = 'id,title,client_id,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category'
+const JOB_COLS = 'id,title,description,client_id,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category'
 
-export const URGENCY = { late: 95, no_person: 90, problem: 85, incomplete: 80, disputed: 75, paid_unconfirmed: 72, payroll_review: 70, long: 60, no_photo: 50, ai_waiting: 30 }
+export const URGENCY = { late: 95, covered: 88, no_person: 90, problem: 85, incomplete: 80, disputed: 75, paid_unconfirmed: 72, payroll_review: 70, long: 60, no_photo: 50, ai_waiting: 30 }
 
 const place = j => String(j?.title || '').split(' — ')[0]
 
@@ -37,8 +38,15 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     const dl = withDeadline(kind, j?.scheduled_date, today)
     out.push({ id: `${kind}:${j?.id || extra.key}`, kind, urgency: URGENCY[kind] + (dl.overdue ? 10 : 0), date: j?.scheduled_date || '', place: j ? place(j) : '', who: j?.employee_name || '', jobId: j?.id || null, ...dl, ...extra })
   }
+  // v1.0.148 · B did A's service: A is not late / incomplete — the owner decides [Retirar de A] / [Manter em A]
+  const cov = coveredJobs(jobs)
   for (const j of jobs) {
     if (j.status === 'cancelled') continue
+    if (cov.has(j.id)) {
+      const b = cov.get(j.id)
+      if (!(hideTests && (isTestName(j.employee_name) || isTestName(j.client_name)))) push('covered', j, { by: b.employee_name || '—', byJob: b, job: j, employeeId: j.employee_id })
+      continue
+    }
     if (hideTests && (isTestName(j.employee_name) || isTestName(j.client_name))) continue
     const done = j.status === 'completed'
     if (!done && !j.employee_id && j.scheduled_date >= today && j.scheduled_date <= addDays(today, 1)) push('no_person', j, {})
@@ -68,7 +76,7 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
 export async function fetchExceptions({ hideTests = true } = {}) {
   const today = tokyoToday()
   const [jobs, contracts, periods, disputed, paidLines, statements, problems] = await Promise.all([
-    supabase.from('jobs').select(JOB_COLS).gte('scheduled_date', addDays(today, -14)).lte('scheduled_date', addDays(today, 1)).limit(3000),
+    supabase.from('jobs').select(JOB_COLS).gte('scheduled_date', addDays(today, -31)).lte('scheduled_date', addDays(today, 1)).limit(3000),
     supabase.from('service_contracts').select('location_name,hours_per_visit,service_type').eq('is_active', true),
     supabase.from('salary_periods').select('period,status').eq('status', 'auto_closed'),
     supabase.from('salary_statements').select('id,employee_name,period').not('employee_disputed_at', 'is', null).is('employee_confirmed_at', null),
