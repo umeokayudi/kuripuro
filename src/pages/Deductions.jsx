@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { askConfirm } from '../components/ConfirmDialog'
-import { isDeductionToReview, reviewText, approvePatch, rejectPatch } from '../lib/deductionReview'
+import { isDeductionToReview, reviewText, approvePatch, rejectPatch, cancelPatch, cancelText, isSilentCancel } from '../lib/deductionReview'
 import { tokyoToday } from '../lib/dates'
 import { useLang, pickLang } from '../hooks/useLang'
 import { undoToast } from '../components/UndoToast'
@@ -70,11 +70,21 @@ export default function Deductions() {
       confirmLabel: L('Remove','取り消す','Remover'), danger: true,
     })
     if (!ok) return
-    const before = d.status
-    const { error } = await supabase.from('salary_payments').update({ status: 'cancelled' }).eq('id', d.id)
+    const before = { status: d.status, description: d.description }
+    let who = 'admin'
+    try { who = JSON.parse(localStorage.getItem('kp_user') || '{}').name || 'admin' } catch { /* private mode */ }
+    const { error } = await supabase.from('salary_payments').update(cancelPatch(d, who, tokyoToday())).eq('id', d.id)
     if (error) return toast.error(error.message)
     load()
-    undoToast(L('Deduction removed','控除を取り消しました','Desconto removido'), () => supabase.from('salary_payments').update({ status: before }).eq('id', d.id), lang, load)
+    undoToast(L('Deduction removed','控除を取り消しました','Desconto removido'), () => supabase.from('salary_payments').update(before).eq('id', d.id), lang, load)
+  }
+
+  const reactivate = async (d) => {
+    if (!(await askConfirm({ title: L('Count this deduction again?','この控除を再び有効にしますか？','Voltar a valer este desconto?'), message: `${d.employee_name} · -¥${Number(d.amount).toLocaleString()}\n${cancelText(d)}`, confirmLabel: L('Count again','再び控除','Voltar a valer') }))) return
+    const { error } = await supabase.from('salary_payments').update({ status: 'scheduled', description: cancelText(d) }).eq('id', d.id)
+    if (error) return toast.error(error.message)
+    toast.success(L('Deduction counts again','控除を戻しました','Desconto voltou a valer'))
+    load()
   }
 
   // Automatic suggestions: a person decides before anything reaches the payslip.
@@ -154,9 +164,9 @@ export default function Deductions() {
             <div>
               <div style={{fontWeight:500,fontSize:13}}>{d.employee_name}</div>
               <div style={{fontSize:12,color:'var(--red)',fontWeight:600}}>-¥{Number(d.amount).toLocaleString()}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>{d.payment_date} · {d.description}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>{d.payment_date} · {d.status==='cancelled'&&!d.description?.startsWith('✕')?<>{cancelText(d)}{!isSilentCancel(d)&&<> · {String(d.description).match(/^⊘ Cancelado \(([^)]*)\)/)?.[1]||''}</>}</>:d.description}</div>
             </div>
-            {d.status==='cancelled'?<span className="badge">{d.description?.startsWith('✕')?L('Rejected','却下','Rejeitado'):L('Cancelled','取消','Cancelado')}</span>:<button className="btn btn-sm btn-danger" onClick={()=>handleDelete(d)}>{L('Remove','取り消す','Remover')}</button>}
+            {d.status==='cancelled'?<div style={{display:'flex',gap:6,alignItems:'center'}}><span className={`badge${isSilentCancel(d)?' badge-amber':''}`}>{d.description?.startsWith('✕')?L('Rejected','却下','Rejeitado'):isSilentCancel(d)?L('Cancelled with no confirmation','確認なしで取消','Cancelado sem confirmação'):L('Cancelled','取消','Cancelado')}</span>{isSilentCancel(d)&&<button className="btn btn-sm" onClick={()=>reactivate(d)}>{L('Count again','再び控除','Voltar a valer')}</button>}</div>:<button className="btn btn-sm btn-danger" onClick={()=>handleDelete(d)}>{L('Remove','取り消す','Remover')}</button>}
           </div>
         ))}
       </div>

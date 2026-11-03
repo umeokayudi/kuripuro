@@ -62,7 +62,10 @@ export async function closeSalaryPeriod(db, period, { auto = false, salaryDesc =
   // person failing never stops the others: who stayed out is returned with the reason.
   const { data: all, error: empErr } = await db.from('employees').select('*')
   if (empErr) throw empErr
-  const employees = (all || []).filter(isPayrollActive)
+  // v1.0.133 · everyone active is in by default; only people the admin took out stay out.
+  const { data: prow } = await db.from('salary_periods').select('*').eq('period', period).maybeSingle()
+  const excluded = new Set(prow?.excluded_ids || [])
+  const employees = (all || []).filter(isPayrollActive).filter(e => !excluded.has(e.id))
 
   let total = 0
   let kept = 0
@@ -111,11 +114,6 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
   const basisRow = (await loadPayBasis(db, period, emp.id))[emp.id] || null
   // v1.0.108 · the same calculation every screen shows (base + jobs − deductions).
   const calc = payrollMonth({ emp, jobs: jobs || [], lines: lines || [], month: period, basis: basisRow })
-  if (calc.needsBasis) {
-    const e = new Error(`${emp.full_name}: choose fixed salary or sum per job in Payroll close first / escolha salário fixo ou soma por job no Payroll Close`)
-    e.code = 'needs_basis'
-    throw e
-  }
   const base = calc.base
   const dedTotal = calc.deductions
   const net = calc.net
@@ -130,7 +128,7 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
     breakdown: {
       jobs: calc.jobs, jobs_pay: calc.jobsPay, salary_type: emp.salary_type,
       // v1.0.131 · both totals and which one counted (who chose it lives in payroll_pay_basis)
-      pay_basis: calc.basis, fixed_total: calc.fixedTotal, per_job_total: calc.perJob.total,
+      pay_basis: calc.basis || calc.autoBasis || null, fixed_total: calc.fixedTotal, per_job_total: calc.perJob.total,
       per_job_jobs: calc.perJob.rows.filter(r => r.pay !== null).map(r => ({ id: r.id, date: r.date, title: r.title, pay: r.pay })),
       pay_basis_by: basisRow?.chosen_by || null, pay_basis_at: basisRow?.chosen_at || null,
     },

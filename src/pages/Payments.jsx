@@ -9,6 +9,7 @@ import PayrollCloseSheet from '../components/PayrollCloseSheet'
 import { payrollState } from '../lib/salaryClose'
 import { payrollMonth, monthLastDay, canCloseMonth } from '../lib/salaryCalc'
 import { loadPayBasis } from '../lib/jobEmployeePay'
+import { isSilentCancel, isDeductionToReview, cancelText, reviewText, cancelPatch } from '../lib/deductionReview'
 import { useNavigate } from 'react-router-dom'
 
 // One month (= month worked, salary_payments.period) at a time, one row per employee.
@@ -134,7 +135,8 @@ export default function Payments() {
       const toPay = open.reduce((s, p) => s + Number(p.amount||0), 0)
       const salaryLine = live.find(p => p.payment_type === 'salary')
       // Fixed salary that closed at ¥0 is almost always "no completed job in the month", worth a look.
-      const fixedZero = emp.salary_type === 'fixed' && Number(emp.fixed_salary) > 0 && salaryLine && Number(salaryLine.amount) === 0
+      // v1.0.133 · any salary type: a fixed salary on the record never closes at ¥0.
+      const fixedZero = Number(emp.fixed_salary) > 0 && emp.salary_type !== 'mixed' && salaryLine && Number(salaryLine.amount) === 0
       const st = statements.find(s => s.employee_id === id && s.period === month)
       // v1.0.102 · same truth as Payroll close: a salary is "Paid" only with the payslip confirmed.
       const pstate = payrollState(st, salaryLine)
@@ -142,13 +144,20 @@ export default function Payments() {
       // The salary line was calculated earlier: when today's numbers differ (and it is not paid), it needs a recalculation.
       const outdated = !!(calc && salaryLine && salaryLine.status !== 'paid' && Number(salaryLine.amount) !== calc.net)
       const paidUnconfirmed = pstate === 'paid_unconfirmed'
+      // v1.0.133 · a deduction cancelled with no confirmation / an automatic one waiting is never silent.
+      const silentDed = mine.filter(isSilentCancel)
+      const reviewDed = mine.filter(isDeductionToReview)
+      // ONE number per person: today's calculation (the same as Salário and Fechar folha) until the salary is paid.
+      const salaryPaid = salaryLine?.status === 'paid'
+      const openSalary = open.filter(p => p.payment_type === 'salary').reduce((s, p) => s + Number(p.amount || 0), 0)
+      const due = calc && !salaryPaid ? Math.max(0, toPay - openSalary + calc.net) : toPay
       const slip = statementState(st)
       const late = toPay > 0 && open.some(p => p.payment_date && p.payment_date < today)
       // v1.0.124 · ONE group per person, each with one sentence and one action:
       // review (something is wrong) → ready (confirmed, pay it) → waiting (employee must confirm) → todo (no payslip) → paid.
       // ¥0 with nothing wrong folds away, even when an old ¥0 line says "paid" without confirmation: no money is involved.
       let group
-      if (fixedZero || outdated || (slip === 'disputed' && earn > 0) || (paidUnconfirmed && earn > 0) || late) group = 'review'
+      if (fixedZero || outdated || silentDed.length || reviewDed.length || (slip === 'disputed' && earn > 0) || (paidUnconfirmed && earn > 0) || late) group = 'review'
       else if (toPay > 0) group = !blocked(slip, open) ? 'ready' : slip === 'none' ? 'todo' : 'waiting'
       else if (earn > 0) group = 'paid'
       else if (!mine.length && calc && calc.net > 0) group = 'todo'
@@ -158,7 +167,7 @@ export default function Payments() {
       const paidOn = mine.filter(p => !p.is_deduction && p.status === 'paid').map(p => p.payment_date).sort().pop() || null
       const paid = live.filter(p => !p.is_deduction && p.status === 'paid').reduce((s, p) => s + Number(p.amount||0), 0)
       // Payroll close already takes deductions out of the salary row, so they are shown, not subtracted again.
-      return { emp, lines: mine, earn, ded, net: earn, paid, toPay, open, group, state, late, payDate, paidOn, slip, st, fixedZero, paidUnconfirmed, salaryLine, pstate, calc, outdated }
+      return { emp, lines: mine, earn, ded, net: earn, paid, toPay, due, silentDed, reviewDed, open, group, state, late, payDate, paidOn, slip, st, fixedZero, paidUnconfirmed, salaryLine, pstate, calc, outdated }
     }).sort((a, b) => a.emp.full_name.localeCompare(b.emp.full_name))
   }, [payments, employees, statements, month, today, monthJobs])
 
@@ -169,10 +178,10 @@ export default function Payments() {
 
   // v1.0.124 · totals that add up: month total = already paid + still to pay.
   const totals = {
-    toPay: visible.reduce((s, r) => s + r.toPay, 0),
+    toPay: visible.reduce((s, r) => s + r.due, 0),
     paid: visible.reduce((s, r) => s + r.paid, 0),
-    ready: inGroup('ready').reduce((s, r) => s + r.toPay, 0),
-    waiting: inGroup('waiting').reduce((s, r) => s + r.toPay, 0) + inGroup('todo').reduce((s, r) => s + r.toPay, 0),
+    ready: inGroup('ready').reduce((s, r) => s + r.due, 0),
+    waiting: inGroup('waiting').reduce((s, r) => s + r.due, 0) + inGroup('todo').reduce((s, r) => s + r.due, 0),
   }
   totals.month = totals.toPay + totals.paid
   const payDay = month ? getPeriodDates(month).payDate : null
@@ -204,9 +213,18 @@ export default function Payments() {
     if (!ask) return
     setBusy(true)
     const ids = ask.lines.map(p => p.id)
-    const { error } = ask.kind === 'pay'
-      ? await supabase.from('salary_payments').update({ status:'paid' }).in('id', ids)
-      : await supabase.from('salary_payments').delete().in('id', ids)
+    // v1.0.133 · a deduction is never deleted: it is cancelled (who/when kept) and stays in the month history.
+    let who = 'admin'
+    try { who = JSON.parse(localStorage.getItem('kp_user') || '{}').name || 'admin' } catch { /* private mode */ }
+    const deds = ask.kind === 'delete' ? ask.lines.filter(p => p.is_deduction) : []
+    for (const d of deds) {
+      const { error: e1 } = await supabase.from('salary_payments').update(cancelPatch(d, who, today)).eq('id', d.id)
+      if (e1) { setBusy(false); return toast.error(e1.message) }
+    }
+    const rest = ids.filter(id => !deds.some(d => d.id === id))
+    const { error } = !rest.length ? { error: null } : ask.kind === 'pay'
+      ? await supabase.from('salary_payments').update({ status:'paid' }).in('id', rest)
+      : await supabase.from('salary_payments').delete().in('id', rest)
     setBusy(false)
     if (error) return toast.error(error.message)
     toast.success(ask.kind === 'pay' ? tr('Marked as paid','支払済みにしました','Marcado como pago') : tr('Deleted','削除しました','Apagado'))
@@ -273,6 +291,12 @@ export default function Payments() {
     if (r.outdated) return {
       why: tr(`Saved payslip ${fmt(r.salaryLine.amount)}, but today's jobs give ${fmt(r.calc.net)}.`, `保存された明細は ${fmt(r.salaryLine.amount)}、今日のジョブでは ${fmt(r.calc.net)} です。`, `Holerite gravado ${fmt(r.salaryLine.amount)}, mas pelos serviços de hoje dá ${fmt(r.calc.net)}.`),
       btn: tr('Recalculate','再計算','Recalcular'), act: open }
+    if (r.silentDed.length) return {
+      why: tr(`Deduction −${fmt(r.silentDed[0].amount)} (${cancelText(r.silentDed[0])}) is cancelled with no confirmation — it is not in the pay.`, `控除 −${fmt(r.silentDed[0].amount)}（${cancelText(r.silentDed[0])}）は確認なしで取消になっていて、給与に入っていません。`, `Desconto −${fmt(r.silentDed[0].amount)} (${cancelText(r.silentDed[0])}) está cancelado sem confirmação — não entra no pagamento.`),
+      btn: tr('Review','確認','Revisar'), act: open }
+    if (r.reviewDed.length) return {
+      why: tr(`Automatic deduction −${fmt(r.reviewDed[0].amount)} waiting for your review (${reviewText(r.reviewDed[0])}).`, `自動控除 −${fmt(r.reviewDed[0].amount)} が確認待ち（${reviewText(r.reviewDed[0])}）。`, `Desconto automático −${fmt(r.reviewDed[0].amount)} esperando sua revisão (${reviewText(r.reviewDed[0])}).`),
+      btn: tr('Review','確認','Revisar'), act: () => navigate('/deductions') }
     if (r.slip === 'disputed') return {
       why: tr('The employee disputed the payslip.', '本人が明細に異議を出しました。', 'O funcionário contestou o holerite.'),
       btn: tr('Answer','回答する','Responder'), act: () => navigate('/salary-complaints') }
@@ -297,9 +321,10 @@ export default function Payments() {
     const plan = rowPlan(r)
     // No payslip yet: show what today's jobs give, marked as an estimate.
     // v1.0.131 · jobs carry an employee pay and nobody chose fixed / per job yet: show both, no single estimate.
-    const choose = !r.lines.length && r.calc?.needsBasis
-    const estimate = !choose && !r.lines.length && r.calc && r.calc.net > 0
-    const amount = r.toPay > 0 ? r.toPay : estimate ? r.calc.net : r.net
+    // v1.0.133 · fixed counts by default, so there is always one number (today's calculation until paid).
+    const choose = false
+    const estimate = !r.lines.length && r.calc && r.calc.net > 0
+    const amount = r.due > 0 ? r.due : r.net
     return (
       <div key={r.emp.id} className={`pm-row is-${r.group}${expanded ? ' is-expanded' : ''}`}>
         <div className="pm-main" onClick={() => setOpenRow(expanded ? null : r.emp.id)}>
@@ -308,7 +333,7 @@ export default function Payments() {
             <b>{r.emp.full_name}{r.emp.is_active === false && <em>{tr('inactive','退職','inativo')}</em>}</b>
             <small>
               {payKind[r.emp.salary_type] || ''}
-              {r.emp.salary_type === 'fixed' && Number(r.emp.fixed_salary) > 0 && ` · ${fmt(r.emp.fixed_salary)}/${tr('mo','月','mês')}`}
+              {Number(r.emp.fixed_salary) > 0 && ` · ${tr('fixed','固定','fixo')} ${fmt(r.emp.fixed_salary)}/${tr('mo','月','mês')}`}
             </small>
             {plan.why && <p className={`pm-why is-${r.group}`}>{plan.why}</p>}
           </div>
@@ -335,14 +360,14 @@ export default function Payments() {
                   <span className={`pm-type t-${p.payment_type}`}>{typeLabel[p.payment_type] || p.payment_type}</span>
                   <div>
                     <div className="pm-desc">{p.description || typeLabel[p.payment_type]}</div>
-                    <small>{fmtDay(p.payment_date)} · {p.status === 'paid' ? tr('paid','支払済','pago') : p.status === 'cancelled' ? tr('cancelled','取消','cancelado') : p.is_deduction ? tr('discounted from pay','給与から控除','descontado do salário') : tr('scheduled','予定','agendado')}</small>
+                    <small>{fmtDay(p.payment_date)} · {p.status === 'paid' ? tr('paid','支払済','pago') : p.status === 'cancelled' ? (isSilentCancel(p) ? tr('cancelled with no confirmation','確認なしで取消','cancelado sem confirmação') : tr('cancelled','取消','cancelado')) : p.is_deduction ? tr('discounted from pay','給与から控除','descontado do salário') : tr('scheduled','予定','agendado')}</small>
                   </div>
                 </div>
                 <b className={p.is_deduction ? 'is-neg' : ''}>{p.is_deduction ? '−' : ''}{fmt(p.amount)}</b>
                 <div className="pm-line-act">
                   {isOpen(p) && !blocked(r.slip, [p]) && <button title={tr('Mark paid','支払済にする','Marcar pago')} onClick={() => setAsk({ kind:'pay', emp:r.emp, lines:[p], r })}>✓</button>}
                   <button title={tr('Edit','編集','Editar')} onClick={() => openEdit(p)}>✎</button>
-                  {p.payment_type !== 'salary' && <button className="is-del" title={tr('Delete','削除','Apagar')} onClick={() => setAsk({ kind:'delete', emp:r.emp, lines:[p], r })}>🗑</button>}
+                  {p.payment_type !== 'salary' && !(p.is_deduction && p.status === 'cancelled') && <button className="is-del" title={tr('Delete','削除','Apagar')} onClick={() => setAsk({ kind:'delete', emp:r.emp, lines:[p], r })}>🗑</button>}
                 </div>
               </div>
             ))}

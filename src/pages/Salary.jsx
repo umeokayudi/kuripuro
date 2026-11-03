@@ -78,10 +78,12 @@ export default function Salary() {
 
   const salary = calcSalary()
 
+  // v1.0.133 · Tokyo months (the old list used UTC dates and could skip / repeat a month)
   const months = []
+  const [ty, tm] = tokyoToday().slice(0, 7).split('-').map(Number)
   for (let i = 0; i < 6; i++) {
-    const d = new Date(); d.setMonth(d.getMonth() - i)
-    months.push(d.toISOString().slice(0,7))
+    const d = new Date(ty, tm - 1 - i, 1)
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
 
   return (
@@ -114,7 +116,7 @@ export default function Salary() {
           {!selected && <div className="card"><div style={{color:'var(--text3)',fontSize:13}}>{L('Select an employee to view salary', 'スタッフを選ぶと給与が表示されます', 'Escolha um funcionário para ver o salário')}</div></div>}
 
           {selected && <>
-            <EarningsPanel key={selected.id} employeeId={selected.id} employee={selected} lang={lang} theme="admin" />
+            <EarningsPanel key={selected.id} employeeId={selected.id} employee={selected} lang={lang} theme="admin" month={period} />
             <div className="card" style={{ marginBottom:14 }}>
               <div className="card-title">📋 {L('Contract', '契約', 'Contrato')} — {selected.full_name}</div>
               <div className="grid-2" style={{ gap:8 }}>
@@ -161,7 +163,7 @@ export default function Salary() {
             <div className="card" style={{ marginBottom:14 }}>
               <div className="card-title">⬇️ {L('Jobs this period', '今期の作業', 'Jobs do período')}</div>
               {jobs.length === 0 && <div style={{color:'var(--text3)',fontSize:13}}>{L('No completed jobs', '完了した作業はありません', 'Nenhum job concluído')}</div>}
-              {jobs.map(j => (
+              {jobs.filter(j => String(j.scheduled_date || '').startsWith(period)).map(j => (
                 <div key={j.id} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
                   <div>
                     <div style={{ fontWeight:500 }}>{j.title}</div>

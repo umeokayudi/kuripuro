@@ -177,15 +177,24 @@ export function payrollMonth({ emp, jobs = [], lines = [], month, basis = null }
   const perJob = perJobPay(done)
   const fixedTotal = fixedMonthBase(emp, month)
   const pick = basis?.basis || basis || null
-  const base = pick === 'per_job' ? perJob.total : pick === 'fixed' ? fixedTotal : monthBase(emp, done, month)
+  // v1.0.133 · No choice yet: a fixed salary on the record IS the base (never ¥0, even with 0 jobs);
+  // without a fixed salary, the sum of "Pagamento do funcionário" when jobs carry one; else the old rule.
+  const type = emp?.salary_type
+  const fixedRule = fixedTotal > 0 && type !== 'mixed'
+  const auto = fixedRule ? 'fixed' : (perJob.priced > 0 && type !== 'mixed' ? 'per_job' : null)
+  const used = pick || auto
+  const base = used === 'per_job' ? perJob.total : used === 'fixed' ? fixedTotal : monthBase(emp, done, month)
   const jobsPay = done.reduce((s, j) => s + spotExtra(j), 0)
   const mine = (lines || []).filter(l => lineMonth(l) === month)
   const dedRows = mine.filter(countsAsDeduction)
   const deductions = dedRows.reduce((s, d) => s + yenAmount(d.amount), 0)
   return {
     month, base, jobsPay, deductions, dedRows,
-    basis: pick, fixedTotal, perJob,
-    needsBasis: !pick && perJob.priced > 0,
+    basis: pick, autoBasis: pick ? null : auto, fixedTotal, perJob,
+    // v1.0.133 · never blocks the close any more (fixed wins by default); kept for old callers.
+    needsBasis: false,
+    // both a fixed salary and jobs with employee pay: the admin may switch (fixed counts until then)
+    bothOptions: !pick && fixedTotal > 0 && perJob.priced > 0,
     gross: base + jobsPay,
     net: Math.max(0, base + jobsPay - deductions),
     jobs: done.length,

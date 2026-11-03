@@ -1,5 +1,5 @@
 import { tokyoToday, workedDayKey } from './dates.js'
-import { calcEmployeeMonthlySalary, jobMinutes, jobPay } from './salaryCalc.js'
+import { calcEmployeeMonthlySalary, jobMinutes, jobPay, lineMonth } from './salaryCalc.js'
 
 // Earnings history for the Salary screens (employee Salary tab + admin Salary page).
 // Each worked day gets its own amount, like a driver-app earnings screen. A full calendar
@@ -103,7 +103,7 @@ const dayOf = j => workedDayKey(j) || j.scheduled_date
  * `jobs`: completed, value-enriched jobs (any dates). `deductions`: salary_payments rows with is_deduction.
  * When the range is exactly one calendar month, totals come from calcEmployeeMonthlySalary (same as payslip).
  */
-export function summarizeRange({ emp, jobs, deductions = [], from, to, today = tokyoToday() }) {
+export function summarizeRange({ emp, jobs, deductions = [], from, to, today = tokyoToday(), payroll = null }) {
   const end = to > today ? today : to
   const done = (jobs || []).filter(j => j.status === 'completed' && j.scheduled_date && j.scheduled_date <= today)
   const inRange = done.filter(j => { const d = dayOf(j); return d >= from && d <= end })
@@ -136,7 +136,15 @@ export function summarizeRange({ emp, jobs, deductions = [], from, to, today = t
   const dedTotal = dedRows.reduce((s, r) => s + Number(r.amount || 0), 0)
 
   const month = from.slice(8) === '01' && to === monthEnd(from.slice(0, 7)) ? from.slice(0, 7) : null
-  const salary = month ? calcEmployeeMonthlySalary(emp, done, dedRows, month) : null
+  // v1.0.133 · a full month with the payroll data (raw jobs, all deduction lines, fixed / per-job choice) gives
+  // exactly the payslip of Fechar folha / Payments: deductions by the month they belong to, cancelled ones out.
+  const monthLines = month && payroll ? (payroll.lines || []).filter(l => lineMonth(l) === month) : null
+  const salary = month
+    ? (payroll
+      ? calcEmployeeMonthlySalary(emp, (payroll.jobs || []).filter(j => j.status === 'completed' && j.scheduled_date <= today), monthLines, month, payroll.basisByMonth?.[month] || null)
+      : calcEmployeeMonthlySalary(emp, done, dedRows, month))
+    : null
+  const monthDed = salary && payroll ? salary.deductions : dedTotal
 
   const base = salary ? salary.base : days.reduce((s, d) => s + d.base, 0)
   const spot = salary ? salary.spotEarned : days.reduce((s, d) => s + d.spot, 0)
@@ -145,8 +153,8 @@ export function summarizeRange({ emp, jobs, deductions = [], from, to, today = t
   return {
     from, to, month, salary, days,
     total, base, spot,
-    deductions: dedTotal, deductionRows: dedRows,
-    net: Math.max(0, total - dedTotal),
+    deductions: monthDed, deductionRows: monthLines ? monthLines.filter(l => l.status !== 'cancelled') : dedRows,
+    net: Math.max(0, total - monthDed),
     jobs: inRange.length,
     hours: minutes / 60,
     workedDays: days.filter(d => d.jobs.length).length,

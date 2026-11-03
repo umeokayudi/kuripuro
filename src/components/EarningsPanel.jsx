@@ -149,12 +149,14 @@ function JobRow({ job, emp, showAmount, lang }) {
   )
 }
 
-export default function EarningsPanel({ employeeId, employee: employeeProp, lang = 'en', theme = 'portal', showTitle = true }) {
+export default function EarningsPanel({ employeeId, employee: employeeProp, lang = 'en', theme = 'portal', showTitle = true, month: monthProp = null }) {
   const t = T[lang] || T.en
   const today = tokyoToday()
-  const [mode, setMode] = useState('week')
+  // v1.0.133 · the admin Salary screen drives the month: its period filter is the panel's month.
+  const [mode, setMode] = useState(monthProp ? 'month' : 'week')
   const [weekAnchor, setWeekAnchor] = useState(() => weekStart(today))
-  const [monthAnchor, setMonthAnchor] = useState(() => today.slice(0, 7))
+  const [monthAnchor, setMonthAnchor] = useState(() => monthProp || today.slice(0, 7))
+  useEffect(() => { if (monthProp) { setMode('month'); setMonthAnchor(monthProp); setSelectedDay(null) } }, [monthProp])
   const [custom, setCustom] = useState(() => ({ from: addDays(today, -29), to: today }))
   const [sheet, setSheet] = useState(false)
   const [activeBar, setActiveBar] = useState(null)
@@ -185,16 +187,20 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
       supabase.from('jobs').select('*').eq('employee_id', employeeId).eq('status', 'completed').gte('scheduled_date', addDays(from, -1)).lte('scheduled_date', today).order('scheduled_date', { ascending: false }).limit(5000),
       supabase.from('service_contracts').select('location_name,price_per_visit').eq('is_active', true),
       supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true).neq('status', 'cancelled').gte('payment_date', from).lte('payment_date', today),
-    ]).then(([emp, jobs, contracts, ded]) => {
+      // v1.0.133 · month totals = payrollMonth (same jobs, same deductions by month, same fixed / per-job choice)
+      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true),
+      supabase.from('payroll_pay_basis').select('*').eq('employee_id', employeeId).then(r => r, () => ({ data: [] })),
+    ]).then(([emp, jobs, contracts, ded, lines, bases]) => {
       if (!alive) return
       const visible = (jobs.data || []).filter(j => !isDuskinJob(j))
-      setData({ emp: emp.data || {}, jobs: enrichJobValues(visible, contracts.data || []), deductions: ded.data || [] })
+      const basisByMonth = Object.fromEntries((bases?.error ? [] : bases?.data || []).map(b => [b.period, b]))
+      setData({ emp: emp.data || {}, jobs: enrichJobValues(visible, contracts.data || []), deductions: ded.data || [], payroll: { jobs: jobs.data || [], lines: lines.data || [], basisByMonth } })
       setLoadedFrom(from)
     }).catch(() => alive && setData(d => d || { emp: employeeProp || {}, jobs: [], deductions: [] }))
     return () => { alive = false }
   }, [employeeId, employeeProp, needFrom, loadedFrom, today])
 
-  const summary = useMemo(() => data && summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: data.deductions, ...range }), [data, range.from, range.to])
+  const summary = useMemo(() => data && summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: data.deductions, payroll: data.payroll, ...range }), [data, range.from, range.to])
   const prevSummary = useMemo(() => data && summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: data.deductions, ...prevRange }), [data, prevRange.from, prevRange.to])
   const bars = useMemo(() => (summary ? chartBars(summary, lang) : []), [summary, lang])
 
@@ -246,7 +252,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
     setMaking(true)
     try {
       const month = payslipMonth
-      const s = summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: data.deductions, from: `${month}-01`, to: monthEnd(month) })
+      const s = summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: data.deductions, payroll: data.payroll, from: `${month}-01`, to: monthEnd(month) })
       const [{ downloadPayslipPdf }, pays] = await Promise.all([
         import('../lib/payslipPdf'),
         supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('period', month).order('payment_date'),

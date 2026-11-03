@@ -6,7 +6,7 @@ import { useLang } from '../hooks/useLang'
 import { closeEmployeeMonth, payrollState, payStateText } from '../lib/salaryClose'
 import { payrollMonth, canCloseMonth } from '../lib/salaryCalc'
 import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
-import { isDeductionToReview, reviewText } from '../lib/deductionReview'
+import { isDeductionToReview, reviewText, cancelText, isSilentCancel, reactivatePatch } from '../lib/deductionReview'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { loadPayBasis, savePayBasis, isMissingColumn } from '../lib/jobEmployeePay'
 import { locationNameFromTitle } from '../lib/cleaningType'
@@ -73,6 +73,15 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
     setBusy(false)
   }
 
+  const reactivate = async (row) => {
+    setBusy(true)
+    const { error } = await supabase.from('salary_payments').update(reactivatePatch(row)).eq('id', row.id)
+    setBusy(false)
+    if (error) return toast.error(error.message)
+    toast.success(tr('Deduction counts again — recalculate the payslip', '控除を戻しました — 明細を再計算してください', 'Desconto voltou a valer — recalcule o holerite'))
+    changed()
+  }
+
   const finalize = async () => {
     setBusy(true)
     const { error } = await supabase.from('salary_statements').update({ status: 'finalized', admin_finalized_at: new Date().toISOString() }).eq('id', data.st.id)
@@ -103,6 +112,8 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
   const advances = live.filter(p => p.payment_type === 'advance')
   const deductions = data?.calc.dedRows || []
   const toReview = L.filter(isDeductionToReview)
+  // v1.0.133 · cancelled deductions stay visible in the month (never a silent end)
+  const cancelledDeds = L.filter(p => p.is_deduction && p.status === 'cancelled' && !isDeductionToReview(p))
   const st = data?.st
   const slip = !st ? 'none' : st.employee_confirmed_at ? 'confirmed' : (st.employee_disputed_at || st.status === 'disputed') ? 'disputed' : 'waiting'
   // v1.0.102 · one truth with Payments: "Paid" only when the payslip is also confirmed.
@@ -116,11 +127,13 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
 
   const kind = data?.person?.salary_type
   const basisPick = data?.calc.basis
+  // v1.0.133 · no choice yet → the rule that applies (fixed when there is a fixed salary)
+  const basisShown = basisPick || data?.calc.autoBasis || null
   const perJob = data?.calc.perJob
   const showBasis = !!data && (perJob.priced > 0 || !!basisPick)
   const fmtDay = d => d ? new Date(`${d}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short', weekday: 'short' }) : ''
-  const baseHow = basisPick === 'fixed' ? tr('Fixed salary (chosen for this month)', '固定給（今月の選択）', 'Salário fixo (escolhido no mês)')
-    : basisPick === 'per_job' ? tr(`Sum per job (${perJob.priced} jobs)`, `件数合計（${perJob.priced}件）`, `Soma por job (${perJob.priced} jobs)`)
+  const baseHow = basisShown === 'fixed' ? tr('Fixed salary (chosen for this month)', '固定給（今月の選択）', 'Salário fixo (escolhido no mês)')
+    : basisShown === 'per_job' ? tr(`Sum per job (${perJob.priced} jobs)`, `件数合計（${perJob.priced}件）`, `Soma por job (${perJob.priced} jobs)`)
     : kind === 'fixed' ? tr('Fixed salary for the month', '月の固定給', 'Salário fixo do mês')
     : kind === 'hourly' ? tr(`${data?.jobs.length || 0} completed jobs × hours`, `完了 ${data?.jobs.length || 0}件 × 時間`, `${data?.jobs.length || 0} serviços concluídos × horas`)
     : kind === 'mixed' ? tr(`Fixed + ${data?.jobs.length || 0} jobs`, `固定 + ${data?.jobs.length || 0}件`, `Fixo + ${data?.jobs.length || 0} serviços`)
@@ -167,8 +180,8 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
                     <button key={o.key} type="button" className="btn" disabled={busy || paid || paidUnconfirmed}
                       onClick={() => basisPick !== o.key && chooseBasis(o.key)}
                       style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '10px 12px', height: 'auto',
-                        border: `2px solid ${basisPick === o.key ? 'var(--accent, #2563eb)' : 'var(--border, #e5e7eb)'}` }}>
-                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>{basisPick === o.key ? '✓ ' : ''}{o.label}</span>
+                        border: `2px solid ${basisShown === o.key ? 'var(--accent, #2563eb)' : 'var(--border, #e5e7eb)'}` }}>
+                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>{basisShown === o.key ? '✓ ' : ''}{o.label}</span>
                       <span style={{ fontSize: 17, fontWeight: 800 }}>{fmt(o.total)}</span>
                     </button>
                   ))}
@@ -178,7 +191,9 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
                     ? tr(`Chosen by ${data.basis?.chosen_by || 'admin'}${data.basis?.chosen_at ? ` on ${new Date(data.basis.chosen_at).toLocaleString(locale)}` : ''}. The two are never added.`,
                         `${data.basis?.chosen_by || 'admin'} が選択${data.basis?.chosen_at ? `（${new Date(data.basis.chosen_at).toLocaleString(locale)}）` : ''}。合算はしません。`,
                         `Escolhido por ${data.basis?.chosen_by || 'admin'}${data.basis?.chosen_at ? ` em ${new Date(data.basis.chosen_at).toLocaleString(locale)}` : ''}. Os dois nunca são somados.`)
-                    : tr('Pick one before calculating the payslip. The two are never added.', '明細を計算する前にどちらかを選んでください。合算はしません。', 'Escolha um antes de calcular o holerite. Os dois nunca são somados.')}
+                    : basisShown === 'fixed'
+                      ? tr('The fixed salary counts (default when there is one). Tap the other to switch. The two are never added.', '固定給で計算中（固定給がある場合の標準）。切り替えるにはもう一方をタップ。合算はしません。', 'Vale o salário fixo (padrão quando há fixo). Toque no outro para trocar. Os dois nunca são somados.')
+                      : tr('The sum per job counts (no fixed salary on the record). The two are never added.', '件数合計で計算中（固定給の登録なし）。合算はしません。', 'Vale a soma por job (sem salário fixo no cadastro). Os dois nunca são somados.')}
                 </p>
                 <details style={{ marginTop: 4 }} open={basisPick === 'per_job'}>
                   <summary style={{ fontSize: 13, cursor: 'pointer' }}>{tr('Completed jobs with employee pay', '完了した作業（作業者への支払い）', 'Jobs concluídos com pagamento do funcionário')} ({perJob.rows.length})</summary>
@@ -197,7 +212,10 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
             <dl className="sp-rows">
               <div><dt>{baseHow}</dt><dd>{data.calc.needsBasis ? tr('choose above', '上で選択', 'escolha acima') : fmt(data.base)}</dd></div>
               {jobsPay > 0 && <div><dt>{tr('Spot jobs', 'スポット', 'Jobs spot')}</dt><dd>+{fmt(jobsPay)}</dd></div>}
-              {deductions.map(p => <div key={p.id}><dt>{tr('Deduction', '控除', 'Desconto')} · {p.description || ''}</dt><dd style={{ color: 'var(--red, #dc2626)' }}>−{fmt(p.amount)}</dd></div>)}
+              {deductions.map(p => <div key={p.id}><dt>{tr('Deduction', '控除', 'Desconto')} · {cancelText(p)}</dt><dd style={{ color: 'var(--red, #dc2626)' }}>−{fmt(p.amount)}</dd></div>)}
+              {cancelledDeds.map(p => <div key={p.id} style={{ opacity: .7 }}><dt>{tr('Deduction', '控除', 'Desconto')} · <s>{cancelText(p)}</s> · <b>{isSilentCancel(p) ? tr('cancelled with no confirmation', '確認なしで取消', 'cancelado sem confirmação') : tr('cancelled', '取消', 'cancelado')}</b>
+                {isSilentCancel(p) && !paid && <> · <button type="button" className="btn btn-sm" disabled={busy} onClick={() => reactivate(p)}>{tr('Count again', '再び控除する', 'Voltar a valer')}</button></>}</dt>
+                <dd style={{ color: 'var(--text3)' }}><s>−{fmt(p.amount)}</s></dd></div>)}
               <div><dt><b>{tr('Payslip (net salary)', '明細（差引支給）', 'Holerite (salário líquido)')}</b></dt><dd className="sp-big">{paid || paidUnconfirmed ? fmt(salaryLine.amount) : data.calc.needsBasis ? '—' : fmt(preview)}</dd></div>
               {extras.map(p => <div key={p.id}><dt>{p.payment_type === 'bonus' ? tr('Bonus', 'ボーナス', 'Bônus') : tr('Extra', '追加', 'Extra')} · {p.description || ''}</dt><dd>+{fmt(p.amount)}</dd></div>)}
               {advances.map(p => <div key={p.id}><dt>{tr('Advance', '前払い', 'Adiantamento')} · {p.description || ''} {p.status === 'paid' ? `(${tr('already paid', '支払済', 'já pago')})` : ''}</dt><dd>{fmt(p.amount)}</dd></div>)}

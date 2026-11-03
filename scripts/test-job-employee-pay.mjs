@@ -27,7 +27,15 @@ assert.equal(perJobPay([{ status: 'assigned', employee_pay: 1000 }]).total, 0)
 
 const gabriel = { salary_type: 'per_job', fixed_salary: 0, job_bonus_rate: 100 }
 const noChoice = payrollMonth({ emp: gabriel, jobs: nov, month: '2026-11' })
-assert.equal(noChoice.needsBasis, true)
+// v1.0.133 · no fixed salary + jobs with pay → the sum per job counts without blocking the close
+assert.equal(noChoice.needsBasis, false)
+assert.equal(noChoice.base, 73000)
+assert.equal(noChoice.autoBasis, 'per_job')
+// fixed on the record wins by default, even for a per_job type and with priced jobs
+const guiFixed = payrollMonth({ emp: { salary_type: 'per_job', fixed_salary: 212000, is_active: true }, jobs: nov, month: '2026-11' })
+assert.equal(guiFixed.base, 212000)
+assert.equal(guiFixed.bothOptions, true)
+assert.equal(payrollMonth({ emp: { salary_type: 'per_job', fixed_salary: 212000, is_active: true }, jobs: [], month: '2026-10' }).base, 212000)
 const perJob = payrollMonth({ emp: gabriel, jobs: nov, month: '2026-11', basis: { basis: 'per_job' } })
 assert.equal(perJob.base, 73000)
 assert.equal(perJob.needsBasis, false)

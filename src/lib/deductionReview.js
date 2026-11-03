@@ -13,3 +13,24 @@ export function approvePatch(row, amount) {
 export function rejectPatch(row) {
   return { status: 'cancelled', description: REJECTED_PREFIX + reviewText(row) }
 }
+
+// v1.0.133 · A deduction cancelled by the admin carries who/when in its description, so a cancelled row
+// is never a silent end: one without this mark (old data, e.g. Alexandre −¥1.091 of 18/10) is flagged
+// "cancelado sem confirmação" on the payroll screens with a button to make it count again.
+export const CANCELLED_PREFIX = '⊘ Cancelado'
+const CANCEL_RE = /^⊘ Cancelado[^·]*· /
+
+export const isAdminCancelled = row => CANCEL_RE.test(String(row?.description || ''))
+export const isSilentCancel = row => !!row?.is_deduction && row.status === 'cancelled'
+  && !isAdminCancelled(row) && !String(row.description || '').startsWith(REJECTED_PREFIX) && !String(row.description || '').startsWith(REVIEW_PREFIX)
+/** Description without the review / cancel marks. */
+export const cancelText = row => reviewText(row).replace(CANCEL_RE, '')
+
+/** Admin cancels (after a confirmation): status cancelled + who/when kept in the description. */
+export function cancelPatch(row, who = 'admin', day = new Date().toISOString().slice(0, 10)) {
+  return { status: 'cancelled', description: `${CANCELLED_PREFIX} (${who}, ${day}) · ${cancelText(row)}` }
+}
+/** Count again (undo a cancel). */
+export function reactivatePatch(row) {
+  return { status: 'scheduled', description: cancelText(row) }
+}

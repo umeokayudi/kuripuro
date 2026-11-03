@@ -86,9 +86,13 @@ export default function SalaryPeriods() {
     }).sort((a, b) => a.emp.full_name.localeCompare(b.emp.full_name))
   }, [data, employees, period])
 
-  const inPayroll = rows.filter(r => r.st)
-  const out = rows.filter(r => !r.st && isPayrollActive(r.emp))
+  // v1.0.133 · the payroll is born with EVERY active employee; only the admin takes someone out (Excluir),
+  // and that choice is saved on the month (salary_periods.excluded_ids, SQL 2026-11-03_pendentes_revisao.sql).
+  const excludedIds = new Set(periodRow?.excluded_ids || [])
+  const inPayroll = rows.filter(r => r.st || (isPayrollActive(r.emp) && !excludedIds.has(r.emp.id)))
+  const out = rows.filter(r => !r.st && isPayrollActive(r.emp) && excludedIds.has(r.emp.id))
   const outReason = (r) => {
+    if (excludedIds.has(r.emp.id)) return tr('Taken out of this payroll by the admin', '管理者がこの締めから除外', 'Excluído deste fechamento pelo admin')
     if (failed[r.emp.id]) return tr(`Could not calculate: ${failed[r.emp.id]}`, `計算できませんでした: ${failed[r.emp.id]}`, `Não deu para calcular: ${failed[r.emp.id]}`)
     const start = String(r.emp.contract_start || '').slice(0, 10)
     if (start && start > monthLastDay(period)) return tr(`Contract starts on ${start}, after this month`, `契約開始 ${start}（この月の後）`, `Contrato começa em ${start}, depois deste mês`)
@@ -135,6 +139,25 @@ export default function SalaryPeriods() {
       toast.error(e.message)
     }
     setIncluding(null)
+  }
+
+  // v1.0.133 · take a person out of / back into this month's payroll (with confirmation).
+  const setExcluded = async (emp, exclude) => {
+    if (exclude && !(await askConfirm({
+      title: tr(`Take ${emp.full_name} out of ${fmtPeriod(period)}?`, `${emp.full_name} を${fmtPeriod(period)}の締めから除外しますか？`, `Excluir ${emp.full_name} da folha de ${fmtPeriod(period)}?`),
+      message: tr('No payslip is made for this person this month. You can include them again at any time.', 'この月の明細は作られません。いつでも戻せます。', 'Não é feito holerite desta pessoa neste mês. Dá para incluir de volta quando quiser.'),
+      confirmLabel: tr('Take out', '除外', 'Excluir'), danger: true,
+    }))) return
+    const next = [...new Set([...(periodRow?.excluded_ids || []).filter(id => id !== emp.id), ...(exclude ? [emp.id] : [])])]
+    const dates = getPeriodDates(period)
+    const { error } = periodRow
+      ? await supabase.from('salary_periods').update({ excluded_ids: next }).eq('period', period)
+      : await supabase.from('salary_periods').insert({ period, status: 'open', confirm_deadline: dates.confirmDeadline, pay_date: dates.payDate, excluded_ids: next })
+    if (error) return toast.error(/excluded_ids|schema cache/i.test(error.message)
+      ? tr('Run the SQL 2026-11-03_pendentes_revisao.sql first', '先にSQLを実行してください', 'Rode antes o SQL 2026-11-03_pendentes_revisao.sql')
+      : error.message)
+    toast.success(exclude ? tr(`${emp.full_name} taken out`, `${emp.full_name} を除外しました`, `${emp.full_name} excluído(a)`) : tr(`${emp.full_name} included`, `${emp.full_name} を追加しました`, `${emp.full_name} incluído(a)`))
+    refresh()
   }
 
   const setPeriodStatus = async (next, message) => {
@@ -220,18 +243,16 @@ export default function SalaryPeriods() {
 
         {data && out.length > 0 && (
           <div className="sp-out" style={{ border: '1px solid rgba(245,158,11,.4)', background: 'rgba(245,158,11,.08)', borderRadius: 12, padding: '10px 12px', marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>⚠️ {tr(`Out of this payroll (${out.length})`, `この締めに含まれていない人（${out.length}人）`, `Fora deste fechamento (${out.length})`)}</div>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{tr(`Taken out of this payroll (${out.length})`, `この締めから除外（${out.length}人）`, `Excluídos deste fechamento (${out.length})`)}</div>
             {out.map(r => (
               <div key={r.emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: '1px solid rgba(245,158,11,.25)' }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{r.emp.full_name} · {fmt(r.calc.net)}</div>
                   <div style={{ fontSize: 12, color: 'var(--text2)', overflowWrap: 'anywhere' }}>{outReason(r)}</div>
                 </div>
-                {closable && (
-                  <button className="btn btn-sm btn-primary" style={{ minHeight: 40, flexShrink: 0 }} disabled={including === r.emp.id || closing} onClick={() => includeOne(r.emp)}>
-                    {including === r.emp.id ? '…' : tr('Include', '追加', 'Incluir')}
-                  </button>
-                )}
+                <button className="btn btn-sm btn-primary" style={{ minHeight: 40, flexShrink: 0 }} disabled={closing} onClick={() => setExcluded(r.emp, false)}>
+                  {tr('Include again', '戻す', 'Incluir de volta')}
+                </button>
               </div>
             ))}
           </div>
@@ -250,12 +271,15 @@ export default function SalaryPeriods() {
                 </div>
                 <div style={{ fontSize: 11, marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <span className={`badge ${toneCls[label.tone]}`}>{label.text}</span>
+                  {!r.st && <span className="badge">{failed[r.emp.id] ? outReason(r) : !closable ? tr('Estimate — month still running', '見込み — 月の途中', 'Estimativa — mês em andamento') : tr('In the payroll — payslip not made yet', '締めに含む — 明細未作成', 'No fechamento — holerite ainda não feito')}</span>}
                   {r.outdated && <span className="badge badge-amber">{tr(`Payslip sent says ${fmt(r.st.net_total)} — recalculate`, `送付済み明細は ${fmt(r.st.net_total)} — 再計算`, `Holerite enviado diz ${fmt(r.st.net_total)} — recalcular`)}</span>}
                   {r.state === 'disputed' && <Link to="/salary-complaints" style={{ fontSize: 11 }}>{tr('Answer', '回答', 'Responder')} →</Link>}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                 {r.state === 'confirmed' && !r.outdated && <button className="btn btn-sm btn-primary" onClick={() => finalize(r.st)}>{p.finalize}</button>}
+                {!r.st && closable && <button className="btn btn-sm btn-primary" disabled={including === r.emp.id || closing} onClick={() => includeOne(r.emp)}>{including === r.emp.id ? '…' : tr('Calculate', '計算', 'Calcular')}</button>}
+                {!r.st && <button className="btn btn-sm" disabled={closing} onClick={() => setExcluded(r.emp, true)}>{tr('Take out', '除外', 'Excluir')}</button>}
                 <button className="btn btn-sm" onClick={() => setSheet(r.emp)}>{tr('Open', '開く', 'Abrir')}</button>
               </div>
             </div>
