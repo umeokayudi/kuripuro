@@ -52,3 +52,30 @@ assert.equal(isMissingColumnError({ code: '42703', message: 'column jobs.closed_
 assert.equal(isMissingColumnError({ code: '23505', message: 'duplicate key' }), false)
 
 console.log('manual close: ok')
+
+// v1.0.144 · admin finishes a job never started (Live Track) / duplicates
+{
+  const { suggestedWindow, likelyDuplicates, lastFinishOf } = await import('../src/lib/manualClose.js')
+  const nowT = new Date('2026-11-03T08:00:00.000Z') // 17:00 JST
+  const j = { id: 'a', employee_id: 'g', title: 'Kodama Yurakucho — Basic', scheduled_date: '2026-11-03', scheduled_time: '00:30', status: 'assigned' }
+  // chains after the last finish of the same person (09:38 JST = 00:38Z)
+  const w = suggestedWindow(j, 45, '2026-11-03T00:38:00.000Z', nowT)
+  assert.equal(w.startedAt, '2026-11-03T00:38:00.000Z')
+  assert.equal(w.completedAt, '2026-11-03T01:23:00.000Z')
+  // without earlier finish → scheduled time (00:30 JST = 15:30Z previous day)
+  assert.equal(suggestedWindow(j, 45, null, nowT).startedAt, '2026-11-02T15:30:00.000Z')
+  // never in the future
+  const late = suggestedWindow({ ...j, scheduled_time: '16:50' }, 45, null, nowT)
+  assert.equal(late.completedAt, nowT.toISOString())
+  assert.equal(late.startedAt, '2026-11-03T07:15:00.000Z')
+  const others = [
+    { id: 'b', employee_id: 'x', employee_name: 'Gabriel', title: 'Kodama Yurakucho — Basic', status: 'completed', completed_at: '2026-11-03T01:00:00Z' },
+    { id: 'c', employee_id: 'g', title: 'Kodama Yurakucho', status: 'completed', completed_at: '2026-11-03T00:38:00Z' },
+    { id: 'd', employee_id: 'x', title: 'Tooda', status: 'completed' },
+    { id: 'e', employee_id: 'x', title: 'kodama  yurakucho', status: 'assigned' },
+  ]
+  assert.deepEqual(likelyDuplicates(j, others).map(o => o.id), ['b'])
+  assert.equal(lastFinishOf(j, others), '2026-11-03T00:38:00Z')
+  assert.match(manualCloseMessage(j, { startedAt: w.startedAt, completedAt: w.completedAt, adminName: 'Yudi' }, 'pt'), /Motivo: finalizado pelo escritório/)
+  console.log('✓ v1.0.144 finish not-started job helpers')
+}

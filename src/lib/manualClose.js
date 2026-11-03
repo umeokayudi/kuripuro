@@ -8,6 +8,12 @@ export const DEFAULT_CLOSE_REASON = {
   ja: '終了操作の忘れ',
   pt: 'esquecimento de finalizar',
 }
+// v1.0.144 · reason used when the office finishes a job the employee never started (Live Track).
+export const OFFICE_FINISH_REASON = {
+  en: 'finished by the office',
+  ja: '事務所で完了処理',
+  pt: 'finalizado pelo escritório',
+}
 // Columns added by sql/2026-10-29_fechamento_manual.sql (the close still works without them).
 export const MANUAL_CLOSE_COLUMNS = ['closed_manually_by', 'closed_manually_at', 'closed_manually_note']
 
@@ -24,6 +30,43 @@ export function suggestedEnd(job, expectedMin, now = new Date()) {
   const end = plannedEnd(job, expectedMin)
   if (!end) return now.toISOString()
   return new Date(Math.min(new Date(end).getTime(), now.getTime())).toISOString()
+}
+
+/**
+ * v1.0.144 · Suggested start/finish for a job the employee never started (admin finishes it from Live Track).
+ * Start = the later of the scheduled time and the end of this person's last finished job that day
+ * (so finishing a route one by one chains the times); finish = start + planned minutes.
+ * Nothing in the future: when the window would end after now, it is moved back to end now.
+ */
+export function suggestedWindow(job, expectedMin, prevEnd = null, now = new Date()) {
+  const plan = expectedMin > 0 ? expectedMin : 60
+  const sched = job?.scheduled_date
+    ? new Date(`${job.scheduled_date}T${(job.scheduled_time || '09:00').slice(0, 5)}:00+09:00`).getTime()
+    : now.getTime()
+  let start = Math.max(sched, prevEnd ? new Date(prevEnd).getTime() : 0)
+  let end = start + plan * 60000
+  if (end > now.getTime()) { end = now.getTime(); start = Math.min(start, end - plan * 60000) }
+  return { startedAt: new Date(start).toISOString(), completedAt: new Date(end).toISOString() }
+}
+
+const placeKey = j => locationNameFromTitle(j?.title || '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+/**
+ * v1.0.144 · Same place, same day, done (or being done) by someone else: the job is probably a
+ * duplicate and should be marked "not done" instead of finished.
+ */
+export function likelyDuplicates(job, sameDayJobs = []) {
+  const key = placeKey(job)
+  if (!key) return []
+  return sameDayJobs.filter(o => o.id !== job.id && o.employee_id !== job.employee_id
+    && ['completed', 'in_progress'].includes(o.status) && placeKey(o) === key)
+}
+
+/** v1.0.144 · End of this person's last finished job that day (null when none). */
+export function lastFinishOf(job, sameDayJobs = []) {
+  const ends = sameDayJobs.filter(o => o.id !== job.id && o.employee_id === job.employee_id && o.status === 'completed' && o.completed_at)
+    .map(o => o.completed_at).sort()
+  return ends.length ? ends[ends.length - 1] : null
 }
 
 /** Problems with the chosen times: 'start' (missing), 'order' (finish not after start), 'future'. */
@@ -89,7 +132,7 @@ export function manualCloseMessage(job, { startedAt, completedAt, note, adminNam
   const after = !job?.photo_end_url
   const msg = l => {
     const day = dayOf(l), end = endOf(l)
-    const reason = note?.trim() || DEFAULT_CLOSE_REASON[l]
+    const reason = note?.trim() || (job?.started_at ? DEFAULT_CLOSE_REASON : OFFICE_FINISH_REASON)[l]
     return pick(l,
       `🔒 ${who} closed your job ${place} (${day}) for you: ${start} → ${end} (${dur}). Reason: ${reason}.${after ? ' Please still send the After photo on the home screen.' : ''} If the time is wrong, reply here.`,
       `🔒 ${who}があなたの作業「${place}」（${day}）を終了しました：${start} → ${end}（${dur}）。理由：${reason}。${after ? 'After写真はホーム画面から送ってください。' : ''}時間が違う場合はここに返信してください。`,

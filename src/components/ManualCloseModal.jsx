@@ -8,7 +8,7 @@ import { locationNameFromTitle } from '../lib/cleaningType'
 import { contractForAgendaJob, expectedMinutes } from '../lib/agenda'
 import { adminManualClose } from '../lib/jobAdminOps'
 import './manual-close.css'
-import { plannedEnd, suggestedEnd, manualCloseError, DEFAULT_CLOSE_REASON } from '../lib/manualClose'
+import { plannedEnd, suggestedEnd, manualCloseError, DEFAULT_CLOSE_REASON, OFFICE_FINISH_REASON, suggestedWindow, likelyDuplicates, lastFinishOf } from '../lib/manualClose'
 
 const TZ = 'Asia/Tokyo'
 const toLocalInput = iso => iso ? new Date(iso).toLocaleString('sv-SE', { timeZone: TZ }).slice(0, 16).replace(' ', 'T') : ''
@@ -19,14 +19,20 @@ const fmtMin = min => {
   return h ? (r ? `${h}h${String(r).padStart(2, '0')}` : `${h}h`) : `${r} min`
 }
 
-/** Button that opens the modal; same look as the buttons around it (`className`). */
-export function ManualCloseButton({ job, expected, className = 'btn btn-sm', onDone }) {
+/**
+ * Button that opens the modal; same look as the buttons around it (`className`).
+ * v1.0.144 · `allowNotStarted`: also for a job never started (Live Track "Finalizar").
+ */
+export function ManualCloseButton({ job, expected, className = 'btn btn-sm', onDone, allowNotStarted = false, label }) {
   const { tr } = useLang()
   const [open, setOpen] = useState(false)
-  if (job?.status !== 'in_progress') return null
+  const notStarted = allowNotStarted && job?.status === 'assigned'
+  if (job?.status !== 'in_progress' && !notStarted) return null
   return (
     <>
-      <button type="button" className={className} onClick={() => setOpen(true)}>🔒 {tr('Close manually', '手動で終了', 'Fechar manualmente')}</button>
+      <button type="button" className={className} onClick={() => setOpen(true)}>
+        {label || (notStarted ? `✓ ${tr('Finish', '完了にする', 'Finalizar')}` : `🔒 ${tr('Close manually', '手動で終了', 'Fechar manualmente')}`)}
+      </button>
       {open && <ManualCloseModal job={job} expected={expected} onClose={() => setOpen(false)} onDone={r => { setOpen(false); onDone?.(r) }} />}
     </>
   )
@@ -40,14 +46,33 @@ export default function ManualCloseModal({ job, expected: expectedProp, onClose,
   const [note, setNote] = useState('')
   const [err, setErr] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [sameDay, setSameDay] = useState(null)
   const now = new Date()
+  const notStarted = !job.started_at
+
+  // v1.0.144 · same-day jobs: chain the suggested start after this person's last finish, and spot duplicates.
+  useEffect(() => {
+    if (!job.scheduled_date) { setSameDay([]); return }
+    supabase.from('jobs').select('id,title,employee_id,employee_name,status,started_at,completed_at')
+      .eq('scheduled_date', job.scheduled_date).neq('id', job.id).in('status', ['in_progress', 'completed'])
+      .then(({ data }) => setSameDay(data || []))
+  }, [job.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (expectedProp) return
     supabase.from('service_contracts').select('*').then(({ data }) => setExpected(expectedMinutes(job, contractForAgendaJob(job, data || []))))
   }, [job.id, expectedProp]) // eslint-disable-line react-hooks/exhaustive-deps
   // Suggested finish = planned finish (never in the future), set once the plan is known.
-  useEffect(() => { if (expected && !end) setEnd(toLocalInput(suggestedEnd(job, expected))) }, [expected]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (notStarted) {
+      if (!expected || !sameDay || end) return
+      const w = suggestedWindow(job, expected, lastFinishOf(job, sameDay))
+      setStart(toLocalInput(w.startedAt)); setEnd(toLocalInput(w.completedAt))
+      return
+    }
+    if (expected && !end) setEnd(toLocalInput(suggestedEnd(job, expected)))
+  }, [expected, sameDay]) // eslint-disable-line react-hooks/exhaustive-deps
+  const dups = sameDay ? likelyDuplicates(job, sameDay) : []
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape' && !saving) onClose() }
     window.addEventListener('keydown', onKey)
@@ -64,7 +89,7 @@ export default function ManualCloseModal({ job, expected: expectedProp, onClose,
     start: tr('Enter the start time.', '開始時刻を入力してください。', 'Informe o horário de início.'),
     order: tr('The finish must be after the start.', '終了は開始より後にしてください。', 'O fim precisa ser depois do início.'),
     future: tr('The finish cannot be in the future.', '終了を未来の時刻にはできません。', 'O fim não pode ser no futuro.'),
-    closed: tr('This job was already finished (the employee may have just closed it).', 'この作業はすでに終了しています（スタッフが終了した可能性があります）。', 'Este job já foi concluído (o funcionário pode ter acabado de fechar).'),
+    closed: notStarted ? tr('This job changed meanwhile (the employee may have just started it). Refresh the page.', 'この作業は変更されました（スタッフが開始した可能性があります）。ページを更新してください。', 'Este job mudou enquanto isso (o funcionário pode ter acabado de iniciar). Atualize a página.') : tr('This job was already finished (the employee may have just closed it).', 'この作業はすでに終了しています（スタッフが終了した可能性があります）。', 'Este job já foi concluído (o funcionário pode ter acabado de fechar).'),
   }
 
   const save = async () => {
@@ -73,7 +98,7 @@ export default function ManualCloseModal({ job, expected: expectedProp, onClose,
     if (bad) return
     setSaving(true)
     try {
-      const res = await adminManualClose(job, { startedAt: startIso, completedAt: endIso, note })
+      const res = await adminManualClose(job, { startedAt: startIso, completedAt: endIso, note: note.trim() || (notStarted ? (OFFICE_FINISH_REASON[lang] || OFFICE_FINISH_REASON.en) : '') })
       toast.success(res.notified
         ? tr('Job closed · employee notified', '作業を終了し、スタッフに通知しました', 'Job fechado · funcionário avisado')
         : tr('Job closed', '作業を終了しました', 'Job fechado'))
@@ -92,17 +117,28 @@ export default function ManualCloseModal({ job, expected: expectedProp, onClose,
   return (
     <div className="mc-overlay" role="dialog" aria-modal="true" aria-label={tr('Close manually', '手動で終了', 'Fechar manualmente')} onClick={() => !saving && onClose()}>
       <div className="mc-box" onClick={e => e.stopPropagation()}>
-        <div className="mc-title">🔒 {tr('Close job manually', '作業を手動で終了', 'Fechar job manualmente')}</div>
+        <div className="mc-title">{notStarted ? `✓ ${tr('Finish job', '作業を完了にする', 'Finalizar job')}` : `🔒 ${tr('Close job manually', '作業を手動で終了', 'Fechar job manualmente')}`}</div>
         <div className="mc-sub">{locationNameFromTitle(job.title)} · {job.employee_name || '—'}</div>
 
-        <div className="mc-facts">
+        {dups.length > 0 && (
+          <div className="mc-warn">⚠️ {tr('Possible duplicate', '重複の可能性', 'Possível duplicado')}: {dups.map(d => `${d.employee_name || '—'} (${d.status === 'completed' ? `${when(d.started_at)} → ${when(d.completed_at)}` : tr('working now', '作業中', 'fazendo agora')})`).join(', ')}.{' '}
+            {tr('If it was the same visit, use "Not done" instead of finishing.', '同じ作業なら、完了ではなく「未実施」にしてください。', 'Se foi a mesma visita, use "Não feito" em vez de finalizar.')}</div>
+        )}
+
+        {notStarted ? (
+          <div className="mc-facts">
+            {row(tr('Scheduled', '予定', 'Agendado'), `${job.scheduled_date ? job.scheduled_date.slice(5).split('-').reverse().join('/') : '—'} ${(job.scheduled_time || '').slice(0, 5)}`)}
+            {row(tr('Planned time', '予定時間', 'Tempo planejado'), fmtMin(expected))}
+            {row(tr('Status', 'ステータス', 'Status'), tr('Not started by the employee', 'スタッフ未開始', 'Funcionário não iniciou'), true)}
+          </div>
+        ) : <div className="mc-facts">
           {row(tr('Started', '開始', 'Início'), when(startIso))}
           {row(tr('Planned finish', '予定終了', 'Fim planejado'), planEnd ? `${when(planEnd)} (${fmtMin(expected)})` : '—')}
           {row(tr('Open for', '経過時間', 'Tempo aberto'), fmtMin(openMin), expected && openMin > expected)}
-        </div>
+        </div>}
 
-        {!job.started_at && (
-          <label className="mc-field">{tr('Start', '開始', 'Início')} *
+        {notStarted && (
+          <label className="mc-field">{tr('Start time', '開始時刻', 'Horário de início')} *
             <input type="datetime-local" value={start} onChange={e => setStart(e.target.value)} className={err === 'start' ? 'is-bad' : ''} />
           </label>
         )}
@@ -115,7 +151,7 @@ export default function ManualCloseModal({ job, expected: expectedProp, onClose,
         </div>
 
         <label className="mc-field">{tr('Note (optional)', 'メモ（任意）', 'Observação (opcional)')}
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder={DEFAULT_CLOSE_REASON[lang] || DEFAULT_CLOSE_REASON.en} />
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder={(notStarted ? OFFICE_FINISH_REASON : DEFAULT_CLOSE_REASON)[lang] || DEFAULT_CLOSE_REASON.en} />
         </label>
 
         {!job.photo_end_url && (
@@ -127,7 +163,7 @@ export default function ManualCloseModal({ job, expected: expectedProp, onClose,
 
         <div className="mc-actions">
           <button type="button" className="btn" disabled={saving} onClick={onClose}>{tr('Cancel', 'キャンセル', 'Cancelar')}</button>
-          <button type="button" className="btn btn-primary" disabled={saving || !end} onClick={save}>{saving ? '…' : tr('Close job', '終了する', 'Fechar job')}</button>
+          <button type="button" className="btn btn-primary" disabled={saving || !end} onClick={save}>{saving ? '…' : notStarted ? tr('Finish job', '完了にする', 'Finalizar job') : tr('Close job', '終了する', 'Fechar job')}</button>
         </div>
       </div>
     </div>
