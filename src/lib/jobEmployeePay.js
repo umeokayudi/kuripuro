@@ -18,7 +18,9 @@ export function parseEmployeePay(input) {
 /** The job's employee pay as a number, or null ("a definir"). */
 export function jobEmployeePay(job) {
   const v = job?.employee_pay
-  if (v === null || v === undefined || v === '') return null
+  // v1.0.148 · until the field is filled (SQL + one-off migration), the line already written in the
+  // description ("Pagamento do funcionário (Nome): ¥X") is the job's pay — the same value the migration writes.
+  if (v === null || v === undefined || v === '') return payFromDescription(job?.description)
   const n = Number(v)
   return Number.isFinite(n) && n >= 0 ? n : null
 }

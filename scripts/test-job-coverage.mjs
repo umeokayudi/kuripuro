@@ -38,3 +38,25 @@ assert.equal(coveredJobs([{ ...jobs[0], ...keep }, jobs[1]]).size, 0, 'kept → 
 assert.equal(suggestedPayForB(jobs[0], jobs[1]), 1000)
 assert.equal(suggestedPayForB(jobs[0], { ...jobs[1], employee_pay: 900 }), null, 'B already has pay')
 console.log('job coverage: all passed')
+
+// v1.0.148 · section 8: pay read from the description until the field is filled + monthly package apart
+{
+  const { payrollMonth } = await import('../src/lib/salaryCalc.js')
+  const emp = { id: 'g', salary_type: 'per_job', fixed_salary: 0, pay_packages: [{ client_name: 'Atomic Bar', amount: 35000, from: '2026-11' }] }
+  const j = (id, client, desc, extra = {}) => ({ id, employee_id: 'g', client_name: client, status: 'completed', scheduled_date: '2026-11-05', title: `${client} — Basic`, description: desc, ...extra })
+  const jobs = [
+    j('1', 'On The Planet', 'Pagamento do funcionário (Guilherme): ¥1.000 — Limpeza básica'),
+    j('2', 'On The Planet', 'Pagamento do funcionário (Guilherme): ¥1.471 — Manutenção'),
+    j('3', 'On The Planet', 'sem linha'),                       // a definir, never ¥0
+    j('4', 'Atomic Bar', ''),                                  // in the package
+    j('5', 'On The Planet', 'Pagamento do funcionário (Guilherme): ¥1.000', { employee_pay: 1200 }), // field wins
+  ]
+  const c = payrollMonth({ emp, jobs, month: '2026-11' })
+  assert.equal(c.perJob.total, 1000 + 1471 + 1200)
+  assert.equal(c.perJob.undefinedCount, 1, 'only the job without a line is "a definir"')
+  assert.equal(c.packageTotal, 35000)
+  assert.equal(c.packageJobs, 1)
+  assert.equal(c.base, 3671 + 35000)
+  assert.equal(payrollMonth({ emp, jobs, month: '2026-10' }).packageTotal, 0, 'package only from its month')
+  console.log('per-job pay from description + monthly package: all passed')
+}

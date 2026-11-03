@@ -16,6 +16,7 @@ import { phoneTakenMessage } from '../lib/contactMask'
 import { askConfirm } from '../components/ConfirmDialog'
 import AddressInput from '../components/AddressInput'
 import { undoToast } from '../components/UndoToast'
+import { packagesOf } from '../lib/payPackages'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -150,6 +151,7 @@ export default function EmployeeProfile() {
     // Edit form: every saved column (the header query above is a short list), never the password itself.
     const full = await supabase.from('employees').select('*').eq('id', id).maybeSingle()
     const { password: _pw, ...saved } = full.data || e.data || {}
+    { const p0 = packagesOf(saved)[0]; if (p0) Object.assign(saved, { pkg_client: p0.client_name || '', pkg_amount: p0.amount, pkg_from: p0.from || '' }) }
     setEmp(e.data ? { ...e.data, ...saved } : null); setForm(saved)
     setWorkDays(e.data?.work_days ? JSON.parse(e.data.work_days) : [])
     setJobs(j.data||[]); setEvals(ev.data||[])
@@ -182,6 +184,14 @@ export default function EmployeeProfile() {
       monthly_work_days:parseInt(form.monthly_work_days)||22,
     }).eq('id', id)
     if (error) return toast.error(error.message)
+    // v1.0.148 · monthly package paid apart from the per-job sum (employees.pay_packages — SQL 2026-11-03)
+    const pkgAmount = Math.round(Number(String(form.pkg_amount ?? '').replace(/[^0-9]/g, '')) || 0)
+    const pkgBefore = JSON.stringify(packagesOf(emp))
+    const pkgList = pkgAmount > 0 && String(form.pkg_client || '').trim() ? [{ client_name: String(form.pkg_client).trim(), amount: pkgAmount, from: form.pkg_from || tokyoToday().slice(0, 7) }] : []
+    if (JSON.stringify(pkgList) !== pkgBefore) {
+      const { error: pkgErr } = await supabase.from('employees').update({ pay_packages: pkgList }).eq('id', id)
+      if (pkgErr) return toast.error(pickLang(lang, 'Monthly package not saved: apply the SQL 2026-11-03_pacote_e_migracao_pagamento first.', '月額パッケージ未保存：先にSQLを適用してください。', 'Pacote mensal não salvo: aplique antes o SQL 2026-11-03_pacote_e_migracao_pagamento.'))
+    }
     if (people) {
       const { error: leaderErr } = await supabase.from('employees').update({ leader_id: leaderId || null }).eq('id', id)
       if (leaderErr) return toast.error(leaderErr.message)
@@ -479,6 +489,9 @@ export default function EmployeeProfile() {
             <div className="form-group"><label>Contract Type</label><select value={form.contract_type||''} onChange={e=>upd('contract_type',e.target.value)}><option>Full-time</option><option>Part-time</option><option>Fixed-term</option><option>Hourly</option><option>Freelancer</option></select></div>
             <div className="form-group"><label>Salary Type</label><select value={form.salary_type||'fixed'} onChange={e=>upd('salary_type',e.target.value)}><option value="fixed">Fixed</option><option value="hourly">Hourly</option><option value="per_job">Per Job</option><option value="mixed">Mixed</option></select></div>
             <div className="form-group"><label>Monthly Salary (¥)</label><input type="number" value={form.fixed_salary||''} onChange={e=>upd('fixed_salary',e.target.value)} /></div>
+            <div className="form-group"><label>{pickLang(lang,'Monthly package — client','月額パッケージ — 顧客','Pacote mensal — cliente')}</label><input value={form.pkg_client||''} placeholder="Atomic Bar" onChange={e=>upd('pkg_client',e.target.value)} /></div>
+            <div className="form-group"><label>{pickLang(lang,'Monthly package (¥/month, apart from the jobs)','月額パッケージ（¥/月、作業別とは別）','Pacote mensal (¥/mês, à parte dos jobs)')}</label><input type="number" value={form.pkg_amount||''} onChange={e=>upd('pkg_amount',e.target.value)} /></div>
+            <div className="form-group"><label>{pickLang(lang,'Package from (month)','パッケージ開始月','Pacote desde (mês)')}</label><input type="month" value={form.pkg_from||''} onChange={e=>upd('pkg_from',e.target.value)} /></div>
             <div className="form-group"><label>Monthly Work Days</label><input type="number" value={form.monthly_work_days||22} onChange={e=>upd('monthly_work_days',e.target.value)} /></div>
             <div className="form-group"><label>Contract Start</label><input type="date" value={form.contract_start||''} onChange={e=>upd('contract_start',e.target.value)} /></div>
             <div className="form-group"><label>Contract End</label><input type="date" value={form.contract_end||''} onChange={e=>upd('contract_end',e.target.value)} /></div>
