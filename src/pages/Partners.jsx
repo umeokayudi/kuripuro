@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
 import EmptyHint from '../components/EmptyHint'
+import AddressInput from '../components/AddressInput'
 import { maskEmail, maskPhone } from '../lib/contactMask'
 
 // v1.0.35 · Business partners (parceiros de negócio) — table business_partners.
@@ -150,7 +151,7 @@ export default function Partners() {
             <div className="form-group"><label>{t.phone}</label><input value={form.phone} onChange={e => upd('phone', e.target.value)} /></div>
             <div className="form-group"><label>{t.email}</label><input type="email" value={form.email} onChange={e => upd('email', e.target.value)} /></div>
             <div className="form-group"><label>{t.website}</label><input value={form.website} onChange={e => upd('website', e.target.value)} placeholder="example.co.jp" /></div>
-            <div className="form-group" style={{ gridColumn: '1/-1' }}><label>{t.address}</label><input value={form.address} onChange={e => upd('address', e.target.value)} /></div>
+            <div className="form-group" style={{ gridColumn: '1/-1' }}><label>{t.address}</label><AddressInput value={form.address} onChange={e => upd('address', e.target.value)} /></div>
             {(form.category === 'referral' || form.category === 'reseller' || form.commission_rate !== '') && (
               <div className="form-group"><label>{t.commission}</label><input type="number" min="0" max="100" step="0.1" value={form.commission_rate} onChange={e => upd('commission_rate', e.target.value)} /></div>
             )}

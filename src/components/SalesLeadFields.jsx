@@ -1,3 +1,4 @@
+import AddressInput from './AddressInput'
 export default function SalesLeadFields({ form, onChange, s, locked = false }) {
   const update = (field, value) => onChange({ ...form, [field]: value })
   return (
@@ -14,7 +15,7 @@ export default function SalesLeadFields({ form, onChange, s, locked = false }) {
         </div>
         <div className="form-group" style={{ gridColumn: '1/-1' }}>
           <label>{s.address}</label>
-          <input value={form.address || ''} disabled={locked} onChange={e => update('address', e.target.value)} />
+          <AddressInput value={form.address || ''} disabled={locked} onChange={e => update('address', e.target.value)} />
         </div>
       </div>
       <div className="card-title">{s.contactSection}</div>

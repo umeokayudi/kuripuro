@@ -1,4 +1,5 @@
 import { CONTRACT_NOTE_KEYS } from '../lib/spotContract'
+import AddressInput from './AddressInput'
 
 // v1.0.36 · What the 業務委託契約書 prints beyond the price: written address, 責任者, 作業内容 in Japanese,
 // and a note per item explaining why (printed as 備考 under that item). Saved in contract_details.
@@ -18,11 +19,11 @@ export default function ContractDetailsFields({ value = {}, onChange, placeholde
     <>
       <div className="grid-2">
         <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Written address of the place 作業場所の住所</label>
-          <input value={value.written_address || ''} onChange={e => set('written_address', e.target.value)} placeholder={placeholders.written_address || '東京都港区六本木3-14-14 5F'} />
+          <AddressInput value={value.written_address || ''} onChange={e => set('written_address', e.target.value)} placeholder={placeholders.written_address || '東京都港区六本木3-14-14 5F'} />
         </div>
         {showClientAddress && (
           <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address 甲の住所</label>
-            <input value={value.client_address || ''} onChange={e => set('client_address', e.target.value)} placeholder={placeholders.client_address || 'Same as the place'} />
+            <AddressInput value={value.client_address || ''} onChange={e => set('client_address', e.target.value)} placeholder={placeholders.client_address || 'Same as the place'} />
           </div>
         )}
         <div className="form-group"><label>Person in charge 責任者</label>

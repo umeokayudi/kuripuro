@@ -14,6 +14,7 @@ import { useLang, pickLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { phoneTakenMessage } from '../lib/contactMask'
 import { askConfirm } from '../components/ConfirmDialog'
+import AddressInput from '../components/AddressInput'
 import { undoToast } from '../components/UndoToast'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -459,7 +460,7 @@ export default function EmployeeProfile() {
             <div className="form-group"><label>Email</label><input value={form.email||''} onChange={e=>upd('email',e.target.value)} /></div>
             <div className="form-group"><label>Password</label><input type="password" value={form.password||''} onChange={e=>upd('password',e.target.value)} autoComplete="new-password" placeholder={lang==='ja'?'変更しない場合は空欄':'Leave blank to keep'} /></div>
             <div className="form-group"><label>Phone</label><input value={form.phone||''} onChange={e=>upd('phone',e.target.value)} /></div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><input value={form.address||''} onChange={e=>upd('address',e.target.value)} /></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>Address</label><AddressInput value={form.address||''} onChange={e=>upd('address',e.target.value)} /></div>
           </div>
           <div style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:0.5,margin:'14px 0 10px',borderTop:'1px solid var(--border)',paddingTop:12}}>{lang==='ja'?'役割':'Role'}</div>
           <RolePicker key={emp.id} value={form.job_role||''} onChange={v=>upd('job_role',v)} lang={lang} />

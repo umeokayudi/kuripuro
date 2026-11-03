@@ -18,7 +18,9 @@ import { clientContact } from '../lib/clientContact'
 import { newSetupToken, setupPassword, setupLink } from '../lib/passwordLink'
 import { undoToast } from '../components/UndoToast'
 import { isTestClient } from '../lib/testData'
+import AddressInput from '../components/AddressInput'
 import SetupLinkCard from '../components/SetupLinkCard'
+import ClientReportPanel from '../components/ClientReportPanel'
 
 export default function Clients() {
   const [searchParams] = useSearchParams()
@@ -248,6 +250,7 @@ export default function Clients() {
   }
 
   const [costMonth, setCostMonth] = useState('')
+  const [reportFor, setReportFor] = useState(null)
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('clients').select('*').order('company_name')
@@ -380,9 +383,11 @@ export default function Clients() {
                   <button className="btn btn-sm" onClick={()=>navigate(`/contracts?client=${c.id}`)}>📄 {L('Contracts','契約','Contratos')}</button>
                   <button className="btn btn-sm" onClick={()=>{setPortalClientId(c.id);setTab('portal')}}>🔐 {L('Portal','ポータル','Portal')}</button>
                   <button className="btn btn-sm" onClick={()=>navigate(`/facility?client=${c.id}`)}>🏢 3D</button>
+                  <button className="btn btn-sm" onClick={()=>setReportFor(reportFor===c.id?null:c.id)}>📄 {L('Client report','作業報告書','Relatório do cliente')}</button>
                   <button className="btn btn-sm" onClick={()=>handleToggle(c.id,c.is_active,c.company_name)}>{c.is_active?L('Deactivate','無効にする','Desativar'):L('Activate','有効にする','Ativar')}</button>
                   <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(c.id,c.company_name)}>🗑 {L('Delete','削除','Excluir')}</button>
                 </div>
+                {reportFor===c.id && <ClientReportPanel client={c} onClose={()=>setReportFor(null)} />}
               </div>
             )
           })}
@@ -405,7 +410,7 @@ export default function Clients() {
             </div>
             <div className="form-group" style={{gridColumn:'1/-1',fontSize:12,color:'var(--text3)'}}>💴 {L("Monthly revenue comes from the client's contracts (Contracts) and the cost from the team's real work. They are not typed here.",'月の売上は顧客の契約（契約）から、原価はチームの実際の作業から計算します。ここでは入力しません。','A receita mensal vem dos contratos do cliente (Contratos) e o custo vem do trabalho real da equipe. Eles não são digitados aqui.')}
               <div style={{marginTop:4}}>👤 {L('The contact person is registered only here (or in the client sheet). Contracts and the portal read it from here.','担当者はここ（または顧客シート）だけで登録します。契約やポータルはここから読み込みます。','O contato do cliente é cadastrado só aqui (ou na ficha do cliente). Contratos e portal leem daqui.')}</div></div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Address','住所','Endereço')}</label><input value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Address','住所','Endereço')}</label><AddressInput value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Notes','メモ','Observações')}</label><textarea value={form.notes} onChange={e=>upd('notes',e.target.value)} /></div>
           </div>
           <div style={{display:'flex',gap:8}}>

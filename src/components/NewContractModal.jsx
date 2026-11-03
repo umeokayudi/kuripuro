@@ -11,6 +11,7 @@ import ClientContactField from './ClientContactField'
 import { fillClientContact } from '../lib/clientContact'
 import { useLang } from '../hooks/useLang'
 import { isPlaceholderCoords } from '../lib/geocode'
+import AddressInput from './AddressInput'
 
 // v1.0.21 · Contracts → Spot → "+ New contract": one form creates the job for the worker,
 // the 業務委託契約書, its invoice (payment on day N of next month) and the saved PDF.
@@ -113,8 +114,8 @@ export default function NewContractModal({ onClose, onSaved }) {
             </select>
           </div>
           <div className="form-group"><label>Location name *</label><input value={job.location_name} onChange={e => setJ('location_name', e.target.value)} placeholder="Atomic Bar 新橋" /></div>
-          <div className="form-group"><label>Location address</label><input value={job.address} onChange={e => setJ('address', e.target.value)} placeholder="東京都港区…" /></div>
-          <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><input value={contract.client_address} onChange={e => setC('client_address', e.target.value)} /></div>
+          <div className="form-group"><label>Location address</label><AddressInput pin value={job.address} onChange={e => setJ('address', e.target.value)} onPick={p => p.address && setJ('address', p.address)} placeholder="東京都港区…" /></div>
+          <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><AddressInput value={contract.client_address} onChange={e => setC('client_address', e.target.value)} /></div>
           <div className="form-group"><label>Representative (代表者)</label><input value={contract.client_representative} onChange={e => setC('client_representative', e.target.value)} /></div>
           <ClientContactField client={clients.find(c => c.id === job.client_id)} lang={lang} name={contract.contact_name} phone={contract.contact_phone} onName={v => setC('contact_name', v)} onPhone={v => setC('contact_phone', v)} />
         </div>

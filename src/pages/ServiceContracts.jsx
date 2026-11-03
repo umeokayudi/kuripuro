@@ -23,6 +23,7 @@ import { ensurePlaceForContract } from '../lib/places'
 import '../components/agenda.css'
 import { useLang, pickLang } from '../hooks/useLang'
 import SkeletonRows from '../components/SkeletonRows'
+import AddressInput from '../components/AddressInput'
 import { undoToast } from '../components/UndoToast'
 
 const NO_SELLER = { salesperson_id:'', salesperson_name:'', commission_type:null, commission_value:null, commission_amount:0 }
@@ -311,7 +312,7 @@ function RecurringContracts() {
                 <div className="form-group"><label>{L('Payment day (next month)','支払日（翌月）','Dia do pagamento (mês seguinte)')}</label><input type="number" min="1" max="28" value={form.billing_day||10} onChange={e=>upd('billing_day',e.target.value)} /></div>
                 <SellerCommissionFields monthly sellers={sellers.salespeople} rules={sellers.rules} contract={{ price: form.billing_type==='fixed_monthly' ? form.fixed_monthly : monthlyRevenue, tax_rate: form.tax_rate, price_includes_tax: form.price_includes_tax }} value={form} onChange={patch=>setForm(f=>({...f,...patch}))} />
                 <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Billing notes','請求メモ','Observações da cobrança')}</label><input value={form.billing_notes||''} onChange={e=>upd('billing_notes',e.target.value)} placeholder={L('e.g. discount agreed with the client','例：顧客と合意した割引','Ex.: desconto acordado com o cliente')} /></div>
-                <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Address / Maps URL','住所・地図URL','Endereço / link do Maps')}</label><input value={form.location_address} onChange={e=>upd('location_address',e.target.value)} placeholder="https://maps.app.goo.gl/..." /></div>
+                <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Address / Maps URL','住所・地図URL','Endereço / link do Maps')}</label><AddressInput pin value={form.location_address} onChange={e=>upd('location_address',e.target.value)} onPick={p=>p.lat!=null&&!p.address?.startsWith('http')&&upd('location_address',p.address||`https://www.google.com/maps?q=${p.lat},${p.lng}`)} placeholder="https://maps.app.goo.gl/..." /></div>
                 <div className="form-group" style={{gridColumn:'1/-1'}}>
                   <label>{L('Days of Week','曜日','Dias da semana')}</label>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>

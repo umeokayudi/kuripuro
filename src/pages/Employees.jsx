@@ -15,6 +15,7 @@ import { maskEmail, phoneTakenMessage } from '../lib/contactMask'
 import { newSetupToken, setupPassword, setupLink } from '../lib/passwordLink'
 import { undoToast } from '../components/UndoToast'
 import SetupLinkCard from '../components/SetupLinkCard'
+import AddressInput from '../components/AddressInput'
 import { speaksPt, hasPtColumn, saveSpeaksPt } from '../lib/employeeLang'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -333,7 +334,7 @@ export default function Employees() {
             <div className="form-group"><label>{L('E-mail (login)','メール（ログイン）','E-mail (login)')} *</label><input type="email" value={form.email} onChange={e=>upd('email',e.target.value)} placeholder="hanako@email.com" /></div>
             <div className="form-group"><label>{L('Phone','電話','Telefone')}</label><input value={form.phone} onChange={e=>upd('phone',e.target.value)} placeholder="090-1234-5678" /></div>
             <div style={{gridColumn:'1/-1',fontSize:12,color:'var(--text3)',marginTop:-4,marginBottom:8}}>🔑 {L('No password here: after saving you get a link for the person to create their own password.','ここではパスワードを入力しません。保存後、本人がパスワードを作成するリンクが表示されます。','Sem senha aqui: depois de salvar aparece um link para a pessoa criar a própria senha.')}</div>
-            <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Address','住所','Endereço')}</label><input value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
+            <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Address','住所','Endereço')}</label><AddressInput value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
           </div>
 
           <div className="form-group">

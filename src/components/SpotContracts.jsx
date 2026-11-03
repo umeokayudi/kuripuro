@@ -17,6 +17,7 @@ import { googleCalendarUrl } from '../lib/calendar'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import toast from 'react-hot-toast'
 import { askConfirm } from './ConfirmDialog'
+import AddressInput from './AddressInput'
 
 // v1.0.21 · Contracts → Spot contracts: every spot job's contract with the location, stored.
 
@@ -322,7 +323,7 @@ export default function SpotContracts() {
           <div className="card" style={{ width: 'min(640px,100%)', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="card-title">Edit {editing.contract_number}</div>
             <div className="grid-2">
-              <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><input value={editing.client_address || ''} onChange={e => setEditing(x => ({ ...x, client_address: e.target.value }))} /></div>
+              <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><AddressInput value={editing.client_address || ''} onChange={e => setEditing(x => ({ ...x, client_address: e.target.value }))} /></div>
               <div className="form-group"><label>Representative (代表者)</label><input value={editing.client_representative || ''} onChange={e => setEditing(x => ({ ...x, client_representative: e.target.value }))} /></div>
               <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="31" value={editing.payment_day ?? DEFAULT_PAYMENT_DAY} onChange={e => setEditing(x => ({ ...x, payment_day: e.target.value }))} /></div>
               <div className="form-group"><label>Contact person</label><input value={editing.contact_name || ''} onChange={e => setEditing(x => ({ ...x, contact_name: e.target.value }))} /></div>

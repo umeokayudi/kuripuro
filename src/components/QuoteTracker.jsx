@@ -7,6 +7,7 @@ import { useLang, pickLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
 import { fetchQuoteSessions, quoteStage, scheduleQuoteSession, cancelQuoteSession, finishQuoteJob, syncQuoteSessions } from '../lib/quoteFlow'
 import './quote-tracker.css'
+import AddressInput from './AddressInput'
 
 const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString()}`
 
@@ -191,7 +192,7 @@ export default function QuoteTracker({ quote, onClose }) {
                   </select>
                 </label>
               )}
-              <label className="qt-wide">{L('Address', '住所', 'Endereço')}<input value={form.address} onChange={e => upd('address', e.target.value)} placeholder={quote.place} /></label>
+              <label className="qt-wide">{L('Address', '住所', 'Endereço')}<AddressInput value={form.address} onChange={e => upd('address', e.target.value)} placeholder={quote.place} /></label>
               <label className="qt-wide">{L('Note for the worker', '担当者へのメモ', 'Recado para o funcionário')}<input value={form.notes} onChange={e => upd('notes', e.target.value)} /></label>
             </div>
             {quote.preferred_date && <div className="qt-muted">{L('Client asked for', 'お客様の希望日', 'Cliente pediu para')} {quote.preferred_date}</div>}

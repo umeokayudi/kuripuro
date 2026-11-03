@@ -20,6 +20,7 @@ import { splitChecklist } from '../lib/agenda'
 import { contractForPlace } from '../lib/places'
 import { parseEmployeePay, isMissingColumn } from '../lib/jobEmployeePay'
 import './new-job.css'
+import AddressInput from './AddressInput'
 
 const EMPTY = {
   title: '', client_id: '', employee_id: '', scheduled_date: '', scheduled_time: '',
@@ -169,6 +170,8 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
   const checklistText = checklistEdited ? form.checklist_template : autoChecklist
   const employeeSees = finalTitle ? parseChecklistTemplate(checklistTemplateForJob({ title: finalTitle, checklist_template: checklistText })) : []
 
+  const [addrDraft, setAddrDraft] = useState('')
+  const [placeFix, setPlaceFix] = useState(null)
   const handleGeocode = async () => {
     if (!form.address) return toast.error(L('Type the address first', '先に住所を入力', 'Digite o endereço primeiro'))
     setGeocoding(true)
@@ -236,6 +239,12 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
         : error.message)
     }
     if (!isSpot) notifyCreated([inserted]).catch(() => {})
+    // v1.0.133 · the address completed in this form goes back to the saved place (only when it had none)
+    if (placeFix?.address && form.location_id) {
+      supabase.from('locations').update({ address: placeFix.address, ...(placeFix.lat != null ? { gps_lat: placeFix.lat, gps_lng: placeFix.lng } : {}) })
+        .eq('id', form.location_id).then(() => {}, () => {})
+      setPlaceFix(null); setAddrDraft('')
+    }
     toast.success(isSpot
       ? L('Spot job sent! Waiting for the employee to accept.', 'スポット送信！担当者の承認待ち', 'Spot enviado! Esperando o funcionário aceitar.')
       : L('Job created!', '作成しました！', 'Serviço criado!'))
@@ -302,7 +311,19 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
             </div>
             <button type="button" className="btn btn-sm" onClick={clearLocation}>{L('Change', '変更', 'Trocar')}</button>
           </div>
-        ) : otherPlace ? (
+        ) : null}
+        {/* v1.0.133 · a saved place without address never blocks the job: complete it right here (search or pin);
+            it is also saved on the place so the next job is filled. */}
+        {form.title && !otherPlace && !form.address ? (
+          <div className="form-group" style={{ marginTop: 8 }}>
+            <label>{L('This place has no address yet — type it, pick a suggestion or mark the pin', 'この場所は住所未登録 — 入力・候補選択・ピンで指定', 'Este local ainda não tem endereço — digite, escolha uma sugestão ou marque o pino')} *</label>
+            <AddressInput pin lat={form.gps_lat || null} lng={form.gps_lng || null} value={addrDraft} onChange={e => setAddrDraft(e.target.value)}
+              onPick={p => { const a = p.address || addrDraft; setForm(f => ({ ...f, address: a, ...(p.lat != null ? { gps_lat: p.lat, gps_lng: p.lng } : {}) })); setPlaceFix({ address: a, lat: p.lat, lng: p.lng }) }}
+              onBlur={() => { if (addrDraft.trim()) { setForm(f => ({ ...f, address: addrDraft.trim() })); setPlaceFix(x => ({ ...(x || {}), address: addrDraft.trim() })) } }}
+              placeholder="東京都千代田区有楽町…" />
+          </div>
+        ) : null}
+        {form.title && !otherPlace ? null : otherPlace ? (
           <div className="nj-other">
             <div className="form-group">
               <label>{L('Place name', '場所の名前', 'Nome do local')} *</label>
@@ -311,7 +332,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
             <div className="form-group">
               <label>{L('Address or Google Maps link', '住所またはGoogleマップのリンク', 'Endereço ou link do Google Maps')} *</label>
               <div className="nj-row">
-                <input value={form.address} onChange={e => upd('address', e.target.value)} placeholder="東京都新宿区…" />
+                <AddressInput pin lat={form.gps_lat || null} lng={form.gps_lng || null} value={form.address} onChange={e => upd('address', e.target.value)} onPick={p => setForm(f => ({ ...f, address: p.address || f.address, ...(p.lat != null ? { gps_lat: p.lat, gps_lng: p.lng } : {}) }))} placeholder="東京都新宿区…" />
                 <button type="button" className="btn" onClick={handleGeocode} disabled={geocoding}>{geocoding ? '…' : '📍 GPS'}</button>
               </div>
               {form.gps_lat && <div className="nj-ok">✓ GPS {Number(form.gps_lat).toFixed(4)}, {Number(form.gps_lng).toFixed(4)}</div>}
@@ -486,7 +507,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
                 {contractForm.enabled && (<>
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>業務委託契約書 · company data of the location (甲) is filled from the client; KuriPuro (乙) data is added automatically.</div>
                   <div className="grid-2">
-                    <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><input value={contractForm.client_address} onChange={e => updContract('client_address', e.target.value)} placeholder="東京都港区…" /></div>
+                    <div className="form-group" style={{ gridColumn: '1/-1' }}><label>Company address (甲)</label><AddressInput value={contractForm.client_address} onChange={e => updContract('client_address', e.target.value)} placeholder="東京都港区…" /></div>
                     <div className="form-group"><label>Representative (代表者)</label><input value={contractForm.client_representative} onChange={e => updContract('client_representative', e.target.value)} placeholder="代表取締役 山田 太郎" /></div>
                     <div className="form-group"><label>Payment day (next month)</label><input type="number" min="1" max="31" value={contractForm.payment_day} onChange={e => updContract('payment_day', e.target.value)} /></div>
                     <ClientContactField client={clients.find(c => c.id === form.client_id)} lang={lang} name={contractForm.contact_name} phone={contractForm.contact_phone} onName={v => updContract('contact_name', v)} onPhone={v => updContract('contact_phone', v)} />

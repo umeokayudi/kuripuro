@@ -33,6 +33,8 @@ import KeyReveal from '../components/KeyReveal'
 import EmployeePayEdit from '../components/EmployeePayEdit'
 import { splitKeyLine } from '../lib/keyReveal'
 import JobCountStrip from '../components/JobCountStrip'
+import DeepSpotCoverage from '../components/DeepSpotCoverage'
+import AddressInput from '../components/AddressInput'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
 } from '../lib/jobsPeriod'
@@ -88,7 +90,7 @@ export default function Jobs() {
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const [tab, setTab] = useState(() => searchId ? 'list' : searchParams.get('tab') === 'locations' ? 'locations' : 'agenda')
+  const [tab, setTab] = useState(() => searchId ? 'list' : ['locations', 'deepspot'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'agenda')
   const [cleaningFilter, setCleaningFilter] = useState('all')
   const [period, setPeriod] = useState('7d')
   const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
@@ -189,7 +191,10 @@ export default function Jobs() {
         </button>
         <button className={`tab-pill${tab==='new'?' active':''}`} onClick={()=>setTab('new')}>+ {jt.newJob}</button>
         <button className={`tab-pill${tab==='locations'?' active':''}`} onClick={()=>setTab('locations')}>📍 {jt.locations}</button>
+        <button className={`tab-pill${tab==='deepspot'?' active':''}`} onClick={()=>setTab('deepspot')}>🧽 Deep &amp; Spot</button>
       </div>
+
+      {tab==='deepspot' && <DeepSpotCoverage />}
 
       {tab==='agenda' && <DayAgenda onChanged={loadAll} />}
 
@@ -511,7 +516,7 @@ function LocationsTab() {
         <div className="form-group">
           <label>{t.jobs.addressLabel} *</label>
           <div style={{display:'flex',gap:8}}>
-            <input className={errors.address?'ag-invalid':''} value={form.address} onChange={e=>upd('address',e.target.value)} placeholder={t.jobs.addressPlaceholder} style={{flex:1,minWidth:0}} />
+            <AddressInput pin lat={gps?.lat} lng={gps?.lng} className={errors.address?'ag-invalid':''} value={form.address} onChange={e=>upd('address',e.target.value)} onPick={p=>{ if (p.address) upd('address', p.address); if (p.lat!=null) { setGps({ lat:p.lat, lng:p.lng }); setErrors(e=>({ ...e, address: null })) } }} placeholder={t.jobs.addressPlaceholder} style={{flex:1,minWidth:0}} />
             <button className="btn" onClick={handleGeocode} disabled={geocoding}>{geocoding?'...':'📍 GPS'}</button>
           </div>
           {fieldErr('address')}
