@@ -348,7 +348,23 @@ export default function Mitsumori() {
 
   // v1.0.116 · approved quote → one-off job (book the date, same tracker as before) or recurring
   // contract (Contracts opens its form filled from the quote; the office checks the days and saves).
+  // v1.0.133 · an accepted quote past its validity gets a VENCIDO badge and converting it asks once more,
+  // showing the date it expired (the price may no longer hold).
+  const expiredOn = q => (q?.valid_until && String(q.valid_until).slice(0, 10) < today ? String(q.valid_until).slice(0, 10) : null)
+  const confirmExpired = async (q) => {
+    const exp = expiredOn(q)
+    if (!exp) return true
+    return !!(await askConfirm({
+      title: L('This quote has EXPIRED', 'この見積は有効期限切れです', 'Este orçamento está VENCIDO'),
+      message: L(`${q.company_name || ''} · ${yen(q.total)}\nValid until ${exp} — expired. Check with the client that the price still holds before converting.`,
+        `${q.company_name || ''} · ${yen(q.total)}\n有効期限 ${exp} — 期限切れです。変換する前に、この金額で良いか顧客に確認してください。`,
+        `${q.company_name || ''} · ${yen(q.total)}\nVálido até ${exp} — vencido. Confirme com o cliente que o preço continua valendo antes de converter.`),
+      confirmLabel: L('Convert anyway', 'それでも変換', 'Converter mesmo assim'), danger: true,
+    }))
+  }
+
   const convertQuote = async (q) => {
+    if (!(await confirmExpired(q))) return
     const recurring = await askConfirm({
       title: L('Convert the approved quote', '承認済み見積を変換', 'Converter o orçamento aprovado'),
       message: L(
@@ -443,6 +459,7 @@ export default function Mitsumori() {
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--green)' }}>{yen(q.total)}</div>
                   <span className={`badge ${badge(q.status)}`}>{s.quoteStatuses?.[q.status] || q.status}</span>
+                  {['accepted', 'sent', 'pending'].includes(q.status) && expiredOn(q) && <div><span className="badge badge-red" title={L(`Valid until ${expiredOn(q)}`, `有効期限 ${expiredOn(q)}`, `Válido até ${expiredOn(q)}`)}>{L('EXPIRED', '期限切れ', 'VENCIDO')} · {expiredOn(q)}</span></div>}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
@@ -455,7 +472,7 @@ export default function Mitsumori() {
                   <button type="button" className="btn btn-sm btn-primary" onClick={() => convertQuote(q)}>🔁 {L('Convert to job / contract', '作業・契約に変換', 'Converter em job/contrato')}</button>
                 )}
                 {q.status === 'accepted' && flow[q.id] && flow[q.id] !== 'approved' && (
-                  <button type="button" className="btn btn-sm" onClick={() => setTracking(quoteFromMitsumori(q))}>
+                  <button type="button" className="btn btn-sm" onClick={async () => { if (flow[q.id] === 'done' || await confirmExpired(q)) setTracking(quoteFromMitsumori(q)) }}>
                     📅 {flow[q.id] === 'done' ? L('Done · see invoice', '完了・請求書を見る', 'Feito · ver nota') : flow[q.id] === 'scheduled' ? L('Scheduled · follow up', '予約済み・進捗を見る', 'Agendado · acompanhar') : L('Book the date and follow up', '日程を決めて進める', 'Marcar a data e acompanhar')}
                   </button>
                 )}
