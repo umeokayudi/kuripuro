@@ -73,6 +73,7 @@ import {
 import { tokyoToday } from '../lib/dates'
 import { tokyoTomorrow, upcomingJobs, SHIFT_END_LIMIT, validateShiftWindow } from '../lib/nextDayShift'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
+import { jobEmployeePay, employeeMonthPay, loadPayBasis } from '../lib/jobEmployeePay'
 import AIChatPanel from '../components/AIChatPanel'
 import EarningsPanel from '../components/EarningsPanel'
 import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
@@ -728,6 +729,11 @@ export default function EmployeePortal() {
 
   const calcSalary = (allData, empInfo, deductionsList = []) => {
     setSalaryData(calcEmployeeMonthlySalary(empInfo, allData, deductionsList))
+    // v1.0.131 · when the office chose fixed / per job for this month, show the same base as the payslip
+    const month = tokyoToday().slice(0, 7)
+    loadPayBasis(supabase, month, user.id).then(b => {
+      if (b[user.id]) setSalaryData(calcEmployeeMonthlySalary(empInfo, allData, deductionsList, month, b[user.id]))
+    }).catch(() => {})
   }
 
   const awardBadges = async (allData, existing) => {
@@ -1804,7 +1810,10 @@ export default function EmployeePortal() {
               <div style={{fontSize:18,fontWeight:700,color:'#fff',lineHeight:1.3,marginBottom:4}}>{job.title}</div>
               <div style={{fontSize:11,color:'rgba(255,255,255,0.4)'}}>{job.client_name}</div>
             </div>
-            <div style={{fontSize:18,fontWeight:800,color:'#c19c56'}}>¥{Number(job.spot_value||job.value||0).toLocaleString()}</div>
+            {/* v1.0.131 · the employee sees their own pay for the job (never the store's contract price) */}
+            {job.job_category==='spot'
+              ? <div style={{fontSize:18,fontWeight:800,color:'#c19c56'}}>¥{Number(job.spot_value||job.value||0).toLocaleString()}</div>
+              : <div style={{textAlign:'right'}}><div style={{fontSize:9,color:'rgba(255,255,255,0.35)'}}>{L('Your pay','あなたの報酬','Seu pagamento')}</div><div style={{fontSize:18,fontWeight:800,color:jobEmployeePay(job)===null?'rgba(255,255,255,0.4)':'#c19c56'}}>{jobEmployeePay(job)===null?L('to be defined','未定','a definir'):`¥${jobEmployeePay(job).toLocaleString(localeOf(lang))}`}</div></div>}
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:14}}>
             {[['📅 '+e.jobDate,dDate],['🕐 '+e.jobStart,job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,isMissedJob(job)?e.statusIncomplete:`${tr.status[job.status]||job.status}${isRetroJob(job)?` · ${e.retroBadge}`:''}`]].map(([l,v])=>(
@@ -2696,6 +2705,12 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
   )
 }
 
+/** v1.0.131 · "💴 ¥1.000" (the employee's own pay for the job) or "a definir" — never ¥0 for empty. */
+function PayChip({ job, L, lang }) {
+  const pay = jobEmployeePay(job)
+  return <span style={{fontSize:10,fontWeight:700,color:pay===null?'rgba(255,255,255,0.35)':'#c19c56'}}>💴 {pay===null?L('to be defined','未定','a definir'):`¥${pay.toLocaleString(localeOf(lang))}`}</span>
+}
+
 function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId, onAskAI, photoStatus = {}, onRetryPhotos, onReportProblem }) {
   const todayJobs = sortByOrder(allJobs.filter(j=>j.scheduled_date===today))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
@@ -2866,6 +2881,20 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
         <p>{labels?.noJobsToday || 'No jobs today'}</p>
       </div>}
 
+      {(() => {
+        // v1.0.131 · my month: sum of my "Pagamento do funcionário" (only my jobs)
+        const month = today.slice(0,7)
+        const m = employeeMonthPay(allJobs, month)
+        if (!m.any) return null
+        const name = new Date(`${month}-01T12:00:00`).toLocaleDateString(localeOf(lang),{month:'long'})
+        return (
+          <div style={{...S.card,marginBottom:10,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+            <span style={{fontSize:12,color:'rgba(255,255,255,0.55)'}}>💴 {L(`My pay in ${name}`,`${name}の報酬`,`Meu pagamento em ${name}`)}</span>
+            <span style={{fontSize:13,color:'#fff'}}><b style={{color:'#c19c56'}}>¥{m.done.toLocaleString(localeOf(lang))}</b> {L('done','完了','concluído')} · ¥{m.planned.toLocaleString(localeOf(lang))} {L('planned','予定','previsto')}{m.undefinedCount>0&&<small style={{color:'rgba(255,255,255,0.4)'}}> · {m.undefinedCount} {L('to be defined','未定','a definir')}</small>}</span>
+          </div>
+        )
+      })()}
+
       {todayQueue.map((job,idx)=>{
         const isActive = false
         const isDone = job.status==='completed'
@@ -2903,6 +2932,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                     {isRetroJob(job)&&<RetroBadge labels={labels} />}
                     {!isDone&&photoRule(job)}
                     <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
+                    {job.job_category!=='spot'&&<PayChip job={job} L={L} lang={lang} />}
                     {canOpen&&<span style={{fontSize:10,color:'#60a5fa',fontWeight:700}}>{L('Tap to open','タップして開く','Toque para abrir')} ›</span>}
                   </div>
                 </div>
@@ -3055,7 +3085,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
               style={{...S.card,marginBottom:8,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
               <div>
                 <div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{job.title.replace(/ — .*/,'')}</div>
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:3}}>{job.scheduled_date} · {job.scheduled_time||'—'}</div>
+                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:3}}>{job.scheduled_date} · {job.scheduled_time||'—'} {job.job_category!=='spot'&&<PayChip job={job} L={L} lang={lang} />}</div>
               </div>
               <a href={googleCalendarUrl(job)} target="_blank" rel="noreferrer" onClick={ev=>ev.stopPropagation()} aria-label={labels?.calGoogle} title={labels?.calGoogle} style={{fontSize:18,textDecoration:'none'}}>📅</a>
             </div>

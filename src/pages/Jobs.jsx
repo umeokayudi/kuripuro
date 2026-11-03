@@ -30,6 +30,7 @@ import { tokyoToday } from '../lib/dates'
 import { isMissedJob, isRetroJob } from '../lib/jobOverdue'
 import { jobDurationMin } from '../lib/workKpis'
 import KeyReveal from '../components/KeyReveal'
+import EmployeePayEdit from '../components/EmployeePayEdit'
 import { splitKeyLine } from '../lib/keyReveal'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
@@ -297,6 +298,11 @@ export default function Jobs() {
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value || j.spot_value || 0).toLocaleString()}</span>
                 </div>
               </div>
+
+              {j.job_category !== 'spot' && (
+                <EmployeePayEdit job={j} style={{ marginBottom: 10 }}
+                  onSaved={saved => setJobs(list => list.map(x => x.id === j.id ? { ...x, ...saved } : x))} />
+              )}
 
               {ctype === 'deep' && (
                 <DeepChecklist job={j} lang={lang} tr={tr} contracts={contractList} places={locations}

@@ -1,4 +1,5 @@
 import { tokyoNow, tokyoToday, workedDayKey } from './dates.js'
+import { perJobPay } from './jobEmployeePay.js'
 
 export function jobMinutes(job) {
   if (job?.started_at && job?.completed_at) {
@@ -80,14 +81,14 @@ export function monthBase(emp, jobs, month) {
   return fixedMonthBase(emp, month)
 }
 
-export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [], month) {
+export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [], month, basis = null) {
   const todayStr = tokyoToday()
   month = month || todayStr.slice(0, 7)
   const isCurrentMonth = month === todayStr.slice(0, 7)
   const completed = completedJobsInMonth(allJobs, month, todayStr)
   const totalMins = completed.reduce((s, j) => s + jobMinutes(j), 0)
   // v1.0.108 · base, jobs and deductions come from payrollMonth (same numbers as Payroll close).
-  const one = payrollMonth({ emp: empInfo, jobs: completed, lines: (deductionsList || []).map(d => ({ ...d, period: d.period || month })), month })
+  const one = payrollMonth({ emp: empInfo, jobs: completed, lines: (deductionsList || []).map(d => ({ ...d, period: d.period || month })), month, basis })
   const spotEarned = one.jobsPay
   const deductions = one.deductions
   const workedDays = countWorkedDays(completed)
@@ -167,16 +168,24 @@ export const spotExtra = job => (job?.job_category === 'spot' ? yenAmount(job.sp
  * @param lines that person's salary_payments rows (any month — filtered here)
  * @param month YYYY-MM
  */
-export function payrollMonth({ emp, jobs = [], lines = [], month }) {
+export function payrollMonth({ emp, jobs = [], lines = [], month, basis = null }) {
   const last = monthLastDay(month)
   const done = (jobs || []).filter(j => j.status === 'completed' && j.scheduled_date >= `${month}-01` && j.scheduled_date <= last)
-  const base = monthBase(emp, done, month)
+  // v1.0.131 · Fixed salary and the sum of "Pagamento do funcionário" per job are two separate totals.
+  // The admin picks which one counts in the month (basis 'fixed' | 'per_job'); they are never added.
+  // No choice yet → the old rule (monthBase), except when jobs carry a pay: then `needsBasis`.
+  const perJob = perJobPay(done)
+  const fixedTotal = fixedMonthBase(emp, month)
+  const pick = basis?.basis || basis || null
+  const base = pick === 'per_job' ? perJob.total : pick === 'fixed' ? fixedTotal : monthBase(emp, done, month)
   const jobsPay = done.reduce((s, j) => s + spotExtra(j), 0)
   const mine = (lines || []).filter(l => lineMonth(l) === month)
   const dedRows = mine.filter(countsAsDeduction)
   const deductions = dedRows.reduce((s, d) => s + yenAmount(d.amount), 0)
   return {
     month, base, jobsPay, deductions, dedRows,
+    basis: pick, fixedTotal, perJob,
+    needsBasis: !pick && perJob.priced > 0,
     gross: base + jobsPay,
     net: Math.max(0, base + jobsPay - deductions),
     jobs: done.length,

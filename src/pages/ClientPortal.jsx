@@ -176,7 +176,9 @@ export default function ClientPortal() {
       setClientRow(cliRes.data || null)
       setProfiles(filterByLocation(profRes.data, user.location_name))
       setMaintRecords(filterByLocation(maintRes.data, user.location_name))
-      setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user)))
+      // v1.0.131 · the employee's pay per job is internal: never kept in the client's screen data.
+      setJobs((jobsRes.data || []).filter(j => jobMatchesClientUser(j, user))
+        .map(({ employee_pay, employee_pay_updated_by, employee_pay_updated_at, ...j }) => j))
       setContracts(contractsRes.data || [])
       setMessages(filterByLocation(msgsRes.data, user.location_name))
       setComplaints(filterByLocation(compRes.data, user.location_name))

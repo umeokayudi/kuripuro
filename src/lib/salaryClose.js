@@ -3,6 +3,7 @@
 import { getPeriodDates } from './salaryPeriod.js'
 import { monthBase, payrollMonth, canCloseMonth } from './salaryCalc.js'
 import { ensureServiceReports } from './jobReport.js'
+import { loadPayBasis } from './jobEmployeePay.js'
 
 const tokyoToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date())
 
@@ -106,8 +107,15 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
   const { data: lines } = await db.from('salary_payments').select('*')
     .eq('employee_id', emp.id).eq('period', period)
 
+  // v1.0.131 · fixed salary or sum per job: the admin's choice for the month (never both).
+  const basisRow = (await loadPayBasis(db, period, emp.id))[emp.id] || null
   // v1.0.108 · the same calculation every screen shows (base + jobs − deductions).
-  const calc = payrollMonth({ emp, jobs: jobs || [], lines: lines || [], month: period })
+  const calc = payrollMonth({ emp, jobs: jobs || [], lines: lines || [], month: period, basis: basisRow })
+  if (calc.needsBasis) {
+    const e = new Error(`${emp.full_name}: choose fixed salary or sum per job in Payroll close first / escolha salário fixo ou soma por job no Payroll Close`)
+    e.code = 'needs_basis'
+    throw e
+  }
   const base = calc.base
   const dedTotal = calc.deductions
   const net = calc.net
@@ -119,7 +127,13 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
   const statement = {
     period, employee_id: emp.id, employee_name: emp.full_name,
     base_salary: base, deductions: dedTotal, net_total: net,
-    breakdown: { jobs: calc.jobs, jobs_pay: calc.jobsPay, salary_type: emp.salary_type },
+    breakdown: {
+      jobs: calc.jobs, jobs_pay: calc.jobsPay, salary_type: emp.salary_type,
+      // v1.0.131 · both totals and which one counted (who chose it lives in payroll_pay_basis)
+      pay_basis: calc.basis, fixed_total: calc.fixedTotal, per_job_total: calc.perJob.total,
+      per_job_jobs: calc.perJob.rows.filter(r => r.pay !== null).map(r => ({ id: r.id, date: r.date, title: r.title, pay: r.pay })),
+      pay_basis_by: basisRow?.chosen_by || null, pay_basis_at: basisRow?.chosen_at || null,
+    },
   }
   // Same amount as before: keep what the employee / admin already did with it.
   if (!same) Object.assign(statement, { status: 'awaiting_confirmation', employee_confirmed_at: null, employee_disputed_at: null })

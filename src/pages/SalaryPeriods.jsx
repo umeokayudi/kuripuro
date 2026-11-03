@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
 import { closeSalaryPeriod, closeEmployeeMonth, isPayrollActive, payrollState, payStateText } from '../lib/salaryClose'
 import { payrollMonth, canCloseMonth, monthLastDay } from '../lib/salaryCalc'
+import { loadPayBasis } from '../lib/jobEmployeePay'
 import { tokyoToday } from '../lib/dates'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { useLang, fill } from '../hooks/useLang'
@@ -16,7 +17,8 @@ const shiftMonth = (period, n) => {
   const d = new Date(y, m - 1 + n, 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
-const JOB_COLS = 'id,employee_id,status,scheduled_date,started_at,completed_at,retro_time_min,retro_value,value,job_category,spot_value'
+// v1.0.131 · '*' so employee_pay is read when the column exists (and nothing breaks before the SQL).
+const JOB_COLS = '*'
 
 // v1.0.108 · "Fechar folha": one screen for the owner. Per person: base + jobs − deductions = net and the
 // payment state, all from payrollMonth (the same calculation as Payments, Salary and the employee app).
@@ -52,12 +54,13 @@ export default function SalaryPeriods() {
 
   const load = async (m) => {
     setData(null)
-    const [st, ln, jb] = await Promise.all([
+    const [st, ln, jb, bases] = await Promise.all([
       supabase.from('salary_statements').select('*').eq('period', m),
       supabase.from('salary_payments').select('*').eq('period', m),
       supabase.from('jobs').select(JOB_COLS).eq('status', 'completed').gte('scheduled_date', `${m}-01`).lte('scheduled_date', monthLastDay(m)),
+      loadPayBasis(supabase, m),
     ])
-    setData({ statements: st.data || [], lines: ln.data || [], jobs: jb.data || [] })
+    setData({ statements: st.data || [], lines: ln.data || [], jobs: jb.data || [], bases })
   }
 
   const notifyChanged = () => { try { window.dispatchEvent(new Event(PAYROLL_CHANGED)) } catch { /* SSR */ } }
@@ -73,7 +76,7 @@ export default function SalaryPeriods() {
     const ids = new Set([...employees.filter(isPayrollActive).map(e => e.id), ...data.statements.map(s => s.employee_id)])
     return [...ids].map(id => {
       const emp = employees.find(e => e.id === id) || { id, full_name: data.statements.find(s => s.employee_id === id)?.employee_name || '—', is_active: false }
-      const calc = payrollMonth({ emp, jobs: data.jobs.filter(j => j.employee_id === id), lines: data.lines.filter(l => l.employee_id === id), month: period })
+      const calc = payrollMonth({ emp, jobs: data.jobs.filter(j => j.employee_id === id), lines: data.lines.filter(l => l.employee_id === id), month: period, basis: data.bases?.[id] || null })
       const st = data.statements.find(s => s.employee_id === id) || null
       const state = payrollState(st, calc.salaryLine)
       const paidAmount = state === 'paid' || state === 'paid_unconfirmed' ? Number(calc.salaryLine?.amount || 0) : null

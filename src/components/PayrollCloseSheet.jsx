@@ -8,6 +8,8 @@ import { payrollMonth, canCloseMonth } from '../lib/salaryCalc'
 import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
 import { isDeductionToReview, reviewText } from '../lib/deductionReview'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
+import { loadPayBasis, savePayBasis, isMissingColumn } from '../lib/jobEmployeePay'
+import { locationNameFromTitle } from '../lib/cleaningType'
 import './SalaryPopups.css'
 
 // 6.1 · Payroll of ONE person for ONE month on one screen: what the month adds up to (jobs / fixed),
@@ -22,17 +24,19 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
 
   const load = async () => {
     const { closeDate } = getPeriodDates(period)
-    const [full, jobs, lines, st] = await Promise.all([
+    const [full, jobs, lines, st, bases] = await Promise.all([
       supabase.from('employees').select('*').eq('id', emp.id).maybeSingle(),
       supabase.from('jobs').select('*')
         .eq('employee_id', emp.id).eq('status', 'completed').gte('scheduled_date', `${period}-01`).lte('scheduled_date', closeDate),
       supabase.from('salary_payments').select('*').eq('employee_id', emp.id).eq('period', period).order('payment_date'),
       supabase.from('salary_statements').select('*').eq('employee_id', emp.id).eq('period', period).maybeSingle(),
+      loadPayBasis(supabase, period, emp.id),
     ])
     const person = full.data || emp
     // v1.0.108 · same calculation as Fechar folha / Payments / employee app.
-    const calc = payrollMonth({ emp: person, jobs: jobs.data || [], lines: lines.data || [], month: period })
-    setData({ person, jobs: jobs.data || [], lines: lines.data || [], st: st.data || null, base: calc.base, calc })
+    const basis = bases[emp.id] || null
+    const calc = payrollMonth({ emp: person, jobs: jobs.data || [], lines: lines.data || [], month: period, basis })
+    setData({ person, jobs: jobs.data || [], lines: lines.data || [], st: st.data || null, base: calc.base, calc, basis })
   }
   useEffect(() => { load() }, [emp.id, period])
 
@@ -49,6 +53,23 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
       toast.success(res.kept ? tr('Already paid — not changed', '支払済みのため変更なし', 'Já pago — não mudou') : tr('Payslip calculated', '明細を計算しました', 'Holerite calculado'))
       changed()
     } catch (e) { toast.error(e.message) }
+    setBusy(false)
+  }
+
+  // v1.0.131 · the admin picks which total counts this month: fixed salary OR sum per job (never both).
+  const chooseBasis = async (basis) => {
+    setBusy(true)
+    try {
+      await savePayBasis(supabase, { employeeId: emp.id, period, basis, fixedTotal: data.calc.fixedTotal, perJobTotal: data.calc.perJob.total })
+      toast.success(basis === 'fixed'
+        ? tr('Fixed salary counts this month', '今月は固定給で計算', 'Neste mês vale o salário fixo')
+        : tr('Sum per job counts this month', '今月は件数合計で計算', 'Neste mês vale a soma por job'))
+      changed()
+    } catch (e) {
+      toast.error(isMissingColumn(e)
+        ? tr('Run the SQL 2026-11-02_pagamento_funcionario_job.sql first', '先にSQLを実行してください', 'Rode antes o SQL 2026-11-02_pagamento_funcionario_job.sql')
+        : e.message)
+    }
     setBusy(false)
   }
 
@@ -94,7 +115,13 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
   const outdated = st && !paid && !paidUnconfirmed && (Number(st.net_total) !== preview || Number(st.base_salary) !== data.base)
 
   const kind = data?.person?.salary_type
-  const baseHow = kind === 'fixed' ? tr('Fixed salary for the month', '月の固定給', 'Salário fixo do mês')
+  const basisPick = data?.calc.basis
+  const perJob = data?.calc.perJob
+  const showBasis = !!data && (perJob.priced > 0 || !!basisPick)
+  const fmtDay = d => d ? new Date(`${d}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short', weekday: 'short' }) : ''
+  const baseHow = basisPick === 'fixed' ? tr('Fixed salary (chosen for this month)', '固定給（今月の選択）', 'Salário fixo (escolhido no mês)')
+    : basisPick === 'per_job' ? tr(`Sum per job (${perJob.priced} jobs)`, `件数合計（${perJob.priced}件）`, `Soma por job (${perJob.priced} jobs)`)
+    : kind === 'fixed' ? tr('Fixed salary for the month', '月の固定給', 'Salário fixo do mês')
     : kind === 'hourly' ? tr(`${data?.jobs.length || 0} completed jobs × hours`, `完了 ${data?.jobs.length || 0}件 × 時間`, `${data?.jobs.length || 0} serviços concluídos × horas`)
     : kind === 'mixed' ? tr(`Fixed + ${data?.jobs.length || 0} jobs`, `固定 + ${data?.jobs.length || 0}件`, `Fixo + ${data?.jobs.length || 0} serviços`)
     : tr(`${data?.jobs.length || 0} completed jobs`, `完了 ${data?.jobs.length || 0}件`, `${data?.jobs.length || 0} serviços concluídos`)
@@ -129,11 +156,49 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
               ))}
             </ol>
 
+            {showBasis && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{tr('What counts this month?', '今月はどちらで支払う？', 'O que vale neste mês?')}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[
+                    { key: 'fixed', label: tr('Fixed salary', '固定給', 'Salário fixo'), total: data.calc.fixedTotal },
+                    { key: 'per_job', label: tr(`Sum per job · ${perJob.priced}`, `件数合計 · ${perJob.priced}件`, `Soma por job · ${perJob.priced}`), total: perJob.total },
+                  ].map(o => (
+                    <button key={o.key} type="button" className="btn" disabled={busy || paid || paidUnconfirmed}
+                      onClick={() => basisPick !== o.key && chooseBasis(o.key)}
+                      style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '10px 12px', height: 'auto',
+                        border: `2px solid ${basisPick === o.key ? 'var(--accent, #2563eb)' : 'var(--border, #e5e7eb)'}` }}>
+                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>{basisPick === o.key ? '✓ ' : ''}{o.label}</span>
+                      <span style={{ fontSize: 17, fontWeight: 800 }}>{fmt(o.total)}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="pm-hint" style={{ marginTop: 6 }}>
+                  {basisPick
+                    ? tr(`Chosen by ${data.basis?.chosen_by || 'admin'}${data.basis?.chosen_at ? ` on ${new Date(data.basis.chosen_at).toLocaleString(locale)}` : ''}. The two are never added.`,
+                        `${data.basis?.chosen_by || 'admin'} が選択${data.basis?.chosen_at ? `（${new Date(data.basis.chosen_at).toLocaleString(locale)}）` : ''}。合算はしません。`,
+                        `Escolhido por ${data.basis?.chosen_by || 'admin'}${data.basis?.chosen_at ? ` em ${new Date(data.basis.chosen_at).toLocaleString(locale)}` : ''}. Os dois nunca são somados.`)
+                    : tr('Pick one before calculating the payslip. The two are never added.', '明細を計算する前にどちらかを選んでください。合算はしません。', 'Escolha um antes de calcular o holerite. Os dois nunca são somados.')}
+                </p>
+                <details style={{ marginTop: 4 }} open={basisPick === 'per_job'}>
+                  <summary style={{ fontSize: 13, cursor: 'pointer' }}>{tr('Completed jobs with employee pay', '完了した作業（作業者への支払い）', 'Jobs concluídos com pagamento do funcionário')} ({perJob.rows.length})</summary>
+                  <dl className="sp-rows">
+                    {perJob.rows.map(r => (
+                      <div key={r.id}><dt>{fmtDay(r.date)} · {locationNameFromTitle(r.title) || r.title}</dt>
+                        <dd style={r.pay === null ? { color: 'var(--text3)', fontWeight: 500 } : undefined}>{r.pay === null ? tr('to be defined', '未定', 'a definir') : fmt(r.pay)}</dd></div>
+                    ))}
+                    <div><dt><b>{tr('Sum per job', '件数合計', 'Soma por job')}</b></dt><dd>{fmt(perJob.total)}</dd></div>
+                  </dl>
+                  {perJob.undefinedCount > 0 && <p className="pm-hint" style={{ marginTop: 6 }}>⚠️ {tr(`${perJob.undefinedCount} completed job(s) without employee pay — not in the sum.`, `${perJob.undefinedCount}件は支払い未定（合計に含まれません）。`, `${perJob.undefinedCount} job(s) concluído(s) sem pagamento definido — fora da soma.`)}</p>}
+                </details>
+              </div>
+            )}
+
             <dl className="sp-rows">
-              <div><dt>{baseHow}</dt><dd>{fmt(data.base)}</dd></div>
+              <div><dt>{baseHow}</dt><dd>{data.calc.needsBasis ? tr('choose above', '上で選択', 'escolha acima') : fmt(data.base)}</dd></div>
               {jobsPay > 0 && <div><dt>{tr('Spot jobs', 'スポット', 'Jobs spot')}</dt><dd>+{fmt(jobsPay)}</dd></div>}
               {deductions.map(p => <div key={p.id}><dt>{tr('Deduction', '控除', 'Desconto')} · {p.description || ''}</dt><dd style={{ color: 'var(--red, #dc2626)' }}>−{fmt(p.amount)}</dd></div>)}
-              <div><dt><b>{tr('Payslip (net salary)', '明細（差引支給）', 'Holerite (salário líquido)')}</b></dt><dd className="sp-big">{fmt(paid || paidUnconfirmed ? salaryLine.amount : preview)}</dd></div>
+              <div><dt><b>{tr('Payslip (net salary)', '明細（差引支給）', 'Holerite (salário líquido)')}</b></dt><dd className="sp-big">{paid || paidUnconfirmed ? fmt(salaryLine.amount) : data.calc.needsBasis ? '—' : fmt(preview)}</dd></div>
               {extras.map(p => <div key={p.id}><dt>{p.payment_type === 'bonus' ? tr('Bonus', 'ボーナス', 'Bônus') : tr('Extra', '追加', 'Extra')} · {p.description || ''}</dt><dd>+{fmt(p.amount)}</dd></div>)}
               {advances.map(p => <div key={p.id}><dt>{tr('Advance', '前払い', 'Adiantamento')} · {p.description || ''} {p.status === 'paid' ? `(${tr('already paid', '支払済', 'já pago')})` : ''}</dt><dd>{fmt(p.amount)}</dd></div>)}
             </dl>
@@ -151,7 +216,7 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
 
             <div className="sp-actions" style={{ flexWrap: 'wrap' }}>
               <button className="btn" disabled={busy} onClick={onClose}>{tr('Close', '閉じる', 'Fechar')}</button>
-              {!paid && !paidUnconfirmed && canCloseMonth(period) && <button className={`btn${step === 0 ? ' btn-primary' : ''}`} disabled={busy} onClick={calculate}>{st ? tr('Recalculate', '再計算', 'Recalcular') : tr('Calculate payslip', '明細を計算', 'Calcular holerite')}</button>}
+              {!paid && !paidUnconfirmed && canCloseMonth(period) && <button className={`btn${step === 0 ? ' btn-primary' : ''}`} disabled={busy || data.calc.needsBasis} onClick={calculate}>{st ? tr('Recalculate', '再計算', 'Recalcular') : tr('Calculate payslip', '明細を計算', 'Calcular holerite')}</button>}
               {step === 2 && <button className="btn btn-primary" disabled={busy} onClick={finalize}>{tr('Finalize payslip', '明細を確定', 'Finalizar holerite')}</button>}
               {step === 3 && openToPay.length > 0 && <button className="btn btn-primary" disabled={busy} onClick={pay}>✓ {tr(`Mark paid ${fmt(sum(openToPay))}`, `${fmt(sum(openToPay))} を支払済に`, `Marcar pago ${fmt(sum(openToPay))}`)}</button>}
             </div>
