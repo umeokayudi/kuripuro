@@ -10,6 +10,7 @@ import { isDeductionToReview, reviewText, cancelText, isSilentCancel, reactivate
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { loadPayBasis, savePayBasis, isMissingColumn } from '../lib/jobEmployeePay'
 import { locationNameFromTitle } from '../lib/cleaningType'
+import PayrollJobsDetail from './PayrollJobsDetail'
 import './SalaryPopups.css'
 
 // 6.1 · Payroll of ONE person for ONE month on one screen: what the month adds up to (jobs / fixed),
@@ -20,6 +21,7 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
   const { tr, locale } = useLang()
   const [data, setData] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [detail, setDetail] = useState(false)
   const fmt = n => '¥' + Math.round(Number(n || 0)).toLocaleString(locale)
 
   const load = async () => {
@@ -210,7 +212,12 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
             )}
 
             <dl className="sp-rows">
-              <div><dt>{baseHow}</dt><dd>{data.calc.needsBasis ? tr('choose above', '上で選択', 'escolha acima') : fmt(data.base)}</dd></div>
+              {/* v1.0.145 · tap the calculated salary → every job of the month (date, place, client, address, time, value) */}
+              <div className="pjd-row" role="button" tabIndex={0} onClick={() => setDetail(true)}
+                onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setDetail(true) } }}>
+                <dt>{baseHow}<small>{tr('See details per job ›', '作業ごとの内訳を見る ›', 'Ver detalhes por job ›')}</small></dt>
+                <dd>{data.calc.needsBasis ? tr('choose above', '上で選択', 'escolha acima') : fmt(data.base)}</dd>
+              </div>
               {jobsPay > 0 && <div><dt>{tr('Spot jobs', 'スポット', 'Jobs spot')}</dt><dd>+{fmt(jobsPay)}</dd></div>}
               {deductions.map(p => <div key={p.id}><dt>{tr('Deduction', '控除', 'Desconto')} · {cancelText(p)}</dt><dd style={{ color: 'var(--red, #dc2626)' }}>−{fmt(p.amount)}</dd></div>)}
               {cancelledDeds.map(p => <div key={p.id} style={{ opacity: .7 }}><dt>{tr('Deduction', '控除', 'Desconto')} · <s>{cancelText(p)}</s> · <b>{isSilentCancel(p) ? tr('cancelled with no confirmation', '確認なしで取消', 'cancelado sem confirmação') : tr('cancelled', '取消', 'cancelado')}</b>
@@ -241,6 +248,7 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
           </>
         )}
       </section>
+      {detail && data && <PayrollJobsDetail person={data.person} jobs={data.jobs} period={period} calc={data.calc} onClose={() => setDetail(false)} />}
     </div>
   )
 }
