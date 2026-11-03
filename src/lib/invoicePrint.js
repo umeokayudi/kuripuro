@@ -1,6 +1,7 @@
 import { escapeHtml } from './escapeHtml.js'
 import { invoicePrintCopy, printPartyHtml, printDatesHtml, printIssuerHtml, wrapPrintHtml } from './printDoc.js'
 import { printIssuer, bankTransferFor } from './quoteIssuer.js'
+import { periodLabel } from './invoiceDates.js'
 
 // v1.0.122 · 請求書 printed in the same layout as the 見積書, with the bank account in the issuer card.
 // An invoice born from an accepted 見積 shows the quote's lines exactly (description, qty, unit price,
@@ -85,7 +86,8 @@ export function buildInvoicePrintHtml(f, view, { client = null, lang = 'ja' } = 
     partyHtml: printPartyHtml(L, { restaurant: name, company: company !== name ? company : '', contact: '', address: client?.address || '' }),
     datesHtml: printDatesHtml([
       [L.issueDate, escapeHtml(f.issue_date || '')],
-      [L.period, f.period_start ? `${escapeHtml(f.period_start)}${L.rangeSep}${escapeHtml(f.period_end || f.period_start)}` : ''],
+      // v1.0.146 · one-day period printed once (was "2027-01-01 〜 2027-01-01", wrapping)
+      [L.period, escapeHtml(periodLabel(f.period_start, f.period_end, L.rangeSep))],
       [L.due, escapeHtml(f.due_date || '—')],
     ]),
     columnHead: `<th>${L.desc}</th><th class="num">${L.qty}</th><th class="num">${L.unit}</th><th class="num">${L.amount}</th>`,

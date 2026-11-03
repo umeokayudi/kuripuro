@@ -70,7 +70,7 @@ export async function fetchQuoteSessions(ref) {
   const invIds = rows.map(r => r.fatura_id).filter(Boolean)
   const [jobs, invs] = await Promise.all([
     jobIds.length ? supabase.from('jobs').select('id,status,spot_status,completed_at,employee_name,scheduled_date,scheduled_time,photo_end_url').in('id', jobIds) : { data: [] },
-    invIds.length ? supabase.from('faturas').select('id,status,total,issue_date,due_date').in('id', invIds) : { data: [] },
+    invIds.length ? supabase.from('faturas').select('id,status,total,issue_date,due_date,period_start,period_end').in('id', invIds) : { data: [] },
   ])
   const jobById = new Map((jobs.data || []).map(j => [j.id, j]))
   const invById = new Map((invs.data || []).map(f => [f.id, f]))
@@ -160,7 +160,9 @@ export async function cancelQuoteSession(session) {
  * its invoice goes out (draft → sent, dated today) and, when it was the last session,
  * the client request is marked done. Safe to call for any job; never throws.
  */
-export async function finishQuoteJob(jobId, { byAdmin = false } = {}) {
+// v1.0.146 · `dates` ({ issue_date, period_start, period_end, due_date }) = what the admin chose in the
+// dates dialog; `moveTo` = new service day when the session was booked on a wrong (future) date.
+export async function finishQuoteJob(jobId, { byAdmin = false, dates = null, moveTo = '' } = {}) {
   try {
     if (!jobId) return null
     const { data: sc } = await supabase.from('spot_contracts')
@@ -168,6 +170,10 @@ export async function finishQuoteJob(jobId, { byAdmin = false } = {}) {
       .eq('job_id', jobId).eq('is_active', true).maybeSingle()
     const ref = sc?.contract_details?.quote_ref
     if (!ref) return null
+    if (byAdmin && moveTo) {
+      await supabase.from('jobs').update({ scheduled_date: moveTo }).eq('id', jobId)
+      await supabase.from('spot_contracts').update({ service_date: moveTo }).eq('id', sc.id)
+    }
     if (byAdmin) {
       const { data: doneJob } = await supabase.from('jobs').update({ status: 'completed', completed_at: new Date().toISOString() })
         .eq('id', jobId).neq('status', 'completed').select('*').maybeSingle()
@@ -176,7 +182,10 @@ export async function finishQuoteJob(jobId, { byAdmin = false } = {}) {
     }
     let sent = false
     if (sc.fatura_id) {
-      const { data: inv } = await supabase.from('faturas').update({ status: 'sent', issue_date: tokyoToday() })
+      const datePatch = dates
+        ? { issue_date: dates.issue_date, period_start: dates.period_start, period_end: dates.period_end, due_date: dates.due_date }
+        : { issue_date: tokyoToday() }
+      const { data: inv } = await supabase.from('faturas').update({ status: 'sent', ...datePatch })
         .eq('id', sc.fatura_id).eq('status', 'draft').select('id').maybeSingle()
       sent = Boolean(inv)
     }
