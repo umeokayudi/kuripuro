@@ -126,7 +126,9 @@ export function otpRouteAlerts(jobs, { today, nowMin }) {
 export function otpRouteAlertText(a, tr = (en, ja, pt) => pt) {
   const base = tr(`Today's OTP route has not started yet — ${a.employeeName}`, `本日のOTPルートがまだ開始されていません — ${a.employeeName}`, `Rota OTP de hoje ainda não começou — ${a.employeeName}`)
   if (!a.startedAt) return base
-  return `${base} · ${tr(`started at ${a.startedAt}`, `${a.startedAt}に開始`, `começou às ${a.startedAt}`)}`
+  return tr(`Today's OTP route did not start by 05:00 — ${a.employeeName} · started at ${a.startedAt}`,
+    `本日のOTPルートは05:00までに開始されませんでした — ${a.employeeName}・${a.startedAt}に開始`,
+    `Rota OTP de hoje não começou até 05:00 — ${a.employeeName} · começou às ${a.startedAt}`)
 }
 
 /** Short form for narrow time columns: "até 10:00". */

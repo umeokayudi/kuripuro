@@ -35,6 +35,7 @@ const steps = [
   ['npm run test:job-overdue', 'job-overdue'],
   ['npm run test:manual-close', 'manual-close'],
   ['npm run test:job-due-alert', 'job-due-alert'],
+  ['npm run test:job-deadline', 'job-deadline'],
   ['npm run test:video-compress', 'video-compress'],
   ['npm run test:employee-pay', 'employee-pay'],
   ['npm run test:job-employee-pay', 'job-employee-pay'],

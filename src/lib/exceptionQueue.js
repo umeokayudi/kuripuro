@@ -4,13 +4,13 @@ import { supabase } from './supabase'
 import { tokyoToday } from './dates'
 import { addDays } from './schedulePlan'
 import { isMissedJob, hoursPastScheduled, hoursPastDue } from './jobOverdue'
-import { isDeadlineJob, isDeadlineLate } from './jobDeadline.js'
+import { isDeadlineJob, isDeadlineLate, deadlineOf } from './jobDeadline.js'
 import { jobMinutes } from './salaryCalc'
 import { expectedMinutes, contractForAgendaJob } from './agenda'
 import { isTestName } from './testData'
 import { problemJobId } from './fieldExec'
 
-const JOB_COLS = 'id,title,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category'
+const JOB_COLS = 'id,title,client_id,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category'
 
 export const URGENCY = { late: 95, no_person: 90, problem: 85, incomplete: 80, disputed: 75, paid_unconfirmed: 72, payroll_review: 70, long: 60, no_photo: 50, ai_waiting: 30 }
 
@@ -43,7 +43,7 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     const done = j.status === 'completed'
     if (!done && !j.employee_id && j.scheduled_date >= today && j.scheduled_date <= addDays(today, 1)) push('no_person', j, {})
     // v1.0.147 · OTP night jobs: late only when not finished at 10:00 (running too), measured from 10:00
-    else if (isDeadlineJob(j) ? (j.scheduled_date === today && isDeadlineLate(j, { now })) : (!done && j.status === 'assigned' && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5)) push('late', j, { minutes: Math.round(hoursPastDue(j, now) * 60) })
+    else if (isDeadlineJob(j) ? (j.scheduled_date === today && isDeadlineLate(j, { now })) : (!done && j.status === 'assigned' && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5)) push('late', j, { minutes: Math.round(hoursPastDue(j, now) * 60), ...(isDeadlineJob(j) ? { deadline: deadlineOf(j) } : {}) })
     else if (isMissedJob(j, now) && j.scheduled_date >= addDays(today, -14)) push('incomplete', j, {})
     if (done && j.scheduled_date >= addDays(today, -7)) {
       if (!j.photo_end_url) push('no_photo', j, {})

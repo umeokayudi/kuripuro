@@ -171,7 +171,7 @@ export default function LiveTracking() {
   const dayCount = countJobs(jobs.filter(j => j.scheduled_date === today), { from: today, to: today, today, nowMin: now.getHours() * 60 + now.getMinutes() })
   const staleCount = jobs.filter(j => j.status === 'in_progress' && j.scheduled_date < today).length
   const tiles = [
-    { g: 'attention', n: dayCount.late + staleCount + routeAlerts.filter(a => !a.startedAt).length, label: L.tileLate, tone: 'red' },
+    { g: 'attention', n: dayCount.late + staleCount + routeAlerts.filter(a => !a.startedAt && !people.some(p => p.emp.id === a.employeeId && p.deadlineLate.length)).length, label: L.tileLate, tone: 'red' },
     { g: 'working', n: dayCount.inProgress, label: L.tileWorking, tone: 'green' },
     { g: 'upcoming', n: dayCount.notStarted, label: L.tileUpcoming, tone: 'blue' },
     { g: 'done', n: dayCount.completed, label: L.tileDone, tone: 'gray' },
