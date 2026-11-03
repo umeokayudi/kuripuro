@@ -96,3 +96,21 @@
 .pay-st.is-confirmed { background: #e8f6ee; color: #15803d; }
 .pay-st.is-disputed { background: #fef2f2; color: #b91c1c; }
 .pay-st.is-waiting, .pay-st.is-none { background: #fff7e6; color: #8a5a00; }
+
+/* v1.0.145 · Payroll: calculated salary line opens the per-job detail */
+.sp-rows .pjd-row { cursor: pointer; border-radius: 8px; }
+.sp-rows .pjd-row:hover, .sp-rows .pjd-row:focus-visible { background: var(--bg2, #f3f4f6); outline: none; }
+.pjd-row small { display: block; font-size: 11.5px; color: var(--accent, #2563eb); font-weight: 700; margin-top: 1px; }
+.pjd-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; text-align: center; }
+.pjd-stats div { background: var(--bg2, #f3f4f6); border-radius: 12px; padding: 8px 4px; }
+.pjd-stats b { display: block; font-size: 16px; font-weight: 800; }
+.pjd-stats span { display: block; font-size: 11px; color: var(--text3); }
+.pjd-list { list-style: none; margin: 0; padding: 0; }
+.pjd-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border, #e5e7eb); }
+.pjd-main { min-width: 0; }
+.pjd-place { font-weight: 700; font-size: 14px; }
+.pjd-meta { font-size: 12px; color: var(--text3); margin-top: 2px; overflow-wrap: anywhere; }
+.pjd-title { font-style: italic; }
+.pjd-amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pjd-amt small { display: block; font-size: 11.5px; color: var(--green, #16a34a); }
+.pjd-muted { font-size: 12px; color: var(--text3); }

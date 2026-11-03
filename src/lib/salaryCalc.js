@@ -207,3 +207,47 @@ export function payrollMonth({ emp, jobs = [], lines = [], month, basis = null }
 export function canCloseMonth(month, today = tokyoToday()) {
   return today.slice(0, 7) > month
 }
+
+/**
+ * v1.0.145 · One row per completed job of the month for the payroll detail pop-up:
+ * date, time, place, client, address, minutes worked and what that job adds to the base.
+ * `amount` is null when the job has no own value in the base (fixed salary = whole month,
+ * or "Pagamento do funcionário" still to be defined).
+ */
+export function payrollJobLines({ emp, jobs = [], month, used = null }) {
+  const last = monthLastDay(month)
+  const type = emp?.salary_type
+  const rate = yenAmount(emp?.hourly_rate)
+  const done = (jobs || [])
+    .filter(j => j.status === 'completed' && j.scheduled_date >= `${month}-01` && j.scheduled_date <= last)
+    .sort((a, b) => String(a.scheduled_date).localeCompare(String(b.scheduled_date))
+      || String(a.scheduled_time || '').localeCompare(String(b.scheduled_time || '')))
+  return done.map(j => {
+    const minutes = Math.round(jobMinutes(j))
+    let amount = null
+    if (used === 'per_job') {
+      const v = j?.employee_pay
+      amount = v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v)
+    } else if (used !== 'fixed') {
+      if (type === 'hourly') amount = Math.round(minutes / 60 * rate)
+      else if (type === 'per_job') amount = Math.round(jobPay(j) * ((emp?.job_bonus_rate || 100) / 100))
+      else if (type === 'mixed') amount = Math.round(minutes / 60 * rate) + Math.round(jobPay(j) * ((emp?.job_bonus_rate || 0) / 100))
+    }
+    return {
+      id: j.id,
+      date: j.scheduled_date,
+      time: j.scheduled_time ? String(j.scheduled_time).slice(0, 5) : '',
+      startedAt: j.started_at || null,
+      completedAt: j.completed_at || null,
+      place: j.location_name || String(j.title || '').replace(/ — .*/, '').trim() || j.title || '',
+      title: j.title || '',
+      client: j.client_name || '',
+      address: j.address || '',
+      category: j.job_category || '',
+      minutes,
+      contractValue: jobPay(j),
+      amount,
+      spot: spotExtra(j),
+    }
+  })
+}
