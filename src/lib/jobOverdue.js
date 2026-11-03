@@ -1,6 +1,8 @@
 // A job that was not checked in stays open until the end of its own day (Japan time).
 // After OVERDUE_SKIP_HOURS it shows as late and the employee can only do the basic
 // (retroactive) registration. When the day turns, it is incomplete and can no longer be registered.
+import { deadlineOf } from './jobDeadline.js'
+
 export const OVERDUE_SKIP_HOURS = 8
 export const OVERDUE_CRITICAL_HOURS = 12
 
@@ -34,6 +36,15 @@ export function hoursPastScheduled(job, now = new Date()) {
   return (current - scheduled) / 3600000
 }
 
+/**
+ * v1.0.147 · Hours past the time the job is measured by: its deadline for On The Planet
+ * night jobs ("concluir até 10:00"), its start time for every other job.
+ */
+export function hoursPastDue(job, now = new Date()) {
+  const d = deadlineOf(job)
+  return d ? hoursPastScheduled({ ...job, scheduled_time: d }, now) : hoursPastScheduled(job, now)
+}
+
 function notStarted(job) {
   return !!job && job.status === 'assigned' && !job.started_at
 }
@@ -47,7 +58,7 @@ export function isMissedJob(job, now = new Date()) {
 export function isOverdueAssignedJob(job, thresholdHours = OVERDUE_SKIP_HOURS, now = new Date()) {
   if (!notStarted(job)) return false
   if (job.scheduled_date !== tokyoDateString(now)) return false
-  return hoursPastScheduled(job, now) >= thresholdHours
+  return hoursPastDue(job, now) >= thresholdHours
 }
 
 export function isCriticallyOverdueJob(job, now = new Date()) {

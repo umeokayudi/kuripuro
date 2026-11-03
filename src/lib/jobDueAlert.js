@@ -1,7 +1,8 @@
 // Alert for a job whose time has come but that was not accepted / started yet.
 // It pops up (with vibration, a beep and the voice when it is on) and repeats every
 // DUE_ALERT_EVERY_MIN minutes until the worker accepts or starts it.
-import { hoursPastScheduled, tokyoDateString, OVERDUE_SKIP_HOURS } from './jobOverdue'
+import { hoursPastScheduled, hoursPastDue, tokyoDateString, OVERDUE_SKIP_HOURS } from './jobOverdue'
+import { isDeadlineJob } from './jobDeadline.js'
 
 export const DUE_ALERT_EVERY_MIN = 5
 // A spot offer is announced this many minutes before its time, so it can be accepted in advance.
@@ -31,7 +32,9 @@ export function dueAlertJobs(jobs, { activeJobId = null, hasActiveJob = false, n
       if (['completed', 'cancelled'].includes(job.status)) continue
       if (past >= -SPOT_ALERT_BEFORE_MIN && past < OVERDUE_SKIP_HOURS * 60) out.push({ job, past, kind: 'accept' })
     } else if (!hasActiveJob && job.status === 'assigned' && job.scheduled_date === today) {
-      if (past >= 0 && past < OVERDUE_SKIP_HOURS * 60) out.push({ job, past, kind: 'start' })
+      // v1.0.147 · OTP night jobs have no start time: no "time to start" nag from 00:30, only after the 10:00 deadline
+      const due = isDeadlineJob(job) ? Math.round(hoursPastDue(job, now) * 60) : past
+      if (due >= 0 && due < OVERDUE_SKIP_HOURS * 60) out.push({ job, past: due, kind: 'start' })
     }
   }
   return out.sort((a, b) => (a.kind === b.kind ? b.past - a.past : a.kind === 'accept' ? -1 : 1))

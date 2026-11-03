@@ -23,6 +23,7 @@ import { askConfirm } from './ConfirmDialog'
 import { pendingChanged } from '../lib/adminPending'
 import { exceptionInfo, exceptionDeadline } from '../lib/exceptionText'
 import { hideTests, HIDE_TESTS_CHANGED } from '../lib/testData'
+import { fetchOtpRouteAlerts, otpRouteAlertText } from '../lib/jobDeadline'
 
 const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
 
@@ -63,12 +64,14 @@ export default function TimeOffCenter() {
   const [dayMissing, setDayMissing] = useState([])
   // v1.0.110 · one queue of exceptions ordered by urgency, each row with the action that resolves it
   const [exceptions, setExceptions] = useState([])
+  // v1.0.147 · 05:00: On The Planet route of the day with no start (one per person per day)
+  const [routeAlerts, setRouteAlerts] = useState([])
   const seen = useRef(readSeen())
 
   // v1.0.102 · a list that fails to load keeps its last value (it used to drop to 0 and come back,
   // so the count went 3 → empty → 3), and only the newest load is applied.
   const loadSeq = useRef(0)
-  const last = useRef({ list: [], periods: [], quoteRows: [], flow: { toBook: [], done: [] }, offerRows: [], assign: { accepted: [], noPerson: [] }, cov: null, exc: [] })
+  const last = useRef({ list: [], periods: [], quoteRows: [], flow: { toBook: [], done: [] }, offerRows: [], assign: { accepted: [], noPerson: [] }, cov: null, exc: [], otp: [] })
   const keep = (p, k) => p.then(v => { last.current[k] = v; return v }, () => last.current[k])
   const load = () => {
     const seq = ++loadSeq.current
@@ -81,8 +84,12 @@ export default function TimeOffCenter() {
       keep(fetchAssignAlerts(), 'assign'),
       keep(fetchDayCoverage(tokyoToday(), { nowMin: tokyoMinutes() }), 'cov'),
       keep(fetchExceptions({ hideTests: hideTests() }), 'exc'),
-    ]).then(([list, periods, quoteRows, flow, offerRows, assign, cov, exc]) => {
+      keep(fetchOtpRouteAlerts(tokyoToday(), tokyoMinutes()), 'otp'),
+    ]).then(([list, periods, quoteRows, flow, offerRows, assign, cov, exc, otp]) => {
     if (seq !== loadSeq.current) return
+    // not started yet: stays until the route starts; started after 05:00: stays (with the real time) until OK
+    const otpRows = (otp || []).map(a => ({ ...a, id: a.startedAt ? `${a.id}:started` : a.id })).filter(a => !(a.startedAt && seen.current.has(`${a.id}:ok`)))
+    setRouteAlerts(otpRows)
     setExceptions(exc || [])
     setOffers(offerRows)
     const takenUnseen = assign.accepted.filter(a => !seen.current.has(a.id))
@@ -99,7 +106,7 @@ export default function TimeOffCenter() {
     const doneUnseen = flow.done.filter(d => !seen.current.has(d.id))
     setFlowDone(doneUnseen)
     // Alert only once per item, ever: after that the number stays in the side menu until it is resolved
-    const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows, ...takenUnseen, ...assign.noPerson, ...covRows].filter(r => !seen.current.has(r.id))
+    const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows, ...takenUnseen, ...assign.noPerson, ...covRows, ...otpRows].filter(r => !seen.current.has(r.id))
     if (fresh.length) {
       setNewQuotes(quoteRows.filter(q => fresh.includes(q)))
       setNewFlow([...flow.toBook, ...doneUnseen].filter(q => fresh.includes(q)))
@@ -131,7 +138,7 @@ export default function TimeOffCenter() {
   }, [toastOpen])
 
   const markSeen = () => {
-    rows.concat(payroll, quotes, toBook, flowDone, offers, noPerson, dayMissing).forEach(r => seen.current.add(r.id))
+    rows.concat(payroll, quotes, toBook, flowDone, offers, noPerson, dayMissing, routeAlerts).forEach(r => seen.current.add(r.id))
     writeSeen(seen.current)
     setToastOpen(false)
   }
@@ -161,6 +168,7 @@ export default function TimeOffCenter() {
   const openAssign = () => { setOpen(false); markSeen(); navigate('/schedule') }
   const openLive = () => { setOpen(false); markSeen(); navigate('/live') }
   const okTaken = (t) => { seen.current.add(t.id); writeSeen(seen.current); setTaken(list => list.filter(x => x.id !== t.id)) }
+  const okRoute = (a) => { seen.current.add(`${a.id}:ok`); writeSeen(seen.current); setRouteAlerts(list => list.filter(x => x.id !== a.id)) }
   const openStore = (r) => { setOpen(false); markSeen(); navigate(`/facility?model=${r.model_id}`) }
   const offer = async (r) => {
     setBusy(r.id)
@@ -175,7 +183,7 @@ export default function TimeOffCenter() {
   }
   // Rows already counted by their own block (Pending box, auto-closed payroll) are not counted twice.
   const excOwn = exceptions.filter(x => x.kind !== 'no_person' && x.kind !== 'payroll_review')
-  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length + dayMissing.length + excOwn.length
+  const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length + dayMissing.length + routeAlerts.length + excOwn.length
   const EXC = exceptionInfo(L)
   // v1.0.123 · same kind of exception from 3 on = one card ("11 never started — review")
   const [openGroup, setOpenGroup] = useState(null)
@@ -196,7 +204,7 @@ export default function TimeOffCenter() {
   const openExc = (x) => { setOpen(false); markSeen(); navigate(EXC[x.kind].to(x)) }
   const kinds = [
     { key: 'exceptions', label: L('Exceptions', '例外', 'Exceções'), n: exceptions.length },
-    { key: 'jobs', label: L('Jobs', '作業', 'Jobs'), n: taken.length + noPerson.length + dayMissing.length },
+    { key: 'jobs', label: L('Jobs', '作業', 'Jobs'), n: taken.length + noPerson.length + dayMissing.length + routeAlerts.length },
     { key: 'quotes', label: L('Quotes', '見積もり', 'Orçamentos'), n: quotes.length + toBook.length + flowDone.length },
     { key: 'payroll', label: L('Payroll', '給与', 'Folha'), n: payroll.length },
     { key: 'dayoff', label: L('Day off', '休み', 'Folgas'), n: rows.length },
@@ -336,7 +344,23 @@ export default function TimeOffCenter() {
                 </article>
               ))}
               {show('exceptions') && activeKind === 'all' && excCards.length > 12 && <button type="button" className="tor-btn" style={{ margin: '4px 18px 10px' }} onClick={() => setKind('exceptions')}>{L(`See all ${exceptions.length}`, `全${exceptions.length}件を見る`, `Ver todas (${exceptions.length})`)}</button>}
-              {show('jobs') && (taken.length + noPerson.length + dayMissing.length) > 0 && activeKind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
+              {show('jobs') && (taken.length + noPerson.length + dayMissing.length + routeAlerts.length) > 0 && activeKind === 'all' && <div className="tor-section">📥 {L('Jobs', '作業', 'Jobs')}</div>}
+              {show('jobs') && routeAlerts.map(a => (
+                <article key={a.id} className="tor-item">
+                  <div className="tor-item-top">
+                    <div className="tor-avatar" aria-hidden="true">🌙</div>
+                    <div className="tor-item-main">
+                      <strong>{otpRouteAlertText(a, L)}</strong>
+                      <span>{L(`On The Planet · ${a.jobs} job(s) · finish by 10:00`, `On The Planet · ${a.jobs}件 · 10:00までに完了`, `On The Planet · ${a.jobs} serviço(s) · concluir até 10:00`)}</span>
+                    </div>
+                    <span className="tor-kind is-off">{a.startedAt ? L('Started late', '遅れて開始', 'Começou depois') : L('05:00', '05:00', '05:00')}</span>
+                  </div>
+                  <div className="tor-actions">
+                    <button type="button" className="tor-btn tor-btn-approve" onClick={openLive}>📋 {L('Open Live Track', 'ライブ追跡を開く', 'Abrir o Live Track')}</button>
+                    {a.startedAt && <button type="button" className="tor-btn" onClick={() => okRoute(a)}>✓ OK</button>}
+                  </div>
+                </article>
+              ))}
               {show('jobs') && dayMissing.map(d => (
                 <article key={d.id} className="tor-item">
                   <div className="tor-item-top">

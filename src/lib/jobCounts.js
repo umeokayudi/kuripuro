@@ -10,6 +10,7 @@
 //   atrasados    not started and past its time (today, LATE_AFTER_MIN after the hour) or of a past day
 import { isTestJob } from './testData.js'
 import { tokyoToday, tokyoNow } from './dates.js'
+import { isDeadlineJob, isDeadlineLate } from './jobDeadline.js'
 
 export const LATE_AFTER_MIN = 5
 
@@ -22,8 +23,12 @@ const nowMinutes = (now = tokyoNow()) => now.getHours() * 60 + now.getMinutes()
 export const isCountable = (j, { keepTests = false } = {}) => !!j && j.status !== 'cancelled' && (keepTests || !isTestJob(j))
 export const isNotStarted = j => !!j && j.status === 'assigned' && !j.started_at
 
-/** Not started and late: a past day, or today LATE_AFTER_MIN after its time. */
+/**
+ * Not started and late: a past day, or today LATE_AFTER_MIN after its time.
+ * v1.0.147 · On The Planet night jobs: late = not COMPLETED at 10:00 (running ones too), never by the start.
+ */
 export function isLateJob(j, today = tokyoToday(), nowMin = nowMinutes()) {
+  if (isDeadlineJob(j)) return isDeadlineLate(j, { today, nowMin })
   if (!isNotStarted(j) || !j.scheduled_date) return false
   if (j.scheduled_date < today) return true
   if (j.scheduled_date > today) return false

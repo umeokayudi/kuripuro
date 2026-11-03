@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase'
 import { finishQuoteJob } from '../lib/quoteFlow'
 import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geocode'
 import ServiceTimer from '../components/ServiceTimer'
+import { isDeadlineJob, jobTimeText, deadlineLateText } from '../lib/jobDeadline'
 import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
@@ -1816,7 +1817,7 @@ export default function EmployeePortal() {
               : <div style={{textAlign:'right'}}><div style={{fontSize:9,color:'rgba(255,255,255,0.35)'}}>{L('Your pay','あなたの報酬','Seu pagamento')}</div><div style={{fontSize:18,fontWeight:800,color:jobEmployeePay(job)===null?'rgba(255,255,255,0.4)':'#c19c56'}}>{jobEmployeePay(job)===null?L('to be defined','未定','a definir'):`¥${jobEmployeePay(job).toLocaleString(localeOf(lang))}`}</div></div>}
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:14}}>
-            {[['📅 '+e.jobDate,dDate],['🕐 '+e.jobStart,job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,isMissedJob(job)?e.statusIncomplete:`${tr.status[job.status]||job.status}${isRetroJob(job)?` · ${e.retroBadge}`:''}`]].map(([l,v])=>(
+            {[['📅 '+e.jobDate,dDate],[isDeadlineJob(job)?'🕐 '+jobTimeText(job,lang):'🕐 '+e.jobStart,isDeadlineJob(job)?(deadlineLateText(job,lang)||'—'):job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,isMissedJob(job)?e.statusIncomplete:`${tr.status[job.status]||job.status}${isRetroJob(job)?` · ${e.retroBadge}`:''}`]].map(([l,v])=>(
               <div key={l} style={{background:'rgba(255,255,255,0.06)',borderRadius:12,padding:'10px 12px'}}>
                 <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{l}</div>
                 <div style={{fontSize:12,fontWeight:500,color:'#fff'}}>{v}</div>
@@ -2152,7 +2153,7 @@ export default function EmployeePortal() {
                     <div>
                       <small>{activeJob?(stale?e.staleShiftTitle:e.activeShiftTitle):e.nextLocation}</small>
                       <strong>{place}</strong>
-                      <span>{activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${mapJob.scheduled_time||'—'} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
+                      <span>{activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${jobTimeText(mapJob,lang)} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
                     </div>
                     {activeJob?<b className="ex-timer">{stale?formatShiftElapsed(elapsed,lang):fmt(elapsed)}</b>:(()=>{
                       const nd=new Date(mapJob.scheduled_date+'T'+(mapJob.scheduled_time||'00:30')+':00')
@@ -2174,9 +2175,9 @@ export default function EmployeePortal() {
                 <div className="emp-empty-title">{e.noShiftToday}</div>
                 {nextShiftJob&&(()=>{
                   const diffMs=new Date(nextShiftJob.scheduled_date+'T'+(nextShiftJob.scheduled_time||'00:30')+':00')-new Date()
-                  return <div className="emp-empty-description">{diffMs>0&&diffMs<48*3600000?fill(e.timeAway,{time:Math.floor(diffMs/3600000)>0?`${Math.floor(diffMs/3600000)}h ${Math.floor((diffMs%3600000)/60000)}m`:`${Math.floor((diffMs%3600000)/60000)}m`}):fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:nextShiftJob.scheduled_time})}</div>
+                  return <div className="emp-empty-description">{diffMs>0&&diffMs<48*3600000?fill(e.timeAway,{time:Math.floor(diffMs/3600000)>0?`${Math.floor(diffMs/3600000)}h ${Math.floor((diffMs%3600000)/60000)}m`:`${Math.floor((diffMs%3600000)/60000)}m`}):fill(e.nextWhen,{date:nextShiftJob.scheduled_date,time:jobTimeText(nextShiftJob,lang,'')})}</div>
                 })()}
-                {nextShiftJob&&<div className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(nextShiftJob)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(nextShiftJob)}} style={{cursor:'pointer'}}><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {nextShiftJob.scheduled_time}</span></div>}
+                {nextShiftJob&&<div className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(nextShiftJob)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(nextShiftJob)}} style={{cursor:'pointer'}}><span>{nextShiftJob.title.split(' —')[0]}</span><span>{nextShiftJob.scheduled_date} · {jobTimeText(nextShiftJob,lang,'')}</span></div>}
               </div>
             )}
 
@@ -2185,9 +2186,9 @@ export default function EmployeePortal() {
               <div className="emp-no-shift-card">
                 <div className="emp-empty-icon">☾</div>
                 <div className="emp-empty-kicker">{e.nextShiftLabel}</div>
-                <div className="emp-empty-title">{whenLabel(laterJobs[0].scheduled_date)} · {laterJobs[0].scheduled_time||'—'}</div>
+                <div className="emp-empty-title">{whenLabel(laterJobs[0].scheduled_date)} · {jobTimeText(laterJobs[0],lang)}</div>
                 {laterJobs.filter(j=>j.scheduled_date===laterJobs[0].scheduled_date).map(j=>(
-                  <div key={j.id} className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(j)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(j)}} style={{cursor:'pointer'}}><span>{j.title.split(' —')[0]}</span><span>{j.scheduled_time||'—'}</span></div>
+                  <div key={j.id} className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(j)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(j)}} style={{cursor:'pointer'}}><span>{j.title.split(' —')[0]}</span><span>{jobTimeText(j,lang)}</span></div>
                 ))}
               </div>
             )}
@@ -2209,7 +2210,7 @@ export default function EmployeePortal() {
                 <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('shift')}>
                   <div className="ex-card-head"><strong>{e.tomorrowShift}</strong><span className="ex-card-icon">☾</span></div>
                   <div className="ex-card-big">{tomorrowJobs.length} <small>{e.locations}</small></div>
-                  <div className="ex-card-sub">{fill(e.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})} · {tomorrowJobs.map(j=>businessName(j)).slice(0,2).join(', ')}{tomorrowJobs.length>2?'…':''}</div>
+                  <div className="ex-card-sub">{isDeadlineJob(tomorrowJobs[0])?jobTimeText(tomorrowJobs[0],lang):fill(e.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})} · {tomorrowJobs.map(j=>businessName(j)).slice(0,2).join(', ')}{tomorrowJobs.length>2?'…':''}</div>
                   <span className="ex-pill">{e.tomorrowSee}</span>
                 </button>
               )}
@@ -2356,7 +2357,7 @@ export default function EmployeePortal() {
             :spotJobs.map(j=>(
               <div key={j.id} style={{background:'rgba(193,156,86,0.06)',border:'1px solid rgba(193,156,86,0.15)',borderRadius:22,padding:18,marginBottom:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
-                  <div style={{flex:1,marginRight:12}}><div style={{fontSize:17,fontWeight:700,color:'#fff',marginBottom:4}}>{j.title}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:1}}>📅 {displayDate(j)} · {j.scheduled_time}</div>{hasMapsLink(j.address, j.title)&&<a href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 {e.openMaps}</a>}</div>
+                  <div style={{flex:1,marginRight:12}}><div style={{fontSize:17,fontWeight:700,color:'#fff',marginBottom:4}}>{j.title}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:1}}>📅 {displayDate(j)} · {jobTimeText(j,lang,'')}</div>{hasMapsLink(j.address, j.title)&&<a href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#60a5fa',textDecoration:'none'}}>🗺 {e.openMaps}</a>}</div>
                   {j.job_category==='spot'?<div style={{background:'rgba(193,156,86,0.15)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0}}><div style={{fontSize:9,color:'#c19c56',fontWeight:700,letterSpacing:1}}>{e.extra.toUpperCase()}</div><div style={{fontSize:22,fontWeight:800,color:'#c19c56'}}>+¥{Number(j.spot_value||0).toLocaleString()}</div></div>
                   :<div style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.25)',borderRadius:14,padding:'10px 14px',textAlign:'center',flexShrink:0,fontSize:12,fontWeight:700,color:'#93c5fd'}}>📋 {L('Routine','定期','Rotina')}</div>}
                 </div>
@@ -2693,7 +2694,7 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
                 </div>
               </div>
               <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:2}}>
-                {j.scheduled_time||'—'}
+                {jobTimeText(j,lang)}
                 {j.completed_at&&` · ${labels?.completedAt || 'Completed'} ${new Date(j.completed_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'})}`}
                 {(j.photo_start_url||j.photo_end_url)&&' · 📷'}
               </div>
@@ -2863,7 +2864,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                 {todayQueue.filter(j=>movableIds.includes(j.id)).map((job,i,arr)=>(
                   <li key={job.id} className="emp-reorder-item">
                     <span className="emp-reorder-n">{i+1}</span>
-                    <span className="emp-reorder-name"><b>{job.title.replace(/ — .*/,'')}</b><small>{String(job.scheduled_time||'').slice(0,5)||'—'}</small></span>
+                    <span className="emp-reorder-name"><b>{job.title.replace(/ — .*/,'')}</b><small>{jobTimeText(job,lang)}</small></span>
                     <button type="button" className="emp-reorder-btn" disabled={reorderBusy||i===0} aria-label={labels?.moveUp||L('Move up','上へ','Subir')} onClick={()=>onMoveJob(job,-1)}>▲</button>
                     <button type="button" className="emp-reorder-btn" disabled={reorderBusy||i===arr.length-1} aria-label={labels?.moveDown||L('Move down','下へ','Descer')} onClick={()=>onMoveJob(job,1)}>▼</button>
                   </li>
@@ -2931,7 +2932,8 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                     })()}
                     {isRetroJob(job)&&<RetroBadge labels={labels} />}
                     {!isDone&&photoRule(job)}
-                    <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{job.scheduled_time}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
+                    {!isDone&&deadlineLateText(job,lang)&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#f87171',background:'rgba(248,113,113,0.15)'}}>{deadlineLateText(job,lang)}</span>}
+                    <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{jobTimeText(job,lang,'')}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
                     {job.job_category!=='spot'&&<PayChip job={job} L={L} lang={lang} />}
                     {canOpen&&<span style={{fontSize:10,color:'#60a5fa',fontWeight:700}}>{L('Tap to open','タップして開く','Toque para abrir')} ›</span>}
                   </div>
@@ -3079,13 +3081,13 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
 
       {tomorrowJobs.length>0&&(
         <div style={{marginTop:18}}>
-          <div style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'0 2px 8px'}}>☾ {labels.tomorrowShift} · {fill(labels.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})}</div>
+          <div style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'0 2px 8px'}}>☾ {labels.tomorrowShift} · {isDeadlineJob(tomorrowJobs[0])?jobTimeText(tomorrowJobs[0],lang):fill(labels.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})}</div>
           {tomorrowJobs.map(job=>(
             <div key={job.id} role="button" tabIndex={0} onClick={()=>setSelectedJob?.(job)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob?.(job)}}
               style={{...S.card,marginBottom:8,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
               <div>
                 <div style={{fontSize:14,fontWeight:600,color:'#fff'}}>{job.title.replace(/ — .*/,'')}</div>
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:3}}>{job.scheduled_date} · {job.scheduled_time||'—'} {job.job_category!=='spot'&&<PayChip job={job} L={L} lang={lang} />}</div>
+                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:3}}>{job.scheduled_date} · {jobTimeText(job,lang)} {job.job_category!=='spot'&&<PayChip job={job} L={L} lang={lang} />}</div>
               </div>
               <a href={googleCalendarUrl(job)} target="_blank" rel="noreferrer" onClick={ev=>ev.stopPropagation()} aria-label={labels?.calGoogle} title={labels?.calGoogle} style={{fontSize:18,textDecoration:'none'}}>📅</a>
             </div>
@@ -3150,7 +3152,7 @@ function CalendarView({ jobs, today, displayDate, onSelect, labels, statusLabels
             return (
               <div key={j.id} onClick={()=>onSelect(j)} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:14,padding:'12px 14px',marginBottom:8,cursor:'pointer'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}}>
-                  <div style={{flex:1,marginRight:8}}><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{j.title.replace(/ — .*/,'')}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:1}}>{j.scheduled_time}</div></div>
+                  <div style={{flex:1,marginRight:8}}><div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{j.title.replace(/ — .*/,'')}</div><div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:1}}>{jobTimeText(j,lang,'')}</div></div>
                   <span style={{fontSize:9,color:sc,fontWeight:700,textTransform:'uppercase'}}>{statusLabels?.[j.status]||j.status}</span>
                 </div>
                 <div style={{display:'flex',gap:10,fontSize:9,color:'rgba(255,255,255,0.25)'}}>

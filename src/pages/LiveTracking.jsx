@@ -16,6 +16,7 @@ import { fetchDayCoverage } from '../lib/dayCoverage'
 
 const TZ = 'Asia/Tokyo'
 import { countJobs, LATE_AFTER_MIN } from '../lib/jobCounts'
+import { isDeadlineJob, isDeadlineLate, DEADLINE_MIN, OTP_DEADLINE, otpRouteAlerts, otpRouteAlertText, jobTimeLabel, jobTimeShort } from '../lib/jobDeadline'
 const LOCATION_FRESH_MIN = 15
 
 // "Now" as a Date whose local fields are Tokyo wall-clock time.
@@ -43,7 +44,7 @@ const byTime = (a, b) => (a.scheduled_time || '99:99').localeCompare(b.scheduled
 // One status per person, in the order the admin needs to act on it.
 const GROUPS = ['attention', 'working', 'upcoming', 'done', 'free']
 
-function classify(emp, jobs, offToday, now, today) {
+function classify(emp, jobs, offToday, now, today, routeAlerts = []) {
   const mine = jobs.filter(j => j.employee_id === emp.id)
   const todayJobs = mine.filter(j => j.scheduled_date === today && j.status !== 'cancelled').sort(byTime)
   const active = mine.find(j => j.status === 'in_progress')
@@ -51,17 +52,22 @@ function classify(emp, jobs, offToday, now, today) {
   const next = pending[0] || null
   const done = todayJobs.filter(j => j.status === 'completed')
   const staleOpen = active && active.scheduled_date < today ? active : null
-  const nextIn = next ? minutesUntil(next.scheduled_time, now) : null
-  const lateMin = !active && nextIn != null && nextIn <= -LATE_AFTER_MIN ? -nextIn : 0
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  // v1.0.147 · OTP night jobs: no start time, only "concluir até 10:00"; late = not finished at 10:00 (running too)
+  const nextIn = next ? (isDeadlineJob(next) ? DEADLINE_MIN - nowMin : minutesUntil(next.scheduled_time, now)) : null
+  const deadlineLate = todayJobs.filter(j => isDeadlineLate(j, { today, nowMin }))
+  const lateMin = deadlineLate.length ? nowMin - DEADLINE_MIN
+    : !active && next && !isDeadlineJob(next) && nextIn != null && nextIn <= -LATE_AFTER_MIN ? -nextIn : 0
+  const routeAlert = routeAlerts.find(a => a.employeeId === emp.id) || null
 
   let group
-  if (lateMin || staleOpen) group = 'attention'
+  if (lateMin || staleOpen || (routeAlert && !routeAlert.startedAt)) group = 'attention'
   else if (active) group = 'working'
   else if (next) group = 'upcoming'
   else if (done.length) group = 'done'
   else group = 'free'
 
-  return { emp, group, todayJobs, active, next, nextIn, done, lateMin, staleOpen, off: offToday.has(emp.id) }
+  return { emp, group, todayJobs, active, next, nextIn, done, lateMin, deadlineLate, routeAlert, staleOpen, off: offToday.has(emp.id) }
 }
 
 export const fmtDuration = (min, L) => {
@@ -150,7 +156,10 @@ export default function LiveTracking() {
 
   const now = tokyoNow()
   const today = tokyoToday()
-  const people = employees.map(emp => classify(emp, jobs, offToday, now, today))
+  const nowMinT = now.getHours() * 60 + now.getMinutes()
+  // v1.0.147 · 05:00 alert: OTP route of the day with no start by 05:00 (one per person per day)
+  const routeAlerts = otpRouteAlerts(jobs, { today, nowMin: nowMinT })
+  const people = employees.map(emp => classify(emp, jobs, offToday, now, today, routeAlerts))
   const grouped = Object.fromEntries(GROUPS.map(g => [g, people.filter(p => p.group === g)]))
   grouped.attention.sort((a, b) => b.lateMin - a.lateMin)
   grouped.upcoming.sort((a, b) => (a.nextIn ?? 9999) - (b.nextIn ?? 9999))
@@ -162,22 +171,31 @@ export default function LiveTracking() {
   const dayCount = countJobs(jobs.filter(j => j.scheduled_date === today), { from: today, to: today, today, nowMin: now.getHours() * 60 + now.getMinutes() })
   const staleCount = jobs.filter(j => j.status === 'in_progress' && j.scheduled_date < today).length
   const tiles = [
-    { g: 'attention', n: dayCount.late + staleCount, label: L.tileLate, tone: 'red' },
+    { g: 'attention', n: dayCount.late + staleCount + routeAlerts.filter(a => !a.startedAt && !people.some(p => p.emp.id === a.employeeId && p.deadlineLate.length)).length, label: L.tileLate, tone: 'red' },
     { g: 'working', n: dayCount.inProgress, label: L.tileWorking, tone: 'green' },
     { g: 'upcoming', n: dayCount.notStarted, label: L.tileUpcoming, tone: 'blue' },
     { g: 'done', n: dayCount.completed, label: L.tileDone, tone: 'gray' },
   ]
 
   const statusLine = (p) => {
-    const { active, next, nextIn, lateMin, staleOpen, done, todayJobs } = p
+    const { active, next, nextIn, lateMin, staleOpen, done, todayJobs, deadlineLate, routeAlert } = p
+    const routeNote = routeAlert ? otpRouteAlertText(routeAlert, tr) : ''
     if (staleOpen) return { main: fill(L.staleOpen, { place: jobPlace(staleOpen), date: staleOpen.scheduled_date }), sub: L.staleOpenHint }
+    if (deadlineLate?.length) return {
+      main: tr(`Late — OTP not finished by ${OTP_DEADLINE} (${fmtDuration(lateMin, L)} ago)`, `遅れ — OTPが${OTP_DEADLINE}までに完了していません（${fmtDuration(lateMin, L)}経過）`, `Atrasado — OTP não concluído até ${OTP_DEADLINE} (há ${fmtDuration(lateMin, L)})`),
+      sub: [fill(L.doneSoFar, { done: done.length, total: todayJobs.length }), routeNote].filter(Boolean).join(' · '),
+    }
+    if (routeAlert && !routeAlert.startedAt && !active) return {
+      main: routeNote,
+      sub: next ? `${jobPlace(next)} · ${jobTimeLabel(next, tr)}` : '',
+    }
     if (lateMin) return {
       main: fill(L.lateMain, { d: fmtDuration(lateMin, L) }),
       sub: fill(L.lateSub, { place: jobPlace(next), time: shortTime(next.scheduled_time) }),
     }
     if (active) {
       const since = active.started_at ? (Date.now() - new Date(active.started_at)) / 60000 : null
-      const startedLate = active.started_at && active.scheduled_time && active.scheduled_date === today
+      const startedLate = active.started_at && active.scheduled_time && active.scheduled_date === today && !isDeadlineJob(active)
         ? toMin(hhmm(active.started_at)) - toMin(active.scheduled_time)
         : 0
       return {
@@ -186,9 +204,15 @@ export default function LiveTracking() {
           : fill(L.workingNoTime, { place: jobPlace(active) }),
         sub: [
           startedLate >= 10 ? fill(L.startedLate, { d: fmtDuration(startedLate, L) }) : '',
-          next ? fill(L.thenNext, { place: jobPlace(next), time: next.scheduled_time ? shortTime(next.scheduled_time) : '—' }) : '',
+          isDeadlineJob(active) ? jobTimeLabel(active, tr) : '',
+          next ? fill(L.thenNext, { place: jobPlace(next), time: isDeadlineJob(next) ? jobTimeLabel(next, tr) : next.scheduled_time ? shortTime(next.scheduled_time) : '—' }) : '',
+          routeNote,
         ].filter(Boolean).join(' · '),
       }
+    }
+    if (next && isDeadlineJob(next)) return {
+      main: `${jobPlace(next)} · ${jobTimeLabel(next, tr)}`,
+      sub: [done.length ? fill(L.doneSoFar, { done: done.length, total: todayJobs.length }) : '', routeNote].filter(Boolean).join(' · '),
     }
     if (next) return {
       main: next.scheduled_time
@@ -198,7 +222,7 @@ export default function LiveTracking() {
     }
     if (done.length) {
       const last = done.map(j => j.completed_at).filter(Boolean).sort().pop()
-      return { main: fill(last ? L.doneMain : L.doneMainNoTime, { n: done.length, time: hhmm(last) }), sub: '' }
+      return { main: fill(last ? L.doneMain : L.doneMainNoTime, { n: done.length, time: hhmm(last) }), sub: routeNote }
     }
     return { main: p.off ? L.dayOff : L.noJobs, sub: '' }
   }
@@ -257,7 +281,7 @@ export default function LiveTracking() {
           <ol className="lt-timeline">
             {todayJobs.map(j => (
               <li key={j.id} className={`is-${j.status}`}>
-                <span className="lt-tl-time">{j.scheduled_time ? shortTime(j.scheduled_time) : '—'}</span>
+                <span className="lt-tl-time">{isDeadlineJob(j) ? jobTimeShort(j, tr) : j.scheduled_time ? shortTime(j.scheduled_time) : '—'}</span>
                 <span className="lt-tl-body">
                   <b>{jobPlace(j)}</b>{jobKind(j) && <span className="lt-tl-kind"> · {jobKind(j)}</span>}
                   <span className="lt-tl-meta">
@@ -320,7 +344,7 @@ export default function LiveTracking() {
                   <li key={it.place}>
                     <span className="lt-cov-place">
                       <b>{it.place}</b>
-                      <span>{it.personName ? (it.usual ? fill(L.covUsual, { name: it.personName }) : it.personName) : L.covNobody}{it.job?.scheduled_time ? ` · ${shortTime(it.job.scheduled_time)}` : ''}</span>
+                      <span>{it.personName ? (it.usual ? fill(L.covUsual, { name: it.personName }) : it.personName) : L.covNobody}{it.job && isDeadlineJob(it.job) ? ` · ${jobTimeLabel(it.job, tr)}` : it.job?.scheduled_time ? ` · ${shortTime(it.job.scheduled_time)}` : ''}</span>
                     </span>
                     <span className={`lt-cov-chip st-${it.state}`}>{stLabel[it.state]}</span>
                   </li>
