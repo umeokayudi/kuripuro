@@ -83,3 +83,36 @@ export async function fetchDayCoverage(date, { nowMin = null } = {}) {
   const targets = contractTargets(c.data || [], cl.data || [])
   return dayCoverage(targets, date, j.data || [], { empById, availability, owners: usualOwners(h.data || [], empById), nowMin })
 }
+
+/**
+ * v1.0.133 · Service delays the World badge must show (same source as Ao vivo / Gerador):
+ *  - today: contract places that need action now (no job, nobody, late) + any job of today late (jobCounts);
+ *  - past `days` days: contract visits never done (no job created, or created and never finished).
+ * Returns { today, past, total, pastDays: [{ date, n }] }.
+ */
+export async function fetchServiceDelays(today, { nowMin = null, days = 7 } = {}) {
+  const from = addDays(today, -days)
+  const [c, cl, e, j] = await Promise.all([
+    supabase.from('service_contracts').select('*').eq('is_active', true),
+    supabase.from('clients').select('id,company_name,is_active'),
+    supabase.from('employees').select('id,full_name,is_active,job_role'),
+    supabase.from('jobs').select('id,title,scheduled_date,scheduled_time,status,employee_id,employee_name,client_name,started_at,job_category,spot_status')
+      .gte('scheduled_date', from).lte('scheduled_date', today).limit(5000),
+  ])
+  if (c.error) throw c.error
+  if (j.error) throw j.error
+  const empById = Object.fromEntries((e.data || []).map(x => [x.id, x]))
+  const targets = contractTargets(c.data || [], cl.data || [])
+  const jobs = j.data || []
+  const cov = dayCoverage(targets, today, jobs, { empById, nowMin })
+  const { countJobs } = await import('./jobCounts.js')
+  const lateJobsToday = countJobs(jobs.filter(x => x.scheduled_date === today), { from: today, to: today, today, nowMin: nowMin ?? undefined }).late
+  const todayN = Math.max(cov.missing.filter(needsAction).length, lateJobsToday)
+  const pastDays = []
+  for (let d = from; d < today; d = addDays(d, 1)) {
+    const n = dayCoverage(targets, d, jobs, { empById }).missing.length
+    if (n) pastDays.push({ date: d, n })
+  }
+  const past = pastDays.reduce((s, x) => s + x.n, 0)
+  return { today: todayN, past, total: todayN + past, pastDays }
+}

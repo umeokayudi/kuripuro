@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import { fetchDayCoverage } from '../lib/dayCoverage'
 
 const TZ = 'Asia/Tokyo'
-const LATE_AFTER_MIN = 5
+import { countJobs, LATE_AFTER_MIN } from '../lib/jobCounts'
 const LOCATION_FRESH_MIN = 15
 
 // "Now" as a Date whose local fields are Tokyo wall-clock time.
@@ -156,11 +156,15 @@ export default function LiveTracking() {
   grouped.working.sort((a, b) => new Date(a.active.started_at || 0) - new Date(b.active.started_at || 0))
 
   const dateLabel = new Date().toLocaleDateString(lang === 'en' ? 'en-US' : localeOf(lang), { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })
+  // v1.0.133 · the tiles count JOBS of today with the shared counter (jobCounts), not people:
+  // "Ainda não começou" = every job of the day still not started (late ones included), with or without a person.
+  const dayCount = countJobs(jobs.filter(j => j.scheduled_date === today), { from: today, to: today, today, nowMin: now.getHours() * 60 + now.getMinutes() })
+  const staleCount = jobs.filter(j => j.status === 'in_progress' && j.scheduled_date < today).length
   const tiles = [
-    { g: 'attention', n: grouped.attention.length, label: L.tileLate, tone: 'red' },
-    { g: 'working', n: grouped.working.length, label: L.tileWorking, tone: 'green' },
-    { g: 'upcoming', n: grouped.upcoming.length, label: L.tileUpcoming, tone: 'blue' },
-    { g: 'done', n: grouped.done.length, label: L.tileDone, tone: 'gray' },
+    { g: 'attention', n: dayCount.late + staleCount, label: L.tileLate, tone: 'red' },
+    { g: 'working', n: dayCount.inProgress, label: L.tileWorking, tone: 'green' },
+    { g: 'upcoming', n: dayCount.notStarted, label: L.tileUpcoming, tone: 'blue' },
+    { g: 'done', n: dayCount.completed, label: L.tileDone, tone: 'gray' },
   ]
 
   const statusLine = (p) => {

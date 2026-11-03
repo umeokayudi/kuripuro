@@ -32,6 +32,7 @@ import { jobDurationMin } from '../lib/workKpis'
 import KeyReveal from '../components/KeyReveal'
 import EmployeePayEdit from '../components/EmployeePayEdit'
 import { splitKeyLine } from '../lib/keyReveal'
+import JobCountStrip from '../components/JobCountStrip'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
 } from '../lib/jobsPeriod'
@@ -222,6 +223,7 @@ export default function Jobs() {
             ))}
           </div>
 
+          {range && <JobCountStrip from={range.from} to={range.to} />}
           {!loading && filteredJobs.length > 0 && (
             <div style={{
               marginBottom: 16, padding: '14px 16px', background: 'var(--surface)',

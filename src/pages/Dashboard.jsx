@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { loadClientMoney, withClientMoney } from '../lib/moneyData'
+import JobCountStrip from '../components/JobCountStrip'
 import { useLang, localeOf } from '../hooks/useLang'
 import OverviewChart from '../components/OverviewChart'
 import MonthlyKpiCharts from '../components/MonthlyKpiCharts'
@@ -396,6 +397,8 @@ export default function Dashboard() {
               })}
             </div>
           )}
+          {/* v1.0.133 · the same job count as Serviços / Relatórios / Gerador for this period */}
+          <JobCountStrip from={range.from} to={range.to} />
           <div className="dx-team-kpis">
             {[
               [metricLabels.avgService, formatMinutes(team.avgMin), teamPrev.avgMin != null && team.avgMin != null ? `${team.avgMin - teamPrev.avgMin > 0 ? '+' : team.avgMin - teamPrev.avgMin < 0 ? '−' : '±'}${formatMinutes(Math.abs(team.avgMin - teamPrev.avgMin))} ${vsPrev}` : null],

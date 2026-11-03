@@ -12,7 +12,7 @@ import {
 import { listAllModels, listApprovedModels, listModels, listRecommendations, listServiceLog, logElementService, offerService } from '../lib/facilityApi'
 import { loadStoreTimeline, placePhotosOf, sizeLabel } from '../lib/cleaningTimeline'
 import { openClientSheet } from '../lib/clientSheet'
-import { fetchDayCoverage, needsAction } from '../lib/dayCoverage'
+import { fetchDayCoverage, needsAction, fetchServiceDelays } from '../lib/dayCoverage'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import { offerWhen } from '../components/facility/FacilityOffersBell'
 import { WorldView } from '../components/facility/FacilityViewer'
@@ -105,6 +105,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   // even without a 3D plan yet (those show as a plain building and open a simple sheet).
   const [places, setPlaces] = useState([])
   const [todayJobs, setTodayJobs] = useState([])
+  const [delays, setDelays] = useState(null)
   // v1.0.113 · today's contract places (same fact as Live Track "Today by contract")
   const [coverage, setCoverage] = useState(null)
   const [placeTab, setPlaceTab] = useState('map')
@@ -179,6 +180,8 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
     setTodayJobs(tj || [])
     const tokyoNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
     fetchDayCoverage(tokyoToday(), { nowMin: tokyoNow.getHours() * 60 + tokyoNow.getMinutes() }).then(setCoverage).catch(() => setCoverage(null))
+    // v1.0.133 · the World badge reads the same delays as Ao vivo / Gerador (late today + past days not done)
+    fetchServiceDelays(tokyoToday(), { nowMin: tokyoNow.getHours() * 60 + tokyoNow.getMinutes() }).then(setDelays).catch(() => setDelays(null))
     const [ms, ls, rs, { data: cl }, { data: js }] = await Promise.all([
       listAllModels(),
       listServiceLog({ limit: 3000 }),
@@ -447,7 +450,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
 
           {/* HUD: placar */}
           <div className="kw-hud kw-hud-tr">
-            <button type="button" className="kw-stat late" onClick={() => { setMissionTab('late'); setMissionsOpen(true) }}><b>{late.length}</b><span>{w.late}</span></button>
+            <button type="button" className="kw-stat late" title={!isEmployee && !isClient && delays?.total ? pickLang(lang, `${delays.today} services late today · ${delays.past} visits not done in the last 7 days`, `本日遅れ ${delays.today}件・過去7日未実施 ${delays.past}件`, `${delays.today} serviços atrasados hoje · ${delays.past} visitas não feitas nos últimos 7 dias`) : undefined} onClick={() => { if (!isEmployee && !isClient && delays?.total && !late.length) { navigate(delays.today ? '/live' : '/schedule') } else { setMissionTab('late'); setMissionsOpen(true) } }}><b>{late.length + (!isEmployee && !isClient ? delays?.total || 0 : 0)}</b><span>{w.late}</span></button>
             <button type="button" className="kw-stat soon" onClick={() => { setMissionTab('soon'); setMissionsOpen(true) }}><b>{soon.length}</b><span>{w.week}</span></button>
             {isEmployee
               ? <button type="button" className="kw-stat ok" onClick={() => { setMissionTab('mine'); setMissionsOpen(true) }}><b>{myWork.length}</b><span>{w.myDone30}</span></button>

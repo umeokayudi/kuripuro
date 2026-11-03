@@ -19,6 +19,7 @@ import PhotoLightbox from '../components/PhotoLightbox'
 import { useLang, fill, pickLang } from '../hooks/useLang'
 import { apiPost } from '../lib/apiFetch'
 import { useAuth } from '../hooks/useAuth'
+import JobCountStrip from '../components/JobCountStrip'
 import toast from 'react-hot-toast'
 
 function typeBadge(type, tr, job, lang) {
@@ -313,8 +314,12 @@ export default function Reports() {
     setAiLoading(false)
   }
 
+  // v1.0.133 · same job count as Dashboard / Serviços for the period of this screen (by scheduled day)
+  const countFrom = filterDay || new Date(Date.now() - filterDays * 86400000).toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 10)
+  const countTo = filterDay || tokyoToday()
   return (
     <div>
+      <JobCountStrip from={countFrom} to={countTo} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
         <div style={{ opacity: filterDay ? 0.45 : 1 }}>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.period}</div>

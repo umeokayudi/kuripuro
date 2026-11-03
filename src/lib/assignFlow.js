@@ -7,7 +7,7 @@
 //   - coverageCounts: PROGRAMMED (created × contract) and ASSIGNED (with person × created)
 import { getCleaningType, locationNameFromTitle } from './cleaningType.js'
 import { roleCan } from './employeeRoles.js'
-import { canWork, coverage, dowOf, isTestAccount, addDays } from './schedulePlan.js'
+import { canWork, coverage, dowOf, isTestAccount, addDays, jobFulfils } from './schedulePlan.js'
 
 export const MANUAL_ORDER_BASE = 1000
 const DEFAULT_MINUTES = { basic: 120, deep: 240 }
@@ -219,10 +219,28 @@ export function coverageCounts(targets, days, jobs, { wholeMonth = false, empByI
   const live = (jobs || []).filter(j => j.status !== 'cancelled')
   const cov = coverage(targets, days, live.map(j => ({ date: j.scheduled_date, title: j.title })), { wholeMonth })
   const dueAll = coverage(targets, days, [], { wholeMonth }).missing.length
-  const assigned = live.filter(j => !pendingReason(j, { empById, availability })).length
+  // v1.0.133 · "Atribuídos" counts the SAME visits as "Programados" (a created contract visit that has a
+  // person who can do it), so it can never be bigger than the programmed ones. Extra jobs (no contract)
+  // and duplicates of a visit stay out of both and are listed in the check per place.
+  const ok = j => !pendingReason(j, { empById, availability })
+  let assigned = 0
+  for (const t of targets || []) {
+    if (t.kind === 'nodays' || (t.kind === 'periodic' && !wholeMonth)) continue
+    if (t.kind === 'weekly') {
+      for (const d of days) {
+        if (!t.days.includes(dowOf(d))) continue
+        const mine = live.filter(j => j.scheduled_date === d && jobFulfils(j.title, t))
+        if (mine.length && mine.some(ok)) assigned++
+      }
+    } else {
+      const mine = live.filter(j => days.includes(j.scheduled_date) && jobFulfils(j.title, t))
+      if (mine.length && mine.some(ok)) assigned++
+    }
+  }
+  const programmedDone = dueAll - cov.missing.length
   return {
-    programmed: { done: dueAll - cov.missing.length, total: dueAll },
-    assigned: { done: assigned, total: live.length },
+    programmed: { done: programmedDone, total: dueAll },
+    assigned: { done: Math.min(assigned, programmedDone), total: programmedDone },
     missing: cov.missing,
     clients: cov.clients,
     noDays: cov.noDays,
