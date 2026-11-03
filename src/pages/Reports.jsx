@@ -21,6 +21,13 @@ import { apiPost } from '../lib/apiFetch'
 import { useAuth } from '../hooks/useAuth'
 import JobCountStrip from '../components/JobCountStrip'
 import toast from 'react-hot-toast'
+import { useSearchParams } from 'react-router-dom'
+import { peekVideoStatus } from '../lib/jobVideo'
+import ReportFilterBar from '../components/ReportFilterBar'
+import {
+  periodRange, rangeDays, rangeIso, typeNeedsOpenJobs, rowKind, matchesType, rowProblems, matchesProblems,
+  placeOf, matchesSearch, sortRows, isOpenRow, filtersFromParams, filtersToParams, activeFilterCount, PROBLEMS,
+} from '../lib/reportFilters'
 
 function typeBadge(type, tr, job, lang) {
   if (job && executionMode(job) === 'manual') return <span className="badge badge-amber">🔒 {pickLang(lang, 'Closed by admin', '管理者が完了', 'Fechamento manual')}</span>
@@ -130,9 +137,17 @@ export default function Reports() {
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
-  const [filterEmp, setFilterEmp] = useState('')
-  const [filterClient, setFilterClient] = useState('')
-  const [includeOpen, setIncludeOpen] = useState(false)
+  // v1.0.141 · every filter lives in the URL (?emp=…&p=7&pb=long,lowai) — survives reload and can be shared
+  const [params, setParams] = useSearchParams()
+  const f = useMemo(() => filtersFromParams(params), [params])
+  const setF = patch => setParams(filtersToParams({ ...f, ...(typeof patch === 'function' ? patch(f) : patch) }), { replace: true })
+  const today = tokyoToday()
+  const range = useMemo(() => periodRange(f.period, today, f), [f.period, f.from, f.to, today]) // eslint-disable-line react-hooks/exhaustive-deps
+  const filterEmp = f.emp
+  const filterClient = f.client
+  const includeOpen = typeNeedsOpenJobs(f.type) || f.problems.includes('open')
+  const filterDay = range.from === range.to ? range.from : ''
+  const filterDays = rangeDays(range)
   const [clientList, setClientList] = useState([])
   const [contractList, setContractList] = useState([])
   const [regrading, setRegrading] = useState(null)
@@ -140,11 +155,9 @@ export default function Reports() {
     supabase.from('clients').select('id,company_name').eq('is_active', true).order('company_name').then(({ data }) => setClientList(data || []))
     supabase.from('service_contracts').select('*').then(({ data }) => setContractList(data || []))
   }, [])
-  const [filterDays, setFilterDays] = useState(30)
   const [aiAnalysis, setAiAnalysis] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [lightbox, setLightbox] = useState(null)
-  const [filterDay, setFilterDay] = useState('')
   const [pdfBusy, setPdfBusy] = useState(false)
   const { user } = useAuth()
   const narrow = useNarrow()
@@ -153,12 +166,11 @@ export default function Reports() {
 
   useEffect(() => { loadAdminSignature(user).then(setAdminSig) }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { loadReports() }, [filterDays, filterDay, includeOpen, lang]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadReports() }, [range.from, range.to, includeOpen, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadReports = async () => {
     setLoading(true)
-    const sinceIso = new Date(Date.now() - filterDays * 86400000).toISOString()
-    const sinceDate = sinceIso.split('T')[0]
+    const { fromIso, toIso } = rangeIso(range)
 
     // The list starts from the JOBS, so every job shows up even when service_reports
     // has no row for it yet (before v1.0.14 the list used service_reports only as soon
@@ -166,11 +178,11 @@ export default function Reports() {
     const jobsQuery = filterDay
       ? supabase.from('jobs').select('*').eq('scheduled_date', filterDay).neq('status', 'cancelled').order('scheduled_time', { ascending: true }).limit(500)
       : includeOpen
-        ? supabase.from('jobs').select('*').gte('scheduled_date', sinceDate).lte('scheduled_date', tokyoToday()).neq('status', 'cancelled').order('scheduled_date', { ascending: false }).limit(800)
-        : supabase.from('jobs').select('*').eq('status', 'completed').gte('completed_at', sinceIso).order('completed_at', { ascending: false }).limit(500)
+        ? supabase.from('jobs').select('*').gte('scheduled_date', range.from).lte('scheduled_date', range.to).neq('status', 'cancelled').order('scheduled_date', { ascending: false }).limit(1000)
+        : supabase.from('jobs').select('*').eq('status', 'completed').gte('completed_at', fromIso).lt('completed_at', toIso).order('completed_at', { ascending: false }).limit(1000)
     const srQuery = filterDay
       ? supabase.from('service_reports').select('*').eq('report_date', filterDay).limit(500)
-      : supabase.from('service_reports').select('*').gte('report_date', sinceDate).order('created_at', { ascending: false }).limit(500)
+      : supabase.from('service_reports').select('*').gte('report_date', range.from).lte('report_date', range.to).order('created_at', { ascending: false }).limit(1000)
 
     const [{ data: srData, error: srErr }, { data: jobs, error: jobErr }] = await Promise.all([srQuery, jobsQuery])
 
@@ -194,9 +206,6 @@ export default function Reports() {
       for (const r of orphans) rows.push(extraById[r.job_id] ? mergeReportWithJob(r, extraById[r.job_id], lang) : r)
     }
 
-    rows.sort((x, y) => filterDay
-      ? String(x.started_at || x.time_in || '').localeCompare(String(y.started_at || y.time_in || ''))
-      : String(y.completed_at || y.created_at || '').localeCompare(String(x.completed_at || x.created_at || '')))
     setReports(rows)
 
     for (const j of jobs || []) {
@@ -244,14 +253,24 @@ export default function Reports() {
     setPdfBusy(false)
   }
 
-  const employees = useMemo(() =>
-    [...new Set(reports.map(r => r.employee_name).filter(Boolean))].sort(),
-  [reports])
-
   const clientOfReport = r => r.client_id || contractForAgendaJob({ title: r.job_title || r.location_name || '' }, contractList)?.client_id || ''
-  const filtered = useMemo(() =>
-    reports.filter(r => (!filterEmp || r.employee_name === filterEmp) && (!filterClient || clientOfReport(r) === filterClient)),
-  [reports, filterEmp, filterClient, contractList])
+
+  // v1.0.141 · video status of every row (small status file, 4 at a time, cached) so "no video" can be filtered
+  const [videoMap, setVideoMap] = useState({})
+  useEffect(() => {
+    let alive = true
+    const pending = {}
+    let timer = null
+    const flush = () => { timer = null; if (alive) setVideoMap(m => ({ ...m, ...pending })) }
+    for (const r of reports) {
+      if (!r.job_id || isOpenRow(r)) continue
+      peekVideoStatus(r.job_id).then(st => {
+        pending[r.job_id] = st || null
+        if (!timer) timer = setTimeout(flush, 250)
+      })
+    }
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [reports])
 
   // v1.0.115 · same rule as the exception queue: > 2× the planned time, or never started → owner + deadline
   const rowException = r => {
@@ -264,6 +283,44 @@ export default function Reports() {
   }
   const L3 = (en, ja, pt) => pickLang(lang, en, ja, pt)
   const noProblems = L3('no problems', '問題なし', 'sem problemas')
+
+  // one pass per row: everything the filters need
+  const enriched = useMemo(() => reports.map(r => {
+    const exception = rowException(r)
+    const kind = rowKind(r, r._job ? executionMode(r._job) : undefined)
+    const problems = rowProblems(r, { exception, videoStatus: r.job_id ? videoMap[r.job_id] : null, notes: noteCountOf(r) })
+    return { r, exception, kind, problems, place: placeOf(r), client: clientOfReport(r) }
+  }), [reports, videoMap, contractList]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pass = (x, skip) =>
+    (skip === 'emp' || !filterEmp || x.r.employee_name === filterEmp)
+    && (skip === 'client' || !filterClient || x.client === filterClient)
+    && (skip === 'place' || !f.place || x.place === f.place)
+    && (skip === 'type' || matchesType(f.type, x.kind))
+    && (skip === 'problems' || matchesProblems(f.problems, x.problems))
+    && matchesSearch(f.q, x.r)
+
+  const filtered = useMemo(() =>
+    sortRows(enriched.filter(x => pass(x)).map(x => x.r), f.sort, { singleDay: !!filterDay }),
+  [enriched, f, filterDay]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // counts next to each option = what you would get by picking it (other filters kept)
+  const facets = useMemo(() => {
+    const emp = {}, place = {}, client = {}, type = {}, problem = Object.fromEntries(PROBLEMS.map(p => [p, 0]))
+    let empAll = 0, problemAny = 0
+    for (const x of enriched) {
+      if (pass(x, 'emp')) { empAll++; const n = x.r.employee_name || ''; if (n) emp[n] = (emp[n] || 0) + 1 }
+      if (pass(x, 'place') && x.place) place[x.place] = (place[x.place] || 0) + 1
+      if (pass(x, 'client') && x.client) client[x.client] = (client[x.client] || 0) + 1
+      if (pass(x, 'type')) type[x.kind] = (type[x.kind] || 0) + 1
+      if (pass(x, 'problems')) {
+        problemAny += x.problems.size ? 1 : 0
+        for (const p of x.problems) problem[p] = (problem[p] || 0) + 1
+      }
+    }
+    return { emp, empAll, place, client, type, problem, problemAny }
+  }, [enriched, f]) // eslint-disable-line react-hooks/exhaustive-deps
+  const videoPending = reports.some(r => r.job_id && !isOpenRow(r) && !(r.job_id in videoMap))
 
   const stats = useMemo(() => {
     const withDur = filtered.filter(r => r.duration_min != null)
@@ -315,55 +372,24 @@ export default function Reports() {
   }
 
   // v1.0.133 · same job count as Dashboard / Serviços for the period of this screen (by scheduled day)
-  const countFrom = filterDay || new Date(Date.now() - filterDays * 86400000).toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).slice(0, 10)
-  const countTo = filterDay || tokyoToday()
+  const countFrom = range.from
+  const countTo = range.to
   return (
     <div>
       <JobCountStrip from={countFrom} to={countTo} />
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
-        <div style={{ opacity: filterDay ? 0.45 : 1 }}>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.period}</div>
-          <select disabled={!!filterDay} value={filterDays} onChange={e => setFilterDays(Number(e.target.value))} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <option value={7}>{tr.days7}</option>
-            <option value={30}>{tr.days30}</option>
-            <option value={90}>{tr.days90}</option>
-          </select>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.employee}</div>
-          <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', minWidth: 160 }}>
-            <option value="">{tr.all}</option>
-            {employees.map(e => <option key={e} value={e}>{e}</option>)}
-          </select>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{pickLang(lang, 'Client', '顧客', 'Cliente')}</div>
-          <select value={filterClient} onChange={e => setFilterClient(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', minWidth: 160, maxWidth: '100%' }}>
-            <option value="">{tr.all}</option>
-            {clientList.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
-          </select>
-        </div>
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginTop: 16, opacity: filterDay ? 0.45 : 1 }}>
-          <input type="checkbox" disabled={!!filterDay} checked={includeOpen} onChange={e => setIncludeOpen(e.target.checked)} />
-          {pickLang(lang, 'Include pending and late', '未完了・遅れも含む', 'Incluir pendentes e atrasados')}
-        </label>
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{tr.day}</div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input type="date" value={filterDay} onChange={e => setFilterDay(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)' }} />
-            {filterDay
-              ? <button className="btn btn-sm" onClick={() => setFilterDay('')}>{tr.anyDay}</button>
-              : <button className="btn btn-sm" onClick={() => setFilterDay(tokyoToday())}>{pickLang(lang, 'Today', '今日', 'Hoje')}</button>}
-          </div>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn" onClick={() => setSigPad('edit')} title={tr.adminSigTitle}>✍️ {adminSig ? tr.adminSigChange : tr.adminSigAdd}</button>
-          {filterDay && <button className="btn" onClick={() => downloadDayPdf()} disabled={pdfBusy || !filtered.length}>{pdfBusy ? tr.loading : tr.dayPdf}</button>}
-          <button className="btn btn-primary" onClick={runAiAnalysis} disabled={aiLoading || !filtered.length}>
+      <ReportFilterBar
+        f={f} setF={setF} reset={() => setParams({}, { replace: true })}
+        today={today} range={range} lang={lang}
+        facets={facets} clients={clientList} videoPending={videoPending}
+        total={reports.length} shown={filtered.length} loading={loading}
+        actions={<>
+          <button className="btn btn-sm" onClick={() => setSigPad('edit')} title={tr.adminSigTitle}>✍️ {adminSig ? tr.adminSigChange : tr.adminSigAdd}</button>
+          {filterDay && <button className="btn btn-sm" onClick={() => downloadDayPdf()} disabled={pdfBusy || !filtered.length}>{pdfBusy ? tr.loading : tr.dayPdf}</button>}
+          <button className="btn btn-sm btn-primary" onClick={runAiAnalysis} disabled={aiLoading || !filtered.length}>
             {aiLoading ? tr.analyzing : tr.aiAnalyze}
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
       <div className="grid-3" style={{ gap: 12, marginBottom: 16 }}>
         <div className="card" style={{ margin: 0, padding: 16 }}>
@@ -380,10 +406,6 @@ export default function Reports() {
         </div>
       </div>
 
-      <ProgressChart anchorDate={filterDay || tokyoToday()} defaultUnit={filterDay || filterDays <= 7 ? 'day' : 'week'}
-        filters={{ days: filterDay ? 1 : filterDays, clientId: filterClient, employeeName: filterEmp, label: [clientList.find(c => c.id === filterClient)?.company_name, filterEmp].filter(Boolean).join(' · ') }} />
-
-      <ReportsAnalytics reports={filtered} />
 
       {aiAnalysis && (
         <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid #315cf5' }}>
@@ -409,7 +431,11 @@ export default function Reports() {
         </div>
         {loading && <div aria-busy="true" aria-label={tr.loading}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
         {!loading && filtered.length === 0 && (
-          <div style={{ color: 'var(--text3)', fontSize: 13 }}>{tr.empty}</div>
+          <div style={{ color: 'var(--text3)', fontSize: 13, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {reports.length && activeFilterCount(f)
+              ? <>{L3('No report matches these filters.', 'この条件に合うレポートはありません。', 'Nenhum report com esses filtros.')} <button className="btn btn-sm" onClick={() => setParams({}, { replace: true })}>{L3('Clear filters', '条件をクリア', 'Limpar filtros')}</button></>
+              : tr.empty}
+          </div>
         )}
         {filtered.length > 0 && narrow && (
           <div style={{ display: 'grid', gap: 10 }}>
@@ -458,7 +484,11 @@ export default function Reports() {
               <tbody>
                 {filtered.map(r => (
                   <tr key={r.job_id}>
-                    <td style={{ fontWeight: 500 }}>{r.employee_name}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {r.employee_name
+                        ? <button type="button" className="rf-link" title={L3('Show only this employee', 'このスタッフだけ表示', 'Ver só este funcionário')} onClick={() => setF({ emp: filterEmp === r.employee_name ? '' : r.employee_name })}>{r.employee_name}</button>
+                        : '—'}
+                    </td>
                     <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.client_name || r.job_title}</td>
                     <td>{r.report_date}</td>
                     <td>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr, r._job, lang)}</td>
@@ -497,6 +527,11 @@ export default function Reports() {
           </div>
         )}
       </div>
+
+      <ProgressChart anchorDate={range.to} defaultUnit={filterDays <= 7 ? 'day' : 'week'}
+        filters={{ days: filterDays, clientId: filterClient, employeeName: filterEmp, label: [clientList.find(c => c.id === filterClient)?.company_name, filterEmp].filter(Boolean).join(' · ') }} />
+
+      <ReportsAnalytics reports={filtered} selectedEmployee={filterEmp} onEmployeeClick={name => setF({ emp: filterEmp === name ? '' : name })} />
 
       {selected && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelected(null)}>

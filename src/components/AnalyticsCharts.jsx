@@ -50,7 +50,7 @@ export function LineChart({ data = [], height = 180, valueFormatter = v => Strin
   )
 }
 
-export function BarChart({ data = [], valueFormatter = v => String(v), colorClass = '' }) {
+export function BarChart({ data = [], valueFormatter = v => String(v), colorClass = '', onPick, selected }) {
   if (!data.length) return <EmptyChart />
   const max = Math.max(...data.map(d => Number(d.value || 0)), 1)
   return (
@@ -59,7 +59,8 @@ export function BarChart({ data = [], valueFormatter = v => String(v), colorClas
         const value = Number(d.value || 0)
         const pct = Math.max(0, Math.min(100, (value / max) * 100))
         return (
-          <div className="chart-bar-row" key={i}>
+          <div className={'chart-bar-row' + (onPick ? ' chart-bar-pick' : '') + (selected && selected === d.label ? ' on' : '') + (selected && selected !== d.label ? ' dim' : '')} key={i}
+            {...(onPick ? { role: 'button', tabIndex: 0, onClick: () => onPick(d.label), onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(d.label) } } } : {})}>
             <div className="chart-bar-meta">
               <span title={d.label}>{d.label}</span>
               <strong>{valueFormatter(value)}</strong>
@@ -270,7 +271,7 @@ export function ExecutiveDashboard({ clients = [], monthJobs = [], todayJobs = [
 }
 
 
-export function ReportsAnalytics({ reports = [] }) {
+export function ReportsAnalytics({ reports = [], onEmployeeClick, selectedEmployee = '' }) {
   const { t } = useLang()
   const d = t.executive || {}
   const byDay = useMemo(() => {
@@ -315,7 +316,7 @@ export function ReportsAnalytics({ reports = [] }) {
       </div>
       <div className="card executive-card reports-chart-wide">
         <div className="chart-card-head"><div><div className="card-title">{d.productivity}</div><div className="chart-subtitle">{d.reportsByEmployee}</div></div></div>
-        <BarChart data={byEmployee} valueFormatter={v => v + ' ' + d.reports} />
+        <BarChart data={byEmployee} valueFormatter={v => v + ' ' + d.reports} onPick={onEmployeeClick} selected={selectedEmployee} />
       </div>
     </div>
   )
