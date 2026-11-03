@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLang } from '../hooks/useLang'
-import { listJobVideos, peekVideoStatus, readVideoStatus } from '../lib/jobVideo'
+import { downloadVideo, listJobVideos, peekVideoStatus, readVideoStatus } from '../lib/jobVideo'
 
 /**
  * Vídeos opcionais do serviço (jobs/<jobId>/video_n.*), ao lado das fotos Antes/Depois.
@@ -8,7 +8,7 @@ import { listJobVideos, peekVideoStatus, readVideoStatus } from '../lib/jobVideo
  * Mostra também o estado do envio: "enviando…" ou "falhou".
  * lazy: mostra só um botão e busca ao clicar (bom para listas com muitos jobs).
  */
-export default function JobVideos({ jobId, lazy = false, label, style, emptyLabel = null }) {
+export default function JobVideos({ jobId, lazy = false, label, style, emptyLabel = null, name = '' }) {
   const { t, tr } = useLang()
   const L = t?.jobVideo || {}
   const [open, setOpen] = useState(!lazy)
@@ -27,11 +27,11 @@ export default function JobVideos({ jobId, lazy = false, label, style, emptyLabe
     if (!open || !jobId) return
     let alive = true
     setState({ loading: true, videos: null, status: null, error: false })
-    Promise.all([listJobVideos(jobId), readVideoStatus(jobId)])
+    Promise.all([listJobVideos(jobId, name), readVideoStatus(jobId)])
       .then(([videos, status]) => { if (alive) setState({ loading: false, videos, status, error: false }) })
       .catch(() => { if (alive) setState({ loading: false, videos: [], status: null, error: true }) })
     return () => { alive = false }
-  }, [open, jobId])
+  }, [open, jobId, name])
 
   if (!jobId) return null
 
@@ -63,18 +63,23 @@ export default function JobVideos({ jobId, lazy = false, label, style, emptyLabe
       </div>
       {pendingNote}
       <div style={{ display: 'grid', gap: 8 }}>
-        {state.videos.map(v => playing === v.path ? (
-          <video key={v.path} src={v.url} controls autoPlay preload="auto" playsInline
+        {state.videos.map(v => <div key={v.path} style={{ display: 'grid', gap: 6 }}>{playing === v.path ? (
+          <video src={v.url} controls autoPlay preload="auto" playsInline
             style={{ width: '100%', maxHeight: 360, borderRadius: 8, background: '#000' }} />
         ) : (
-          <button key={v.path} type="button" onClick={() => setPlaying(v.path)} aria-label={tr('Play video', '動画を再生', 'Tocar vídeo')}
+          <button type="button" onClick={() => setPlaying(v.path)} aria-label={tr('Play video', '動画を再生', 'Tocar vídeo')}
             style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', maxHeight: 360, borderRadius: 8, border: 'none', padding: 0, cursor: 'pointer', overflow: 'hidden',
               background: v.poster ? `#000 url("${v.poster}") center / cover no-repeat` : '#111' }}>
             <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▶</span>
             </span>
           </button>
-        ))}
+        )}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => downloadVideo(v).catch(() => {})}
+            style={{ justifySelf: 'start' }}>
+            ⬇ {tr('Download video', '動画をダウンロード', 'Baixar vídeo')}{v.size ? ` · ${(v.size / 1024 / 1024).toFixed(1)} MB` : ''}
+          </button>
+        </div>)}
       </div>
     </div>
   )
