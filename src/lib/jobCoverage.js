@@ -11,6 +11,8 @@ const getCleaningType = job => {
   return /deep\s*clean|profunda|limpeza profunda|range hood|grease trap|grating|ac cleaning|stove|fog[aã]o|レンジフード|グリストラップ|コンロ/.test(t) ? 'deep' : 'basic'
 }
 
+import { jobEmployeePay } from './jobEmployeePay.js'
+
 export const KEEP_MARK = '⟲ Cobertura: mantido'
 export const REMOVED_MARK = '⊘ Baixado por autorização do dono'
 
@@ -70,7 +72,6 @@ export function keepCoverPatch(a, b, { owner = 'dono', today }) {
 
 /** Pay suggested for B: A's pay line when B has none ("a definir"). */
 export function suggestedPayForB(a, b) {
-  const ap = a?.employee_pay, bp = b?.employee_pay
-  if (bp !== null && bp !== undefined && bp !== '') return null
-  return ap === null || ap === undefined || ap === '' ? null : Number(ap)
+  if (jobEmployeePay(b) !== null) return null
+  return jobEmployeePay(a)
 }

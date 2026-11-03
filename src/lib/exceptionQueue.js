@@ -11,7 +11,7 @@ import { isTestName } from './testData'
 import { problemJobId } from './fieldExec'
 import { coveredJobs } from './jobCoverage.js'
 
-const JOB_COLS = 'id,title,description,client_id,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category'
+const JOB_COLS = 'id,title,description,admin_reviewed,client_id,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category'
 
 export const URGENCY = { late: 95, covered: 88, no_person: 90, problem: 85, incomplete: 80, disputed: 75, paid_unconfirmed: 72, payroll_review: 70, long: 60, no_photo: 50, ai_waiting: 30 }
 
@@ -53,6 +53,8 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     // v1.0.147 · OTP night jobs: late only when not finished at 10:00 (running too), measured from 10:00
     else if (isDeadlineJob(j) ? (j.scheduled_date === today && isDeadlineLate(j, { now })) : (!done && j.status === 'assigned' && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5)) push('late', j, { minutes: Math.round(hoursPastDue(j, now) * 60), ...(isDeadlineJob(j) ? { deadline: deadlineOf(j) } : {}) })
     else if (isMissedJob(j, now) && j.scheduled_date >= addDays(today, -14)) push('incomplete', j, {})
+    // v1.0.149 · the admin already checked this finished job (accepted without photo / reviewed): nothing left to do
+    if (done && j.admin_reviewed) continue
     if (done && j.scheduled_date >= addDays(today, -7)) {
       if (!j.photo_end_url) push('no_photo', j, {})
       else if (j.photo_end_url && j.photo_ai_score == null && j.scheduled_date >= addDays(today, -3)) push('ai_waiting', j, {})
@@ -69,7 +71,7 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
   }
   for (const p of payroll.autoClosed || []) push('payroll_review', null, { key: p.period, period: p.period, date: p.period })
   for (const s of payroll.disputed || []) push('disputed', null, { key: s.id, who: s.employee_name, period: s.period, date: s.period })
-  for (const s of payroll.paidUnconfirmed || []) push('paid_unconfirmed', null, { key: s.id, who: s.employee_name, period: s.period, date: s.period })
+  for (const s of payroll.paidUnconfirmed || []) push('paid_unconfirmed', null, { waiting: true, key: s.id, who: s.employee_name, period: s.period, date: s.period })
   return out.sort((a, b) => b.urgency - a.urgency || String(a.date).localeCompare(String(b.date)))
 }
 

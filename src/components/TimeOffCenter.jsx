@@ -24,8 +24,7 @@ import { pendingChanged } from '../lib/adminPending'
 import { exceptionInfo, exceptionDeadline } from '../lib/exceptionText'
 import { hideTests, HIDE_TESTS_CHANGED } from '../lib/testData'
 import { fetchOtpRouteAlerts, otpRouteAlertText } from '../lib/jobDeadline'
-import { loadCoverPair, removeFromA, keepInA } from '../lib/coverageOps'
-import { suggestedPayForB } from '../lib/jobCoverage'
+import { decideCoverFlow } from '../lib/coverageOps'
 
 const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
 
@@ -184,7 +183,7 @@ export default function TimeOffCenter() {
     setBusy(null)
   }
   // Rows already counted by their own block (Pending box, auto-closed payroll) are not counted twice.
-  const excOwn = exceptions.filter(x => x.kind !== 'no_person' && x.kind !== 'payroll_review')
+  const excOwn = exceptions.filter(x => x.kind !== 'no_person' && x.kind !== 'payroll_review' && !x.waiting)
   const n = rows.length + payroll.length + quotes.length + toBook.length + flowDone.length + offers.length + taken.length + noPerson.length + dayMissing.length + routeAlerts.length + excOwn.length
   const EXC = exceptionInfo(L)
   // v1.0.123 · same kind of exception from 3 on = one card ("11 never started — review")
@@ -205,38 +204,7 @@ export default function TimeOffCenter() {
   }
   const openExc = (x) => { setOpen(false); markSeen(); navigate(EXC[x.kind].to(x)) }
   // v1.0.148 · "Coberto por outro": only the owner takes the job off A's agenda (or keeps it)
-  const coverLine = x => `${dShort(x.date)} · ${x.place} · ${x.byJob ? String(x.byJob.title || '').split(' — ')[1] || '' : ''}`
-  const decideCover = async (x, remove) => {
-    let pair
-    try { pair = await loadCoverPair(x.jobId, x.byJob?.id) } catch (err) { toast.error(err.message); return }
-    const { a, b } = pair
-    if (!a || !b || !['assigned', 'in_progress'].includes(a.status) || b.status !== 'completed') { toast(L('Already changed — list updated', 'すでに変更されています', 'Já mudou — lista atualizada')); load(); return }
-    if (!remove) {
-      if (!(await askConfirm({
-        title: L(`Keep on ${a.employee_name}'s agenda?`, `${a.employee_name}の予定に残しますか？`, `Manter na agenda de ${a.employee_name}?`),
-        message: `${coverLine(x)}\n${L(`Done by ${b.employee_name}. It stays on ${a.employee_name}'s agenda and is not asked again.`, `${b.employee_name}が実施済み。${a.employee_name}の予定に残り、再確認しません。`, `Feito por ${b.employee_name}. Continua na agenda de ${a.employee_name} e não pergunta de novo.`)}`,
-        confirmLabel: L(`Keep on ${a.employee_name}`, '残す', `Manter em ${a.employee_name}`), danger: false,
-      }))) return
-      try { await keepInA(a, b) } catch (err) { toast.error(err.message); return }
-      toast.success(L('Kept', '残しました', 'Mantido'))
-    } else {
-      const pay = suggestedPayForB(a, b)
-      if (!(await askConfirm({
-        title: L(`Remove from ${a.employee_name}?`, `${a.employee_name}から外しますか？`, `Retirar de ${a.employee_name}?`),
-        message: `${coverLine(x)}\n${L(`Done by ${b.employee_name}. It leaves ${a.employee_name}'s agenda (past date included), is not paid to ${a.employee_name} and is recorded as "removed with the owner's authorization — done by ${b.employee_name}". Reports count it once.`, `${b.employee_name}が実施。${a.employee_name}の予定から外し（過去日も）、${a.employee_name}の給与に含めず、「オーナー承認で削除 — 実施 ${b.employee_name}」と記録します。`, `Feito por ${b.employee_name}. Sai da agenda de ${a.employee_name} (inclusive data passada), não entra na folha de ${a.employee_name} e fica no histórico "baixado por autorização do dono — executado por ${b.employee_name}". Relatórios contam uma vez.`)}`,
-        confirmLabel: L(`Remove from ${a.employee_name}`, '外す', `Retirar de ${a.employee_name}`), danger: true,
-      }))) return
-      let passPay = false
-      if (pay != null) passPay = await askConfirm({
-        title: L(`Pay ¥${pay.toLocaleString()} to ${b.employee_name}?`, `${b.employee_name}に¥${pay.toLocaleString()}？`, `Pagar ¥${pay.toLocaleString()} para ${b.employee_name}?`),
-        message: L(`${b.employee_name}'s job has no pay line ("to define"). Suggested: the value that was on ${a.employee_name}'s job.`, `${b.employee_name}の作業に支払額がありません。${a.employee_name}の作業の金額を提案します。`, `O job de ${b.employee_name} está sem pagamento ("a definir"). Sugestão: o valor que estava no job de ${a.employee_name}.`),
-        confirmLabel: L('Yes, use this value', 'この金額にする', 'Sim, usar esse valor'), danger: false,
-      })
-      try { await removeFromA(a, b, { passPay }) } catch (err) { toast.error(err.message === 'changed' ? L('Already changed', 'すでに変更済み', 'Já mudou') : err.message); load(); return }
-      toast.success(L(`Removed from ${a.employee_name}`, `${a.employee_name}から外しました`, `Retirado de ${a.employee_name}`))
-    }
-    pendingChanged(); load()
-  }
+  const decideCover = async (x, remove) => { if (await decideCoverFlow(x, remove, { L, dShort })) { pendingChanged(); load() } else load() }
   const kinds = [
     { key: 'exceptions', label: L('Exceptions', '例外', 'Exceções'), n: exceptions.length },
     { key: 'jobs', label: L('Jobs', '作業', 'Jobs'), n: taken.length + noPerson.length + dayMissing.length + routeAlerts.length },

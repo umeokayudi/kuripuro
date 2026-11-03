@@ -87,3 +87,14 @@ console.log('exception queue OK')
   assert(a.length === 1 && a[0].kind === 'covered' && a[0].by === 'Gabriel' && a[0].who === 'Guilherme', 'A deve aparecer só como coberto')
   console.log('✓ covered job goes to the owner, not to late/incomplete')
 }
+
+// v1.0.149 · a finished job the admin already checked (accepted without photo) leaves no_photo / ai_waiting / long
+{
+  const list = buildExceptions({ today, now, hideTests: false, jobs: [
+    { id: 'R', title: 'X — Basic', employee_id: 'e', employee_name: 'Gabriel', status: 'completed', scheduled_date: today, admin_reviewed: true },
+    { id: 'N', title: 'Y — Basic', employee_id: 'e', employee_name: 'Gabriel', status: 'completed', scheduled_date: today },
+  ] })
+  assert(!list.some(x => x.jobId === 'R'), 'conferido sai da lista')
+  assert(list.some(x => x.jobId === 'N' && x.kind === 'no_photo'), 'sem foto continua')
+  console.log('✓ reviewed finished job leaves the queue')
+}

@@ -13,6 +13,9 @@ import toast from 'react-hot-toast'
 import { askConfirm } from '../components/ConfirmDialog'
 import { ensureServiceReports } from '../lib/jobReport'
 import { fetchExceptions } from '../lib/exceptionQueue'
+import { isWaiting, staleNotListed, withoutResolved, markReviewed, runAiNow, markNotDone } from '../lib/attentionActions'
+import { decideCoverFlow } from '../lib/coverageOps'
+import { PENDING_CHANGED } from '../lib/adminPending'
 import { exceptionInfo } from '../lib/exceptionText'
 import { billedInMonth } from '../lib/money'
 import { isTestJob, isTestClient, isTestName } from '../lib/testData'
@@ -30,7 +33,11 @@ export default function Dashboard() {
 
   const [clients, setClients] = useState([])
   const [todayJobs, setTodayJobs] = useState([])
-  const [staleCount, setStaleCount] = useState(0)
+  const [staleIds, setStaleIds] = useState([])
+  // v1.0.149 · items resolved here leave the list at once (before the reload confirms); open row = its item list
+  const [resolved, setResolved] = useState(() => new Set())
+  const [openKind, setOpenKind] = useState(null)
+  const [busyKind, setBusyKind] = useState(null)
   const [evals, setEvals] = useState([])
   const [trendJobs, setTrendJobs] = useState([])
   const [trendCashflow, setTrendCashflow] = useState([])
@@ -66,7 +73,7 @@ export default function Dashboard() {
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
       supabase.from('evaluations').select('*').order('created_at', { ascending: false }).limit(5),
-      supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'assigned').lt('scheduled_date', today),
+      supabase.from('jobs').select('id').eq('status', 'assigned').lt('scheduled_date', today).limit(1000),
       supabase.from('jobs').select('id,scheduled_date,scheduled_time,status,employee_id,employee_name,client_name,started_at,completed_at,gps_start_distance,start_lat,checklist_total,checklist_done,photo_ai_score').gte('scheduled_date', trendStart).lt('scheduled_date', trendEnd).neq('status', 'cancelled'),
       supabase.from('cashflow').select('entry_type,amount,entry_date').gte('entry_date', trendStart).lt('entry_date', trendEnd),
       // v1.0.110 · "Money of the month" = same rules as Invoices / Cashflow (billed by period, received = income rows)
@@ -83,11 +90,12 @@ export default function Dashboard() {
     setClients(withClientMoney(keep(c.data, isTestClient), money))
     setTodayJobs(keep(j.data, isTestJob))
     setEvals(keep(ev.data, e => isTestName(e.employee_name)))
-    setStaleCount(stale.count || 0)
+    setStaleIds((stale.data || []).map(r => r.id))
     setTrendJobs(keep(tj.data, isTestJob))
     setTrendCashflow(tc.data || [])
     setMonthMoney({ billed: billedInMonth(fm.data || [], month), received: (cm.data || []).reduce((sum, r) => sum + Number(r.amount || 0), 0) })
     setExceptions(exc || [])
+    setResolved(new Set())
     setLastUpdate(new Date())
     setLoading(false)
   }
@@ -107,15 +115,22 @@ export default function Dashboard() {
     load()
     const tick = setInterval(() => setClock(new Date()), 1000)
     const refresh = setInterval(load, 15000)
-    return () => { clearInterval(tick); clearInterval(refresh) }
+    // v1.0.149 · something resolved in the bell or another screen → this list reloads now, not in 15 s
+    const onChanged = () => load()
+    const onVisible = () => { if (document.visibilityState === 'visible') load() }
+    window.addEventListener(PENDING_CHANGED, onChanged)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(tick); clearInterval(refresh); window.removeEventListener(PENDING_CHANGED, onChanged); document.removeEventListener('visibilitychange', onVisible) }
   }, [range.from, range.to, hideTests])
 
   // v1.0.110 · bulk action: show exactly what will change, then confirm; only those ids are touched.
   const cancelStaleJobs = async () => {
     const today = tokyoToday()
-    const { data: list, error: e1 } = await supabase.from('jobs').select('id,title,scheduled_date,employee_name').eq('status', 'assigned').lt('scheduled_date', today).order('scheduled_date').limit(500)
+    const { data: list0, error: e1 } = await supabase.from('jobs').select('id,title,scheduled_date,employee_name').eq('status', 'assigned').lt('scheduled_date', today).order('scheduled_date').limit(500)
     if (e1) return toast.error(e1.message)
-    if (!list?.length) { setStaleCount(0); toast(tr('No old jobs to cancel', 'キャンセルする古い作業はありません', 'Nenhum serviço antigo para cancelar')); return }
+    const restIds = new Set(staleNotListed((list0 || []).map(j => j.id), exceptions))
+    const list = (list0 || []).filter(j => restIds.has(j.id))
+    if (!list?.length) { setStaleIds([]); toast(tr('No old jobs to cancel', 'キャンセルする古い作業はありません', 'Nenhum serviço antigo para cancelar')); return }
     const lines = list.slice(0, 20).map(j => `• ${j.scheduled_date} · ${String(j.title || '').split(' — ')[0]} · ${j.employee_name || tr('no person', '担当なし', 'sem pessoa')}`)
     if (list.length > 20) lines.push(tr(`…and ${list.length - 20} more`, `…ほか${list.length - 20}件`, `…e mais ${list.length - 20}`))
     const head = tr(`Cancel these ${list.length} jobs that were never started (before ${today})?`, `${today}より前の未開始の作業 ${list.length}件をキャンセルしますか？`, `Cancelar estes ${list.length} jobs que nunca foram iniciados (antes de ${today})?`)
@@ -123,6 +138,7 @@ export default function Dashboard() {
     const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).in('id', list.map(j => j.id)).eq('status', 'assigned')
     if (error) return toast.error(error.message)
     toast.success(d.staleCancelled)
+    setStaleIds([])
     load()
   }
 
@@ -195,7 +211,12 @@ export default function Dashboard() {
   const EXC = exceptionInfo(tr)
   const todayActive = todayJobs.filter(j => j.status !== 'cancelled')
   const todayDone = todayActive.filter(j => j.status === 'completed')
-  const actionRows = exceptions.filter(x => !x.jobId || x.date >= addDays(tokyoToday(), -1))
+  // v1.0.149 · covered-by-coworker rows stay until the owner decides (retroactive); resolved ones leave at once
+  const shownRows = withoutResolved(exceptions, resolved).filter(x => !x.jobId || x.kind === 'covered' || x.date >= addDays(tokyoToday(), -1))
+  // rows that only someone else can clear (employee confirming a payslip) are apart, never in the red total
+  const actionRows = shownRows.filter(x => !isWaiting(x))
+  const waitingRows = shownRows.filter(isWaiting)
+  const staleCount = staleNotListed(staleIds, shownRows).length
   // v1.0.125 · one line per kind instead of one row per item; the tab opens filtered when all items point to the same place
   const GROUP_LABEL = {
     late: tr('late, not started', '遅れ・未開始', 'atrasados, não iniciados'),
@@ -208,9 +229,10 @@ export default function Dashboard() {
     long: tr('took much longer than planned', '予定より長くかかった作業', 'demoraram muito mais que o previsto'),
     no_photo: tr('done without the final photo', '完了写真なし', 'concluídos sem foto final'),
     ai_waiting: tr('photos waiting for the AI', 'AI確認待ちの写真', 'fotos aguardando a IA'),
+    covered: tr('done by a coworker — remove from the agenda?', '他のスタッフが実施 — 予定から外す？', 'feitos por outro colega — retirar da agenda?'),
   }
   const attentionGroups = []
-  for (const x of actionRows) {
+  for (const x of [...actionRows, ...waitingRows]) {
     if (!EXC[x.kind]) continue
     let g = attentionGroups.find(a => a.kind === x.kind)
     if (!g) attentionGroups.push(g = { kind: x.kind, items: [], overdue: false })
@@ -220,6 +242,45 @@ export default function Dashboard() {
   for (const g of attentionGroups) {
     const paths = [...new Set(g.items.map(x => EXC[g.kind].to(x)))]
     g.to = paths.length === 1 ? paths[0] : paths[0].split('?')[0]
+    g.waiting = g.items.every(isWaiting)
+  }
+  // v1.0.149 · resolve here: hide at once, then reload to confirm
+  const dDay = x => (x.date && x.date.length === 10 ? new Date(`${x.date}T12:00:00+09:00`).toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Tokyo' }) : x.date || '')
+  const hide = ids => { setResolved(prev => { const n = new Set(prev); ids.forEach(i => n.add(i)); return n }); setTimeout(load, 400) }
+  const acceptNoPhoto = async items => {
+    if (items.length > 1 && !(await askConfirm({ title: tr(`Accept ${items.length} jobs without the final photo?`, `完了写真なしの${items.length}件を承認しますか？`, `Aceitar ${items.length} jobs sem foto final?`), message: items.map(x => `• ${dDay(x)} · ${x.place} · ${x.who}`).join('\n'), confirmLabel: tr('Accept', '承認', 'Aceitar'), danger: false }))) return
+    try { await markReviewed(items.map(x => x.jobId)); hide(items.map(x => x.id)); toast.success(tr('Accepted', '承認しました', 'Aceito')) } catch (err) { toast.error(err.message) }
+  }
+  const runAi = async (kind, items) => {
+    setBusyKind(kind)
+    try {
+      const r = await runAiNow(items.map(x => x.jobId))
+      hide(items.map(x => x.id))
+      r.failed ? toast.error(tr(`AI: ${r.ok} done, ${r.failed} failed — try again later`, `AI: ${r.ok}件完了、${r.failed}件失敗`, `IA: ${r.ok} feitas, ${r.failed} falharam — tente de novo depois`)) : toast.success(tr(`AI checked ${r.ok} photos`, `AIが${r.ok}枚を確認`, `IA conferiu ${r.ok} fotos`))
+    } catch (err) { toast.error(err.message) } finally { setBusyKind(null) }
+  }
+  const notDone = async x => {
+    const reason = await askConfirm({
+      title: tr('Mark as not done?', '未実施にしますか？', 'Marcar como não feito?'),
+      message: tr(`${dDay(x)} · ${x.place} (${x.who}) will be cancelled: not paid, not billed.`, `${dDay(x)} · ${x.place}（${x.who}）を取消します。給与・請求に含まれません。`, `${dDay(x)} · ${x.place} (${x.who}) será cancelado: não entra no pagamento nem na cobrança.`),
+      reason: tr('Reason (e.g. duplicate, done by another person)', '理由（例：重複、他のスタッフが実施）', 'Motivo (ex.: duplicado, feito por outra pessoa)'),
+      confirmLabel: tr('Not done', '未実施にする', 'Não feito'), danger: true,
+    })
+    if (!reason) return
+    try { await markNotDone(x.jobId, typeof reason === 'string' ? reason : null); hide([x.id]); toast.success(tr('Cancelled', '取消しました', 'Cancelado')) } catch (err) { toast.error(err.message === 'changed' ? tr('Already changed', 'すでに変更済み', 'Já mudou') : err.message); load() }
+  }
+  const cover = async (x, remove) => { if (await decideCoverFlow(x, remove, { L: tr, dShort: d => dDay({ date: d }) })) hide([x.id]); else load() }
+  // the row's main button: resolves the whole row when the action is safe to do at once, else opens the list
+  const ROW_ACTION = {
+    no_photo: g => ({ label: g.items.length > 1 ? tr(`Accept ${g.items.length} without photo`, `${g.items.length}件を写真なしで承認`, `Aceitar ${g.items.length} sem foto`) : tr('Accept without photo', '写真なしで承認', 'Aceitar sem foto'), run: () => acceptNoPhoto(g.items) }),
+    ai_waiting: g => ({ label: busyKind === 'ai_waiting' ? tr('AI checking…', 'AI確認中…', 'IA conferindo…') : tr('Run the AI now', '今すぐAI確認', 'Rodar a IA agora'), run: () => runAi('ai_waiting', g.items) }),
+  }
+  const ITEM_ACTIONS = {
+    covered: x => [[tr(`Remove from ${x.who}`, `${x.who}から外す`, `Retirar de ${x.who}`), () => cover(x, true), true], [tr(`Keep on ${x.who}`, `${x.who}に残す`, `Manter em ${x.who}`), () => cover(x, false)]],
+    incomplete: x => [[tr('Was done → finish', '実施済み → 完了', 'Foi feito → finalizar'), () => navigate('/live'), true], [tr('Not done', '未実施', 'Não feito'), () => notDone(x)]],
+    no_photo: x => [[tr('Accept without photo', '写真なしで承認', 'Aceitar sem foto'), () => acceptNoPhoto([x]), true], [tr('Open job', '作業を開く', 'Abrir job'), () => navigate(EXC.no_photo.to(x))]],
+    ai_waiting: x => [[tr('Run the AI', 'AI確認', 'Rodar a IA'), () => runAi('ai_waiting', [x]), true], [tr('Accept', '承認', 'Aceitar'), () => acceptNoPhoto([x])]],
+    long: x => [[tr('Checked', '確認済み', 'Conferido'), () => acceptNoPhoto([x]), true], [tr('Open job', '作業を開く', 'Abrir job'), () => navigate(EXC.long.to(x))]],
   }
   const attentionTotal = actionRows.length + (staleCount > 0 ? 1 : 0)
   // What the AI gets with each question: the same items as on screen, with ids so its buttons open the exact record.
@@ -247,6 +308,37 @@ export default function Dashboard() {
     monthMoney.received > 0 && [tr('Received this month', '今月の入金', 'Recebido no mês'), fmt(monthMoney.received), tr('to date', '本日まで', 'até hoje'), '/cashflow'],
     profit != null && [tr('Profit (contracts − team)', '利益（契約 − 人件費）', 'Lucro (contratos − equipe)'), profit < 0 ? <span style={{ color: 'var(--red)' }}>−{fmt(-profit)}</span> : fmt(profit), tr(`real team cost of ${costMonth}`, `${costMonth}の実人件費`, `custo real da equipe de ${costMonth}`), '/clients'],
   ].filter(Boolean)
+
+  const renderGroup = g => {
+    const names = [...new Set(g.items.map(x => x.who || x.place).filter(Boolean))]
+    const row = ROW_ACTION[g.kind]?.(g)
+    const perItem = ITEM_ACTIONS[g.kind]
+    const open = openKind === g.kind
+    return (
+      <li key={g.kind} className={g.overdue ? 'is-urgent' : ''} style={{ flexWrap: 'wrap', ...(g.waiting ? { opacity: 0.7 } : {}) }}>
+        <span className="dx-att-icon" aria-hidden="true">{EXC[g.kind].icon}</span>
+        <span className="dx-att-text">
+          <strong>{g.items.length > 1 && <b>{g.items.length}</b>} {g.items.length === 1 ? EXC[g.kind].title(g.items[0]) : (GROUP_LABEL[g.kind] || EXC[g.kind].title(g.items[0]))}</strong>
+          {names.length > 0 && <small>{names.slice(0, 3).join(', ')}{names.length > 3 ? tr(` +${names.length - 3}`, ` ほか${names.length - 3}`, ` +${names.length - 3}`) : ''}</small>}
+        </span>
+        <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {perItem && <button type="button" className={`btn btn-sm${row ? '' : ' btn-primary'}`} onClick={() => setOpenKind(open ? null : g.kind)}>{open ? tr('Hide', '閉じる', 'Esconder') : tr('Resolve one by one', '1件ずつ対応', 'Resolver um a um')}</button>}
+          {row && <button type="button" className="btn btn-sm btn-primary" disabled={busyKind === g.kind} onClick={row.run}>{row.label}</button>}
+          {!perItem && !row && <button type="button" className={`btn btn-sm${g.waiting ? '' : ' btn-primary'}`} onClick={() => navigate(g.to)}>{EXC[g.kind].action}</button>}
+        </span>
+        {open && perItem && (
+          <div style={{ flexBasis: '100%', display: 'grid', gap: 6, marginTop: 8 }}>
+            {g.items.map(x => (
+              <div key={x.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 13, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                <span>{[dDay(x), x.place, x.who, x.by ? tr(`done by ${x.by}`, `${x.by}が実施`, `feito por ${x.by}`) : ''].filter(Boolean).join(' · ')}</span>
+                <span style={{ display: 'flex', gap: 6 }}>{perItem(x).map(([label, run, main]) => <button key={label} type="button" className={`btn btn-sm${main ? ' btn-primary' : ''}`} onClick={run}>{label}</button>)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </li>
+    )
+  }
 
   const minutesAgo = lastUpdate ? Math.max(0, Math.floor((clock - lastUpdate) / 60000)) : null
   const updatedLabel = minutesAgo == null ? '' : minutesAgo === 0
@@ -282,7 +374,7 @@ export default function Dashboard() {
           <div><h2>{tr('Needs attention', '要対応', 'Precisa de atenção')}</h2><p>{tr('One line per kind · the button opens the right tab', '種類ごとに1行 · ボタンで該当タブへ', 'Uma linha por tipo · o botão abre a aba certa')}</p></div>
           {attentionTotal > 0 && <span className="badge badge-red">{attentionTotal}</span>}
         </div>
-        {attentionTotal === 0
+        {attentionTotal === 0 && !waitingRows.length
           ? <div className="ov-empty" style={{ padding: '14px 0 6px' }}>✅ {tr('Nothing needs action now', '今は対応不要です', 'Nada exige ação agora')}</div>
           : <ul className="dx-att-list">
             {staleCount > 0 && (
@@ -292,19 +384,9 @@ export default function Dashboard() {
                 <button type="button" className="btn btn-sm" onClick={cancelStaleJobs}>{tr('Review & cancel', '確認してキャンセル', 'Revisar e cancelar')}</button>
               </li>
             )}
-            {attentionGroups.map(g => {
-              const names = [...new Set(g.items.map(x => x.who || x.place).filter(Boolean))]
-              return (
-                <li key={g.kind} className={g.overdue ? 'is-urgent' : ''}>
-                  <span className="dx-att-icon" aria-hidden="true">{EXC[g.kind].icon}</span>
-                  <span className="dx-att-text">
-                    <strong>{g.items.length > 1 && <b>{g.items.length}</b>} {g.items.length === 1 ? EXC[g.kind].title(g.items[0]) : (GROUP_LABEL[g.kind] || EXC[g.kind].title(g.items[0]))}</strong>
-                    {names.length > 0 && <small>{names.slice(0, 3).join(', ')}{names.length > 3 ? tr(` +${names.length - 3}`, ` ほか${names.length - 3}`, ` +${names.length - 3}`) : ''}</small>}
-                  </span>
-                  <button type="button" className="btn btn-sm btn-primary" onClick={() => navigate(g.to)}>{EXC[g.kind].action}</button>
-                </li>
-              )
-            })}
+            {attentionGroups.filter(g => !g.waiting).map(g => renderGroup(g))}
+            {attentionGroups.some(g => g.waiting) && <li className="dx-att-sub" style={{ display: 'block', fontSize: 12, color: 'var(--text3)', borderBottom: 'none', paddingBottom: 0 }}>{tr('Waiting on someone else (not counted)', '他の人の対応待ち（件数に含めない）', 'Aguardando outra pessoa (não conta no total)')}</li>}
+            {attentionGroups.filter(g => g.waiting).map(g => renderGroup(g))}
           </ul>}
         <form className="dx-ask-ai" onSubmit={e => { e.preventDefault(); openAI(askText.trim()) }}>
           <span className="ai-orb ai-orb-xs" aria-hidden="true" />
