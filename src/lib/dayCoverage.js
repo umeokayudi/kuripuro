@@ -4,6 +4,7 @@
 import { supabase } from './supabase'
 import { contractTargets, jobFulfils, dowOf, addDays, splitName } from './schedulePlan.js'
 import { pendingReason } from './assignFlow.js'
+import { isDeadlineJob, DEADLINE_MIN } from './jobDeadline.js'
 
 const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 const LATE_AFTER_MIN = 5
@@ -42,11 +43,13 @@ export function dayCoverage(targets, date, jobs, { empById = {}, availability = 
     let personId = job?.employee_id || null
     if (!job) { state = 'noJob'; personId = owners[key] || null }
     else if (job.status === 'completed') state = 'done'
-    else if (job.status === 'in_progress') state = 'working'
+    else if (job.status === 'in_progress') state = isDeadlineJob(job) && nowMin != null && nowMin >= DEADLINE_MIN ? 'late' : 'working'
     else if (pendingReason(job, { empById, availability })) state = 'noPerson'
     else {
       const at = toMin(job.scheduled_time)
-      state = at != null && nowMin != null && nowMin - at >= LATE_AFTER_MIN ? 'late' : 'waiting'
+      // v1.0.147 · OTP night jobs: late from 10:00 (not finished), never by the 00:30 start
+      if (isDeadlineJob(job)) state = nowMin != null && nowMin >= DEADLINE_MIN ? 'late' : 'waiting'
+      else state = at != null && nowMin != null && nowMin - at >= LATE_AFTER_MIN ? 'late' : 'waiting'
     }
     const emp = personId ? empById[personId] : null
     items.push({
@@ -70,7 +73,7 @@ export async function fetchDayCoverage(date, { nowMin = null } = {}) {
     supabase.from('service_contracts').select('*').eq('is_active', true),
     supabase.from('clients').select('id,company_name,is_active'),
     supabase.from('employees').select('id,full_name,is_active,job_role'),
-    supabase.from('jobs').select('id,title,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status').eq('scheduled_date', date),
+    supabase.from('jobs').select('id,title,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status').eq('scheduled_date', date),
     supabase.from('jobs').select('title,employee_id').gte('scheduled_date', addDays(date, -28)).lt('scheduled_date', date)
       .not('employee_id', 'is', null).neq('status', 'cancelled').limit(3000),
     supabase.from('employee_availability').select('employee_id,date,kind,status').eq('date', date),

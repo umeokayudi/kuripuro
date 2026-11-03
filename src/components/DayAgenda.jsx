@@ -33,6 +33,7 @@ import { notifyChanges, fetchAckState } from '../lib/assignNotices'
 import { pendingChanged } from '../lib/adminPending'
 import { assignText, conflictLabel, RED_CONFLICTS } from './assignText'
 import './assign.css'
+import { isDeadlineJob, jobTimeLabel } from '../lib/jobDeadline'
 import { aiScoreView, aiReasonShort } from '../lib/aiScore'
 
 const STATUS_COLOR = { assigned: '#60a5fa', in_progress: '#f59e0b', completed: '#22c55e', cancelled: '#ef4444' }
@@ -464,8 +465,10 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
           <div className="ag-title">{loc}</div>
           <div className="ag-meta">
             {info.client && <>🏢 {info.client} · </>}
-            <span className="ag-nowrap">🕐 <input type="time" className="ag-time" value={job.scheduled_time || ''} onChange={e => onTime(job, e.target.value)}
-              aria-label={tr('Time', '時刻', 'Horário')} /></span>
+            {isDeadlineJob(job)
+              ? <span className="ag-nowrap">🕐 {jobTimeLabel(job, tr)}</span>
+              : <span className="ag-nowrap">🕐 <input type="time" className="ag-time" value={job.scheduled_time || ''} onChange={e => onTime(job, e.target.value)}
+              aria-label={tr('Time', '時刻', 'Horário')} /></span>}
             {' '}<span className="ag-nowrap">· ⏱ {fmtMin(info.expected)} {tr('planned', '予定', 'previsto')}</span>
           </div>
           {job.started_at && (

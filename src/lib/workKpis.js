@@ -1,6 +1,8 @@
 // Work KPIs from job rows: service time, punctuality, GPS check-in and checklist.
 // Shared by the employee home ("My progress") and the admin dashboard ("Team").
 
+import { isDeadlineJob, finishDelayMin } from './jobDeadline.js'
+
 export const ON_SITE_METERS = 150
 export const LATE_GRACE_MIN = 15
 
@@ -25,6 +27,8 @@ export function expectedJobMinutes(job, history) {
 
 /** Minutes late versus the scheduled time (Tokyo). Negative = early. Null when unknown. */
 export function startDelayMin(job) {
+  // v1.0.147 · OTP night jobs have no planned start: punctuality = finished by 10:00
+  if (isDeadlineJob(job)) return finishDelayMin(job)
   if (!job?.started_at || !job?.scheduled_date || !/^\d{1,2}:\d{2}/.test(job.scheduled_time || '')) return null
   const [h, m] = job.scheduled_time.split(':')
   const planned = new Date(`${job.scheduled_date}T${h.padStart(2, '0')}:${m.slice(0, 2)}:00+09:00`)

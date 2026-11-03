@@ -3,7 +3,8 @@
 import { supabase } from './supabase'
 import { tokyoToday } from './dates'
 import { addDays } from './schedulePlan'
-import { isMissedJob, hoursPastScheduled } from './jobOverdue'
+import { isMissedJob, hoursPastScheduled, hoursPastDue } from './jobOverdue'
+import { isDeadlineJob, isDeadlineLate } from './jobDeadline.js'
 import { jobMinutes } from './salaryCalc'
 import { expectedMinutes, contractForAgendaJob } from './agenda'
 import { isTestName } from './testData'
@@ -41,7 +42,8 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     if (hideTests && (isTestName(j.employee_name) || isTestName(j.client_name))) continue
     const done = j.status === 'completed'
     if (!done && !j.employee_id && j.scheduled_date >= today && j.scheduled_date <= addDays(today, 1)) push('no_person', j, {})
-    else if (!done && j.status === 'assigned' && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5) push('late', j, { minutes: Math.round(hoursPastScheduled(j, now) * 60) })
+    // v1.0.147 · OTP night jobs: late only when not finished at 10:00 (running too), measured from 10:00
+    else if (isDeadlineJob(j) ? (j.scheduled_date === today && isDeadlineLate(j, { now })) : (!done && j.status === 'assigned' && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5)) push('late', j, { minutes: Math.round(hoursPastDue(j, now) * 60) })
     else if (isMissedJob(j, now) && j.scheduled_date >= addDays(today, -14)) push('incomplete', j, {})
     if (done && j.scheduled_date >= addDays(today, -7)) {
       if (!j.photo_end_url) push('no_photo', j, {})
