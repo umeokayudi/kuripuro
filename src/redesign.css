@@ -629,6 +629,9 @@
 .lt-timeline li.is-completed .lt-tl-meta{color:var(--green)}
 .lt-timeline li.is-in_progress .lt-tl-meta{color:var(--amber);font-weight:600}
 .lt-tl-map{text-decoration:none;font-size:16px}
+.lt-tl-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+.lt-act.lt-act-sm{min-height:30px;padding:3px 10px;font-size:12px;white-space:nowrap}
+@media (max-width:640px){.lt-timeline li{flex-wrap:wrap}.lt-tl-acts{order:5;width:100%;justify-content:flex-start;padding-left:54px}.lt-act.lt-act-sm{min-height:36px}}
 .lt-free-toggle{background:none;border:0;padding:0;font:inherit;font-size:14px;font-weight:700;color:var(--text2);cursor:pointer;display:flex;gap:8px;align-items:center;margin-bottom:6px}
 .lt-free-toggle span{font-size:10px;color:var(--text3)}
 .lt-free-names{font-size:13px;color:var(--text3);line-height:1.6}

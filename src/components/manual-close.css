@@ -19,3 +19,5 @@
 .mc-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 .mc-actions .btn{min-height:42px;flex:1}
 @media (min-width:640px){.mc-actions .btn{flex:0 0 auto}}
+/* v1.0.144 · same place done by someone else today (Live Track "Finalizar") */
+.mc-warn{font-size:13px;line-height:1.45;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:9px 11px;margin-bottom:12px}

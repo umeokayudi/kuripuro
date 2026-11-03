@@ -74,8 +74,9 @@ export async function adminManualClose(job, { startedAt, completedAt, note = '' 
   if (bad) throw new Error(bad)
   const admin = adminName()
   const now = new Date()
-  // Only an open job: never overwrite a finish the employee saved meanwhile.
-  const write = patch => supabase.from('jobs').update(patch).eq('id', job.id).eq('status', 'in_progress').select('*').maybeSingle()
+  // Only a job still open (running, or v1.0.144 never started): never overwrite a finish the employee saved meanwhile.
+  const fromStatus = job.status === 'assigned' ? 'assigned' : 'in_progress'
+  const write = patch => supabase.from('jobs').update(patch).eq('id', job.id).eq('status', fromStatus).select('*').maybeSingle()
   let audit = true
   let { data, error } = await write(manualClosePatch({ startedAt: start, completedAt, adminName: admin, note, now }))
   if (error && isMissingColumnError(error)) {
@@ -87,7 +88,7 @@ export async function adminManualClose(job, { startedAt, completedAt, note = '' 
   const done = audit ? data : { ...data, ...Object.fromEntries(MANUAL_CLOSE_COLUMNS.map(k => [k, null])) }
   try { await syncServiceReport(supabase, done) } catch { /* ensureServiceReports makes it at payroll close */ }
   finishQuoteJob(job.id, { byAdmin: true })
-  const logged = await logJobAdmin(job.id, 'manual_close', {
+  const logged = await logJobAdmin(job.id, job.started_at ? 'manual_close' : 'office_finish', {
     reason: note?.trim() || null,
     oldValue: { status: job.status, started_at: job.started_at, completed_at: job.completed_at },
     newValue: { status: 'completed', started_at: start, completed_at: completedAt },
@@ -102,6 +103,19 @@ export async function adminManualClose(job, { startedAt, completedAt, note = '' 
     notified = !msgErr
   }
   return { job: done, audit, logged, notified }
+}
+
+/**
+ * v1.0.144 · "Não feito": a job that was never started is cancelled (not paid, not billed), with a reason
+ * in job_admin_log. Only while still not started, so a job the employee just began is never touched.
+ */
+export async function adminMarkNotDone(job, { reason = null } = {}) {
+  const { data, error } = await supabase.from('jobs').update({ status: 'cancelled' })
+    .eq('id', job.id).eq('status', 'assigned').is('started_at', null).select('id').maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error('started')
+  await logJobAdmin(job.id, 'admin_not_done', { reason, oldValue: { status: job.status }, newValue: { status: 'cancelled' } })
+  return true
 }
 
 /** Undo a finish (status back to assigned / in progress) and drop the report, so the three stay in step. */

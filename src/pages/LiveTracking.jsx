@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { useLang, fill, localeOf } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
 import { ManualCloseButton } from '../components/ManualCloseModal'
+import { adminMarkNotDone } from '../lib/jobAdminOps'
 import { useNavigate } from 'react-router-dom'
 import { fetchDayCoverage } from '../lib/dayCoverage'
 
@@ -71,7 +72,7 @@ export const fmtDuration = (min, L) => {
 }
 
 export default function LiveTracking() {
-  const { t, lang } = useLang()
+  const { t, lang, tr } = useLang()
   const L = t.live
   const [employees, setEmployees] = useState([])
   const [jobs, setJobs] = useState([])
@@ -202,6 +203,27 @@ export default function LiveTracking() {
     return { main: p.off ? L.dayOff : L.noJobs, sub: '' }
   }
 
+  // v1.0.144 · "Não feito": the job never happened (or was a duplicate) → cancelled with a reason, not paid or billed.
+  const markNotDone = async (j) => {
+    const reason = await askConfirm({
+      title: tr('Mark as not done?', '未実施にしますか？', 'Marcar como não feito?'),
+      message: tr(`${jobPlace(j)} · ${jobKind(j) || ''} (${j.employee_name || '—'}) will be cancelled: it is not paid or billed. Why?`,
+        `${jobPlace(j)} · ${jobKind(j) || ''}（${j.employee_name || '—'}）をキャンセルします。給与・請求に含まれません。理由は？`,
+        `${jobPlace(j)} · ${jobKind(j) || ''} (${j.employee_name || '—'}) será cancelado: não entra no pagamento nem na cobrança. Por quê?`),
+      reason: tr('Reason (e.g. duplicate, done by another person)', '理由（例：重複、他のスタッフが実施）', 'Motivo (ex.: duplicado, feito por outra pessoa)'),
+      confirmLabel: tr('Not done', '未実施にする', 'Não feito'),
+      danger: true,
+    })
+    if (!reason) return
+    try {
+      await adminMarkNotDone(j, { reason: typeof reason === 'string' ? reason : null })
+      toast.success(tr('Marked as not done', '未実施にしました', 'Marcado como não feito'))
+    } catch (ex) {
+      toast.error(ex.message === 'started' ? tr('The employee already started this job.', 'スタッフがすでに開始しています。', 'O funcionário já iniciou este job.') : ex.message)
+    }
+    load()
+  }
+
   const personCard = (p) => {
     const { emp, group, todayJobs, active, next } = p
     const s = statusLine(p)
@@ -246,6 +268,13 @@ export default function LiveTracking() {
                 </span>
                 {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
                   <JobPhotos photoStartUrl={j.photo_start_url} photoEndUrl={j.photo_end_url} beforeLabel={L.before} afterLabel={L.after} size={36} onPhotoClick={setLightbox} />
+                )}
+                {j.status !== 'completed' && (
+                  <span className="lt-tl-acts">
+                    <ManualCloseButton job={j} allowNotStarted className="lt-act lt-act-close lt-act-sm" onDone={load}
+                      label={j.status === 'assigned' ? `✓ ${tr('Finish', '完了', 'Finalizar')}` : `🔒 ${tr('Close', '終了', 'Fechar')}`} />
+                    {j.status === 'assigned' && !j.started_at && <button type="button" className="lt-act lt-act-sm" onClick={() => markNotDone(j)}>✕ {tr('Not done', '未実施', 'Não feito')}</button>}
+                  </span>
                 )}
                 {hasMapsLink(j.address, j.title) && <a className="lt-tl-map" href={mapsOpenUrl(j.address, j.title)} target="_blank" rel="noreferrer" aria-label={L.jobAddress}>🗺</a>}
               </li>
