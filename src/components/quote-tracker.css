@@ -52,3 +52,38 @@
   .qt-session-act{width:100%;justify-content:flex-start;padding-left:38px}
   .qt-form{grid-template-columns:1fr}
 }
+
+/* v1.0.159 · suggested dates, "Agendar depois", time as two selects */
+.qt-suggest{margin-bottom:12px}
+.qt-suggest-head{font-size:12px;font-weight:800;color:var(--text);margin-bottom:6px}
+.qt-suggest-head small{display:block;font-weight:500;color:var(--text3);font-size:11px;margin-top:2px}
+.qt-suggest-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.qt-sg{display:flex;flex-direction:column;gap:3px;text-align:left;padding:10px;border:1px solid var(--border);border-radius:12px;background:#fff;cursor:pointer;font:inherit;min-width:0}
+.qt-sg:hover{border-color:var(--blue)}
+.qt-sg.is-best{background:var(--blue-bg)}
+.qt-sg.is-on{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue)}
+.qt-sg-top{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.qt-sg-top b{font-size:14px;color:var(--text)}
+.qt-sg-top em{font-style:normal;font-size:12px;font-weight:700;color:var(--blue)}
+.qt-sg-top i{font-style:normal;font-size:10px;font-weight:800;color:#fff;background:var(--blue);padding:1px 7px;border-radius:999px;margin-left:auto}
+.qt-sg-who{font-size:12px;font-weight:700;color:var(--text2)}
+.qt-sg-why{font-size:11px;color:var(--text3);line-height:1.35}
+.qt-later-btn{width:100%;margin-top:8px}
+.qt-later-pick{margin-top:12px;padding:12px;border-radius:12px;background:var(--surface2)}
+.qt-later-chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px}
+.qt-later-chips button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:1px solid var(--border);border-radius:10px;background:#fff;font:inherit;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;min-width:0}
+.qt-later-chips button small{font-size:10px;font-weight:500;color:var(--text3)}
+.qt-later-chips button.on{border-color:var(--blue);background:var(--blue-bg);color:var(--blue)}
+.qt-later-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.qt-later{background:var(--amber-bg, #fff8e6)}
+.qt-later-row{display:flex;gap:10px;align-items:center}
+.qt-later-ic{font-size:22px}
+.qt-later-row b{display:block;font-size:14px;color:var(--text)}
+.qt-later-row span{display:block;font-size:12px;color:var(--text2)}
+.time-select{display:flex;align-items:center;gap:6px;min-width:0}
+.time-select select{flex:1 1 0;min-width:0}
+.time-select span{font-weight:800;color:var(--text2)}
+@media (max-width:640px){
+  .qt-suggest-list{grid-template-columns:1fr}
+  .qt-later-chips{grid-template-columns:1fr 1fr}
+}

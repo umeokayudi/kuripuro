@@ -127,7 +127,7 @@ export default function TimeOffCenter() {
       const fresh = [...list, ...periods, ...quoteRows, ...flow.toBook, ...doneUnseen, ...offerRows, ...takenUnseen, ...otpRows].filter(r => !seen.current.has(r.id))
       if (fresh.length) {
         setNewQuotes(quoteRows.filter(q => fresh.includes(q)))
-        setNewFlow([...flow.toBook, ...doneUnseen].filter(q => fresh.includes(q)))
+        setNewFlow([...flow.toBook.filter(t => !t.snoozed), ...doneUnseen].filter(q => fresh.includes(q)))
         setNewOffers(offerRows.filter(q => fresh.includes(q)))
         fresh.forEach(r => seen.current.add(r.id))
         writeSeen(seen.current)
@@ -250,6 +250,7 @@ export default function TimeOffCenter() {
     offers: ft.offersTitle,
     info: L('Notices', 'お知らせ', 'Avisos'),
     waiting: L('Waiting on someone else (not counted)', '他の人の対応待ち（件数外）', 'Aguardando outra pessoa (não conta)'),
+    later: L('Book later (not counted until the reminder)', 'あとで日程（リマインダーまで件数外）', 'Agendar depois (não conta até o lembrete)'),
   }
   const KIND_LABEL = {
     late: L('Late', '遅れ', 'Atrasado'), route: L('Route not started', 'ルート未開始', 'Rota não começou'),
@@ -356,10 +357,13 @@ export default function TimeOffCenter() {
         </article>)
       case 'to_book': return (
         <article key={x.id} className="bq-card">
-          <div className="bq-kind">📅 {L('Quote accepted · book the date', '見積承認 · 日程', 'Orçamento aceito · marcar data')}</div>
+          <div className="bq-kind">{x.snoozed ? '🕒' : '📅'} {x.snoozed
+            ? L(`Quote accepted · book later (reminder ${dShort(x.later.until)})`, `見積承認 · あとで日程（${dShort(x.later.until)}にリマインド）`, `Orçamento aceito · agendar depois (lembrete ${dShort(x.later.until)})`)
+            : x.later ? L('Reminder · book the date of the accepted quote', 'リマインド · 承認済み見積の日程', 'Lembrete · marcar a data do orçamento aceito')
+            : L('Quote accepted · book the date', '見積承認 · 日程', 'Orçamento aceito · marcar data')}</div>
           <strong className="bq-title">{x.name || '—'}</strong>
-          <div className="bq-sub">{[x.what, x.total ? `¥${Math.round(Number(x.total)).toLocaleString()}` : ''].filter(Boolean).join(' · ')}</div>
-          <div className="bq-actions"><Btn main onClick={() => openTrack(x)}>{L('Book and notify the worker', '予約して担当者に通知', 'Marcar e avisar o funcionário')}</Btn></div>
+          <div className="bq-sub">{[x.what, x.total ? `¥${Math.round(Number(x.total)).toLocaleString()}` : '', x.later?.note].filter(Boolean).join(' · ')}</div>
+          <div className="bq-actions"><Btn main={!x.snoozed} onClick={() => openTrack(x)}>{x.snoozed ? L('Book now', '今すぐ予約', 'Agendar agora') : L('See suggested date and book', 'おすすめ日を見て予約', 'Ver data sugerida e marcar')}</Btn></div>
         </article>)
       case 'flow_done': return (
         <article key={x.id} className="bq-card">
