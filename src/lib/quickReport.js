@@ -99,6 +99,9 @@ export async function quickDayReport({ employeeId, employeeName, date, author, j
     signatures: { cleaner: signed ? await cleanerSignature({ ...signed, employee_name: name }) : { name, url: null }, owner: null },
     internal: old?.internal || built.internal,
   }
+  // v1.0.159 · each service carries its own signature (photo, name and signature, one by one)
+  const sigs = new Map(await Promise.all(jobs.filter(j => j.signature_url).map(async j => [j.id, await signatureForDisplay(j.signature_url).catch(() => j.signature_url)])))
+  for (const st of r.stores) st.services = st.services.map(sv => ({ ...sv, sig: sigs.get(sv.job_id) || null }))
   // keep the office's include / exclude choices on the services already there
   if (old?.stores) {
     const prev = new Map(old.stores.flatMap(st => st.services.map(sv => [sv.job_id, sv])))

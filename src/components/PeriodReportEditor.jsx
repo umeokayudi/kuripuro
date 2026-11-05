@@ -82,7 +82,7 @@ function Body({ reportId, client, from, to, author, onClose, onSaved }) {
         const o = old.get(sv.job_id)
         if (!o) return sv
         const off = new Set((o.media || []).filter(m => m.include === false).map(m => m.path))
-        return { ...sv, include: o.include, media: sv.media.map(m => ({ ...m, include: !off.has(m.path) })) }
+        return { ...sv, include: o.include, sig: o.sig ?? sv.sig, media: sv.media.map(m => ({ ...m, include: !off.has(m.path) })) }
       }) }))
       set({ stores })
       toast.success(tr('Updated with the latest services and media', '最新の作業・写真で更新しました', 'Atualizado com os serviços e mídias mais recentes'))
