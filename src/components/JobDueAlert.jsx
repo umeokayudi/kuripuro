@@ -62,7 +62,7 @@ export default function JobDueAlert({ item, others = 0, labels, onAccept, onDecl
         <h2>{(job.title || '').replace(/ — .*/, '')}</h2>
         <div className="jda-when">{dueWhenText(past, labels)}</div>
         <div className="jda-meta">📅 {job.scheduled_date} · 🕐 {job.scheduled_time || '—'}</div>
-        {kind === 'accept' && Number(job.spot_value) > 0 && <span className="jda-value">+¥{Number(job.spot_value).toLocaleString()}</span>}
+        {kind === 'accept' && Number(job.spot_value) > 0 && <span className="jda-value">{labels.dueYouGet || 'You get'}: +¥{Number(job.spot_value).toLocaleString()}</span>}
         {others > 0 && <div className="jda-more">{fill(labels.dueOthers, { n: others })}</div>}
         <div className="jda-btns">
           {kind === 'accept' ? (

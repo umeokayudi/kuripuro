@@ -30,6 +30,7 @@ import { buildBellQueue, badgeText } from '../lib/bellQueue'
 import { markReviewed, markNotDone } from '../lib/attentionActions'
 import { SHIFT_MARK_CHANGED } from '../lib/shiftMarks'
 import { OPEN_BELL } from './DayPanelView'
+import EmployeePayEdit from './EmployeePayEdit'
 
 const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
 
@@ -263,6 +264,7 @@ export default function TimeOffCenter() {
     no_photo: L('Done without final photo', '完了写真なし', 'Concluído sem foto final'), ai_waiting: L('Photo waiting for the AI', 'AI確認待ち', 'Foto aguardando a IA'),
     disputed: L('Payslip disputed', '明細に異議', 'Holerite contestado'), retro_review: L('Retroactive registration — review', '事後登録 — 確認', 'Registro retroativo — revisar'),
     paid_unconfirmed: L('Paid without confirmation', '確認なしで支払済', 'Pago sem confirmação'),
+    pay_undefined: L('Worker pay to be defined', '作業者の支払い 未定', 'Pagamento a definir'),
   }
   const TONE = { route_none: 'red', free_uncovered: 'red', eve_unconfirmed: 'amber', impossible: 'amber', late: 'red', route: 'red', cant: 'red', no_person: 'amber', no_job: 'amber', covered: 'blue', incomplete: 'red' }
   const Btn = ({ main, onClick, children, disabled }) => <button type="button" className={`tor-btn tor-btn-sm ${main ? 'tor-btn-primary' : 'tor-btn-ghost'}`} disabled={disabled} onClick={onClick}>{children}</button>
@@ -289,6 +291,7 @@ export default function TimeOffCenter() {
       case 'retro_review': return L(`Service of ${dShort(x.date)} · registered on ${at(x.at)}`, `${dShort(x.date)}の作業 · ${at(x.at)}に登録`, `Serviço de ${dShort(x.date)} · registrado em ${at(x.at)}`) + ago(x.at)
       case 'problem': return L(`Sent on ${at(x.at)}`, `${at(x.at)}に送信`, `Enviado em ${at(x.at)}`) + ago(x.at)
       case 'long': return L(`Took ${durText(x.minutes)} (planned ${durText(x.expected)}) · finished ${at(x.at)}`, `${durText(x.minutes)}（予定${durText(x.expected)}）· ${at(x.at)}完了`, `Levou ${durText(x.minutes)} (previsto ${durText(x.expected)}) · concluído em ${at(x.at)}`)
+      case 'pay_undefined': return L(`Service of ${dShort(x.date)}${x.at ? ` · finished ${at(x.at)}` : ''} · worker gets: to be defined`, `${dShort(x.date)}の作業${x.at ? ` · ${at(x.at)}完了` : ''} · 作業者受取: 未定`, `Serviço de ${dShort(x.date)}${x.at ? ` · concluído em ${at(x.at)}` : ''} · funcionário recebe: a definir`)
       case 'no_photo': case 'ai_waiting': return x.at ? L(`Finished on ${at(x.at)}`, `${at(x.at)}完了`, `Concluído em ${at(x.at)}`) : dShort(x.date)
       case 'disputed': case 'paid_unconfirmed': return L(`Payroll ${x.period}`, `${x.period}の給与`, `Folha ${x.period}`)
       default: return dShort(x.date)
@@ -306,6 +309,8 @@ export default function TimeOffCenter() {
       case 'incomplete': return <><Btn main onClick={() => go(EXC.incomplete.to(x))}>{L('Close or reschedule', '終了・再予定', 'Fechar ou reagendar')}</Btn><Btn onClick={() => notDone(x)}>{L('Not done', '未実施', 'Não feito')}</Btn></>
       case 'retro_review': return <><Btn main onClick={() => reviewed(x)}>✓ {L('Reviewed', '確認済み', 'Conferido')}</Btn><Btn onClick={() => go('/live')}>{L('Open Live Track', 'ライブ追跡を開く', 'Abrir Live Track')}</Btn></>
       case 'no_photo': return <><Btn main onClick={() => reviewed(x)}>{L('Accept without photo', '写真なしで承認', 'Aceitar sem foto')}</Btn><Btn onClick={() => go(EXC.no_photo.to(x))}>{L('Open job', '作業を開く', 'Abrir job')}</Btn></>
+      // v1.0.157 · define the worker's pay right here (it leaves the bell once saved)
+      case 'pay_undefined': return <><EmployeePayEdit job={{ id: x.jobId, status: 'pending_pay', employee_pay: null }} style={{ fontSize: 12 }} onSaved={saved => { if (saved?.employee_pay != null) hide([x.id]) }} /><Btn onClick={() => go(EXC.pay_undefined.to(x))}>{L('Open job', '作業を開く', 'Abrir job')}</Btn></>
       case 'long': return <><Btn main onClick={() => reviewed(x)}>✓ {L('Checked', '確認済み', 'Conferido')}</Btn><Btn onClick={() => go(EXC.long.to(x))}>{L('Open job', '作業を開く', 'Abrir job')}</Btn></>
       default: return EXC[x.kind] ? <Btn main={!x.waiting} onClick={() => go(EXC[x.kind].to(x))}>{EXC[x.kind].action}</Btn> : null
     }

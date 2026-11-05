@@ -26,6 +26,7 @@ export const kuripuroPtB = {
     voiceAway: 'Atenção: o GPS mostra você a {m} do local.',
     voiceOver: '{time} acima da sua média.',
     dueTitleAccept: 'Serviço esperando você aceitar',
+    dueYouGet: 'Você recebe',
     dueTitleStart: 'Hora de começar este serviço',
     dueAhead: 'Começa em {min} min',
     dueNow: 'Já está na hora',

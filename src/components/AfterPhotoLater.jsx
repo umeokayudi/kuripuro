@@ -1,4 +1,5 @@
 // Employee home: own finished jobs still waiting for the After photo. Camera or gallery, any time later.
+import { employeeJobColumns } from '../lib/jobEmployeePay'
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
@@ -23,7 +24,7 @@ export default function AfterPhotoLater({ jobs, L, onChanged }) {
     try {
       const paths = []
       for (let i = 0; i < Math.min(files.length, 10); i++) paths.push(await uploadJobPhoto(`jobs/${job.id}/end_${i}.jpg`, files[i]))
-      const { data, error } = await supabase.from('jobs').update({ photo_end_url: paths[0] }).eq('id', job.id).select('*').maybeSingle()
+      const { data, error } = await supabase.from('jobs').update({ photo_end_url: paths[0] }).eq('id', job.id).select(await employeeJobColumns(supabase)).maybeSingle()
       if (error) throw error
       if (data) await syncServiceReport(supabase, data).catch(() => {})
       toast.success(L('After photo sent ✓', 'After写真を送信しました ✓', 'Foto Depois enviada ✓'))
