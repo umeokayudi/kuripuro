@@ -68,7 +68,8 @@ export function jobToServiceReport(job, lang = 'en') {
     gps_lng_in: job.start_lng ?? null,
     gps_lat_out: job.end_lat ?? null,
     gps_lng_out: job.end_lng ?? null,
-    job_value: job.retro_value ?? job.value,
+    // v1.0.157 · employee screens never load what the client pays: then job_value is left as it is
+    ...('value' in job || 'retro_value' in job ? { job_value: job.retro_value ?? job.value } : {}),
     pdf_url: null,
     created_at: job.completed_at || job.updated_at || new Date().toISOString(),
   }

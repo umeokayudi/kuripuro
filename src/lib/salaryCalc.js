@@ -1,5 +1,5 @@
 import { tokyoNow, tokyoToday, workedDayKey } from './dates.js'
-import { perJobPay } from './jobEmployeePay.js'
+import { perJobPay, jobEmployeePay } from './jobEmployeePay.js'
 import { activePackages, packagesTotal, packageOfJob } from './payPackages.js'
 
 export function jobMinutes(job) {
@@ -12,6 +12,17 @@ export function jobMinutes(job) {
 
 export function jobPay(job) {
   return Number(job?.retro_value ?? job?.value ?? 0)
+}
+
+/**
+ * v1.0.157 · What a per-job worker earns for one job: the job's own "Pagamento do funcionário" when it
+ * is set (field or description line), else the old rule (client value × rate). On employee screens the
+ * client value is never loaded, so there only the worker's own pay counts.
+ */
+export function perJobWorkerPay(job, rate = 100) {
+  const own = jobEmployeePay(job)
+  if (own !== null) return own
+  return Math.round(jobPay(job) * (rate / 100))
 }
 
 export function completedJobsInMonth(jobs, month, todayStr = tokyoToday()) {
@@ -75,7 +86,7 @@ export function monthBase(emp, jobs, month) {
   const hourly = Math.round(minutes / 60 * yenAmount(emp?.hourly_rate))
   const type = emp?.salary_type
   if (type === 'hourly') return hourly
-  if (type === 'per_job') return done.reduce((s, j) => s + Math.round(jobPay(j) * ((emp?.job_bonus_rate || 100) / 100)), 0)
+  if (type === 'per_job') return done.reduce((s, j) => s + perJobWorkerPay(j, emp?.job_bonus_rate || 100), 0)
   if (type === 'mixed') {
     return fixedMonthBase(emp, month) + hourly + done.reduce((s, j) => s + Math.round(jobPay(j) * ((emp?.job_bonus_rate || 0) / 100)), 0)
   }

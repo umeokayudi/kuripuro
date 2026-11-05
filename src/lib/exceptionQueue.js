@@ -10,10 +10,11 @@ import { expectedMinutes, contractForAgendaJob } from './agenda'
 import { isTestName } from './testData'
 import { problemJobId } from './fieldExec'
 import { coveredJobs } from './jobCoverage.js'
+import { needsPayDefinition, employeeJobColumns } from './jobEmployeePay.js'
 
 const JOB_COLS = 'id,title,description,admin_reviewed,client_id,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category,retro_report'
 
-export const URGENCY = { retro_review: 65, late: 95, covered: 88, no_person: 90, problem: 85, incomplete: 80, disputed: 75, paid_unconfirmed: 72, payroll_review: 70, long: 60, no_photo: 50, ai_waiting: 30 }
+export const URGENCY = { retro_review: 65, late: 95, covered: 88, no_person: 90, problem: 85, incomplete: 80, disputed: 75, paid_unconfirmed: 72, payroll_review: 70, pay_undefined: 68, long: 60, no_photo: 50, ai_waiting: 30 }
 
 const place = j => String(j?.title || '').split(' — ')[0]
 
@@ -58,6 +59,9 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     else if (isMissedJob(j, now) && j.scheduled_date >= addDays(today, -14)) push('incomplete', j, {})
     // v1.0.151 · retroactive registration ("já concluído") waiting for the admin's review — was only in Ao vivo
     if (j.retro_report != null && !j.admin_reviewed && j.scheduled_date >= addDays(today, -14)) push('retro_review', j, { at: j.completed_at || null })
+    // v1.0.157 · rule 4: a finished (or today's) job of this month whose worker pay is still "a definir"
+    // stays in the bell until the owner defines it (packages and spot jobs never count as undefined)
+    if (j.scheduled_date >= today.slice(0, 8) + '01' && needsPayDefinition(j, today)) push('pay_undefined', j, {})
     // v1.0.149 · the admin already checked this finished job (accepted without photo / reviewed): nothing left to do
     if (done && j.admin_reviewed) continue
     if (done && j.scheduled_date >= addDays(today, -7)) {
@@ -82,8 +86,11 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
 
 export async function fetchExceptions({ hideTests = true } = {}) {
   const today = tokyoToday()
+  // v1.0.157 · employee_pay / employee_pay_package only when their SQL is applied (probed once per tab)
+  const probed = String(await employeeJobColumns(supabase)).split(',')
+  const jobCols = [JOB_COLS, ...['employee_pay', 'employee_pay_package'].filter(c => probed.includes(c))].join(',')
   const [jobs, contracts, periods, disputed, paidLines, statements, problems] = await Promise.all([
-    supabase.from('jobs').select(JOB_COLS).gte('scheduled_date', addDays(today, -31)).lte('scheduled_date', addDays(today, 1)).limit(3000),
+    supabase.from('jobs').select(jobCols).gte('scheduled_date', addDays(today, -31)).lte('scheduled_date', addDays(today, 1)).limit(3000),
     supabase.from('service_contracts').select('location_name,hours_per_visit,service_type').eq('is_active', true),
     supabase.from('salary_periods').select('period,status').eq('status', 'auto_closed'),
     supabase.from('salary_statements').select('id,employee_name,period').not('employee_disputed_at', 'is', null).is('employee_confirmed_at', null),
@@ -104,7 +111,7 @@ export async function fetchExceptions({ hideTests = true } = {}) {
  * review"), not 11 cards. Kinds about a job group from `min` items on; the group keeps the urgency
  * of its most urgent item and lists the dates, the people and the items to review one by one.
  */
-const GROUPABLE = new Set(['incomplete', 'no_photo', 'ai_waiting', 'long'])
+const GROUPABLE = new Set(['incomplete', 'no_photo', 'ai_waiting', 'long', 'pay_undefined'])
 export function groupExceptions(list = [], { min = 3 } = {}) {
   const byKind = {}
   for (const x of list) if (GROUPABLE.has(x.kind)) (byKind[x.kind] = byKind[x.kind] || []).push(x)

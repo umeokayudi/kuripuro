@@ -1,5 +1,6 @@
 import { locationNameFromTitle } from './cleaningType'
 import { jobMinutes } from './salaryCalc'
+import { jobEmployeePay } from './jobEmployeePay'
 
 /** Fill job.value from service_contracts when missing (scheduled jobs often have value=0). */
 export function enrichJobValues(jobs, contracts = []) {
@@ -33,6 +34,9 @@ export function employeeEarningsForJob(job, empInfo) {
     return Math.round((mins / 60) * (empInfo?.hourly_rate || 0))
   }
   if (type === 'per_job') {
+    // v1.0.157 · the job's own worker pay first (never the client value on employee screens)
+    const own = jobEmployeePay(job)
+    if (own !== null) return own
     const rate = (empInfo?.job_bonus_rate ?? 100) / 100
     return Math.round(clientVal * rate)
   }
