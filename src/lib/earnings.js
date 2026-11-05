@@ -1,5 +1,5 @@
 import { tokyoToday, workedDayKey } from './dates.js'
-import { calcEmployeeMonthlySalary, jobMinutes, jobPay, lineMonth } from './salaryCalc.js'
+import { calcEmployeeMonthlySalary, jobMinutes, jobPay, lineMonth, perJobWorkerPay } from './salaryCalc.js'
 
 // Earnings history for the Salary screens (employee Salary tab + admin Salary page).
 // Each worked day gets its own amount, like a driver-app earnings screen. A full calendar
@@ -81,7 +81,7 @@ export function jobEarnings(job, emp) {
   const mins = jobMinutes(job)
   let pay = 0
   if (type === 'hourly') pay = Math.round((mins / 60) * Number(emp?.hourly_rate || 0))
-  else if (type === 'per_job') pay = Math.round(jobPay(job) * ((emp?.job_bonus_rate || 100) / 100))
+  else if (type === 'per_job') pay = perJobWorkerPay(job, emp?.job_bonus_rate || 100)
   else if (type === 'mixed') {
     pay = Math.round((mins / 60) * Number(emp?.hourly_rate || 0))
       + Math.round(jobPay(job) * ((emp?.job_bonus_rate || 0) / 100))

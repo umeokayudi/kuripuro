@@ -104,6 +104,7 @@ export function summaryOf(r) {
     photos: r.kind === 'period' ? periodMediaCount(r) : (r.photos || []).length, updated_at: r.updated_at, sent_at: r.sent_at || null, created_by: r.created_by || '',
     kind: r.kind || 'service', from: r.from || null, to: r.to || null,
     stores: r.kind === 'period' ? (r.stores || []).map(st => st.name) : (r.location ? [r.location] : []),
+    quick: !!r.quick, day: r.day || null, accepted_at: r.signatures?.owner?.at || null,
   }
 }
 
@@ -116,10 +117,20 @@ export async function saveReport(report, { by = '', action = 'save', prevClientI
   if (prevClientId !== undefined && clientKey(prevClientId) !== clientKey(r.client_id)) {
     await supabase.storage.from(BUCKET).remove([`${ROOT}/_index/${clientKey(prevClientId)}/${r.id}.json`]).catch(() => {})
   }
-  for (const jid of new Set([r.job_id, ...(r.job_ids || [])].filter(Boolean))) {
+  // v1.0.158: a day report is not "the report of a job" — it gets its own link per person and day.
+  if (r.day) await putJson(`${ROOT}/_day/${dayKey(r.day.employee_id || r.day.employee_name, r.day.date)}.json`, { id: r.id }).catch(() => {})
+  else for (const jid of new Set([r.job_id, ...(r.job_ids || [])].filter(Boolean))) {
     await putJson(`${ROOT}/_job/${jid}.json`, { id: r.id }).catch(() => {})
   }
   return r
+}
+
+const dayKey = (who, date) => `${date}_${String(who || 'x').replace(/[^\w-]/g, '_').slice(0, 64)}`
+/** v1.0.158 · Day report of one person on one date (null when none yet). */
+export async function reportIdForDay(employeeId, date) {
+  if (!employeeId || !date) return null
+  const ref = await getJson(`${ROOT}/_day/${dayKey(employeeId, date)}.json`)
+  return ref?.id || null
 }
 
 export const loadReport = id => getJson(`${ROOT}/${id}/report.json`)
@@ -217,7 +228,7 @@ ol,ul{margin:4px 0 8px;padding-left:24px}
 li{margin:2px 0}
 .grid{display:grid;gap:4px;margin:8px auto 4px;max-width:600px;break-inside:avoid}
 figure{margin:0}
-.grid img,.grid video{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:#eef2f7}
+.grid img,.grid video{width:100%;aspect-ratio:3/4;object-fit:contain;display:block;background:#eef2f7}
 .vid{position:relative}.vtag{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:1px 7px;border-radius:99px;pointer-events:none}
 .svc{border-top:1px solid #dce2ea;padding:10px 0 4px;break-inside:avoid}.svc-h{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;margin-bottom:4px}.svc-h b{color:#1f3a5f}.svc-h span{color:#556}.ba{font-size:11px;color:#1f3a5f;margin:6px 0 0}
 .lst td,.lst th{border:1px solid #c9d3e0;padding:5px 8px;text-align:left}.lst th{background:#eef2f7;font-weight:400}
@@ -225,6 +236,7 @@ figcaption{font-size:10.5px;color:#556;margin-top:2px}
 .cap{font-size:10.5px;color:#667;margin:2px 0 10px}
 .pair{break-inside:avoid;margin-bottom:8px}
 .pair .grid{max-width:360px}
+.sigs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 0;break-inside:avoid}.sigbox{border:1px solid #c9d3e0;padding:8px 10px;min-height:96px}.sigbox small{display:block;color:#556;font-size:10.5px}.sigbox img{max-height:64px;max-width:100%;display:block;margin:4px 0}.sigbox .nos{color:#b4232c;font-size:11.5px;padding:18px 0}.sigbox .wait{color:#8a6d1a;font-size:11.5px;padding:18px 0}.miss{display:inline-block;background:#fdecee;color:#b4232c;font-size:11px;padding:1px 8px;border-radius:99px;margin:2px 0 6px}.ck{list-style:none;padding-left:4px}.ck li::before{content:attr(data-m);display:inline-block;width:18px;font-weight:700}.ck li.no{color:#b4232c}.pend{color:#8a6d1a;font-size:11px}.svsig{display:flex;align-items:center;gap:8px;margin:6px 0 2px;font-size:11px;color:#556}.svsig img{height:38px;max-width:160px;object-fit:contain;border-bottom:1px solid #c9d3e0;background:#fff}.svsig .nos{color:#b4232c}
 .sign{border:1px solid #1f3a5f;background:#eef2f7;padding:10px 12px;font-size:11.5px;margin-top:18px;line-height:1.6;break-inside:avoid}
 @media print{video{display:none}.vid::before{content:'▶ 動画はポータルでご覧いただけます';display:block;font-size:10px;color:#556;padding:30px 6px;background:#eef2f7;aspect-ratio:3/4}.vtag{display:none}.page{padding:14px 0 0}.bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.pt th,.kv th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 @media (max-width:560px){h1{font-size:19px}.kv th{width:38%}.pt{font-size:10.5px}}
@@ -275,10 +287,31 @@ const mediaTag = p => isVideo(p)
   ? `<video src="${esc(storagePublicUrl(p.path))}#t=0.5" controls playsinline preload="metadata"></video><span class="vtag">▶</span>`
   : `<img src="${esc(storagePublicUrl(p.path))}" alt="" loading="lazy">`
 
-function photoGrid(photos, { cols = 3, caption = '' } = {}) {
+function photoGrid(photos, { cols = 3, caption = '', cell = 0 } = {}) {
   if (!photos.length) return ''
   const n = Math.min(cols, photos.length)
-  return `<div class="grid" style="grid-template-columns:repeat(${n},1fr)">${photos.map(p => `<figure${isVideo(p) ? ' class="vid"' : ''}>${mediaTag(p)}${p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : ''}</figure>`).join('')}</div>${caption ? `<div class="cap">${esc(caption)}</div>` : ''}`
+  // v1.0.158 · `cell` caps each photo's width so one lone photo is not blown up to the page width
+  return `<div class="grid" style="grid-template-columns:repeat(${n},1fr)${cell ? `;max-width:${n * cell}px;margin-left:0` : ''}">${photos.map(p => `<figure${isVideo(p) ? ' class="vid"' : ''}>${mediaTag(p)}${p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : ''}</figure>`).join('')}</div>${caption ? `<div class="cap">${esc(caption)}</div>` : ''}`
+}
+
+// v1.0.158 · signatures (cleaner registered on the job; owner only after "Aceitar e assinar"),
+// checklist and "no photo / no signature" tags of the one-tap reports.
+const SIG = {
+  ja: { cleaner: '作業担当者 署名', owner: '責任者 承認・署名', none: '署名なし', wait: '責任者の承認待ち', noPhoto: '写真なし', checklist: 'チェックリスト', day: '作業日報', staff: '担当者', pending: '（未完了）' },
+  en: { cleaner: 'Cleaner signature', owner: 'Approved and signed by', none: 'No signature', wait: 'Waiting for the owner to accept', noPhoto: 'No photo', checklist: 'Checklist', day: 'Daily work report', staff: 'Cleaner', pending: '(not finished)' },
+  pt: { cleaner: 'Assinatura do limpador', owner: 'Aceito e assinado por', none: 'Sem assinatura', wait: 'Aguardando o aceite do dono', noPhoto: 'Sem foto', checklist: 'Checklist', day: 'Relatório do dia', staff: 'Limpador', pending: '(não concluído)' },
+}
+export const sigLabels = lang => SIG[lang] || SIG.ja
+function sigBlock(r) {
+  if (!r.signatures) return ''
+  const L = sigLabels(r.lang)
+  const c = r.signatures.cleaner, o = r.signatures.owner
+  const when = o?.at ? new Date(o.at).toLocaleDateString(r.lang === 'ja' ? 'ja-JP' : r.lang === 'pt' ? 'pt-BR' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Tokyo' }) : ''
+  return `<div class="sigs"><div class="sigbox"><small>${esc(L.cleaner)}</small>${c?.url ? `<img src="${esc(c.url)}" alt="">` : `<div class="nos">${esc(L.none)}</div>`}<small>${esc(c?.name || '')}</small></div><div class="sigbox"><small>${esc(L.owner)}</small>${o?.url ? `<img src="${esc(o.url)}" alt=""><small>${esc(o.name || '')}${when ? ` · ${esc(when)}` : ''}</small>` : `<div class="wait">${esc(L.wait)}</div>`}</div></div>`
+}
+const checklistBlock = r => {
+  const items = (r.checklist || []).filter(x => String(x?.label || '').trim())
+  return items.length ? `<section><h2>${esc(sigLabels(r.lang).checklist)}</h2><ul class="ck">${items.map(x => `<li data-m="${x.done ? '✓' : '✗'}"${x.done ? '' : ' class="no"'}>${esc(x.label)}</li>`).join('')}</ul></section>` : ''
 }
 
 /** Full A4 HTML of the report (print / save as PDF / client portal). */
@@ -316,14 +349,17 @@ export function reportHtml(r, opts = {}) {
     `<h1>${esc(title)}</h1><div class="meta">${esc(r.client_name)}${t.sama ? t.sama : ''}${date ? ` ｜ ${esc(t.date)}：${esc(date)}` : ''} ｜ ${esc(t.issued)}：${issuer}</div>`,
     sec(t.overview, `${r.client_name || r.contact_name ? `<p class="to">${esc([r.client_name, r.contact_name ? `${r.contact_name}${t.sama}` : ''].filter(Boolean).join(' '))}</p>` : ''}${paras(r.summary || t.greeting(r.client_name, r.quote?.number))}${rows.length ? `<table class="kv">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>` : ''}`),
     steps.length ? sec(t.work, `<p>${esc(t.workIntro)}</p><ol>${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`) : '',
-    (photos('before').length || r.before?.text) ? sec(t.before, `${paras(r.before?.text)}${photoGrid(photos('before'), { caption: r.before?.caption })}`) : '',
-    detailed && photos('during').length ? `<h3 class="sub">${esc(t.during)}</h3>${photoGrid(photos('during'), { caption: r.during?.caption })}` : '',
-    (photos('after').length || r.after?.text) ? sec(t.after, `${paras(r.after?.text)}${photoGrid(photos('after'), { caption: r.after?.caption })}`) : '',
+    checklistBlock(r),
+    r.quick && !(r.photos || []).length ? `<section><h2>${esc(t.before)} / ${esc(t.after)}</h2><span class="miss">${esc(sigLabels(r.lang).noPhoto)}</span></section>` : '',
+    (photos('before').length || r.before?.text) ? sec(t.before, `${paras(r.before?.text)}${photoGrid(photos('before'), { caption: r.before?.caption, cell: 200 })}`) : '',
+    detailed && photos('during').length ? `<h3 class="sub">${esc(t.during)}</h3>${photoGrid(photos('during'), { caption: r.during?.caption, cell: 200 })}` : '',
+    (photos('after').length || r.after?.text) ? sec(t.after, `${paras(r.after?.text)}${photoGrid(photos('after'), { caption: r.after?.caption, cell: 200 })}`) : '',
     detailed && parts.length ? sec(t.parts, `${r.parts_intro ? paras(r.parts_intro) : ''}<table class="pt"><thead><tr>${t.partCols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${parts.map(p => `<tr><td>${esc(p.name)}</td><td style="background:${LEVEL_BG[p.level] || '#fff'}">${esc(t.levels[p.level] || p.level || '')}</td><td>${esc(p.before)}</td><td>${esc(p.why)}</td><td>${esc(p.after)}</td></tr>`).join('')}</tbody></table>${partBlocks}`) : '',
     detailed ? extras.map(e => sec(e.title, paras(e.text))).join('') : '',
     r.notices ? sec(t.notices, paras(r.notices)) : '',
     detailed && recs.length ? sec(t.recs, `${r.recs_intro ? paras(r.recs_intro) : ''}<ul>${recs.map(s => `<li>${esc(s)}</li>`).join('')}</ul>`) : '',
     r.closing ? paras(r.closing) : '',
+    sigBlock(r),
     `<div class="sign">KuriPuro<br>${[f.lead ? `${esc(t.lead)}：${esc(f.lead)}` : '', f.tech ? `${esc(t.tech)}：${esc(f.tech)}` : ''].filter(Boolean).join(' ／ ')}<br>TEL: ${esc(QUOTE_ISSUER.phone)}\u3000Mail: ${esc(QUOTE_ISSUER.email)}</div>`,
   ].join('')
 
@@ -352,8 +388,8 @@ export function periodMediaCount(r) {
  * (date, type, who) grouped by store, with every before/after photo and video of them.
  * Never copies times, values, AI grades or internal notes.
  */
-export function buildPeriodReport({ client, from, to, jobs, media, author, lang = 'ja' }) {
-  const done = (jobs || []).filter(j => j.status === 'completed' && (!client?.id || !j.client_id || j.client_id === client.id) && j.scheduled_date >= from && j.scheduled_date <= to)
+export function buildPeriodReport({ client, from, to, jobs, media, author, lang = 'ja', statuses = ['completed'] }) {
+  const done = (jobs || []).filter(j => statuses.includes(j.status) && (!client?.id || !j.client_id || j.client_id === client.id) && j.scheduled_date >= from && j.scheduled_date <= to)
   const byStore = new Map()
   for (const j of done.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))) {
     const name = locationNameFromTitle(j.title) || j.title || '—'
@@ -364,6 +400,7 @@ export function buildPeriodReport({ client, from, to, jobs, media, author, lang 
       type: j.job_category === 'spot' ? 'spot' : getCleaningType(j) === 'deep' ? 'deep' : 'basic',
       service: String(j.title || '').split(' — ')[1] || '',
       who: j.employee_name || '',
+      status: j.status,
       include: true,
       media: (media?.get?.(j.id) || []).map(m => ({ path: m.path, kind: m.kind, section: m.section, include: true })),
     })
@@ -393,10 +430,14 @@ function periodHtml(r, { store } = {}) {
   const blocks = stores.map(st => `<section><h2>${esc(L.store)}：${esc(st.name)}（${st.services.length}${r.lang === 'ja' ? '件' : ` ${esc(L.services)}`}）</h2>${paras(st.note)}${st.services.map(sv => {
     const m = (sv.media || []).filter(x => x.include !== false)
     const b = m.filter(x => x.section === 'before'), a = m.filter(x => x.section !== 'before')
-    return `<div class="svc"><div class="svc-h"><b>${esc(fmtDay(sv.date, r.lang, { month: 'long', day: 'numeric', weekday: 'short' }))}</b><span>${esc(L.types[sv.type] || '')}${sv.service && sv.type !== 'basic' ? ` · ${esc(sv.service)}` : ''}</span><span>${esc(L.who)}：${esc(sv.who || '—')}</span></div>${b.length ? `<div class="ba">${esc(L.before)}</div>${photoGrid(b, { cols: 4 })}` : ''}${a.length ? `<div class="ba">${esc(L.after)}</div>${photoGrid(a, { cols: 4 })}` : ''}</div>`
+    const sigRow = r.day ? `<div class="svsig"><span>${esc(sigLabels(r.lang).cleaner)}：<b>${esc(sv.who || '—')}</b></span>${sv.sig ? `<img src="${esc(sv.sig)}" alt="">` : `<span class="nos">${esc(sigLabels(r.lang).none)}</span>`}</div>` : ''
+    return `<div class="svc"><div class="svc-h"><b>${esc(fmtDay(sv.date, r.lang, { month: 'long', day: 'numeric', weekday: 'short' }))}</b><span>${esc(L.types[sv.type] || '')}${sv.service && sv.type !== 'basic' ? ` · ${esc(sv.service)}` : ''}</span><span>${esc(L.who)}：${esc(sv.who || '—')}</span>${sv.status && sv.status !== 'completed' ? `<span class="pend">${esc(sigLabels(r.lang).pending)}</span>` : ''}</div>${r.quick && !m.length ? `<span class="miss">${esc(sigLabels(r.lang).noPhoto)}</span>` : ''}${b.length ? `<div class="ba">${esc(L.before)}</div>${photoGrid(b, { cols: 4, cell: 170 })}` : ''}${a.length ? `<div class="ba">${esc(L.after)}</div>${photoGrid(a, { cols: 4, cell: 170 })}` : ''}${sigRow}</div>`
   }).join('')}</section>`).join('')
-  const body = `<h1>${esc(title)}</h1><div class="meta">${esc(r.client_name)}${r.lang === 'ja' ? '様' : ''}${store ? ` ｜ ${esc(store)}` : ''} ｜ ${esc(L.period)}：${esc(fmtDay(r.from, r.lang))}〜${esc(fmtDay(r.to, r.lang))} ｜ ${total}${r.lang === 'ja' ? '件' : ` ${esc(L.services)}`}</div>
-${paras(r.summary)}${summary}${blocks || `<p>${esc(L.none)}</p>`}${paras(r.closing)}<div class="sign">KuriPuro<br>TEL: ${esc(QUOTE_ISSUER.phone)}\u3000Mail: ${esc(QUOTE_ISSUER.email)}</div>`
+  const meta = r.day
+    ? `${esc(sigLabels(r.lang).staff)}：${esc(r.day.employee_name || '')} ｜ ${esc(L.date)}：${esc(fmtDay(r.day.date, r.lang, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }))} ｜ ${total}${r.lang === 'ja' ? '件' : ` ${esc(L.services)}`}`
+    : `${esc(r.client_name)}${r.lang === 'ja' ? '様' : ''}${store ? ` ｜ ${esc(store)}` : ''} ｜ ${esc(L.period)}：${esc(fmtDay(r.from, r.lang))}〜${esc(fmtDay(r.to, r.lang))} ｜ ${total}${r.lang === 'ja' ? '件' : ` ${esc(L.services)}`}`
+  const body = `<h1>${esc(title)}</h1><div class="meta">${meta}</div>
+${paras(r.summary)}${summary}${blocks || `<p>${esc(L.none)}</p>`}${paras(r.closing)}${sigBlock(r)}<div class="sign">KuriPuro<br>TEL: ${esc(QUOTE_ISSUER.phone)}\u3000Mail: ${esc(QUOTE_ISSUER.email)}</div>`
   return `<!doctype html><html lang="${esc(r.lang || 'ja')}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · ${esc(r.client_name || '')}</title><style>
 ${STYLE}
 </style></head><body><div class="bar">KuriPuro｜${esc(L.doc)}</div><div class="page">${body}</div></body></html>`
@@ -405,7 +446,7 @@ ${STYLE}
 /** Can this portal login see this report? Store logins see their store only. */
 export function reportVisibleTo(summary, user) {
   if (!summary || summary.status !== 'sent' || !user?.client_id) return false
-  if (summary.client_id && summary.client_id !== user.client_id) return false
+  if (summary.day || !summary.client_id || summary.client_id !== user.client_id) return false // v1.0.158: day reports are internal
   if (!user.location_name) return true
   const stores = summary.stores?.length ? summary.stores : (summary.location ? [summary.location] : [])
   return !stores.length || stores.includes(user.location_name)

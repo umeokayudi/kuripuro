@@ -123,7 +123,8 @@ export default function JaFizSheet({ job, actor, contracts: contractsProp, dark 
 
   useEffect(() => {
     if (contractsProp) return
-    supabase.from('service_contracts').select('*').then(({ data }) => setContracts(data || []))
+    // v1.0.157 · no contract prices in the employee's popup
+    supabase.from('service_contracts').select('id,location_id,location_name,service_type,is_active,hours_per_visit,training_checklist').then(({ data }) => setContracts(data || []))
   }, [contractsProp])
 
   const contract = useMemo(() => contracts ? contractForAgendaJob(job, contracts) : null, [contracts, job])

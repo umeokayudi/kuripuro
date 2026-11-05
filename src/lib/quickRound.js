@@ -3,6 +3,7 @@
 // No checklist, photo, GPS or signature. Each job gets started_at = previous tick
 // (or the round start) and completed_at = the tick, so durations add up.
 // Keyed only by employees.id, like employeeTheme.js, so nobody else can match it.
+import { employeeJobColumns } from './jobEmployeePay'
 import { manualAddLocations, employeeAddService } from './employeeAddJob'
 import { jobMatchesLocationAndType, locationNameFromTitle } from './cleaningType'
 import { syncServiceReport } from './jobReport'
@@ -71,7 +72,7 @@ export function quickRoundRows(todayJobs, employeeId) {
 }
 
 async function findMyJobAtLocation(supabase, employeeId, locationName, date) {
-  const { data } = await supabase.from('jobs').select('*')
+  const { data } = await supabase.from('jobs').select(await employeeJobColumns(supabase))
     .eq('employee_id', employeeId).eq('scheduled_date', date).neq('status', 'cancelled')
   return (data || []).find(j => jobMatchesLocationAndType(j, locationName, 'basic')) || null
 }

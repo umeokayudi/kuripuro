@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
+import { employeeJobColumns } from '../lib/jobEmployeePay'
 import { tokyoToday } from '../lib/dates'
 import { enrichJobValues } from '../lib/employeePay'
 import { isDuskinJob } from '../lib/employeeAddJob'
@@ -181,11 +182,13 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
     let alive = true
     const yearBack = addDays(today, -400)
     const from = needFrom < yearBack ? needFrom : yearBack
+    // v1.0.157 · on the employee's own screen (portal) the client's value / contract price are never loaded
+    const own = theme === 'portal'
     Promise.all([
       employeeProp ? Promise.resolve({ data: employeeProp })
         : supabase.from('employees').select('*').eq('id', employeeId).maybeSingle(),
-      supabase.from('jobs').select('*').eq('employee_id', employeeId).eq('status', 'completed').gte('scheduled_date', addDays(from, -1)).lte('scheduled_date', today).order('scheduled_date', { ascending: false }).limit(5000),
-      supabase.from('service_contracts').select('location_name,price_per_visit').eq('is_active', true),
+      (own ? employeeJobColumns(supabase) : Promise.resolve('*')).then(cols => supabase.from('jobs').select(cols).eq('employee_id', employeeId).eq('status', 'completed').gte('scheduled_date', addDays(from, -1)).lte('scheduled_date', today).order('scheduled_date', { ascending: false }).limit(5000)),
+      own ? Promise.resolve({ data: [] }) : supabase.from('service_contracts').select('location_name,price_per_visit').eq('is_active', true),
       supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true).neq('status', 'cancelled').gte('payment_date', from).lte('payment_date', today),
       // v1.0.133 · month totals = payrollMonth (same jobs, same deductions by month, same fixed / per-job choice)
       supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true),

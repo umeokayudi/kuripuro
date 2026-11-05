@@ -18,6 +18,7 @@ import {
   ALL_DEEP_COMPONENT_IDS,
 } from './cleaningType'
 import { checklistTemplateForJob } from './jobChecklist'
+import { employeeJobColumns } from './jobEmployeePay'
 import { tokyoToday } from './dates'
 import { tokyoTomorrow, validateShiftWindow, shiftWindowNote } from './nextDayShift'
 
@@ -302,7 +303,7 @@ export async function employeeAddService(supabase, {
 
   const { data: dayJobs, error: dayErr } = await supabase
     .from('jobs')
-    .select('*')
+    .select(await employeeJobColumns(supabase))
     .eq('scheduled_date', date)
     .neq('status', 'cancelled')
 
@@ -436,7 +437,7 @@ export async function preparePastServiceJob(supabase, {
 
   const { data: dayJobs, error: dayErr } = await supabase
     .from('jobs')
-    .select('*')
+    .select(await employeeJobColumns(supabase))
     .eq('scheduled_date', date)
     .neq('status', 'cancelled')
 

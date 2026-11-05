@@ -1,5 +1,6 @@
 // v1.0.156 · "Já fiz" save (database + storage). Pure rules live in jaFiz.js.
 import { supabase } from './supabase'
+import { employeeJobColumns, employeeSafeJob } from './jobEmployeePay'
 import { uploadJobPhoto } from './uploadPhoto'
 import { syncServiceReport } from './jobReport'
 import { finishQuoteJob } from './quoteFlow'
@@ -54,7 +55,9 @@ export async function saveJaFiz(job, { times, checklist = [], note = '', photos 
   const now = new Date()
   const base = { times, checklist, note, actor, photoStart: startPaths[0] || null, photoEnd: endPaths[0] || null, now }
   // Only a job still never opened: if the employee started it meanwhile, nothing is overwritten.
-  const write = patch => supabase.from('jobs').update(patch).eq('id', job.id).eq('status', 'assigned').is('started_at', null).select('*').maybeSingle()
+  // v1.0.157 · the row coming back never carries the client value (the employee may be the one saving)
+  const cols = await employeeJobColumns(supabase)
+  const write = patch => supabase.from('jobs').update(patch).eq('id', job.id).eq('status', 'assigned').is('started_at', null).select(columns ? [cols, ...JA_FIZ_COLUMNS].join(',') : cols).maybeSingle()
   let columns = true
   let { data, error } = await write(jaFizPatch(base))
   if (error && isMissingJaFizColumn(error)) {

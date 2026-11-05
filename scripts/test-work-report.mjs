@@ -51,4 +51,22 @@ ok(reportVisibleTo(sum, { client_id: 'otp', location_name: 'Nyu Sakana Yakio' })
 ok(!reportVisibleTo(sum, { client_id: 'otp', location_name: 'Other store' }), 'a store not in the report does not see it')
 ok(!reportVisibleTo({ ...sum, status: 'draft' }, { client_id: 'otp', location_name: null }), 'drafts never reach the portal')
 ok(!reportVisibleTo(sum, { client_id: 'someone-else' }), 'another client never sees it')
+
+// v1.0.158 · one-tap reports
+const q = { ...blankReport({ mode: 'simple', job: { ...jobs[0], signature_url: null } }), quick: true, checklist: [{ label: '床清掃', done: true }, { label: 'ゴミ回収', done: false }], signatures: { cleaner: { name: 'Gabriel', url: null }, owner: null } }
+const qh = reportHtml(q)
+ok(qh.includes('チェックリスト') && qh.includes('床清掃') && qh.includes('class="no"'), 'quick report shows the checklist, missed items marked')
+ok(qh.includes('写真なし') && qh.includes('署名なし'), 'no photo / no signature is said, never blocks')
+const q2 = reportHtml({ ...q, photos: [{ path: 'jobs/a1/start_1.jpg', section: 'before' }], signatures: { cleaner: { name: 'Gabriel', url: 'data:image/png;base64,AAA' }, owner: null } })
+ok(!q2.includes('写真なし') && q2.includes('data:image/png;base64,AAA'), 'cleaner signature printed when saved on the job')
+const day = { ...buildPeriodReport({ client: null, from: '2026-10-03', to: '2026-10-03', jobs: [...jobs, { ...jobs[2], id: 'b9', scheduled_date: '2026-10-03', status: 'in_progress' }], media, lang: 'ja', statuses: ['completed', 'in_progress'] }), quick: true, day: { employee_id: 'g', employee_name: 'Guilherme Henrique', date: '2026-10-03' }, title: '作業日報｜Guilherme Henrique', signatures: { cleaner: { name: 'Guilherme Henrique', url: 'data:image/png;base64,CLN' }, owner: null } }
+const dh = reportHtml(day)
+ok(dh.includes('担当者：Guilherme Henrique') && dh.includes('（未完了）') && dh.includes('data:image/png;base64,CLN'), 'day report: person, unfinished service tagged, cleaner signature at the end')
+ok(dh.includes('責任者の承認待ち') && !dh.includes('OWNERSIG'), 'without "Aceitar e assinar" there is no owner signature')
+const dh2 = reportHtml({ ...day, signatures: { ...day.signatures, owner: { name: 'Yudi', url: 'data:image/png;base64,OWNERSIG', at: '2026-10-03T12:00:00Z' } } })
+ok(dh2.includes('OWNERSIG') && !dh2.includes('責任者の承認待ち'), 'after accepting, the owner signature is on the report')
+ok(!/18,?000|10:05|12:17|01:05|price/.test(dh2), 'day report has no value and no start/end time')
+const ds = summaryOf(day)
+ok(ds.day?.employee_name === 'Guilherme Henrique' && ds.quick && !ds.accepted_at, 'summary carries day + not accepted (list Prontos)')
+ok(!reportVisibleTo({ ...ds, status: 'sent' }, { client_id: 'otp' }), 'a day report (no client) never shows in a client portal')
 process.exit(fail ? 1 : 0)

@@ -230,6 +230,7 @@ export default function Dashboard() {
   const staleCount = staleNotListed(staleIds, shownRows).length
   // v1.0.125 · one line per kind instead of one row per item; the tab opens filtered when all items point to the same place
   const GROUP_LABEL = {
+    pay_undefined: tr('services with worker pay to be defined', '作業者の支払い未定の作業', 'serviços com pagamento a definir'),
     late: tr('late, not started', '遅れ・未開始', 'atrasados, não iniciados'),
     problem: tr('problems reported', '問題の報告', 'problemas reportados'),
     no_person: tr('jobs without a person', '担当なしの作業', 'serviços sem pessoa'),
