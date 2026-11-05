@@ -82,7 +82,6 @@ import EarningsPanel from '../components/EarningsPanel'
 import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
 import { monthLabel } from '../lib/earnings'
 import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
-import ShiftMarkCard from '../components/ShiftMarkCard'
 import FreeJobsCard from '../components/FreeJobsCard'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
@@ -91,7 +90,6 @@ import { businessName, mapQuery, siteCoords, nearestJob } from '../lib/nearbyJob
 import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib/employeeTheme'
 import { aiIssuesText } from '../lib/photoAi'
 import { askConfirm } from '../components/ConfirmDialog'
-import AfterPhotoLater from '../components/AfterPhotoLater'
 import JaFizSheet from '../components/JaFizSheet'
 import { isJaFizCandidate } from '../lib/jaFiz'
 import EmployeeWorkReports from '../components/EmployeeWorkReports'
@@ -2157,15 +2155,7 @@ export default function EmployeePortal() {
         {/* HOME */}
         {tab==='home'&&(
           <div className="emp-home ex-home">
-            <PendingVideos jobs={allJobs} L={L} />
-            {/* v1.0.151 · confirm today / tomorrow (the office sees SEM CONFIRMAÇÃO when nothing is marked) */}
-            {/* v1.0.154 · free services of the day: "Pegar — é meu" */}
-            <FreeJobsCard jobs={spotJobs} lang={lang} L={L} onTake={handleAcceptSpot} onSkip={handleDeclineSpot} />
-            <ShiftMarkCard user={user} lang={lang} L={L} jobs={allJobs} days={2} />
-            <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-(j.closed_manually_at?14:3)*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
-            <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />
-
-            {/* Check-in card with the map of the next location */}
+            {/* v1.0.161 · the next service (map + Check-in) is the FIRST thing on the home, bigger */}
             {(()=>{
               // Next = first pending job in the day's order (clock, or the manual order), never the nearest by GPS.
               const mapJob = activeJob || nextPendingJob(todayJobs) || null
@@ -2176,7 +2166,7 @@ export default function EmployeePortal() {
               const distNow = herePos && coords ? Math.round(distanceMeters(herePos.lat, herePos.lng, coords.lat, coords.lng)) : null
               const stale = activeJob && isStaleActiveJob(activeJob,today,elapsed)
               return (
-                <section className={`ex-checkin${activeJob?' is-active':''}${stale?' is-stale':''}`}>
+                <section className={`ex-checkin is-hero${activeJob?' is-active':''}${stale?' is-stale':''}`}>
                   {nearby&&!activeJob&&(
                     <div className="ex-nearby" role="status">
                       <span aria-hidden="true">📍</span>
@@ -2186,7 +2176,7 @@ export default function EmployeePortal() {
                   )}
                   <div className="ex-map">
                     <iframe title={place} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`} />
-                    <div className="ex-map-label"><strong>{place}</strong>{(mapJob.area||distNow!=null)&&<span>{[mapJob.area, distNow!=null?`${distNow} m`:null].filter(Boolean).join(' · ')}</span>}</div>
+                    <div className="ex-map-label"><strong>{place}</strong>{(mapJob.area||distNow!=null)&&<span>{[mapJob.area, distNow!=null?formatDistance(distNow):null].filter(Boolean).join(' · ')}</span>}</div>
                     <button type="button" className="ex-checkin-btn" onClick={()=>goToTab('shift')}>
                       <span className="ex-checkin-icon" aria-hidden="true">{activeJob?'■':'⌖'}</span>{activeJob?e.checkOut:e.checkIn}
                     </button>
@@ -2208,6 +2198,13 @@ export default function EmployeePortal() {
                 </section>
               )
             })()}
+
+            <PendingVideos jobs={allJobs} L={L} />
+            {/* v1.0.154 · free services of the day: "Pegar — é meu" */}
+            <FreeJobsCard jobs={spotJobs} lang={lang} L={L} onTake={handleAcceptSpot} onSkip={handleDeclineSpot} />
+            {/* v1.0.161 · no daily "confirme cada dia" card and no "Falta a foto de depois" card: the shift is sent weekly (Calendário) */}
+            <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />
+
 
             {/* No shift today */}
             {todayJobs.length===0&&!activeJob&&(
@@ -2646,7 +2643,6 @@ export default function EmployeePortal() {
         {(tab==='calendar'||tab==='availability')&&(<>
           <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} labels={e} statusLabels={tr.status} lang={lang} />
           <div id="my-availability" style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'22px 2px 10px'}}>🗓 {L('My availability and day off','勤務可能日と休み','Minha disponibilidade e folgas')}</div>
-          <ShiftMarkCard user={user} lang={lang} L={L} jobs={allJobs} days={7} />
           <TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />
           <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
         </>)}

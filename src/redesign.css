@@ -821,3 +821,17 @@
 .bq-foot{display:flex;justify-content:space-between;gap:8px;padding:10px 16px 12px;border-top:1px solid #eef2f7}
 .bq-pop.is-phone .bq-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
 .bq-pop.is-phone .bq-head{padding-top:calc(14px + env(safe-area-inset-top))}
+
+/* v1.0.161 · employee home: the next service is the first card, bigger */
+.ex-checkin.is-hero{border:2px solid #3b82f6;border-radius:22px;box-shadow:0 10px 26px rgba(59,130,246,.18)}
+.ex-checkin.is-hero.is-active{border-color:#16a34a;box-shadow:0 10px 26px rgba(22,163,74,.18)}
+.ex-checkin.is-hero.is-stale{border-color:#d97706}
+.ex-checkin.is-hero .ex-map{height:230px}
+.ex-checkin.is-hero .ex-checkin-btn{top:14px;height:50px;padding:0 20px 0 14px;border-radius:25px 0 0 25px;font-size:17px}
+.ex-checkin.is-hero .ex-checkin-icon{width:28px;height:28px;font-size:15px}
+.ex-checkin.is-hero .ex-checkin-info{padding:16px 18px 18px}
+.ex-checkin.is-hero .ex-checkin-info small{font-size:12px}
+.ex-checkin.is-hero .ex-checkin-info strong{font-size:24px;line-height:1.2;white-space:normal}
+.ex-checkin.is-hero .ex-checkin-info span{font-size:15px}
+.ex-checkin.is-hero .ex-countdown,.ex-checkin.is-hero:not(.is-stale) .ex-timer{font-size:20px}
+.ex-checkin.is-hero .ex-go{font-size:30px}

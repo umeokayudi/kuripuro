@@ -20,6 +20,9 @@ import { bucketOf, jobMinutes, bucketDeadline, deepDeadlineMin, routeLoads, hm, 
 
 export const SHIFT_CUTOFF = '21:00' // of the day before; configurable via buildDayPanel({ cutoff })
 export const SHIFT_KINDS = ['confirmed', 'off', 'extra']
+// v1.0.161 · the employee sends the shift WEEKLY again (calendar in Disponibilidade), no daily "vou trabalhar".
+// With this off, a day with no mark is 'planned' (by the weekly shift) instead of SEM CONFIRMAÇÃO / aguardando.
+export const SHIFT_DAILY_CONFIRM = false
 
 const norm = s => String(s || '').toLowerCase().normalize('NFKC').replace(/\s+/g, ' ').trim()
 export const storeOf = j => splitName(j?.title).base
@@ -64,7 +67,7 @@ export function shiftCutoffMs(date, cutoff = SHIFT_CUTOFF) {
 
 /**
  * Shift state of one person for `date`:
- *   confirmed | cant | extra | unconfirmed (expected, no mark, past cut-off) | awaiting (before cut-off) | not_expected
+ *   confirmed | cant | extra | planned (weekly shift, no daily mark — default since v1.0.161) | unconfirmed (expected, no mark, past cut-off) | awaiting (before cut-off) | not_expected
  */
 export function shiftState({ emp, date, mark, hasJobs, now = new Date(), cutoff = SHIFT_CUTOFF }) {
   const wd = workDaysOf(emp)
@@ -73,6 +76,7 @@ export function shiftState({ emp, date, mark, hasJobs, now = new Date(), cutoff 
   if (mark?.kind === 'off') return { state: 'cant', expected }
   if (mark?.kind === 'extra') return { state: 'extra', expected }
   if (!expected && !hasJobs) return { state: 'not_expected', expected }
+  if (!SHIFT_DAILY_CONFIRM) return { state: 'planned', expected }
   return { state: now.getTime() >= shiftCutoffMs(date, cutoff) ? 'unconfirmed' : 'awaiting', expected }
 }
 
@@ -277,6 +281,7 @@ export function shiftBadge(p, L = (en, ja, pt) => pt) {
     case 'confirmed': return { cls: 'ok', text: L('✅ Confirmed', '✅ 確認済み', '✅ Confirmado') }
     case 'cant': return { cls: 'bad', text: L("✕ Can't", '✕ 不可', '✕ Não pode') + (p.mark?.reason ? ` · ${p.mark.reason}` : '') }
     case 'extra': return { cls: 'info', text: L('＋ Extra work', '＋ 追加勤務', '＋ Trabalho extra') }
+    case 'planned': return { cls: 'ok', text: L('📅 Weekly shift', '📅 週のシフト', '📅 Shift semanal') }
     case 'unconfirmed': return { cls: 'warn', text: L('NO CONFIRMATION', '未確認', 'SEM CONFIRMAÇÃO') }
     case 'awaiting': return { cls: 'muted', text: L('waiting for confirmation', '確認待ち', 'aguardando confirmação') }
     default: return { cls: 'muted', text: L('not expected', '予定外', 'fora do padrão semanal') }
