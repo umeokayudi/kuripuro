@@ -3,7 +3,7 @@
 // visible under the top bar while scrolling the list, with the active filters and "Clear".
 import { useEffect, useRef, useState } from 'react'
 import { pickLang } from '../hooks/useLang'
-import { activeFilterCount } from '../lib/reportFilters'
+import { activeFilterCount, DEFAULT_FILTERS } from '../lib/reportFilters'
 
 const fmtD = (ymd, lang) => {
   if (!ymd) return ''
@@ -76,7 +76,7 @@ export default function ReportFilterBar({ f, setF, reset, today, range, lang, fa
 
   // active filters as removable pills (used in the slim bar)
   const pills = [
-    f.period !== '30' && { k: 'p', label: '📅 ' + periodText, clear: { period: '30', from: '', to: '' } },
+    f.period !== DEFAULT_FILTERS.period && { k: 'p', label: '📅 ' + periodText, clear: { period: DEFAULT_FILTERS.period, from: '', to: '' } },
     f.emp && { k: 'emp', label: '👤 ' + f.emp, clear: { emp: '' } },
     f.client && { k: 'client', label: '🏢 ' + clientName(f.client), clear: { client: '' } },
     f.place && { k: 'place', label: '📍 ' + f.place, clear: { place: '' } },

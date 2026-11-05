@@ -145,7 +145,8 @@ export function sortRows(rows, sort, { singleDay = false } = {}) {
 }
 
 // ── URL ─────────────────────────────────────────────────────────────────────────────
-export const DEFAULT_FILTERS = { period: '30', from: '', to: '', emp: '', client: '', place: '', type: 'done', problems: [], q: '', sort: 'recent' }
+// v1.0.150 · Reports opens on TODAY (same counter as the Painel do Dia)
+export const DEFAULT_FILTERS = { period: 'today', from: '', to: '', emp: '', client: '', place: '', type: 'done', problems: [], q: '', sort: 'recent' }
 
 export function filtersFromParams(params) {
   const get = k => params.get(k) || ''

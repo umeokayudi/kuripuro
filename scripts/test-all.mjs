@@ -8,6 +8,8 @@ const steps = [
   ['npm run test:payroll-close', 'payroll-close'],
   ['npm run test:money', 'money'],
   ['npm run test:exception-queue', 'exception queue'],
+  ['node scripts/test-day-panel.mjs', 'day panel (Painel do Dia)'],
+  ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],
   ['npm run test:ai-score', 'AI score with reasons'],
   ['npm run test:client-rating-ask', 'client rating ask'],
   ['npm run test:global-search', 'global-search'],

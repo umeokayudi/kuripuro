@@ -81,6 +81,7 @@ import EarningsPanel from '../components/EarningsPanel'
 import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
 import { monthLabel } from '../lib/earnings'
 import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
+import ShiftMarkCard from '../components/ShiftMarkCard'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
@@ -2135,6 +2136,8 @@ export default function EmployeePortal() {
         {tab==='home'&&(
           <div className="emp-home ex-home">
             <PendingVideos jobs={allJobs} L={L} />
+            {/* v1.0.150 · confirm today / tomorrow (the office sees SEM CONFIRMAÇÃO when nothing is marked) */}
+            <ShiftMarkCard user={user} lang={lang} L={L} jobs={allJobs} days={2} />
             <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-(j.closed_manually_at?14:3)*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
 
             {/* Check-in card with the map of the next location */}
@@ -2618,6 +2621,7 @@ export default function EmployeePortal() {
         {(tab==='calendar'||tab==='availability')&&(<>
           <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} labels={e} statusLabels={tr.status} lang={lang} />
           <div id="my-availability" style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'22px 2px 10px'}}>🗓 {L('My availability and day off','勤務可能日と休み','Minha disponibilidade e folgas')}</div>
+          <ShiftMarkCard user={user} lang={lang} L={L} jobs={allJobs} days={7} />
           <TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />
           <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
         </>)}
