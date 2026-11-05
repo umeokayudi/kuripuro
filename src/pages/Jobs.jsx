@@ -332,6 +332,7 @@ export default function Jobs() {
                     onPhotoClick={setLightbox}
                   />
                   <JobVideos jobId={j.id} lazy style={{ marginTop: 8 }} />
+                  <Link to={`/work-reports?job=${j.id}`} className="btn btn-sm" style={{ marginTop: 8, display: 'inline-flex' }}>📄 {tr('Service report', '作業報告書', 'Relatório de serviço')}</Link>
                 </div>
               )}
 
