@@ -15,6 +15,8 @@ export const BELL_GROUPS = [
   { key: 'offers', icon: '🧽' },
   { key: 'info', icon: '⚡' },
   { key: 'waiting', icon: '⏳', notCounted: true },
+  // v1.0.160 · accepted quotes left for later ("Agendar depois") until their reminder day
+  { key: 'later', icon: '🕒', notCounted: true },
 ]
 
 const cmp = (a, b) => String(a || '').localeCompare(String(b || ''))
@@ -68,7 +70,7 @@ export function buildBellQueue({ exceptions = [], panel = null, nextPanel = null
   }
   const push = (key, rows, kind) => { for (const r of rows || []) if (!hidden.has(r.id)) g[key].push({ ...r, kind, _row: r }) }
   push('dayoff', timeOff.map(r => ({ ...r, who: r.employee_name, date: r.date })), 'dayoff')
-  push('quotes', quotes, 'quote'); push('quotes', toBook, 'to_book'); push('quotes', flowDone, 'flow_done')
+  push('quotes', quotes, 'quote'); push('quotes', toBook.filter(t => !t.snoozed), 'to_book'); push('later', toBook.filter(t => t.snoozed).map(t => ({ ...t, date: t.later.until })), 'to_book'); push('quotes', flowDone, 'flow_done')
   push('payroll', payroll.map(p => ({ ...p, date: p.period })), 'payroll')
   push('offers', offers, 'offer')
   push('info', taken.map(t => ({ ...t, date: t.scheduled_date, time: String(t.scheduled_time || '').slice(0, 5), who: t.employee_name })), 'taken')
@@ -76,7 +78,7 @@ export function buildBellQueue({ exceptions = [], panel = null, nextPanel = null
   // fixed order inside each group
   const KIND_ORDER = { route_none: -1, route: 0, late: 1, cant: 0, eve_unconfirmed: 1, free_uncovered: 2, no_person: 3, no_job: 4, impossible: 5 }
   for (const key of ['late', 'uncovered']) g[key].sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || stable(a, b))
-  for (const key of ['covered', 'exceptions', 'dayoff', 'payroll', 'info', 'waiting']) g[key].sort(stable)
+  for (const key of ['covered', 'exceptions', 'dayoff', 'payroll', 'info', 'waiting', 'later']) g[key].sort(stable)
   // quotes / offers keep their kind blocks (pedido → marcar data → feito) and a stable order inside
   const QK = { quote: 0, to_book: 1, flow_done: 2 }
   g.quotes.sort((a, b) => QK[a.kind] - QK[b.kind] || cmp(a.created_at, b.created_at) || cmp(a.id, b.id))

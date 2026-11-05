@@ -4,6 +4,8 @@ import { saveSpotContractWithInvoice } from './spotContractOps'
 import { salesPost } from './salesApi'
 import { tokyoToday } from './dates'
 import { syncServiceReport } from './jobReport'
+import { loadQuoteLaterMap } from './quoteLaterOps'
+import { isLaterActive } from './quoteSuggest'
 
 // v1.0.70 · What happens after a client says yes to a quote.
 //
@@ -240,6 +242,19 @@ export async function fetchQuoteFlowAlerts() {
     // Old accepted mitsumori (before this flow) would all show up; only the last 60 days.
     ...(mits.data || []).filter(q => !booked.has(quoteRef('mitsumori', q.id)) && (!q.decided_at || q.decided_at > new Date(Date.now() - 60 * 864e5).toISOString())).map(q => ({ id: `qf-book-${q.id}`, kind: 'mitsumori', ref_id: q.id, name: q.site_name || q.company_name, what: '', total: q.total, at: q.decided_at })),
   ]
+  // v1.0.160 · "Agendar depois": snoozed until its day (listed apart, not counted); on the day it comes
+  // back with a new id so the toast pops once more as a reminder.
+  if (toBook.length) {
+    const later = await loadQuoteLaterMap()
+    const today = tokyoToday()
+    for (const t of toBook) {
+      const l = later[quoteRef(t.kind, t.ref_id)]
+      if (!l?.until) continue
+      t.later = l
+      t.snoozed = isLaterActive(l, today)
+      if (!t.snoozed) t.id = `${t.id}:r${l.until}`
+    }
+  }
   const jobIds = (recent.data || []).map(r => r.job_id).filter(Boolean)
   const { data: jobs } = jobIds.length ? await supabase.from('jobs').select('id,status,completed_at').in('id', jobIds).eq('status', 'completed').gte('completed_at', since) : { data: [] }
   const doneIds = new Set((jobs || []).map(j => j.id))
