@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
+import { employeeJobColumns } from '../lib/jobEmployeePay'
 import { pickLang } from '../hooks/useLang'
 import { enrichJobValues } from '../lib/employeePay'
 import { isDuskinJob } from '../lib/employeeAddJob'
@@ -144,8 +145,9 @@ function useMonthWork(employeeId, month) {
     const from = `${month}-01`, to = monthEnd(month)
     Promise.all([
       supabase.from('employees').select('id,full_name,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days').eq('id', employeeId).maybeSingle(),
-      supabase.from('jobs').select('*').eq('employee_id', employeeId).eq('status', 'completed').gte('scheduled_date', from).lte('scheduled_date', to).limit(2000),
-      supabase.from('service_contracts').select('location_name,price_per_visit').eq('is_active', true),
+      // v1.0.157 · employee's payslip: never the client's value / contract price
+      employeeJobColumns(supabase).then(cols => supabase.from('jobs').select(cols).eq('employee_id', employeeId).eq('status', 'completed').gte('scheduled_date', from).lte('scheduled_date', to).limit(2000)),
+      Promise.resolve({ data: [] }),
       supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('period', month).order('payment_date'),
     ]).then(([emp, jobs, contracts, pays]) => {
       if (!alive) return

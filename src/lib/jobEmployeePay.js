@@ -49,16 +49,95 @@ export function perJobPay(jobs = []) {
   }
 }
 
-/** Monthly total for the employee screen: done (completed) and planned (all jobs of the month). */
+// ─────────────────────────────────────────────────────────────────────────────
+// v1.0.157 · Monthly package ("Pacote mensal"): the worker is paid per month for a set of services
+// (OTP maintenances ¥50.000/mês, Atomic Bar ¥35.000/mês). Per service there is no own value: the
+// employee sees "Pacote mensal", never a sliced ¥1.470/¥1.471. Read from jobs.employee_pay_package when
+// that column exists, else from the description ("pacote ... ¥50.000/mês").
+// ─────────────────────────────────────────────────────────────────────────────
+const PACKAGE_RE = /pacote[^|\n]*?¥\s*[0-9][0-9.,]*\s*\/\s*m[eê]s/i
+
+/** Package text of a job ("pacote de manutenções OTP ¥50.000/mês") or null. */
+export function jobPayPackage(job) {
+  if (job?.employee_pay_package) return String(job.employee_pay_package)
+  const m = String(job?.description || '').match(PACKAGE_RE)
+  return m ? m[0].replace(/^\(?/, '').trim() : null
+}
+
+/** 'spot' | 'package' | 'defined' | 'undefined' — what the worker earns for this job. */
+export function payKind(job) {
+  if (job?.job_category === 'spot') return 'spot'
+  if (jobPayPackage(job)) return 'package'
+  return jobEmployeePay(job) === null ? 'undefined' : 'defined'
+}
+
+/**
+ * v1.0.157 · Rule 4: a job with the worker's pay still "a definir" must not stay invisible — a finished
+ * job (or one of today) with a person and no pay goes to the bell until the owner defines it.
+ */
+export function needsPayDefinition(job, today) {
+  if (!job || job.status === 'cancelled' || !job.employee_id) return false
+  if (!(job.status === 'completed' || job.scheduled_date === today)) return false
+  return payKind(job) === 'undefined'
+}
+
+/** Description without the worker-pay / package sentences (shown to the employee). */
+export function stripPayText(text) {
+  return String(text || '')
+    .replace(/Pagamento do funcion[áa]rio \([^)]*\):\s*¥\s*[0-9][0-9.,]*(?:\s*[—-]\s*.*?)?(?=\s*\||Key box|\n|$)/gi, '')
+    .replace(/Pacote [^|\n]*?¥\s*[0-9][0-9.,]*\s*\/\s*m[eê]s.*?(?=\s*\||Key box|\n|$)/gi, '')
+    .replace(/^[\s|]+/gm, '')
+    .replace(/[ \t]*\|[ \t]*\|/g, ' |')
+    .trim()
+}
+
+// Columns the client pays (never sent to an employee screen).
+export const CLIENT_MONEY_COLUMNS = ['value', 'retro_value']
+// Every jobs column an employee screen may read. Columns from SQL not yet applied are probed once.
+const EMPLOYEE_JOB_BASE = 'id,title,client_id,client_name,employee_id,employee_name,scheduled_date,scheduled_time,address,gps_lat,gps_lng,description,checklist_template,photo_required,status,started_at,completed_at,notes_employee,photo_start_url,photo_end_url,created_at,job_category,spot_value,spot_status,spot_responded_at,counts_as_work_day,materials,reference_photos,instructions,sequence_order,gps_end_distance,gps_override,gps_start_distance,checklist_total,checklist_done,checklist_missed_items,photo_ai_score,photo_ai_approved,photo_ai_issues,signature_url,retro_report,retro_ai_summary,retro_time_min,admin_reviewed,start_lat,start_lng,start_accuracy,end_lat,end_lng,end_accuracy,area,closed_manually_by,closed_manually_at,closed_manually_note'
+const OPTIONAL_COLS = ['employee_pay', 'employee_pay_package', 'location_id', 'expected_minutes']
+let colsPromise = null
+/** "id,title,…" for employee queries: everything except what the client pays. */
+export function employeeJobColumns(db) {
+  if (!colsPromise) {
+    colsPromise = Promise.all(OPTIONAL_COLS.map(c => db.from('jobs').select(c).limit(1).then(r => (r.error ? null : c), () => null)))
+      .then(list => [EMPLOYEE_JOB_BASE, ...list.filter(Boolean)].join(','))
+      .catch(() => EMPLOYEE_JOB_BASE)
+  }
+  return colsPromise
+}
+/** Forget the probed columns (after an SQL is applied in this tab). */
+export const resetEmployeeJobColumns = () => { colsPromise = null }
+
+/**
+ * What an employee screen keeps of a job: no client money, the worker's own pay resolved
+ * (field, else the description line), a package as "Pacote mensal" with no sliced value,
+ * and the description without the pay sentences.
+ */
+export function employeeSafeJob(job) {
+  if (!job) return job
+  const { value, retro_value, ...rest } = job // eslint-disable-line no-unused-vars
+  const pkg = jobPayPackage(job)
+  return {
+    ...rest,
+    employee_pay: pkg ? null : jobEmployeePay(job),
+    employee_pay_package: pkg ? 'monthly' : null,
+    description: stripPayText(job.description),
+  }
+}
+
+/** Monthly total for the employee screen: done (completed) and planned (all jobs of the month). Packages apart. */
 export function employeeMonthPay(jobs = [], month) {
-  const mine = (jobs || []).filter(j => String(j.scheduled_date || '').startsWith(month) && j.status !== 'cancelled')
+  const mine = (jobs || []).filter(j => String(j.scheduled_date || '').startsWith(month) && j.status !== 'cancelled' && j.job_category !== 'spot')
+  const perJob = mine.filter(j => payKind(j) !== 'package')
   const sum = list => list.reduce((s, j) => s + (jobEmployeePay(j) || 0), 0)
-  const done = mine.filter(j => j.status === 'completed')
+  const done = perJob.filter(j => j.status === 'completed')
   return {
     done: sum(done),
-    planned: sum(mine),
-    undefinedCount: mine.filter(j => !hasEmployeePay(j)).length,
-    any: mine.some(hasEmployeePay),
+    planned: sum(perJob),
+    undefinedCount: perJob.filter(j => !hasEmployeePay(j)).length,
+    packageJobs: mine.length - perJob.length,
+    any: perJob.some(hasEmployeePay) || mine.length > perJob.length,
   }
 }
 

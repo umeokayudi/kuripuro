@@ -1,6 +1,7 @@
 // v1.0.101 · Employee side of the urgent offer: open jobs (no person yet; routine or spot, v1.0.120) shown to everyone whose
 // role fits and who works that day. The first accept wins (assignOps.takeOffer); the others see
 // "closed" in the bell the next time the app loads.
+import { employeeJobColumns, employeeSafeJob } from './jobEmployeePay'
 import { supabase } from './supabase'
 import { tokyoToday } from './dates'
 import { availabilityIndex } from './scheduleGenerator'
@@ -21,8 +22,10 @@ export function offerFits(job, emp, availability = {}) {
 /** Open offers this person can take (hidden ones = "not for me" on this phone). */
 export async function fetchOpenOffers(userId) {
   const today = tokyoToday()
+  // v1.0.157 · employee side: never the client's value
+  const cols = await employeeJobColumns(supabase)
   const [jobs, emp, av] = await Promise.all([
-    supabase.from('jobs').select('*').is('employee_id', null).eq('spot_status', 'pending')
+    supabase.from('jobs').select(cols).is('employee_id', null).eq('spot_status', 'pending')
       .eq('status', 'assigned').gte('scheduled_date', today).order('scheduled_date').order('scheduled_time').limit(50),
     supabase.from('employees').select('id,full_name,job_role,work_days,is_active').eq('id', userId).maybeSingle(),
     supabase.from('employee_availability').select('employee_id,date,kind,status').eq('employee_id', userId).gte('date', today),
@@ -30,7 +33,7 @@ export async function fetchOpenOffers(userId) {
   if (jobs.error || !emp.data) return []
   const availability = availabilityIndex(av.data || [])
   const hidden = read(key('hidden', userId))
-  const list = (jobs.data || []).filter(j => !hidden.has(j.id) && offerFits(j, emp.data, availability)).map(j => ({ ...j, _open: true }))
+  const list = (jobs.data || []).filter(j => !hidden.has(j.id) && offerFits(j, emp.data, availability)).map(j => ({ ...employeeSafeJob(j), _open: true }))
   const seen = read(key('seen', userId))
   list.forEach(j => seen.add(j.id))
   write(key('seen', userId), seen)

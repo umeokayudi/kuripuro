@@ -302,7 +302,8 @@ export default function Jobs() {
                     ? <span className="badge badge-red">{jt.incomplete}</span>
                     : <span className={`badge ${statusColor(j.status)}`}>{st[j.status] || j.status}</span>}
                   {isRetroJob(j) && <span className="badge badge-amber" title={jt.retroBadgeHint}>{jt.retroBadge}</span>}
-                  <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--green)' }}>¥{Number(j.value || j.spot_value || 0).toLocaleString()}</span>
+                  <span style={{ fontSize: 13, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{tr('Client pays', '顧客支払', 'Cliente paga')}: <b style={{ fontSize: 15, color: 'var(--green)' }}>¥{Number(j.value || 0).toLocaleString()}</b></span>
+                  {j.job_category === 'spot' && <span style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{tr('Worker gets', '作業者受取', 'Funcionário recebe')}: <b>+¥{Number(j.spot_value || 0).toLocaleString()}</b></span>}
                 </div>
               </div>
 
@@ -375,7 +376,7 @@ export default function Jobs() {
                 </div>
                 <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
                   <span className={`badge ${spotStatusColor(j.spot_status)}`}>{j.spot_status}</span>
-                  <span style={{fontSize:14,fontWeight:700,color:'var(--green)'}}>+¥{Number(j.spot_value||j.value||0).toLocaleString()}</span>
+                  <span style={{fontSize:12,color:'var(--text2)',whiteSpace:'nowrap'}}>{tr('Worker gets', '作業者受取', 'Funcionário recebe')}: <b style={{fontSize:14,color:'var(--green)'}}>+¥{Number(j.spot_value||0).toLocaleString()}</b></span>
                 </div>
               </div>
               {j.description && (() => { const d = splitKeyLine(j.description); return (

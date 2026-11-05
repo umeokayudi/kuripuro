@@ -2,16 +2,18 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
-import { jobEmployeePay, saveJobEmployeePay, loadJobPayAudit, isMissingColumn } from '../lib/jobEmployeePay'
+import { jobEmployeePay, jobPayPackage, saveJobEmployeePay, loadJobPayAudit, isMissingColumn } from '../lib/jobEmployeePay'
 
 /**
  * v1.0.131 · Admin line on a job card: "Pagamento do funcionário: ¥1.000 ✏️" (or "a definir").
  * Separate from the contract Valor, which is never changed here. Changing it on a completed job
  * is recorded (who / when) by the database in job_pay_audit; negative values are refused.
  */
-export default function EmployeePayEdit({ job, onSaved, style }) {
+export default function EmployeePayEdit({ job, onSaved, style, showClient = false }) {
   const { tr, locale } = useLang()
-  const pay = jobEmployeePay(job)
+  // v1.0.157 · a monthly package has no per-service value: "Funcionário recebe: Pacote mensal"
+  const pkg = jobPayPackage(job)
+  const pay = pkg ? null : jobEmployeePay(job)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -40,7 +42,8 @@ export default function EmployeePayEdit({ job, onSaved, style }) {
 
   return (
     <div style={{ fontSize: 13, color: 'var(--text2)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, ...style }}>
-      <span>👷 {tr('Employee pay', '作業者への支払い', 'Pagamento do funcionário')}:</span>
+      {showClient && <span style={{ marginRight: 6 }}>{tr('Client pays', '顧客支払', 'Cliente paga')}: <b style={{ color: 'var(--text)' }}>{fmt(job.retro_value ?? job.value ?? 0)}</b> ·</span>}
+      <span>👷 {tr('Worker gets', '作業者受取', 'Funcionário recebe')}:</span>
       {editing ? (
         <>
           <input type="number" inputMode="numeric" min="0" step="1" value={draft} autoFocus
@@ -51,7 +54,9 @@ export default function EmployeePayEdit({ job, onSaved, style }) {
         </>
       ) : (
         <>
-          <b style={{ color: pay === null ? 'var(--text3)' : 'var(--text)', fontWeight: pay === null ? 500 : 700 }}>{pay === null ? tr('to be defined', '未定', 'a definir') : fmt(pay)}</b>
+          {pkg
+            ? <b style={{ color: 'var(--text)' }} title={pkg}>{tr('Monthly package', '月額パッケージ', 'Pacote mensal')}</b>
+            : <b style={{ color: pay === null ? 'var(--amber, #b45309)' : 'var(--text)', fontWeight: pay === null ? 600 : 700 }}>{pay === null ? tr('to be defined', '未定', 'a definir') : fmt(pay)}</b>}
           <button type="button" className="btn btn-sm" style={{ padding: '2px 8px', minHeight: 0, lineHeight: 1.4 }} onClick={open} aria-label={tr('Edit employee pay', '支払いを編集', 'Editar pagamento do funcionário')}>✏️</button>
           {job.status === 'completed' && job.employee_pay_updated_at && (
             <button type="button" className="nj-link" style={{ fontSize: 12 }} onClick={log ? () => setLog(null) : showLog}>

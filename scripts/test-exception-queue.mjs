@@ -22,7 +22,7 @@ const jobs = [
 const contracts = [{ location_name: 'Shinbashi', hours_per_visit: 2 }]
 const payroll = { autoClosed: [{ period: '2026-09' }], disputed: [{ id: 's1', employee_name: 'Kenji', period: '2026-09' }], paidUnconfirmed: [] }
 const rows = buildExceptions({ jobs, contracts, payroll, today, now })
-const kinds = Object.fromEntries(rows.map(r => [r.jobId || r.kind, r.kind]))
+const kinds = Object.fromEntries(rows.filter(r => r.kind !== 'pay_undefined').map(r => [r.jobId || r.kind, r.kind])) // v1.0.157 · pay_undefined is checked in test-job-employee-pay
 assert(kinds.late === 'late' && kinds.soon === undefined, 'late after 30 min only')
 assert(kinds.nobody === 'no_person', 'no person tomorrow')
 assert(kinds.missed === 'incomplete', 'never started = incomplete')
@@ -91,8 +91,8 @@ console.log('exception queue OK')
 // v1.0.149 · a finished job the admin already checked (accepted without photo) leaves no_photo / ai_waiting / long
 {
   const list = buildExceptions({ today, now, hideTests: false, jobs: [
-    { id: 'R', title: 'X — Basic', employee_id: 'e', employee_name: 'Gabriel', status: 'completed', scheduled_date: today, admin_reviewed: true },
-    { id: 'N', title: 'Y — Basic', employee_id: 'e', employee_name: 'Gabriel', status: 'completed', scheduled_date: today },
+    { id: 'R', title: 'X — Basic', employee_id: 'e', employee_name: 'Gabriel', status: 'completed', scheduled_date: today, admin_reviewed: true, employee_pay: 1000 },
+    { id: 'N', title: 'Y — Basic', employee_id: 'e', employee_name: 'Gabriel', status: 'completed', scheduled_date: today, employee_pay: 1000 },
   ] })
   assert(!list.some(x => x.jobId === 'R'), 'conferido sai da lista')
   assert(list.some(x => x.jobId === 'N' && x.kind === 'no_photo'), 'sem foto continua')

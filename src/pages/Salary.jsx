@@ -169,7 +169,7 @@ export default function Salary() {
                     <div style={{ fontWeight:500 }}>{j.title}</div>
                     <div style={{ fontSize:11, color:'var(--text3)' }}>{j.scheduled_date}</div>
                   </div>
-                  <span style={{ color:'var(--green)', fontWeight:500 }}>¥{Number(j.value||0).toLocaleString()}</span>
+                  <span style={{ color:'var(--text2)', fontSize:12, whiteSpace:'nowrap' }}>{L('Client pays', '顧客支払', 'Cliente paga')}: <b style={{ color:'var(--green)', fontWeight:600 }}>¥{Number(j.value||0).toLocaleString()}</b></span>
                 </div>
               ))}
             </div>
