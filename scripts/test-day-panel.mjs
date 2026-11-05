@@ -45,7 +45,7 @@ assert(!p.team.some(t => /Teste/.test(t.name)), 'test account out')
 assert(p.team.find(t => t.id === '4c06').state === 'unconfirmed', 'rejected day-off request = no mark')
 assert(p.team[0].id === G, 'person with late jobs first')
 assert(storeStateText(kin) === 'Atrasada · prazo 10:00', storeStateText(kin))
-assert(p.alerts.some(a => a.kind === 'route') && p.alerts.some(a => a.kind === 'late'), 'route + late alerts')
+assert(p.alerts[0].kind === 'route_none' && !p.alerts.some(a => a.kind === 'route') && p.alerts.some(a => a.kind === 'late'), 'v1.0.154: route_none (on top, replaces the per-person line) + late alerts')
 assert(alertText(p.alerts.find(a => a.kind === 'late')) === '8 lojas atrasadas (10 serviços)', alertText(p.alerts.find(a => a.kind === 'late')))
 assert(serviceLabel(jobs[9]) === 'Deep Cleaning — Range Hood' && serviceLabel(jobs[0]) === 'Básica', 'service type')
 

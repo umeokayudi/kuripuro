@@ -102,7 +102,7 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
         c = data
       }
       const fresh = blankReport({ mode: 'simple', job, client: c, author })
-      // v1.0.154: every photo and video the team sent for this service comes in at once.
+      // v1.0.155: every photo and video the team sent for this service comes in at once.
       fresh.photos = (await listJobMedia(job)).map(m => ({ path: m.path, kind: m.kind, section: m.section, caption: '', by: 'job', at: new Date().toISOString() }))
       if (off) return
       savedClient.current = fresh.client_id

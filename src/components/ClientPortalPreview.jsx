@@ -1,4 +1,4 @@
-// v1.0.154 · Admin "Ver como o cliente": opens the real client portal of one store login, read only,
+// v1.0.155 · Admin "Ver como o cliente": opens the real client portal of one store login, read only,
 // without the client's password. Writes are refused by src/lib/portalPreview.js.
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'

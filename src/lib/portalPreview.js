@@ -1,4 +1,4 @@
-// v1.0.154 · Admin "Ver como o cliente": the client portal runs with this wrapper around supabase.
+// v1.0.155 · Admin "Ver como o cliente": the client portal runs with this wrapper around supabase.
 // Reads (select, storage list / public URLs) go through as normal; every write is refused, so the
 // preview can never change the client's data, ratings, chat, last_seen or files.
 export const PREVIEW_BLOCKED = {

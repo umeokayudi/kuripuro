@@ -27,7 +27,7 @@ ok(det.includes('部位別ビフォー・アフター比較') && det.includes('�
 const s = summaryOf(d)
 ok(!('notes_raw' in s) && s.job_id === 'job-1', 'index summary carries no notes')
 
-// v1.0.154 · client report of the month, by store
+// v1.0.155 · client report of the month, by store
 const OTP = { id: 'otp', company_name: 'On The Planet' }
 const jobs = [
   { id: 'a1', client_id: 'otp', title: 'Nyu Sakana Yakio — 定期清掃', scheduled_date: '2026-10-03', status: 'completed', employee_name: 'Gabriel', started_at: '2026-10-03T01:05:00Z', completed_at: '2026-10-03T03:17:00Z', price: 18000 },

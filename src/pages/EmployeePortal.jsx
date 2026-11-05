@@ -82,6 +82,7 @@ import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
 import { monthLabel } from '../lib/earnings'
 import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
 import ShiftMarkCard from '../components/ShiftMarkCard'
+import FreeJobsCard from '../components/FreeJobsCard'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
@@ -843,7 +844,7 @@ export default function EmployeePortal() {
       try {
         const r = await takeOffer(job, user)
         if (r === 'taken') toast(L('Someone else already accepted this one.', '他の人が先に承諾しました。', 'Outra pessoa já aceitou este.'), { icon: '⚡' })
-        else toast.success(job.job_category==='spot' ? `${e.spotAccepted || L('Accepted!', '承諾しました！', 'Aceito!')} +¥${Number(job.spot_value||0).toLocaleString()}` : L('Accepted! It is in your day now.', '承諾しました！今日の予定に入りました。', 'Aceito! Já está no seu dia.'))
+        else toast.success(job.job_category==='spot' ? `${e.spotAccepted || L('Accepted!', '承諾しました！', 'Aceito!')} +¥${Number(job.spot_value||0).toLocaleString()}` : L("It's yours! It is in your day now.", 'あなたの作業になりました！予定に入りました。', 'É seu! Já está no seu dia.'))
       } catch (err) { toast.error(err.message) }
       loadAll(); return
     }
@@ -2138,6 +2139,8 @@ export default function EmployeePortal() {
           <div className="emp-home ex-home">
             <PendingVideos jobs={allJobs} L={L} />
             {/* v1.0.151 · confirm today / tomorrow (the office sees SEM CONFIRMAÇÃO when nothing is marked) */}
+            {/* v1.0.154 · free services of the day: "Pegar — é meu" */}
+            <FreeJobsCard jobs={spotJobs} lang={lang} L={L} onTake={handleAcceptSpot} onSkip={handleDeclineSpot} />
             <ShiftMarkCard user={user} lang={lang} L={L} jobs={allJobs} days={2} />
             <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-(j.closed_manually_at?14:3)*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
             <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />

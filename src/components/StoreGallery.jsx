@@ -1,4 +1,4 @@
-// v1.0.154 · Client portal: photos and videos of the store, service by service (before / after).
+// v1.0.155 · Client portal: photos and videos of the store, service by service (before / after).
 // Shows only date, type of service and who did it — never times, values or internal notes.
 import { useEffect, useState } from 'react'
 import { mediaForJobs, isVideoPath } from '../lib/workMedia'

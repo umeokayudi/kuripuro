@@ -1360,7 +1360,7 @@
 .cpx-chat.is-desktop .cpx-chat-compose{position:static;transform:none;max-width:none;padding:0;background:none}
 .cpx-stepper b.is-empty{color:#b3bdcc;font-weight:600}
 .cpx-bubble.is-photo img{min-width:160px;min-height:120px;background:#dbe3f0}
-/* v1.0.154 · store gallery + preview banner */
+/* v1.0.155 · store gallery + preview banner */
 .cpg{display:flex;flex-direction:column;gap:12px}
 .cpg-svc{background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:12px}
 .cpg-h{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:13px;margin-bottom:8px;color:#4a5d78}

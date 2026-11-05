@@ -294,7 +294,7 @@ export function reportHtml(r, opts = {}) {
     [t.place, f.place], [t.equipment, f.equipment], [t.date, date], [t.lead, f.lead], [t.tech, f.tech],
     [t.doneToday, f.done_today], [t.otherDay, f.other_day],
     ...(r.custom_fields || []).map(c => [c.label, c.value]),
-    // v1.0.154: amounts are internal (office only) — never printed for the client.
+    // v1.0.155: amounts are internal (office only) — never printed for the client.
   ].filter(x => x && String(x[1] || '').trim())
 
   const photos = sec => (r.photos || []).filter(p => p.section === sec)

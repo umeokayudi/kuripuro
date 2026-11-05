@@ -51,7 +51,8 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     }
     if (hideTests && (isTestName(j.employee_name) || isTestName(j.client_name))) continue
     const done = j.status === 'completed'
-    if (!done && !j.employee_id && j.scheduled_date >= today && j.scheduled_date <= addDays(today, 1)) push('no_person', j, {})
+    // v1.0.154 · a free job (open to the team) is the Painel's: "livre" until the cut-off, then SEM COBERTURA
+    if (!done && !j.employee_id && j.spot_status !== 'pending' && j.scheduled_date >= today && j.scheduled_date <= addDays(today, 1)) push('no_person', j, {})
     // v1.0.147 · OTP night jobs: late only when not finished at 10:00 (running too), measured from 10:00
     else if (isDeadlineJob(j) ? (j.scheduled_date === today && isDeadlineLate(j, { now })) : (!done && j.status === 'assigned' && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5)) push('late', j, { minutes: Math.round(hoursPastDue(j, now) * 60), ...(isDeadlineJob(j) ? { deadline: deadlineOf(j) } : {}) })
     else if (isMissedJob(j, now) && j.scheduled_date >= addDays(today, -14)) push('incomplete', j, {})

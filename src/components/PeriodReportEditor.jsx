@@ -1,4 +1,4 @@
-// v1.0.154 · Client report of a period (e.g. October), one section per store. Built by the system
+// v1.0.155 · Client report of a period (e.g. October), one section per store. Built by the system
 // from the completed services and every photo/video the team sent — the office only checks,
 // removes what it does not want, and sends. Nothing internal (values, times, AI grades) goes in.
 import { useEffect, useRef, useState } from 'react'

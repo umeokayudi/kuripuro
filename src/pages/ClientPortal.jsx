@@ -65,7 +65,7 @@ function visitRangeForPreset(preset, today) {
   return { from: `${today.slice(0, 7)}-01`, to: today }
 }
 
-// v1.0.154 · `previewUser` = admin "Ver como o cliente": same screens, read only, no client password.
+// v1.0.155 · `previewUser` = admin "Ver como o cliente": same screens, read only, no client password.
 export default function ClientPortal({ previewUser = null, onExitPreview } = {}) {
   const auth = useAuth()
   const preview = !!previewUser
@@ -658,7 +658,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
             </div>
             <div className="cp-time-grid" style={{ marginBottom: 16 }}>
               {[
-                // v1.0.154 · the client sees date, type and who — never start/end times
+                // v1.0.155 · the client sees date, type and who — never start/end times
                 [c.cleaner, selectedVisit.employee_name || '—'],
                 [periodLabels(lang).type, periodLabels(lang).types[getCleaningType(selectedVisit)] || '—'],
               ].map(([l, v]) => (

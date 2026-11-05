@@ -28,7 +28,7 @@ const q = buildBellQueue({ exceptions, panel, routeAlerts, timeOff, today })
 const keys = q.groups.map(g => g.key)
 assert(keys[0] === 'late' && keys.indexOf('exceptions') > 0 && keys.indexOf('dayoff') > keys.indexOf('exceptions'), `fixed group order: ${keys}`)
 const lateG = q.groups[0]
-assert(lateG.items[0].kind === 'route' && lateG.items.length === 11, 'route alert first, then the 10 late services')
+assert(lateG.items[0].kind === 'route_none' && lateG.items.length === 11, 'v1.0.154: "rota de hoje ainda não começou" first (replaces the per-person one), then the 10 late services')
 // the 10 late cards are told apart by store + service type
 const sig = new Set(lateG.items.filter(x => x.kind === 'late').map(x => `${x.place}|${x.title}`))
 assert(sig.size === 10, 'each late card has a distinct store + service')
