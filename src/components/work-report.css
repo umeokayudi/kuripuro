@@ -116,3 +116,23 @@
 .wr-media figure.off img, .wr-media figure.off video { opacity: .25; }
 .wr-media button { position: absolute; top: 3px; right: 3px; border: 0; border-radius: 99px; width: 22px; height: 22px; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 12px; line-height: 22px; padding: 0; }
 .wr-media em { position: absolute; left: 3px; bottom: 3px; font-style: normal; font-size: 10px; background: rgba(255,255,255,.85); color: #1f3a5f; padding: 0 5px; border-radius: 99px; }
+
+/* v1.0.158 · one-tap report viewer (phone and computer) */
+.qr-overlay { position: fixed; inset: 0; z-index: 1300; background: #e9edf3; display: flex; flex-direction: column; }
+.qr-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #1f3a5f; color: #fff; flex-wrap: wrap; }
+.qr-head .wr-x { color: #fff; }
+.qr-title { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; }
+.qr-title b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qr-title span { font-size: 12px; opacity: .85; }
+.qr-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.qr-actions .btn:not(.btn-primary) { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.3); }
+.qr-frame { flex: 1; width: 100%; max-width: 900px; margin: 0 auto; border: 0; background: #fff; }
+.qr-pad-wrap { position: fixed; inset: 0; z-index: 1310; background: rgba(12,28,48,.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.qr-pad { background: #fff; border-radius: 14px; padding: 16px; width: min(520px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.qr-pad small { color: var(--text2, #5c6573); }
+.qr-pad canvas { width: 100%; aspect-ratio: 3/1; border: 1px dashed #9aa6b8; border-radius: 10px; touch-action: none; background: #fff; }
+.qr-pad > .btn img { height: 26px; vertical-align: middle; margin-left: 8px; background: #fff; border-radius: 4px; }
+.qr-pad-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.wr-row-wrap { display: flex; align-items: stretch; gap: 6px; }
+.wr-row-wrap .wr-row { flex: 1; min-width: 0; }
+.wr-row-btns { display: flex; flex-direction: column; gap: 4px; justify-content: center; }

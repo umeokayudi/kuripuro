@@ -3,6 +3,7 @@
 // header · summary · checklist · media (before / after / video) · notes · GPS
 // signature · AI grade with reasons · audit
 import { useEffect, useState } from 'react'
+import { QuickReportButton } from './QuickReport'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { fmtDuration, fmtTime } from '../lib/jobReport'
@@ -158,6 +159,7 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
             {done ? badge('badge-green', L('Completed', '完了', 'Concluído')) : badge('badge-red', tr.pendingJob)}
             {done && modeBadge}
             {ckTotal ? badge(ckDone >= ckTotal ? 'badge-green' : 'badge-amber', fill(L('Checklist {x} of {y}', 'チェック {x}/{y}', 'Checklist {x} de {y}'), { x: ckDone || 0, y: ckTotal })) : null}
+            {row.job_id && <QuickReportButton job={job || undefined} jobId={row.job_id} className="btn btn-sm btn-primary" />}
           </div>
         </div>
       </div>

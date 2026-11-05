@@ -10,6 +10,7 @@ import { listAllReports } from '../lib/workReport'
 import WorkReportEditor from '../components/WorkReportEditor'
 import WorkReportList from '../components/WorkReportList'
 import PeriodReportEditor from '../components/PeriodReportEditor'
+import { ReportViewerById } from '../components/QuickReport'
 import '../components/work-report.css'
 
 const lastMonth = () => { const d = new Date(Date.now() + 9 * 3600e3); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
@@ -28,6 +29,7 @@ export default function WorkReports() {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(null) // { reportId?, job?, client? }
   const [period, setPeriod] = useState(null) // { reportId } or { client, from, to }
+  const [viewing, setViewing] = useState(null) // v1.0.158 · id shown in the clean preview
   const [pClient, setPClient] = useState('')
   const [pMonth, setPMonth] = useState(lastMonth)
   const author = useMemo(() => ({ name: user?.name || '' }), [user?.name])
@@ -49,6 +51,8 @@ export default function WorkReports() {
     const p = new URLSearchParams(location.search)
     if (p.get('open')) setOpen({ reportId: p.get('open') })
     if (p.get('period')) setPeriod({ reportId: p.get('period') })
+    if (p.get('view')) setViewing(p.get('view'))
+    if (p.get('list') === 'prontos') setStatus('prontos')
   }, [location.search])
   useEffect(() => {
     const p = new URLSearchParams(location.search)
@@ -65,10 +69,11 @@ export default function WorkReports() {
   const withReport = useMemo(() => new Set((items || []).flatMap(s => [s.job_id, ...(s.job_ids || [])]).filter(Boolean)), [items])
   const pendingJobs = jobs.filter(j => !withReport.has(j.id))
 
-  const shown = (items || []).filter(s => (status === 'all' || s.status === status || (status === 'draft' && !s.status))
+  const shown = (items || []).filter(s => (status === 'all' || status === 'prontos' || s.status === status || (status === 'draft' && !s.status))
     && (!clientId || s.client_id === clientId)
     && (!q || `${s.title} ${s.client_name} ${s.location} ${s.created_by}`.toLowerCase().includes(q.toLowerCase())))
   const count = st => (items || []).filter(s => s.status === st).length
+  const editOf = s => (s.kind === 'period' ? setPeriod({ reportId: s.id }) : setOpen({ reportId: s.id }))
 
   return (
     <div>
@@ -102,7 +107,7 @@ export default function WorkReports() {
       </div>
 
       <div className="wr-filters">
-        {[['all', tr('All', 'すべて', 'Todos'), (items || []).length], ['ready', tr('Waiting for office', '確認待ち', 'Esperando o escritório'), count('ready')], ['draft', tr('Drafts', '下書き', 'Rascunhos'), count('draft')], ['sent', tr('Sent', '送付済み', 'Enviados'), count('sent')]].map(([k, l, n]) => (
+        {[['prontos', tr('Ready', '作成済み', 'Prontos'), (items || []).length], ['all', tr('All', 'すべて', 'Todos'), (items || []).length], ['ready', tr('Waiting for office', '確認待ち', 'Esperando o escritório'), count('ready')], ['draft', tr('Drafts', '下書き', 'Rascunhos'), count('draft')], ['sent', tr('Sent', '送付済み', 'Enviados'), count('sent')]].map(([k, l, n]) => (
           <button key={k} type="button" className={`btn btn-sm ${status === k ? 'btn-primary' : ''}`} onClick={() => setStatus(k)}>{l} {n ? `(${n})` : ''}</button>
         ))}
         <select value={clientId} onChange={e => setClientId(e.target.value)} aria-label={tr('Client', '顧客', 'Cliente')}>
@@ -112,7 +117,10 @@ export default function WorkReports() {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder={tr('Search', '検索', 'Buscar')} />
       </div>
 
-      {items === null ? <p style={{ color: 'var(--text3)' }}>…</p> : <WorkReportList items={shown} onOpen={s => (s.kind === 'period' ? setPeriod({ reportId: s.id }) : setOpen({ reportId: s.id }))} />}
+      {items === null ? <p style={{ color: 'var(--text3)' }}>…</p> : status === 'prontos'
+        ? <WorkReportList items={[...shown].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))} onView={s => setViewing(s.id)} onEdit={editOf} />
+        : <WorkReportList items={shown} onOpen={editOf} />}
+      {viewing && <ReportViewerById id={viewing} onClose={() => { setViewing(null); load() }} />}
 
       {period && <PeriodReportEditor {...period} author={author} onSaved={() => load()} onClose={() => { setPeriod(null); load() }} />}
 

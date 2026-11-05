@@ -2,6 +2,7 @@
 // Same blocks on phone and computer (on the phone they stack in this same order; no data only on PC).
 // The numbers come from lib/dayPanel (the same source as Reports, Agenda, Ao vivo and the bell).
 import { useState } from 'react'
+import { DayReportButton } from './QuickReport'
 import toast from 'react-hot-toast'
 import { askConfirm } from './ConfirmDialog'
 import { saveShiftMark, clearShiftMark } from '../lib/shiftMarks'
@@ -178,6 +179,7 @@ export function TeamList({ team, L, date, admin }) {
               <span className={`dp-shift ${b.cls}`}>{b.text}</span>
               {p.mark?.byRole === 'admin' && <span className="dp-first">{L('(by the admin)', '（管理者）', '(pelo admin)')}</span>}
               {date && <AdminMark p={p} date={date} admin={admin} L={L} />}
+              {date && admin && p.total > 0 && <DayReportButton employeeId={p.id} employeeName={p.name} date={date} className="dp-mark-toggle" />}
             </div>
             <div className="dp-team-meta">
               {p.expected && p.state === 'unconfirmed' && !p.total && <span>{L('expected today', '本日 出勤予定', 'esperado hoje')} · </span>}

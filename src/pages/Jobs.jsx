@@ -35,6 +35,7 @@ import { splitKeyLine } from '../lib/keyReveal'
 import JobCountStrip from '../components/JobCountStrip'
 import DeepSpotCoverage from '../components/DeepSpotCoverage'
 import AddressInput from '../components/AddressInput'
+import { QuickReportButton } from '../components/QuickReport'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
 } from '../lib/jobsPeriod'
@@ -333,6 +334,7 @@ export default function Jobs() {
                   />
                   <JobVideos jobId={j.id} lazy style={{ marginTop: 8 }} />
                   <Link to={`/work-reports?job=${j.id}`} className="btn btn-sm" style={{ marginTop: 8, display: 'inline-flex' }}>📄 {tr('Service report', '作業報告書', 'Relatório de serviço')}</Link>
+                  {' '}<QuickReportButton job={j} className="btn btn-sm btn-primary" />
                 </div>
               )}
 

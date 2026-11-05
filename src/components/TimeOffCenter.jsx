@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { QuickReportButton } from './QuickReport'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -325,7 +326,7 @@ export default function TimeOffCenter() {
         {who && <div className="bq-who"><span aria-hidden="true">👤</span> <span className="bq-name">{who}</span></div>}
         <div className="bq-when">{whenOf(x)}</div>
         {x.due && <div className={`bq-when${x.overdue ? ' is-bad' : ''}`}>{exceptionDeadline(x, L)}</div>}
-        <div className="bq-actions">{actionsOf(x)}</div>
+        <div className="bq-actions">{actionsOf(x)}{x.jobId && <QuickReportButton jobId={x.jobId} className="tor-btn tor-btn-sm tor-btn-ghost" />}</div>
       </article>
     )
   }
