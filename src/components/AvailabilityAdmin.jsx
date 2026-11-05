@@ -12,6 +12,8 @@ import DayContext from './DayContext'
 const KIND = {
   off: { en: 'Day off', ja: '休み', pt: 'Folga', cls: 'badge-red' },
   extra: { en: 'Extra work', ja: '追加勤務', pt: 'Trabalho extra', cls: 'badge-navy' },
+  // v1.0.151 · shift of the day: "vou trabalhar" (no approval needed)
+  confirmed: { en: 'Confirmed', ja: '出勤確認', pt: 'Confirmado', cls: 'badge-green' },
 }
 const STATUS = {
   pending: { en: 'Pending', ja: '承認待ち', pt: 'Pendente', cls: 'badge-amber' },
@@ -139,7 +141,7 @@ export default function AvailabilityAdmin({ employees, onPendingCount }) {
                     return (
                       <td key={d} title={`${pick(KIND[r.kind])} · ${pick(STATUS[r.status])}${r.admin_note ? ' · ' + r.admin_note : ''}`}>
                         <span className={`badge ${r.status === 'rejected' ? '' : KIND[r.kind]?.cls}`} style={{ opacity: r.status === 'pending' ? 0.7 : 1 }}>
-                          {r.kind === 'off' ? '✕' : '＋'}{r.status === 'pending' ? '?' : ''}
+                          {r.kind === 'off' ? '✕' : r.kind === 'confirmed' ? '✓' : '＋'}{r.status === 'pending' ? '?' : ''}
                         </span>
                       </td>
                     )

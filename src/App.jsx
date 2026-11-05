@@ -36,6 +36,7 @@ const FacilityBuilder = lazy(() => import('./pages/FacilityBuilder'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Videos = lazy(() => import('./pages/Videos'))
+const WorkReports = lazy(() => import('./pages/WorkReports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
 const Evaluations = lazy(() => import('./pages/Evaluations'))
 const ServiceContracts = lazy(() => import('./pages/ServiceContracts'))
@@ -83,8 +84,10 @@ function Clock() {
   const dateLocale = localeOf(lang)
   return (
     <span className="kp-clock" style={{ fontSize:13, color:'var(--text2)' }}>
-      {now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
-      <span style={{ marginLeft:8, fontSize:12, color:'var(--text3)' }}>
+      {/* v1.0.151 · time and date apart (they read "13:03:15qui., 05 de nov." glued together) */}
+      <span className="kp-clock-time">{now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</span>
+      <span aria-hidden="true" style={{ margin:'0 8px', color:'var(--text3)' }}>·</span>
+      <span className="kp-clock-date" style={{ fontSize:12, color:'var(--text3)' }}>
         {now.toLocaleDateString(dateLocale, { weekday:'short', day:'2-digit', month:'short' })}
       </span>
     </span>
@@ -106,6 +109,7 @@ const PAGE_KEYS = {
   '/cashflow': 'cashflow',
   '/reports': 'reports',
   '/videos': 'videos',
+  '/work-reports': 'workReports',
   '/ryoshu': 'ryoshu',
   '/evaluations': 'evaluations',
   '/schedule': 'schedule',
@@ -299,6 +303,7 @@ function AppContent() {
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/videos" element={<Videos />} />
+              <Route path="/work-reports" element={<WorkReports />} />
               <Route path="/ryoshu" element={<Ryoshu />} />
               <Route path="/evaluations" element={<Evaluations />} />
               <Route path="/schedule" element={<ScheduleGenerator />} />

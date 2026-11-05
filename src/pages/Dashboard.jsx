@@ -21,6 +21,8 @@ import { billedInMonth } from '../lib/money'
 import { isTestJob, isTestClient, isTestName } from '../lib/testData'
 import { useHideTests } from '../hooks/useHideTests'
 import AIChatPanel from '../components/AIChatPanel'
+import DayPanelView from '../components/DayPanelView'
+import { fetchDayPanel } from '../lib/dayPanel'
 
 const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
 const daysBetween = (from, to) => Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5) + 1
@@ -48,6 +50,8 @@ export default function Dashboard() {
   const [lastUpdate, setLastUpdate] = useState(null)
   const moneyRef = useRef(null)
   const [exceptions, setExceptions] = useState([])
+  // v1.0.151 · Painel do Dia (by store + team of today) — same source as Reports / Agenda / Ao vivo / bell
+  const [dayPanel, setDayPanel] = useState(null)
   const [monthMoney, setMonthMoney] = useState({ billed: 0, received: 0 })
   const [hideTests, setHideTests] = useHideTests()
   const [more, setMore] = useState(false)
@@ -69,6 +73,8 @@ export default function Dashboard() {
     const trendStart = addDays(range.from, -daysBetween(range.from, range.to))
     const trendEnd = addDays(range.to, 1)
     const month = today.slice(0, 7)
+    const nowT = new Date(Date.now() + 9 * 3600e3)
+    fetchDayPanel(today, { nowMin: nowT.getUTCHours() * 60 + nowT.getUTCMinutes(), today }).then(setDayPanel).catch(() => {})
     const [c, j, ev, stale, tj, tc, fm, cm, exc] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
@@ -286,7 +292,7 @@ export default function Dashboard() {
   // What the AI gets with each question: the same items as on screen, with ids so its buttons open the exact record.
   const attentionContext = [
     `Today (Tokyo): ${tokyoToday()}. Screen: admin Dashboard.`,
-    `Jobs today: ${todayDone.length} done of ${todayActive.length} planned.`,
+    dayPanel ? `Stores today: ${dayPanel.count.storesDone} of ${dayPanel.count.stores} done, ${dayPanel.count.storesWorking} in progress, ${dayPanel.count.storesLate} late (services ${dayPanel.count.servicesDone}/${dayPanel.count.services}). Team: ${dayPanel.team.map(p => `${p.name} ${p.done}/${p.total} shift ${p.state}`).join('; ')}.` : `Jobs today: ${todayDone.length} done of ${todayActive.length} planned.`,
     staleCount > 0 ? `${staleCount} old jobs still 'assigned' with a date before today (never started).` : '',
     actionRows.length ? 'Items needing attention (same as the bell):' : 'No items need attention.',
     ...actionRows.slice(0, 60).map(x => `- ${x.kind}: ${EXC[x.kind].title(x)}${x.who ? ` · ${x.who}` : ''}${x.place ? ` · ${x.place}` : ''}${x.date ? ` · ${x.date}` : ''}${x.jobId ? ` · job ${x.jobId}` : ''}${x.employeeId ? ` · employee ${x.employeeId}` : ''}${x.due ? ` · due ${x.due}${x.overdue ? ' (overdue)' : ''}` : ''} · screen ${EXC[x.kind].to(x)}`),
@@ -299,7 +305,6 @@ export default function Dashboard() {
     staleCount > 0 && { icon: '🗂', title: tr('Cancel old jobs never started', '未開始の古い作業をキャンセル', 'Cancelar serviços antigos não iniciados'), prompt: tr('Cancel the old jobs that were never started.', '未開始の古い作業をキャンセルして。', 'Cancela os serviços antigos que não foram iniciados.') },
     { icon: '📅', title: tr("How is tomorrow?", '明日の状況は？', 'Como está amanhã?'), prompt: tr("How is tomorrow's schedule? Anything without a person?", '明日の予定は？担当なしはある？', 'Como está a escala de amanhã? Tem algo sem pessoa?') },
   ].filter(Boolean)
-  const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }
   const costMonth = moneyRef.current?.costMonth
   // Cards without data are hidden (never "¥0" or "—" as if it were a number).
   const moneyCards = [
@@ -367,6 +372,8 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <DayPanelView panel={dayPanel} L={tr} admin={user?.name} onChanged={load} dateLabel={new Date().toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Tokyo' })} />
+
       {/* v1.0.130 · "Needs attention": a clean list, one row per kind (count + who + one button).
           The AI is a small bar under it that opens in a side panel with the same items as context. */}
       <section className="card dx-overview">
@@ -412,27 +419,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="dash-split">
-        <section className="card">
-          <div className="dx-overview-head">
-            <div><h2>{tr('Done today', '今日の完了', 'Hoje feito')}</h2><p>{tokyoToday()}</p></div>
-            <Link to="/live" className="dx-link">{tr('Live tracking →', 'ライブ追跡 →', 'Rastreamento ao vivo →')}</Link>
-          </div>
-          {todayActive.length === 0 ? <div className="ov-empty" style={{ padding: '18px 0' }}>{d.noTodayJobs}</div> : <>
-            <div className="dx-team-kpi" style={{ margin: '8px 0 10px' }}>
-              <span>{tr('Done / planned', '完了 / 予定', 'Feitos / previstos')}</span>
-              <strong>{todayDone.length} / {todayActive.length}</strong>
-              {liveJobs.length > 0 && <small>{tr(`${liveJobs.length} in progress now`, `${liveJobs.length}件 作業中`, `${liveJobs.length} em andamento agora`)}</small>}
-            </div>
-            {todayDone.map(j => (
-              <div key={j.id} style={rowStyle}>
-                <span style={{ fontSize: 13 }}>✓ {j.title?.replace(/ — .*/, '')}{isTestJob(j) && <span className="badge" style={{ marginLeft: 6 }}>TESTE</span>}</span>
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>{j.employee_name || '—'}</span>
-              </div>
-            ))}
-          </>}
-        </section>
-
+      <div>
         <section className="card">
           <div className="dx-overview-head">
             <div><h2>{tr('Money of the month', '今月のお金', 'Dinheiro do mês')}</h2><p>{tr('Same numbers as Contracts, Invoices and Cashflow', '契約・請求・キャッシュフローと同じ数字', 'Mesmos números de Contratos, Faturas e Cashflow')}</p></div>

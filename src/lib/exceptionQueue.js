@@ -11,9 +11,9 @@ import { isTestName } from './testData'
 import { problemJobId } from './fieldExec'
 import { coveredJobs } from './jobCoverage.js'
 
-const JOB_COLS = 'id,title,description,admin_reviewed,client_id,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category'
+const JOB_COLS = 'id,title,description,admin_reviewed,client_id,client_name,employee_id,employee_name,status,scheduled_date,scheduled_time,started_at,completed_at,retro_time_min,photo_start_url,photo_end_url,photo_ai_score,photo_ai_approved,job_category,retro_report'
 
-export const URGENCY = { late: 95, covered: 88, no_person: 90, problem: 85, incomplete: 80, disputed: 75, paid_unconfirmed: 72, payroll_review: 70, long: 60, no_photo: 50, ai_waiting: 30 }
+export const URGENCY = { retro_review: 65, late: 95, covered: 88, no_person: 90, problem: 85, incomplete: 80, disputed: 75, paid_unconfirmed: 72, payroll_review: 70, long: 60, no_photo: 50, ai_waiting: 30 }
 
 const place = j => String(j?.title || '').split(' — ')[0]
 
@@ -36,7 +36,9 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
   const out = []
   const push = (kind, j, extra) => {
     const dl = withDeadline(kind, j?.scheduled_date, today)
-    out.push({ id: `${kind}:${j?.id || extra.key}`, kind, urgency: URGENCY[kind] + (dl.overdue ? 10 : 0), date: j?.scheduled_date || '', place: j ? place(j) : '', who: j?.employee_name || '', jobId: j?.id || null, ...dl, ...extra })
+    out.push({ id: `${kind}:${j?.id || extra.key}`, kind, urgency: URGENCY[kind] + (dl.overdue ? 10 : 0), date: j?.scheduled_date || '', place: j ? place(j) : '', who: j?.employee_name || '', jobId: j?.id || null,
+      // v1.0.151 · what the bell card needs to be told apart without opening it: service type + the event's own time
+      title: j?.title || '', time: j?.scheduled_time ? String(j.scheduled_time).slice(0, 5) : '', at: j?.completed_at || j?.started_at || null, ...dl, ...extra })
   }
   // v1.0.148 · B did A's service: A is not late / incomplete — the owner decides [Retirar de A] / [Manter em A]
   const cov = coveredJobs(jobs)
@@ -49,10 +51,13 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     }
     if (hideTests && (isTestName(j.employee_name) || isTestName(j.client_name))) continue
     const done = j.status === 'completed'
-    if (!done && !j.employee_id && j.scheduled_date >= today && j.scheduled_date <= addDays(today, 1)) push('no_person', j, {})
+    // v1.0.154 · a free job (open to the team) is the Painel's: "livre" until the cut-off, then SEM COBERTURA
+    if (!done && !j.employee_id && j.spot_status !== 'pending' && j.scheduled_date >= today && j.scheduled_date <= addDays(today, 1)) push('no_person', j, {})
     // v1.0.147 · OTP night jobs: late only when not finished at 10:00 (running too), measured from 10:00
     else if (isDeadlineJob(j) ? (j.scheduled_date === today && isDeadlineLate(j, { now })) : (!done && j.status === 'assigned' && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5)) push('late', j, { minutes: Math.round(hoursPastDue(j, now) * 60), ...(isDeadlineJob(j) ? { deadline: deadlineOf(j) } : {}) })
     else if (isMissedJob(j, now) && j.scheduled_date >= addDays(today, -14)) push('incomplete', j, {})
+    // v1.0.151 · retroactive registration ("já concluído") waiting for the admin's review — was only in Ao vivo
+    if (j.retro_report != null && !j.admin_reviewed && j.scheduled_date >= addDays(today, -14)) push('retro_review', j, { at: j.completed_at || null })
     // v1.0.149 · the admin already checked this finished job (accepted without photo / reviewed): nothing left to do
     if (done && j.admin_reviewed) continue
     if (done && j.scheduled_date >= addDays(today, -7)) {
@@ -67,7 +72,7 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
   for (const m of problems) {
     if (hideTests && isTestName(m.employee_name)) continue
     const head = String(m.content || '').split('\n')
-    push('problem', null, { key: m.id, who: m.employee_name, employeeId: m.employee_id, place: head[0].replace(/^🛠\s*/, ''), text: head[1] || '', jobId: problemJobId(m.content), date: String(m.created_at || '').slice(0, 10) })
+    push('problem', null, { key: m.id, who: m.employee_name, employeeId: m.employee_id, place: head[0].replace(/^🛠\s*/, ''), text: head[1] || '', jobId: problemJobId(m.content), date: String(m.created_at || '').slice(0, 10), at: m.created_at || null })
   }
   for (const p of payroll.autoClosed || []) push('payroll_review', null, { key: p.period, period: p.period, date: p.period })
   for (const s of payroll.disputed || []) push('disputed', null, { key: s.id, who: s.employee_name, period: s.period, date: s.period })

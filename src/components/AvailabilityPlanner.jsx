@@ -71,7 +71,8 @@ export default function AvailabilityPlanner({ user, e, lang, plans, onPlansChang
   useEffect(() => { load() }, [user.id, weeks[0]]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saved = byDate(rows)
-  const kindOf = (d) => draft[d] ?? saved[d]?.kind ?? 'available'
+  // v1.0.151 · a "vou trabalhar" mark of the day reads as available here (the planner only plans off / extra)
+  const kindOf = (d) => draft[d] ?? (saved[d]?.kind === 'confirmed' ? 'available' : saved[d]?.kind) ?? 'available'
   const planned = new Set((plans || []).map(p => p.week_start))
   const alert = planningAlert(plans, today)
 
@@ -140,7 +141,7 @@ export default function AvailabilityPlanner({ user, e, lang, plans, onPlansChang
                 )
               })}
             </div>
-            {days.filter(d => saved[d] && saved[d].kind !== 'available' && !(d in draft)).map(d => (
+            {days.filter(d => saved[d] && saved[d].kind !== 'available' && saved[d].kind !== 'confirmed' && !(d in draft)).map(d => (
               <div key={d} className="av-note">
                 <span>{fmtDay(d, lang, { weekday: 'short', day: 'numeric', month: 'short' })} · {kindLabel(saved[d].kind, e)}</span>
                 <span className={`av-st-label is-${saved[d].status}`}>{statusLabel(saved[d].status, e)}</span>

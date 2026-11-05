@@ -8,12 +8,13 @@ import { apiFetch } from '../lib/apiFetch'
 import JobPhotos from '../components/JobPhotos'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
-import { useLang, fill, localeOf } from '../hooks/useLang'
+import { useLang, fill, localeOf, pickLang } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
 import { ManualCloseButton } from '../components/ManualCloseModal'
 import { adminMarkNotDone } from '../lib/jobAdminOps'
 import { useNavigate } from 'react-router-dom'
 import { fetchDayCoverage } from '../lib/dayCoverage'
+import DayStoreStrip from '../components/DayStoreStrip'
 
 const TZ = 'Asia/Tokyo'
 import { countJobs, LATE_AFTER_MIN } from '../lib/jobCounts'
@@ -324,6 +325,7 @@ export default function LiveTracking() {
         </div>
         <button type="button" className="btn btn-sm" onClick={load}>↻ {updatedAt ? fill(L.updated, { time: updatedAt.toLocaleTimeString('ja-JP', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }) }) : L.refresh}</button>
       </div>
+      <DayStoreStrip date={today} L={(en, ja, pt) => pickLang(lang, en, ja, pt)} />
 
       {cov && cov.total > 0 && (() => {
         const missing = cov.total - cov.done

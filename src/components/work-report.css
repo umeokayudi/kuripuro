@@ -1,0 +1,89 @@
+/* v1.0.150 · 作業報告書 editor + lists */
+.wr-overlay { position: fixed; inset: 0; z-index: 1200; background: rgba(12, 28, 48, .45); display: flex; justify-content: flex-end; }
+.wr-sheet { width: min(860px, 100%); height: 100%; background: var(--bg); display: flex; flex-direction: column; box-shadow: -8px 0 30px rgba(12, 28, 48, .2); }
+.wr-loading { padding: 40px; text-align: center; color: var(--text3); }
+.wr-head { display: flex; align-items: center; gap: 8px; padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px; background: #1f3a5f; color: #fff; flex: 0 0 auto; }
+.wr-head .btn { flex: 0 0 auto; }
+.wr-head .btn:not(.btn-primary) { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.25); }
+.wr-head .btn-primary { background: var(--gold); color: var(--navy); border-color: var(--gold); }
+.wr-head-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.wr-head-main b { font-size: 15px; font-weight: 600; }
+.wr-head-main span { font-size: 11.5px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wr-x { background: none; border: 0; color: #fff; font-size: 18px; cursor: pointer; padding: 4px 6px; }
+.wr-st { font-style: normal; padding: 1px 7px; border-radius: 99px; background: rgba(255,255,255,.18); }
+.wr-st.st-sent { background: #2e8b57; }
+.wr-st.st-ready { background: var(--gold); color: var(--navy); }
+.wr-body { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px calc(24px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 12px; }
+.wr-toggles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wr-toggles small { flex: 1 1 100%; color: var(--text2); font-size: 12px; }
+.wr-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.wr-seg button { border: 0; background: none; padding: 7px 14px; font: inherit; font-size: 13px; cursor: pointer; color: var(--text2); }
+.wr-seg button.on { background: #1f3a5f; color: #fff; }
+.wr-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.wr-card h4 { font-size: 14px; color: #1f3a5f; margin: 0; }
+.wr-card h5 { font-size: 12px; color: var(--text2); margin: 4px 0 -4px; font-weight: 600; }
+.wr-hint { font-size: 12px; color: var(--text2); margin: -4px 0 0; }
+.wr-notes { border-color: var(--gold); background: #fffaf0; }
+.wr-notes .btn { align-self: flex-start; }
+.wr-card textarea, .wr-card input, .wr-card select { width: 100%; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); min-width: 0; }
+.wr-card textarea { resize: vertical; line-height: 1.6; }
+.wr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.wr-grid label, .wr-quote label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text2); min-width: 0; }
+.wr-wide { grid-column: 1 / -1; }
+.wr-custom { display: grid; grid-template-columns: 1fr 2fr auto; gap: 6px; }
+.wr-custom button, .wr-part-head button, .wr-photo-act button { border: 1px solid var(--border); background: #fff; border-radius: 8px; padding: 0 10px; cursor: pointer; color: var(--red); }
+.wr-link { background: none; border: 1px dashed var(--border); border-radius: 8px; padding: 8px; color: #1f3a5f; font: inherit; font-size: 13px; cursor: pointer; text-align: center; }
+.wr-quote { display: grid; grid-template-columns: 2fr 1fr 1.3fr 1fr; gap: 8px; padding: 10px; background: var(--surface2); border-radius: 10px; }
+.wr-quote small { grid-column: 1 / -1; font-size: 12px; color: var(--text2); }
+.wr-ai { display: flex; flex-direction: column; gap: 4px; }
+.wr-ai-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.wr-ai-bar button { border: 1px solid var(--border); background: var(--surface2); border-radius: 99px; padding: 3px 11px; font: inherit; font-size: 12px; cursor: pointer; color: #1f3a5f; }
+.wr-ai-bar button:first-child { background: #1f3a5f; color: #fff; border-color: #1f3a5f; }
+.wr-ai-bar button:disabled { opacity: .5; }
+.wr-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.wr-photo { margin: 0; display: flex; flex-direction: column; gap: 4px; background: var(--surface2); border-radius: 8px; padding: 4px; }
+.wr-photo img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 6px; display: block; background: #dfe6ee; }
+.wr-photo input { font-size: 12px !important; padding: 4px 6px !important; }
+.wr-photo-act { display: flex; gap: 4px; }
+.wr-photo-act select { font-size: 11.5px !important; padding: 3px 4px !important; }
+.wr-photo-add { border: 2px dashed var(--border); border-radius: 8px; background: #fff; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 24px; cursor: pointer; color: #1f3a5f; }
+.wr-photo-add span { font-size: 12px; }
+.wr-cap { font-size: 13px !important; }
+.wr-part, .wr-extra { border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.wr-part-head { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; }
+.wr-part-head select { width: auto; }
+.wr-extra .wr-part-head { grid-template-columns: 1fr auto; }
+.wr-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.wr-pair small { font-size: 11.5px; color: var(--text2); }
+.wr-pair .wr-photos { grid-template-columns: 1fr; }
+.wr-pair .wr-photo-add { min-height: 110px; }
+.wr-foot { position: sticky; bottom: -24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 -4px 14px rgba(12,28,48,.06); }
+.wr-foot span { flex: 1 1 auto; font-size: 12.5px; color: var(--text2); }
+@media (max-width: 640px) {
+  .wr-sheet { width: 100%; }
+  .wr-head { flex-wrap: wrap; }
+  .wr-head-main { flex-basis: calc(100% - 44px); }
+  .wr-head .btn { flex: 1 1 0; }
+  .wr-grid, .wr-quote { grid-template-columns: 1fr; }
+  .wr-body { padding: 12px 12px 24px; }
+  .wr-photos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* lists (admin page, client sheet, client portal, employee card) */
+.wr-list { display: flex; flex-direction: column; gap: 8px; }
+.wr-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+.wr-row:hover { border-color: #1f3a5f; }
+.wr-row-ico { width: 34px; height: 34px; border-radius: 8px; background: #1f3a5f; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex: 0 0 auto; }
+.wr-row-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.wr-row-main b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wr-row-main span { font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wr-badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--surface2); color: var(--text2); white-space: nowrap; }
+.wr-badge.st-sent { background: var(--green-bg); color: var(--green); }
+.wr-badge.st-ready { background: var(--amber-bg); color: var(--amber); }
+.wr-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+.wr-filters select, .wr-filters input { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; min-width: 0; }
+.wr-new { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.wr-new > div { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.wr-new b { font-size: 13px; color: #1f3a5f; }
+.wr-new select { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; width: 100%; }
+@media (max-width: 640px) { .wr-new { grid-template-columns: 1fr; } }

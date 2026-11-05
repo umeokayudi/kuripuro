@@ -5,6 +5,7 @@ import { coveredJobs } from '../lib/jobCoverage'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
 import './agenda.css'
+import DayStoreStrip from './DayStoreStrip'
 import { supabase } from '../lib/supabase'
 import { useLang, localeOf } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
@@ -331,6 +332,7 @@ export default function DayAgenda({ onChanged, onEditJob }) {
         {date !== today && <button type="button" className="btn btn-sm btn-primary" onClick={() => setDate(today)}>{tr('Today', '今日', 'Hoje')}</button>}
         <button type="button" className="btn btn-sm" onClick={() => setShowSettings(s => !s)} title={tr('Alert settings', 'アラート設定', 'Configurar alertas')}>⚙️</button>
       </div>
+      <DayStoreStrip date={date} L={tr} />
 
       {showSettings && <SettingsPanel settings={settings} onSaved={s => { setSettings(s); setShowSettings(false) }} />}
 
