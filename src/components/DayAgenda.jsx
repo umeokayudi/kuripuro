@@ -27,6 +27,8 @@ import PhotoLightbox from './PhotoLightbox'
 import EmployeePayEdit from './EmployeePayEdit'
 import KeyReveal from './KeyReveal'
 import { ManualCloseButton } from './ManualCloseModal'
+import { JaFizButton } from './JaFizSheet'
+import { jaFizStamp, jaFizAuditFromJob } from '../lib/jaFiz'
 import { manualCloseStamp } from '../lib/manualClose'
 import RedistributeSheet from './RedistributeSheet'
 import { asItem, conflictsFor } from '../lib/assignFlow'
@@ -488,6 +490,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
             {info.bucket === 'late' && !missed && !job.covered_by && <span className="ag-badge" style={{ color: '#ef4444' }}>{tr('Late', '遅れ', 'Atrasado')}</span>}
             {after && <span className="ag-badge" style={{ color: '#a855f7' }}>📷 {tr('Waiting After photo', 'After写真待ち', 'Aguardando foto After')}</span>}
             {job.closed_manually_at && <span className="ag-badge" style={{ color: '#b45309' }}>🔒 {tr('Closed by admin', '管理者が終了', 'Fechado pelo admin')}</span>}
+            {job.status === 'completed' && job.retro_report != null && <span className="ag-badge" title={jaFizStamp(jaFizAuditFromJob(job), lang) || undefined} style={{ color: '#b45309', background: '#fef3c7' }}>📝 {tr('Retroactive', '事後', 'Retroativo')}</span>}
             {aiScoreView(job) && <span className="ag-badge" title={aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))} style={{ color: job.photo_ai_approved ? '#16a34a' : '#ef4444' }}>IA {job.photo_ai_score}/10 {job.photo_ai_approved ? '✅' : '⚠️'}{!issues.length && ` · ${aiReasonShort(aiScoreView(job), tr('no problems', '問題なし', 'sem problemas'))}`}</span>}
             {aiPending(job) && <span className="ag-badge" style={{ color: '#64748b' }}>IA …</span>}
             {ack && job.status === 'assigned' && <span className={`ag-seen ${ack}`}>{ack === 'seen' ? `👁 ${tr('Seen', '確認済み', 'Ciente')}` : `⏳ ${tr('Not seen yet', '未確認', 'Ainda não viu')}`}</span>}
@@ -544,6 +547,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
           {['assigned', 'in_progress', 'completed', 'cancelled'].map(s => <option key={s} value={s}>{statusLabel[s]}</option>)}
         </select>
         <ManualCloseButton job={job} expected={info.expected} className="btn btn-sm btn-primary" onDone={onSaved} />
+        <JaFizButton job={job} className="btn btn-sm btn-primary" onDone={onSaved} />
         {(job.started_at || job.status === 'completed') && <button type="button" className="btn btn-sm" onClick={() => setAdjust(a => !a)}>⏱ {tr('Adjust time', '時間を調整', 'Ajustar tempo')}</button>}
         {onEdit && <button type="button" className="btn btn-sm" onClick={() => onEdit(job)}>✏️</button>}
         <button type="button" className="btn btn-sm" onClick={showLog} title={tr('Change log', '変更履歴', 'Histórico')}>🕘</button>

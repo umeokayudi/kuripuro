@@ -101,4 +101,8 @@ export async function geminiGenerate(body, { timeoutMs } = {}) {
   throw new Error(`Gemini API error: ${lastErr}`)
 }
 
+<<<<<<< HEAD
 export const API_BUILD = '2026-11-05-v1.0.157'
+=======
+export const API_BUILD = '2026-11-05-v1.0.156'
+>>>>>>> origin/claude/project-thread-jcesu2

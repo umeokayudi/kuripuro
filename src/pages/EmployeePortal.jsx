@@ -61,6 +61,7 @@ import {
 } from '../lib/employeeAddJob'
 import {
   isOverdueAssignedJob,
+  hoursPastScheduled,
   isCriticallyOverdueJob,
   isMissedJob,
   canRegisterLate,
@@ -91,6 +92,8 @@ import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib
 import { aiIssuesText } from '../lib/photoAi'
 import { askConfirm } from '../components/ConfirmDialog'
 import AfterPhotoLater from '../components/AfterPhotoLater'
+import JaFizSheet from '../components/JaFizSheet'
+import { isJaFizCandidate } from '../lib/jaFiz'
 import EmployeeWorkReports from '../components/EmployeeWorkReports'
 import TeamDay from '../components/TeamDay'
 import { REVIEW_PREFIX } from '../lib/deductionReview'
@@ -196,6 +199,7 @@ export default function EmployeePortal() {
   const toastedTimeOff = useRef(new Set())
   const [siteCoordsById, setSiteCoordsById] = useState({})
   const [retroJob, setRetroJob] = useState(null)
+  const [jaFizJob, setJaFizJob] = useState(null) // v1.0.156 · "Já fiz" popup
   const [retroChecklist, setRetroChecklist] = useState([])
   const [retroText, setRetroText] = useState('')
   const [retroPhoto, setRetroPhoto] = useState(null)
@@ -897,7 +901,7 @@ export default function EmployeePortal() {
   // Late on the same day: only the basic registration, saved as retroactive.
   const handleRegisterLate = (job) => {
     if (overdueBusy) return
-    openRetro(job)
+    openRegister(job)
   }
 
   const handleAbandonStaleShift = async (job) => {
@@ -970,7 +974,7 @@ export default function EmployeePortal() {
       } else {
         toast.success(fill(e.pastServiceSuccess, { location: location.name }))
       }
-      openRetro(result.job)
+      openRegister(result.job)
       setTab('shift')
     } finally {
       setPastServiceBusy(false)
@@ -1036,6 +1040,12 @@ export default function EmployeePortal() {
   }
 
   // Relatório retroativo: trabalhador descreve o que fez, IA avalia contra o checklist
+  // v1.0.156 · a service never opened in the app → the "Já fiz" popup (times, checklist, photos, note);
+  // an already-completed one that is missing its report keeps the old late-report sheet.
+  const openRegister = (job) => {
+    if (isJaFizCandidate(job)) { setJaFizJob(job); return }
+    openRetro(job)
+  }
   const openRetro = (job) => {
     if (!canRegisterLate(job)) { toast.error(e.lateRegisterClosed); return }
     setRetroJob(job)
@@ -1886,7 +1896,7 @@ export default function EmployeePortal() {
           {job.status!=='completed'&&<button onClick={()=>{ onClose(); setAiJob(job) }} style={{width:'100%',padding:'12px',borderRadius:14,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.12)',color:'#d8b4fe',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:10}}>✦ {L('Ask the AI about this job','この作業についてAIに質問','Perguntar à IA sobre este job')}</button>}
           {/* One place to execute: today's jobs open in My day with checklist, photos, start and finish. */}
           {job.scheduled_date===today&&['assigned','in_progress'].includes(job.status)&&<button onClick={()=>{ onClose(); setFocusJobId(job.id); goToTab('shift') }} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',marginBottom:10}}>{job.status==='in_progress'?L('▶ Continue this job','▶ この作業を続ける','▶ Continuar este job'):L('▶ Open to do this job','▶ この作業を開く','▶ Abrir para executar')}</button>}
-          {job.status==='assigned'&&!activeJob&&canRegisterLate(job)&&<button onClick={()=>{ onClose(); openRetro(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>📝 {e.retroReport}</button>}
+          {job.status==='assigned'&&!activeJob&&canRegisterLate(job)&&<button onClick={()=>{ onClose(); openRegister(job) }} style={{width:'100%',padding:'14px',borderRadius:14,border:'1px solid rgba(193,156,86,0.3)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>{isJaFizCandidate(job)?`✓ ${L('Already done','もう済んだ','Já fiz')}`:`📝 ${e.retroReport}`}</button>}
           <button onClick={onClose} style={{width:'100%',padding:'14px',borderRadius:14,border:'none',background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.5)',fontSize:14,fontWeight:600,cursor:'pointer'}}>{e.close}</button>
         </div>
       </div>
@@ -1968,6 +1978,9 @@ export default function EmployeePortal() {
           onSubmit={handlePastService}
         />
       )}
+
+      {jaFizJob&&<JaFizSheet job={jaFizJob} actor={{ id: user.id, name: user.name, role: 'employee' }} contracts={serviceContracts}
+        onClose={()=>setJaFizJob(null)} onDone={()=>{ setJaFizJob(null); loadAll() }} />}
 
       {retroJob&&(
         <div className="emp-sheet-backdrop" style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
@@ -2358,7 +2371,7 @@ export default function EmployeePortal() {
         {tab==='shift'&&(
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{L('My day','今日の予定','Meu dia')}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
-          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRetro} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} photoStatus={photoStatus} onRetryPhotos={retryPhotos} onReportProblem={setProblemJob} />
+          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRegister} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} photoStatus={photoStatus} onRetryPhotos={retryPhotos} onReportProblem={setProblemJob} />
           <TeamDay userId={user.id} L={L} />
           </section>
         )}
@@ -3001,9 +3014,17 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                   onClick={(e)=>{ e.stopPropagation(); onRegisterLate?.(job) }}
                   style={{width:'100%',padding:'12px 10px',borderRadius:10,border:'none',background:overdueBusy===job.id?'rgba(255,255,255,0.08)':'linear-gradient(135deg,#c19c56,#e8c47a)',color:overdueBusy===job.id?'rgba(255,255,255,0.3)':'#0a1929',fontSize:13,fontWeight:800,cursor:overdueBusy===job.id?'not-allowed':'pointer'}}
                 >
-                  📝 {labels.overdueRegisterLate}
+                  ✓ {L('Already done — register','もう済んだ — 登録','Já fiz — registrar')}
                 </button>
               </div>
+            )}
+
+            {/* v1.0.156 · pending, start time passed, never opened: "Já fiz" registers it afterwards */}
+            {!isDone&&!isOverdue&&job.status==='assigned'&&!job.started_at&&!job.covered_by&&job.scheduled_date===today&&hoursPastScheduled(job)>=0&&openRetro&&(
+              <button type="button" className="jf-open" style={{marginBottom:8}} onClick={ev=>{ ev.stopPropagation(); openRetro(job) }}>
+                ✓ {L('Already done','もう済んだ','Já fiz')}
+                <span style={{display:'block',fontSize:10,fontWeight:600,opacity:.7,marginTop:2}}>{L('Did it but forgot the app? Register it here','作業したのにアプリを忘れた？ここで登録','Fez e esqueceu do app? Registre aqui')}</span>
+              </button>
             )}
 
             {isNext&&!isActive&&instructions&&(

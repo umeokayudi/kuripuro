@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import { useLang, fill, localeOf, pickLang } from '../hooks/useLang'
 import { askConfirm } from '../components/ConfirmDialog'
 import { ManualCloseButton } from '../components/ManualCloseModal'
+import { JaFizButton } from '../components/JaFizSheet'
 import { adminMarkNotDone } from '../lib/jobAdminOps'
 import { useNavigate } from 'react-router-dom'
 import { fetchDayCoverage } from '../lib/dayCoverage'
@@ -300,8 +301,10 @@ export default function LiveTracking() {
                 )}
                 {j.status !== 'completed' && (
                   <span className="lt-tl-acts">
-                    <ManualCloseButton job={j} allowNotStarted className="lt-act lt-act-close lt-act-sm" onDone={load}
-                      label={j.status === 'assigned' ? `✓ ${tr('Finish', '完了', 'Finalizar')}` : `🔒 ${tr('Close', '終了', 'Fechar')}`} />
+                    {/* v1.0.156 · never opened → "Já fiz" (times, checklist, photos, note); running → close manually */}
+                    {j.status === 'assigned' && !j.started_at
+                      ? <JaFizButton job={j} className="lt-act lt-act-close lt-act-sm" onDone={load} />
+                      : <ManualCloseButton job={j} allowNotStarted className="lt-act lt-act-close lt-act-sm" onDone={load} label={`🔒 ${tr('Close', '終了', 'Fechar')}`} />}
                     {j.status === 'assigned' && !j.started_at && <button type="button" className="lt-act lt-act-sm" onClick={() => markNotDone(j)}>✕ {tr('Not done', '未実施', 'Não feito')}</button>}
                   </span>
                 )}

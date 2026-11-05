@@ -152,6 +152,8 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
       late, deadline, time: isDeadlineJob(j) ? null : String(j.scheduled_time || '').slice(0, 5) || null, bucket, minutes,
       doneBy: b ? (b.employee_name || '') : (done ? j.employee_name || '' : ''), doneAt: tokyoHM(b ? b.completed_at : j.completed_at),
       coveredBy: b ? (b.employee_name || '') : '', startedAt: tokyoHM(j.started_at),
+      // v1.0.156 · done but registered afterwards ("Já fiz" / late report): counts as done, shows "Retroativo"
+      retro: done && !b && j.retro_report != null,
       // a free job is "livre" until the cut-off; after it nobody took it → sem cobertura
       uncovered: !done && ((!j.employee_id && !freeOpen) || cantIds.has(j.employee_id)),
       noPerson: !done && !j.employee_id && !free,
@@ -338,7 +340,7 @@ export async function fetchDayPanels(from, to = from, { nowMin = null, now = new
     supabase.from('service_contracts').select('*').eq('is_active', true),
     supabase.from('clients').select('id,company_name,is_active'),
     supabase.from('employees').select('*'),
-    supabase.from('jobs').select('id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report')
+    supabase.from('jobs').select('id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template')
       .gte('scheduled_date', from).lte('scheduled_date', to).limit(5000),
     supabase.from('jobs').select('title,employee_id').gte('scheduled_date', addDays(from, -28)).lt('scheduled_date', from)
       .not('employee_id', 'is', null).neq('status', 'cancelled').limit(3000),
