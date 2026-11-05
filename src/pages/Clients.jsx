@@ -21,6 +21,7 @@ import { isTestClient } from '../lib/testData'
 import AddressInput from '../components/AddressInput'
 import SetupLinkCard from '../components/SetupLinkCard'
 import ClientReportPanel from '../components/ClientReportPanel'
+import ViewAsClientButton from '../components/ClientPortalPreview'
 
 export default function Clients() {
   const [searchParams] = useSearchParams()
@@ -562,6 +563,7 @@ export default function Clients() {
                       <td style={{display:'flex',gap:4}}>
                         <button className="btn btn-sm btn-primary" onClick={()=>openEditPortalUser(u)}>✏️</button>
                         <button className="btn btn-sm" title={L('Password link','パスワード設定リンク','Link de senha')} onClick={()=>sendPortalPasswordLink(u)}>🔑</button>
+                        <ViewAsClientButton row={u} />
                         <button className="btn btn-sm" onClick={()=>togglePortalUser(u)}>{u.is_active?L('Disable','無効にする','Desativar'):L('Enable','有効にする','Ativar')}</button>
                         <button className="btn btn-sm btn-danger" aria-label={L('Delete login','ログインを削除','Excluir login')} onClick={()=>deletePortalUser(u)}>✕</button>
                       </td>

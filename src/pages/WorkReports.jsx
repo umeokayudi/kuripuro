@@ -9,8 +9,11 @@ import { useAuth } from '../hooks/useAuth'
 import { listAllReports } from '../lib/workReport'
 import WorkReportEditor from '../components/WorkReportEditor'
 import WorkReportList from '../components/WorkReportList'
+import PeriodReportEditor from '../components/PeriodReportEditor'
 import '../components/work-report.css'
 
+const lastMonth = () => { const d = new Date(Date.now() + 9 * 3600e3); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
+export const monthRange = ym => { const [y, m] = ym.split('-').map(Number); return { from: `${ym}-01`, to: `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}` } }
 const daysAgo = n => new Date(Date.now() - n * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
 
 export default function WorkReports() {
@@ -24,6 +27,9 @@ export default function WorkReports() {
   const [clientId, setClientId] = useState('')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(null) // { reportId?, job?, client? }
+  const [period, setPeriod] = useState(null) // { reportId } or { client, from, to }
+  const [pClient, setPClient] = useState('')
+  const [pMonth, setPMonth] = useState(lastMonth)
   const author = useMemo(() => ({ name: user?.name || '' }), [user?.name])
 
   const load = useCallback(async () => {
@@ -42,6 +48,7 @@ export default function WorkReports() {
   useEffect(() => {
     const p = new URLSearchParams(location.search)
     if (p.get('open')) setOpen({ reportId: p.get('open') })
+    if (p.get('period')) setPeriod({ reportId: p.get('period') })
   }, [location.search])
   useEffect(() => {
     const p = new URLSearchParams(location.search)
@@ -81,11 +88,16 @@ export default function WorkReports() {
           </select>
         </div>
         <div>
-          <b>＋ {tr('For a client (no service)', '顧客から作成', 'Para um cliente (sem serviço)')}</b>
-          <select value="" onChange={e => { const client = clients.find(c => c.id === e.target.value); if (client) setOpen({ client }) }}>
-            <option value="">{tr('Choose the client', '顧客を選択', 'Escolha o cliente')}</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
-          </select>
+          <b>＋ {tr('Client report of the month, by store', '月次・店舗別の報告書', 'Relatório do cliente do mês, por loja')}</b>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <select value={pClient} onChange={e => setPClient(e.target.value)} style={{ flex: 1 }}>
+              <option value="">{tr('Choose the client', '顧客を選択', 'Escolha o cliente')}</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+            </select>
+            <input type="month" value={pMonth} onChange={e => setPMonth(e.target.value)} style={{ font: 'inherit', fontSize: 13, padding: '7px 8px', border: '1px solid var(--border)', borderRadius: 8 }} />
+            <button type="button" className="btn btn-sm btn-primary" disabled={!pClient || !pMonth} onClick={() => setPeriod({ client: clients.find(c => c.id === pClient), ...monthRange(pMonth) })}>{tr('Build', '作成', 'Montar')}</button>
+          </div>
+          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('The system gathers the month\'s services and every photo/video, store by store.', '当月の作業と写真・動画を店舗ごとに自動で集めます。', 'O sistema junta os serviços do mês e todas as fotos/vídeos, loja por loja.')}</small>
         </div>
       </div>
 
@@ -100,7 +112,9 @@ export default function WorkReports() {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder={tr('Search', '検索', 'Buscar')} />
       </div>
 
-      {items === null ? <p style={{ color: 'var(--text3)' }}>…</p> : <WorkReportList items={shown} onOpen={s => setOpen({ reportId: s.id })} />}
+      {items === null ? <p style={{ color: 'var(--text3)' }}>…</p> : <WorkReportList items={shown} onOpen={s => (s.kind === 'period' ? setPeriod({ reportId: s.id }) : setOpen({ reportId: s.id }))} />}
+
+      {period && <PeriodReportEditor {...period} author={author} onSaved={() => load()} onClose={() => { setPeriod(null); load() }} />}
 
       {open && (
         <WorkReportEditor {...open} role="admin" author={author}

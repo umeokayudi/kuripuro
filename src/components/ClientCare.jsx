@@ -330,7 +330,7 @@ export function maintenanceAlertsFor({ locations, jobs, records, today }) {
   return out.sort((a, b) => a.daysLeft - b.daysLeft)
 }
 
-export function StoresView({ clientId, locations, jobs, profiles, records, today, labels, lang, onChanged, onQuote, userName, contactFor, crewFor, onChat }) {
+export function StoresView({ clientId, locations, jobs, profiles, records, today, labels, lang, onChanged, onQuote, userName, contactFor, crewFor, onChat, readOnly = false }) {
   const [active, setActive] = useState(locations[0] || '')
   const [saving, setSaving] = useState(false)
   useEffect(() => { if (!locations.includes(active)) setActive(locations[0] || '') }, [locations, active])
@@ -338,6 +338,7 @@ export function StoresView({ clientId, locations, jobs, profiles, records, today
   const rows = useMemo(() => maintenanceRows({ jobs, locationName: active, records, today }), [jobs, active, records, today])
 
   const saveProfile = async draft => {
+    if (readOnly) { toast(labels.previewReadOnly || 'Somente leitura (prévia).'); return false }
     setSaving(true)
     const body = { client_id: clientId, location_name: active, updated_by: userName || 'client', updated_at: new Date().toISOString() }
     for (const f of LOCATION_FIELDS) {

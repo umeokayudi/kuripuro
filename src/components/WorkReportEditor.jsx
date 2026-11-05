@@ -10,13 +10,14 @@ import { askConfirm } from './ConfirmDialog'
 import { openPrintHtml } from '../lib/openPrintHtml'
 import {
   blankReport, loadReport, saveReport, addReportPhoto, reportHtml, reportAi, draftPayload, applyDraft,
-  storagePublicUrl, quoteMoney, LEVELS, reportLabels, statusLabel, jobPhotoPaths, reportIdForJob,
+  storagePublicUrl, quoteMoney, LEVELS, reportLabels, statusLabel, reportIdForJob,
 } from '../lib/workReport'
+import { listJobMedia, isVideoPath } from '../lib/workMedia'
 import './work-report.css'
 
 const SECTIONS = ['before', 'during', 'after']
 
-function AiText({ value, onChange, field, lang, rows = 3, placeholder, context, small }) {
+export function AiText({ value, onChange, field, lang, rows = 3, placeholder, context, small }) {
   const { tr } = useLang()
   const [busy, setBusy] = useState('')
   const run = async size => {
@@ -47,7 +48,9 @@ function PhotoStrip({ photos, onAdd, onCaption, onRemove, onMove, adding, tr, se
     <div className="wr-photos">
       {photos.map(p => (
         <figure key={p.path} className="wr-photo">
-          <img src={storagePublicUrl(p.path)} alt="" loading="lazy" />
+          {p.kind === 'video' || isVideoPath(p.path)
+            ? <div className="wr-vid"><video src={`${storagePublicUrl(p.path)}#t=0.5`} controls playsInline preload="metadata" /><span>▶ {tr('video', '動画', 'vídeo')}</span></div>
+            : <img src={storagePublicUrl(p.path)} alt="" loading="lazy" />}
           <input value={p.caption || ''} placeholder={tr('Caption', '説明', 'Legenda')} onChange={e => onCaption(p, e.target.value)} />
           <div className="wr-photo-act">
             {sectionOptions && (
@@ -79,6 +82,8 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [adding, setAdding] = useState('')
   const [drafting, setDrafting] = useState(false)
+  const [view, setView] = useState('client')
+  const [pulling, setPulling] = useState(false)
   const [clients, setClients] = useState([])
   const [quotes, setQuotes] = useState([])
   const savedClient = useRef(undefined)
@@ -97,7 +102,8 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
         c = data
       }
       const fresh = blankReport({ mode: 'simple', job, client: c, author })
-      fresh.photos = jobPhotoPaths(job).map(p => ({ ...p, caption: '', by: 'job', at: new Date().toISOString() }))
+      // v1.0.154: every photo and video the team sent for this service comes in at once.
+      fresh.photos = (await listJobMedia(job)).map(m => ({ path: m.path, kind: m.kind, section: m.section, caption: '', by: 'job', at: new Date().toISOString() }))
       if (off) return
       savedClient.current = fresh.client_id
       setR(fresh)
@@ -162,6 +168,21 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
       setR(saved); setDirty(false); onSaved?.(saved)
       toast.success(tr(`${added.length} photo(s) saved`, `写真${added.length}枚を保存`, `${added.length} foto(s) salva(s)`))
     } catch (e) { toast.error(String(e.message || e).slice(0, 160)); setDirty(true) }
+  }
+  const pullMedia = async () => {
+    const ids = [...new Set([r.job_id, ...(r.job_ids || [])].filter(Boolean))]
+    if (!ids.length) { toast(tr('This report has no service linked.', 'この報告書には作業がありません。', 'Este relatório não tem serviço ligado.')); return }
+    setPulling(true)
+    try {
+      const { data: jobs } = await supabase.from('jobs').select('id,photo_start_url,photo_end_url').in('id', ids)
+      const found = (await Promise.all((jobs || ids.map(id => ({ id }))).map(j => listJobMedia(j)))).flat()
+      const cur = latest.current || r
+      const have = new Set((cur.photos || []).map(p => p.path))
+      const added = found.filter(m => !have.has(m.path)).map(m => ({ path: m.path, kind: m.kind, section: m.section, caption: '', by: 'job', at: new Date().toISOString() }))
+      if (!added.length) { toast(tr('Nothing new — all media is already here.', '新しい写真・動画はありません。', 'Nada novo — todas as fotos e vídeos já estão aqui.')); return }
+      set(prev => ({ photos: [...(prev.photos || []), ...added] }))
+      toast.success(tr(`${added.length} added — check and save`, `${added.length}件追加しました`, `${added.length} adicionado(s) — confira e salve`))
+    } catch (e) { toast.error(String(e.message || e).slice(0, 160)) } finally { setPulling(false) }
   }
   const updPhoto = (p, patch) => set(prev => ({ photos: prev.photos.map(x => (x.path === p.path ? { ...x, ...patch } : x)) }))
   const rmPhoto = p => set(prev => ({ photos: prev.photos.filter(x => x.path !== p.path) }))
@@ -241,15 +262,24 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
             : tr('Simple: overview, steps, before/after photos and notes.', 'シンプル：概要・工程・前後写真・ご報告事項', 'Simples: resumo, etapas, fotos antes/depois e avisos.')}</small>
         </div>
 
-        <section className="wr-card wr-notes">
-          <h4>1 · {tr('Your notes (any language)', 'メモ（何語でも可）', 'Suas notas (qualquer idioma)')}</h4>
-          <p className="wr-hint">{tr('What you found, what you did, problems on the day, what the client should do. The AI writes the report from this.', '状態・作業内容・当日の問題・お客様への提案などを書いてください。AIが報告書にまとめます。', 'O que encontrou, o que fez, problemas no dia, o que o cliente deve fazer. A IA escreve o relatório a partir disso.')}</p>
-          <textarea rows={5} value={r.notes_raw || ''} onChange={e => set({ notes_raw: e.target.value })} placeholder={tr('e.g. 6 ceiling ACs, drain pan very dirty with black mold and bad smell, filters clogged… elevator was locked so outside cleaning moved to another day', '例：天井カセット6台、ドレンパンに黒カビ・悪臭…', 'ex.: 6 ar-condicionados de teto, bandeja de dreno muito suja com mofo e cheiro forte, filtros entupidos… elevador estava trancado, limpeza externa ficou para outro dia')} />
-          <button type="button" className="btn btn-gold" disabled={drafting} onClick={generate}>{drafting ? tr('Writing…', '作成中…', 'Escrevendo…') : `✨ ${tr('Write the report with AI', 'AIで報告書を作成', 'Escrever o relatório com a IA')}`}</button>
-        </section>
+        <div className="wr-tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={view === 'client'} className={view === 'client' ? 'on' : ''} onClick={() => setView('client')}>👁 {tr('What the client sees', '顧客に見える内容', 'O que o cliente vê')}</button>
+          <button type="button" role="tab" aria-selected={view === 'internal'} className={`is-internal${view === 'internal' ? ' on' : ''}`} onClick={() => setView('internal')}>🔒 {tr('Internal — office only', '社内用（顧客には非表示）', 'Interno — só escritório')}</button>
+        </div>
+
+        {view === 'client' && (
+          <>
+            <section className="wr-card wr-aicard">
+              <div>
+                <b>✨ {tr('Write with AI', 'AIで作成', 'Escrever com a IA')}</b>
+                <span>{String(r.notes_raw || '').trim() ? tr('Uses the team notes (internal tab).', '社内メモを使って作成します。', 'Usa as notas da equipe (aba Interno).') : tr('Write the team notes first in the Internal tab.', '先に社内タブでメモを書いてください。', 'Escreva antes as notas da equipe na aba Interno.')}</span>
+              </div>
+              <button type="button" className="btn btn-gold" disabled={drafting} onClick={generate}>{drafting ? tr('Writing…', '作成中…', 'Escrevendo…') : tr('Write the report', '報告書を作成', 'Escrever o relatório')}</button>
+              <button type="button" className="btn btn-sm" disabled={pulling} onClick={pullMedia}>{pulling ? '…' : `↻ ${tr('Bring photos & videos of the service', '作業の写真・動画を取り込む', 'Puxar fotos e vídeos do serviço')}`}</button>
+            </section>
 
         <section className="wr-card">
-          <h4>2 · {t.overview}</h4>
+          <h4>{t.overview}</h4>
           <div className="wr-grid">
             {isAdmin ? (
               <label>{tr('Client', '顧客', 'Cliente')}
@@ -277,33 +307,19 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
             ))}
             <button type="button" className="wr-link wr-wide" onClick={() => set(prev => ({ custom_fields: [...(prev.custom_fields || []), { label: '', value: '' }] }))}>＋ {tr('Add field', '項目を追加', 'Adicionar campo')}</button>
           </div>
-          {isAdmin && (
-            <div className="wr-quote">
-              <label>{tr('Quote', '御見積書', 'Orçamento')}
-                <select value="" onChange={e => { const q = quotes.find(x => x.id === e.target.value); if (q) set({ quote: { number: q.quote_number || '', subtotal: q.subtotal || '', tax_rate: q.tax_rate ?? 10, label: r.quote?.label || '' } }) }}>
-                  <option value="">{quotes.length ? tr('Fill from a quote…', '見積書から入力…', 'Preencher de um orçamento…') : tr('No quote for this client', '見積書なし', 'Sem orçamento deste cliente')}</option>
-                  {quotes.map(q => <option key={q.id} value={q.id}>No.{q.quote_number} · {q.site_name || q.needs || ''} · ¥{Number(q.total || 0).toLocaleString('ja-JP')}</option>)}
-                </select>
-              </label>
-              <label>No.<input value={r.quote?.number || ''} onChange={e => set(prev => ({ quote: { ...prev.quote, number: e.target.value } }))} /></label>
-              <label>{tr('Amount excl. tax', '税抜金額', 'Valor sem imposto')}<input inputMode="numeric" value={r.quote?.subtotal || ''} onChange={e => set(prev => ({ quote: { ...prev.quote, subtotal: e.target.value } }))} /></label>
-              <label>{tr('Label', '表記', 'Rótulo')}<input value={r.quote?.label || ''} placeholder="7台" onChange={e => set(prev => ({ quote: { ...prev.quote, label: e.target.value } }))} /></label>
-              {money && <small>¥{money.sub.toLocaleString('ja-JP')} + {money.rate}% ¥{money.tax.toLocaleString('ja-JP')} = <b>¥{money.total.toLocaleString('ja-JP')}</b> · {tr('leave empty to hide the amount', '空欄で金額非表示', 'deixe vazio para não mostrar valor')}</small>}
-            </div>
-          )}
           <h5>{tr('Opening text', '冒頭の文章', 'Texto de abertura')}</h5>
           <AiText value={r.summary} onChange={v => set({ summary: v })} field="summary" lang={r.lang} rows={4} context={ctx} placeholder={tDoc.greeting(r.client_name, r.quote?.number)} />
         </section>
 
         <section className="wr-card">
-          <h4>3 · {t.work}</h4>
+          <h4>{t.work}</h4>
           <p className="wr-hint">{tr('One step per line.', '1行に1工程。', 'Uma etapa por linha.')}</p>
           <Lines value={r.steps} onChange={v => set({ steps: v })} placeholder={'養生：客席・床・家具をビニールシートで養生\n分解：吸込グリル、エアフィルター…'} />
         </section>
 
         {SECTIONS.filter(s => detailed || s !== 'during').map(s => (
           <section key={s} className="wr-card">
-            <h4>{s === 'before' ? '4' : s === 'during' ? '5' : detailed ? '6' : '5'} · {{ before: t.before, during: t.during, after: t.after }[s]}</h4>
+            <h4>{{ before: t.before, during: t.during, after: t.after }[s]}</h4>
             {s !== 'during' && <AiText value={r[s]?.text} onChange={v => set(prev => ({ [s]: { ...prev[s], text: v } }))} field={s} lang={r.lang} context={ctx} placeholder={s === 'before' ? tr('State before the work', '作業前の状態', 'Como estava antes') : tr('Result after the work', '作業後の状態', 'Resultado depois')} />}
             <PhotoStrip photos={photosOf(s)} adding={adding === s} tr={tr} sectionOptions={sectionOptions}
               onAdd={files => addPhotos(files, { key: s, section: s })}
@@ -314,7 +330,7 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
 
         {detailed && (
           <section className="wr-card">
-            <h4>7 · {t.parts}</h4>
+            <h4>{t.parts}</h4>
             <AiText value={r.parts_intro} onChange={v => set({ parts_intro: v })} field="extra" lang={r.lang} rows={2} context={ctx} placeholder={tr('Short intro of the table (optional)', '表の前の説明（任意）', 'Introdução da tabela (opcional)')} />
             {(r.parts || []).map((p, i) => (
               <div key={i} className="wr-part">
@@ -349,7 +365,7 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
 
         {detailed && (
           <section className="wr-card">
-            <h4>8 · {tr('Extra sections', '追加の説明', 'Seções extras')}</h4>
+            <h4>{tr('Extra sections', '追加の説明', 'Seções extras')}</h4>
             <p className="wr-hint">{tr('e.g. temperature sensors, age of the equipment.', '例：温度センサーへの影響、機器の使用年数', 'ex.: sensores de temperatura, idade do equipamento.')}</p>
             {(r.extras || []).map((e, i) => (
               <div key={i} className="wr-extra">
@@ -365,13 +381,13 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
         )}
 
         <section className="wr-card">
-          <h4>{detailed ? '9' : '6'} · {t.notices}</h4>
+          <h4>{t.notices}</h4>
           <AiText value={r.notices} onChange={v => set({ notices: v })} field="notices" lang={r.lang} rows={3} context={ctx} placeholder={tr('Problems on the day, rescheduling… (empty = not shown)', '当日の問題・再設定など（空欄なら非表示）', 'Problemas no dia, remarcação… (vazio = não aparece)')} />
         </section>
 
         {detailed && (
           <section className="wr-card">
-            <h4>10 · {t.recs}</h4>
+            <h4>{t.recs}</h4>
             <AiText small value={r.recs_intro} onChange={v => set({ recs_intro: v })} field="extra" lang={r.lang} rows={2} context={ctx} placeholder={tr('Intro (optional)', '前文（任意）', 'Introdução (opcional)')} />
             <p className="wr-hint">{tr('One recommendation per line.', '1行に1つ。', 'Uma sugestão por linha.')}</p>
             <Lines rows={4} value={r.recommendations} onChange={v => set({ recommendations: v })} placeholder={'分解洗浄：年1回を強く推奨\nエアフィルター清掃：2週間に1回'} />
@@ -382,6 +398,41 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
           <h4>{tr('Closing', '結び', 'Fechamento')}</h4>
           <input className="wr-cap" value={r.closing || ''} onChange={e => set({ closing: e.target.value })} />
         </section>
+
+          </>
+        )}
+
+        {view === 'internal' && (
+          <>
+            <p className="wr-internal-note">🔒 {tr('Nothing on this tab goes to the client. The preview shows exactly what the client sees.', 'このタブの内容は顧客には表示されません。プレビューが顧客に見える内容です。', 'Nada desta aba vai para o cliente. A prévia mostra exatamente o que o cliente vê.')}</p>
+            <section className="wr-card wr-notes">
+              <h4>{tr('Team notes for the AI (any language)', 'スタッフのメモ（AI用・何語でも可）', 'Notas da equipe para a IA (qualquer idioma)')}</h4>
+              <p className="wr-hint">{tr('What you found, what you did, problems on the day, what the client should do. The AI writes the report from this.', '状態・作業内容・当日の問題・お客様への提案などを書いてください。AIが報告書にまとめます。', 'O que encontrou, o que fez, problemas no dia, o que o cliente deve fazer. A IA escreve o relatório a partir disso.')}</p>
+              <textarea rows={5} value={r.notes_raw || ''} onChange={e => set({ notes_raw: e.target.value })} placeholder={tr('e.g. 6 ceiling ACs, drain pan very dirty with black mold and bad smell, filters clogged… elevator was locked so outside cleaning moved to another day', '例：天井カセット6台、ドレンパンに黒カビ・悪臭…', 'ex.: 6 ar-condicionados de teto, bandeja de dreno muito suja com mofo e cheiro forte, filtros entupidos… elevador estava trancado, limpeza externa ficou para outro dia')} />
+            </section>
+
+            {isAdmin && (
+              <section className="wr-card"><h4>{tr('Quote and amount', '見積・金額', 'Orçamento e valor')}</h4><div className="wr-quote">
+                <label>{tr('Quote', '御見積書', 'Orçamento')}
+                  <select value="" onChange={e => { const q = quotes.find(x => x.id === e.target.value); if (q) set({ quote: { number: q.quote_number || '', subtotal: q.subtotal || '', tax_rate: q.tax_rate ?? 10, label: r.quote?.label || '' } }) }}>
+                    <option value="">{quotes.length ? tr('Fill from a quote…', '見積書から入力…', 'Preencher de um orçamento…') : tr('No quote for this client', '見積書なし', 'Sem orçamento deste cliente')}</option>
+                    {quotes.map(q => <option key={q.id} value={q.id}>No.{q.quote_number} · {q.site_name || q.needs || ''} · ¥{Number(q.total || 0).toLocaleString('ja-JP')}</option>)}
+                  </select>
+                </label>
+                <label>No.<input value={r.quote?.number || ''} onChange={e => set(prev => ({ quote: { ...prev.quote, number: e.target.value } }))} /></label>
+                <label>{tr('Amount excl. tax', '税抜金額', 'Valor sem imposto')}<input inputMode="numeric" value={r.quote?.subtotal || ''} onChange={e => set(prev => ({ quote: { ...prev.quote, subtotal: e.target.value } }))} /></label>
+                <label>{tr('Label', '表記', 'Rótulo')}<input value={r.quote?.label || ''} placeholder="7台" onChange={e => set(prev => ({ quote: { ...prev.quote, label: e.target.value } }))} /></label>
+                {money && <small>¥{money.sub.toLocaleString('ja-JP')} + {money.rate}% ¥{money.tax.toLocaleString('ja-JP')} = <b>¥{money.total.toLocaleString('ja-JP')}</b></small>}
+              </div></section>
+            )}
+            {isAdmin && (
+              <section className="wr-card">
+                <h4>{tr('Office note', '事務所メモ', 'Nota do escritório')}</h4>
+                <textarea rows={3} value={r.internal?.office_note || ''} onChange={e => set(prev => ({ internal: { ...(prev.internal || {}), office_note: e.target.value } }))} placeholder={tr('Only the office sees this.', '事務所だけが見られます。', 'Só o escritório vê.')} />
+              </section>
+            )}
+          </>
+        )}
 
         <footer className="wr-foot">
           {isAdmin ? (

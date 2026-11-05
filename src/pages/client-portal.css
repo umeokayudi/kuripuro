@@ -1360,3 +1360,17 @@
 .cpx-chat.is-desktop .cpx-chat-compose{position:static;transform:none;max-width:none;padding:0;background:none}
 .cpx-stepper b.is-empty{color:#b3bdcc;font-weight:600}
 .cpx-bubble.is-photo img{min-width:160px;min-height:120px;background:#dbe3f0}
+/* v1.0.154 · store gallery + preview banner */
+.cpg{display:flex;flex-direction:column;gap:12px}
+.cpg-svc{background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:12px}
+.cpg-h{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:13px;margin-bottom:8px;color:#4a5d78}
+.cpg-h b{color:#0c1c30}
+.cpg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}
+.cpg-grid figure{margin:0;position:relative}
+.cpg-grid img,.cpg-grid video{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;display:block;background:#e9eef5;cursor:pointer}
+.cpg-grid em{position:absolute;left:4px;bottom:4px;font-style:normal;font-size:10px;background:rgba(255,255,255,.88);color:#1f3a5f;padding:0 6px;border-radius:99px;pointer-events:none}
+.cpg-empty{color:#7a879a;font-size:12.5px}
+.cpg-load{color:#7a879a;font-size:12px}
+.cpx-subtabs{display:flex;gap:6px;flex-wrap:wrap}
+.cp-preview-bar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:10px;justify-content:space-between;background:#3a3f4a;color:#fff;padding:9px 14px;font-size:13px}
+.cp-preview-bar button{border:0;background:#fff;color:#3a3f4a;font-weight:700;border-radius:8px;padding:6px 12px;cursor:pointer}

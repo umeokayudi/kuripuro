@@ -12,6 +12,8 @@ import { supabase, SUPABASE_URL } from './supabase'
 import { uploadJobPhoto } from './uploadPhoto'
 import { escapeHtml } from './escapeHtml'
 import { QUOTE_ISSUER } from './quoteIssuer'
+import { getCleaningType, locationNameFromTitle } from './cleaningType'
+import { isVideoPath } from './workMedia'
 
 const BUCKET = 'service-photos'
 const ROOT = 'work-reports'
@@ -99,7 +101,9 @@ export function summaryOf(r) {
   return {
     id: r.id, mode: r.mode, status: r.status, title: r.title, client_id: r.client_id, client_name: r.client_name,
     location: r.location, work_date: r.work_date, job_id: r.job_id, job_ids: r.job_ids || [],
-    photos: (r.photos || []).length, updated_at: r.updated_at, sent_at: r.sent_at || null, created_by: r.created_by || '',
+    photos: r.kind === 'period' ? periodMediaCount(r) : (r.photos || []).length, updated_at: r.updated_at, sent_at: r.sent_at || null, created_by: r.created_by || '',
+    kind: r.kind || 'service', from: r.from || null, to: r.to || null,
+    stores: r.kind === 'period' ? (r.stores || []).map(st => st.name) : (r.location ? [r.location] : []),
   }
 }
 
@@ -189,9 +193,42 @@ export function quoteMoney(q = {}) {
   const tax = Math.round(sub * rate / 100)
   return { sub, rate, tax, total: sub + tax }
 }
-const yen = n => `${Math.round(n).toLocaleString('ja-JP')}円`
 
 // ───────────────────────── print / view (A4) ─────────────────────────
+const STYLE = `@page{size:A4;margin:16mm 14mm 14mm}
+*{box-sizing:border-box}
+body{font-family:"Noto Sans JP","Hiragino Sans","Yu Gothic",-apple-system,sans-serif;color:#1d2533;margin:0;font-size:13px;line-height:1.75;background:#fff}
+.bar{background:#1f3a5f;color:#fff;font-size:11px;padding:9px 18px;letter-spacing:.04em}
+.page{max-width:820px;margin:0 auto;padding:22px 18px 30px}
+h1{color:#1f3a5f;font-weight:500;font-size:24px;margin:10px 0 2px}
+.meta{color:#667;font-size:11.5px;margin-bottom:16px}
+section{margin:0 0 14px}
+h2{background:#1f3a5f;color:#fff;font-weight:500;font-size:16px;margin:16px 0 10px;padding:8px 12px;break-after:avoid}
+h3{color:#1f3a5f;font-weight:500;font-size:14.5px;margin:14px 0 6px;break-after:avoid}
+p{margin:0 0 8px}
+.to{margin-bottom:6px}
+table{width:100%;border-collapse:collapse;margin:8px 0 6px;font-size:12px}
+.kv th{width:30%;background:#eef2f7;font-weight:400;text-align:left;border:1px solid #c9d3e0;padding:6px 9px;vertical-align:top}
+.kv td{border:1px solid #c9d3e0;padding:6px 9px}
+.pt th{background:#1f3a5f;color:#fff;font-weight:400;text-align:left;padding:6px 7px;border:1px solid #c9d3e0}
+.pt td{border:1px solid #c9d3e0;padding:6px 7px;vertical-align:top}
+tr{break-inside:avoid}
+ol,ul{margin:4px 0 8px;padding-left:24px}
+li{margin:2px 0}
+.grid{display:grid;gap:4px;margin:8px auto 4px;max-width:600px;break-inside:avoid}
+figure{margin:0}
+.grid img,.grid video{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:#eef2f7}
+.vid{position:relative}.vtag{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:1px 7px;border-radius:99px;pointer-events:none}
+.svc{border-top:1px solid #dce2ea;padding:10px 0 4px;break-inside:avoid}.svc-h{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;margin-bottom:4px}.svc-h b{color:#1f3a5f}.svc-h span{color:#556}.ba{font-size:11px;color:#1f3a5f;margin:6px 0 0}
+.lst td,.lst th{border:1px solid #c9d3e0;padding:5px 8px;text-align:left}.lst th{background:#eef2f7;font-weight:400}
+figcaption{font-size:10.5px;color:#556;margin-top:2px}
+.cap{font-size:10.5px;color:#667;margin:2px 0 10px}
+.pair{break-inside:avoid;margin-bottom:8px}
+.pair .grid{max-width:360px}
+.sign{border:1px solid #1f3a5f;background:#eef2f7;padding:10px 12px;font-size:11.5px;margin-top:18px;line-height:1.6;break-inside:avoid}
+@media print{video{display:none}.vid::before{content:'▶ 動画はポータルでご覧いただけます';display:block;font-size:10px;color:#556;padding:30px 6px;background:#eef2f7;aspect-ratio:3/4}.vtag{display:none}.page{padding:14px 0 0}.bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.pt th,.kv th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media (max-width:560px){h1{font-size:19px}.kv th{width:38%}.pt{font-size:10.5px}}
+`
 const T = {
   ja: {
     doc: '作業報告書', date: '作業日', issued: '発行', sama: '様', overview: '作業概要', work: '作業内容',
@@ -233,28 +270,31 @@ const LEVEL_BG = { heavy: '#fbe3e6', medium_heavy: '#fdebd8', medium: '#fff4d6',
 const esc = escapeHtml
 const paras = text => String(text || '').split(/\n{2,}|\n/).map(s => s.trim()).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join('')
 
+const isVideo = p => p?.kind === 'video' || isVideoPath(p?.path)
+const mediaTag = p => isVideo(p)
+  ? `<video src="${esc(storagePublicUrl(p.path))}#t=0.5" controls playsinline preload="metadata"></video><span class="vtag">▶</span>`
+  : `<img src="${esc(storagePublicUrl(p.path))}" alt="" loading="lazy">`
+
 function photoGrid(photos, { cols = 3, caption = '' } = {}) {
   if (!photos.length) return ''
   const n = Math.min(cols, photos.length)
-  return `<div class="grid" style="grid-template-columns:repeat(${n},1fr)">${photos.map(p => `<figure><img src="${esc(storagePublicUrl(p.path))}" alt="">${p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : ''}</figure>`).join('')}</div>${caption ? `<div class="cap">${esc(caption)}</div>` : ''}`
+  return `<div class="grid" style="grid-template-columns:repeat(${n},1fr)">${photos.map(p => `<figure${isVideo(p) ? ' class="vid"' : ''}>${mediaTag(p)}${p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : ''}</figure>`).join('')}</div>${caption ? `<div class="cap">${esc(caption)}</div>` : ''}`
 }
 
 /** Full A4 HTML of the report (print / save as PDF / client portal). */
-export function reportHtml(r) {
+export function reportHtml(r, opts = {}) {
+  if (r.kind === 'period') return periodHtml(r, opts)
   const t = reportLabels(r.lang)
   const detailed = r.mode === 'detailed'
   const issuer = r.lang === 'ja' ? 'KuriPuro' : 'KuriPuro'
   const title = `${t.doc}${r.title ? `｜${r.title}` : ''}`
   const date = r.work_date ? new Date(`${r.work_date}T12:00:00`).toLocaleDateString(r.lang === 'ja' ? 'ja-JP' : r.lang === 'pt' ? 'pt-BR' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
-  const money = quoteMoney(r.quote)
   const f = r.fields || {}
   const rows = [
     [t.place, f.place], [t.equipment, f.equipment], [t.date, date], [t.lead, f.lead], [t.tech, f.tech],
     [t.doneToday, f.done_today], [t.otherDay, f.other_day],
     ...(r.custom_fields || []).map(c => [c.label, c.value]),
-    money ? [`${t.quote}${r.quote.label ? `（${r.quote.label}）` : ''}`, r.lang === 'ja'
-      ? `${yen(money.sub)}${t.taxEx}＋${t.taxLabel}（${money.rate}%）${yen(money.tax)}＝${t.totalLabel} ${yen(money.total)}${t.taxIn}`
-      : `¥${money.sub.toLocaleString('ja-JP')}${t.taxEx} + ${t.taxLabel} ${money.rate}% ¥${money.tax.toLocaleString('ja-JP')} = ${t.totalLabel} ¥${money.total.toLocaleString('ja-JP')}${t.taxIn}`] : null,
+    // v1.0.154: amounts are internal (office only) — never printed for the client.
   ].filter(x => x && String(x[1] || '').trim())
 
   const photos = sec => (r.photos || []).filter(p => p.section === sec)
@@ -289,37 +329,86 @@ export function reportHtml(r) {
 
   return `<!doctype html><html lang="${esc(r.lang || 'ja')}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · ${esc(r.client_name || '')}</title>
 <style>
-@page{size:A4;margin:16mm 14mm 14mm}
-*{box-sizing:border-box}
-body{font-family:"Noto Sans JP","Hiragino Sans","Yu Gothic",-apple-system,sans-serif;color:#1d2533;margin:0;font-size:13px;line-height:1.75;background:#fff}
-.bar{background:#1f3a5f;color:#fff;font-size:11px;padding:9px 18px;letter-spacing:.04em}
-.page{max-width:820px;margin:0 auto;padding:22px 18px 30px}
-h1{color:#1f3a5f;font-weight:500;font-size:24px;margin:10px 0 2px}
-.meta{color:#667;font-size:11.5px;margin-bottom:16px}
-section{margin:0 0 14px}
-h2{background:#1f3a5f;color:#fff;font-weight:500;font-size:16px;margin:16px 0 10px;padding:8px 12px;break-after:avoid}
-h3{color:#1f3a5f;font-weight:500;font-size:14.5px;margin:14px 0 6px;break-after:avoid}
-p{margin:0 0 8px}
-.to{margin-bottom:6px}
-table{width:100%;border-collapse:collapse;margin:8px 0 6px;font-size:12px}
-.kv th{width:30%;background:#eef2f7;font-weight:400;text-align:left;border:1px solid #c9d3e0;padding:6px 9px;vertical-align:top}
-.kv td{border:1px solid #c9d3e0;padding:6px 9px}
-.pt th{background:#1f3a5f;color:#fff;font-weight:400;text-align:left;padding:6px 7px;border:1px solid #c9d3e0}
-.pt td{border:1px solid #c9d3e0;padding:6px 7px;vertical-align:top}
-tr{break-inside:avoid}
-ol,ul{margin:4px 0 8px;padding-left:24px}
-li{margin:2px 0}
-.grid{display:grid;gap:4px;margin:8px auto 4px;max-width:600px;break-inside:avoid}
-figure{margin:0}
-.grid img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:#eef2f7}
-figcaption{font-size:10.5px;color:#556;margin-top:2px}
-.cap{font-size:10.5px;color:#667;margin:2px 0 10px}
-.pair{break-inside:avoid;margin-bottom:8px}
-.pair .grid{max-width:360px}
-.sign{border:1px solid #1f3a5f;background:#eef2f7;padding:10px 12px;font-size:11.5px;margin-top:18px;line-height:1.6;break-inside:avoid}
-@media print{.page{padding:14px 0 0}.bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.pt th,.kv th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-@media (max-width:560px){h1{font-size:19px}.kv th{width:38%}.pt{font-size:10.5px}}
+${STYLE}
 </style></head><body><div class="bar">KuriPuro｜${esc(t.doc)}</div><div class="page">${body}</div></body></html>`
+}
+
+// ───────────────────────── period report (one section per store) ─────────────────────────
+const P = {
+  ja: { doc: '作業報告書', period: '対象期間', store: '店舗', services: '件', date: '日付', type: '作業内容', who: '担当', before: '作業前', after: '作業後', none: 'この期間の完了作業はありません。', intro: (c, f, t) => `いつも大変お世話になっております。KuriPuroでございます。${f}〜${t}に実施いたしました清掃作業につきまして、店舗ごとに下記の通りご報告申し上げます。` , types: { basic: '定期清掃', deep: 'ディープクリーニング', spot: 'スポット' }, summary: '店舗別まとめ' },
+  en: { doc: 'Service Report', period: 'Period', store: 'Store', services: 'services', date: 'Date', type: 'Service', who: 'Done by', before: 'Before', after: 'After', none: 'No completed service in this period.', intro: (c, f, t) => `Thank you for choosing KuriPuro. Below is our report of the cleaning carried out from ${f} to ${t}, store by store.`, types: { basic: 'Regular cleaning', deep: 'Deep cleaning', spot: 'Spot' }, summary: 'Summary by store' },
+  pt: { doc: 'Relatório de serviços', period: 'Período', store: 'Loja', services: 'serviços', date: 'Data', type: 'Serviço', who: 'Feito por', before: 'Antes', after: 'Depois', none: 'Nenhum serviço concluído neste período.', intro: (c, f, t) => `Obrigado por escolher a KuriPuro. Segue o relatório das limpezas feitas de ${f} a ${t}, loja por loja.`, types: { basic: 'Limpeza regular', deep: 'Limpeza profunda', spot: 'Spot' }, summary: 'Resumo por loja' },
+}
+export const periodLabels = lang => P[lang] || P.ja
+const localeFor = lang => (lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-US')
+const fmtDay = (d, lang, opts = { year: 'numeric', month: 'long', day: 'numeric' }) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString(localeFor(lang), opts) : '')
+
+export function periodMediaCount(r) {
+  return (r.stores || []).reduce((n, st) => n + (st.services || []).reduce((m, sv) => m + (sv.media || []).filter(x => x.include !== false).length, 0), 0)
+}
+
+/**
+ * Builds the client's report of a period from what already exists: completed services
+ * (date, type, who) grouped by store, with every before/after photo and video of them.
+ * Never copies times, values, AI grades or internal notes.
+ */
+export function buildPeriodReport({ client, from, to, jobs, media, author, lang = 'ja' }) {
+  const done = (jobs || []).filter(j => j.status === 'completed' && (!client?.id || !j.client_id || j.client_id === client.id) && j.scheduled_date >= from && j.scheduled_date <= to)
+  const byStore = new Map()
+  for (const j of done.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))) {
+    const name = locationNameFromTitle(j.title) || j.title || '—'
+    if (!byStore.has(name)) byStore.set(name, [])
+    byStore.get(name).push({
+      job_id: j.id,
+      date: j.scheduled_date,
+      type: j.job_category === 'spot' ? 'spot' : getCleaningType(j) === 'deep' ? 'deep' : 'basic',
+      service: String(j.title || '').split(' — ')[1] || '',
+      who: j.employee_name || '',
+      include: true,
+      media: (media?.get?.(j.id) || []).map(m => ({ path: m.path, kind: m.kind, section: m.section, include: true })),
+    })
+  }
+  const stores = [...byStore.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, services]) => ({ name, note: '', services }))
+  const L = periodLabels(lang)
+  return {
+    id: newId(), v: 1, kind: 'period', mode: 'period', status: 'draft', lang,
+    client_id: client?.id || null, client_name: client?.company_name || '', contact_name: client?.manager_name || client?.contact_name || '',
+    location: null, job_id: null, job_ids: [], title: `${fmtDay(from, lang, { year: 'numeric', month: 'long' })} ${L.doc}`,
+    work_date: to, from, to, summary: L.intro(client?.company_name, fmtDay(from, lang), fmtDay(to, lang)),
+    stores, internal: { office_note: '' }, closing: lang === 'ja' ? 'ご不明な点がございましたら、お気軽にお問い合わせください。' : '',
+    created_at: new Date().toISOString(), created_by: author?.name || '', updated_at: new Date().toISOString(), history: [],
+  }
+}
+
+/** Client view of a period report. `store` limits it to one store (store logins of the portal). */
+function periodHtml(r, { store } = {}) {
+  const L = periodLabels(r.lang)
+  const stores = (r.stores || []).filter(st => !store || st.name === store)
+    .map(st => ({ ...st, services: (st.services || []).filter(sv => sv.include !== false) }))
+    .filter(st => st.services.length)
+  const total = stores.reduce((n, st) => n + st.services.length, 0)
+  const title = r.title || L.doc
+  const summary = stores.length > 1
+    ? `<section><h2>${esc(L.summary)}</h2><table class="lst"><tr><th>${esc(L.store)}</th><th>${esc(L.services)}</th></tr>${stores.map(st => `<tr><td>${esc(st.name)}</td><td>${st.services.length}</td></tr>`).join('')}</table></section>` : ''
+  const blocks = stores.map(st => `<section><h2>${esc(L.store)}：${esc(st.name)}（${st.services.length}${r.lang === 'ja' ? '件' : ` ${esc(L.services)}`}）</h2>${paras(st.note)}${st.services.map(sv => {
+    const m = (sv.media || []).filter(x => x.include !== false)
+    const b = m.filter(x => x.section === 'before'), a = m.filter(x => x.section !== 'before')
+    return `<div class="svc"><div class="svc-h"><b>${esc(fmtDay(sv.date, r.lang, { month: 'long', day: 'numeric', weekday: 'short' }))}</b><span>${esc(L.types[sv.type] || '')}${sv.service && sv.type !== 'basic' ? ` · ${esc(sv.service)}` : ''}</span><span>${esc(L.who)}：${esc(sv.who || '—')}</span></div>${b.length ? `<div class="ba">${esc(L.before)}</div>${photoGrid(b, { cols: 4 })}` : ''}${a.length ? `<div class="ba">${esc(L.after)}</div>${photoGrid(a, { cols: 4 })}` : ''}</div>`
+  }).join('')}</section>`).join('')
+  const body = `<h1>${esc(title)}</h1><div class="meta">${esc(r.client_name)}${r.lang === 'ja' ? '様' : ''}${store ? ` ｜ ${esc(store)}` : ''} ｜ ${esc(L.period)}：${esc(fmtDay(r.from, r.lang))}〜${esc(fmtDay(r.to, r.lang))} ｜ ${total}${r.lang === 'ja' ? '件' : ` ${esc(L.services)}`}</div>
+${paras(r.summary)}${summary}${blocks || `<p>${esc(L.none)}</p>`}${paras(r.closing)}<div class="sign">KuriPuro<br>TEL: ${esc(QUOTE_ISSUER.phone)}\u3000Mail: ${esc(QUOTE_ISSUER.email)}</div>`
+  return `<!doctype html><html lang="${esc(r.lang || 'ja')}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · ${esc(r.client_name || '')}</title><style>
+${STYLE}
+</style></head><body><div class="bar">KuriPuro｜${esc(L.doc)}</div><div class="page">${body}</div></body></html>`
+}
+
+/** Can this portal login see this report? Store logins see their store only. */
+export function reportVisibleTo(summary, user) {
+  if (!summary || summary.status !== 'sent' || !user?.client_id) return false
+  if (summary.client_id && summary.client_id !== user.client_id) return false
+  if (!user.location_name) return true
+  const stores = summary.stores?.length ? summary.stores : (summary.location ? [summary.location] : [])
+  return !stores.length || stores.includes(user.location_name)
 }
 
 // ───────────────────────── AI ─────────────────────────

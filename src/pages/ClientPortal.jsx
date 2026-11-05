@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase as realSupabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, fill, pickLang } from '../hooks/useLang'
 import WorkReportList from '../components/WorkReportList'
-import { listClientReports, loadReport, reportHtml } from '../lib/workReport'
+import { listClientReports, loadReport, reportHtml, reportVisibleTo, periodLabels } from '../lib/workReport'
+import StoreGallery from '../components/StoreGallery'
+import { readOnlyDb, PREVIEW_BLOCKED } from '../lib/portalPreview'
 import { openPrintHtml } from '../lib/openPrintHtml'
 import LanguageToggle from '../components/LanguageToggle'
 import {
-  buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
+  buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID, getCleaningType,
 } from '../lib/cleaningType'
-import { fmtDuration, jobDurationMin } from '../lib/jobReport'
+import { jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import JobVideos from '../components/JobVideos'
@@ -17,7 +19,7 @@ import { ManagerCard, BillingView, BillingAlerts, StoresView, QuoteForm, Request
 import { summarizeCleaningMonth, deepSummaryFromPlan, weeklyCompleted, shiftMonth } from '../lib/clientProgress'
 import PhotoLightbox from '../components/PhotoLightbox'
 import {
-  jobMatchesClientUser, locationFromJob, fmtVisitTime, fmtVisitEnd, ratingMatchesClientUser,
+  jobMatchesClientUser, locationFromJob, ratingMatchesClientUser,
   clientStoreNames, storeContact, storeCrew,
 } from '../lib/clientPortal'
 import { chatPhoto, chatDayKey, photoMessage } from '../lib/chatContent'
@@ -63,8 +65,16 @@ function visitRangeForPreset(preset, today) {
   return { from: `${today.slice(0, 7)}-01`, to: today }
 }
 
-export default function ClientPortal() {
-  const { user, logout, updateSession } = useAuth()
+// v1.0.154 · `previewUser` = admin "Ver como o cliente": same screens, read only, no client password.
+export default function ClientPortal({ previewUser = null, onExitPreview } = {}) {
+  const auth = useAuth()
+  const preview = !!previewUser
+  const user = previewUser || auth.user
+  const logout = preview ? () => onExitPreview?.() : auth.logout
+  const updateSession = preview ? () => {} : auth.updateSession
+  // Every insert / update / delete is refused in preview; reads go through as normal.
+  const supabase = useMemo(() => (preview ? readOnlyDb(realSupabase) : realSupabase), [preview])
+  const guard = () => { if (preview) { toast(PREVIEW_BLOCKED[lang] || PREVIEW_BLOCKED.en); return true } return false }
   const { lang, switchLang, t: tr } = useLang()
   const c = tr?.client
   const dateLocale = lang === 'ja' ? 'ja-JP' : 'en-GB'
@@ -127,19 +137,21 @@ export default function ClientPortal() {
   useEffect(() => {
     if (!user?.client_id) return
     listClientReports(user.client_id)
-      .then(list => setWorkReports(list.filter(r => r.status === 'sent' && (!user.location_name || !r.location || r.location === user.location_name))))
+      .then(list => setWorkReports(list.filter(r => reportVisibleTo(r, user))))
       .catch(() => setWorkReports([]))
   }, [user?.client_id, user?.location_name])
   const unseenReports = workReports.filter(r => !seenReports.includes(r.id))
   const openWorkReport = async s => {
     const full = await loadReport(s.id)
     if (!full || full.status !== 'sent') { toast.error(pickLang(lang, 'Could not open the report.', '報告書を開けませんでした。', 'Não foi possível abrir o relatório.')); return }
-    openPrintHtml(reportHtml(full))
+    openPrintHtml(reportHtml(full, { store: user.location_name || undefined }))
+    if (preview) return
     const next = [...new Set([...seenReports, s.id])]
     setSeenReports(next)
     try { localStorage.setItem(`cp_wr_seen_${user?.client_id}`, JSON.stringify(next)) } catch { /* private mode */ }
   }
-  const reportsLabel = pickLang(lang, 'Service reports', '作業報告書', 'Relatórios')
+  const reportsLabel = pickLang(lang, 'Reports & photos', '報告書・写真', 'Relatórios e fotos')
+  const [reportsView, setReportsView] = useState('reports')
 
   const [facilityModels, setFacilityModels] = useState([])
   const [facilityRecs, setFacilityRecs] = useState([])
@@ -255,6 +267,7 @@ export default function ClientPortal() {
   useEffect(() => { loadFacility() }, [loadFacility])
 
   const decideFacilityRec = async (rec, decision) => {
+    if (guard()) return null
     try {
       await decideRecommendation(rec, decision, { by: 'client', clientUserId: user.id })
       toast.success(decision === 'accepted' ? tr.facility.recAccepted : tr.facility.recDeclined)
@@ -326,6 +339,7 @@ export default function ClientPortal() {
   }
 
   const uploadFeedbackPhoto = async (folder, id, file) => {
+    if (guard()) return null
     if (!file) return null
     return uploadJobPhoto(`client-portal/${folder}/${id}.jpg`, file)
   }
@@ -371,6 +385,7 @@ export default function ClientPortal() {
   }
 
   const sendMessage = async (text = newMsg) => {
+    if (guard()) return null
     const content = String(text || '').trim()
     if (!content) return false
     const { error } = await supabase.from('client_messages').insert({
@@ -384,6 +399,7 @@ export default function ClientPortal() {
   }
 
   const sendPhoto = async (file) => {
+    if (guard()) return null
     if (!file || sendingPhoto) return
     setSendingPhoto(true)
     try {
@@ -510,6 +526,7 @@ export default function ClientPortal() {
   }
 
   const saveCredentials = async () => {
+    if (guard()) return null
     if (!credForm.currentPassword.trim()) return toast.error(c.currentPassword)
     if (!credForm.newEmail.trim() && !credForm.newPassword.trim()) {
       return toast.error(c.nothingToUpdate)
@@ -603,7 +620,7 @@ export default function ClientPortal() {
     { key: 'stores', icon: <NavIcon name="store" />, label: c.storesTab, badge: maintOverdue },
     { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
     { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
-    ...(workReports.length ? [{ key: 'reports', icon: <NavIcon name="requests" />, label: reportsLabel, badge: unseenReports.length }] : []),
+    { key: 'reports', icon: <NavIcon name="camera" />, label: reportsLabel, badge: unseenReports.length },
     { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab, badge: quotesWaiting },
     { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
     ...(facilityModels.length || pendingFacilityRecs.length
@@ -621,7 +638,13 @@ export default function ClientPortal() {
     : '—'
 
   return (
-    <div className={`cp-shell ${desktopMode ? 'cp-desktop' : 'cp-mobile'}`}>
+    <div className={`cp-shell ${desktopMode ? 'cp-desktop' : 'cp-mobile'}${preview ? ' cp-in-preview' : ''}`}>
+      {preview && (
+        <div className="cp-preview-bar" role="status">
+          <span>👁 {pickLang(lang, 'Viewing as the client', 'お客様の画面を表示中', 'Vendo como o cliente')}: <b>{user.client_name}{user.location_name ? ` · ${user.location_name}` : ''}</b> — {pickLang(lang, 'read only', '閲覧のみ', 'somente leitura')}</span>
+          <button type="button" onClick={() => onExitPreview?.()}>{pickLang(lang, 'Close', '閉じる', 'Fechar')}</button>
+        </div>
+      )}
       {selectedVisit && (
         <div className="cp-overlay" onClick={() => setSelectedVisit(null)}>
           <div className="cp-sheet" onClick={e => e.stopPropagation()}>
@@ -635,10 +658,9 @@ export default function ClientPortal() {
             </div>
             <div className="cp-time-grid" style={{ marginBottom: 16 }}>
               {[
+                // v1.0.154 · the client sees date, type and who — never start/end times
                 [c.cleaner, selectedVisit.employee_name || '—'],
-                [c.entryTime, fmtVisitTime(selectedVisit, lang)],
-                [c.exitTime, fmtVisitEnd(selectedVisit, lang)],
-                [c.duration, fmtDuration(selectedVisit.started_at && selectedVisit.completed_at ? Math.round((new Date(selectedVisit.completed_at) - new Date(selectedVisit.started_at)) / 60000) : selectedVisit.retro_time_min, lang)],
+                [periodLabels(lang).type, periodLabels(lang).types[getCleaningType(selectedVisit)] || '—'],
               ].map(([l, v]) => (
                 <div key={l} className="cp-time-box">
                   <div className="cp-time-lbl">{l}</div>
@@ -961,14 +983,6 @@ export default function ClientPortal() {
                     <div className="cp-period-stat-val">{visitStats.count}</div>
                     <div className="cp-period-stat-lbl">{c.visitTotalVisits}</div>
                   </div>
-                  <div className="cp-period-stat">
-                    <div className="cp-period-stat-val">{fmtDuration(visitStats.minutes, lang)}</div>
-                    <div className="cp-period-stat-lbl">{c.visitTotalHours}</div>
-                  </div>
-                  <div className="cp-period-stat">
-                    <div className="cp-period-stat-val">{fmtDuration(visitStats.avg, lang)}</div>
-                    <div className="cp-period-stat-lbl">{c.visitAvgDuration}</div>
-                  </div>
                 </div>
 
                 {unratedVisits.length > 0 && (
@@ -998,10 +1012,21 @@ export default function ClientPortal() {
 
             {!loading && tab === 'reports' && (
               <div className="cpx-panel">
-                <p style={{ margin: 0, fontSize: 13, color: '#4a5d78' }}>
-                  {pickLang(lang, 'Reports of the services we did for you. Tap to open, print or save as PDF.', '実施した作業の報告書です。タップで表示・印刷・PDF保存ができます。', 'Relatórios dos serviços que fizemos. Toque para abrir, imprimir ou salvar em PDF.')}
-                </p>
-                <WorkReportList items={workReports} showStatus={false} showClient={false} onOpen={openWorkReport} />
+                <div className="cp-pills cpx-subtabs">
+                  <button type="button" className={`cp-pill${reportsView === 'reports' ? ' active-green' : ''}`} onClick={() => setReportsView('reports')}>📄 {pickLang(lang, 'Reports', '報告書', 'Relatórios')}{workReports.length ? ` (${workReports.length})` : ''}</button>
+                  <button type="button" className={`cp-pill${reportsView === 'gallery' ? ' active-green' : ''}`} onClick={() => setReportsView('gallery')}>📷 {pickLang(lang, 'Photos & videos', '写真・動画', 'Fotos e vídeos')}</button>
+                  <button type="button" className="cp-pill" onClick={() => setTab('visits')}>🗓 {pickLang(lang, 'History', '履歴', 'Histórico')}</button>
+                </div>
+                {reportsView === 'reports' ? (
+                  <>
+                    <p style={{ margin: 0, fontSize: 13, color: '#4a5d78' }}>
+                      {pickLang(lang, 'Reports we sent you. Tap to open, print or save as PDF.', 'お送りした作業報告書です。タップで表示・印刷・PDF保存ができます。', 'Relatórios que enviamos. Toque para abrir, imprimir ou salvar em PDF.')}
+                    </p>
+                    <WorkReportList items={workReports} showStatus={false} showClient={false} onOpen={openWorkReport} empty={pickLang(lang, 'No report yet.', '報告書はまだありません。', 'Nenhum relatório ainda.')} />
+                  </>
+                ) : (
+                  <StoreGallery jobs={jobs} lang={lang} showStore={!user.location_name} onPhoto={setLightbox} />
+                )}
               </div>
             )}
 
@@ -1011,7 +1036,7 @@ export default function ClientPortal() {
             {!loading && tab === 'stores' && (
               <StoresView clientId={user.client_id} locations={storeNames} jobs={jobs} profiles={profiles} records={maintRecords}
                 today={today} labels={c} lang={lang} userName={user.contact_name || user.name} onChanged={() => loadAll({ silent: true })} onQuote={openQuote}
-                contactFor={contactFor} crewFor={crewFor} onChat={() => setTab('chat')} />
+                contactFor={contactFor} crewFor={crewFor} onChat={() => setTab('chat')} readOnly={preview} />
             )}
             {!loading && tab === 'chat' && (
               <ClientChat
@@ -1419,25 +1444,14 @@ function VisitCard({
       <div className="cp-card-top">
         <div>
           <div className="cp-card-loc">{locationFromJob(job)}</div>
-          <div className="cp-card-date">{job.scheduled_date} · {job.scheduled_time || '—'}</div>
+          <div className="cp-card-date">{job.scheduled_date}{job.status !== 'completed' && job.scheduled_time ? ` · ${job.scheduled_time}` : ''}</div>
         </div>
         <span className={`cp-badge ${statusClass(job.status)}`}>{statusLabel(job.status)}</span>
       </div>
       {job.employee_name && (
         <div className="cp-card-cleaner">👤 {labels.cleaner}: <b>{job.employee_name}</b></div>
       )}
-      {(job.started_at || job.status === 'completed') && (
-        <div className="cp-time-grid">
-          <div className="cp-time-box">
-            <div className="cp-time-lbl">{labels.entryTime}</div>
-            <div className="cp-time-val">{fmtVisitTime(job, lang)}</div>
-          </div>
-          <div className="cp-time-box">
-            <div className="cp-time-lbl">{labels.exitTime}</div>
-            <div className="cp-time-val">{fmtVisitEnd(job, lang)}</div>
-          </div>
-        </div>
-      )}
+      <div className="cp-card-cleaner">🧽 {periodLabels(lang).types[getCleaningType(job)] || ''}</div>
       {job.status === 'completed' && (job.photo_start_url || job.photo_end_url) && (
         <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
           <JobPhotos

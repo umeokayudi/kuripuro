@@ -11,10 +11,10 @@ export default function WorkReportList({ items, onOpen, showClient = true, showS
     <div className="wr-list">
       {items.map(s => (
         <button key={s.id} type="button" className="wr-row" onClick={() => onOpen(s)}>
-          <span className="wr-row-ico">📄</span>
+          <span className="wr-row-ico">{s.kind === 'period' ? '🗂' : '📄'}</span>
           <span className="wr-row-main">
             <b>{s.title || tr('Service report', '作業報告書', 'Relatório de serviço')}</b>
-            <span>{[day(s.work_date), showClient ? s.client_name : null, s.location, s.mode === 'detailed' ? tr('detailed', '詳細', 'detalhado') : tr('simple', 'シンプル', 'simples'), s.photos ? `📷 ${s.photos}` : null].filter(Boolean).join(' · ')}</span>
+            <span>{[s.kind === 'period' ? `${day(s.from)} – ${day(s.to)}` : day(s.work_date), showClient ? s.client_name : null, s.kind === 'period' ? `${(s.stores || []).length} ${tr('stores', '店舗', 'lojas')}` : s.location, s.kind === 'period' ? null : s.mode === 'detailed' ? tr('detailed', '詳細', 'detalhado') : tr('simple', 'シンプル', 'simples'), s.photos ? `📷 ${s.photos}` : null].filter(Boolean).join(' · ')}</span>
           </span>
           {showStatus && <span className={`wr-badge st-${s.status}`}>{statusLabel(s.status, tr)}</span>}
         </button>

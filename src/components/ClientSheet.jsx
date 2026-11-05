@@ -13,6 +13,8 @@ import AddressInput from './AddressInput'
 import WorkReportList from './WorkReportList'
 import { useAuth } from '../hooks/useAuth'
 import WorkReportEditor from './WorkReportEditor'
+import PeriodReportEditor from './PeriodReportEditor'
+import ViewAsClientButton from './ClientPortalPreview'
 import { listClientReports } from '../lib/workReport'
 
 // v1.0.73 · Full client sheet (CRM). Opens beside the page (full screen on phones)
@@ -51,6 +53,7 @@ function Cleanings({ client, stores, tr }) {
 function Reports({ client, tr }) {
   const [items, setItems] = useState(null)
   const [open, setOpen] = useState(null)
+  const [period, setPeriod] = useState(null)
   const { user } = useAuth()
   const load = () => listClientReports(client.id).then(setItems).catch(() => setItems([]))
   useEffect(() => { load() }, [client.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -58,9 +61,10 @@ function Reports({ client, tr }) {
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <h4 style={{ margin: 0 }}>{tr('Service reports', '作業報告書', 'Relatórios de serviço')}{items ? ` (${items.length})` : ''}</h4>
-        <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen({ client })}>＋ {tr('New report', '新規作成', 'Novo relatório')}</button>
+        <button type="button" className="btn btn-sm btn-primary" onClick={() => { const d = new Date(Date.now() + 9 * 3600e3); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); const ym = d.toISOString().slice(0, 7); const [y, m] = ym.split('-').map(Number); setPeriod({ client, from: `${ym}-01`, to: `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}` }) }}>＋ {tr('Last month by store', '先月・店舗別', 'Mês passado por loja')}</button>
       </div>
-      {items === null ? <p className="cs-muted">…</p> : <WorkReportList items={items} showClient={false} onOpen={s => setOpen({ reportId: s.id })} />}
+      {items === null ? <p className="cs-muted">…</p> : <WorkReportList items={items} showClient={false} onOpen={s => (s.kind === 'period' ? setPeriod({ reportId: s.id }) : setOpen({ reportId: s.id }))} />}
+      {period && <PeriodReportEditor {...period} author={{ name: user?.name || '' }} onSaved={load} onClose={() => { setPeriod(null); load() }} />}
       {open && <WorkReportEditor {...open} role="admin" author={{ name: user?.name || '' }} onSaved={load} onClose={() => { setOpen(null); load() }} />}
     </section>
   )
@@ -278,6 +282,7 @@ function SheetBody({ client: initial, onClose }) {
                     <button type="button" className="btn btn-sm" onClick={() => setOpenStore(v => (v === s.name ? null : s.name))}>
                       📷 {tr('Photos, cleanings and floor plan', '写真・清掃・平面図', 'Fotos, limpezas e planta')} {openStore === s.name ? '▲' : '▼'}
                     </button>
+                    <ViewAsClientButton clientId={client.id} clientName={client.company_name} locationName={s.plans[0]?.location_name || s.name} />
                     {openStore === s.name && <div style={{ marginTop: 10 }}><StoreDossier clientId={client.id} locationName={s.plans[0]?.location_name || s.name} /></div>}
                   </div>
                 ))}

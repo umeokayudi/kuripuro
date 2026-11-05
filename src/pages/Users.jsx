@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import ViewAsClientButton from '../components/ClientPortalPreview'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
@@ -91,7 +92,7 @@ export default function Users() {
       ...(admins.data || []).map(a => ({ type: 'admin', id: a.id, name: a.name || a.email, email: a.email, active: true, created_at: a.created_at })),
       ...(employees.data || []).map(e => ({ type: 'employee', id: e.id, name: e.full_name, email: e.email, phone: e.phone, active: e.is_active !== false, test: isTestEmployee(e), role: e.job_role, last_seen: e.last_seen, created_at: e.created_at })),
       ...(sellers.data || []).map(s => ({ type: 'salesperson', id: s.id, name: s.full_name, email: s.email, phone: s.phone, active: s.is_active !== false, test: isTestSeller(s), team: s.team === 'marketing' ? 'marketing' : 'sales', created_at: s.created_at })),
-      ...(clients.data || []).map(c => ({ type: 'client', id: c.id, client_id: c.client_id, name: c.contact_name || c.location_name || c.client_name || c.email, contact_name: c.contact_name, email: c.email, place: [c.client_name, c.location_name].filter(Boolean).join(' · '), active: c.is_active !== false, test: isTestClientUser(c), last_seen: c.last_seen, created_at: c.created_at })),
+      ...(clients.data || []).map(c => ({ type: 'client', id: c.id, client_id: c.client_id, name: c.contact_name || c.location_name || c.client_name || c.email, contact_name: c.contact_name, email: c.email, place: [c.client_name, c.location_name].filter(Boolean).join(' · '), active: c.is_active !== false, test: isTestClientUser(c), last_seen: c.last_seen, created_at: c.created_at, portalRow: c })),
     ])
     setLoading(false)
   }, [])
@@ -173,6 +174,7 @@ export default function Users() {
       <div className="kp-users-actions">
         <button type="button" className="btn btn-sm btn-primary" onClick={() => setEditing(r)}>{t.edit}</button>
         {r.type !== 'admin' && <button type="button" className="btn btn-sm" onClick={() => open(r)}>{t.open}</button>}
+        {r.type === 'client' && r.portalRow && <ViewAsClientButton row={r.portalRow} />}
         {r.type !== 'admin' && (
           <button type="button" className="btn btn-sm" disabled={busy === r.type + r.id} onClick={() => toggleActive(r)}>
             {r.active ? t.deactivate : t.activate}
