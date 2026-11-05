@@ -55,7 +55,7 @@ export function StoreList({ stores, L, emptyText, actions = false, employees = [
                   <span className="dp-svc-who">{s.coveredBy ? L(`done by ${s.coveredBy} (was ${s.assigned})`, `${s.coveredBy}が実施（担当 ${s.assigned}）`, `feito por ${s.coveredBy} (era de ${s.assigned})`) : s.taken ? L(`with ${s.assigned} (took it)`, `${s.assigned}が担当（取得）`, `com ${s.assigned} (pegou)`) : s.assigned || (s.free ? L('free — nobody took it yet', '空き — まだ誰も取っていません', 'livre — ninguém pegou ainda') : L('nobody assigned', '担当なし', 'sem pessoa'))}</span>
                   {s.minutes ? <span className="dp-svc-h">{hoursText(s.minutes)}{s.deadline ? L(` · by ${s.deadline}`, ` · ${s.deadline}まで`, ` · até ${s.deadline}`) : ''}</span> : null}
                   {s.uncovered && <span className="dp-tag bad">{L('no cover', '担当不在', 'sem cobertura')}</span>}
-                  {actions && s.assignedId && s.status === 'not_started' && !s.startedAt && <ReleaseBtn s={s} L={L} onChanged={onChanged} />}
+                  {actions && s.assignedId && (s.status === 'not_started' || s.status === 'late') && !s.startedAt && <ReleaseBtn s={s} L={L} onChanged={onChanged} />}
                 </li>
               ))}
             </ul>

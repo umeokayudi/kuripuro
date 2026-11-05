@@ -241,7 +241,8 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
   // 05:00 and NOTHING of today's route started → urgent, on top
   const routeSvcs = counted.filter(s => s.bucket !== 'other')
   if (date === day && nm >= ALERT_MIN && routeSvcs.length && !routeSvcs.some(s => s.startedAt || s.status === 'done' || s.status === 'working')) alerts.push({ id: `route-none:${date}`, kind: 'route_none', n: routeSvcs.length, stores: [...new Set(routeSvcs.map(s => s.store))] })
-  if (date === day) for (const a of otpRouteAlerts(live, { today: day, nowMin: nm })) if (!a.startedAt) alerts.push({ id: a.id, kind: 'route', who: a.employeeName, employeeId: a.employeeId, n: a.jobs })
+  // nothing started at all: "rota de hoje ainda não começou" already says it (no repeated per-person line)
+  if (date === day && !alerts.some(x => x.kind === 'route_none')) for (const a of otpRouteAlerts(live, { today: day, nowMin: nm })) if (!a.startedAt) alerts.push({ id: a.id, kind: 'route', who: a.employeeName, employeeId: a.employeeId, n: a.jobs })
   for (const l of loads) if (l.impossible && date >= day) alerts.push({ id: `impossible:${date}:${l.bucket}:${l.employeeId}`, kind: 'impossible', who: l.name, employeeId: l.employeeId, bucket: l.bucket, minutes: l.minutes, deadline: l.deadline, n: l.n })
   for (const p of team) if (p.state === 'cant' && p.uncoveredStores.length) alerts.push({ id: `cant:${date}:${p.id}`, kind: 'cant', who: p.name, employeeId: p.id, n: p.uncoveredStores.length, stores: p.uncoveredStores, reason: p.mark?.reason || '', at: p.mark?.at || null, byRole: p.mark?.byRole || null })
   const freeLeft = counted.filter(s => s.free && !s.assignedId && s.status !== 'done')
