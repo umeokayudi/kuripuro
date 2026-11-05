@@ -2,6 +2,8 @@
 // here, in a fixed order; a missing piece shows a "not sent" tag instead of disappearing.
 // header · summary · checklist · media (before / after / video) · notes · GPS
 // signature · AI grade with reasons · audit
+import { jaFizStamp, jaFizAuditFromJob } from '../lib/jaFiz'
+import { loadJaFizAudit } from '../lib/jaFizOps'
 import { useEffect, useState } from 'react'
 import { QuickReportButton } from './QuickReport'
 import toast from 'react-hot-toast'
@@ -100,6 +102,16 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
     if (row.job_id) loadJobLog(row.job_id).then(l => { if (alive) setLogs(l || []) }).catch(() => {})
     return () => { alive = false }
   }, [row.job_id])
+  // v1.0.156 · "Já fiz" audit: job columns when the SQL is applied, else the file next to the photos
+  const [jaFiz, setJaFiz] = useState(null)
+  useEffect(() => {
+    let alive = true
+    setJaFiz(jaFizAuditFromJob(job))
+    if (row.job_id && !job?.retro_registered_at && (row.report_type === 'retroativo' || job?.retro_report != null)) {
+      loadJaFizAudit(row.job_id).then(a => { if (alive && a) setJaFiz(a) })
+    }
+    return () => { alive = false }
+  }, [row.job_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const done = (row.job_status || job?.status) === 'completed'
   const mode = job ? executionMode(job, logs) : (row.report_type === 'retroativo' ? 'retro' : 'live')
@@ -281,6 +293,11 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
 
       {/* 8 · audit */}
       <Section title={L('Audit', '監査ログ', 'Auditoria')}>
+        {jaFiz && (
+          <div style={{ fontSize: 13, marginBottom: 6, padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.1)' }}>
+            📝 {jaFizStamp(jaFiz, lang)}{jaFiz.checklist_total ? ` · checklist ${jaFiz.checklist_done}/${jaFiz.checklist_total}` : ''}
+          </div>
+        )}
         {manual && (
           <div style={{ fontSize: 13, marginBottom: 6, padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.1)' }}>
             🔒 {fill(L('Closed manually by {by} on {at}', '{by} が {at} に手動で完了', 'Fechado manualmente por {by} em {at}'), { by: manual.by || 'Admin', at: fmtStamp(manual.at, lang) })}

@@ -59,6 +59,7 @@
 .dp-svc-who{white-space:nowrap}
 .dp-tag{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px}
 .dp-tag.bad{background:#fdecec;color:#b91c1c}
+.dp-tag.retro{background:#fef3c7;color:#92400e}
 @media (max-width:640px){
   .dp-card{padding:16px 14px}
   .dp-counter-main strong{font-size:22px}
