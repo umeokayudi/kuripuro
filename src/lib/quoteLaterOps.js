@@ -1,4 +1,4 @@
-// v1.0.159 · "Agendar depois" storage + data for the suggested date. No SQL: one small JSON file in
+// v1.0.160 · "Agendar depois" storage + data for the suggested date. No SQL: one small JSON file in
 // the public service-photos bucket (same approach as the 作業報告書), quote-flow/later.json =
 // { '<quote ref>': { until, note, by, at } }.
 import { supabase } from './supabase'

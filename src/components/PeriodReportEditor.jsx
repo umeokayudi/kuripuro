@@ -11,6 +11,7 @@ import { AiText } from './WorkReportEditor'
 import { openPrintHtml } from '../lib/openPrintHtml'
 import { buildPeriodReport, loadReport, saveReport, reportHtml, statusLabel, storagePublicUrl, periodLabels, periodMediaCount } from '../lib/workReport'
 import { mediaForJobs, isVideoPath } from '../lib/workMedia'
+import { jobsOfDay } from '../lib/quickReport'
 import './work-report.css'
 
 const JOB_FIELDS = 'id,title,client_id,client_name,scheduled_date,status,job_category,employee_name,photo_start_url,photo_end_url,description,checklist_template'
@@ -68,15 +69,20 @@ function Body({ reportId, client, from, to, author, onClose, onSaved }) {
   const refresh = async () => {
     setBusy('refresh')
     try {
-      const src = await loadPeriodSource(r.client_id, r.from, r.to, (d, n) => setProgress({ d, n }))
-      const fresh = buildPeriodReport({ client: { id: r.client_id, company_name: r.client_name }, from: r.from, to: r.to, ...src, lang: r.lang })
+      // v1.0.158 · a day report (one person, one day) refreshes from that person's services of the day
+      const src = r.day
+        ? await (async () => { const jobs = await jobsOfDay(r.day.employee_id, r.day.date); return { jobs, media: await mediaForJobs(jobs.filter(j => ['completed', 'in_progress'].includes(j.status)), { onProgress: (d, n) => setProgress({ d, n }) }) } })()
+        : await loadPeriodSource(r.client_id, r.from, r.to, (d, n) => setProgress({ d, n }))
+      const fresh = r.day
+        ? buildPeriodReport({ client: null, from: r.from, to: r.to, ...src, lang: r.lang, statuses: ['completed', 'in_progress'] })
+        : buildPeriodReport({ client: { id: r.client_id, company_name: r.client_name }, from: r.from, to: r.to, ...src, lang: r.lang })
       const old = new Map(r.stores.flatMap(st => st.services.map(sv => [sv.job_id, sv])))
       const notes = new Map(r.stores.map(st => [st.name, st.note]))
       const stores = fresh.stores.map(st => ({ ...st, note: notes.get(st.name) || '', services: st.services.map(sv => {
         const o = old.get(sv.job_id)
         if (!o) return sv
         const off = new Set((o.media || []).filter(m => m.include === false).map(m => m.path))
-        return { ...sv, include: o.include, media: sv.media.map(m => ({ ...m, include: !off.has(m.path) })) }
+        return { ...sv, include: o.include, sig: o.sig ?? sv.sig, media: sv.media.map(m => ({ ...m, include: !off.has(m.path) })) }
       }) }))
       set({ stores })
       toast.success(tr('Updated with the latest services and media', '最新の作業・写真で更新しました', 'Atualizado com os serviços e mídias mais recentes'))
@@ -183,7 +189,9 @@ function Body({ reportId, client, from, to, author, onClose, onSaved }) {
                 <button type="button" className="btn btn-sm" onClick={unsend}>{tr('Hide from client', '非表示にする', 'Tirar do portal')}</button>
                 <button type="button" className="btn btn-sm btn-primary" disabled={!!busy || !dirty} onClick={() => save({}, 'edit-after-send')}>{tr('Save changes', '変更を保存', 'Salvar alterações')}</button></>
             : <><button type="button" className="btn" onClick={() => openPrintHtml(reportHtml(r))}>👁 {tr('Client view / PDF', '顧客ビュー・PDF', 'Visão do cliente / PDF')}</button>
-                <button type="button" className="btn btn-primary" disabled={!!busy} onClick={send}>📨 {tr('Send to client', '顧客へ送付', 'Enviar ao cliente')}</button></>}
+                {r.day
+                  ? <button type="button" className="btn btn-primary" disabled={!!busy || !dirty} onClick={() => save()}>{tr('Save', '保存', 'Salvar')}</button>
+                  : <button type="button" className="btn btn-primary" disabled={!!busy} onClick={send}>📨 {tr('Send to client', '顧客へ送付', 'Enviar ao cliente')}</button>}</>}
         </footer>
       </div>
     </div>

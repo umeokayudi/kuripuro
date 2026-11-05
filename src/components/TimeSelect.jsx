@@ -1,4 +1,4 @@
-// v1.0.159 · Hour + minute as two plain selects. The phone's own time dialog (Android "Definir horário")
+// v1.0.160 · Hour + minute as two plain selects. The phone's own time dialog (Android "Definir horário")
 // cut its OK button off on some phones; selects open the system list, which always fits the screen.
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 const MINUTES = ['00', '15', '30', '45']

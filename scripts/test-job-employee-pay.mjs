@@ -1,6 +1,6 @@
 // v1.0.131 · pure checks (no database): employee pay per job + payroll choice fixed / per job.
 import assert from 'node:assert/strict'
-import { parseEmployeePay, payFromDescription, perJobPay, employeeMonthPay } from '../src/lib/jobEmployeePay.js'
+import { parseEmployeePay, payFromDescription, perJobPay, employeeMonthPay, jobPayPackage, payKind, employeeSafeJob, needsPayDefinition } from '../src/lib/jobEmployeePay.js'
 import { payrollMonth } from '../src/lib/salaryCalc.js'
 
 assert.equal(parseEmployeePay(''), null)
@@ -57,4 +57,37 @@ const m = employeeMonthPay([...nov, { status: 'assigned', scheduled_date: '2026-
 assert.equal(m.done, 73000)
 assert.equal(m.planned, 79000)
 assert.equal(m.undefinedCount, 1)
+
+// v1.0.157 · packages, employee-safe job, bell rule
+const otp = { id: 'o1', status: 'completed', employee_id: 'g', scheduled_date: '2026-11-03', value: 4000, retro_value: 3800,
+  description: 'Pagamento do funcionário (Guilherme): ¥1.471 — Grease Trap (pacote de manutenções OTP ¥50.000/mês) | Key box 1234' }
+assert.ok(jobPayPackage(otp))
+assert.equal(payKind(otp), 'package')
+const safe = employeeSafeJob(otp)
+assert.ok(!('value' in safe) && !('retro_value' in safe))
+assert.equal(safe.employee_pay, null)
+assert.equal(safe.employee_pay_package, 'monthly')
+assert.ok(!/1\.471|50\.000|Pagamento/.test(safe.description), safe.description)
+assert.ok(/Key box 1234/.test(safe.description))
+const atomic = { status: 'completed', employee_id: 'g', scheduled_date: '2026-11-04', description: 'Pacote Atomic Bar: ¥35.000/mês fixo (5 limpezas profundas + 4 coletas de lixo) — sem valor por serviço' }
+assert.equal(payKind(atomic), 'package')
+assert.equal(needsPayDefinition(atomic, '2026-11-05'), false)
+const deep = { status: 'completed', employee_id: 'gab', scheduled_date: '2026-11-04', value: 30000, description: 'Limpeza profunda' }
+assert.equal(needsPayDefinition(deep, '2026-11-05'), true)
+assert.equal(employeeSafeJob(deep).employee_pay, null)
+assert.equal(needsPayDefinition({ ...deep, employee_pay: 8000 }, '2026-11-05'), false)
+assert.equal(needsPayDefinition({ ...deep, status: 'assigned', scheduled_date: '2026-11-09' }, '2026-11-05'), false)
+assert.equal(needsPayDefinition({ ...deep, status: 'assigned', scheduled_date: '2026-11-05' }, '2026-11-05'), true)
+assert.equal(needsPayDefinition({ ...deep, job_category: 'spot' }, '2026-11-05'), false)
+assert.equal(needsPayDefinition({ ...deep, employee_id: null }, '2026-11-05'), false)
+const basic = { status: 'completed', employee_id: 'g', scheduled_date: '2026-11-02', value: 4000, employee_pay: 1000 }
+assert.equal(employeeSafeJob(basic).employee_pay, 1000)
+const pm = employeeMonthPay([otp, atomic, basic], '2026-11')
+assert.equal(pm.done, 1000)
+assert.equal(pm.packageJobs, 2)
+const { buildExceptions } = await import('../src/lib/exceptionQueue.js').catch(e => { console.log('skip bell check:', e.message.slice(0, 80)); return {} })
+if (buildExceptions) {
+  const ex = buildExceptions({ jobs: [{ ...deep, id: 'd1', employee_name: 'Gabriel', title: 'Nyu Sakana Yakio — deep', admin_reviewed: true }, { ...otp, admin_reviewed: true, employee_name: 'Guilherme', title: 'OTP' }], today: '2026-11-05', hideTests: false })
+  assert.deepEqual(ex.filter(x => x.kind === 'pay_undefined').map(x => x.jobId), ['d1'])
+}
 console.log('employee pay: all checks passed')

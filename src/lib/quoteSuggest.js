@@ -1,4 +1,4 @@
-// v1.0.159 · Accepted quote: "Agendar depois" + a suggested good date (logistics / map area).
+// v1.0.160 · Accepted quote: "Agendar depois" + a suggested good date (logistics / map area).
 //
 // Pure rules here (no database). The tracker asks one quote at a time and only FILLS the form:
 // nothing is booked or moved until the admin presses "Marcar". Nothing else in the schedule changes.

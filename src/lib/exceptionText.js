@@ -22,6 +22,7 @@ export function exceptionInfo(L) {
     long: { icon: '⏱', title: x => L(`Took ${dur(x.minutes, L)} (planned ${dur(x.expected, L)})`, `${dur(x.minutes, L)}（予定${dur(x.expected, L)}）`, `Levou ${dur(x.minutes, L)} (previsto ${dur(x.expected, L)})`), action: L('Review', '確認', 'Revisar'), to: x => `/jobs?search=${x.jobId}` },
     no_photo: { icon: '📷', title: () => L('Done without the final photo', '完了写真なし', 'Concluído sem foto final'), action: L('Open job', '作業を開く', 'Abrir job'), to: x => `/jobs?search=${x.jobId}` },
     retro_review: { icon: '📝', title: () => L('Retroactive registration waiting for review', '事後登録 — 確認待ち', 'Registro retroativo aguardando revisão'), action: L('Open Live Track', 'ライブ追跡', 'Abrir Live Track'), to: () => '/live' },
+    pay_undefined: { icon: '👷', title: () => L('Worker pay to be defined', '作業者の支払い 未定', 'Pagamento a definir'), action: L('Define pay', '支払いを決める', 'Definir pagamento'), to: x => `/jobs?search=${x.jobId}` },
     ai_waiting: { icon: '🤖', title: () => L('Photo waiting for the AI check', 'AI確認待ちの写真', 'Foto aguardando a IA'), action: L('Open job', '作業を開く', 'Abrir job'), to: x => `/jobs?search=${x.jobId}` },
   }
 }

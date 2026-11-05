@@ -62,6 +62,27 @@
 .cm-chip b { font-size: 15px; color: #fde68a; }
 .cm-chip button { width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 0; font-size: 12px; }
 
+/* v1.0.159 · lojas sem GPS: pílula compacta + lista legível */
+button.cm-chip.cm-nogps-pill { color: #fde68a; border-color: rgba(245,158,11,0.6); cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; gap: 6px; }
+.cm-nogps-caret { font-size: 11px; opacity: 0.8; }
+.cm-nogps {
+  position: absolute; z-index: 23; left: 50%; top: 84px; transform: translateX(-50%); width: 360px; max-width: calc(100% - 20px); max-height: min(60%, 440px);
+  display: flex; flex-direction: column; padding: 12px; border-radius: 16px; background: rgba(10,22,40,0.96); border: 1px solid rgba(245,158,11,0.6);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.45); animation: kw-in .2s ease-out;
+}
+.cm-nogps-head { display: flex; align-items: center; gap: 8px; }
+.cm-nogps-head strong { flex: 1; font-size: 15px; color: #fde68a; }
+.cm-nogps p { margin: 6px 0 8px; font-size: 12px; line-height: 1.45; color: rgba(255,255,255,0.7); white-space: normal; }
+.cm-nogps ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.cm-nogps li button {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 10px 12px; min-height: 44px; border-radius: 12px; cursor: pointer;
+  background: rgba(255,255,255,0.06); border: 1px solid var(--kw-line); color: inherit; font: inherit;
+}
+.cm-nogps li button span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cm-nogps li button b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-nogps li button small { font-size: 11px; color: rgba(255,255,255,0.55); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-nogps li button em { font-style: normal; font-size: 12px; font-weight: 700; color: #fde68a; flex: 0 0 auto; }
+
 /* cartão do local */
 .cm-card {
   position: absolute; z-index: 22; left: 90px; bottom: 18px; width: 380px; max-width: calc(100% - 28px); padding: 14px; border-radius: 18px;
@@ -156,6 +177,7 @@
   .cm-panel.sheet:not(.open) { left: auto; right: 10px; bottom: 76px; border-radius: 16px; }
   .cm-panel.sheet.open { bottom: 0; }
   .cm-card { left: 0; right: 0; bottom: 0; width: auto; max-width: none; border-radius: 18px 18px 0 0; max-height: 70%; overflow-y: auto; }
+  .cm-nogps { top: 128px; max-height: calc(100% - 300px); }
   .cm-nomap { left: 10px; right: 10px; top: 128px; padding: 12px 14px; }
   .cm-panel.sheet.nomap { max-height: calc(100% - 250px); }
 }

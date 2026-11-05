@@ -118,41 +118,79 @@ export async function generateDailyReport(date, jobs, employeeName, opts = {}) {
     y += 8
   })
 
-  // Check-in / check-out (GPS) and signature for EVERY job
+  // v1.0.159 · One card per service: name, who did it, check-in/out, Before/After photos at their
+  // real proportions (never stretched) and that service's signature — all together, one by one.
   y += 6
   if (y > 250) { doc.addPage(); y = margin }
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
   doc.setTextColor(6, 13, 24)
-  doc.text('Check-in / Check-out (GPS) and signature', margin, y)
+  doc.text('Services: photos and signature', margin, y)
   y += 5
+  const photoW = 58, photoH = 58, sigW = 50, cardSigH = 26, gapX = 4
   for (const [idx, j] of jobs.entries()) {
-    const blockH = 30
-    if (y + blockH > 280) { doc.addPage(); y = margin }
+    const shots = []
+    for (const [label, url] of [['Before', j.photo_start_url], ['After', j.photo_end_url]]) {
+      const data = url ? await loadImageDataUrl(url) : null
+      shots.push({ label, data, had: !!url })
+    }
+    const blockH = 30 + photoH + 6
+    if (y + blockH > 282) { doc.addPage(); y = margin }
     doc.setDrawColor(220, 226, 236)
-    doc.roundedRect(margin, y, W - margin*2, blockH, 2, 2, 'S')
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 40, 60)
-    const place = (j.title || '').replace(/ — .*/,'')
+    doc.roundedRect(margin, y, W - margin * 2, blockH, 2, 2, 'S')
+    // header: number, place, who
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(30, 40, 60)
+    const place = (j.title || '').replace(/ — .*/, '')
     doc.text(`${idx + 1}. ${place}`.substring(0, 60), margin + 3, y + 6)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(90, 90, 90)
-    const who = [j.employee_name, j.area ? `Area: ${j.area}` : null].filter(Boolean).join(' · ')
-    if (who) doc.text(who.substring(0, 70), margin + 3, y + 11)
-    const inLine = `In  ${tokyoTime(j.started_at)}  ${fmtCoord(j.start_lat, j.start_lng)}${j.gps_start_distance != null ? `  (${formatDistance(j.gps_start_distance)} from site)` : ''}`
-    const outLine = `Out ${tokyoTime(j.completed_at)}  ${fmtCoord(j.end_lat, j.end_lng)}${j.gps_end_distance != null ? `  (${formatDistance(j.gps_end_distance)} from site)` : ''}`
-    doc.text(inLine, margin + 3, y + 17)
-    doc.text(outLine, margin + 3, y + 22)
-    if (j.retro_report != null) doc.text('Retroactive report (sent after the service)', margin + 3, y + 27)
-    // signature box on the right
-    const boxW = 56, boxH = 24, bx = W - margin - boxW - 3, by = y + 3
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(60, 60, 60)
+    const who = [j.employee_name || employeeName, j.area ? `Area: ${j.area}` : null].filter(Boolean).join(' · ')
+    if (who) doc.text(who.substring(0, 80), margin + 3, y + 11)
+    doc.setFontSize(7.5); doc.setTextColor(90, 90, 90)
+    doc.text(`In  ${tokyoTime(j.started_at)}  ${fmtCoord(j.start_lat, j.start_lng)}${j.gps_start_distance != null ? `  (${formatDistance(j.gps_start_distance)} from site)` : ''}`, margin + 3, y + 16)
+    doc.text(`Out ${tokyoTime(j.completed_at)}  ${fmtCoord(j.end_lat, j.end_lng)}${j.gps_end_distance != null ? `  (${formatDistance(j.gps_end_distance)} from site)` : ''}`, margin + 3, y + 20)
+    if (j.retro_report != null) doc.text('Retroactive report (sent after the service)', margin + 3, y + 24)
+    // photos: fitted inside a square box, proportions kept
+    const py = y + 27
+    let px = margin + 3
+    for (const sh of shots) {
+      doc.setFillColor(242, 245, 249)
+      doc.rect(px, py, photoW, photoH, 'F')
+      if (sh.data) {
+        try {
+          const fmt = sh.data.includes('image/png') ? 'PNG' : 'JPEG'
+          const prop = doc.getImageProperties(sh.data)
+          const k = Math.min(photoW / prop.width, photoH / prop.height)
+          const w = prop.width * k, h = prop.height * k
+          doc.addImage(sh.data, fmt, px + (photoW - w) / 2, py + (photoH - h) / 2, w, h)
+        } catch { /* broken image: box stays empty */ }
+      } else {
+        doc.setFontSize(7.5); doc.setTextColor(200, 50, 50)
+        doc.text(sh.had ? 'Photo not available' : 'No photo', px + photoW / 2, py + photoH / 2, { align: 'center' })
+      }
+      doc.setFontSize(7); doc.setTextColor(120, 120, 120)
+      doc.text(sh.label, px, py + photoH + 4)
+      px += photoW + gapX
+    }
+    // signature of this service + the name under it
+    const bx = W - margin - sigW - 3, by = py + (photoH - cardSigH) / 2
+    doc.setFontSize(7); doc.setTextColor(120, 120, 120)
+    doc.text('Signature', bx, by - 2)
     doc.setDrawColor(200, 200, 200)
-    doc.rect(bx, by, boxW, boxH)
+    doc.rect(bx, by, sigW, cardSigH)
     const sig = j.signature_url ? await signatureForDisplay(j.signature_url) : null
     if (sig) {
-      try { doc.addImage(sig, 'PNG', bx + 1, by + 1, boxW - 2, boxH - 2) } catch {}
+      try {
+        const prop = doc.getImageProperties(sig)
+        const k = Math.min((sigW - 2) / prop.width, (cardSigH - 2) / prop.height)
+        doc.addImage(sig, 'PNG', bx + (sigW - prop.width * k) / 2, by + (cardSigH - prop.height * k) / 2, prop.width * k, prop.height * k)
+      } catch { /* keep the empty box */ }
     } else {
       doc.setTextColor(200, 50, 50); doc.setFontSize(7)
-      doc.text(j.status === 'completed' ? 'Not signed' : '—', bx + boxW / 2, by + boxH / 2 + 1, { align: 'center' })
+      doc.text(j.status === 'completed' ? 'Not signed' : '—', bx + sigW / 2, by + cardSigH / 2 + 1, { align: 'center' })
     }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(40, 40, 40)
+    doc.text(String(j.employee_name || employeeName || '').substring(0, 34), bx, by + cardSigH + 4)
+    doc.setFont('helvetica', 'normal')
     y += blockH + 3
   }
 
@@ -182,41 +220,6 @@ export async function generateDailyReport(date, jobs, employeeName, opts = {}) {
       })
       y += 2
     })
-  }
-
-  // Photos section
-  const jobsWithPhotos = jobs.filter(j => j.photo_start_url || j.photo_end_url)
-  if (jobsWithPhotos.length > 0) {
-    doc.addPage(); y = margin
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.setTextColor(6, 13, 24)
-    doc.text('Service Photos', margin, y)
-    y += 8
-    const imgW = 82, imgH = 60, gap = 6
-    for (const j of jobsWithPhotos) {
-      if (y > 220) { doc.addPage(); y = margin }
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9)
-      doc.setTextColor(50, 50, 50)
-      doc.text(j.title.replace(/ — .*/,'').substring(0, 50), margin, y)
-      y += 4
-      let x = margin
-      for (const [label, url] of [['Before', j.photo_start_url], ['After', j.photo_end_url]]) {
-        if (!url) continue
-        const data = await loadImageDataUrl(url)
-        if (data) {
-          try {
-            const fmt = data.includes('image/png') ? 'PNG' : 'JPEG'
-            doc.addImage(data, fmt, x, y, imgW, imgH)
-            doc.setFontSize(7); doc.setTextColor(120,120,120)
-            doc.text(label, x, y + imgH + 4)
-          } catch {}
-        }
-        x += imgW + gap
-      }
-      y += imgH + 10
-    }
   }
 
   // Signature area: each employee's own signature (taken from the jobs they signed

@@ -76,7 +76,7 @@ import {
 import { tokyoToday } from '../lib/dates'
 import { tokyoTomorrow, upcomingJobs, SHIFT_END_LIMIT, validateShiftWindow } from '../lib/nextDayShift'
 import { calcEmployeeMonthlySalary } from '../lib/salaryCalc'
-import { jobEmployeePay, employeeMonthPay, loadPayBasis } from '../lib/jobEmployeePay'
+import { jobEmployeePay, employeeMonthPay, loadPayBasis, employeeJobColumns, employeeSafeJob, payKind } from '../lib/jobEmployeePay'
 import AIChatPanel from '../components/AIChatPanel'
 import EarningsPanel from '../components/EarningsPanel'
 import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
@@ -424,9 +424,11 @@ export default function EmployeePortal() {
     const today = tokyoToday()
     const { start:weekStart, end:weekEnd } = getWeekRange()
     const monthStart = today.slice(0, 7) + '-01'
+    // v1.0.157 · the employee's screens never download what the client pays (value / retro_value / contract price)
+    const JOB_COLS = await employeeJobColumns(supabase)
     const [active, all, emp, pay, adv, clm, eqp, bdg, weekPay, monthPay, contractsRes] = await Promise.all([
-      supabase.from('jobs').select('*').eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
-      supabase.from('jobs').select('*').eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
+      supabase.from('jobs').select(JOB_COLS).eq('employee_id',user.id).in('status',['assigned','in_progress']).order('scheduled_date').order('scheduled_time'),
+      supabase.from('jobs').select(JOB_COLS).eq('employee_id',user.id).order('scheduled_date',{ascending:false}).limit(500),
       supabase.from('employees').select('*').eq('id',user.id).maybeSingle(),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).gte('payment_date',today).order('payment_date').limit(10),
       supabase.from('salary_payments').select('*').eq('employee_id', user.id).eq('payment_type', 'advance').order('payment_date', { ascending: false }).limit(10),
@@ -435,7 +437,7 @@ export default function EmployeePortal() {
       supabase.from('badges').select('*').eq('employee_id',user.id),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).neq('status','cancelled').gte('payment_date',weekStart).lte('payment_date',weekEnd),
       supabase.from('salary_payments').select('*').eq('employee_id',user.id).eq('is_deduction',true).neq('status','cancelled').or(`period.eq.${monthStart.slice(0,7)},and(period.is.null,payment_date.gte.${monthStart},payment_date.lte.${today})`),
-      supabase.from('service_contracts').select('location_name,price_per_visit,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
+      supabase.from('service_contracts').select('location_name,training_video_url,training_checklist,client_id,is_active').eq('is_active', true),
     ])
     // v1.0.148 · a job of mine that another person already completed (same day/store/service) shows
     // "Coberto por [B]", struck, not pending — it only leaves my agenda when the owner removes it.
@@ -450,6 +452,9 @@ export default function EmployeePortal() {
         all.data = mark(all.data)
       }
     }
+    // v1.0.157 · own pay resolved, package as "Pacote mensal", description without the pay sentences
+    active.data = (active.data || []).map(employeeSafeJob)
+    all.data = (all.data || []).map(employeeSafeJob)
     const visible = (list) => (list || []).filter(j => !isDuskinJob(j))
     const regular = visible(active.data).filter(j=>j.job_category!=='spot'||j.spot_status==='accepted')
     const spots = visible(active.data).filter(j=>j.job_category==='spot'&&j.spot_status==='pending')
@@ -466,8 +471,9 @@ export default function EmployeePortal() {
       // A running job that was put back on 'assigned' (old Accept button) still has its start: reopen it.
       const broken = allVisible.find(j => isBrokenRunningJob(j))
       if (broken) {
-        const { data: reopened } = await supabase.from('jobs').update({ status: 'in_progress' })
-          .eq('id', broken.id).eq('status', 'assigned').not('started_at', 'is', null).select().maybeSingle()
+        const { data: reopenedRow } = await supabase.from('jobs').update({ status: 'in_progress' })
+          .eq('id', broken.id).eq('status', 'assigned').not('started_at', 'is', null).select(JOB_COLS).maybeSingle()
+        const reopened = reopenedRow ? employeeSafeJob(reopenedRow) : null
         if (reopened) {
           inProgress = reopened
           const i = allVisible.findIndex(j => j.id === reopened.id)
@@ -1105,7 +1111,7 @@ export default function EmployeePortal() {
       finishQuoteJob(retroJob.id) // job from an accepted quote → its invoice goes to the client
       askClientRating(retroJob) // v1.0.115 · the client is asked for a rating in the portal chat
       setRetroEval(ev)
-      const { data: completedRetro } = await supabase.from('jobs').select('*').eq('id', retroJob.id).maybeSingle()
+      const { data: completedRetro } = await supabase.from('jobs').select(await employeeJobColumns(supabase)).eq('id', retroJob.id).maybeSingle()
       if (completedRetro) {
         try {
           await syncServiceReport(supabase, completedRetro)
@@ -1180,7 +1186,8 @@ export default function EmployeePortal() {
       const startFields = { status:'in_progress',started_at:new Date().toISOString(),photo_start_url:photoUrl }
       // Starting a spot offer means taking it: it is accepted at the same time.
       if (isPendingSpot(job)) Object.assign(startFields, { spot_status:'accepted', spot_responded_at:startFields.started_at })
-      const { data, error } = await supabase.from('jobs').update(startFields).eq('id',job.id).select().maybeSingle()
+      const { data: startedRow, error } = await supabase.from('jobs').update(startFields).eq('id',job.id).select(await employeeJobColumns(supabase)).maybeSingle()
+      const data = startedRow ? employeeSafeJob(startedRow) : null
       if (error || !data) { toast.error(error?.message || e.startError); return }
       const gpsFields = {
         start_lat: gpsResult.pos?.lat ?? null, start_lng: gpsResult.pos?.lng ?? null, start_accuracy: gpsResult.pos?.acc ?? null,
@@ -1387,7 +1394,7 @@ export default function EmployeePortal() {
         // The office already closed this job (v1.0.98 "Fechar manualmente"): keep its time, only add the photos.
         await supabase.from('jobs').update({ photo_end_url: endPhotoUrl }).eq('id', job.id).is('photo_end_url', null)
         await supabase.from('jobs').update({ photo_start_url: startPhotoUrl }).eq('id', job.id).is('photo_start_url', null)
-        const { data: closedJob } = await supabase.from('jobs').select('*').eq('id', job.id).maybeSingle()
+        const { data: closedJob } = await supabase.from('jobs').select(await employeeJobColumns(supabase)).eq('id', job.id).maybeSingle()
         if (closedJob) await syncServiceReport(supabase, closedJob).catch(() => {})
         capEndRef.current = null
         clearInterval(timerRef.current)
@@ -1425,7 +1432,7 @@ export default function EmployeePortal() {
   const finishJobExtras = async (job, { endPhotoUrl, position, nfcEnd, missed, total, missedLabels }) => {
     try { await saveNfcResult(supabase, job.id, 'end', nfcEnd) } catch (ex) { console.log('nfc end skipped', ex?.message) }
     const syncReport = async () => {
-      const { data: completedJob } = await supabase.from('jobs').select('*').eq('id', job.id).maybeSingle()
+      const { data: completedJob } = await supabase.from('jobs').select(await employeeJobColumns(supabase)).eq('id', job.id).maybeSingle()
       if (completedJob) await syncServiceReport(supabase, completedJob)
     }
     const gpsSaved = (async () => {
@@ -1839,9 +1846,9 @@ export default function EmployeePortal() {
               <div style={{fontSize:11,color:'rgba(255,255,255,0.4)'}}>{job.client_name}</div>
             </div>
             {/* v1.0.131 · the employee sees their own pay for the job (never the store's contract price) */}
-            {job.job_category==='spot'
-              ? <div style={{fontSize:18,fontWeight:800,color:'#c19c56'}}>¥{Number(job.spot_value||job.value||0).toLocaleString()}</div>
-              : <div style={{textAlign:'right'}}><div style={{fontSize:9,color:'rgba(255,255,255,0.35)'}}>{L('Your pay','あなたの報酬','Seu pagamento')}</div><div style={{fontSize:18,fontWeight:800,color:jobEmployeePay(job)===null?'rgba(255,255,255,0.4)':'#c19c56'}}>{jobEmployeePay(job)===null?L('to be defined','未定','a definir'):`¥${jobEmployeePay(job).toLocaleString(localeOf(lang))}`}</div></div>}
+            {/* v1.0.157 · always labeled: "Você recebe" — a package shows "Pacote mensal", no sliced value */}
+            <div style={{textAlign:'right'}}><div style={{fontSize:9,color:'rgba(255,255,255,0.35)'}}>{L('You receive','あなたの受取','Você recebe')}</div>
+              <div style={{fontSize:18,fontWeight:800,color:payKind(job)==='undefined'?'rgba(255,255,255,0.4)':'#c19c56'}}>{payText(job,L,lang)}</div></div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:14}}>
             {[['📅 '+e.jobDate,dDate],[isDeadlineJob(job)?'🕐 '+jobTimeText(job,lang):'🕐 '+e.jobStart,isDeadlineJob(job)?(deadlineLateText(job,lang)||'—'):job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,isMissedJob(job)?e.statusIncomplete:`${tr.status[job.status]||job.status}${isRetroJob(job)?` · ${e.retroBadge}`:''}`]].map(([l,v])=>(
@@ -2744,8 +2751,16 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
 
 /** v1.0.131 · "💴 ¥1.000" (the employee's own pay for the job) or "a definir" — never ¥0 for empty. */
 function PayChip({ job, L, lang }) {
-  const pay = jobEmployeePay(job)
-  return <span style={{fontSize:10,fontWeight:700,color:pay===null?'rgba(255,255,255,0.35)':'#c19c56'}}>💴 {pay===null?L('to be defined','未定','a definir'):`¥${pay.toLocaleString(localeOf(lang))}`}</span>
+  return <span style={{fontSize:10,fontWeight:700,color:payKind(job)==='undefined'?'rgba(255,255,255,0.35)':'#c19c56'}}>💴 {L('You receive','受取','Você recebe')}: {payText(job,L,lang)}</span>
+}
+
+/** v1.0.157 · the worker's own pay for a job, as text: "+¥X" spot, "Pacote mensal", "¥X" or "a definir". */
+function payText(job, L, lang) {
+  const k = payKind(job)
+  if (k === 'spot') return `+¥${Number(job.spot_value||0).toLocaleString(localeOf(lang))}`
+  if (k === 'package') return L('Monthly package','月額パッケージ','Pacote mensal')
+  if (k === 'undefined') return L('to be defined','未定','a definir')
+  return `¥${jobEmployeePay(job).toLocaleString(localeOf(lang))}`
 }
 
 function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId, onAskAI, photoStatus = {}, onRetryPhotos, onReportProblem }) {
@@ -2927,7 +2942,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
         return (
           <div style={{...S.card,marginBottom:10,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}>
             <span style={{fontSize:12,color:'rgba(255,255,255,0.55)'}}>💴 {L(`My pay in ${name}`,`${name}の報酬`,`Meu pagamento em ${name}`)}</span>
-            <span style={{fontSize:13,color:'#fff'}}><b style={{color:'#c19c56'}}>¥{m.done.toLocaleString(localeOf(lang))}</b> {L('done','完了','concluído')} · ¥{m.planned.toLocaleString(localeOf(lang))} {L('planned','予定','previsto')}{m.undefinedCount>0&&<small style={{color:'rgba(255,255,255,0.4)'}}> · {m.undefinedCount} {L('to be defined','未定','a definir')}</small>}</span>
+            <span style={{fontSize:13,color:'#fff'}}><b style={{color:'#c19c56'}}>¥{m.done.toLocaleString(localeOf(lang))}</b> {L('done','完了','concluído')} · ¥{m.planned.toLocaleString(localeOf(lang))} {L('planned','予定','previsto')}{m.undefinedCount>0&&<small style={{color:'rgba(255,255,255,0.4)'}}> · {m.undefinedCount} {L('to be defined','未定','a definir')}</small>}{m.packageJobs>0&&<small style={{color:'rgba(255,255,255,0.4)'}}> · + {L('monthly package','月額パッケージ','pacote mensal')} ({m.packageJobs})</small>}</span>
           </div>
         )
       })()}

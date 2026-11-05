@@ -53,7 +53,7 @@
   .qt-form{grid-template-columns:1fr}
 }
 
-/* v1.0.159 · suggested dates, "Agendar depois", time as two selects */
+/* v1.0.160 · suggested dates, "Agendar depois", time as two selects */
 .qt-suggest{margin-bottom:12px}
 .qt-suggest-head{font-size:12px;font-weight:800;color:var(--text);margin-bottom:6px}
 .qt-suggest-head small{display:block;font-weight:500;color:var(--text3);font-size:11px;margin-top:2px}

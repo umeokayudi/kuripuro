@@ -37,7 +37,7 @@ export default function QuoteTracker({ quote, onClose }) {
   // v1.0.146 · "Mark done" first shows the 請求書 dates (発行日 / 対象期間 / 支払期限) to confirm
   const [doneFor, setDoneFor] = useState(null) // { s, initial, future }
   const [moveDate, setMoveDate] = useState(true)
-  // v1.0.159 · "Agendar depois" (no date now) + suggested dates (one quote at a time, only fills the form)
+  // v1.0.160 · "Agendar depois" (no date now) + suggested dates (one quote at a time, only fills the form)
   const [later, setLater] = useState(null) // { until, note, by, at } | null
   const [laterOpen, setLaterOpen] = useState(false)
   const [laterForm, setLaterForm] = useState({ until: '', note: '' })

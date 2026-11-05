@@ -15,7 +15,7 @@ export const BELL_GROUPS = [
   { key: 'offers', icon: '🧽' },
   { key: 'info', icon: '⚡' },
   { key: 'waiting', icon: '⏳', notCounted: true },
-  // v1.0.159 · accepted quotes left for later ("Agendar depois") until their reminder day
+  // v1.0.160 · accepted quotes left for later ("Agendar depois") until their reminder day
   { key: 'later', icon: '🕒', notCounted: true },
 ]
 

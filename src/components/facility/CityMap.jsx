@@ -51,6 +51,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
   const [road, setRoad] = useState(null)
   const [measuring, setMeasuring] = useState(false)
   const [measure, setMeasure] = useState([])
+  const [noGpsOpen, setNoGpsOpen] = useState(false)
 
   // ---- dados ----
   useEffect(() => {
@@ -282,15 +283,37 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
       {locating.total > 0 && locating.done < locating.total && (
         <div className="cm-chip">⏳ {fill(m.locating, { n: locating.done, total: locating.total })}</div>
       )}
-      {/* v1.0.113 · places the map could not locate get a "no GPS" chip until their address is completed */}
-      {locating.total > 0 && locating.done >= locating.total && !sel && (() => {
+      {/* v1.0.113 · places the map could not locate · v1.0.159: compact pill → readable list (one store per line) */}
+      {locating.total > 0 && locating.done >= locating.total && !sel && !measuring && (() => {
         const noGps = places.filter(p => !coords[p.key])
-        return noGps.length > 0 && (
-          <div className="cm-chip" style={{ flexWrap: 'wrap', maxWidth: 'min(92vw, 520px)' }}>
-            📍 {lang === 'ja' ? `GPSなし ${noGps.length}件:` : lang === 'pt' ? `${noGps.length} sem GPS:` : `${noGps.length} without GPS:`}
-            {noGps.slice(0, 8).map(p => <button key={p.key} type="button" onClick={() => setSelKey(p.key)} style={{ border: 0, background: 'rgba(245,158,11,.18)', color: 'inherit', borderRadius: 8, padding: '2px 8px', marginLeft: 4, cursor: 'pointer', font: 'inherit' }}>{p.name}</button>)}
-            {noGps.length > 8 && <span style={{ marginLeft: 4 }}>+{noGps.length - 8}</span>}
+        if (!noGps.length) return null
+        const T = lang === 'ja'
+          ? { pill: `GPSなし ${noGps.length}件`, title: `GPSなしの店舗 ${noGps.length}件`, hint: '住所が見つからないため地図に表示できません。店舗を開いて住所を登録してください。', open: '開く', close: '閉じる' }
+          : lang === 'pt'
+            ? { pill: `${noGps.length} lojas sem GPS`, title: `${noGps.length} lojas sem GPS`, hint: 'Não aparecem no mapa porque o endereço não foi encontrado. Abra a loja e complete o endereço.', open: 'Abrir', close: 'Fechar' }
+            : { pill: `${noGps.length} stores without GPS`, title: `${noGps.length} stores without GPS`, hint: 'They are not on the map because the address was not found. Open the store and complete the address.', open: 'Open', close: 'Close' }
+        return noGpsOpen ? (
+          <div className="cm-nogps" role="dialog" aria-label={T.title}>
+            <div className="cm-nogps-head">
+              <strong>📍 {T.title}</strong>
+              <button type="button" className="cm-x" onClick={() => setNoGpsOpen(false)} aria-label={T.close}>✕</button>
+            </div>
+            <p>{T.hint}</p>
+            <ul>
+              {noGps.map(p => (
+                <li key={p.key}>
+                  <button type="button" onClick={() => { setNoGpsOpen(false); setSelKey(p.key) }}>
+                    <span><b>{p.name}</b>{p.client_name && p.client_name !== p.name && <small>{p.client_name}</small>}</span>
+                    <em>{T.open} ›</em>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
+        ) : (
+          <button type="button" className="cm-chip cm-nogps-pill" onClick={() => setNoGpsOpen(true)} aria-expanded="false">
+            <span aria-hidden="true">📍</span><span>{T.pill}</span><span className="cm-nogps-caret" aria-hidden="true">▾</span>
+          </button>
         )
       })()}
       {measuring && (
