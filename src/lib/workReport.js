@@ -287,10 +287,11 @@ const mediaTag = p => isVideo(p)
   ? `<video src="${esc(storagePublicUrl(p.path))}#t=0.5" controls playsinline preload="metadata"></video><span class="vtag">▶</span>`
   : `<img src="${esc(storagePublicUrl(p.path))}" alt="" loading="lazy">`
 
-function photoGrid(photos, { cols = 3, caption = '' } = {}) {
+function photoGrid(photos, { cols = 3, caption = '', cell = 0 } = {}) {
   if (!photos.length) return ''
   const n = Math.min(cols, photos.length)
-  return `<div class="grid" style="grid-template-columns:repeat(${n},1fr)">${photos.map(p => `<figure${isVideo(p) ? ' class="vid"' : ''}>${mediaTag(p)}${p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : ''}</figure>`).join('')}</div>${caption ? `<div class="cap">${esc(caption)}</div>` : ''}`
+  // v1.0.158 · `cell` caps each photo's width so one lone photo is not blown up to the page width
+  return `<div class="grid" style="grid-template-columns:repeat(${n},1fr)${cell ? `;max-width:${n * cell}px;margin-left:0` : ''}">${photos.map(p => `<figure${isVideo(p) ? ' class="vid"' : ''}>${mediaTag(p)}${p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : ''}</figure>`).join('')}</div>${caption ? `<div class="cap">${esc(caption)}</div>` : ''}`
 }
 
 // v1.0.158 · signatures (cleaner registered on the job; owner only after "Aceitar e assinar"),
@@ -350,9 +351,9 @@ export function reportHtml(r, opts = {}) {
     steps.length ? sec(t.work, `<p>${esc(t.workIntro)}</p><ol>${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`) : '',
     checklistBlock(r),
     r.quick && !(r.photos || []).length ? `<section><h2>${esc(t.before)} / ${esc(t.after)}</h2><span class="miss">${esc(sigLabels(r.lang).noPhoto)}</span></section>` : '',
-    (photos('before').length || r.before?.text) ? sec(t.before, `${paras(r.before?.text)}${photoGrid(photos('before'), { caption: r.before?.caption })}`) : '',
-    detailed && photos('during').length ? `<h3 class="sub">${esc(t.during)}</h3>${photoGrid(photos('during'), { caption: r.during?.caption })}` : '',
-    (photos('after').length || r.after?.text) ? sec(t.after, `${paras(r.after?.text)}${photoGrid(photos('after'), { caption: r.after?.caption })}`) : '',
+    (photos('before').length || r.before?.text) ? sec(t.before, `${paras(r.before?.text)}${photoGrid(photos('before'), { caption: r.before?.caption, cell: 200 })}`) : '',
+    detailed && photos('during').length ? `<h3 class="sub">${esc(t.during)}</h3>${photoGrid(photos('during'), { caption: r.during?.caption, cell: 200 })}` : '',
+    (photos('after').length || r.after?.text) ? sec(t.after, `${paras(r.after?.text)}${photoGrid(photos('after'), { caption: r.after?.caption, cell: 200 })}`) : '',
     detailed && parts.length ? sec(t.parts, `${r.parts_intro ? paras(r.parts_intro) : ''}<table class="pt"><thead><tr>${t.partCols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${parts.map(p => `<tr><td>${esc(p.name)}</td><td style="background:${LEVEL_BG[p.level] || '#fff'}">${esc(t.levels[p.level] || p.level || '')}</td><td>${esc(p.before)}</td><td>${esc(p.why)}</td><td>${esc(p.after)}</td></tr>`).join('')}</tbody></table>${partBlocks}`) : '',
     detailed ? extras.map(e => sec(e.title, paras(e.text))).join('') : '',
     r.notices ? sec(t.notices, paras(r.notices)) : '',
@@ -430,7 +431,7 @@ function periodHtml(r, { store } = {}) {
     const m = (sv.media || []).filter(x => x.include !== false)
     const b = m.filter(x => x.section === 'before'), a = m.filter(x => x.section !== 'before')
     const sigRow = r.day ? `<div class="svsig"><span>${esc(sigLabels(r.lang).cleaner)}：<b>${esc(sv.who || '—')}</b></span>${sv.sig ? `<img src="${esc(sv.sig)}" alt="">` : `<span class="nos">${esc(sigLabels(r.lang).none)}</span>`}</div>` : ''
-    return `<div class="svc"><div class="svc-h"><b>${esc(fmtDay(sv.date, r.lang, { month: 'long', day: 'numeric', weekday: 'short' }))}</b><span>${esc(L.types[sv.type] || '')}${sv.service && sv.type !== 'basic' ? ` · ${esc(sv.service)}` : ''}</span><span>${esc(L.who)}：${esc(sv.who || '—')}</span>${sv.status && sv.status !== 'completed' ? `<span class="pend">${esc(sigLabels(r.lang).pending)}</span>` : ''}</div>${r.quick && !m.length ? `<span class="miss">${esc(sigLabels(r.lang).noPhoto)}</span>` : ''}${b.length ? `<div class="ba">${esc(L.before)}</div>${photoGrid(b, { cols: 4 })}` : ''}${a.length ? `<div class="ba">${esc(L.after)}</div>${photoGrid(a, { cols: 4 })}` : ''}${sigRow}</div>`
+    return `<div class="svc"><div class="svc-h"><b>${esc(fmtDay(sv.date, r.lang, { month: 'long', day: 'numeric', weekday: 'short' }))}</b><span>${esc(L.types[sv.type] || '')}${sv.service && sv.type !== 'basic' ? ` · ${esc(sv.service)}` : ''}</span><span>${esc(L.who)}：${esc(sv.who || '—')}</span>${sv.status && sv.status !== 'completed' ? `<span class="pend">${esc(sigLabels(r.lang).pending)}</span>` : ''}</div>${r.quick && !m.length ? `<span class="miss">${esc(sigLabels(r.lang).noPhoto)}</span>` : ''}${b.length ? `<div class="ba">${esc(L.before)}</div>${photoGrid(b, { cols: 4, cell: 170 })}` : ''}${a.length ? `<div class="ba">${esc(L.after)}</div>${photoGrid(a, { cols: 4, cell: 170 })}` : ''}${sigRow}</div>`
   }).join('')}</section>`).join('')
   const meta = r.day
     ? `${esc(sigLabels(r.lang).staff)}：${esc(r.day.employee_name || '')} ｜ ${esc(L.date)}：${esc(fmtDay(r.day.date, r.lang, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }))} ｜ ${total}${r.lang === 'ja' ? '件' : ` ${esc(L.services)}`}`
