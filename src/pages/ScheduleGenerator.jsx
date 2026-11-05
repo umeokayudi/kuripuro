@@ -23,6 +23,7 @@ import { payMentions, stripPay } from '../lib/offerText'
 import { roleCan } from '../lib/employeeRoles'
 import { assignJob, assignMany, offerJob, notifyCreated } from '../lib/assignOps'
 import { pendingChanged } from '../lib/adminPending'
+import { bucketOf, jobMinutes, routeLoads, impossibleText } from '../lib/routePlan'
 import { assignText, conflictLabel, RED_CONFLICTS } from '../components/assignText'
 import '../components/assign.css'
 
@@ -301,6 +302,25 @@ export default function ScheduleGenerator() {
   // v1.0.123 · per place: expected dates × what exists (created / in the box to confirm / missing); a past day not created = missing
   const check = useMemo(() => contractCheck(targets, days, periodJobs, rows.filter(r => r.checked && r.date >= today), { wholeMonth }), [targets, days, periodJobs, rows, wholeMonth, today])
 
+  // v1.0.154 · "rota impossível": per day and person, the predicted hours of the morning route (and of the
+  // deep of the day, apart) against the time until the deadline. Only a warning — nothing is blocked.
+  const impossible = useMemo(() => {
+    const pendingIds = new Set(lines.filter(l => l.kind === 'job').map(l => l.job.id))
+    const items = []
+    const add = (job, empId) => {
+      if (!empId || job.scheduled_date < today) return
+      items.push({ date: job.scheduled_date, employeeId: empId, employeeName: empById[empId]?.full_name || job.employee_name || '—', bucket: bucketOf(job), minutes: jobMinutes(job, targets) })
+    }
+    for (const j of periodJobs) if (j.status !== 'cancelled' && !pendingIds.has(j.id)) add(j, j.employee_id)
+    for (const l of lines) {
+      if (l.kind === 'job') add(l.job, l.personId)
+      else if (l.checked) add({ title: l.row.title, client_name: l.row.client, client_id: l.row.client_id, scheduled_date: l.row.date, scheduled_time: l.row.time }, l.personId)
+    }
+    const byDate = {}
+    for (const it of items) (byDate[it.date] = byDate[it.date] || []).push(it)
+    return Object.keys(byDate).sort().flatMap(d => routeLoads(byDate[d]).filter(r => r.impossible).map(r => ({ ...r, date: d })))
+  }, [lines, periodJobs, targets, empById, today])
+
   // ---- writes ----
   const after = (r) => {
     if (r?.notices?.missing) setSqlMissing(true)
@@ -551,6 +571,14 @@ export default function ScheduleGenerator() {
             : tr('Everything programmed and assigned ✓', 'すべて完了 ✓', 'Tudo programado e atribuído ✓')}</span>
         </div>
       </div>
+
+      {loaded && impossible.length > 0 && (
+        <section className="card as-impossible" role="alert">
+          <strong>⏱ {tr('Impossible routes — split them before the day starts', '不可能なルート — 当日前に分けてください', 'Rotas impossíveis — divida antes do dia começar')}</strong>
+          <ul>{impossible.map(r => <li key={`${r.date}|${r.bucket}|${r.employeeId}`}>{fmtDay(r.date)} · {impossibleText(r, tr)} · {tr(`${r.n} services`, `${r.n}件`, `${r.n} serviços`)}</li>)}</ul>
+          <small>{tr('Only a warning: nothing is blocked. Assign some of them to another person or leave them free for the team.', '警告のみ：何もブロックされません。別の人に割り当てるか、チームに開放してください。', 'Só um aviso: nada é bloqueado. Passe parte para outra pessoa ou deixe livre para a equipe pegar.')}</small>
+        </section>
+      )}
 
       {/* v1.0.123 · CHECK PER PLACE — expected × created for the period, missing ones first */}
       {loaded && wholeMonth && check.places.length > 0 && (

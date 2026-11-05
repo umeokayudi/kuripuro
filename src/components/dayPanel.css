@@ -108,3 +108,39 @@
 .dp-mark{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .dp-mark button{height:30px;border:1px solid #dfe5ee;border-radius:8px;background:#fff;font:inherit;font-size:12px;font-weight:700;color:#334155;padding:0 10px;cursor:pointer}
 .dp-mark-toggle{border:0;background:none;color:#315cf5;font:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:0;margin-left:auto}
+/* v1.0.154 · rota da manhã × deep do dia, serviços livres, plano B */
+.dp-alerts li.is-route_none,.dp-alerts li.is-free_uncovered{border-left-color:#dc2626;background:#fff8f8}
+.dp-alerts li.is-route_none .dp-alert-text{color:#991b1b}
+.dp-alerts li.is-impossible{border-left-color:#ea580c}
+.dp-alerts li.is-free_open{border-left-color:#3b82f6}
+.dp-chip.free{background:#eef3ff;color:#1f46ad;border:1px dashed #93b4f5}
+.dp-store-head .dp-chip+.dp-chip{margin-left:4px}
+.dp-store-head .dp-store-name{flex:1}
+.dp-route{margin-top:10px}
+.dp-route+.dp-route{margin-top:14px}
+.dp-route-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin:0 0 6px;padding-bottom:4px;border-bottom:1px solid #eef2f7}
+.dp-route-head strong{font-size:13px;font-weight:800;color:#14213a}
+.dp-route-head span{font-size:11.5px;color:#5f6b7d}
+.dp-route-deep .dp-store{border-left-color:#8b5cf6}
+.dp-svc-h{color:#7a8799;white-space:nowrap}
+.dp-svc-act{border:1px solid #c9d6f8;background:#f5f8ff;color:#1f46ad;border-radius:999px;font:inherit;font-size:11px;font-weight:700;padding:1px 9px;cursor:pointer}
+.dp-planb{margin-top:5px;font-size:12px;font-weight:700;color:#7c3aed}
+.dp-planb-toggle{display:block;margin:6px 0 0 auto}
+.dp-planb-edit{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.dp-planb-edit select{height:30px;border:1px solid #dfe5ee;border-radius:8px;font:inherit;font-size:12px;max-width:100%;min-width:0;flex:1 1 140px}
+.dp-planb-edit button{height:30px;border:1px solid #dfe5ee;border-radius:8px;background:#fff;font:inherit;font-size:12px;font-weight:700;padding:0 10px;cursor:pointer}
+.dp-planb-edit small{flex-basis:100%;font-size:11px;color:#7a8799}
+.dp-load{color:#4a5870}
+.dp-team-meta .dp-tag{margin-left:6px}
+/* v1.0.154 · employee "Serviços livres — pegue um" */
+.fjc{margin-bottom:12px;border-color:#c9d6f8}
+.fjc h3{display:flex;align-items:center;gap:6px}
+.fjc-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.fjc-list li{border:1px solid #e1e8f8;border-radius:12px;padding:10px;background:#f7f9ff}
+.fjc-info{display:grid;gap:2px;min-width:0}
+.fjc-info strong{font-size:14px}
+.fjc-info span{font-size:12.5px;color:#334155;font-weight:600}
+.fjc-info small{font-size:12px;color:#5f6b7d}
+.fjc-btns{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;margin-top:8px}
+.fjc-take{min-height:42px;border:0;border-radius:10px;background:#16a34a;color:#fff;font:inherit;font-size:14px;font-weight:800;cursor:pointer}
+.fjc-skip{min-height:42px;border:1px solid #dfe5ee;border-radius:10px;background:#fff;color:#5f6b7d;font:inherit;font-size:12.5px;font-weight:700;padding:0 10px;cursor:pointer}

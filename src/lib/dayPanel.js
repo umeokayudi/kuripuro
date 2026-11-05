@@ -15,7 +15,8 @@ import { roleCan } from './employeeRoles.js'
 import { isTestJob, isTestEmployee } from './testData.js'
 import { coveredJobs } from './jobCoverage.js'
 import { isLateJob } from './jobCounts.js'
-import { isDeadlineJob, deadlineOf, otpRouteAlerts } from './jobDeadline.js'
+import { isDeadlineJob, deadlineOf, otpRouteAlerts, OTP_CLIENT_ID, OTP_DEADLINE, ALERT_MIN } from './jobDeadline.js'
+import { bucketOf, jobMinutes, bucketDeadline, deepDeadlineMin, routeLoads, hm, impossibleText, hoursText } from './routePlan.js'
 
 export const SHIFT_CUTOFF = '21:00' // of the day before; configurable via buildDayPanel({ cutoff })
 export const SHIFT_KINDS = ['confirmed', 'off', 'extra']
@@ -77,36 +78,85 @@ export function shiftState({ emp, date, mark, hasJobs, now = new Date(), cutoff 
 
 const STORE_ORDER = { late: 0, not_started: 1, working: 2, done: 3 }
 
+/** One row per store from its services (state, who, when). Used for the whole day and per bucket. */
+function storeRow(st, planBNames = []) {
+  const sv = st.services
+  const doneN = sv.filter(s => s.status === 'done').length
+  const allDone = sv.length > 0 && doneN === sv.length
+  const anyLate = sv.some(s => s.status === 'late')
+  const anyWorking = sv.some(s => s.status === 'working') || (doneN > 0 && !allDone)
+  const state = st.noJob ? 'not_started' : allDone ? 'done' : anyLate ? 'late' : anyWorking ? 'working' : 'not_started'
+  const doneBy = [...new Set(sv.filter(s => s.status === 'done').map(s => s.doneBy).filter(Boolean))]
+  const doneAt = sv.map(s => s.doneAt).filter(Boolean).sort().pop() || ''
+  const workers = [...new Set(sv.filter(s => s.status === 'working').map(s => s.assigned).filter(Boolean))]
+  const since = sv.map(s => s.startedAt).filter(Boolean).sort()[0] || ''
+  const people = [...new Set(sv.map(s => s.assigned).filter(Boolean))]
+  const covered = sv.some(s => s.coveredBy)
+  const uncovered = !!st.noJob || sv.some(s => s.uncovered)
+  const deadline = sv.map(s => s.deadline).filter(Boolean).sort()[0] || null
+  const firstTime = sv.map(s => s.time).filter(Boolean).sort()[0] || null
+  const free = sv.some(s => s.free && !s.assignedId && s.status !== 'done')
+  const freeOpen = free && sv.every(s => !s.free || s.assignedId || s.freeOpen || s.status === 'done')
+  const takenBy = [...new Set(sv.filter(s => s.taken).map(s => s.assigned).filter(Boolean))]
+  const notStartedAll = sv.length > 0 && sv.every(s => !s.startedAt && s.status !== 'done' && s.status !== 'working')
+  // plan B: shown when the store has no cover, or is late and nothing started (display only)
+  const showPlanB = planBNames.length > 0 && state !== 'done' && (uncovered || (state === 'late' && (notStartedAll || st.noJob)))
+  return { ...st, state, doneN, total: sv.length, doneBy, doneAt, workers, since, people, covered, uncovered, deadline, firstTime, free, freeOpen, takenBy, planB: planBNames, showPlanB }
+}
+const sortStores = list => list.sort((a, b) => STORE_ORDER[a.state] - STORE_ORDER[b.state] || a.store.localeCompare(b.store))
+const countOf = (stores, services) => ({
+  stores: stores.length, storesDone: stores.filter(s => s.state === 'done').length, storesWorking: stores.filter(s => s.state === 'working').length,
+  storesLate: stores.filter(s => s.state === 'late').length, storesNotStarted: stores.filter(s => s.state === 'not_started').length,
+  storesCovered: stores.filter(s => s.covered).length, storesUncovered: stores.filter(s => s.uncovered && s.state !== 'done').length,
+  services: services.length, servicesDone: services.filter(s => s.status === 'done').length, servicesWorking: services.filter(s => s.status === 'working').length,
+  servicesLate: services.filter(s => s.status === 'late').length, servicesNotStarted: services.filter(s => s.status === 'not_started').length,
+})
+
 /**
  * jobs: jobs of `date` (any status; cancelled and test jobs are left out here).
  * employees: rows of employees. availability: employee_availability rows of `date`.
- * targets: contractTargets() (optional; weekly contract places with no job become "sem job criado").
+ * targets: contractTargets() (optional; weekly contract places with no job become "sem job criado";
+ *   hours_per_visit = predicted hours of each job).
  * owners: usual person per store (norm(base) → employee id), to know who "costuma cobrir" a store.
+ * planB: { storeKey: [employeeId, employeeId] } (display only). cutoff: 'HH:MM' of the evening before.
  */
-export function buildDayPanel({ date, jobs = [], employees = [], availability = [], targets = [], owners = {}, now = new Date(), nowMin = null, cutoff = SHIFT_CUTOFF, keepTests = false, today = null }) {
+export function buildDayPanel({ date, jobs = [], employees = [], availability = [], targets = [], owners = {}, planB = {}, now = new Date(), nowMin = null, cutoff = SHIFT_CUTOFF, keepTests = false, today = null }) {
   const live = (jobs || []).filter(j => j && j.scheduled_date === date && j.status !== 'cancelled' && (keepTests || !isTestJob(j)))
   const cov = coveredJobs(live) // A.id → B (completed the same service)
   const nm = nowMin ?? (() => { const d = new Date(now.getTime() + 9 * 3600e3); return d.getUTCHours() * 60 + d.getUTCMinutes() })()
   const day = today || (() => { const d = new Date(now.getTime() + 9 * 3600e3); return d.toISOString().slice(0, 10) })()
+  const nowMs = date === day && nowMin != null ? new Date(`${day}T${hm(nm)}:00+09:00`).getTime() : now.getTime()
+  const pastCutoff = nowMs >= shiftCutoffMs(date, cutoff)
   const empById = Object.fromEntries((employees || []).map(e => [e.id, e]))
   const marks = {}
   for (const r of availability || []) if (r.date === date) { const m = shiftMarkOf(r); if (m) marks[r.employee_id] = m }
   const cantIds = new Set(Object.entries(marks).filter(([, m]) => m.kind === 'off').map(([id]) => id))
+  const planBNames = k => (planB?.[k] || []).map(id => empById[id]?.full_name).filter(Boolean)
 
   // ---- services (one per job; a covered A job becomes "feito por B") ----
   const services = []
   for (const j of live) {
     const b = cov.get(j.id)
     const done = !!b || j.status === 'completed'
-    const late = !done && isLateJob(j, day, nm)
+    const bucket = bucketOf(j)
+    const minutes = jobMinutes(j, targets)
+    const deadline = bucketDeadline(j, minutes) || deadlineOf(j)
+    let late = !done && isLateJob(j, day, nm)
+    // a deep with a window past 10:00 is late only after ITS deadline
+    if (bucket === 'deep' && !done && deadline > OTP_DEADLINE) late = date < day || (date === day && nm >= deepDeadlineMin(minutes))
+    const free = !j.employee_id && j.spot_status === 'pending' // open to the team: the first to take it keeps it
+    const freeOpen = free && !pastCutoff
     const svc = {
       id: j.id, job: j, store: storeOf(j), service: serviceOf(j), assigned: j.employee_name || '', assignedId: j.employee_id || null,
       status: done ? 'done' : j.status === 'in_progress' ? 'working' : late ? 'late' : 'not_started',
-      late, deadline: deadlineOf(j), time: isDeadlineJob(j) ? null : String(j.scheduled_time || '').slice(0, 5) || null,
+      late, deadline, time: isDeadlineJob(j) ? null : String(j.scheduled_time || '').slice(0, 5) || null, bucket, minutes,
       doneBy: b ? (b.employee_name || '') : (done ? j.employee_name || '' : ''), doneAt: tokyoHM(b ? b.completed_at : j.completed_at),
       coveredBy: b ? (b.employee_name || '') : '', startedAt: tokyoHM(j.started_at),
-      uncovered: !done && (!j.employee_id || cantIds.has(j.employee_id)),
-      noPerson: !done && !j.employee_id,
+      // a free job is "livre" until the cut-off; after it nobody took it → sem cobertura
+      uncovered: !done && ((!j.employee_id && !freeOpen) || cantIds.has(j.employee_id)),
+      noPerson: !done && !j.employee_id && !free,
+      free, freeOpen: !done && freeOpen,
+      taken: !!j.employee_id && j.spot_status === 'accepted' && j.job_category !== 'spot',
     }
     if (svc.status === 'working' && svc.late) svc.status = 'late' // deadline jobs running past the deadline
     services.push(svc)
@@ -116,51 +166,50 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
   const counted = services.filter(s => !coverers.has(s.id))
 
   // ---- stores ----
-  const byStore = new Map()
-  for (const s of counted) {
-    const k = norm(s.store)
-    if (!byStore.has(k)) byStore.set(k, { key: k, store: s.store, clientName: s.job.client_name || '', services: [] })
-    byStore.get(k).services.push(s)
+  const group = list => {
+    const m = new Map()
+    for (const s of list) {
+      const k = norm(s.store)
+      if (!m.has(k)) m.set(k, { key: k, store: s.store, clientName: s.job.client_name || '', services: [] })
+      m.get(k).services.push(s)
+    }
+    return m
   }
+  const byStore = group(counted)
   // weekly contract places due today with no job at all → the store exists, nobody will do it
+  const noJobRows = []
   for (const t of targets || []) {
     if (t.kind !== 'weekly' || !t.days.includes(dowOf(date))) continue
     const k = norm(t.base)
-    if (byStore.has(k)) continue
+    if (byStore.has(k) || noJobRows.some(r => r.key === k)) continue
     if (live.some(j => jobFulfils(j.title, t))) continue
     const ownerId = owners[k] || null
-    byStore.set(k, { key: k, store: t.base, clientName: t.clientName || '', services: [], noJob: true, usualId: ownerId, usualName: empById[ownerId]?.full_name || '' })
+    noJobRows.push({ key: k, store: t.base, clientName: t.clientName || '', services: [], noJob: true, usualId: ownerId, usualName: empById[ownerId]?.full_name || '', otp: t.clientId === OTP_CLIENT_ID })
   }
-  const stores = [...byStore.values()].map(st => {
-    const sv = st.services
-    const doneN = sv.filter(s => s.status === 'done').length
-    const allDone = sv.length > 0 && doneN === sv.length
-    const anyLate = sv.some(s => s.status === 'late')
-    const anyWorking = sv.some(s => s.status === 'working') || (doneN > 0 && !allDone)
-    const state = st.noJob ? 'not_started' : allDone ? 'done' : anyLate ? 'late' : anyWorking ? 'working' : 'not_started'
-    const doneBy = [...new Set(sv.filter(s => s.status === 'done').map(s => s.doneBy).filter(Boolean))]
-    const doneAt = sv.map(s => s.doneAt).filter(Boolean).sort().pop() || ''
-    const workers = [...new Set(sv.filter(s => s.status === 'working').map(s => s.assigned).filter(Boolean))]
-    const since = sv.map(s => s.startedAt).filter(Boolean).sort()[0] || ''
-    const people = [...new Set(sv.map(s => s.assigned).filter(Boolean))]
-    const covered = sv.some(s => s.coveredBy)
-    const uncovered = !!st.noJob || sv.some(s => s.uncovered)
-    const deadline = sv.map(s => s.deadline).find(Boolean) || null
-    const firstTime = sv.map(s => s.time).filter(Boolean).sort()[0] || null
-    return { ...st, state, doneN, total: sv.length, doneBy, doneAt, workers, since, people, covered, uncovered, deadline, firstTime }
-  }).sort((a, b) => STORE_ORDER[a.state] - STORE_ORDER[b.state] || a.store.localeCompare(b.store))
+  const stores = sortStores([...byStore.values(), ...noJobRows].map(st => storeRow(st, planBNames(st.key))))
+
+  // ---- morning route × deep of the day × other jobs (each with its own counter) ----
+  const routes = {}
+  for (const b of ['morning', 'deep', 'other']) {
+    const svc = counted.filter(s => s.bucket === b)
+    const extra = b === 'morning' ? noJobRows.filter(r => r.otp) : b === 'other' ? noJobRows.filter(r => !r.otp) : []
+    const list = sortStores([...group(svc).values(), ...extra].map(st => storeRow(st, planBNames(st.key))))
+    routes[b] = { stores: list, count: countOf(list, svc), deadline: b === 'morning' ? OTP_DEADLINE : b === 'deep' ? (svc.map(s => s.deadline).sort().pop() || null) : null, minutes: svc.reduce((a, s) => a + s.minutes, 0) }
+  }
+  const loads = routeLoads(counted.map(s => ({ employeeId: s.assignedId, employeeName: s.assigned, bucket: s.bucket, minutes: s.minutes })))
 
   // ---- team: every field employee, also the ones with nothing today ----
   const team = []
   const seenEmp = new Set()
   const people = (employees || []).filter(e => e.is_active !== false && (keepTests || !isTestEmployee(e)))
+  const loadOf = id => ({ morning: loads.find(l => l.employeeId === id && l.bucket === 'morning') || null, deep: loads.find(l => l.employeeId === id && l.bucket === 'deep') || null })
   for (const emp of people) {
     const mine = services.filter(s => s.assignedId === emp.id && !s.coveredBy)
     const coveredMine = services.filter(s => s.assignedId === emp.id && s.coveredBy)
     if (!mine.length && !coveredMine.length && !roleCan(emp.job_role, 'routes')) continue
     seenEmp.add(emp.id)
     const mark = marks[emp.id] || null
-    const sh = shiftState({ emp, date, mark, hasJobs: mine.length > 0, now, cutoff })
+    const sh = shiftState({ emp, date, mark, hasJobs: mine.length > 0, now: new Date(nowMs), cutoff })
     const usual = stores.filter(st => st.noJob && st.usualId === emp.id)
     const notDone = mine.filter(s => s.status !== 'done')
     const firstStart = mine.map(s => s.startedAt).filter(Boolean).sort()[0] || ''
@@ -169,7 +218,8 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
       id: emp.id, name: emp.full_name || '—', first: firstName(emp.full_name), mark, ...sh,
       total: mine.length, done: mine.filter(s => s.status === 'done').length, working: mine.filter(s => s.status === 'working').length,
       late: mine.filter(s => s.status === 'late').length, notStarted: mine.filter(s => s.status === 'not_started').length,
-      coveredByOthers: coveredMine.map(s => s.coveredBy), firstStart, noServiceReason,
+      taken: mine.filter(s => s.taken).length,
+      coveredByOthers: coveredMine.map(s => s.coveredBy), firstStart, noServiceReason, load: loadOf(emp.id),
       uncoveredStores: sh.state === 'cant' ? [...new Set([...notDone.map(s => s.store), ...usual.map(u => u.store)])] : [],
     })
   }
@@ -180,16 +230,22 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
     const mine = services.filter(x => x.assignedId === s.assignedId && !x.coveredBy)
     team.push({ id: s.assignedId, name: s.assigned || '—', first: firstName(s.assigned), mark: marks[s.assignedId] || null, state: 'unconfirmed', expected: false,
       total: mine.length, done: mine.filter(x => x.status === 'done').length, working: mine.filter(x => x.status === 'working').length,
-      late: mine.filter(x => x.status === 'late').length, notStarted: mine.filter(x => x.status === 'not_started').length,
-      coveredByOthers: [], firstStart: mine.map(x => x.startedAt).filter(Boolean).sort()[0] || '', noServiceReason: null, uncoveredStores: [] })
+      late: mine.filter(x => x.status === 'late').length, notStarted: mine.filter(x => x.status === 'not_started').length, taken: mine.filter(x => x.taken).length,
+      coveredByOthers: [], firstStart: mine.map(x => x.startedAt).filter(Boolean).sort()[0] || '', noServiceReason: null, uncoveredStores: [], load: loadOf(s.assignedId) })
   }
   const TEAM_ORDER = p => (p.late ? 0 : p.total && p.done < p.total ? 1 : p.total ? 2 : 3)
   team.sort((a, b) => TEAM_ORDER(a) - TEAM_ORDER(b) || a.name.localeCompare(b.name))
 
   // ---- alerts of the day (same items as the bell's "sem cobertura" / route groups) ----
   const alerts = []
+  // 05:00 and NOTHING of today's route started → urgent, on top
+  const routeSvcs = counted.filter(s => s.bucket !== 'other')
+  if (date === day && nm >= ALERT_MIN && routeSvcs.length && !routeSvcs.some(s => s.startedAt || s.status === 'done' || s.status === 'working')) alerts.push({ id: `route-none:${date}`, kind: 'route_none', n: routeSvcs.length, stores: [...new Set(routeSvcs.map(s => s.store))] })
   if (date === day) for (const a of otpRouteAlerts(live, { today: day, nowMin: nm })) if (!a.startedAt) alerts.push({ id: a.id, kind: 'route', who: a.employeeName, employeeId: a.employeeId, n: a.jobs })
+  for (const l of loads) if (l.impossible && date >= day) alerts.push({ id: `impossible:${date}:${l.bucket}:${l.employeeId}`, kind: 'impossible', who: l.name, employeeId: l.employeeId, bucket: l.bucket, minutes: l.minutes, deadline: l.deadline, n: l.n })
   for (const p of team) if (p.state === 'cant' && p.uncoveredStores.length) alerts.push({ id: `cant:${date}:${p.id}`, kind: 'cant', who: p.name, employeeId: p.id, n: p.uncoveredStores.length, stores: p.uncoveredStores, reason: p.mark?.reason || '', at: p.mark?.at || null, byRole: p.mark?.byRole || null })
+  const freeLeft = counted.filter(s => s.free && !s.assignedId && s.status !== 'done')
+  if (freeLeft.length) alerts.push({ id: `free:${date}:${pastCutoff ? 'uncovered' : 'open'}`, kind: pastCutoff ? 'free_uncovered' : 'free_open', n: freeLeft.length, stores: [...new Set(freeLeft.map(s => s.store))], services: freeLeft.map(s => s.id), cutoff })
   const noPersonStores = stores.filter(st => st.services.some(s => s.noPerson))
   if (noPersonStores.length) alerts.push({ id: `noperson:${date}`, kind: 'no_person', n: noPersonStores.length, stores: noPersonStores.map(s => s.store) })
   const noJobStores = stores.filter(st => st.noJob)
@@ -197,14 +253,9 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
   const lateStores = stores.filter(st => st.state === 'late')
   if (lateStores.length) alerts.push({ id: `late:${date}`, kind: 'late', n: lateStores.length, services: counted.filter(s => s.status === 'late').length, stores: lateStores.map(s => s.store) })
 
-  const count = {
-    stores: stores.length, storesDone: stores.filter(s => s.state === 'done').length, storesWorking: stores.filter(s => s.state === 'working').length,
-    storesLate: lateStores.length, storesNotStarted: stores.filter(s => s.state === 'not_started').length,
-    storesCovered: stores.filter(s => s.covered).length, storesUncovered: stores.filter(s => s.uncovered && s.state !== 'done').length,
-    services: counted.length, servicesDone: counted.filter(s => s.status === 'done').length, servicesWorking: counted.filter(s => s.status === 'working').length,
-    servicesLate: counted.filter(s => s.status === 'late').length, servicesNotStarted: counted.filter(s => s.status === 'not_started').length,
-  }
-  return { date, count, stores, team, alerts, services: counted }
+  const count = countOf(stores, counted)
+  const staff = people.filter(e => roleCan(e.job_role, 'routes')).map(e => ({ id: e.id, full_name: e.full_name, is_active: e.is_active })).sort((x, y) => String(x.full_name).localeCompare(String(y.full_name)))
+  return { date, count, stores, routes, loads, team, alerts, services: counted, pastCutoff, cutoff, staff }
 }
 
 /** Several days (Reports "Semana"): the same numbers summed, stores of each day kept apart. */
@@ -240,20 +291,35 @@ export function teamProgressText(p, L = (en, ja, pt) => pt) {
   if (!p.done && !p.working) parts.push(L('nothing started', '未着手', 'nada iniciado'))
   else if (p.working) parts.push(L(`${p.working} in progress`, `${p.working}件作業中`, `${p.working} em andamento`))
   if (p.late) parts.push(L(`${p.late} late`, `${p.late}件遅れ`, p.late === 1 ? '1 atrasado' : `${p.late} atrasados`))
+  if (p.taken) parts.push(L(`${p.taken} taken from free`, `空きから${p.taken}件取得`, p.taken === 1 ? '1 livre que pegou' : `${p.taken} livres que pegou`))
   if (p.coveredByOthers?.length) parts.push(L(`${p.coveredByOthers.length} covered by others`, `${p.coveredByOthers.length}件 他の人が対応`, p.coveredByOthers.length === 1 ? `1 coberto por ${p.coveredByOthers[0]}` : `${p.coveredByOthers.length} cobertos por outros`))
   return parts.join(' · ')
+}
+
+/** "Rota da manhã 16h até 10:00 · Deep 16h" for one person (empty when no route jobs). */
+export function teamLoadText(p, L = (en, ja, pt) => pt) {
+  const out = []
+  if (p.load?.morning) out.push(L(`morning route ${hoursText(p.load.morning.minutes)} by ${p.load.morning.deadline}`, `朝ルート ${p.load.morning.deadline}まで${hoursText(p.load.morning.minutes)}`, `rota da manhã ${hoursText(p.load.morning.minutes)} até ${p.load.morning.deadline}`))
+  if (p.load?.deep) out.push(L(`deep ${hoursText(p.load.deep.minutes)}`, `ディープ ${hoursText(p.load.deep.minutes)}`, `deep ${hoursText(p.load.deep.minutes)}`))
+  return out.join(' · ')
 }
 
 export function storeStateText(st, L = (en, ja, pt) => pt) {
   const who = list => list.join(', ')
   if (st.state === 'done') return L(`Done${st.doneBy.length ? ` by ${who(st.doneBy)}` : ''}${st.doneAt ? ` · ${st.doneAt}` : ''}`, `完了${st.doneBy.length ? `（${who(st.doneBy)}）` : ''}${st.doneAt ? ` · ${st.doneAt}` : ''}`, `Feita${st.doneBy.length ? ` por ${who(st.doneBy)}` : ''}${st.doneAt ? ` · ${st.doneAt}` : ''}`)
   if (st.state === 'working') return L(`In progress${st.workers.length ? ` · ${who(st.workers)}` : ''}${st.since ? ` since ${st.since}` : ''}`, `作業中${st.workers.length ? `（${who(st.workers)}）` : ''}${st.since ? ` ${st.since}から` : ''}`, `Em andamento${st.workers.length ? ` · ${who(st.workers)}` : ''}${st.since ? ` desde ${st.since}` : ''}`)
+  if (st.free && st.freeOpen) return L('Free · for the team to take', '空き · チームが取れます', 'Livre · disponível para a equipe pegar')
+  if (st.free) return L('NO COVER · free service nobody took', '担当不在 · 誰も取っていない空き作業', 'SEM COBERTURA · serviço livre que ninguém pegou')
   if (st.noJob) return L(`Not started · no job created${st.usualName ? ` (usually ${st.usualName})` : ''}`, `未開始・作業未作成${st.usualName ? `（通常 ${st.usualName}）` : ''}`, `Não iniciada · sem serviço criado${st.usualName ? ` (costuma ser ${st.usualName})` : ''}`)
   if (st.state === 'late') return L(`Late${st.deadline ? ` · deadline ${st.deadline}` : st.firstTime ? ` · planned ${st.firstTime}` : ''}`, `遅れ${st.deadline ? ` · 期限 ${st.deadline}` : st.firstTime ? ` · 予定 ${st.firstTime}` : ''}`, `Atrasada${st.deadline ? ` · prazo ${st.deadline}` : st.firstTime ? ` · previsto ${st.firstTime}` : ''}`)
   return L(`Not started${st.deadline ? ` · deadline ${st.deadline}` : st.firstTime ? ` · planned ${st.firstTime}` : ''}`, `未開始${st.deadline ? ` · 期限 ${st.deadline}` : st.firstTime ? ` · 予定 ${st.firstTime}` : ''}`, `Não iniciada${st.deadline ? ` · prazo ${st.deadline}` : st.firstTime ? ` · previsto ${st.firstTime}` : ''}`)
 }
 
 export function alertText(a, L = (en, ja, pt) => pt) {
+  if (a.kind === 'route_none') return L(`Today's route has not started yet (${a.n} services)`, `本日のルートはまだ開始されていません（${a.n}件）`, `Rota de hoje ainda não começou (${plural(a.n, 'serviço', 'serviços')})`)
+  if (a.kind === 'impossible') return impossibleText({ name: a.who, minutes: a.minutes, deadline: a.deadline, bucket: a.bucket }, L)
+  if (a.kind === 'free_open') return L(`${a.n} free service${a.n === 1 ? '' : 's'} not taken yet — until ${a.cutoff} of the evening before`, `未取得の空き作業 ${a.n}件 — 前日${a.cutoff}まで`, `${plural(a.n, 'serviço livre', 'serviços livres')} ainda não ${a.n === 1 ? 'pego' : 'pegos'} — até ${a.cutoff} da véspera`)
+  if (a.kind === 'free_uncovered') return L(`NO COVER — ${a.n} free service${a.n === 1 ? '' : 's'} nobody took`, `担当不在 — 誰も取っていない空き作業 ${a.n}件`, `SEM COBERTURA — ${plural(a.n, 'serviço livre', 'serviços livres')} que ninguém pegou`)
   if (a.kind === 'route') return L(`Route has not started — ${a.who} (${a.n} services)`, `ルート未開始 — ${a.who}（${a.n}件）`, `Rota não começou — ${a.who} (${plural(a.n, 'serviço', 'serviços')})`)
   if (a.kind === 'cant') return L(`${a.who} can't today — ${a.n} store${a.n === 1 ? '' : 's'} without cover`, `${a.who} 本日不可 — ${a.n}店舗 担当なし`, `${a.who} não pode hoje — ${plural(a.n, 'loja sem cobertura', 'lojas sem cobertura')}`) + (a.reason ? ` (“${a.reason}”)` : '')
   if (a.kind === 'no_person') return L(`${a.n} store${a.n === 1 ? '' : 's'} with nobody assigned`, `担当者なし ${a.n}店舗`, `${plural(a.n, 'loja', 'lojas')} sem pessoa atribuída`)
@@ -266,7 +332,8 @@ export function alertText(a, L = (en, ja, pt) => pt) {
 /** Load `from..to` (inclusive) and return one panel per day (newest first). */
 export async function fetchDayPanels(from, to = from, { nowMin = null, now = new Date(), today = null } = {}) {
   const { supabase } = await import('./supabase.js')
-  const [c, cl, e, j, h, av] = await Promise.all([
+  const { fetchRouteSettings } = await import('./routeSettings.js')
+  const [c, cl, e, j, h, av, rs] = await Promise.all([
     supabase.from('service_contracts').select('*').eq('is_active', true),
     supabase.from('clients').select('id,company_name,is_active'),
     supabase.from('employees').select('*'),
@@ -275,6 +342,7 @@ export async function fetchDayPanels(from, to = from, { nowMin = null, now = new
     supabase.from('jobs').select('title,employee_id').gte('scheduled_date', addDays(from, -28)).lt('scheduled_date', from)
       .not('employee_id', 'is', null).neq('status', 'cancelled').limit(3000),
     supabase.from('employee_availability').select('*').gte('date', from).lte('date', to),
+    fetchRouteSettings().catch(() => null),
   ])
   if (j.error) throw j.error
   const employees = e.data || []
@@ -283,7 +351,7 @@ export async function fetchDayPanels(from, to = from, { nowMin = null, now = new
   const targets = c.error ? [] : contractTargets(c.data || [], cl.data || [])
   const out = []
   for (let d = to; d >= from; d = addDays(d, -1)) {
-    out.push(buildDayPanel({ date: d, jobs: (j.data || []).filter(x => x.scheduled_date === d), employees, availability: (av.data || []).filter(x => x.date === d), targets, owners, now, nowMin, today }))
+    out.push(buildDayPanel({ date: d, jobs: (j.data || []).filter(x => x.scheduled_date === d), employees, availability: (av.data || []).filter(x => x.date === d), targets, owners, planB: rs?.planB || {}, cutoff: rs?.cutoff || SHIFT_CUTOFF, now, nowMin, today }))
   }
   return out
 }

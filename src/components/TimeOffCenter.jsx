@@ -22,7 +22,10 @@ import { exceptionInfo, exceptionDeadline } from '../lib/exceptionText'
 import { hideTests, HIDE_TESTS_CHANGED } from '../lib/testData'
 import { fetchOtpRouteAlerts } from '../lib/jobDeadline'
 import { decideCoverFlow } from '../lib/coverageOps'
-import { fetchDayPanel, serviceLabel, plural } from '../lib/dayPanel'
+import { fetchDayPanels, serviceLabel, plural } from '../lib/dayPanel'
+import { addDays } from '../lib/schedulePlan'
+import { impossibleText } from '../lib/routePlan'
+import { ROUTE_SETTINGS_CHANGED } from '../lib/routeSettings'
 import { buildBellQueue, badgeText } from '../lib/bellQueue'
 import { markReviewed, markNotDone } from '../lib/attentionActions'
 import { SHIFT_MARK_CHANGED } from '../lib/shiftMarks'
@@ -68,6 +71,8 @@ export default function TimeOffCenter() {
   const [taken, setTaken] = useState([])
   // v1.0.151 · today's panel (same source as the Painel do Dia): "não pode hoje", stores with no job
   const [panel, setPanel] = useState(null)
+  // v1.0.154 · tomorrow's panel: after 21:00 of the evening before its gaps are in the bell that night
+  const [nextPanel, setNextPanel] = useState(null)
   // v1.0.110 · one queue of exceptions, each row with the action that resolves it
   const [exceptions, setExceptions] = useState([])
   // v1.0.147 · 05:00: On The Planet route of the day with no start (one per person per day)
@@ -95,10 +100,10 @@ export default function TimeOffCenter() {
       keep(fetchQuoteFlowAlerts(), 'flow'),
       keep(fetchFacilityOffers(), 'offerRows'),
       keep(fetchAssignAlerts(), 'assign'),
-      keep(fetchDayPanel(today, { nowMin, today }), 'panel'),
+      keep(fetchDayPanels(today, addDays(today, 1), { nowMin, today }), 'panel'),
       keep(fetchExceptions({ hideTests: hideTests() }), 'exc'),
       keep(fetchOtpRouteAlerts(today, nowMin), 'otp'),
-    ]).then(([list, periods, quoteRows, flow, offerRows, assign, dayPanel, exc, otp]) => {
+    ]).then(([list, periods, quoteRows, flow, offerRows, assign, panels, exc, otp]) => {
       if (seq !== loadSeq.current) return
       // not started yet: stays until the route starts; started after 05:00: stays (with the real time) until OK
       const otpRows = (otp || []).map(a => ({ ...a, id: a.startedAt ? `${a.id}:started` : a.id })).filter(a => !(a.startedAt && seen.current.has(`${a.id}:ok`)))
@@ -107,7 +112,9 @@ export default function TimeOffCenter() {
       setOffers(offerRows)
       const takenUnseen = assign.accepted.filter(a => !seen.current.has(a.id))
       setTaken(takenUnseen)
-      setPanel(dayPanel || null)
+      // newest first: [tomorrow, today]
+      setPanel(panels?.find(x => x.date === today) || null)
+      setNextPanel(panels?.find(x => x.date !== today) || null)
       setRows(list)
       setPayroll(periods)
       setQuotes(quoteRows)
@@ -133,7 +140,7 @@ export default function TimeOffCenter() {
     load()
     const id = setInterval(load, 60000)
     const openFromOutside = () => openRef.current?.()
-    const evs = [TIME_OFF_CHANGED, PAYROLL_CHANGED, QUOTE_REQUESTS_CHANGED, QUOTE_FLOW_CHANGED, PENDING_CHANGED, HIDE_TESTS_CHANGED, SHIFT_MARK_CHANGED]
+    const evs = [TIME_OFF_CHANGED, PAYROLL_CHANGED, QUOTE_REQUESTS_CHANGED, QUOTE_FLOW_CHANGED, PENDING_CHANGED, HIDE_TESTS_CHANGED, SHIFT_MARK_CHANGED, ROUTE_SETTINGS_CHANGED]
     evs.forEach(e => window.addEventListener(e, load))
     window.addEventListener(OPEN_BELL, openFromOutside)
     return () => { clearInterval(id); evs.forEach(e => window.removeEventListener(e, load)); window.removeEventListener(OPEN_BELL, openFromOutside) }
@@ -146,7 +153,7 @@ export default function TimeOffCenter() {
     return () => clearTimeout(id)
   }, [toastOpen])
 
-  const queue = buildBellQueue({ exceptions, panel, routeAlerts, timeOff: rows, quotes, toBook, flowDone, payroll, offers, taken, today: tokyoToday(), hidden })
+  const queue = buildBellQueue({ exceptions, panel, nextPanel, routeAlerts, timeOff: rows, quotes, toBook, flowDone, payroll, offers, taken, today: tokyoToday(), hidden })
   const n = queue.count
 
   // PC: anchored under the bell, right edge aligned with it; phone: full screen
@@ -246,6 +253,10 @@ export default function TimeOffCenter() {
   }
   const KIND_LABEL = {
     late: L('Late', '遅れ', 'Atrasado'), route: L('Route not started', 'ルート未開始', 'Rota não começou'),
+    route_none: L("Today's route has not started", '本日のルート未開始', 'Rota de hoje ainda não começou'),
+    free_uncovered: L('NO COVER · free service nobody took', '担当不在 · 未取得の空き作業', 'SEM COBERTURA · livre que ninguém pegou'),
+    eve_unconfirmed: L('NO CONFIRMATION for tomorrow', '明日 未確認', 'SEM CONFIRMAÇÃO para amanhã'),
+    impossible: L('Impossible route', '不可能なルート', 'Rota impossível'),
     cant: L("Can't today", '本日不可', 'Não pode hoje'), no_person: L('Nobody assigned', '担当なし', 'Sem pessoa'), no_job: L('No job created', '作業未作成', 'Sem serviço criado'),
     covered: L('Covered by another person', '他の人が実施', 'Coberto por outra pessoa'), incomplete: L('Never started', '未開始のまま', 'Nunca iniciado'),
     problem: L('Problem reported', '問題の報告', 'Problema reportado'), long: L('Took much longer', '予定より長い', 'Demorou muito mais'),
@@ -253,10 +264,11 @@ export default function TimeOffCenter() {
     disputed: L('Payslip disputed', '明細に異議', 'Holerite contestado'), retro_review: L('Retroactive registration — review', '事後登録 — 確認', 'Registro retroativo — revisar'),
     paid_unconfirmed: L('Paid without confirmation', '確認なしで支払済', 'Pago sem confirmação'),
   }
-  const TONE = { late: 'red', route: 'red', cant: 'red', no_person: 'amber', no_job: 'amber', covered: 'blue', incomplete: 'red' }
+  const TONE = { route_none: 'red', free_uncovered: 'red', eve_unconfirmed: 'amber', impossible: 'amber', late: 'red', route: 'red', cant: 'red', no_person: 'amber', no_job: 'amber', covered: 'blue', incomplete: 'red' }
   const Btn = ({ main, onClick, children, disabled }) => <button type="button" className={`tor-btn tor-btn-sm ${main ? 'tor-btn-primary' : 'tor-btn-ghost'}`} disabled={disabled} onClick={onClick}>{children}</button>
 
   // what happened and when — absolute date and time of the event (+ the relative, never instead of it)
+  const cutoffTxt = nextPanel?.cutoff || panel?.cutoff || '21:00'
   const whenOf = x => {
     switch (x.kind) {
       case 'late': return x.deadline
@@ -265,6 +277,10 @@ export default function TimeOffCenter() {
       case 'route': return x.startedAt
         ? L(`${dShort(x.date)} · alert at 05:00 · started at ${x.startedAt}`, `${dShort(x.date)} · 05:00の警告 · ${x.startedAt}開始`, `${dShort(x.date)} · alerta das 05:00 · começou às ${x.startedAt}`)
         : L(`${dShort(x.date)} · alert at 05:00 · ${plural(x.jobs, 'service', 'services')} · deadline 10:00`, `${dShort(x.date)} · 05:00の警告 · ${x.jobs}件 · 期限10:00`, `${dShort(x.date)} · alerta das 05:00 · ${plural(x.jobs, 'serviço', 'serviços')} · prazo 10:00`)
+      case 'route_none': return L(`${dShort(x.date)} · alert at 05:00 · ${plural(x.n, 'service', 'services')} · nothing started`, `${dShort(x.date)} · 05:00の警告 · ${x.n}件 · 未着手`, `${dShort(x.date)} · alerta das 05:00 · ${plural(x.n, 'serviço', 'serviços')} · nada iniciado`)
+      case 'free_uncovered': return [L(`${dShort(x.date)} · nobody took it by ${cutoffTxt} of the evening before`, `${dShort(x.date)} · 前日${cutoffTxt}までに誰も取らず`, `${dShort(x.date)} · ninguém pegou até ${cutoffTxt} da véspera`), x.deadline ? L(`deadline ${x.deadline}`, `期限 ${x.deadline}`, `prazo ${x.deadline}`) : '', x.planB?.length ? L(`plan B: ${x.planB.join(', ')}`, `プランB: ${x.planB.join('、')}`, `plano B: ${x.planB.join(', ')}`) : ''].filter(Boolean).join(' · ')
+      case 'eve_unconfirmed': return L(`${dShort(x.date)} · expected by the weekly pattern · no mark by ${cutoffTxt}`, `${dShort(x.date)} · 週の予定で出勤予定 · ${cutoffTxt}までに記録なし`, `${dShort(x.date)} · esperado pelo padrão semanal · nada marcado até ${cutoffTxt}`) + (x.total ? L(` · ${x.total} services`, ` · ${x.total}件`, ` · ${plural(x.total, 'serviço', 'serviços')}`) : '')
+      case 'impossible': return `${dShort(x.date)} · ${impossibleText({ name: x.who, minutes: x.minutes, deadline: x.deadline, bucket: x.bucket }, L)} · ${L(`${x.n} services`, `${x.n}件`, plural(x.n, 'serviço', 'serviços'))}`
       case 'cant': return [x.at ? L(`Marked “can't” on ${at(x.at)}${x.byRole === 'admin' ? ' (by the admin)' : ''}`, `${at(x.at)}に「不可」${x.byRole === 'admin' ? '（管理者）' : ''}`, `Marcou “Não posso” em ${at(x.at)}${x.byRole === 'admin' ? ' (pelo admin)' : ''}`) : dShort(x.date), x.reason ? `“${x.reason}”` : ''].filter(Boolean).join(' · ')
       case 'no_person': return L(`${dShort(x.date)}${x.time ? ` · planned ${x.time}` : ''}`, `${dShort(x.date)}${x.time ? ` · ${x.time}予定` : ''}`, `${dShort(x.date)}${x.time ? ` · previsto ${x.time}` : ''}`)
       case 'no_job': return L(`Contract of ${dShort(x.date)} · no job was created`, `${dShort(x.date)}の契約 · 作業未作成`, `Contrato de ${dShort(x.date)} · nenhum serviço criado`) + (x.who ? L(` · usually ${x.who}`, ` · 通常 ${x.who}`, ` · costuma ser ${x.who}`) : '')
@@ -281,6 +297,9 @@ export default function TimeOffCenter() {
   const actionsOf = x => {
     switch (x.kind) {
       case 'route': return <><Btn main onClick={() => go('/live')}>{L('Open Live Track', 'ライブ追跡を開く', 'Abrir Live Track')}</Btn>{x.startedAt && <Btn onClick={() => okRoute(x)}>✓ OK</Btn>}</>
+      case 'route_none': return <><Btn main onClick={() => go('/live')}>{L('Open Live Track', 'ライブ追跡を開く', 'Abrir Live Track')}</Btn><Btn onClick={() => go('/')}>{L('Day panel', '本日のパネル', 'Painel do Dia')}</Btn></>
+      case 'free_uncovered': case 'impossible': return <Btn main onClick={() => go('/schedule')}>{x.kind === 'impossible' ? L('Split the route', 'ルートを分ける', 'Dividir a rota') : L('Assign', '割当', 'Atribuir')}</Btn>
+      case 'eve_unconfirmed': return <><Btn main onClick={() => go('/')}>{L('Mark for them', '代理で記録', 'Marcar por ele')}</Btn><Btn onClick={openCalendar}>{L('Availability', '勤務可能日', 'Disponibilidade')}</Btn></>
       case 'cant': return <><Btn main onClick={() => go('/live')}>{L('See the stores', '店舗を見る', 'Ver as lojas')}</Btn><Btn onClick={openCalendar}>{L('Availability', '勤務可能日', 'Disponibilidade')}</Btn></>
       case 'no_person': case 'no_job': return <Btn main onClick={() => go('/schedule')}>{x.kind === 'no_job' ? L('Create / assign', '作成・割当', 'Criar / atribuir') : L('Assign', '割当', 'Atribuir')}</Btn>
       case 'covered': return <><Btn main onClick={() => decideCover(x, true)}>{L(`Remove from ${x.who}`, `${x.who}から外す`, `Retirar de ${x.who}`)}</Btn><Btn onClick={() => decideCover(x, false)}>{L(`Keep on ${x.who}`, `${x.who}に残す`, `Manter em ${x.who}`)}</Btn></>
@@ -291,11 +310,11 @@ export default function TimeOffCenter() {
       default: return EXC[x.kind] ? <Btn main={!x.waiting} onClick={() => go(EXC[x.kind].to(x))}>{EXC[x.kind].action}</Btn> : null
     }
   }
-  const icon = x => ({ route: '🌙', cant: '✕', no_job: '📋' }[x.kind] || EXC[x.kind]?.icon || '•')
+  const icon = x => ({ route: '🌙', route_none: '🌙', cant: '✕', no_job: '📋', free_uncovered: '⚠️', eve_unconfirmed: '❔', impossible: '⏱' }[x.kind] || EXC[x.kind]?.icon || '•')
   const renderException = x => {
     const job = x.title ? serviceLabel({ title: x.title, job_category: x.job_category }, L) : ''
-    const title = x.kind === 'cant' ? x.who : x.kind === 'route' ? L('On The Planet route', 'On The Planet ルート', 'Rota On The Planet') : (x.place || x.who || EXC[x.kind]?.title(x) || '—')
-    const who = x.kind === 'cant' ? '' : x.who
+    const title = ['cant', 'eve_unconfirmed', 'impossible'].includes(x.kind) ? x.who : x.kind === 'route_none' ? L("Today's route", '本日のルート', 'Rota de hoje') : x.kind === 'route' ? L('On The Planet route', 'On The Planet ルート', 'Rota On The Planet') : (x.place || x.who || EXC[x.kind]?.title(x) || '—')
+    const who = ['cant', 'eve_unconfirmed', 'impossible'].includes(x.kind) ? '' : x.kind === 'free_uncovered' ? L('nobody — free', '担当なし（空き）', 'ninguém — livre') : x.who
     return (
       <article key={x.id} className={`bq-card tone-${TONE[x.kind] || 'plain'}${x.waiting ? ' is-waiting' : ''}`}>
         <div className="bq-kind">{icon(x)} {KIND_LABEL[x.kind] || ''}{x.overdue ? <span className="bq-over"> · {L('overdue', '期限切れ', 'vencido')}</span> : null}</div>

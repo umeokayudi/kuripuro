@@ -372,7 +372,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <DayPanelView panel={dayPanel} L={tr} admin={user?.name} dateLabel={new Date().toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Tokyo' })} />
+      <DayPanelView panel={dayPanel} L={tr} admin={user?.name} onChanged={load} dateLabel={new Date().toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Tokyo' })} />
 
       {/* v1.0.130 · "Needs attention": a clean list, one row per kind (count + who + one button).
           The AI is a small bar under it that opens in a side panel with the same items as context. */}

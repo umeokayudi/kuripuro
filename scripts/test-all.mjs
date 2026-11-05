@@ -10,6 +10,7 @@ const steps = [
   ['npm run test:exception-queue', 'exception queue'],
   ['node scripts/test-day-panel.mjs', 'day panel (Painel do Dia)'],
   ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],
+  ['npx vite-node scripts/test-route-split.mjs', 'route split (livres, rota da manhã × deep, rota impossível, plano B)'],
   ['npm run test:ai-score', 'AI score with reasons'],
   ['npm run test:client-rating-ask', 'client rating ask'],
   ['npm run test:global-search', 'global-search'],
