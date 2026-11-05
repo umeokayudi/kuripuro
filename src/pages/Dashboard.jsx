@@ -27,6 +27,8 @@ import { fetchDayPanel } from '../lib/dayPanel'
 const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
 const daysBetween = (from, to) => Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5) + 1
 
+const HIDDEN_KINDS_KEY = 'kp_dash_attention_hidden'
+
 export default function Dashboard() {
   const { lang, t, tr } = useLang()
   const { user } = useAuth() || {}
@@ -39,6 +41,9 @@ export default function Dashboard() {
   // v1.0.149 · items resolved here leave the list at once (before the reload confirms); open row = its item list
   const [resolved, setResolved] = useState(() => new Set())
   const [openKind, setOpenKind] = useState(null)
+  // v1.0.159 · the admin picks which kinds show in "Precisa de atenção" (kept on this device)
+  const [hiddenKinds, setHiddenKinds] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KINDS_KEY) || '[]')) } catch { return new Set() } })
+  const [customizing, setCustomizing] = useState(false)
   const [busyKind, setBusyKind] = useState(null)
   const [evals, setEvals] = useState([])
   const [trendJobs, setTrendJobs] = useState([])
@@ -235,6 +240,7 @@ export default function Dashboard() {
     long: tr('took much longer than planned', '予定より長くかかった作業', 'demoraram muito mais que o previsto'),
     no_photo: tr('done without the final photo', '完了写真なし', 'concluídos sem foto final'),
     ai_waiting: tr('photos waiting for the AI', 'AI確認待ちの写真', 'fotos aguardando a IA'),
+    retro_review: tr('retroactive registrations waiting for review', '事後登録 — 確認待ち', 'registros retroativos aguardando revisão'),
     covered: tr('done by a coworker — remove from the agenda?', '他のスタッフが実施 — 予定から外す？', 'feitos por outro colega — retirar da agenda?'),
   }
   const attentionGroups = []
@@ -288,7 +294,22 @@ export default function Dashboard() {
     ai_waiting: x => [[tr('Run the AI', 'AI確認', 'Rodar a IA'), () => runAi('ai_waiting', [x]), true], [tr('Accept', '承認', 'Aceitar'), () => acceptNoPhoto([x])]],
     long: x => [[tr('Checked', '確認済み', 'Conferido'), () => acceptNoPhoto([x]), true], [tr('Open job', '作業を開く', 'Abrir job'), () => navigate(EXC.long.to(x))]],
   }
-  const attentionTotal = actionRows.length + (staleCount > 0 ? 1 : 0)
+  // v1.0.159 · show / hide each kind ("adicionar ou retirar"); hidden kinds leave the list and the red total
+  const toggleKind = kind => setHiddenKinds(prev => {
+    const n = new Set(prev)
+    n.has(kind) ? n.delete(kind) : n.add(kind)
+    try { localStorage.setItem(HIDDEN_KINDS_KEY, JSON.stringify([...n])) } catch { /* private mode: keeps for this visit */ }
+    return n
+  })
+  const kindLabel = k => (k === 'stale' ? tr('old jobs never started', '未開始の古い作業', 'serviços antigos não iniciados') : GROUP_LABEL[k] || (() => { try { return EXC[k].title({}) } catch { return k } })())
+  const kindIcon = k => (k === 'stale' ? '🗂' : EXC[k]?.icon || '•')
+  const kindCount = k => (k === 'stale' ? staleCount : attentionGroups.find(g => g.kind === k)?.items.length || 0)
+  const allKinds = ['stale', ...Object.keys(EXC)]
+  const visibleGroups = attentionGroups.filter(g => !hiddenKinds.has(g.kind))
+  const showStale = staleCount > 0 && !hiddenKinds.has('stale')
+  const hiddenWithItems = allKinds.filter(k => hiddenKinds.has(k) && kindCount(k) > 0)
+  const hiddenItemCount = hiddenWithItems.reduce((n, k) => n + kindCount(k), 0)
+  const attentionTotal = visibleGroups.filter(g => !g.waiting).reduce((n, g) => n + g.items.length, 0) + (showStale ? 1 : 0)
   // What the AI gets with each question: the same items as on screen, with ids so its buttons open the exact record.
   const attentionContext = [
     `Today (Tokyo): ${tokyoToday()}. Screen: admin Dashboard.`,
@@ -320,23 +341,23 @@ export default function Dashboard() {
     const perItem = ITEM_ACTIONS[g.kind]
     const open = openKind === g.kind
     return (
-      <li key={g.kind} className={g.overdue ? 'is-urgent' : ''} style={{ flexWrap: 'wrap', ...(g.waiting ? { opacity: 0.7 } : {}) }}>
+      <li key={g.kind} className={g.overdue ? 'is-urgent' : ''} style={g.waiting ? { opacity: 0.7 } : undefined}>
         <span className="dx-att-icon" aria-hidden="true">{EXC[g.kind].icon}</span>
         <span className="dx-att-text">
           <strong>{g.items.length > 1 && <b>{g.items.length}</b>} {g.items.length === 1 ? EXC[g.kind].title(g.items[0]) : (GROUP_LABEL[g.kind] || EXC[g.kind].title(g.items[0]))}</strong>
           {names.length > 0 && <small>{names.slice(0, 3).join(', ')}{names.length > 3 ? tr(` +${names.length - 3}`, ` ほか${names.length - 3}`, ` +${names.length - 3}`) : ''}</small>}
         </span>
-        <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <span className={`dx-att-actions${perItem && row ? ' two' : ''}`}>
           {perItem && <button type="button" className={`btn btn-sm${row ? '' : ' btn-primary'}`} onClick={() => setOpenKind(open ? null : g.kind)}>{open ? tr('Hide', '閉じる', 'Esconder') : tr('Resolve one by one', '1件ずつ対応', 'Resolver um a um')}</button>}
           {row && <button type="button" className="btn btn-sm btn-primary" disabled={busyKind === g.kind} onClick={row.run}>{row.label}</button>}
           {!perItem && !row && <button type="button" className={`btn btn-sm${g.waiting ? '' : ' btn-primary'}`} onClick={() => navigate(g.to)}>{EXC[g.kind].action}</button>}
         </span>
         {open && perItem && (
-          <div style={{ flexBasis: '100%', display: 'grid', gap: 6, marginTop: 8 }}>
+          <div className="dx-att-items">
             {g.items.map(x => (
-              <div key={x.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 13, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
-                <span>{[dDay(x), x.place, x.who, x.by ? tr(`done by ${x.by}`, `${x.by}が実施`, `feito por ${x.by}`) : ''].filter(Boolean).join(' · ')}</span>
-                <span style={{ display: 'flex', gap: 6 }}>{perItem(x).map(([label, run, main]) => <button key={label} type="button" className={`btn btn-sm${main ? ' btn-primary' : ''}`} onClick={run}>{label}</button>)}</span>
+              <div key={x.id} className="dx-att-item">
+                <span className="dx-att-item-text">{[dDay(x), x.place, x.who, x.by ? tr(`done by ${x.by}`, `${x.by}が実施`, `feito por ${x.by}`) : ''].filter(Boolean).join(' · ')}</span>
+                <span className="dx-att-item-btns">{perItem(x).map(([label, run, main]) => <button key={label} type="button" className={`btn btn-sm${main ? ' btn-primary' : ''}`} onClick={run}>{label}</button>)}</span>
               </div>
             ))}
           </div>
@@ -379,22 +400,52 @@ export default function Dashboard() {
       <section className="card dx-overview">
         <div className="dx-overview-head">
           <div><h2>{tr('Needs attention', '要対応', 'Precisa de atenção')}</h2><p>{tr('One line per kind · the button opens the right tab', '種類ごとに1行 · ボタンで該当タブへ', 'Uma linha por tipo · o botão abre a aba certa')}</p></div>
-          {attentionTotal > 0 && <span className="badge badge-red">{attentionTotal}</span>}
+          <span className="dx-att-head-right">
+            {attentionTotal > 0 && <span className="badge badge-red">{attentionTotal}</span>}
+            <button type="button" className={`btn btn-sm${customizing ? ' btn-primary' : ''}`} onClick={() => setCustomizing(v => !v)} aria-expanded={customizing}>
+              {customizing ? tr('Done', '完了', 'Pronto') : `⚙ ${tr('Customize', 'カスタマイズ', 'Personalizar')}`}
+            </button>
+          </span>
         </div>
-        {attentionTotal === 0 && !waitingRows.length
+        {customizing && (
+          <div className="dx-att-custom">
+            <p>{tr('Choose what shows here. Tap to add or remove each kind (saved on this device).', 'ここに表示する項目を選びます。種類ごとにタップで追加・削除（この端末に保存）。', 'Escolha o que aparece aqui. Toque para adicionar ou retirar cada tipo (fica salvo neste aparelho).')}</p>
+            <ul>
+              {allKinds.map(k => {
+                const on = !hiddenKinds.has(k)
+                const n = kindCount(k)
+                return (
+                  <li key={k} className={on ? 'on' : 'off'}>
+                    <span className="dx-att-icon" aria-hidden="true">{kindIcon(k)}</span>
+                    <span className="dx-att-custom-label">{kindLabel(k)}{n > 0 && <b>{n}</b>}</span>
+                    <button type="button" className={`btn btn-sm${on ? '' : ' btn-primary'}`} onClick={() => toggleKind(k)} aria-pressed={on}>
+                      {on ? `− ${tr('Remove', '削除', 'Retirar')}` : `+ ${tr('Add', '追加', 'Adicionar')}`}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+        {!customizing && (attentionTotal === 0 && !visibleGroups.some(g => g.waiting)
           ? <div className="ov-empty" style={{ padding: '14px 0 6px' }}>✅ {tr('Nothing needs action now', '今は対応不要です', 'Nada exige ação agora')}</div>
           : <ul className="dx-att-list">
-            {staleCount > 0 && (
+            {showStale && (
               <li>
                 <span className="dx-att-icon" aria-hidden="true">🗂</span>
                 <span className="dx-att-text"><strong><b>{staleCount}</b> {tr('old jobs never started', '未開始の古い作業', 'serviços antigos não iniciados')}</strong><small>{tr('still "assigned" with a past date', '過去の日付で「割当済み」のまま', 'ainda "atribuídos" com data passada')}</small></span>
-                <button type="button" className="btn btn-sm" onClick={cancelStaleJobs}>{tr('Review & cancel', '確認してキャンセル', 'Revisar e cancelar')}</button>
+                <span className="dx-att-actions"><button type="button" className="btn btn-sm" onClick={cancelStaleJobs}>{tr('Review & cancel', '確認してキャンセル', 'Revisar e cancelar')}</button></span>
               </li>
             )}
-            {attentionGroups.filter(g => !g.waiting).map(g => renderGroup(g))}
-            {attentionGroups.some(g => g.waiting) && <li className="dx-att-sub" style={{ display: 'block', fontSize: 12, color: 'var(--text3)', borderBottom: 'none', paddingBottom: 0 }}>{tr('Waiting on someone else (not counted)', '他の人の対応待ち（件数に含めない）', 'Aguardando outra pessoa (não conta no total)')}</li>}
-            {attentionGroups.filter(g => g.waiting).map(g => renderGroup(g))}
-          </ul>}
+            {visibleGroups.filter(g => !g.waiting).map(g => renderGroup(g))}
+            {visibleGroups.some(g => g.waiting) && <li className="dx-att-sub" style={{ display: 'block', fontSize: 12, color: 'var(--text3)', borderBottom: 'none', paddingBottom: 0 }}>{tr('Waiting on someone else (not counted)', '他の人の対応待ち（件数に含めない）', 'Aguardando outra pessoa (não conta no total)')}</li>}
+            {visibleGroups.filter(g => g.waiting).map(g => renderGroup(g))}
+          </ul>)}
+        {!customizing && hiddenWithItems.length > 0 && (
+          <button type="button" className="dx-att-hidden-note" onClick={() => setCustomizing(true)}>
+            {tr(`${hiddenWithItems.length} hidden kind(s) · ${hiddenItemCount} item(s) — show`, `非表示 ${hiddenWithItems.length}種類 · ${hiddenItemCount}件 — 表示する`, `${hiddenWithItems.length} tipo(s) oculto(s) · ${hiddenItemCount} item(ns) — mostrar`)}
+          </button>
+        )}
         <form className="dx-ask-ai" onSubmit={e => { e.preventDefault(); openAI(askText.trim()) }}>
           <span className="ai-orb ai-orb-xs" aria-hidden="true" />
           <input value={askText} onChange={e => setAskText(e.target.value)} placeholder={tr('Ask the AI or send a command…', 'AIに質問・指示…', 'Pergunte à IA ou mande um comando…')} aria-label={tr('Ask the AI', 'AIに質問', 'Perguntar à IA')} />
