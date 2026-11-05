@@ -100,9 +100,12 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }) {
     <>
     <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " sidebar-mobile-open" : ""}`}>
       <div className="sidebar-logo">
-        <div className="brand">KuriPuro</div>
-        <div className="brand-mark">KP</div>
-        <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
+        {/* Brand: blue rounded box with a white "K" (same look as the user avatar), name beside it. */}
+        <div className="brand-box" aria-hidden="true">K</div>
+        <div className="brand-text">
+          <div className="brand">KuriPuro</div>
+          <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
+        </div>
         <button type="button" className="sidebar-collapse" onClick={() => setCollapsed(v => !v)} aria-label={s.toggleNavigation || "Toggle navigation"} title={s.toggleNavigation || "Toggle navigation"}>‹</button>
       </div>
       <nav className="sidebar-nav">

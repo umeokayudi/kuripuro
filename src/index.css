@@ -2059,3 +2059,13 @@ body { background: var(--hq-bg); }
   .rf-sticky .rf-pills, .rf-sticky .rf-clear { display: none; }
   .rf-sticky select { flex: 1; max-width: none; }
 }
+
+/* v1.0.153 — sidebar brand: blue rounded "K" box + KuriPuro / by JBM · Admin (PC and phone menu) */
+.sidebar .sidebar-logo{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;gap:11px!important}
+.sidebar .sidebar-logo .brand-box{flex:0 0 38px;width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#1d3a63,#315cf5);color:#fff;display:grid;place-items:center;font-family:var(--font);font-size:18px;font-weight:800;letter-spacing:-.02em;line-height:1;box-shadow:0 6px 16px rgba(49,92,245,.28)}
+.sidebar .sidebar-logo .brand-text{display:flex;flex-direction:column;gap:4px;min-width:0;padding-right:30px}
+.sidebar .sidebar-logo .brand{color:#fff!important;font-size:17px!important;line-height:1.05;white-space:nowrap}
+.sidebar .sidebar-logo .sub{margin:0!important;color:rgba(255,255,255,.55);font-size:10px!important;opacity:1!important;line-height:1.2;white-space:nowrap}
+.sidebar-collapsed .sidebar-logo{justify-content:center!important}
+.sidebar-collapsed .sidebar-logo .brand-text{display:none}
+@media (max-width:720px){.sidebar .sidebar-logo .brand-text{padding-right:0}}
