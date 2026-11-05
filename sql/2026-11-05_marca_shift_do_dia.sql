@@ -1,4 +1,4 @@
--- v1.0.150 · Shift do dia: marca por dia específico, auditada (quem marcou e quando).
+-- v1.0.151 · Shift do dia: marca por dia específico, auditada (quem marcou e quando).
 -- NÃO APLICADO — rodar só com o OK do dono. O app funciona sem ele:
 --   · as marcas ✅ Confirmado / ✕ Não posso / ＋ Trabalho extra já são gravadas em employee_availability
 --     (kind 'confirmed' | 'off' | 'extra'; a coluna kind não tem restrição, nada muda nas linhas atuais);

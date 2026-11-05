@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// v1.0.150 · bell "Aguardando você": badge = real queue size, fixed order, retroactive review in the queue.
+// v1.0.151 · bell "Aguardando você": badge = real queue size, fixed order, retroactive review in the queue.
 import { buildBellQueue, badgeText } from '../src/lib/bellQueue.js'
 import { buildExceptions } from '../src/lib/exceptionQueue.js'
 import { buildDayPanel } from '../src/lib/dayPanel.js'

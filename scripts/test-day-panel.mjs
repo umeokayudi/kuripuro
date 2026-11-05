@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// v1.0.150 · Painel do Dia — real case of 05/11/2026 at 10:05 (Gabriel did not come, did not mark anything;
+// v1.0.151 · Painel do Dia — real case of 05/11/2026 at 10:05 (Gabriel did not come, did not mark anything;
 // Guilherme's route 0/10 after 10:00). One source of numbers by store + one row per field employee.
 import { buildDayPanel, teamProgressText, shiftBadge, storeStateText, alertText, serviceLabel, shiftState, plural } from '../src/lib/dayPanel.js'
 import { contractTargets } from '../src/lib/schedulePlan.js'

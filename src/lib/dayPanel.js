@@ -1,4 +1,4 @@
-// v1.0.150 · Painel do Dia — ONE source of numbers for the day (Painel, Reports, Agenda, Ao vivo, sino).
+// v1.0.151 · Painel do Dia — ONE source of numbers for the day (Painel, Reports, Agenda, Ao vivo, sino).
 // Pure builder + one fetch. Everything is by STORE (a store with 2 services is done only when both are),
 // plus one row per field employee with the shift state of THAT day.
 //

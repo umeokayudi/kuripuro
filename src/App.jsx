@@ -83,7 +83,7 @@ function Clock() {
   const dateLocale = localeOf(lang)
   return (
     <span className="kp-clock" style={{ fontSize:13, color:'var(--text2)' }}>
-      {/* v1.0.150 · time and date apart (they read "13:03:15qui., 05 de nov." glued together) */}
+      {/* v1.0.151 · time and date apart (they read "13:03:15qui., 05 de nov." glued together) */}
       <span className="kp-clock-time">{now.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</span>
       <span aria-hidden="true" style={{ margin:'0 8px', color:'var(--text3)' }}>·</span>
       <span className="kp-clock-date" style={{ fontSize:12, color:'var(--text3)' }}>

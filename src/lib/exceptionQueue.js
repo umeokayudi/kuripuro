@@ -37,7 +37,7 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
   const push = (kind, j, extra) => {
     const dl = withDeadline(kind, j?.scheduled_date, today)
     out.push({ id: `${kind}:${j?.id || extra.key}`, kind, urgency: URGENCY[kind] + (dl.overdue ? 10 : 0), date: j?.scheduled_date || '', place: j ? place(j) : '', who: j?.employee_name || '', jobId: j?.id || null,
-      // v1.0.150 · what the bell card needs to be told apart without opening it: service type + the event's own time
+      // v1.0.151 · what the bell card needs to be told apart without opening it: service type + the event's own time
       title: j?.title || '', time: j?.scheduled_time ? String(j.scheduled_time).slice(0, 5) : '', at: j?.completed_at || j?.started_at || null, ...dl, ...extra })
   }
   // v1.0.148 · B did A's service: A is not late / incomplete — the owner decides [Retirar de A] / [Manter em A]
@@ -55,7 +55,7 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     // v1.0.147 · OTP night jobs: late only when not finished at 10:00 (running too), measured from 10:00
     else if (isDeadlineJob(j) ? (j.scheduled_date === today && isDeadlineLate(j, { now })) : (!done && j.status === 'assigned' && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5)) push('late', j, { minutes: Math.round(hoursPastDue(j, now) * 60), ...(isDeadlineJob(j) ? { deadline: deadlineOf(j) } : {}) })
     else if (isMissedJob(j, now) && j.scheduled_date >= addDays(today, -14)) push('incomplete', j, {})
-    // v1.0.150 · retroactive registration ("já concluído") waiting for the admin's review — was only in Ao vivo
+    // v1.0.151 · retroactive registration ("já concluído") waiting for the admin's review — was only in Ao vivo
     if (j.retro_report != null && !j.admin_reviewed && j.scheduled_date >= addDays(today, -14)) push('retro_review', j, { at: j.completed_at || null })
     // v1.0.149 · the admin already checked this finished job (accepted without photo / reviewed): nothing left to do
     if (done && j.admin_reviewed) continue

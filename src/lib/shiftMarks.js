@@ -1,4 +1,4 @@
-// v1.0.150 · Shift do dia — the person's own mark for ONE specific day (never the weekly pattern).
+// v1.0.151 · Shift do dia — the person's own mark for ONE specific day (never the weekly pattern).
 // Stored in employee_availability (one row per person per day): 'confirmed' | 'off' (Não posso) | 'extra'.
 // Audit: marked_by / marked_by_role + employee_availability_log (sql/2026-11-05_marca_shift_do_dia.sql).
 // Until that SQL runs, the app still saves the mark and writes who marked it in admin_note.

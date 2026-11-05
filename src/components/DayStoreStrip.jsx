@@ -1,4 +1,4 @@
-// v1.0.150 · the Painel do Dia counter ("X de Y lojas feitas · Z em andamento") for any screen of the day
+// v1.0.151 · the Painel do Dia counter ("X de Y lojas feitas · Z em andamento") for any screen of the day
 // (Agenda, Ao vivo) — same source (lib/dayPanel), so every screen shows the same numbers.
 import { useEffect, useState } from 'react'
 import { fetchDayPanel } from '../lib/dayPanel'

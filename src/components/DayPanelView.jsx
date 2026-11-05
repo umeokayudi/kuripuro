@@ -1,4 +1,4 @@
-// v1.0.150 · Painel do Dia: counter by store → alerts of the day → team of today → stores of today.
+// v1.0.151 · Painel do Dia: counter by store → alerts of the day → team of today → stores of today.
 // Same blocks on phone and computer (on the phone they stack in this same order; no data only on PC).
 // The numbers come from lib/dayPanel (the same source as Reports, Agenda, Ao vivo and the bell).
 import { useState } from 'react'

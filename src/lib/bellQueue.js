@@ -1,4 +1,4 @@
-// v1.0.150 · "Aguardando você" (the bell): ONE ordered list, fixed and explained, and the badge = its size.
+// v1.0.151 · "Aguardando você" (the bell): ONE ordered list, fixed and explained, and the badge = its size.
 //   1 atrasados de hoje  → 2 sem cobertura → 3 cobertos aguardando decisão → 4 demais exceções por data
 //   → 5 folgas → 6 orçamentos → 7 folha → 8 ofertas → 9 avisos (oferta aceita)
 // Items that only someone else can clear (employee confirming a payslip) are listed apart and NOT counted.

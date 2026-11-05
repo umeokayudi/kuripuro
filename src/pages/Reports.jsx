@@ -378,7 +378,7 @@ export default function Reports() {
   return (
     <div>
       <JobCountStrip from={countFrom} to={countTo} />
-      {/* v1.0.150 · opens on TODAY grouped by store, same counter as the Painel do Dia; Não feitos always visible */}
+      {/* v1.0.151 · opens on TODAY grouped by store, same counter as the Painel do Dia; Não feitos always visible */}
       <DayStoresReport f={f} setF={setF} range={range} today={today} lang={lang} L={L3} />
       <ReportFilterBar
         f={f} setF={setF} reset={() => setParams({}, { replace: true })}

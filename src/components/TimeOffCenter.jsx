@@ -66,13 +66,13 @@ export default function TimeOffCenter() {
   const [newOffers, setNewOffers] = useState([])
   // v1.0.101 · who accepted an urgent offer
   const [taken, setTaken] = useState([])
-  // v1.0.150 · today's panel (same source as the Painel do Dia): "não pode hoje", stores with no job
+  // v1.0.151 · today's panel (same source as the Painel do Dia): "não pode hoje", stores with no job
   const [panel, setPanel] = useState(null)
   // v1.0.110 · one queue of exceptions, each row with the action that resolves it
   const [exceptions, setExceptions] = useState([])
   // v1.0.147 · 05:00: On The Planet route of the day with no start (one per person per day)
   const [routeAlerts, setRouteAlerts] = useState([])
-  // v1.0.150 · items resolved here leave at once (the badge goes down), before the reload confirms
+  // v1.0.151 · items resolved here leave at once (the badge goes down), before the reload confirms
   const [hidden, setHidden] = useState(() => new Set())
   const [expanded, setExpanded] = useState(() => new Set())
   const [scrolled, setScrolled] = useState({ top: false, more: false })
@@ -220,7 +220,7 @@ export default function TimeOffCenter() {
   // v1.0.148 · "Coberto por outro": only the owner takes the job off A's agenda (or keeps it)
   const decideCover = async (x, remove) => { if (await decideCoverFlow(x, remove, { L, dShort })) hide([x.id]); else load() }
   const reviewed = async x => { try { await markReviewed([x.jobId]); hide([x.id]); toast.success(L('Marked as reviewed', '確認済みにしました', 'Marcado como conferido')) } catch (e) { toast.error(e.message) } }
-  // v1.0.150 · cancelling is one item at a time, with the owner's confirmation (never "cancel all" in the bell)
+  // v1.0.151 · cancelling is one item at a time, with the owner's confirmation (never "cancel all" in the bell)
   const notDone = async x => {
     const reason = await askConfirm({
       title: L('Mark as not done?', '未実施にしますか？', 'Marcar como não feito?'),

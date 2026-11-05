@@ -751,7 +751,7 @@
   .emp-shell .av-alert-copy strong{font-size:14px;line-height:1.35}
   .emp-shell .av-alert-cta{flex:1 0 100%;text-align:center;justify-content:center}
 }
-/* ===== v1.0.150 · bell "Aguardando você": anchored under the bell on PC, full screen on the phone ===== */
+/* ===== v1.0.151 · bell "Aguardando você": anchored under the bell on PC, full screen on the phone ===== */
 .tor-count.is-wide{min-width:24px}
 .bq-layer{position:fixed;inset:0;z-index:500;background:transparent}
 .bq-layer.is-phone{background:rgba(15,23,42,.35)}

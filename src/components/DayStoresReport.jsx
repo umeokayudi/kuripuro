@@ -1,4 +1,4 @@
-// v1.0.150 · Reports without hunting: opens on TODAY grouped by store with the SAME counter as the Painel do Dia
+// v1.0.151 · Reports without hunting: opens on TODAY grouped by store with the SAME counter as the Painel do Dia
 // (lib/dayPanel). One-tap Hoje / Ontem / Semana, filter by person and by store, and a "Não feitos" group
 // always visible, with not-started and late apart (each with its own count).
 import { useEffect, useMemo, useState } from 'react'

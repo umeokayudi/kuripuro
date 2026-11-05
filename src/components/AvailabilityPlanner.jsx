@@ -71,7 +71,7 @@ export default function AvailabilityPlanner({ user, e, lang, plans, onPlansChang
   useEffect(() => { load() }, [user.id, weeks[0]]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const saved = byDate(rows)
-  // v1.0.150 · a "vou trabalhar" mark of the day reads as available here (the planner only plans off / extra)
+  // v1.0.151 · a "vou trabalhar" mark of the day reads as available here (the planner only plans off / extra)
   const kindOf = (d) => draft[d] ?? (saved[d]?.kind === 'confirmed' ? 'available' : saved[d]?.kind) ?? 'available'
   const planned = new Set((plans || []).map(p => p.week_start))
   const alert = planningAlert(plans, today)

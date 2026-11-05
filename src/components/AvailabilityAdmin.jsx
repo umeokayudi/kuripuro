@@ -12,7 +12,7 @@ import DayContext from './DayContext'
 const KIND = {
   off: { en: 'Day off', ja: '休み', pt: 'Folga', cls: 'badge-red' },
   extra: { en: 'Extra work', ja: '追加勤務', pt: 'Trabalho extra', cls: 'badge-navy' },
-  // v1.0.150 · shift of the day: "vou trabalhar" (no approval needed)
+  // v1.0.151 · shift of the day: "vou trabalhar" (no approval needed)
   confirmed: { en: 'Confirmed', ja: '出勤確認', pt: 'Confirmado', cls: 'badge-green' },
 }
 const STATUS = {

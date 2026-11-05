@@ -1,4 +1,4 @@
-// v1.0.150 · "Meu shift": the employee marks each of the next days — ✅ Vou trabalhar / ✕ Não posso / ＋ Extra.
+// v1.0.151 · "Meu shift": the employee marks each of the next days — ✅ Vou trabalhar / ✕ Não posso / ＋ Extra.
 // The weekly pattern only shows what is EXPECTED; the mark is for that specific day and never changes the pattern.
 // Until 21:00 of the day before the office sees "aguardando confirmação"; after it, "SEM CONFIRMAÇÃO".
 import { useEffect, useState } from 'react'

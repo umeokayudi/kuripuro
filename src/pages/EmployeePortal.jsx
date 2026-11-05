@@ -2136,7 +2136,7 @@ export default function EmployeePortal() {
         {tab==='home'&&(
           <div className="emp-home ex-home">
             <PendingVideos jobs={allJobs} L={L} />
-            {/* v1.0.150 · confirm today / tomorrow (the office sees SEM CONFIRMAÇÃO when nothing is marked) */}
+            {/* v1.0.151 · confirm today / tomorrow (the office sees SEM CONFIRMAÇÃO when nothing is marked) */}
             <ShiftMarkCard user={user} lang={lang} L={L} jobs={allJobs} days={2} />
             <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-(j.closed_manually_at?14:3)*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
 

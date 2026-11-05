@@ -50,7 +50,7 @@ export default function Dashboard() {
   const [lastUpdate, setLastUpdate] = useState(null)
   const moneyRef = useRef(null)
   const [exceptions, setExceptions] = useState([])
-  // v1.0.150 · Painel do Dia (by store + team of today) — same source as Reports / Agenda / Ao vivo / bell
+  // v1.0.151 · Painel do Dia (by store + team of today) — same source as Reports / Agenda / Ao vivo / bell
   const [dayPanel, setDayPanel] = useState(null)
   const [monthMoney, setMonthMoney] = useState({ billed: 0, received: 0 })
   const [hideTests, setHideTests] = useHideTests()
