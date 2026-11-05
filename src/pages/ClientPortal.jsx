@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { useLang, fill } from '../hooks/useLang'
+import { useLang, fill, pickLang } from '../hooks/useLang'
+import WorkReportList from '../components/WorkReportList'
+import { listClientReports, loadReport, reportHtml } from '../lib/workReport'
+import { openPrintHtml } from '../lib/openPrintHtml'
 import LanguageToggle from '../components/LanguageToggle'
 import {
   buildDeepCleanProgressForUser, currentYearMonth, ONTHEPLANET_CLIENT_ID,
@@ -115,6 +118,28 @@ export default function ClientPortal() {
   const [ratingPhotoPreview, setRatingPhotoPreview] = useState(null)
   const [credForm, setCredForm] = useState({ currentPassword: '', newEmail: '', newPassword: '' })
   const [savingCreds, setSavingCreds] = useState(false)
+
+  // v1.0.150 · 作業報告書 the office sent to this client
+  const [workReports, setWorkReports] = useState([])
+  const [seenReports, setSeenReports] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`cp_wr_seen_${user?.client_id}`) || '[]') } catch { return [] }
+  })
+  useEffect(() => {
+    if (!user?.client_id) return
+    listClientReports(user.client_id)
+      .then(list => setWorkReports(list.filter(r => r.status === 'sent' && (!user.location_name || !r.location || r.location === user.location_name))))
+      .catch(() => setWorkReports([]))
+  }, [user?.client_id, user?.location_name])
+  const unseenReports = workReports.filter(r => !seenReports.includes(r.id))
+  const openWorkReport = async s => {
+    const full = await loadReport(s.id)
+    if (!full || full.status !== 'sent') { toast.error(pickLang(lang, 'Could not open the report.', '報告書を開けませんでした。', 'Não foi possível abrir o relatório.')); return }
+    openPrintHtml(reportHtml(full))
+    const next = [...new Set([...seenReports, s.id])]
+    setSeenReports(next)
+    try { localStorage.setItem(`cp_wr_seen_${user?.client_id}`, JSON.stringify(next)) } catch { /* private mode */ }
+  }
+  const reportsLabel = pickLang(lang, 'Service reports', '作業報告書', 'Relatórios')
 
   const [facilityModels, setFacilityModels] = useState([])
   const [facilityRecs, setFacilityRecs] = useState([])
@@ -578,6 +603,7 @@ export default function ClientPortal() {
     { key: 'stores', icon: <NavIcon name="store" />, label: c.storesTab, badge: maintOverdue },
     { key: 'chat', icon: <NavIcon name="chat" />, label: c.chat, badge: unreadMsgs },
     { key: 'billing', icon: <NavIcon name="billing" />, label: c.billingTab, badge: billingOverdue },
+    ...(workReports.length ? [{ key: 'reports', icon: <NavIcon name="requests" />, label: reportsLabel, badge: unseenReports.length }] : []),
     { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab, badge: quotesWaiting },
     { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
     ...(facilityModels.length || pendingFacilityRecs.length
@@ -777,6 +803,15 @@ export default function ClientPortal() {
             ) : tab === 'home' && (
               <>
                 <BillingAlerts invoices={invoices} today={today} labels={c} lang={lang} onOpen={() => setTab('billing')} />
+                {unseenReports.length > 0 && (
+                  <button type="button" className="cpx-alert is-info" onClick={() => setTab('reports')}>
+                    <b>📄</b>
+                    <span>
+                      <strong>{pickLang(lang, `New service report (${unseenReports.length})`, `新しい作業報告書（${unseenReports.length}件）`, `Novo relatório de serviço (${unseenReports.length})`)}</strong>
+                      <small>{unseenReports.slice(0, 3).map(r => [r.title, r.work_date].filter(Boolean).join(' · ')).join(' / ')}</small>
+                    </span>
+                  </button>
+                )}
                 {pendingFacilityRecs.length > 0 && (
                   <button type="button" className="cpx-alert is-info" onClick={() => setTab('facility')}>
                     <b>🧽</b>
@@ -959,6 +994,15 @@ export default function ClientPortal() {
                     ))}
                 </div>
               </>
+            )}
+
+            {!loading && tab === 'reports' && (
+              <div className="cpx-panel">
+                <p style={{ margin: 0, fontSize: 13, color: '#4a5d78' }}>
+                  {pickLang(lang, 'Reports of the services we did for you. Tap to open, print or save as PDF.', '実施した作業の報告書です。タップで表示・印刷・PDF保存ができます。', 'Relatórios dos serviços que fizemos. Toque para abrir, imprimir ou salvar em PDF.')}
+                </p>
+                <WorkReportList items={workReports} showStatus={false} showClient={false} onOpen={openWorkReport} />
+              </div>
             )}
 
             {!loading && tab === 'billing' && (

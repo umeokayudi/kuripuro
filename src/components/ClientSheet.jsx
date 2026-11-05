@@ -10,6 +10,10 @@ import CleaningTimeline from './CleaningTimeline'
 import StoreDossier from './facility/StoreDossier'
 import './client-sheet.css'
 import AddressInput from './AddressInput'
+import WorkReportList from './WorkReportList'
+import { useAuth } from '../hooks/useAuth'
+import WorkReportEditor from './WorkReportEditor'
+import { listClientReports } from '../lib/workReport'
 
 // v1.0.73 · Full client sheet (CRM). Opens beside the page (full screen on phones)
 // from any client name: <ClientLink id name /> or openClientSheet({ id }) (ClientSheetHost.jsx).
@@ -40,6 +44,25 @@ function Cleanings({ client, stores, tr }) {
       )}
       <CleaningTimeline key={`${store || 'all'}:${state.model?.id || ''}`} loading={state.loading} entries={state.entries} placePhotos={placePhotosOf(state.model, state.entries)} size={sizeLabel(state.model?.layout)} />
     </div>
+  )
+}
+
+// v1.0.150 · 作業報告書 of this client (CRM history): list + new + open in the editor.
+function Reports({ client, tr }) {
+  const [items, setItems] = useState(null)
+  const [open, setOpen] = useState(null)
+  const { user } = useAuth()
+  const load = () => listClientReports(client.id).then(setItems).catch(() => setItems([]))
+  useEffect(() => { load() }, [client.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <section>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <h4 style={{ margin: 0 }}>{tr('Service reports', '作業報告書', 'Relatórios de serviço')}{items ? ` (${items.length})` : ''}</h4>
+        <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen({ client })}>＋ {tr('New report', '新規作成', 'Novo relatório')}</button>
+      </div>
+      {items === null ? <p className="cs-muted">…</p> : <WorkReportList items={items} showClient={false} onOpen={s => setOpen({ reportId: s.id })} />}
+      {open && <WorkReportEditor {...open} role="admin" author={{ name: user?.name || '' }} onSaved={load} onClose={() => { setOpen(null); load() }} />}
+    </section>
   )
 }
 
@@ -100,6 +123,7 @@ function SheetBody({ client: initial, onClose }) {
     ['purchases', tr('Purchases', '購入', 'Compras')],
     ['cleanings', tr('Cleanings', '清掃', 'Limpezas')],
     ['contacts', tr('Contacts', '連絡', 'Contatos')],
+    ['reports', tr('Reports', '報告書', 'Relatórios')],
     ['stores', tr('Stores & plans', '店舗・プラン', 'Lojas e planos')],
     ['notes', tr('Notes', 'メモ', 'Notas')],
   ]
@@ -229,6 +253,8 @@ function SheetBody({ client: initial, onClose }) {
             )}
 
             {tab === 'cleanings' && <Cleanings client={client} stores={stores} tr={tr} />}
+
+            {tab === 'reports' && <Reports client={client} tr={tr} />}
 
             {tab === 'contacts' && (
               <section>{data.contacts.map(contactRow)}{!data.contacts.length && <p className="cs-muted">{tr('No contact recorded yet.', '連絡記録はまだありません。', 'Nenhum contato registrado ainda.')}</p>}</section>

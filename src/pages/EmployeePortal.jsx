@@ -89,6 +89,7 @@ import { employeeThemeFor, employeeGreetingFor, loadEmployeeTheme } from '../lib
 import { aiIssuesText } from '../lib/photoAi'
 import { askConfirm } from '../components/ConfirmDialog'
 import AfterPhotoLater from '../components/AfterPhotoLater'
+import EmployeeWorkReports from '../components/EmployeeWorkReports'
 import TeamDay from '../components/TeamDay'
 import { REVIEW_PREFIX } from '../lib/deductionReview'
 import MyProfile from '../components/MyProfile'
@@ -2136,6 +2137,7 @@ export default function EmployeePortal() {
           <div className="emp-home ex-home">
             <PendingVideos jobs={allJobs} L={L} />
             <AfterPhotoLater jobs={allJobs.filter(j=>j.scheduled_date>=new Date(Date.parse(today+'T12:00:00Z')-(j.closed_manually_at?14:3)*864e5).toISOString().slice(0,10))} L={L} onChanged={loadAll} />
+            <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />
 
             {/* Check-in card with the map of the next location */}
             {(()=>{
