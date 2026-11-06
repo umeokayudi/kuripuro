@@ -12,19 +12,27 @@ assert.equal(title, 'Kodama Oimachi — Deep Clean (Range Hood, Fryer, limpar at
 assert.equal(getCleaningType({ title }), 'deep')
 assert.deepEqual(deepTasksFromTitle(title), { ids: ['range_hood', 'fryer'], custom: ['limpar atrás da geladeira porta'] })
 
-// Catalog place: base items + only the picked deep tasks.
+// Catalog place: only the picked deep tasks + closing (v1.0.179: no restroom/trash routine).
 const ck = checklistTemplateForJob({ title }).split('\n')
 assert.ok(ck.includes('Range Hood — limpeza completa (filtros, duto, superficie)'))
 assert.ok(ck.includes('Fryer — oleo retirado, cesto e cuba limpos'))
 assert.ok(ck.includes('limpar atrás da geladeira porta'))
 assert.ok(!ck.some(l => l.startsWith('Grease Trap')), 'not picked → not in checklist')
-assert.ok(ck.includes('Lixo banheiro'), 'store base checklist kept')
+assert.ok(!ck.includes('Lixo banheiro'), 'daily routine not in a deep job')
+assert.ok(ck.includes('Chave no keybox') && ck.includes('Luzes apagadas'), 'closing kept')
+
+// Grease Trap only: its own step-by-step list.
+const gt = checklistTemplateForJob({ title: buildDeepTaskTitle('Kodama Oimachi', ['grease_trap']) }).split('\n')
+assert.ok(gt.includes('Temperatura do gas / agua quente voltou como estava'))
+assert.ok(gt.includes('Mangueira lavada e guardada'))
+assert.ok(!gt.some(l => /banheiro|vaso|tapete/i.test(l)), 'no restroom items')
+assert.equal(checklistDisplayLabel('Mangueira lavada e guardada', 'ja'), 'ホースを洗って片付けた')
 assert.equal(checklistDisplayLabel('Fryer — oleo retirado, cesto e cuba limpos', 'pt'), 'Fritadeira — óleo retirado, cesto e cuba limpos')
 
 // Non-catalog place: saved checklist wins; without one, the deep task lines.
 const other = 'Hotel X — Deep Clean (Fridge)'
 assert.equal(checklistTemplateForJob({ title: other, checklist_template: 'A\nB' }), 'A\nB')
-assert.equal(checklistTemplateForJob({ title: other }), 'Fridge — por dentro e por fora, borrachas limpas')
+assert.equal(checklistTemplateForJob({ title: other }), 'Fridge — por dentro e por fora, borrachas limpas\nChave no keybox\nLuzes apagadas')
 
 // Explicit list → only those components (client care no longer counts all four as done).
 assert.deepEqual(parseDeepComponents({ title: other }), [])

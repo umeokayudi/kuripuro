@@ -4,6 +4,7 @@ import {
   parseDeepComponents,
   parseDeepTaskList,
   deepTaskChecklistLines,
+  DEEP_TASKS,
 } from './cleaningType'
 
 function locationNameFromTitle(title) {
@@ -17,6 +18,9 @@ const DEEP_COMPONENT_CHECKLIST = {
   grease_trap: 'Grease Trap — esvaziado e higienizado',
   stove: 'Stove — fogões limpos e sem gordura',
 }
+
+/** Closing lines every deep job keeps: leave the store locked and dark. */
+const DEEP_CLOSING = ['Chave no keybox', 'Luzes apagadas']
 
 const BASE_ITEMS = [
   'Lixo banheiro',
@@ -77,6 +81,12 @@ const CHECKLIST_DISPLAY = {
   'AC Cleaning — filtros e unidade interna': { en: 'AC Cleaning — filters and indoor unit', ja: 'エアコン — フィルターと室内機', pt: 'Ar-condicionado — filtros e unidade interna' },
   'Grating — grelha limpa sem gordura': { en: 'Grating — clean, no grease', ja: 'グレーティング — 油なし', pt: 'Grelha de piso — limpa, sem gordura' },
   'Grease Trap — esvaziado e higienizado': { en: 'Grease Trap — emptied and sanitized', ja: 'グリストラップ — 空にして清掃', pt: 'Caixa de gordura — esvaziada e higienizada' },
+  'Grease Trap — cesto e divisorias limpos, tampas recolocadas': { en: 'Grease Trap — basket and baffles clean, lids back on', ja: 'グリストラップ — バスケット・仕切り清掃、蓋を戻す', pt: 'Caixa de gordura — cesto e divisórias limpos, tampas recolocadas' },
+  'Temperatura do gas / agua quente voltou como estava': { en: 'Gas / hot-water temperature set back as it was', ja: 'ガス・給湯の温度を元に戻した', pt: 'Temperatura do gás / água quente voltou como estava' },
+  'Equipamentos desligados (bomba, aquecedor, lavadora)': { en: 'Equipment off (pump, heater, washer)', ja: '機材の電源オフ（ポンプ・給湯器・洗浄機）' },
+  'Mangueira lavada e guardada': { en: 'Hose rinsed and put away', ja: 'ホースを洗って片付けた' },
+  'Onde sujou foi limpo (piso, paredes, grelhas em volta)': { en: 'Anything that got dirty is cleaned (floor, walls, gratings around)', ja: '汚れた所を清掃（床・壁・周りのグレーチング）' },
+  'Gordura retirada embalada e descartada': { en: 'Removed grease bagged and disposed of', ja: '回収した油脂を袋に入れて処分' },
   'Stove — fogões limpos e sem gordura': { en: 'Stove — clean, no grease', ja: 'コンロ — 油なし', pt: 'Fogão — limpo e sem gordura' },
   'Fryer — oleo retirado, cesto e cuba limpos': { en: 'Fryer — oil out, basket and vat clean', ja: 'フライヤー — 油を抜き、バスケットと槽を清掃', pt: 'Fritadeira — óleo retirado, cesto e cuba limpos' },
   'Kitchen Equipment — mesas, prateleiras e equipamentos sem gordura': { en: 'Kitchen equipment — tables, shelves and machines, no grease', ja: '厨房機器 — 台・棚・機器の油汚れなし', pt: 'Equipamentos da cozinha — mesas, prateleiras e equipamentos sem gordura' },
@@ -170,17 +180,18 @@ export function checklistTemplateForJob(job, deepComponents) {
   const catalogItems = getChecklistItems(job?.title || job?.location_name || '')
   const isDeep = getCleaningType(job) === 'deep'
   // Admin picked specific deep-clean tasks: the employee gets exactly those.
+  // v1.0.179 · a deep job checks only its own tasks + leaving the place closed (no restroom/trash routine).
   if (isDeep && !deepComponents?.length && parseDeepTaskList(job?.title)) {
     const saved = (job?.checklist_template || '').trim()
-    if (!catalogItems.length && saved) return saved
-    return [...catalogItems, ...deepTaskChecklistLines(job.title)].join('\n')
+    if (!catalogItems.length && saved) return saved // place outside the catalog: the admin's own list wins
+    return [...deepTaskChecklistLines(job.title), ...DEEP_CLOSING].join('\n')
   }
   const comps = normalizeDeepComponents(
     deepComponents?.length ? deepComponents : (isDeep ? parseDeepComponents(job) : [])
   )
   const deepItems = comps.map(id => DEEP_COMPONENT_CHECKLIST[id]).filter(Boolean)
   const items = isDeep && deepItems.length
-    ? [...catalogItems, ...deepItems]
+    ? [...deepItems.flatMap(l => DEEP_TASKS.find(t => t.check === l)?.checks || [l]), ...DEEP_CLOSING]
     : catalogItems
   if (items.length) return items.join('\n')
   return (job?.checklist_template || '').trim()

@@ -37,7 +37,17 @@ export const DEEP_CLEAN_COMPONENTS = [
  */
 export const DEEP_TASKS = [
   { id: 'range_hood', icon: '🌀', label: 'Range Hood', ja: 'レンジフード', pt: 'Coifa', check: 'Range Hood — limpeza completa (filtros, duto, superficie)' },
-  { id: 'grease_trap', icon: '🛢️', label: 'Grease Trap', ja: 'グリストラップ', pt: 'Caixa de gordura', check: 'Grease Trap — esvaziado e higienizado' },
+  // v1.0.179 · grease trap has its own step-by-step list (no restroom/trash items of the daily routine)
+  { id: 'grease_trap', icon: '🛢️', label: 'Grease Trap', ja: 'グリストラップ', pt: 'Caixa de gordura', check: 'Grease Trap — esvaziado e higienizado',
+    checks: [
+      'Grease Trap — esvaziado e higienizado',
+      'Grease Trap — cesto e divisorias limpos, tampas recolocadas',
+      'Temperatura do gas / agua quente voltou como estava',
+      'Equipamentos desligados (bomba, aquecedor, lavadora)',
+      'Mangueira lavada e guardada',
+      'Onde sujou foi limpo (piso, paredes, grelhas em volta)',
+      'Gordura retirada embalada e descartada',
+    ] },
   { id: 'grating', icon: '🔲', label: 'Grating', ja: 'グレーティング', pt: 'Grelhas de piso', check: 'Grating — grelha limpa sem gordura' },
   { id: 'stove', icon: '🔥', label: 'Stove', ja: 'コンロ', pt: 'Fogão', check: 'Stove — fogões limpos e sem gordura' },
   { id: 'ac', icon: '❄️', label: 'AC Cleaning', ja: 'エアコン', pt: 'Ar-condicionado', check: 'AC Cleaning — filtros e unidade interna' },
@@ -95,7 +105,10 @@ export function deepTasksFromTitle(title) {
 /** Checklist lines for the tasks listed in a deep-clean title. */
 export function deepTaskChecklistLines(title) {
   const labels = parseDeepTaskList(title) || []
-  return labels.filter(l => l.toLowerCase() !== 'other').map(l => DEEP_TASKS.find(t => t.label.toLowerCase() === l.toLowerCase())?.check || l)
+  return labels.filter(l => l.toLowerCase() !== 'other').flatMap(l => {
+    const t = DEEP_TASKS.find(x => x.label.toLowerCase() === l.toLowerCase())
+    return t ? (t.checks || [t.check]) : [l]
+  })
 }
 
 /** Manutenção no dia de folga (deep-only OTP) */

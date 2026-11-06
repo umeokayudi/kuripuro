@@ -95,6 +95,7 @@ import { askConfirm } from '../components/ConfirmDialog'
 import JaFizSheet from '../components/JaFizSheet'
 import { isJaFizCandidate } from '../lib/jaFiz'
 import EmployeeWorkReports from '../components/EmployeeWorkReports'
+import WorkReportEditor from '../components/WorkReportEditor'
 import TeamDay from '../components/TeamDay'
 import { REVIEW_PREFIX } from '../lib/deductionReview'
 import MyProfile from '../components/MyProfile'
@@ -1828,9 +1829,12 @@ export default function EmployeePortal() {
   const openAvailability = () => goToTab('availability') // v1.0.172 · its own screen (☰ → Meu shift semanal)
   // AI help lives inside the job (sheet opened from the job card), not as a main tab.
   const [aiJob, setAiJob] = useState(null)
+  // v1.0.179 · 作業報告書 straight from the job detail (same editor as Meu dia → Relatório de serviço)
+  const [reportJob, setReportJob] = useState(null)
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
-    const cl = (job.checklist_template||'').split('\n').filter(Boolean)
+    // v1.0.179 · finished job: the list that was ticked; otherwise the list it will get (deep = only its tasks)
+    const cl = parseChecklistTemplate(job.status==='completed' ? job.checklist_template : (checklistTemplateForJob(job) || job.checklist_template))
     const dDate = displayDate(job)
     const instructions = keyboxForJob(job)
     return (
@@ -1861,7 +1865,7 @@ export default function EmployeePortal() {
           </div>}
           {cl.length>0&&<div style={{marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : fill(e.checklistCount,{n:cl.length})}</div>
-            {cl.map((label,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:10,color:'rgba(255,255,255,0.4)'}}>{i+1}</div><span style={{fontSize:13,color:'rgba(255,255,255,0.75)'}}>{label}</span></div>)}
+            {cl.map((label,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:10,color:'rgba(255,255,255,0.4)'}}>{i+1}</div><span style={{fontSize:13,color:'rgba(255,255,255,0.75)'}}>{checklistDisplayLabel(label,lang)}</span></div>)}
           </div>}
           {job.notes_employee&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{e.yourNotes}</div>
@@ -1874,6 +1878,7 @@ export default function EmployeePortal() {
               <JobPhoto url={job.photo_end_url} label={e.photoEnd} />
             </div>
           </div>}
+          {['completed','in_progress'].includes(job.status)&&<button type="button" onClick={()=>{ onClose(); setReportJob(job) }} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'linear-gradient(135deg,#1f3a5f,#2c5282)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',marginBottom:10}}>📄 {L('Make the service report','作業報告書を作成','Criar relatório do serviço')}</button>}
           {hasFacility(job)&&<button type="button" onClick={()=>setFacilityJob(job)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.3)',borderRadius:14,padding:'13px',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>{tr.facility.openModel}</button>}
           {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
           {jobContract&&jobContract.job_id===job.id&&<div style={{background:'rgba(193,156,86,0.08)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'12px 14px',marginBottom:10}}>
@@ -1926,6 +1931,7 @@ export default function EmployeePortal() {
         onDecline={async job=>{ await handleDeclineSpot(job); setDueAlert(null) }}
         onGoStart={goStartDueJob}
         onLater={()=>setDueAlert(null)} />}
+      {reportJob&&<WorkReportEditor job={reportJob} role="employee" author={{ name: user?.name || '' }} onSaved={()=>{}} onClose={()=>setReportJob(null)} />}
       {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} job={facilityJob} employee={{ id: user?.id, name: user?.name }} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
