@@ -15,7 +15,7 @@ import './work-report.css'
 const WorkReportEditor = lazy(() => import('./WorkReportEditor'))
 const PeriodReportEditor = lazy(() => import('./PeriodReportEditor'))
 
-function OwnerSignaturePad({ current, onSave, onCancel }) {
+export function OwnerSignaturePad({ current, onSave, onCancel, title }) {
   const { tr } = useLang()
   const ref = useRef(null)
   const drawing = useRef(false)
@@ -28,14 +28,14 @@ function OwnerSignaturePad({ current, onSave, onCancel }) {
   const up = () => { drawing.current = false }
   return (
     <div className="qr-pad" role="dialog" aria-label={tr('Your signature', 'あなたの署名', 'Sua assinatura')}>
-      <b>{tr('Accept and sign', '承認して署名', 'Aceitar e assinar')}</b>
+      <b>{title || tr('Accept and sign', '承認して署名', 'Aceitar e assinar')}</b>
       <small>{current ? tr('Use your saved signature or draw a new one.', '保存済みの署名を使うか、新しく書いてください。', 'Use a assinatura salva ou desenhe outra.') : tr('Draw your signature. It is kept on this device for next time.', '署名を書いてください。この端末に保存されます。', 'Desenhe sua assinatura. Ela fica salva neste aparelho para a próxima vez.')}</small>
       {current && <button type="button" className="btn btn-primary" onClick={() => onSave(current)}>✓ {tr('Sign with my saved signature', '保存済みの署名で署名', 'Assinar com a assinatura salva')} <img src={current} alt="" /></button>}
       <canvas ref={ref} width={600} height={200} onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={up} onTouchStart={down} onTouchMove={move} onTouchEnd={up} />
       <div className="qr-pad-actions">
         <button type="button" className="btn btn-sm" onClick={() => { paper(); setInk(false) }}>{tr('Clear', 'クリア', 'Limpar')}</button>
         <button type="button" className="btn btn-sm" onClick={onCancel}>{tr('Cancel', 'キャンセル', 'Cancelar')}</button>
-        <button type="button" className="btn btn-sm btn-primary" disabled={!ink} onClick={() => onSave(ref.current.toDataURL('image/png'), true)}>✓ {tr('Accept and sign', '承認して署名', 'Aceitar e assinar')}</button>
+        <button type="button" className="btn btn-sm btn-primary" disabled={!ink} onClick={() => onSave(ref.current.toDataURL('image/png'), true)}>✓ {title || tr('Accept and sign', '承認して署名', 'Aceitar e assinar')}</button>
       </div>
     </div>
   )
@@ -144,4 +144,72 @@ export function ReportViewerById({ id, onClose }) {
   const [r, setR] = useState(null)
   useEffect(() => { let off = false; loadReport(id).then(x => { if (!off) { if (x) setR(x); else { toast.error('?'); onClose?.() } } }); return () => { off = true } }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
   return r ? <QuickReportViewer report={r} onClose={onClose} /> : null
+}
+
+/**
+ * v1.0.164 · Reports: tick cleaners × days and make one day report each
+ * (every service of that person on that day, together). `rows` = the rows on screen.
+ */
+export function DayReportPicker({ rows, onClose }) {
+  const { tr } = useLang()
+  const { user } = useAuth()
+  const L = (en, ja, pt) => tr(en, ja, pt)
+  const groups = (() => {
+    const m = new Map()
+    for (const r of rows || []) {
+      const empId = r._job?.employee_id || r.employee_id
+      const date = r._job?.scheduled_date || r.report_date
+      if (!empId || !date) continue
+      const k = `${empId}|${date}`
+      if (!m.has(k)) m.set(k, { key: k, employeeId: empId, employeeName: r.employee_name || '', date, n: 0 })
+      m.get(k).n++
+    }
+    return [...m.values()].sort((a, b) => b.date.localeCompare(a.date) || a.employeeName.localeCompare(b.employeeName))
+  })()
+  const [marked, setMarked] = useState(() => new Set(groups.map(g => g.key)))
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState({})
+  const [viewing, setViewing] = useState(null)
+  const toggle = k => setMarked(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  const all = marked.size === groups.length
+  const create = async () => {
+    setBusy(true)
+    const out = { ...done }
+    let ok = 0
+    for (const g of groups.filter(x => marked.has(x.key))) {
+      try { out[g.key] = await quickDayReport({ employeeId: g.employeeId, employeeName: g.employeeName, date: g.date, author: { name: user?.name || '' } }); ok++ }
+      catch (e) { toast.error(`${g.employeeName} ${g.date}: ${String(e.message || e).slice(0, 120)}`) }
+      setDone({ ...out })
+    }
+    setBusy(false)
+    if (ok) toast.success(L(`${ok} day report(s) ready`, `作業日報 ${ok}件 作成`, `${ok} relatório(s) do dia pronto(s)`))
+    if (ok === 1) setViewing(Object.values(out).find(Boolean))
+  }
+  if (viewing) return <QuickReportViewer report={viewing} onClose={() => setViewing(null)} />
+  return createPortal(
+    <div className="qr-pad-wrap" onClick={e => { if (e.target === e.currentTarget && !busy) onClose?.() }}>
+      <div className="qr-pad qr-pick" role="dialog" aria-label={L('Day report', '作業日報', 'Relatório do dia')}>
+        <b>📄 {L('Day report — all services of each cleaner together', '作業日報（スタッフごとに1日分まとめて）', 'Relatório do dia — todos os serviços de cada limpador juntos')}</b>
+        <small>{L('Tick who and which day. One report per cleaner per day.', '担当者と日付を選んでください。1人1日につき1件です。', 'Marque quem e qual dia. Sai um relatório por limpador por dia.')}</small>
+        {!groups.length
+          ? <small>{L('No services on screen.', '表示中の作業がありません。', 'Nenhum serviço na tela.')}</small>
+          : <>
+            <label className="qr-pick-row qr-pick-all"><input type="checkbox" checked={all} onChange={() => setMarked(all ? new Set() : new Set(groups.map(g => g.key)))} /> {L('All', 'すべて', 'Todos')} ({groups.length})</label>
+            <div className="qr-pick-list">
+              {groups.map(g => (
+                <div key={g.key} className="qr-pick-row">
+                  <label><input type="checkbox" checked={marked.has(g.key)} onChange={() => toggle(g.key)} disabled={busy} /> <b>{g.employeeName || '—'}</b> · {g.date} · {g.n} {L('service(s)', '件', g.n === 1 ? 'serviço' : 'serviços')}</label>
+                  {done[g.key] && <button type="button" className="btn btn-sm" onClick={() => setViewing(done[g.key])}>{L('View', '表示', 'Ver')}</button>}
+                </div>
+              ))}
+            </div>
+          </>}
+        <div className="qr-pad-actions">
+          <button type="button" className="btn btn-sm" onClick={onClose} disabled={busy}>{L('Close', '閉じる', 'Fechar')}</button>
+          <button type="button" className="btn btn-sm btn-primary" disabled={busy || !marked.size} onClick={create}>{busy ? '…' : `📄 ${L('Create', '作成', 'Criar')} ${marked.size}`}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
 }

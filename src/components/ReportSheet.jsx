@@ -5,7 +5,10 @@
 import { jaFizStamp, jaFizAuditFromJob } from '../lib/jaFiz'
 import { loadJaFizAudit } from '../lib/jaFizOps'
 import { useEffect, useState } from 'react'
-import { QuickReportButton } from './QuickReport'
+import { QuickReportButton, OwnerSignaturePad } from './QuickReport'
+import { loadJobAdminSignature, saveJobAdminSignature, removeJobAdminSignature } from '../lib/jobAdminSignature'
+import { readOwnerSig, keepOwnerSig } from '../lib/quickReport'
+import { askConfirm } from './ConfirmDialog'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { fmtDuration, fmtTime } from '../lib/jobReport'
@@ -314,9 +317,49 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
         ) : <span style={{ fontSize: 13, color: 'var(--text3)' }}>—</span>}
       </Section>
 
+      {/* 9 · v1.0.164 · the admin's own signature, added with one button at the end */}
+      {row.job_id && <AdminSignatureSection jobId={row.job_id} user={user} L={L} lang={lang} />}
+
       <div style={{ display: 'flex', gap: 8, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
         <button className="btn btn-danger" onClick={onDelete}>🗑 {tr.deleteReport}</button>
       </div>
     </div>
+  )
+}
+
+function AdminSignatureSection({ jobId, user, L, lang }) {
+  const [sig, setSig] = useState(undefined)
+  const [pad, setPad] = useState(false)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { let alive = true; setSig(undefined); loadJobAdminSignature(jobId).then(s => { if (alive) setSig(s) }); return () => { alive = false } }, [jobId])
+  const sign = async (url, fresh) => {
+    setBusy(true)
+    try {
+      if (fresh) keepOwnerSig(user?.id, url)
+      setSig(await saveJobAdminSignature(jobId, { url, name: user?.name || 'Admin', byId: user?.id }))
+      setPad(false)
+      toast.success(L('Your signature was added', '署名を追加しました', 'Sua assinatura foi adicionada'))
+    } catch (e) { toast.error(String(e.message || e)) } finally { setBusy(false) }
+  }
+  const remove = async () => {
+    if (!(await askConfirm({ title: L('Remove your signature from this service?', 'この作業から署名を外しますか？', 'Tirar sua assinatura deste serviço?'), confirmLabel: L('Remove', '外す', 'Tirar'), danger: true }))) return
+    setBusy(true)
+    try { await removeJobAdminSignature(jobId); setSig(null) } catch (e) { toast.error(String(e.message || e)) } finally { setBusy(false) }
+  }
+  return (
+    <Section title={L('Admin signature', '管理者の署名', 'Assinatura do admin')}>
+      {sig === undefined ? <span style={{ fontSize: 13, color: 'var(--text3)' }}>…</span> : sig ? (
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, background: '#fff', padding: 6 }}><img src={sig.url} alt="" style={{ height: 80, maxWidth: 260, objectFit: 'contain', display: 'block' }} /></div>
+          <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>
+            <b style={{ color: 'var(--text)' }}>{sig.name}</b><br />{sig.at ? new Date(sig.at).toLocaleString(lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB', { timeZone: 'Asia/Tokyo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+            <div style={{ marginTop: 6 }}><button type="button" className="btn btn-sm" disabled={busy} onClick={remove}>{L('Remove', '外す', 'Tirar')}</button></div>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setPad(true)}>✍ {L('Add my signature', '署名を追加', 'Adicionar minha assinatura')}</button>
+      )}
+      {pad && <div className="qr-pad-wrap"><OwnerSignaturePad title={L('Add my signature', '署名を追加', 'Adicionar minha assinatura')} current={readOwnerSig(user?.id)} onSave={sign} onCancel={() => setPad(false)} /></div>}
+    </Section>
   )
 }

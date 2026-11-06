@@ -12,6 +12,7 @@ import { agendaChecklistItems, checklistProgress } from './agenda'
 import { checklistDisplayLabel, splitChecklist } from './jobChecklist'
 import { signatureForDisplay } from './signature'
 import { getCleaningType } from './cleaningType'
+import { loadJobAdminSignature } from './jobAdminSignature'
 
 const LANG = 'ja' // client-facing documents are in Japanese, like the other reports
 
@@ -49,6 +50,11 @@ export async function quickJobReport(jobOrId, { author } = {}) {
     if (r) {
       // An older report without the cleaner's signature gets it now (nothing else changes).
       if (!r.signatures && job.signature_url) { r.signatures = { cleaner: await cleanerSignature(job), owner: null }; return saveReport(r, { by: author?.name || '', action: 'signature-added' }) }
+      // v1.0.164 · the admin signed the service in Reports after the report was made
+      if (r.signatures && !r.signatures.owner) {
+        const adm = await loadJobAdminSignature(job.id)
+        if (adm) { r.signatures = { ...r.signatures, owner: { name: adm.name, url: adm.url, at: adm.at } }; return saveReport(r, { by: author?.name || '', action: 'admin-signature' }) }
+      }
       return r
     }
   }
@@ -64,7 +70,8 @@ export async function quickJobReport(jobOrId, { author } = {}) {
   const media = await listJobMedia(job).catch(() => [])
   r.photos = media.map(m => ({ path: m.path, section: m.section, kind: m.kind, by: job.employee_name || '', at: job.completed_at || null }))
   r.checklist = jobChecklistRows(job)
-  r.signatures = { cleaner: await cleanerSignature(job), owner: null }
+  const adm = await loadJobAdminSignature(job.id)
+  r.signatures = { cleaner: await cleanerSignature(job), owner: adm ? { name: adm.name, url: adm.url, at: adm.at } : null }
   return saveReport(r, { by: author?.name || '', action: 'quick' })
 }
 

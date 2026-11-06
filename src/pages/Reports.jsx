@@ -25,6 +25,7 @@ import { useSearchParams } from 'react-router-dom'
 import { peekVideoStatus } from '../lib/jobVideo'
 import ReportFilterBar from '../components/ReportFilterBar'
 import DayStoresReport from '../components/DayStoresReport'
+import { DayReportPicker } from '../components/QuickReport'
 import {
   periodRange, rangeDays, rangeIso, typeNeedsOpenJobs, rowKind, matchesType, rowProblems, matchesProblems,
   placeOf, matchesSearch, sortRows, isOpenRow, filtersFromParams, filtersToParams, activeFilterCount, PROBLEMS,
@@ -164,6 +165,7 @@ export default function Reports() {
   const narrow = useNarrow()
   const [adminSig, setAdminSig] = useState(null)
   const [sigPad, setSigPad] = useState(false)
+  const [dayPick, setDayPick] = useState(false) // v1.0.164 · pick cleaners × days → day reports
 
   useEffect(() => { loadAdminSignature(user).then(setAdminSig) }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -387,6 +389,7 @@ export default function Reports() {
         total={reports.length} shown={filtered.length} loading={loading}
         actions={<>
           <button className="btn btn-sm" onClick={() => setSigPad('edit')} title={tr.adminSigTitle}>✍️ {adminSig ? tr.adminSigChange : tr.adminSigAdd}</button>
+          <button className="btn btn-sm" onClick={() => setDayPick(true)} disabled={!filtered.length} title={L3('One report per cleaner per day, all services together', 'スタッフごとに1日分まとめた作業日報', 'Um relatório por limpador por dia, todos os serviços juntos')}>📄 {L3('Day report', '作業日報', 'Relatório do dia')}</button>
           {filterDay && <button className="btn btn-sm" onClick={() => downloadDayPdf()} disabled={pdfBusy || !filtered.length}>{pdfBusy ? tr.loading : tr.dayPdf}</button>}
           <button className="btn btn-sm btn-primary" onClick={runAiAnalysis} disabled={aiLoading || !filtered.length}>
             {aiLoading ? tr.analyzing : tr.aiAnalyze}
@@ -536,6 +539,7 @@ export default function Reports() {
 
       <ReportsAnalytics reports={filtered} selectedEmployee={filterEmp} onEmployeeClick={name => setF({ emp: filterEmp === name ? '' : name })} />
 
+      {dayPick && <DayReportPicker rows={filtered} onClose={() => setDayPick(false)} />}
       {selected && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setSelected(null)}>
           <div style={{ background: 'var(--surface)', borderRadius: 14, padding: 24, maxWidth: 560, width: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
