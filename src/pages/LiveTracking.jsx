@@ -13,6 +13,7 @@ import { askConfirm } from '../components/ConfirmDialog'
 import { ManualCloseButton } from '../components/ManualCloseModal'
 import { JaFizButton } from '../components/JaFizSheet'
 import { adminMarkNotDone } from '../lib/jobAdminOps'
+import { EliminateJobButton } from '../components/EliminateJobButton'
 import { useNavigate } from 'react-router-dom'
 import { fetchDayCoverage } from '../lib/dayCoverage'
 import DayStoreStrip from '../components/DayStoreStrip'
@@ -42,6 +43,8 @@ const jobKind = (j) => {
   const title = (j.title || '').replace(/ — .*/, '')
   return title && title !== jobPlace(j) ? title : ''
 }
+// v1.0.166 · the service type ("Basic Cleaning", "Deep Clean (AC Cleaning)") so two jobs at the same store differ.
+const jobService = (j) => { const m = /\s—\s(.+)$/.exec(j.title || ''); return m ? m[1] : '' }
 const byTime = (a, b) => (a.scheduled_time || '99:99').localeCompare(b.scheduled_time || '99:99') || (a.sequence_order || 99) - (b.sequence_order || 99)
 
 // One status per person, in the order the admin needs to act on it.
@@ -289,7 +292,7 @@ export default function LiveTracking() {
               <li key={j.id} className={`is-${j.status}`}>
                 <span className="lt-tl-time">{isDeadlineJob(j) ? jobTimeShort(j, tr) : j.scheduled_time ? shortTime(j.scheduled_time) : '—'}</span>
                 <span className="lt-tl-body">
-                  <b>{jobPlace(j)}</b>{jobKind(j) && <span className="lt-tl-kind"> · {jobKind(j)}</span>}
+                  <b>{jobPlace(j)}</b>{jobKind(j) && <span className="lt-tl-kind"> · {jobKind(j)}</span>}{jobService(j) && <span className="lt-tl-kind"> · {jobService(j)}</span>}
                   <span className="lt-tl-meta">
                     {j.status === 'completed' ? fill(L.tlDone, { start: hhmm(j.started_at) || '—', end: hhmm(j.completed_at) || '—' }) + (j.started_at && j.completed_at ? ` (${fmtDuration((new Date(j.completed_at) - new Date(j.started_at)) / 60000, L)})` : '')
                       : j.status === 'in_progress' ? fill(L.tlWorking, { start: hhmm(j.started_at) || '—' })
@@ -298,6 +301,10 @@ export default function LiveTracking() {
                 </span>
                 {j.status === 'completed' && (j.photo_start_url || j.photo_end_url) && (
                   <JobPhotos photoStartUrl={j.photo_start_url} photoEndUrl={j.photo_end_url} beforeLabel={L.before} afterLabel={L.after} size={36} onPhotoClick={setLightbox} />
+                )}
+                {/* v1.0.166 · a job registered by mistake (duplicate, 0 min…) leaves pay and billing */}
+                {(j.status === 'completed' || j.status === 'in_progress') && (
+                  <span className="lt-tl-acts"><EliminateJobButton job={j} className="lt-act lt-act-sm lt-act-danger" onDone={load} /></span>
                 )}
                 {j.status !== 'completed' && (
                   <span className="lt-tl-acts">

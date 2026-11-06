@@ -40,6 +40,7 @@ const steps = [
   ['npm run test:manual-close', 'manual-close'],
   ['npm run test:job-due-alert', 'job-due-alert'],
   ['npm run test:job-deadline', 'job-deadline'],
+  ['npm run test:job-eliminate', 'job-eliminate'],
   ['npm run test:video-compress', 'video-compress'],
   ['npm run test:employee-pay', 'employee-pay'],
   ['npm run test:job-employee-pay', 'job-employee-pay'],

@@ -889,3 +889,6 @@
 .av2-home.is-urgent .av2-home-cta{background:#dc2626}
 .av2{max-width:640px;width:100%;margin-left:auto;margin-right:auto}
 @media (min-width:700px){.av2-day{aspect-ratio:auto;height:70px}}
+/* v1.0.166 · Eliminar serviço (Live Track) */
+.lt-act.lt-act-danger{border-color:rgba(239,68,68,.45);color:#dc2626;background:transparent}
+.lt-act.lt-act-danger:hover{background:rgba(239,68,68,.08);color:#b91c1c}
