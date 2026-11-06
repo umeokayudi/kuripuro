@@ -91,7 +91,7 @@ export default function Jobs() {
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const [tab, setTab] = useState(() => searchId ? 'list' : ['locations', 'deepspot'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'agenda')
+  const [tab, setTab] = useState(() => searchId ? 'list' : ['locations', 'deepspot', 'new'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'agenda')
   const [cleaningFilter, setCleaningFilter] = useState('all')
   const [period, setPeriod] = useState('7d')
   const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
@@ -400,6 +400,7 @@ export default function Jobs() {
       {tab==='new' && (
         <NewJobForm
           jobs={jobs} employees={employees} clients={clients} locations={locations} sellers={sellers}
+          prefill={searchParams.get('place') ? { place: searchParams.get('place'), client: searchParams.get('client') || '', deep: searchParams.get('deep') || '' } : null}
           onCreated={({ another }) => { loadAll(); if (!another) setTab('list') }}
         />
       )}
