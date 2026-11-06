@@ -103,7 +103,6 @@ import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
 import {
   enrichJobValues,
-  employeeEarningsForJob,
   formatShiftElapsed,
   isStaleActiveJob,
   salaryTypeLabel,
@@ -737,20 +736,6 @@ export default function EmployeePortal() {
       await supabase.from('messages').insert({ employee_id: user.id, employee_name: user.name, sender: 'employee', read: false, content: photoMessage(path) })
     }
     loadMessages()
-  }
-
-  const weekSummary = () => {
-    const { start, end } = getWeekRange()
-    const weekJobs = enrichJobValues(
-      allJobs.filter(j => j.status === 'completed' && j.scheduled_date >= start && j.scheduled_date <= end),
-      serviceContracts,
-    )
-    const gross = weekJobs.reduce((s, j) => s + employeeEarningsForJob(j, empData), 0)
-    const deductions = weekDeductions.reduce((s,d)=>s+Number(d.amount||0),0)
-    const totalChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_total||0),0)
-    const doneChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_done??0),0)
-    const rate = totalChecklist>0 ? Math.round((doneChecklist/totalChecklist)*100) : 100
-    return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate }
   }
 
   const calcSalary = (allData, empInfo, deductionsList = []) => {
