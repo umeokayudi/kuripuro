@@ -20,6 +20,8 @@ import { isDeadlineJob, jobTimeText, deadlineLateText } from '../lib/jobDeadline
 import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
+import { estimateShift, fmtDur } from '../lib/shiftEstimate'
+import ShiftEstimateBox from '../components/ShiftEstimateBox'
 import { VOICE_EVERY_SEC, voicePrefOn, setVoicePref, voiceMessage, speak, unlockSpeech, canSpeak } from '../lib/voiceAlert'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { dueAlertJobs, dueAlertSlot, acceptSpotUpdate, isBrokenRunningJob, isPendingSpot } from '../lib/jobDueAlert'
@@ -1595,6 +1597,15 @@ export default function EmployeePortal() {
   const tomorrow = tokyoTomorrow()
   const laterJobs = upcomingJobs(allJobs, today)
   const tomorrowJobs = laterJobs.filter(j => j.scheduled_date === tomorrow)
+  // v1.0.174 · next shift day: probable total time + ideal start (history of each place)
+  const nextShiftDate = laterJobs[0]?.scheduled_date || null
+  const nextShiftJobs = nextShiftDate ? sortByOrder(laterJobs.filter(j => j.scheduled_date === nextShiftDate)) : []
+  const nextShiftEst = estimateShift(nextShiftJobs, allJobs, { contractFor: j => contractForAgendaJob(j, serviceContracts) })
+  const estRowText = j => {
+    const est = nextShiftEst?.perJob.get(j.id)
+    if (!est) return jobTimeText(j, lang)
+    return isDeadlineJob(j) ? `≈ ${fmtDur(est.minutes)}` : `${jobTimeText(j, lang)} · ≈ ${fmtDur(est.minutes)}`
+  }
   const whenLabel = (date) => date === tomorrow ? e.tomorrow : date
 
   const S = {
@@ -2228,8 +2239,9 @@ export default function EmployeePortal() {
                 <div className="emp-empty-icon">☾</div>
                 <div className="emp-empty-kicker">{e.nextShiftLabel}</div>
                 <div className="emp-empty-title">{whenLabel(laterJobs[0].scheduled_date)} · {jobTimeText(laterJobs[0],lang)}</div>
-                {laterJobs.filter(j=>j.scheduled_date===laterJobs[0].scheduled_date).map(j=>(
-                  <div key={j.id} className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(j)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(j)}} style={{cursor:'pointer'}}><span>{j.title.split(' —')[0]}</span><span>{jobTimeText(j,lang)}</span></div>
+                <ShiftEstimateBox est={nextShiftEst} L={L} />
+                {nextShiftJobs.map(j=>(
+                  <div key={j.id} className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(j)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(j)}} style={{cursor:'pointer'}}><span>{j.title.split(' —')[0]}</span><span>{estRowText(j)}</span></div>
                 ))}
               </div>
             )}
