@@ -2069,3 +2069,11 @@ body { background: var(--hq-bg); }
 .sidebar-collapsed .sidebar-logo{justify-content:center!important}
 .sidebar-collapsed .sidebar-logo .brand-text{display:none}
 @media (max-width:720px){.sidebar .sidebar-logo .brand-text{padding-right:0}}
+/* v1.0.175 · Próximo turno: total time + ideal start */
+.emp-shift-est{width:100%;margin:10px 0 6px;padding:12px 14px;border-radius:13px;background:#eef3ff;border:1px solid #d7e2ff;text-align:left;box-sizing:border-box}
+.emp-shift-est-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:13px;color:#34435c}
+.emp-shift-est-row+.emp-shift-est-row{margin-top:6px}
+.emp-shift-est-row strong{font-size:17px;color:#1d3fbf;font-weight:800;white-space:nowrap}
+.emp-shift-est-row.is-start strong{color:#0f7a43}
+.emp-shift-est-label{font-weight:650}
+.emp-shift-est-note{margin-top:7px;font-size:11px;line-height:1.4;color:#6b7891}
