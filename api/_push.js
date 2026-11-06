@@ -5,12 +5,15 @@
 //   POST ?op=subscribe     save this browser's subscription for the signed-in person
 //   POST ?op=unsubscribe   forget this browser (logout / turned off)
 //   POST ?op=test          send a test notification to the caller's own devices
+//   POST ?op=bell          every 5 min (Supabase pg_cron): each NEW item of the admin bell → push to admins.
+//                          ?dry=1 only lists what would be sent.
 //   POST ?op=event         called by the database triggers (sql/2026-10-25_push_notificacoes.sql)
 //                          with { table, op, id }. The row is re-read here with the service key
 //                          and each event is sent once (push_log), so a forged call can only
 //                          repeat a notice that really exists, never invent one.
 import webpush from 'web-push'
 import { salesDb, readSalesSession } from './_salesSession.js'
+import { fetchBellSnapshot, bellNotice, bellSummary, BELL_SKIP_KINDS, BELL_SKIP_GROUPS } from './_bell.bundle.js'
 
 const MAX_FAILS = 3
 
@@ -241,7 +244,8 @@ async function sendTo(db, subs, msg) {
   setupVapid()
   let sent = 0
   await Promise.all(subs.map(async s => {
-    const payload = JSON.stringify(msg(s.lang || 'en'))
+    const lang = s.lang || 'en'
+    const payload = JSON.stringify({ action: pick(lang, 'Open', '開く', 'Abrir'), ...msg(lang) })
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 * 24, urgency: 'high' })
       sent += 1
@@ -281,6 +285,52 @@ async function handleEvent(req, res) {
   return res.status(200).json({ ok: true, results })
 }
 
+
+// ── The bell (v1.0.171) ───────────────────────────────────────────────────
+// Same list the admin sees under 🔔. Each item is pushed once ever (push_log 'bell:<id>').
+// First run, or many new items at once: one summary notice instead of a flood.
+const SUMMARY_FROM = 5
+
+export async function handleBell(req, res, { snapshot = fetchBellSnapshot, db = salesDb() } = {}) {
+  const secret = process.env.PUSH_BELL_SECRET
+  const given = String(req.headers?.['x-push-secret'] || req.query?.key || '')
+  if (secret && given !== secret) return res.status(401).json({ error: 'bad secret' })
+  const dry = String(req.query?.dry || '') === '1'
+  const snap = await snapshot()
+  const items = []
+  for (const g of snap.groups || []) {
+    if (BELL_SKIP_GROUPS.has(g.key) || g.notCounted) continue
+    for (const x of g.items) if (x?.id && !BELL_SKIP_KINDS.has(x.kind)) items.push(x)
+  }
+  const keys = items.map(x => `bell:${x.id}`)
+  const seen = new Set()
+  for (let i = 0; i < keys.length; i += 100) {
+    const { data, error } = await db.from('push_log').select('dedupe_key').in('dedupe_key', keys.slice(i, i + 100))
+    if (error) return res.status(500).json({ error: error.message })
+    for (const r of data || []) seen.add(r.dedupe_key)
+  }
+  const fresh = items.filter(x => !seen.has(`bell:${x.id}`))
+  let firstRun = false
+  if (!seen.size && fresh.length) {
+    const { data: any } = await db.from('push_log').select('dedupe_key').like('dedupe_key', 'bell:%').limit(1)
+    firstRun = !(any || []).length
+  }
+  const preview = fresh.map(x => ({ id: x.id, kind: x.kind, ...bellNotice(x, 'pt') }))
+  if (dry) return res.status(200).json({ ok: true, dry: true, total: items.length, fresh: fresh.length, firstRun, preview })
+  if (!fresh.length) return res.status(200).json({ ok: true, total: items.length, sent: 0 })
+
+  if (firstRun || fresh.length >= SUMMARY_FROM) {
+    const rows = fresh.map(x => ({ dedupe_key: `bell:${x.id}`, recipient: '{"role":"admin"}', sent: 0 }))
+    await db.from('push_log').upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true })
+    const subs = await subscriptionsFor(db, { role: 'admin' })
+    const sent = subs.length ? await sendTo(db, subs, l => bellSummary(fresh, l)) : 0
+    return res.status(200).json({ ok: true, total: items.length, summary: fresh.length, sent })
+  }
+  const results = []
+  for (const x of fresh) results.push(await deliver(db, { to: { role: 'admin' }, key: `bell:${x.id}`, msg: l => bellNotice(x, l) }))
+  return res.status(200).json({ ok: true, total: items.length, results })
+}
+
 // ── Who is this browser? ──────────────────────────────────────────────────
 async function identify(req) {
   const session = readSalesSession(req)
@@ -298,11 +348,12 @@ export default async function handler(req, res) {
   if (req.method === 'GET' && (op === 'key' || !op)) {
     return res.status(200).json({ configured: pushConfigured(), publicKey: process.env.VAPID_PUBLIC_KEY || null })
   }
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  if (req.method !== 'POST' && op !== 'bell') return res.status(405).json({ error: 'Method not allowed' })
   if (!pushConfigured()) return res.status(503).json({ error: 'Push não configurado no servidor (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).' })
 
   try {
     if (op === 'event') return await handleEvent(req, res)
+    if (op === 'bell') return await handleBell(req, res)
 
     const db = salesDb()
     if (op === 'unsubscribe') {

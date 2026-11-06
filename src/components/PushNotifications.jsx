@@ -72,7 +72,7 @@ export function PushPrompt() {
       boxShadow: '0 12px 32px rgba(15,23,42,.22)', border: '1px solid #e5e9f2', padding: '14px 14px 12px',
     }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        <div aria-hidden="true" style={{ width: 38, height: 38, flex: '0 0 38px', borderRadius: 12, background: '#eef2ff', display: 'grid', placeItems: 'center', fontSize: 19 }}>🔔</div>
+        <img src="/push-icon-192.png" alt="" aria-hidden="true" width="38" height="38" style={{ width: 38, height: 38, flex: '0 0 38px', borderRadius: 11, boxShadow: '0 6px 16px rgba(49,92,245,.28)' }} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 15 }}>{c.title}</div>
           <div style={{ fontSize: 13, color: '#4b5563', marginTop: 3, lineHeight: 1.4 }}>{state === 'ios-needs-home' ? c.ios : c.body}</div>

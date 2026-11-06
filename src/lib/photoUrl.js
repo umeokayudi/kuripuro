@@ -1,4 +1,4 @@
-const SUPABASE_HOST = (import.meta.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co').replace(/^https?:\/\//, '')
+const SUPABASE_HOST = (import.meta.env?.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co').replace(/^https?:\/\//, '')
 
 export function isStoragePhotoUrl(url) {
   if (!url) return false

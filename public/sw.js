@@ -7,12 +7,16 @@ self.addEventListener('push', event => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch { data = { body: event.data && event.data.text() } }
   const title = data.title || 'KuriPuro'
+  // v1.0.171 · KuriPuro "K" logo beside the text, white K in the status bar (Android badge).
   event.waitUntil(self.registration.showNotification(title, {
     body: data.body || '',
-    icon: '/icon-192.png',
-    badge: '/favicon.png',
+    icon: '/push-icon-192.png',
+    badge: '/push-badge-96.png',
     tag: data.tag || undefined,
     renotify: Boolean(data.tag),
+    timestamp: Date.now(),
+    vibrate: [80, 40, 80],
+    actions: data.action ? [{ action: 'open', title: data.action }] : [],
     data: { url: data.url || '/' },
   }))
 })
