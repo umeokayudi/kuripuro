@@ -81,7 +81,7 @@ import AIChatPanel from '../components/AIChatPanel'
 import EarningsPanel from '../components/EarningsPanel'
 import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
 import { monthLabel } from '../lib/earnings'
-import AvailabilityPlanner, { PlanAlert, TimeOffList, fmtDay } from '../components/AvailabilityPlanner'
+import AvailabilityPlanner, { TimeOffList, ShiftWeekButton, fmtDay } from '../components/AvailabilityPlanner'
 import FreeJobsCard from '../components/FreeJobsCard'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
@@ -2060,7 +2060,7 @@ export default function EmployeePortal() {
         <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
           {gpsStatus&&<div className={`emp-status-chip ${gpsStatus.includes('✅')?'is-good':gpsStatus.includes('🚫')?'is-bad':''}`}>{gpsStatus}</div>}
           {activeJob&&<div style={{background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20,padding:'4px 12px',fontSize:12,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</div>}
-          {planAlert&&tab!=='availability'&&tab!=='ai'&&<div onClick={()=>setTab('availability')} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
+          {planAlert&&tab!=='availability'&&tab!=='ai'&&<div onClick={()=>openAvailability()} style={{background:planAlert.level==='urgent'?'#fef2f2':'#fffbeb',border:`1px solid ${planAlert.level==='urgent'?'#fecaca':'#fde68a'}`,borderRadius:20,padding:'4px 10px',fontSize:11,color:planAlert.level==='urgent'?'#b91c1c':'#b45309',cursor:'pointer',fontWeight:700}}>🗓 {e.planChip}</div>}
           {spotJobs.length>0&&<div onClick={()=>setTab('spots')} style={{background:'rgba(193,156,86,0.1)',border:'1px solid rgba(193,156,86,0.2)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#c19c56',cursor:'pointer',fontWeight:600}}>⚡ {spotJobs.length}</div>}
         </div>
       </div>
@@ -2199,6 +2199,8 @@ export default function EmployeePortal() {
               )
             })()}
 
+            {/* v1.0.163 · weekly shift: one button that opens the calendar */}
+            <ShiftWeekButton plans={weekPlans} lang={lang} onOpen={()=>openAvailability()} />
             <PendingVideos jobs={allJobs} L={L} />
             {/* v1.0.154 · free services of the day: "Pegar — é meu" */}
             <FreeJobsCard jobs={spotJobs} lang={lang} L={L} onTake={handleAcceptSpot} onSkip={handleDeclineSpot} />
@@ -2232,7 +2234,6 @@ export default function EmployeePortal() {
               </div>
             )}
 
-            <PlanAlert alert={planAlert} e={e} lang={lang} onOpen={()=>openAvailability()} />
 
             {/* Summary cards: today's shift across, the others two per row (no sideways scroll) */}
             <div className="ex-cards" role="list">
@@ -2643,8 +2644,8 @@ export default function EmployeePortal() {
         {(tab==='calendar'||tab==='availability')&&(<>
           <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} labels={e} statusLabels={tr.status} lang={lang} />
           <div id="my-availability" style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'22px 2px 10px'}}>🗓 {L('My availability and day off','勤務可能日と休み','Minha disponibilidade e folgas')}</div>
+          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} jobs={allJobs} />
           <TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />
-          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} />
         </>)}
 
         {/* ACHIEVEMENTS */}
