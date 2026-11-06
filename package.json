@@ -28,6 +28,7 @@
     "test:add-service": "node scripts/test-employee-add-service.mjs",
     "test:deep-clean": "npx vite-node scripts/test-deep-clean-photos.mjs",
     "test:salary-calc": "npx vite-node scripts/test-salary-calc.mjs",
+    "test:salary-unified": "npx vite-node scripts/test-salary-unified.mjs",
     "test:payroll-close": "node scripts/test-payroll-close.mjs",
     "test:money": "node scripts/test-money.mjs",
     "test:exception-queue": "npx vite-node scripts/test-exception-queue.mjs",
