@@ -1,5 +1,6 @@
 import calendar from './_calendar.js'
 import contractSales from './_contract-sales.js'
+import google from './_google-calendar.js'
 import payrollClose from './_payroll-close.js'
 import salesAi from './_sales-ai.js'
 import salesData from './_sales-data.js'
@@ -15,6 +16,8 @@ const handlers = {
   'calendar-link': calendar,
   'contract-sellers': contractSales,
   data: salesData,
+  google,
+  'google-sync': google,
   files: salesFiles,
   'payroll-close': payrollClose,
   reminders: salesReminders,
