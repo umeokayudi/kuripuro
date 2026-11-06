@@ -98,6 +98,7 @@ import EmployeeWorkReports from '../components/EmployeeWorkReports'
 import TeamDay from '../components/TeamDay'
 import { REVIEW_PREFIX } from '../lib/deductionReview'
 import MyProfile from '../components/MyProfile'
+import FaceAvatar from '../components/FaceAvatar'
 import PendingVideos from '../components/PendingVideos'
 import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate, sortByOrder, nextPendingJob, MANUAL_ORDER_BASE } from '../lib/agenda'
 import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
@@ -2039,6 +2040,9 @@ export default function EmployeePortal() {
         </div>
         {/* Same greeting header on every screen except the AI helper, which gets the whole height */}
         {tab!=='ai'&&<div className="ex-greet emp-hello">
+          <button type="button" className="emp-hello-face" onClick={()=>setTab('profile')} aria-label={L('My profile','マイプロフィール','Meu perfil')}>
+            <FaceAvatar id={user.id} name={user.name} size={44} className="" />
+          </button>
           <div>
             {personalGreeting?(
               <>
