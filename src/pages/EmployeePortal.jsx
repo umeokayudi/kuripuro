@@ -1652,7 +1652,9 @@ export default function EmployeePortal() {
     {key:'home',icon:'🏠',label:e.home},
     {key:'shift',icon:'🗺',label:L('My day','今日の予定','Meu dia')},
     ...(quickRoundOn?[{key:'quickround',icon:'⚡',label:L('Quick round','クイックラウンド','Rodada rápida'),hint:L('Time only, no checklist or photo','時刻のみ・チェックリストや写真なし','Só horário, sem checklist nem foto')}]:[]),
-    {key:'history',group:'jobs',icon:'📅',label:L('My jobs','自分の作業','Meus jobs'),hint:L('History · calendar & availability · spots','履歴・カレンダーと勤務可能日・スポット','Histórico · calendário e disponibilidade · spots'),badge:spotJobs.length+(planAlert?1:0)},
+    {key:'history',group:'jobs',icon:'📅',label:L('My jobs','自分の作業','Meus jobs'),hint:L('History · calendar & availability · spots','履歴・カレンダーと勤務可能日・スポット','Histórico · calendário e disponibilidade · spots'),badge:spotJobs.length},
+    {key:'availability',icon:'📅',label:L('My weekly shift','週のシフト','Meu shift semanal'),hint:planAlert?L(`Send the week of ${fmtDay(planAlert.week,lang)}`,`${fmtDay(planAlert.week,lang)}の週を送信`,`Enviar a semana de ${fmtDay(planAlert.week,lang)}`):L('Calendar · days off · extra','カレンダー・休み・追加勤務','Calendário · folgas · extra'),badge:planAlert?1:0},
+    {key:'reports',icon:'📄',label:L('Service reports','作業報告書','Relatórios de serviço'),hint:L('Make all of the day at once','その日の分をまとめて作成','Fazer todos do dia de uma vez')},
     {key:'salary',icon:'💴',label:L('My salary','自分の給与','Meu salário')},
     {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport}`},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
@@ -1837,7 +1839,7 @@ export default function EmployeePortal() {
     && (!m.location_name || m.location_name === locationFromJob(job)))
 
   const [focusJobId, setFocusJobId] = useState(null)
-  const openAvailability = () => { goToTab('calendar'); setTimeout(() => document.getElementById('my-availability')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300) }
+  const openAvailability = () => goToTab('availability') // v1.0.172 · its own screen (☰ → Meu shift semanal)
   // AI help lives inside the job (sheet opened from the job card), not as a main tab.
   const [aiJob, setAiJob] = useState(null)
   const JobModal = ({ job, onClose }) => {
@@ -2157,7 +2159,7 @@ export default function EmployeePortal() {
           <div className="tab-pills" style={{marginBottom:12,flexWrap:'wrap'}}>
             {MENU_GROUPS[groupOf(tab)].map(([k,label])=>(
               <button key={k} type="button" className={`tab-pill${tab===k?' active':''}`} onClick={()=>setTab(k)}>
-                {label}{k==='spots'&&spotJobs.length>0?` (${spotJobs.length})`:''}{k==='availability'&&planAlert?' •':''}
+                {label}{k==='spots'&&spotJobs.length>0?` (${spotJobs.length})`:''}{k==='calendar'&&planAlert?' •':''}
               </button>
             ))}
           </div>
@@ -2210,13 +2212,12 @@ export default function EmployeePortal() {
               )
             })()}
 
-            {/* v1.0.163 · weekly shift: one button that opens the calendar */}
-            <ShiftWeekButton plans={weekPlans} lang={lang} onOpen={()=>openAvailability()} />
+            {/* v1.0.172 · weekly shift on Início ONLY while next week still has to be sent (always in the ☰ menu) */}
+            {planAlert&&<ShiftWeekButton plans={weekPlans} lang={lang} onOpen={()=>openAvailability()} />}
             <PendingVideos jobs={allJobs} L={L} />
             {/* v1.0.154 · free services of the day: "Pegar — é meu" */}
             <FreeJobsCard jobs={spotJobs} lang={lang} L={L} onTake={handleAcceptSpot} onSkip={handleDeclineSpot} />
             {/* v1.0.161 · no daily "confirme cada dia" card and no "Falta a foto de depois" card: the shift is sent weekly (Calendário) */}
-            <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />
 
 
             {/* No shift today */}
@@ -2382,7 +2383,16 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{L('My day','今日の予定','Meu dia')}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
           <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRegister} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} photoStatus={photoStatus} onRetryPhotos={retryPhotos} onReportProblem={setProblemJob} />
+          {/* v1.0.172 · service reports live here (and in ☰ → Relatórios), with "fazer todos do dia" */}
+          <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />
           <TeamDay userId={user.id} L={L} />
+          </section>
+        )}
+
+        {tab==='reports'&&(
+          <section className="emp-shift-screen">
+            <div className="emp-section-heading"><span>{L('Last 7 days','過去7日間','Últimos 7 dias')}</span><h1>📄 {L('Service reports','作業報告書','Relatórios de serviço')}</h1><p>{L('Photos and notes now or later — the AI writes it, the office sends it to the client.','写真とメモは作業中でも後でもOK。AIが文章を作成し、事務所が送付します。','Fotos e notas agora ou depois — a IA escreve e o escritório envia ao cliente.')}</p></div>
+            <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} flat />
           </section>
         )}
 
@@ -2653,10 +2663,16 @@ export default function EmployeePortal() {
 
         {/* CALENDAR */}
         {/* v1.0.96 · one calendar: jobs (read) and availability / day off (the only place to edit them) */}
-        {(tab==='calendar'||tab==='availability')&&(<>
+        {tab==='calendar'&&(<>
           <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} labels={e} statusLabels={tr.status} lang={lang} />
           <div id="my-availability" style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'22px 2px 10px'}}>🗓 {L('My availability and day off','勤務可能日と休み','Minha disponibilidade e folgas')}</div>
           <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} jobs={allJobs} />
+          <TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />
+        </>)}
+        {/* v1.0.172 · ☰ → Meu shift semanal: the weekly calendar first, nothing above it */}
+        {tab==='availability'&&(<>
+          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} jobs={allJobs} />
+          <div style={{height:14}} />
           <TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />
         </>)}
 
