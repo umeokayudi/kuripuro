@@ -1,16 +1,11 @@
 -- v1.0.171 · Todos os avisos do sino (🔔 Aguardando você) viram notificação push para os admins.
--- Rodar DEPOIS de sql/2026-10-25_push_notificacoes.sql. Pode rodar de novo (substitui o agendamento).
+-- Rodar DEPOIS de sql/2026-10-25_push_notificacoes.sql. Pode rodar de novo (cron.schedule com o mesmo nome substitui o agendamento).
 -- A cada 5 minutos o banco chama /api/push?op=bell; o servidor monta o mesmo sino do admin e
 -- manda cada item novo uma vez só (push_log 'bell:<id>'). Primeira vez ou 5+ novos juntos = 1 resumo.
 -- Troque <PUSH_BELL_SECRET> pelo mesmo valor da variável PUSH_BELL_SECRET na Vercel.
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
-
-do $$ begin
-  perform cron.unschedule('kp_push_bell');
-exception when others then null;
-end $$;
 
 select cron.schedule('kp_push_bell', '*/5 * * * *', $job$
   select net.http_post(

@@ -77,59 +77,38 @@ $$;
 revoke all on function public.kp_push_forward() from public, anon, authenticated;
 
 -- Novos registros
-drop trigger if exists kp_push_ins on public.messages;
-create trigger kp_push_ins after insert on public.messages for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.client_messages;
-create trigger kp_push_ins after insert on public.client_messages for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.employee_availability;
-create trigger kp_push_ins after insert on public.employee_availability for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.jobs;
-create trigger kp_push_ins after insert on public.jobs for each row when (new.employee_id is not null) execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.client_requests;
-create trigger kp_push_ins after insert on public.client_requests for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.client_complaints;
-create trigger kp_push_ins after insert on public.client_complaints for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.faturas;
-create trigger kp_push_ins after insert on public.faturas for each row when (new.status = 'sent') execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.salary_complaints;
-create trigger kp_push_ins after insert on public.salary_complaints for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.equipment_requests;
-create trigger kp_push_ins after insert on public.equipment_requests for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.transport_claims;
-create trigger kp_push_ins after insert on public.transport_claims for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.sales_notifications;
-create trigger kp_push_ins after insert on public.sales_notifications for each row execute function public.kp_push_forward();
-drop trigger if exists kp_push_ins on public.salary_payments;
-create trigger kp_push_ins after insert on public.salary_payments for each row when (new.status = 'paid') execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.messages for each row execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.client_messages for each row execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.employee_availability for each row when (new.kind is null or new.kind = 'off') execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.jobs for each row when (new.employee_id is not null) execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.client_requests for each row execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.client_complaints for each row execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.faturas for each row when (new.status = 'sent') execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.salary_complaints for each row execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.equipment_requests for each row execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.transport_claims for each row execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.sales_notifications for each row execute function public.kp_push_forward();
+create or replace trigger kp_push_ins after insert on public.salary_payments for each row when (new.status = 'paid') execute function public.kp_push_forward();
 
 -- Mudanças de situação (só quando o campo que importa muda, não em toda edição)
-drop trigger if exists kp_push_upd on public.employee_availability;
-create trigger kp_push_upd after update on public.employee_availability for each row
+create or replace trigger kp_push_upd after update on public.employee_availability for each row
   when (old.status is distinct from new.status) execute function public.kp_push_forward();
-drop trigger if exists kp_push_upd on public.jobs;
-create trigger kp_push_upd after update on public.jobs for each row
+create or replace trigger kp_push_upd after update on public.jobs for each row
   when (old.status is distinct from new.status or old.employee_id is distinct from new.employee_id) execute function public.kp_push_forward();
-drop trigger if exists kp_push_upd on public.client_requests;
-create trigger kp_push_upd after update on public.client_requests for each row
+create or replace trigger kp_push_upd after update on public.client_requests for each row
   when (old.status is distinct from new.status or old.quote_status is distinct from new.quote_status or old.salesperson_id is distinct from new.salesperson_id)
   execute function public.kp_push_forward();
-drop trigger if exists kp_push_upd on public.client_complaints;
-create trigger kp_push_upd after update on public.client_complaints for each row
+create or replace trigger kp_push_upd after update on public.client_complaints for each row
   when (old.status is distinct from new.status) execute function public.kp_push_forward();
-drop trigger if exists kp_push_upd on public.faturas;
-create trigger kp_push_upd after update on public.faturas for each row
+create or replace trigger kp_push_upd after update on public.faturas for each row
   when (old.status is distinct from new.status) execute function public.kp_push_forward();
-drop trigger if exists kp_push_upd on public.salary_complaints;
-create trigger kp_push_upd after update on public.salary_complaints for each row
+create or replace trigger kp_push_upd after update on public.salary_complaints for each row
   when (old.status is distinct from new.status) execute function public.kp_push_forward();
-drop trigger if exists kp_push_upd on public.salary_payments;
-create trigger kp_push_upd after update on public.salary_payments for each row
+create or replace trigger kp_push_upd after update on public.salary_payments for each row
   when (old.status is distinct from new.status) execute function public.kp_push_forward();
-drop trigger if exists kp_push_upd on public.equipment_requests;
-create trigger kp_push_upd after update on public.equipment_requests for each row
+create or replace trigger kp_push_upd after update on public.equipment_requests for each row
   when (old.status is distinct from new.status) execute function public.kp_push_forward();
-drop trigger if exists kp_push_upd on public.transport_claims;
-create trigger kp_push_upd after update on public.transport_claims for each row
+create or replace trigger kp_push_upd after update on public.transport_claims for each row
   when (old.status is distinct from new.status) execute function public.kp_push_forward();
 
 -- Para DESLIGAR tudo de uma vez (se precisar), rode:
