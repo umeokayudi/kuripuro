@@ -12,7 +12,7 @@ assert.equal(title, 'Kodama Oimachi — Deep Clean (Range Hood, Fryer, limpar at
 assert.equal(getCleaningType({ title }), 'deep')
 assert.deepEqual(deepTasksFromTitle(title), { ids: ['range_hood', 'fryer'], custom: ['limpar atrás da geladeira porta'] })
 
-// Catalog place: only the picked deep tasks + closing (v1.0.179: no restroom/trash routine).
+// Catalog place: only the picked deep tasks + closing (v1.0.180: no restroom/trash routine).
 const ck = checklistTemplateForJob({ title }).split('\n')
 assert.ok(ck.includes('Range Hood — limpeza completa (filtros, duto, superficie)'))
 assert.ok(ck.includes('Fryer — oleo retirado, cesto e cuba limpos'))

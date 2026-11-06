@@ -1829,11 +1829,11 @@ export default function EmployeePortal() {
   const openAvailability = () => goToTab('availability') // v1.0.172 · its own screen (☰ → Meu shift semanal)
   // AI help lives inside the job (sheet opened from the job card), not as a main tab.
   const [aiJob, setAiJob] = useState(null)
-  // v1.0.179 · 作業報告書 straight from the job detail (same editor as Meu dia → Relatório de serviço)
+  // v1.0.180 · 作業報告書 straight from the job detail (same editor as Meu dia → Relatório de serviço)
   const [reportJob, setReportJob] = useState(null)
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
-    // v1.0.179 · finished job: the list that was ticked; otherwise the list it will get (deep = only its tasks)
+    // v1.0.180 · finished job: the list that was ticked; otherwise the list it will get (deep = only its tasks)
     const cl = parseChecklistTemplate(job.status==='completed' ? job.checklist_template : (checklistTemplateForJob(job) || job.checklist_template))
     const dDate = displayDate(job)
     const instructions = keyboxForJob(job)

@@ -37,7 +37,7 @@ export const DEEP_CLEAN_COMPONENTS = [
  */
 export const DEEP_TASKS = [
   { id: 'range_hood', icon: '🌀', label: 'Range Hood', ja: 'レンジフード', pt: 'Coifa', check: 'Range Hood — limpeza completa (filtros, duto, superficie)' },
-  // v1.0.179 · grease trap has its own step-by-step list (no restroom/trash items of the daily routine)
+  // v1.0.180 · grease trap has its own step-by-step list (no restroom/trash items of the daily routine)
   { id: 'grease_trap', icon: '🛢️', label: 'Grease Trap', ja: 'グリストラップ', pt: 'Caixa de gordura', check: 'Grease Trap — esvaziado e higienizado',
     checks: [
       'Grease Trap — esvaziado e higienizado',

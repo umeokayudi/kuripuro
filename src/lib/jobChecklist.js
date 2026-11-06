@@ -180,7 +180,7 @@ export function checklistTemplateForJob(job, deepComponents) {
   const catalogItems = getChecklistItems(job?.title || job?.location_name || '')
   const isDeep = getCleaningType(job) === 'deep'
   // Admin picked specific deep-clean tasks: the employee gets exactly those.
-  // v1.0.179 · a deep job checks only its own tasks + leaving the place closed (no restroom/trash routine).
+  // v1.0.180 · a deep job checks only its own tasks + leaving the place closed (no restroom/trash routine).
   if (isDeep && !deepComponents?.length && parseDeepTaskList(job?.title)) {
     const saved = (job?.checklist_template || '').trim()
     if (!catalogItems.length && saved) return saved // place outside the catalog: the admin's own list wins
