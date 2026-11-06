@@ -345,7 +345,7 @@ export async function fetchDayPanels(from, to = from, { nowMin = null, now = new
     supabase.from('service_contracts').select('*').eq('is_active', true),
     supabase.from('clients').select('id,company_name,is_active'),
     supabase.from('employees').select('*'),
-    supabase.from('jobs').select('id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template')
+    supabase.from('jobs').select('id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template,photo_required,photo_start_url,photo_end_url,checklist_total,checklist_done,gps_start_distance,start_lat,retro_time_min')
       .gte('scheduled_date', from).lte('scheduled_date', to).limit(5000),
     supabase.from('jobs').select('title,employee_id').gte('scheduled_date', addDays(from, -28)).lt('scheduled_date', from)
       .not('employee_id', 'is', null).neq('status', 'cancelled').limit(3000),

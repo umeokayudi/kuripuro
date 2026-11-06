@@ -10,6 +10,7 @@ const steps = [
   ['npm run test:money', 'money'],
   ['npm run test:exception-queue', 'exception queue'],
   ['node scripts/test-day-panel.mjs', 'day panel (Painel do Dia)'],
+  ['node scripts/test-day-check.mjs', 'Conferir o dia (feito certo / conferir / falta)'],
   ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],
   ['npx vite-node scripts/test-quote-later.mjs', 'accepted quote: suggested dates + Agendar depois'],
   ['npx vite-node scripts/test-shift-estimate.mjs', 'Próximo turno: horas estimadas + ideal começar'],
