@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { geocodeAddress, isPlaceholderCoords } from '../lib/geocode'
@@ -41,7 +41,7 @@ const sameLoc = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase()
  * Admin "New job" form: tap a place, what, who and when — the rest is filled from the
  * last job at that place. Deep cleaning asks which tasks, and they become the employee's checklist.
  */
-export default function NewJobForm({ jobs = [], employees = [], clients = [], locations = [], sellers, onCreated }) {
+export default function NewJobForm({ jobs = [], employees = [], clients = [], locations = [], sellers, onCreated, prefill = null }) {
   // `locations` = single place list (lib/places.js): saved places + stores that only exist in Contracts.
   const { lang } = useLang()
   const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
@@ -133,6 +133,26 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       value: valueTouched ? f.value : fromContract || (sameType ? Number(sameType.value) || 0 : f.value),
     }))
   }
+
+  // v1.0.167 · "Criar job" from Serviços › Deep & Spot: the form opens filled (client, store, type Deep,
+  // item). Nothing is saved until the admin presses the form's own save button.
+  const prefillStage = useRef(0)
+  const prefillLoc = useMemo(() => {
+    if (!prefill?.place) return null
+    const n = String(prefill.place).trim().toLowerCase()
+    return locations.find(l => String(l.name || '').trim().toLowerCase() === n) || null
+  }, [prefill, locations])
+  useEffect(() => {
+    if (!prefill || prefillStage.current !== 0 || (!prefillLoc && !locations.length)) return
+    prefillStage.current = 1
+    setForm(f => ({ ...f, job_category: 'regular', cleaning_type: 'deep', deep_tasks: prefill.deep ? [prefill.deep] : f.deep_tasks, client_id: prefill.client || f.client_id }))
+  }, [prefill, prefillLoc, locations.length])
+  useEffect(() => {
+    if (prefillStage.current !== 1 || form.cleaning_type !== 'deep') return
+    prefillStage.current = 2
+    if (prefillLoc) pickLocation(prefillLoc)
+    else if (prefill?.place) setForm(f => ({ ...f, title: prefill.place }))
+  }, [form.cleaning_type])
 
   const toggleTask = id => setForm(f => ({
     ...f,
