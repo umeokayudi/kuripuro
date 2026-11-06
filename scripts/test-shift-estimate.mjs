@@ -1,4 +1,4 @@
-// v1.0.174 · Próximo turno: total time + ideal start
+// v1.0.175 · Próximo turno: total time + ideal start
 import assert from 'node:assert/strict'
 import { estimateShift, fmtDur } from '../src/lib/shiftEstimate.js'
 

@@ -1,4 +1,4 @@
-// v1.0.174 · Box inside the employee's "Próximo turno" card: probable total time + ideal start.
+// v1.0.175 · Box inside the employee's "Próximo turno" card: probable total time + ideal start.
 import { fmtDur } from '../lib/shiftEstimate'
 
 export default function ShiftEstimateBox({ est, L }) {

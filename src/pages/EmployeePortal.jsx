@@ -1597,7 +1597,7 @@ export default function EmployeePortal() {
   const tomorrow = tokyoTomorrow()
   const laterJobs = upcomingJobs(allJobs, today)
   const tomorrowJobs = laterJobs.filter(j => j.scheduled_date === tomorrow)
-  // v1.0.174 · next shift day: probable total time + ideal start (history of each place)
+  // v1.0.175 · next shift day: probable total time + ideal start (history of each place)
   const nextShiftDate = laterJobs[0]?.scheduled_date || null
   const nextShiftJobs = nextShiftDate ? sortByOrder(laterJobs.filter(j => j.scheduled_date === nextShiftDate)) : []
   const nextShiftEst = estimateShift(nextShiftJobs, allJobs, { contractFor: j => contractForAgendaJob(j, serviceContracts) })

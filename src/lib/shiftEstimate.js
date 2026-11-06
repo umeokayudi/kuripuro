@@ -1,4 +1,4 @@
-// v1.0.174 · "Próximo turno": how long the whole shift will probably take and the ideal time to start.
+// v1.0.175 · "Próximo turno": how long the whole shift will probably take and the ideal time to start.
 //
 // Each job's minutes come from the worker's own history (median of the last finished visits of the
 // same service at the same store, then of the same store), else the planned minutes of the job /
