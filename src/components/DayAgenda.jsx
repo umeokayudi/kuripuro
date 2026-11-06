@@ -27,6 +27,7 @@ import PhotoLightbox from './PhotoLightbox'
 import EmployeePayEdit from './EmployeePayEdit'
 import KeyReveal from './KeyReveal'
 import { ManualCloseButton } from './ManualCloseModal'
+import { EliminateJobButton } from './EliminateJobButton'
 import { JaFizButton } from './JaFizSheet'
 import { jaFizStamp, jaFizAuditFromJob } from '../lib/jaFiz'
 import { manualCloseStamp } from '../lib/manualClose'
@@ -551,6 +552,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
         {(job.started_at || job.status === 'completed') && <button type="button" className="btn btn-sm" onClick={() => setAdjust(a => !a)}>⏱ {tr('Adjust time', '時間を調整', 'Ajustar tempo')}</button>}
         {onEdit && <button type="button" className="btn btn-sm" onClick={() => onEdit(job)}>✏️</button>}
         <button type="button" className="btn btn-sm" onClick={showLog} title={tr('Change log', '変更履歴', 'Histórico')}>🕘</button>
+        <EliminateJobButton job={job} className="btn btn-sm btn-danger" onDone={onSaved} />
         <button type="button" className="btn btn-sm btn-danger" onClick={() => onDelete(job)} aria-label={tr('Delete', '削除', 'Excluir')}>🗑</button>
       </div>
       {adjust && <AdjustTime job={job} tr={tr} onDone={() => { setAdjust(false); onSaved() }} expected={info.expected} settings={settings} />}

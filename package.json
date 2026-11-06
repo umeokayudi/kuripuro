@@ -70,7 +70,8 @@
     "test:job-due-alert": "npx vite-node scripts/test-job-due-alert.mjs",
     "test:team-chat": "node scripts/test-team-chat.mjs",
     "test:video-compress": "node scripts/test-video-compress.mjs",
-    "test:job-deadline": "npx vite-node scripts/test-job-deadline.mjs"
+    "test:job-deadline": "npx vite-node scripts/test-job-deadline.mjs",
+    "test:job-eliminate": "npx vite-node scripts/test-job-eliminate.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
