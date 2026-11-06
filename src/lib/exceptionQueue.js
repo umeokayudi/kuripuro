@@ -66,7 +66,8 @@ export function buildExceptions({ jobs = [], contracts = [], payroll = {}, probl
     if (done && j.admin_reviewed) continue
     if (done && j.scheduled_date >= addDays(today, -7)) {
       if (!j.photo_end_url) push('no_photo', j, {})
-      else if (j.photo_end_url && j.photo_ai_score == null && j.scheduled_date >= addDays(today, -3)) push('ai_waiting', j, {})
+      // v1.0.170 · AI work evaluation is never a to-do for the owner (bell, Dashboard, counters): it runs on its own
+      // and its grade stays in Reports / the job card 'IA …'. (was: push('ai_waiting') for photos without a grade)
       const expected = expectedMinutes(j, contractForAgendaJob(j, contracts))
       const real = jobMinutes(j)
       if (expected && real > 2 * expected) push('long', j, { minutes: Math.round(real), expected })
