@@ -31,38 +31,71 @@ export function contractBillingAmount(contract, completedJobs = []) {
     return Math.round(Number(contract.fixed_monthly || 0))
   }
 
-  const locationJobs = completedJobs.filter(job => {
-    const title = String(job.title || '')
-    const location = title.split(' — ')[0].trim()
-    return location === String(contract.location_name || '').trim()
-  })
+  const locationJobs = completedJobs.filter(job => jobAtLocation(job, contract))
 
   return locationJobs.reduce((sum, job) => sum + Number(job.value || job.spot_value || contract.price_per_visit || 0), 0)
 }
 
+/** Job belongs to this restaurant (title "Loja — serviço" or the job's own location field). */
+function jobAtLocation(job, contract) {
+  const loc = String(contract.location_name || '').trim()
+  if (!loc) return false
+  const title = String(job.title || '').split(' — ')[0].trim()
+  return title === loc || String(job.location_name || '').trim() === loc
+}
+
+/**
+ * v1.0.162 · One 請求書 line per restaurant, like the On The Planet invoice:
+ *   品名 = restaurant name · 数量 1 · 単価 = that restaurant's value for the month.
+ * Fixed monthly → the monthly amount (never sliced per job). Per visit → completed visits × price,
+ * still one line (the visit count stays in `visits` for the preview, not on the paper).
+ */
 export function buildContractLine(contract, completedJobs = []) {
   const amount = contractBillingAmount(contract, completedJobs)
   const pricing = applyDiscount(amount, contract.discount_percent)
   if (!pricing.net && !amount) return null
 
-  const locationJobs = completedJobs.filter(job => String(job.title || '').split(' — ')[0].trim() === String(contract.location_name || '').trim())
-  const quantity = contract.billing_type === 'fixed_monthly' ? 1 : locationJobs.length
-  const unitPrice = contract.billing_type === 'fixed_monthly'
-    ? Number(contract.fixed_monthly || 0)
-    : quantity > 0 ? Math.round(amount / quantity) : Number(contract.price_per_visit || 0)
-
-  const description = contract.billing_type === 'fixed_monthly'
-    ? `${contract.location_name} — ${contract.service_type} (monthly)`
-    : `${contract.location_name} — ${contract.service_type} (${quantity} completed visits)`
+  const locationJobs = completedJobs.filter(job => jobAtLocation(job, contract))
+  const fixed = contract.billing_type === 'fixed_monthly'
+  const restaurant = String(contract.location_name || '').trim() || String(contract.service_type || '').trim()
 
   return {
-    description,
-    quantity,
-    unit_price: unitPrice,
+    description: restaurant,
+    restaurant,
+    monthly: fixed,
+    visits: locationJobs.length,
+    price_per_visit: fixed ? null : Number(contract.price_per_visit || 0),
+    quantity: 1,
+    unit_price: pricing.net,
     total: pricing.net,
+    gross: pricing.gross,
     discount_amount: pricing.discount,
     discount_percent: Number(contract.discount_percent || 0),
     contract_id: contract.id,
     job_ids: locationJobs.map(job => job.id),
   }
+}
+
+/**
+ * Totals of a monthly invoice. taxMode 'excl' = values are 税抜 (小計 + 消費税 = 合計, as in the
+ * On The Planet 請求書); 'incl' = values already include tax (合計 = sum, うち消費税).
+ */
+export function monthlyTotals(lines, taxRate = 10, taxMode = 'excl') {
+  const sum = lines.reduce((s, l) => s + Math.round(Number(l.total || 0)), 0)
+  const includes = taxMode === 'incl'
+  const tax = calculateTax(sum, taxRate, includes)
+  return includes
+    ? { subtotal: sum - tax, tax, total: sum, includesTax: true }
+    : { subtotal: sum, tax, total: sum + tax, includesTax: false }
+}
+
+/** "10月分清掃" for a billing period that is one whole month (件名 of the 請求書). */
+export function monthlySubject(periodStart, periodEnd, lang = 'ja') {
+  const a = String(periodStart || ''), b = String(periodEnd || '')
+  if (!/^\d{4}-\d{2}-01$/.test(a)) return ''
+  // whole calendar month only (a one-day spot invoice keeps no 件名)
+  if (b !== monthBounds(a.slice(0, 7)).end) return ''
+  const m = Number(a.slice(5, 7))
+  if (lang === 'en') return `Cleaning for ${new Date(Date.UTC(2000, m - 1, 1)).toLocaleString('en', { month: 'long', timeZone: 'UTC' })}`
+  return `${m}月分清掃`
 }

@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { dueDateAfter } from '../lib/spotContract'
 import { useLang, fill } from '../hooks/useLang'
-import { buildContractLine, calculateTax, monthBounds } from '../lib/invoiceAutomation'
+import { buildContractLine, monthBounds, monthlyTotals, monthlySubject } from '../lib/invoiceAutomation'
 import { ClientLink } from '../components/ClientSheetHost'
 import { askConfirm } from '../components/ConfirmDialog'
 import { invoiceMonth, isReceivable, isOverdueInvoice } from '../lib/money'
@@ -74,6 +74,21 @@ export default function Faturas() {
     return updated
   }))
 
+  // v1.0.162 · manual invoice in the On The Planet style: one line per restaurant (active contract)
+  // with its monthly value; per-visit restaurants use the completed visits of the chosen period.
+  const fillMonthlyByRestaurant = async () => {
+    if (!form.client_id) return toast.error(inv.selectClient)
+    const { data: contracts, error } = await supabase.from('service_contracts').select('*').eq('client_id', form.client_id).eq('is_active', true).order('created_at')
+    if (error) return toast.error(error.message)
+    const lines = (contracts || []).map(c => buildContractLine(c, jobs)).filter(Boolean)
+    if (!lines.length) return toast(tr('This client has no active contract with a value.', 'この顧客に金額のある有効な契約がありません。', 'Este cliente não tem contrato ativo com valor.'))
+    setItems(lines.map(l => ({ job_id: null, contract_id: l.contract_id, description: l.restaurant, quantity: 1, unit_price: l.total, total: l.total, job_ids: l.job_ids.join(',') })))
+    if (!form.period_start && !form.period_end) {
+      const { start, end } = monthBounds(autoPeriod)
+      setForm(f => ({ ...f, period_start: start, period_end: end, due_date: f.due_date || dueDateAfter(start, 10) }))
+    }
+  }
+
   const addItem = () => setItems(its=>[...its,{ job_id:null, description:'', quantity:1, unit_price:0, total:0 }])
   const removeItem = (i) => setItems(its=>its.filter((_,idx)=>idx!==i))
 
@@ -94,6 +109,7 @@ export default function Faturas() {
         .select('*')
         .eq('is_active', true)
         .order('client_id')
+        .order('created_at')
       if (contractsError) throw contractsError
       if (!contracts?.length) return toast(tr('No active contract found.', '有効な契約がありません。', 'Nenhum contrato ativo encontrado.'))
 
@@ -131,14 +147,12 @@ export default function Faturas() {
           .filter(Boolean)
         if (!lines.length) continue
 
-        const totalAfterDiscount = lines.reduce((sum, line) => sum + Number(line.total || 0), 0)
         const taxRate = Number(clientContracts[0]?.tax_rate ?? 10)
         const includesTax = clientContracts.every(c => c.price_includes_tax !== false)
-        const tax = calculateTax(totalAfterDiscount, taxRate, includesTax)
-        const subtotal = includesTax ? totalAfterDiscount - tax : totalAfterDiscount
         // Payment day of the contract (default the 10th) in the month after the billed period.
         const payDay = clientContracts.find(c => c.billing_day)?.billing_day || 10
-        plans.push({ client, lines, subtotal, tax, total: includesTax ? totalAfterDiscount : totalAfterDiscount + tax, taxRate, includesTax, dueDate: dueDateAfter(start, payDay), jobs: completedJobs || [] })
+        // v1.0.162 · one line per restaurant, in the order the contracts were registered; values editable in the preview
+        plans.push({ client, lines, taxRate, taxMode: includesTax ? 'incl' : 'excl', dueDate: dueDateAfter(start, payDay), jobs: completedJobs || [] })
       }
       setPreview({ start, end, plans, skipped })
     } catch (error) {
@@ -148,12 +162,21 @@ export default function Faturas() {
     }
   }
 
+  // v1.0.162 · edit the preview before saving: restaurant value, remove a restaurant, 税抜 / 税込
+  const patchPlan = (ci, fn) => setPreview(pv => pv && ({ ...pv, plans: pv.plans.map((p, i) => (i === ci ? fn(p) : p)) }))
+  const patchLine = (ci, li, patch) => patchPlan(ci, p => ({ ...p, lines: p.lines.map((l, j) => (j === li ? { ...l, ...patch } : l)) }))
+  const planTotals = p => monthlyTotals(p.lines.filter(l => !l.removed), p.taxRate, p.taxMode)
+  const activePlans = preview ? preview.plans.filter(p => p.lines.some(l => !l.removed && Number(l.total || 0) > 0)) : []
+
   const confirmAutoBilling = async () => {
     if (!preview) return
     setAutoLoading(true)
     let created = 0
     try {
       for (const p of preview.plans) {
+        const lines = p.lines.filter(l => !l.removed && Number(l.total || 0) > 0)
+        if (!lines.length) continue
+        const tt = monthlyTotals(lines, p.taxRate, p.taxMode)
         ensureServiceReports(supabase, p.jobs).catch(() => {}) // billed jobs also have their report
         const { data: fatura, error } = await supabase.from('faturas').insert({
           client_id: p.client.id,
@@ -162,18 +185,18 @@ export default function Faturas() {
           period_end: preview.end,
           issue_date: tokyoToday(),
           due_date: p.dueDate,
-          subtotal: p.subtotal,
-          tax_amount: p.tax,
-          total: p.total,
+          subtotal: tt.subtotal,
+          tax_amount: tt.tax,
+          total: tt.total,
           tax_rate: p.taxRate,
           status: 'draft',
-          notes: 'Gerada automaticamente a partir dos contratos e serviços concluídos.'
+          notes: ''
         }).select().single()
         if (error) throw error
-        const itemPayload = p.lines.map(line => ({
+        const itemPayload = lines.map(line => ({
           fatura_id: fatura.id,
           contract_id: line.contract_id,
-          description: line.description + (line.discount_percent > 0 ? ` — desconto ${line.discount_percent}%` : ''),
+          description: line.description,
           quantity: line.quantity,
           unit_price: line.unit_price,
           total: line.total,
@@ -222,7 +245,7 @@ export default function Faturas() {
     }).select().single()
     if (error) return toast.error(error.message)
     for (const item of items) {
-      await supabase.from('fatura_items').insert({ fatura_id:fatura.id, ...item, quantity:parseInt(item.quantity)||1, unit_price:parseFloat(item.unit_price)||0, total:parseFloat(item.total)||0 })
+      await supabase.from('fatura_items').insert({ fatura_id:fatura.id, job_id:item.job_id||null, description:item.description, quantity:parseInt(item.quantity)||1, unit_price:parseFloat(item.unit_price)||0, total:parseFloat(item.total)||0, ...(item.contract_id ? { contract_id:item.contract_id, job_ids:item.job_ids||null } : {}) })
     }
     toast.success(inv.created)
     setTab('list'); load()
@@ -295,7 +318,7 @@ export default function Faturas() {
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
               <div>
                 <div className="card-title" style={{marginBottom:3}}>⚡ {tr('Automatic billing', '自動請求', 'Faturamento automático')}</div>
-                <div style={{fontSize:12,color:'var(--text3)'}}>{tr('Contract → completed jobs → discount → tax → invoice', '契約 → 完了した作業 → 割引 → 税 → 請求書', 'Contrato → serviços concluídos → desconto → imposto → fatura')}</div>
+                <div style={{fontSize:12,color:'var(--text3)'}}>{tr('One invoice per client · one line per restaurant with its monthly value', '顧客ごとに1枚 · 店舗ごとに月額1行', 'Um 請求書 por cliente · uma linha por restaurante com o valor mensal')}</div>
               </div>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
                 <input type="month" value={autoPeriod} onChange={e=>setAutoPeriod(e.target.value)} />
@@ -385,7 +408,10 @@ export default function Faturas() {
           <div className="card" style={{marginBottom:14}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
               <div className="card-title" style={{margin:0}}>Items {jobs.length>0&&<span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>({jobs.length} completed jobs found)</span>}</div>
-              <button className="btn btn-sm btn-primary" onClick={addItem}>+ Add Item</button>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                <button className="btn btn-sm" onClick={fillMonthlyByRestaurant}>🏪 {tr('Monthly value per restaurant','店舗ごとの月額','Valor mensal por restaurante')}</button>
+                <button className="btn btn-sm btn-primary" onClick={addItem}>+ Add Item</button>
+              </div>
             </div>
             {items.length===0&&<div style={{color:'var(--text3)',fontSize:13}}>No items. Select client + period or add manually.</div>}
             {items.map((it,i)=>(
@@ -417,26 +443,57 @@ export default function Faturas() {
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={()=>!autoLoading&&setPreview(null)}>
           <div className="card" style={{ width:'min(680px,100%)', maxHeight:'92vh', overflowY:'auto' }} onClick={e=>e.stopPropagation()}>
             <div className="card-title">👁 {tr('Check before generating', '作成前の確認', 'Conferir antes de gerar')} · {preview.start.slice(0,7)}</div>
-            <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>{tr('Nothing was saved yet. Each client below becomes ONE draft invoice.', 'まだ保存されていません。下の顧客ごとに下書き請求書が1件作成されます。', 'Nada foi salvo ainda. Cada cliente abaixo vira UMA fatura em rascunho.')}</div>
+            <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>{tr('Nothing was saved yet. Each client below becomes ONE draft invoice, one line per restaurant with its monthly value. You can change a value or remove a restaurant.', 'まだ保存されていません。顧客ごとに下書き請求書が1件、店舗ごとに月額1行で作成されます。金額の変更・店舗の除外ができます。', 'Nada foi salvo ainda. Cada cliente abaixo vira UMA fatura em rascunho, com uma linha por restaurante e o valor mensal. Dá para mudar o valor ou tirar um restaurante.')}</div>
             {preview.plans.length === 0 && <div style={{ fontSize:13, color:'var(--text2)' }}>{tr('Nothing to bill for this month.', 'この月の請求対象はありません。', 'Nada para faturar neste mês.')}</div>}
-            {preview.plans.map(p => (
-              <div key={p.client.id} style={{ borderTop:'1px solid var(--border)', padding:'10px 0' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700 }}><span>{p.client.company_name}</span><span>¥{p.total.toLocaleString()}</span></div>
-                {p.lines.map((l, i) => (
-                  <div key={i} style={{ display:'flex', justifyContent:'space-between', gap:8, fontSize:12, color:'var(--text2)', marginTop:4 }}>
-                    <span style={{ minWidth:0, overflowWrap:'anywhere' }}>{l.description} · {l.quantity} × ¥{Number(l.unit_price||0).toLocaleString()}{l.discount_amount>0 ? ` − ¥${Number(l.discount_amount).toLocaleString()} (${l.discount_percent}%)` : ''}</span>
-                    <span style={{ flexShrink:0 }}>¥{Number(l.total||0).toLocaleString()}</span>
+            {preview.plans.map((p, ci) => {
+              const tt = planTotals(p)
+              const subject = monthlySubject(preview.start, preview.end, lang === 'en' ? 'en' : 'ja')
+              return (
+                <div key={p.client.id} className="kp-monthly-plan" style={{ borderTop:'1px solid var(--border)', padding:'12px 0' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', gap:8, fontWeight:700, flexWrap:'wrap' }}>
+                    <span style={{ minWidth:0, overflowWrap:'anywhere' }}>{p.client.company_name} 様</span>
+                    <span>¥{tt.total.toLocaleString()}</span>
                   </div>
-                ))}
-                <div style={{ fontSize:12, color:'var(--text3)', marginTop:4 }}>{tr('Tax','消費税','Imposto')} {p.taxRate}% {p.includesTax ? tr('(included)','（内税）','(incluso)') : ''}: ¥{p.tax.toLocaleString()} · {tr('Due','期限','Vencimento')} {p.dueDate}</div>
-              </div>
-            ))}
-            {preview.skipped.length > 0 && <div style={{ fontSize:12, color:'var(--text3)', marginTop:8 }}>{tr('Already invoiced (not repeated)', '作成済み（重複しません）', 'Já faturados (não repete)')}: {preview.skipped.join(', ')}</div>}
+                  {subject && <div style={{ fontSize:12, color:'var(--text3)', marginTop:2 }}>{tr('Subject','件名','Assunto')}: {subject} · {p.lines.filter(l=>!l.removed).length} {tr('restaurant(s)','店舗','restaurante(s)')}</div>}
+                  <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) auto auto', gap:'6px 8px', alignItems:'center', marginTop:8, fontSize:13 }}>
+                    <span style={{ fontSize:11, color:'var(--text3)' }}>{tr('Restaurant','店舗・品名','Restaurante')}</span>
+                    <span style={{ fontSize:11, color:'var(--text3)', textAlign:'right' }}>{tr('Monthly value','月額','Valor mensal')}</span>
+                    <span />
+                    {p.lines.map((l, li) => (
+                      <div key={l.contract_id || li} style={{ display:'contents' }}>
+                        <span style={{ minWidth:0, overflowWrap:'anywhere', opacity: l.removed ? 0.45 : 1, textDecoration: l.removed ? 'line-through' : 'none' }}>
+                          {l.restaurant}
+                          <span style={{ display:'block', fontSize:11, color:'var(--text3)' }}>
+                            {l.monthly ? tr('Fixed monthly','固定月額','Mensal fixo') : `${l.visits} × ¥${Number(l.price_per_visit||0).toLocaleString()}`}
+                            {l.discount_amount > 0 ? ` · −${l.discount_percent}%` : ''}
+                          </span>
+                        </span>
+                        <input type="number" min="0" inputMode="numeric" disabled={l.removed} value={l.total}
+                          onChange={e => { const v = Math.max(0, Math.round(Number(e.target.value) || 0)); patchLine(ci, li, { total: v, unit_price: v }) }}
+                          style={{ width:110, textAlign:'right', padding:'6px 8px', borderRadius:8, border:'1px solid var(--border)', background:'var(--surface)', color:'var(--text)', fontSize:13 }} />
+                        <button type="button" className="btn btn-sm" title={l.removed ? tr('Put back','戻す','Voltar') : tr('Remove','外す','Tirar')} onClick={() => patchLine(ci, li, { removed: !l.removed })}>{l.removed ? '↺' : '✕'}</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:10 }}>
+                    {[['excl', tr('Values before tax (+tax)','税抜（＋消費税）','Valores sem imposto (+imposto)')], ['incl', tr('Values include tax','税込','Valores com imposto incluso')]].map(([k, label]) => (
+                      <button key={k} type="button" className={`tab-pill${p.taxMode === k ? ' active' : ''}`} onClick={() => patchPlan(ci, x => ({ ...x, taxMode: k }))}>{label}</button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize:13, marginTop:8, display:'grid', gridTemplateColumns:'1fr auto', gap:'2px 12px', maxWidth:320, marginLeft:'auto' }}>
+                    <span style={{ color:'var(--text3)' }}>{tt.includesTax ? tr('Subtotal (tax incl.)','小計（税込）','Subtotal (com imposto)') : tr('Subtotal','小計','Subtotal')}</span><span style={{ textAlign:'right' }}>¥{(tt.includesTax ? tt.total : tt.subtotal).toLocaleString()}</span>
+                    <span style={{ color:'var(--text3)' }}>{tt.includesTax ? tr('of which tax','うち消費税','dos quais imposto') : tr('Tax','消費税','Imposto')} ({p.taxRate}%)</span><span style={{ textAlign:'right' }}>¥{tt.tax.toLocaleString()}</span>
+                    <b>{tr('Total','合計','Total')}</b><b style={{ textAlign:'right' }}>¥{tt.total.toLocaleString()}</b>
+                    <span style={{ color:'var(--text3)' }}>{tr('Due','支払期限','Vencimento')}</span><span style={{ textAlign:'right' }}>{p.dueDate}</span>
+                  </div>
+                </div>
+              )
+            })}
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap', marginTop:12 }}>
-              <b>{tr('Total','合計','Total')} ¥{preview.plans.reduce((s,p)=>s+p.total,0).toLocaleString()}</b>
+              <b>{tr('Total','合計','Total')} ¥{activePlans.reduce((s,p)=>s+planTotals(p).total,0).toLocaleString()}</b>
               <div style={{ display:'flex', gap:8 }}>
                 <button className="btn" disabled={autoLoading} onClick={()=>setPreview(null)}>{tr('Cancel','キャンセル','Cancelar')}</button>
-                {preview.plans.length > 0 && <button className="btn btn-primary" disabled={autoLoading} onClick={confirmAutoBilling}>{autoLoading ? '…' : tr(`Create ${preview.plans.length} draft(s)`, `下書き${preview.plans.length}件を作成`, `Criar ${preview.plans.length} rascunho(s)`)}</button>}
+                {activePlans.length > 0 && <button className="btn btn-primary" disabled={autoLoading} onClick={confirmAutoBilling}>{autoLoading ? '…' : tr(`Create ${activePlans.length} draft(s)`, `下書き${activePlans.length}件を作成`, `Criar ${activePlans.length} rascunho(s)`)}</button>}
               </div>
             </div>
           </div>

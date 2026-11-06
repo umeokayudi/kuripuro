@@ -36,6 +36,8 @@ export function buildBellQueue({ exceptions = [], panel = null, nextPanel = null
   for (const x of exceptions) {
     if (hidden.has(x.id)) continue
     if (x.kind === 'payroll_review') continue // the payroll group lists the same months
+    // v1.0.165 · 'foto aguardando a IA' is not the admin's job: no bell alert (still on the Dashboard / job card 'IA …')
+    if (x.kind === 'ai_waiting') continue
     if (COVERED_BY_RETRO.has(x.kind) && retroJobs.has(x.jobId)) continue
     if (x.waiting || x.kind === 'paid_unconfirmed') { g.waiting.push(x); continue }
     if (x.kind === 'late' && x.date === today) g.late.push(x)

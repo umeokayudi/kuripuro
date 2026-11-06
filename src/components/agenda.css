@@ -61,7 +61,12 @@
 .ag-queue { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; }
 .ag-queue-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--border); }
 .ag-queue-row:first-of-type { border-top: none; }
-.ag-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.ag-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 10px; }
+.ag-form-grid > label { min-width: 0; }
+/* v1.0.165 · Ajustar horário inside a narrow job card (Jobs board column): date+time fields never leave the card —
+   side by side when there is room, one under the other when the card is narrow. */
+.ag-form-grid.ag-form-fit { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+.ag-form-fit .ag-input { width: 100%; min-width: 0; }
 @media (max-width: 640px) {
   .ag-board { grid-template-columns: minmax(0, 1fr); }
   .ag-form-grid { grid-template-columns: minmax(0, 1fr); }

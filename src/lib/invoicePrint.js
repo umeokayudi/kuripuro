@@ -2,6 +2,7 @@ import { escapeHtml } from './escapeHtml.js'
 import { invoicePrintCopy, printPartyHtml, printDatesHtml, printIssuerHtml, wrapPrintHtml } from './printDoc.js'
 import { printIssuer, bankTransferFor } from './quoteIssuer.js'
 import { periodLabel } from './invoiceDates.js'
+import { monthlySubject } from './invoiceAutomation.js'
 
 // v1.0.122 · 請求書 printed in the same layout as the 見積書, with the bank account in the issuer card.
 // An invoice born from an accepted 見積 shows the quote's lines exactly (description, qty, unit price,
@@ -78,12 +79,15 @@ export function buildInvoicePrintHtml(f, view, { client = null, lang = 'ja' } = 
       <tr class="total-row"><td>${L.total}</td><td class="num">${yen(view.total)}</td></tr>
     </table>`
   const notes = String(f.notes || '').trim()
+  const subject = monthlySubject(f.period_start, f.period_end, lang === 'en' ? 'en' : 'ja')
   return wrapPrintHtml({
     L,
     number,
     printTitle: escapeHtml(name),
     stamp: f.status === 'paid' ? L.paid : '',
-    partyHtml: printPartyHtml(L, { restaurant: name, company: company !== name ? company : '', contact: '', address: client?.address || '' }),
+    // v1.0.162 · 件名 : 10月分清掃 when the invoice covers one month (monthly per-restaurant billing)
+    partyHtml: printPartyHtml(L, { restaurant: name, company: company !== name ? company : '', contact: '', address: client?.address || '',
+      extra: subject ? `<div class="party-meta" style="margin-top:6px;color:#122033;font-weight:600">${escapeHtml(L.subject)}${L.colon}${escapeHtml(subject)}</div>` : '' }),
     datesHtml: printDatesHtml([
       [L.issueDate, escapeHtml(f.issue_date || '')],
       // v1.0.146 · one-day period printed once (was "2027-01-01 〜 2027-01-01", wrapping)
