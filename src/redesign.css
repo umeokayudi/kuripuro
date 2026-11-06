@@ -892,3 +892,7 @@
 /* v1.0.166 · Eliminar serviço (Live Track) */
 .lt-act.lt-act-danger{border-color:rgba(239,68,68,.45);color:#dc2626;background:transparent}
 .lt-act.lt-act-danger:hover{background:rgba(239,68,68,.08);color:#b91c1c}
+/* v1.0.174 · face photo in the employee greeting header */
+.emp-hello{gap:10px}
+.emp-hello>.emp-hello-face{flex:0 0 auto;padding:0;border:0;background:none;cursor:pointer;border-radius:50%;line-height:0}
+.emp-hello>.emp-hello-face+div{min-width:0;flex:1 1 auto}
