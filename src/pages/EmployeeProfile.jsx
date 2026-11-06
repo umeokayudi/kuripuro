@@ -1,4 +1,5 @@
 import { gradeJobPhoto } from '../lib/photoAi'
+import FaceAvatar from '../components/FaceAvatar'
 import { aiScoreView } from '../lib/aiScore'
 import { sortByOrder } from '../lib/agenda'
 import { useState, useEffect } from 'react'
@@ -232,9 +233,7 @@ export default function EmployeeProfile() {
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
         <button className="btn" onClick={()=>navigate('/employees')}>← Back</button>
-        <div className="avatar" style={{width:44,height:44,fontSize:15,fontWeight:700,background:'#E6F1FB',color:'#185FA5',flexShrink:0}}>
-          {emp.full_name?.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
-        </div>
+        <FaceAvatar id={emp.id} name={emp.full_name} size={44} fontSize={15} />
         <div>
           <h2 style={{fontSize:18,fontWeight:700,margin:0,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{emp.full_name}<RoleBadge value={emp.job_role} lang={lang} /></h2>
           <div style={{fontSize:12,color:'var(--text3)'}}>{emp.email} · {emp.contract_type}</div>

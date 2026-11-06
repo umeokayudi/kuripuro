@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import FaceAvatar from '../components/FaceAvatar'
 import { useLocation } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -262,9 +263,7 @@ export default function Employees() {
             return (
             <div key={e.id} className="card" style={{marginBottom:12}}>
               <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}>
-                <div className="avatar" style={{background:'#E6F1FB',color:'#185FA5',width:44,height:44,fontSize:15,fontWeight:700}}>
-                  {e.full_name?.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
-                </div>
+                <FaceAvatar id={e.id} name={e.full_name} size={44} fontSize={15} />
                 <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:15,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{e.full_name}{isTestEmployee(e) && <span className="badge">TESTE</span>}<RoleBadge value={e.job_role} lang={lang} /></div>
                   <div style={{fontSize:12,color:'var(--text3)'}}>{maskEmail(e.email)} · {contractText(e.contract_type)}</div>
