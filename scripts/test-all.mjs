@@ -12,6 +12,7 @@ const steps = [
   ['node scripts/test-day-panel.mjs', 'day panel (Painel do Dia)'],
   ['node scripts/test-day-check.mjs', 'Conferir o dia (feito certo / conferir / falta)'],
   ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],
+  ['npx vite-node scripts/test-deep-month.mjs', 'deep cleaning of the month (Painel + Deep & Spot)'],
   ['npx vite-node scripts/test-quote-later.mjs', 'accepted quote: suggested dates + Agendar depois'],
   ['npx vite-node scripts/test-shift-estimate.mjs', 'Próximo turno: horas estimadas + ideal começar'],
   ['npx vite-node scripts/test-route-split.mjs', 'route split (livres, rota da manhã × deep, rota impossível, plano B)'],

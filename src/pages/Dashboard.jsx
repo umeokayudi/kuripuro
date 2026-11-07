@@ -22,6 +22,7 @@ import { isTestJob, isTestClient, isTestName } from '../lib/testData'
 import { useHideTests } from '../hooks/useHideTests'
 import AIChatPanel from '../components/AIChatPanel'
 import DayPanelView from '../components/DayPanelView'
+import DeepMonthCard from '../components/DeepMonthCard'
 import { fetchDayPanel } from '../lib/dayPanel'
 
 const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
@@ -404,6 +405,9 @@ export default function Dashboard() {
       </header>
 
       <DayPanelView panel={dayPanel} L={tr} admin={user?.name} onChanged={load} date={panelDate} today={tokyoToday()} onDate={pickPanelDate} loading={panelLoading} dateLabel={new Date(`${panelDate}T12:00:00+09:00`).toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Tokyo' })} />
+
+      {/* v1.0.167 · new card: Deep Cleaning of the month per client (opens Serviços › Deep & Spot) */}
+      <DeepMonthCard L={tr} />
 
       {/* v1.0.130 · "Needs attention": a clean list, one row per kind (count + who + one button).
           The AI is a small bar under it that opens in a side panel with the same items as context. */}
