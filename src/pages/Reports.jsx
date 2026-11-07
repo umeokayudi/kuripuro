@@ -25,6 +25,7 @@ import { useSearchParams } from 'react-router-dom'
 import { peekVideoStatus } from '../lib/jobVideo'
 import ReportFilterBar from '../components/ReportFilterBar'
 import DayStoresReport from '../components/DayStoresReport'
+import ReportCards from '../components/ReportCards'
 import { DayReportPicker } from '../components/QuickReport'
 import {
   periodRange, rangeDays, rangeIso, typeNeedsOpenJobs, rowKind, matchesType, rowProblems, matchesProblems,
@@ -323,6 +324,10 @@ export default function Reports() {
     }
     return { emp, empAll, place, client, type, problem, problemAny }
   }, [enriched, f]) // eslint-disable-line react-hooks/exhaustive-deps
+  // v1.0.183 · problems of each row, for the card colour + the plain-language line
+  const problemsByRow = useMemo(() => new Map(enriched.map(x => [x.r, x.problems])), [enriched])
+  const [cardFilter, setCardFilter] = useState('all')
+  const [legendOpen, setLegendOpen] = useState(false)
   const videoPending = reports.some(r => r.job_id && !isOpenRow(r) && !(r.job_id in videoMap))
 
   const stats = useMemo(() => {
@@ -425,7 +430,9 @@ export default function Reports() {
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>
           {tr.autoHint}
         </div>
-        <div className="rp-legend" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 12, color: 'var(--text2)', marginBottom: 12 }}>
+        <button type="button" className="rpc-legend-btn" aria-expanded={legendOpen} onClick={() => setLegendOpen(v => !v)}>ⓘ {legendOpen ? L3('Hide what the icons mean', 'アイコンの説明を隠す', 'Esconder o que os ícones significam') : L3('What do the icons mean?', 'アイコンの意味は？', 'O que os ícones significam?')}</button>
+        {legendOpen && (
+          <div className="rp-legend" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 12, color: 'var(--text2)', marginBottom: 12 }}>
           <span>⏱ {L3('time worked', '作業時間', 'tempo trabalhado')}</span>
           <span>⚠️ 2× {L3('took over double the planned time', '予定の2倍超', 'passou do dobro do previsto')}</span>
           <span>☑ {L3('checklist done / total', 'チェック済/全体', 'checklist feito / total')}</span>
@@ -435,6 +442,7 @@ export default function Reports() {
           <span>🔒 {L3('closed by admin', '管理者が完了', 'fechado pelo admin')}</span>
           <span>— {L3('nothing recorded', '記録なし', 'nada registrado')}</span>
         </div>
+        )}
         {loading && <div aria-busy="true" aria-label={tr.loading}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
         {!loading && filtered.length === 0 && (
           <div style={{ color: 'var(--text3)', fontSize: 13, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -444,30 +452,8 @@ export default function Reports() {
           </div>
         )}
         {filtered.length > 0 && narrow && (
-          <div style={{ display: 'grid', gap: 10 }}>
-            {filtered.map(r => {
-              const n = noteCountOf(r)
-              return (
-                <button key={r.job_id || r.id} type="button" onClick={() => setSelected(r)}
-                  style={{ textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', color: 'inherit', font: 'inherit' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(r.job_title || r.client_name || '').replace(/ — .*/, '')}</div>
-                    <div style={{ flexShrink: 0 }}>{r.job_status && r.job_status !== 'completed' ? <span className="badge badge-red">{tr.pendingJob}</span> : typeBadge(r.report_type, tr, r._job, lang)}</div>
-                  </div>
-                  <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>👤 {r.employee_name || '—'} · 📅 {r.report_date}</div>
-                  {rowException(r)?.due && <div style={{ fontSize: 12, marginTop: 4, color: rowException(r).overdue ? '#dc2626' : 'var(--text3)', fontWeight: rowException(r).overdue ? 700 : 400 }}>{exceptionDeadline(rowException(r), L3)}</div>}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginTop: 8, fontSize: 13 }}>
-                    <span>⏱ {fmtDuration(r.duration_min, lang)}</span>
-                    <span>☑ {r.checklist_total ? `${r.checklist_done || 0}/${r.checklist_total}` : '—'}</span>
-                    {aiScoreView(r) && <span title={aiReasonShort(aiScoreView(r), noProblems)}>🤖 {r.photo_ai_score}/10 · {aiReasonShort(aiScoreView(r), noProblems)}</span>}
-                    {rowException(r)?.kind === 'long' && <span className="badge badge-red">⚠️ 2×</span>}
-                    {r.job_id && <VideoMark jobId={r.job_id} />}
-                    {n > 0 && <span className="badge badge-navy">📝 {n}</span>}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+          <ReportCards rows={filtered} problemsOf={r => problemsByRow.get(r) || new Set()} filter={cardFilter} setFilter={setCardFilter}
+            onOpen={setSelected} L3={L3} lang={lang} today={today} />
         )}
         {filtered.length > 0 && !narrow && (
           <div className="table-wrap">
@@ -489,7 +475,7 @@ export default function Reports() {
               </thead>
               <tbody>
                 {filtered.map(r => (
-                  <tr key={r.job_id}>
+                  <tr key={r.job_id} className="rpc-tr" onClick={e => { if (!e.target.closest('button,a,img')) setSelected(r) }} title={L3('Open the report', '報告書を開く', 'Abrir o relatório')}>
                     <td style={{ fontWeight: 500 }}>
                       {r.employee_name
                         ? <button type="button" className="rf-link" title={L3('Show only this employee', 'このスタッフだけ表示', 'Ver só este funcionário')} onClick={() => setF({ emp: filterEmp === r.employee_name ? '' : r.employee_name })}>{r.employee_name}</button>
