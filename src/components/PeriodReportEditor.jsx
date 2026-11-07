@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase'
 import { askConfirm } from './ConfirmDialog'
 import { AiText } from './WorkReportEditor'
 import { openPrintHtml } from '../lib/openPrintHtml'
+import ShareReportButton from './ShareReportButton'
 import { buildPeriodReport, loadReport, saveReport, reportHtml, statusLabel, storagePublicUrl, periodLabels, periodMediaCount } from '../lib/workReport'
 import { mediaForJobs, isVideoPath } from '../lib/workMedia'
 import { jobsOfDay } from '../lib/quickReport'
@@ -120,6 +121,7 @@ function Body({ reportId, client, from, to, author, onClose, onSaved }) {
           <span>{r.client_name} · {r.from} → {r.to} · <em className={`wr-st st-${r.status}`}>{statusLabel(r.status, tr)}</em></span>
         </div>
         <button type="button" className="btn btn-sm" onClick={() => openPrintHtml(reportHtml(r))}>👁 {tr('Client view / PDF', '顧客ビュー・PDF', 'Visão do cliente / PDF')}</button>
+        <ShareReportButton report={r} />
         <button type="button" className="btn btn-sm btn-primary" disabled={!!busy || !dirty} onClick={() => save()}>{busy === 'save' ? '…' : tr('Save', '保存', 'Salvar')}</button>
       </header>
       <div className="wr-body">
