@@ -36,6 +36,7 @@
     "test:client-rating-ask": "npx vite-node scripts/test-client-rating-ask.mjs",
     "test:global-search": "npx vite-node scripts/test-global-search.mjs",
     "test:agenda": "npx vite-node scripts/test-agenda.mjs",
+    "test:google-agenda": "npx vite-node scripts/test-google-agenda.mjs",
     "test:manual-close": "npx vite-node scripts/test-manual-close.mjs",
     "test:assign-flow": "npx vite-node scripts/test-assign-flow.mjs",
     "test:past-service": "npx vite-node scripts/test-past-service.mjs",
@@ -72,7 +73,8 @@
     "test:team-chat": "node scripts/test-team-chat.mjs",
     "test:video-compress": "node scripts/test-video-compress.mjs",
     "test:job-deadline": "npx vite-node scripts/test-job-deadline.mjs",
-    "test:job-eliminate": "npx vite-node scripts/test-job-eliminate.mjs"
+    "test:job-eliminate": "npx vite-node scripts/test-job-eliminate.mjs",
+    "test:day-check": "node scripts/test-day-check.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

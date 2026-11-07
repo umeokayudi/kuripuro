@@ -36,6 +36,7 @@ export const kuripuroPtA = {
     reports: 'Relatórios',
     videos: 'Vídeos',
     workReports: 'Relatórios de serviço',
+    googleAgenda: 'Google Agenda',
     schedule: 'Atribuir e gerar',
     contracts: 'Contratos',
     faturas: 'Faturas',
