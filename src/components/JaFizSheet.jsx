@@ -2,6 +2,8 @@
 // Same fields and order on phone (sheet from the bottom) and computer (centered box):
 // start/finish → checklist → before/after photos → note → "Salvar como concluído".
 // Shown to the employee (own jobs, until the end of the day) and to the admin (any day).
+// v1.0.182 · restyled as cards (app design) + hour/minute selects instead of the phone's time dialog,
+// whose Done/OK button got cut off or misplaced on phones.
 // Never shows client values (role rule): only times, checklist, photos and the note.
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -15,6 +17,7 @@ import { saveJaFiz } from '../lib/jaFizOps'
 import { compressVideo, canUseWebCodecs } from '../lib/videoCompress'
 import { uploadJobVideo, videoPoster, writeVideoStatus } from '../lib/jobVideo'
 import { enqueueAndSend } from '../lib/videoQueue'
+import TimeSelect from './TimeSelect'
 import './ja-fiz.css'
 
 const fmtMin = m => {
@@ -103,6 +106,21 @@ function VideoPick({ id, video, onPick, onRemove, tr }) {
       <input id={`${id}-vgal`} type="file" accept="video/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPick(f) }} />
       <input id={`${id}-vcam`} type="file" accept="video/*" capture="environment" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPick(f) }} />
     </div>
+  )
+}
+
+/** One step of the popup: round icon (turns ✓ when done) + title + optional action on the right. */
+function Sec(props) {
+  const { icon, title, meta, ok, bad, children, action } = props
+  return (
+    <section className={`jf-sec${bad ? ' is-bad' : ''}`}>
+      <div className="jf-sec-head">
+        <span className={`jf-sec-ic${ok ? ' ok' : ''}`} aria-hidden="true">{ok ? '✓' : icon}</span>
+        <h4>{title}{meta}</h4>
+        {action}
+      </div>
+      {children}
+    </section>
   )
 }
 
@@ -203,78 +221,89 @@ export default function JaFizSheet({ job, actor, contracts: contractsProp, dark 
     setSaving(false)
   }
 
+  const stepOk = {
+    times: !!times && times.minutes > 0,
+    checklist: list.length === 0 ? checklist !== null : allDone,
+    photos: before.length + after.length > 0 || !!video,
+  }
+
   return (
     <div className={`jf-overlay${dark ? ' jf-dark' : ''}`} role="dialog" aria-modal="true" aria-label={tr('Already done', 'もう済んだ', 'Já fiz')} onClick={() => !saving && onClose()}>
       <div className="jf-box" onClick={e => e.stopPropagation()}>
         <div className="jf-grab" aria-hidden="true" />
         <div className="jf-head">
-          <div>
-            <div className="jf-title">✓ {tr('Already done', 'もう済んだ', 'Já fiz')}</div>
-            <div className="jf-sub">{locationNameFromTitle(job.title)} · {day}{isAdmin && job.employee_name ? ` · ${job.employee_name}` : ''}</div>
+          <span className="jf-head-ic" aria-hidden="true">✓</span>
+          <div className="jf-head-txt">
+            <div className="jf-title">{tr('Already done', 'もう済んだ', 'Já fiz')}</div>
+            <div className="jf-sub">{tr('Register a service you did', '実施した作業を登録', 'Registrar um serviço que você fez')}</div>
           </div>
           <button type="button" className="jf-x" aria-label={tr('Close', '閉じる', 'Fechar')} disabled={saving} onClick={onClose}>×</button>
         </div>
-        <div className="jf-info">
-          {isAdmin
-            ? tr('Registers a service that was never opened in the app. It stays marked "Retroactive" and registered by the admin.', 'アプリで開かれなかった作業を登録します。「事後」と表示され、管理者の登録として残ります。', 'Registra um serviço que nunca foi aberto no app. Fica com o selo "Retroativo" e registrado como feito pelo admin.')
-            : tr('Forgot to use the app? Fill in what you did. It is saved as done with the "Retroactive" badge.', 'アプリを使い忘れましたか？実施内容を入力してください。「事後」として完了保存されます。', 'Esqueceu de usar o app? Preencha o que você fez. Fica concluído com o selo "Retroativo".')}
+
+        <div className="jf-job">
+          <div className="jf-job-name">{locationNameFromTitle(job.title)}</div>
+          <div className="jf-chips">
+            {day && <span className="jf-chip">📅 {day}</span>}
+            {isAdmin && job.employee_name && <span className="jf-chip">👤 {job.employee_name}</span>}
+            <span className="jf-chip jf-chip-retro">{tr('Retroactive', '事後', 'Retroativo')}</span>
+          </div>
+          <div className="jf-info">
+            {isAdmin
+              ? tr('For a service that was never opened in the app. It is saved as done, marked "Retroactive" and registered by the admin.', 'アプリで開かれなかった作業用です。完了として保存され、「事後」・管理者の登録として残ります。', 'Para um serviço que nunca foi aberto no app. Fica concluído, com o selo "Retroativo" e registrado pelo admin.')
+              : tr('Forgot to use the app? Fill in what you did. It is saved as done with the "Retroactive" badge.', 'アプリを使い忘れましたか？実施内容を入力してください。「事後」として完了保存されます。', 'Esqueceu de usar o app? Preencha o que você fez. Fica concluído com o selo "Retroativo".')}
+          </div>
         </div>
 
-        {/* 1 · times */}
-        <section className="jf-sec">
-          <h4>1 · {tr('Time', '時間', 'Horário')}</h4>
+        <Sec icon="🕐" title={tr('Time', '時間', 'Horário')} ok={stepOk.times} bad={err === 'times' || err === 'future' || err === 'long'}>
           <div className="jf-times">
-            <label>{tr('Started', '開始', 'Começou')}
-              <input type="time" value={start} onChange={e => setStart(e.target.value)} className={err === 'times' ? 'is-bad' : ''} />
-            </label>
-            <label>{tr('Finished', '終了', 'Terminou')}
-              <input type="time" value={end} onChange={e => setEnd(e.target.value)} className={err === 'times' || err === 'future' || err === 'long' ? 'is-bad' : ''} />
-            </label>
-            <div className="jf-dur"><small>{tr('Counts as', '計上', 'Vai contar')}</small><b>{fmtMin(times?.minutes)}</b></div>
+            <div className={`jf-time${err === 'times' ? ' is-bad' : ''}`}>
+              <span className="jf-time-lbl">{tr('Started', '開始', 'Começou')}</span>
+              <TimeSelect className="jf-ts" value={start} onChange={setStart} minuteStep={5} ariaLabel={tr('Started', '開始', 'Começou')} />
+            </div>
+            <span className="jf-time-arrow" aria-hidden="true">→</span>
+            <div className={`jf-time${err === 'times' || err === 'future' || err === 'long' ? ' is-bad' : ''}`}>
+              <span className="jf-time-lbl">{tr('Finished', '終了', 'Terminou')}</span>
+              <TimeSelect className="jf-ts" value={end} onChange={setEnd} minuteStep={5} ariaLabel={tr('Finished', '終了', 'Terminou')} />
+            </div>
           </div>
-          <div className="jf-hint">{tr('Pre-filled with the planned time', '予定時間で入力済み', 'Já vem com o horário planejado')}{planned ? ` (${fmtMin(planned)})` : ''}. {tr('Just adjust.', '必要なら調整してください。', 'É só ajustar.')}</div>
-        </section>
+          <div className="jf-dur-row">
+            <span className="jf-dur">⏱ {tr('Counts as', '計上', 'Vai contar')} <b>{fmtMin(times?.minutes)}</b></span>
+            <span className="jf-hint">{tr('Planned', '予定', 'Planejado')}{planned ? ` ${fmtMin(planned)}` : ''} · {tr('just adjust', '必要なら調整', 'é só ajustar')}</span>
+          </div>
+        </Sec>
 
-        {/* 2 · checklist */}
-        <section className="jf-sec">
-          <div className="jf-sec-head">
-            <h4>2 · Checklist <span className={`jf-count${allDone ? ' ok' : ''}`}>{doneN}/{list.length}</span></h4>
-            {list.length > 0 && <button type="button" className="jf-link" onClick={() => setChecklist(l => l.map(c => ({ ...c, done: !allDone })))}>{allDone ? tr('Clear all', 'すべて解除', 'Desmarcar todos') : tr('Mark all', 'すべてチェック', 'Marcar todos')}</button>}
-          </div>
+        <Sec icon="☑" title="Checklist" ok={list.length > 0 && stepOk.checklist} bad={err === 'checklist'}
+          meta={list.length > 0 && <span className={`jf-count${allDone ? ' ok' : ''}`}>{doneN}/{list.length}</span>}
+          action={list.length > 0 && <button type="button" className="jf-link" onClick={() => setChecklist(l => l.map(c => ({ ...c, done: !allDone })))}>{allDone ? tr('Clear all', 'すべて解除', 'Desmarcar todos') : tr('Mark all', 'すべてチェック', 'Marcar todos')}</button>}>
           {checklist === null ? <div className="jf-hint">…</div>
             : list.length === 0 ? <div className="jf-hint">{tr('No checklist for this service.', 'この作業にチェックリストはありません。', 'Sem checklist para este serviço.')}</div>
-              : <ul className={`jf-check${err === 'checklist' ? ' is-bad' : ''}`}>
+              : <ul className="jf-check">
                 {list.map((c, i) => (
-                  <li key={i}>
+                  <li key={i} className={c.done ? 'is-done' : ''}>
                     <label>
                       <input type="checkbox" checked={c.done} onChange={() => setChecklist(l => l.map((x, k) => k === i ? { ...x, done: !x.done } : x))} />
+                      <span className="jf-box-ic" aria-hidden="true">✓</span>
                       <span>{checklistDisplayLabel(c.label, lang)}</span>
                     </label>
                   </li>
                 ))}
               </ul>}
-        </section>
+        </Sec>
 
-        {/* 3 · photos */}
-        <section className={`jf-sec${err === 'photo' ? ' is-bad' : ''}`}>
-          <h4>3 · {tr('Photos', '写真', 'Fotos')}</h4>
+        <Sec icon="📷" title={tr('Photos', '写真', 'Fotos')} ok={stepOk.photos} bad={err === 'photo'}>
           <PhotoPick id={`jf-b-${job.id}`} title={tr('Before', '作業前', 'Antes')} files={before} setFiles={setBefore} tr={tr} />
           <PhotoPick id={`jf-a-${job.id}`} title={tr('After', '作業後', 'Depois')} files={after} setFiles={setAfter} tr={tr} />
-        </section>
+        </Sec>
 
-        {/* 4 · video */}
-        <section className="jf-sec">
-          <h4>4 · {tr('Video of the service', '作業の動画', 'Vídeo do serviço')} <span className="jf-count">{tr('optional', '任意', 'opcional')}</span></h4>
+        <Sec icon="🎬" title={tr('Video of the service', '作業の動画', 'Vídeo do serviço')} ok={video?.status === 'ready'} meta={<span className="jf-count">{tr('optional', '任意', 'opcional')}</span>}>
           <VideoPick id={`jf-v-${job.id}`} video={video} onPick={pickVideo} onRemove={removeVideo} tr={tr} />
-        </section>
+        </Sec>
 
-        {/* 4 · note */}
-        <section className="jf-sec">
-          <h4>5 · {tr('Note (optional)', 'メモ（任意）', 'Observação (opcional)')}</h4>
+        <Sec icon="📝" title={tr('Note', 'メモ', 'Observação')} ok={!!note.trim()} meta={<span className="jf-count">{tr('optional', '任意', 'opcional')}</span>}>
           <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder={tr('e.g. forgot to open the app', '例：アプリを開き忘れた', 'ex.: esqueci de abrir o app')} />
-        </section>
+        </Sec>
 
-        {err && <div className="jf-error">{errText[err] || err}</div>}
+        {err && <div className="jf-error" role="alert">⚠ {errText[err] || err}</div>}
 
         <div className="jf-actions">
           <button type="button" className="jf-cancel" disabled={saving} onClick={onClose}>{tr('Cancel', 'キャンセル', 'Cancelar')}</button>
