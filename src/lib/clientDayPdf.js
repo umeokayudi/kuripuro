@@ -47,13 +47,14 @@ export function combinedReportsHtml(reports, { clientName, date, lang } = {}) {
   if (!list.length) return ''
   const lg = lang || list[0].lang || 'ja'
   const L = COVER[lg] || COVER.ja
-  const client = clientName || list[0].client_name || ''
+  const client = clientName ?? (list[0].client_name || '')
+  const mixed = new Set(list.map(r => r.client_name || '')).size > 1
   const day = date || list[0].work_date
   const dayTxt = day ? new Date(`${day}T12:00:00`).toLocaleDateString(locale(lg), { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }) : ''
   const htmls = list.map(r => reportHtml(r))
   const style = (/<style>([\s\S]*?)<\/style>/.exec(htmls[0]) || [])[1] || ''
-  const rows = list.map(r => `<tr><td>${esc(storeOf(r))}</td><td>${esc(r.title || '')}</td><td>${esc(r.fields?.lead || r.signatures?.cleaner?.name || r.created_by || '')}</td><td>${(r.photos || []).length}</td></tr>`).join('')
-  const cover = `<h1>${esc(L.doc)}</h1><div class="meta">${esc(client)}${client && L.sama ? L.sama : ''} ｜ ${esc(L.date)}：${esc(dayTxt)} ｜ ${esc(L.n(list.length))}</div>
+  const rows = list.map(r => `<tr><td>${mixed && r.client_name ? `${esc(r.client_name)}<br>` : ''}${esc(storeOf(r))}</td><td>${esc(r.title || '')}</td><td>${esc(r.fields?.lead || r.signatures?.cleaner?.name || r.created_by || '')}</td><td>${(r.photos || []).length}</td></tr>`).join('')
+  const cover = `<h1>${esc(L.doc)}</h1><div class="meta">${client ? `${esc(client)}${L.sama} ｜ ` : ''}${esc(L.date)}：${esc(dayTxt)} ｜ ${esc(L.n(list.length))}</div>
 <section><p>${esc(L.intro(client, dayTxt))}</p><table class="lst"><tr><th>${esc(L.store)}</th><th>${esc(L.service)}</th><th>${esc(L.who)}</th><th>${esc(L.photos)}</th></tr>${rows}</table></section>`
   const pages = htmls.map(h => `<div class="brk">${pageOf(h)}</div>`).join('')
   const title = `${L.doc} · ${client} · ${day || ''}`
