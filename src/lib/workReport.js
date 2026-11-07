@@ -8,6 +8,7 @@
 //   work-reports/<id>/p_<time>.jpg         photos added to the report
 //   work-reports/_index/<clientId>/<id>.json  summary (list per client, CRM, client portal)
 //   work-reports/_job/<jobId>.json            { id } (open the report of a job)
+import { VIDEO_STYLE, videoCellHtml } from './reportVideoCell'
 import { supabase, SUPABASE_URL } from './supabase'
 import { uploadJobPhoto } from './uploadPhoto'
 import { escapeHtml } from './escapeHtml'
@@ -238,9 +239,9 @@ figcaption{font-size:10.5px;color:#556;margin-top:2px}
 .pair .grid{max-width:360px}
 .sigs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 0;break-inside:avoid}.sigbox{border:1px solid #c9d3e0;padding:8px 10px;min-height:96px}.sigbox small{display:block;color:#556;font-size:10.5px}.sigbox img{max-height:64px;max-width:100%;display:block;margin:4px 0}.sigbox .nos{color:#b4232c;font-size:11.5px;padding:18px 0}.sigbox .wait{color:#8a6d1a;font-size:11.5px;padding:18px 0}.miss{display:inline-block;background:#fdecee;color:#b4232c;font-size:11px;padding:1px 8px;border-radius:99px;margin:2px 0 6px}.ck{list-style:none;padding-left:4px}.ck li::before{content:attr(data-m);display:inline-block;width:18px;font-weight:700}.ck li.no{color:#b4232c}.pend{color:#8a6d1a;font-size:11px}.svsig{display:flex;align-items:center;gap:8px;margin:6px 0 2px;font-size:11px;color:#556}.svsig img{height:38px;max-width:160px;object-fit:contain;border-bottom:1px solid #c9d3e0;background:#fff}.svsig .nos{color:#b4232c}
 .sign{border:1px solid #1f3a5f;background:#eef2f7;padding:10px 12px;font-size:11.5px;margin-top:18px;line-height:1.6;break-inside:avoid}
-@media print{video{display:none}.vid::before{content:'▶ 動画はポータルでご覧いただけます';display:block;font-size:10px;color:#556;padding:30px 6px;background:#eef2f7;aspect-ratio:3/4}.vtag{display:none}.page{padding:14px 0 0}.bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.pt th,.kv th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media print{.page{padding:14px 0 0}.bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.pt th,.kv th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 @media (max-width:560px){h1{font-size:19px}.kv th{width:38%}.pt{font-size:10.5px}}
-`
+${VIDEO_STYLE}`
 const T = {
   ja: {
     doc: '作業報告書', date: '作業日', issued: '発行', sama: '様', overview: '作業概要', work: '作業内容',
@@ -283,8 +284,10 @@ const esc = escapeHtml
 const paras = text => String(text || '').split(/\n{2,}|\n/).map(s => s.trim()).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join('')
 
 const isVideo = p => p?.kind === 'video' || isVideoPath(p?.path)
+// v1.0.186 · language of the report being drawn (set by reportHtml / periodHtml, which are synchronous)
+let drawLang = 'ja'
 const mediaTag = p => isVideo(p)
-  ? `<video src="${esc(storagePublicUrl(p.path))}#t=0.5" controls playsinline preload="metadata"></video><span class="vtag">▶</span>`
+  ? videoCellHtml(storagePublicUrl(p.path), drawLang)
   : `<img src="${esc(storagePublicUrl(p.path))}" alt="" loading="lazy">`
 
 function photoGrid(photos, { cols = 3, caption = '', cell = 0 } = {}) {
@@ -316,6 +319,7 @@ const checklistBlock = r => {
 
 /** Full A4 HTML of the report (print / save as PDF / client portal). */
 export function reportHtml(r, opts = {}) {
+  drawLang = r?.lang || 'ja'
   if (r.kind === 'period') return periodHtml(r, opts)
   const t = reportLabels(r.lang)
   const detailed = r.mode === 'detailed'
