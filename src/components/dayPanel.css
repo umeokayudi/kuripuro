@@ -248,3 +248,33 @@
   .dc-svc-top{align-items:flex-start}
   .dc-svc .dc-report{padding:4px 8px}
 }
+/* v1.0.183 · tap anywhere on a card → popup; the small chevron still opens the list in place */
+.dc-chev-btn{flex-shrink:0;align-self:stretch;width:34px;border:0;background:none;cursor:pointer;padding:0 0 0 6px;display:grid;place-items:center}
+.dc-chev-btn:hover .dc-chev{color:#315cf5}
+.dc-toggle{padding-left:0}
+.dc-toggle:hover .dc-title strong{color:#315cf5}
+.dc-open{flex-shrink:0;font-size:20px;line-height:1;color:#b5c0cf;margin-left:2px}
+.dc-toggle:hover .dc-open,.dc-svc.is-click:hover .dc-open{color:#315cf5}
+.dc-svc.is-click{cursor:pointer;transition:border-color .12s ease, box-shadow .12s ease}
+.dc-svc.is-click:hover{border-color:#b8c8f5;box-shadow:0 2px 8px rgba(49,92,245,.08)}
+.dc-svc.is-click:focus-visible{outline:2px solid #315cf5;outline-offset:1px}
+.dp-store.is-click{cursor:pointer;transition:border-color .12s ease, box-shadow .12s ease}
+.dp-store.is-click:hover{border-color:#b8c8f5;box-shadow:0 2px 8px rgba(49,92,245,.08)}
+.dp-store-open{font-size:12px;font-weight:700;color:#315cf5;margin-top:6px}
+@media (max-width:640px){
+  .dc-row-head{display:flex;flex-wrap:wrap;align-items:stretch}
+  .dc-chev-btn{width:30px}
+  .dc-toggle{width:auto;flex:1 1 calc(100% - 30px)}
+  .dc-report-day{margin:-4px 0 10px 30px}
+  .dc-sum{margin-left:0}
+}
+/* v1.0.183 · phone: tap the card = popup (no inline chevron, no "Abrir todos") */
+@media (max-width:640px){
+  .dc-chev-btn,.dc-all{display:none}
+  .dc-row-head{display:block}
+  .dc-toggle{width:100%;padding:12px 10px 10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center}
+  .dc-title{flex-basis:auto;grid-column:1/2}
+  .dc-open{grid-column:2/3;grid-row:1/3}
+  .dc-sum{grid-column:1/2;margin-left:0}
+  .dc-report-day{margin:0 12px 12px 12px}
+}

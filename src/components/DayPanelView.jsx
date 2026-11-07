@@ -5,6 +5,7 @@ import { JaFizButton } from './JaFizSheet'
 import { useState, useMemo } from 'react'
 import { DayReportButton, QuickReportButton } from './QuickReport'
 import { checkRows, filterRows, checkCounts, serviceCheck } from '../lib/dayCheck'
+import JobQuickSheet from './JobQuickSheet'
 import toast from 'react-hot-toast'
 import { askConfirm } from './ConfirmDialog'
 import { saveShiftMark, clearShiftMark } from '../lib/shiftMarks'
@@ -17,6 +18,9 @@ import './dayPanel.css'
 
 export const OPEN_BELL = 'kp-open-bell'
 export const openBell = () => { try { window.dispatchEvent(new Event(OPEN_BELL)) } catch { /* SSR */ } }
+
+const stop = e => e.stopPropagation()
+const onKeyOpen = fn => e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); fn() } }
 
 const STATE_CLS = { late: 'late', not_started: 'idle', working: 'working', done: 'done' }
 
@@ -38,11 +42,16 @@ export function DayCounter({ count, L, compact = false }) {
 }
 
 export function StoreList({ stores, L, emptyText, actions = false, employees = [], onChanged }) {
+  // v1.0.183 · tap anywhere on a store card → popup with each service, photos, checks and the report
+  const [openKey, setOpenKey] = useState(null)
   if (!stores.length) return <div className="dp-empty">{emptyText || L('No store today', '本日の店舗なし', 'Nenhuma loja hoje')}</div>
+  const openSt = stores.find(st => st.key === openKey)
   return (
+    <>
+    {openSt && <JobQuickSheet sheet={{ title: openSt.store, sub: storeStateText(openSt, L), by: 'store', services: openSt.services, empty: openSt.noJob ? storeStateText(openSt, L) : undefined }} onClose={() => setOpenKey(null)} L={L} actions={actions} onChanged={onChanged} />}
     <ul className="dp-stores">
       {stores.map(st => (
-        <li key={st.key} className={`dp-store is-${STATE_CLS[st.state]}`}>
+        <li key={st.key} className={`dp-store is-${STATE_CLS[st.state]} is-click`} role="button" tabIndex={0} onClick={() => setOpenKey(st.key)} onKeyDown={onKeyOpen(() => setOpenKey(st.key))}>
           <div className="dp-store-head">
             <strong className="dp-store-name">{st.store}</strong>
             {st.free && st.state !== 'done' ? <span className={`dp-chip ${st.freeOpen ? 'free' : 'late'}`}>{st.freeOpen ? L('Free', '空き', 'Livre') : L('NO COVER', '担当不在', 'SEM COBERTURA')}</span> : null}
@@ -59,16 +68,18 @@ export function StoreList({ stores, L, emptyText, actions = false, employees = [
                   {s.minutes ? <span className="dp-svc-h">{hoursText(s.minutes)}{s.deadline ? L(` · by ${s.deadline}`, ` · ${s.deadline}まで`, ` · até ${s.deadline}`) : ''}</span> : null}
                   {s.uncovered && <span className="dp-tag bad">{L('no cover', '担当不在', 'sem cobertura')}</span>}
                   {s.retro && <span className="dp-tag retro" title={L('Registered afterwards, not live in the app', 'アプリで当日記録せず、後から登録', 'Registrado depois, não na hora pelo app')}>📝 {L('Retroactive', '事後', 'Retroativo')}</span>}
-                  {actions && s.assignedId && (s.status === 'not_started' || s.status === 'late') && !s.startedAt && <ReleaseBtn s={s} L={L} onChanged={onChanged} />}
-                  {actions && s.assignedId && (s.status === 'not_started' || s.status === 'late') && !s.startedAt && <JaFizButton job={s.job} className="dp-svc-act" label={`✓ ${L('Already done', 'もう済んだ', 'Já fiz')}`} onDone={onChanged} />}
+                  {actions && s.assignedId && (s.status === 'not_started' || s.status === 'late') && !s.startedAt && <span onClick={stop}><ReleaseBtn s={s} L={L} onChanged={onChanged} /></span>}
+                  {actions && s.assignedId && (s.status === 'not_started' || s.status === 'late') && !s.startedAt && <span onClick={stop}><JaFizButton job={s.job} className="dp-svc-act" label={`✓ ${L('Already done', 'もう済んだ', 'Já fiz')}`} onDone={onChanged} /></span>}
                 </li>
               ))}
             </ul>
           )}
-          {actions && st.state !== 'done' && <PlanBEditor st={st} employees={employees} L={L} onChanged={onChanged} />}
+          <div className="dp-store-open">{st.doneN > 0 ? L('Tap to see photos and the report ›', 'タップで写真と報告書 ›', 'Toque para ver fotos e relatório ›') : L('Tap for details ›', 'タップで詳細 ›', 'Toque para detalhes ›')}</div>
+          {actions && st.state !== 'done' && <div onClick={stop}><PlanBEditor st={st} employees={employees} L={L} onChanged={onChanged} /></div>}
         </li>
       ))}
     </ul>
+    </>
   )
 }
 
@@ -227,19 +238,20 @@ function okSummary(checks, L) {
 
 const VERDICT_ORDER = { todo: 0, warn: 1, ok: 2 }
 
-function ServiceCheckItem({ s, by, L, actions, onChanged }) {
+function ServiceCheckItem({ s, by, L, actions, onChanged, onOpen }) {
   const c = serviceCheck(s, L)
   const who = by === 'person' ? s.store : (s.coveredBy || s.assigned || L('nobody', '担当なし', 'sem pessoa'))
   const times = c.done && !s.coveredBy ? [s.startedAt, s.doneAt].filter(Boolean).join(' → ') : ''
   return (
-    <li className={`dc-svc is-${c.verdict}`}>
+    <li className={`dc-svc is-${c.verdict} is-click`} role="button" tabIndex={0} onClick={() => onOpen?.(s)} onKeyDown={onKeyOpen(() => onOpen?.(s))}>
       <div className="dc-svc-top">
         <span className={`dc-dot is-${c.verdict}`} aria-hidden="true">{VERDICT_ICON[c.verdict]}</span>
         <div className="dc-svc-main">
           <strong>{who}</strong>
           <span className="dc-svc-type">{serviceLabel(s.job, L)}{times ? ` · ${times}` : ''}</span>
         </div>
-        {c.done && !s.coveredBy && <QuickReportButton job={s.job} className="dc-report" label={L('Report', '報告書', 'Relatório')} />}
+        {c.done && !s.coveredBy && <span onClick={stop}><QuickReportButton job={s.job} className="dc-report" label={L('Report', '報告書', 'Relatório')} /></span>}
+        <span className="dc-open" aria-hidden="true">›</span>
       </div>
       {c.done
         ? (c.checks.length > 0 && <div className="dc-checks">{(c.verdict === 'ok' && !s.coveredBy
@@ -248,7 +260,7 @@ function ServiceCheckItem({ s, by, L, actions, onChanged }) {
             : [...c.checks].sort((a, b) => (a.state === 'bad' ? 0 : 1) - (b.state === 'bad' ? 0 : 1)).map(k => <span key={k.key} className={`dc-check is-${k.state}`}>{k.state === 'ok' ? '✓ ' : k.state === 'bad' ? '✕ ' : ''}{k.label}</span>))}</div>)
         : <div className="dc-svc-state">{svcStateText(s, L)}</div>}
       {actions && !c.done && s.assignedId && (s.status === 'not_started' || s.status === 'late') && !s.startedAt && (
-        <div className="dc-svc-acts">
+        <div className="dc-svc-acts" onClick={stop}>
           <ReleaseBtn s={s} L={L} onChanged={onChanged} />
           <JaFizButton job={s.job} className="dp-svc-act" label={`✓ ${L('Already done', 'もう済んだ', 'Já fiz')}`} onDone={onChanged} />
         </div>
@@ -272,7 +284,14 @@ function RowSummary({ r, L }) {
   )
 }
 
-function CheckRow({ r, open, onToggle, L, date, admin, actions, employees, onChanged }) {
+export function rowFooter(r, { L, date, admin, actions, employees, onChanged }) {
+  const p = r.person
+  if (r.kind === 'person') return (date && (admin || (r.ok + r.warn) > 0)) ? <div className="dc-foot">{(r.ok + r.warn) > 0 && <DayReportButton employeeId={p.id} employeeName={p.name} date={date} className="dc-report" label={L('Day report (all services)', '作業日報（全作業）', 'Relatório do dia (todos os serviços)')} />}{admin && <AdminMark p={p} date={date} admin={admin} L={L} />}</div> : null
+  if (actions && r.store.state !== 'done') return <div className="dc-foot">{r.store.showPlanB && <span className="dp-planb">{L(`plan B: ${r.store.planB.join(' → ')}`, `プランB: ${r.store.planB.join(' → ')}`, `plano B: ${r.store.planB.join(' → ')}`)}</span>}<PlanBEditor st={r.store} employees={employees} L={L} onChanged={onChanged} /></div>
+  return null
+}
+
+function CheckRow({ r, open, onToggle, onOpen, onOpenService, L, date, admin, actions, employees, onChanged }) {
   const p = r.person
   const sub = r.kind === 'person'
     ? (p.total ? [teamLoadText(p, L), p.firstStart ? L(`1st start ${p.firstStart}`, `初回開始 ${p.firstStart}`, `1º início ${p.firstStart}`) : ''].filter(Boolean).join(' · ') : teamProgressText(p, L))
@@ -281,34 +300,51 @@ function CheckRow({ r, open, onToggle, L, date, admin, actions, employees, onCha
   return (
     <li className={`dc-row is-${r.level}${open ? ' is-open' : ''}`}>
       <div className="dc-row-head">
-        <button type="button" className="dc-toggle" aria-expanded={open} onClick={onToggle}>
-          <span className="dc-chev" aria-hidden="true">›</span>
+        <button type="button" className="dc-chev-btn" aria-expanded={open} onClick={onToggle} aria-label={open ? L('Hide services', '作業を隠す', 'Esconder serviços') : L('Show services here', 'ここに作業を表示', 'Mostrar serviços aqui')}><span className="dc-chev" aria-hidden="true">›</span></button>
+        <button type="button" className="dc-toggle" onClick={onOpen} title={L('Open details and reports', '詳細と報告書を開く', 'Abrir detalhes e relatórios')}>
           <span className="dc-title">
             <strong>{r.title}</strong>
             {b && b.cls !== 'ok' && <span className={`dp-shift ${b.cls}`}>{b.text}</span>}
             {sub && <small>{sub}</small>}
           </span>
           <RowSummary r={r} L={L} />
+          <span className="dc-open" aria-hidden="true">›</span>
         </button>
         {r.kind === 'person' && date && (r.ok + r.warn) > 0 && <DayReportButton employeeId={p.id} employeeName={p.name} date={date} className="dc-report dc-report-day" label={L('Day report', '作業日報', 'Relatório do dia')} />}
       </div>
       {open && (
         <div className="dc-body">
           {r.rows.length > 0
-            ? <ul className="dc-svcs">{[...r.rows].sort((a, b) => VERDICT_ORDER[a.c.verdict] - VERDICT_ORDER[b.c.verdict]).map(({ s }) => <ServiceCheckItem key={s.id} s={s} by={r.kind} L={L} actions={actions} onChanged={onChanged} />)}</ul>
+            ? <ul className="dc-svcs">{[...r.rows].sort((a, b) => VERDICT_ORDER[a.c.verdict] - VERDICT_ORDER[b.c.verdict]).map(({ s }) => <ServiceCheckItem key={s.id} s={s} by={r.kind} L={L} actions={actions} onChanged={onChanged} onOpen={onOpenService} />)}</ul>
             : <div className="dp-empty">{r.kind === 'store' && r.store.noJob ? storeStateText(r.store, L) : teamProgressText(p, L)}</div>}
-          {r.kind === 'person' && date && admin && <div className="dc-foot"><AdminMark p={p} date={date} admin={admin} L={L} /></div>}
-          {r.kind === 'store' && actions && r.store.state !== 'done' && <div className="dc-foot">{r.store.showPlanB && <span className="dp-planb">{L(`plan B: ${r.store.planB.join(' → ')}`, `プランB: ${r.store.planB.join(' → ')}`, `plano B: ${r.store.planB.join(' → ')}`)}</span>}<PlanBEditor st={r.store} employees={employees} L={L} onChanged={onChanged} /></div>}
+          {rowFooter(r, { L, date, admin, actions, employees, onChanged })}
         </div>
       )}
     </li>
   )
 }
 
+function sheetOf(key, rows, panel, ctx) {
+  const { L } = ctx
+  if (key.startsWith('svc:')) {
+    const id = key.slice(4)
+    const sv = (panel.stores || []).flatMap(st => st.services).find(x => String(x.id) === id)
+    if (!sv) return { title: '—', services: [] }
+    return { title: sv.store, sub: [sv.assigned, panel.date].filter(Boolean).join(' · '), by: 'store', services: [sv] }
+  }
+  const r = rows.find(x => `row:${x.key}` === key)
+  if (!r) return { title: '—', services: [] }
+  const sub = r.kind === 'person'
+    ? [L(`${r.ok + r.warn} of ${r.total} done`, `${r.total}件中${r.ok + r.warn}件完了`, `${r.ok + r.warn} de ${r.total} feitos`), r.warn ? L(`${r.warn} to check`, `要確認${r.warn}`, `${r.warn} para conferir`) : '', r.todo ? L(`${r.todo} left`, `残り${r.todo}`, `falta ${r.todo}`) : ''].filter(Boolean).join(' · ')
+    : storeStateText(r.store, L)
+  return { title: r.title, sub, by: r.kind, services: r.rows.map(x => x.s), footer: rowFooter(r, ctx), empty: r.kind === 'store' && r.store.noJob ? storeStateText(r.store, L) : undefined }
+}
+
 export function DayCheck({ panel, L, admin, employees = [], onChanged }) {
   const [by, setBy] = useState(() => lsGet(LS_VIEW, 'person'))
   const [filter, setFilter] = useState(() => lsGet(LS_FILTER, 'all'))
   const [open, setOpen] = useState(() => new Set())
+  const [sheetKey, setSheetKey] = useState(null) // 'row:<key>' | 'svc:<id>' — rebuilt from the live panel so it refreshes
   const rows = useMemo(() => checkRows(panel, by, L), [panel, by, L])
   const counts = checkCounts(rows)
   const shown = filterRows(rows, filter)
@@ -337,7 +373,8 @@ export function DayCheck({ panel, L, admin, employees = [], onChanged }) {
       </div>
       {shown.length === 0
         ? <div className="dp-empty">{filter === 'all' ? L('Nothing on this day', 'この日は何もありません', 'Nada neste dia') : L('Nothing here — try "All"', '該当なし —「すべて」を選んでください', 'Nada aqui — veja "Todos"')}</div>
-        : <ul className="dc-rows">{shown.map(r => <CheckRow key={r.key} r={r} open={open.has(r.key)} onToggle={() => toggle(r.key)} L={L} date={panel.date} admin={admin} actions={!!admin} employees={employees} onChanged={onChanged} />)}</ul>}
+        : <ul className="dc-rows">{shown.map(r => <CheckRow key={r.key} r={r} open={open.has(r.key)} onToggle={() => toggle(r.key)} onOpen={() => setSheetKey(`row:${r.key}`)} onOpenService={sv => setSheetKey(`svc:${sv.id}`)} L={L} date={panel.date} admin={admin} actions={!!admin} employees={employees} onChanged={onChanged} />)}</ul>}
+      {sheetKey && <JobQuickSheet sheet={sheetOf(sheetKey, rows, panel, { L, date: panel.date, admin, actions: !!admin, employees, onChanged })} onClose={() => setSheetKey(null)} L={L} actions={!!admin} onChanged={onChanged} />}
       <p className="dc-legend"><span className="dc-dot is-ok">✓</span> {L('done right', '完了・問題なし', 'feito certo')} <span className="dc-dot is-warn">!</span> {L('done, check it', '完了・要確認', 'feito, conferir')} <span className="dc-dot is-todo" /> {L('not done yet', '未完了', 'não feito ainda')}</p>
     </div>
   )
