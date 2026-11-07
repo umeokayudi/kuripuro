@@ -179,6 +179,7 @@ export default function GoogleAgenda() {
   const notJobs = drafts.filter(d => !d.is_job)
   const ready = drafts.filter(d => picked.has(d.key))
   const tag = settings?.company_tag || ''
+  const off = !state?.configured
 
   if (loadError?.needsSql) return (
     <div className="ga-page">
@@ -302,7 +303,8 @@ export default function GoogleAgenda() {
       {/* 4 · Accounts */}
       <div className="card ga-accounts">
         <div className="card-title">👥 {tr('Connected Google accounts', '接続済みGoogleアカウント', 'Contas Google conectadas')}</div>
-        <a className="btn btn-primary" href={googleConnectUrl()}>＋ {tr('Connect my Google account', '自分のGoogleアカウントを接続', 'Conectar minha conta Google')}</a>
+        {state && !state.configured && <div className="ga-hint ga-off">⚠ {tr('Connecting only works after GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are in Vercel (see the box at the top).', 'VercelにGOOGLE_CLIENT_IDとGOOGLE_CLIENT_SECRETを入れるまで接続できません（上の案内）。', 'Conectar só funciona depois que GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET estiverem no Vercel (veja o quadro lá em cima).')}</div>}
+        <a className={`btn btn-primary${off ? ' ga-disabled' : ''}`} aria-disabled={off} href={off ? undefined : googleConnectUrl()}>＋ {tr('Connect my Google account', '自分のGoogleアカウントを接続', 'Conectar minha conta Google')}</a>
         {accounts.filter(a => a.owner_kind === 'admin').map(a => <AccountCard key={a.id} a={a} tr={tr} onSave={p => saveAccount(a, p)} onDisconnect={() => disconnect(a)} />)}
         <div className="ga-emp-head">{tr('Employees', 'スタッフ', 'Funcionários')}</div>
         {employees.map(emp => {
@@ -313,8 +315,8 @@ export default function GoogleAgenda() {
                 <b>{emp.full_name}</b>
                 {list.length ? <span className="badge badge-green">✓ {list.map(a => a.google_email).join(', ')}</span> : <span className="badge badge-amber">{tr('not connected', '未接続', 'não conectado')}</span>}
                 <span className="ga-emp-btns">
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => copyInvite(emp)}>🔗 {tr('Copy link for them', '本人用リンク', 'Copiar link para a pessoa')}</button>
-                  <a className="btn btn-ghost btn-sm" href={googleConnectUrl(emp.id)}>{tr('Connect here', 'ここで接続', 'Conectar aqui')}</a>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={off} onClick={() => copyInvite(emp)}>🔗 {tr('Copy link for them', '本人用リンク', 'Copiar link para a pessoa')}</button>
+                  <a className={`btn btn-ghost btn-sm${off ? ' ga-disabled' : ''}`} aria-disabled={off} href={off ? undefined : googleConnectUrl(emp.id)}>{tr('Connect here', 'ここで接続', 'Conectar aqui')}</a>
                 </span>
               </div>
               {list.map(a => <AccountCard key={a.id} a={a} tr={tr} onSave={p => saveAccount(a, p)} onDisconnect={() => disconnect(a)} />)}

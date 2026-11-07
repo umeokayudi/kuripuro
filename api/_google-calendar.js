@@ -538,6 +538,17 @@ export default async function google(req, res) {
       return res.status(200).json({ ok: true })
     }
 
+    // v1.0.187 · the employee sends their own services to their Google Calendar now.
+    if (op === 'my-sync') {
+      if (user.role !== 'employee') return res.status(403).json({ error: 'Só para funcionário.' })
+      const settings = await loadSettings(db)
+      const { data: mine, error } = await db.from('google_calendar_accounts').select('*').eq('owner_kind', 'employee').eq('owner_id', user.id)
+      if (error) throw error
+      const live = (mine || []).filter(a => a.refresh_token_enc && a.export_enabled)
+      if (!live.length) return res.status(400).json({ error: 'Conecte sua conta Google primeiro.' })
+      return res.status(200).json({ exported: await exportJobs(db, live, settings, appUrl, Date.now() + 50000) })
+    }
+
     if (user.role !== 'admin') return res.status(403).json({ error: 'Só o administrador.' })
 
     if (op === 'settings') {

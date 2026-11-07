@@ -28,6 +28,7 @@ export const previewGoogleEvents = ({ from, to, accountIds } = {}) => call('prev
 export const importGoogleDrafts = items => call('import', { items })
 export const ignoreGoogleEvents = keys => call('ignore', { keys })
 export const syncGoogleNow = () => call('sync', {})
+export const syncMyGoogle = () => call('my-sync', {})
 
 /** Where the browser goes to connect a Google account (admin itself, or an employee on this device). */
 export const googleConnectUrl = employeeId => `/api/google/connect${employeeId ? `?employee=${encodeURIComponent(employeeId)}` : ''}`

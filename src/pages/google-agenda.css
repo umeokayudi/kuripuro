@@ -49,3 +49,5 @@
 .ga-dates input[type=time] { width: 120px; }
 .ga-dates input[type=number] { width: 110px; }
 .ga-dates select { width: auto; }
+.ga-disabled { opacity: .45; pointer-events: none; }
+.ga-off { color: var(--amber); font-weight: 600; }

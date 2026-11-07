@@ -99,6 +99,7 @@ import WorkReportEditor from '../components/WorkReportEditor'
 import TeamDay from '../components/TeamDay'
 import { REVIEW_PREFIX } from '../lib/deductionReview'
 import MyProfile from '../components/MyProfile'
+import EmployeeGoogleAgenda from '../components/EmployeeGoogleAgenda'
 import FaceAvatar from '../components/FaceAvatar'
 import PendingVideos from '../components/PendingVideos'
 import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate, sortByOrder, nextPendingJob, MANUAL_ORDER_BASE } from '../lib/agenda'
@@ -1646,6 +1647,7 @@ export default function EmployeePortal() {
     {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport}`},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
     {key:'world',icon:'🌏',label:tr.facility.tab},
+    {key:'google',icon:'📅',label:'Google Agenda',hint:L('Connect and sync my Google','自分のGoogleを接続・同期','Conectar e sincronizar meu Google')},
     {key:'profile',icon:'👤',label:L('My profile','マイプロフィール','Meu perfil'),hint:L('Your data and password','自分の情報とパスワード','Seus dados e senha')},
   ]
 
@@ -2400,6 +2402,7 @@ export default function EmployeePortal() {
         )}
 
         {tab==='profile'&&<MyProfile user={user} L={L} />}
+        {tab==='google'&&<section><div className="emp-section-heading"><span>{L('Account','アカウント','Conta')}</span><h1>Google Agenda</h1></div><EmployeeGoogleAgenda L={L} /></section>}
 
         {tab==='ai'&&(
           <section className="emp-ai-screen">

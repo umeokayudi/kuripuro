@@ -1,10 +1,10 @@
 // Employee portal: "My profile" — own data (read-only, the office edits it) and change password.
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import FaceAvatar from './FaceAvatar'
 import { saveFace, removeFace } from '../lib/employeeFace'
-import { googleStatus, googleConnectUrl, disconnectGoogleAccount } from '../lib/googleAgenda'
+import EmployeeGoogleAgenda from './EmployeeGoogleAgenda'
 
 const box = { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: 16, marginBottom: 12 }
 const input = { width: '100%', padding: '12px 14px', fontSize: 14, borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.06)', color: '#fff', boxSizing: 'border-box', marginTop: 6 }
@@ -58,31 +58,6 @@ function FacePhotoCard({ user, L }) {
   )
 }
 
-// v1.0.179 · the employee links their own Google Calendar: their KuriPuro services appear there,
-// always marked with the company. Hidden while the office has not set Google up.
-function GoogleAgendaCard({ L }) {
-  const [st, setSt] = useState(null)
-  useEffect(() => { googleStatus().then(setSt).catch(() => setSt(null)) }, [])
-  if (!st?.configured) return null
-  const acc = st.accounts || []
-  const tag = st.settings?.company_tag || ''
-  return (
-    <div style={box}>
-      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>📅 Google Agenda</div>
-      {acc.length ? acc.map(a => (
-        <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', fontSize: 13, padding: '4px 0' }}>
-          <span style={{ overflowWrap: 'anywhere' }}>✓ {a.google_email}</span>
-          <button type="button" onClick={async () => { await disconnectGoogleAccount(a.id).catch(e => toast.error(e.message)); googleStatus().then(setSt) }}
-            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'inherit', borderRadius: 8, padding: '4px 10px', fontSize: 12 }}>{L('Disconnect', '解除', 'Desconectar')}</button>
-        </div>
-      )) : (
-        <div style={{ fontSize: 13, opacity: 0.75, marginBottom: 8 }}>{L(`Your services show up in your Google Calendar, marked [${tag}].`, `あなたのサービスがGoogleカレンダーに[${tag}]付きで表示されます。`, `Seus serviços aparecem na sua Google Agenda, marcados [${tag}].`)}</div>
-      )}
-      {!acc.length && <a href={googleConnectUrl()} style={{ display: 'block', textAlign: 'center', padding: 12, borderRadius: 12, background: '#fff', color: '#1f2937', fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>{L('Connect my Google Calendar', 'Googleカレンダーを接続', 'Conectar minha Google Agenda')}</a>}
-    </div>
-  )
-}
-
 export default function MyProfile({ user, L }) {
   const [form, setForm] = useState({ current: '', next: '', again: '' })
   const [errors, setErrors] = useState({})
@@ -127,7 +102,7 @@ export default function MyProfile({ user, L }) {
         ))}
         <div style={{ fontSize: 12, opacity: 0.5, marginTop: 6 }}>{L('To change your name, phone or bank, ask the office in Chat.', '氏名・電話・口座の変更はチャットで事務所へ。', 'Para mudar nome, telefone ou banco, peça ao escritório pelo Chat.')}</div>
       </div>
-      <GoogleAgendaCard L={L} />
+      <EmployeeGoogleAgenda L={L} />
       <form style={box} onSubmit={save}>
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 8 }}>🔒 {L('Change password', 'パスワード変更', 'Alterar senha')}</div>
         {[['current', L('Current password', '現在のパスワード', 'Senha atual'), 'current-password'], ['next', L('New password', '新しいパスワード', 'Nova senha'), 'new-password'], ['again', L('Repeat the new password', '新しいパスワード（確認）', 'Repita a nova senha'), 'new-password']].map(([k, label, ac]) => (
