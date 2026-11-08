@@ -1985,7 +1985,10 @@ export default function EmployeePortal() {
       )}
 
       {jaFizJob&&<JaFizSheet job={jaFizJob} actor={{ id: user.id, name: user.name, role: 'employee' }} contracts={serviceContracts}
-        onClose={()=>setJaFizJob(null)} onDone={()=>{ setJaFizJob(null); loadAll() }} />}
+        onClose={()=>setJaFizJob(null)} onDone={async (res)=>{ setJaFizJob(null); await loadAll()
+          // v1.0.188 · the service just registered stays in Meu dia even if the reload came back without it
+          const saved = res?.job ? employeeSafeJob(res.job) : null
+          if (saved?.id) setAllJobs(list => list.some(j => j.id === saved.id) ? list : [saved, ...list]) }} />}
 
       {retroJob&&(
         <div className="emp-sheet-backdrop" style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>

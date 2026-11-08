@@ -1417,7 +1417,11 @@ body { background: var(--hq-bg); }
 .emp-bottom-icon,.emp-bottom-label{font-family:var(--font)!important;font-variant-numeric:normal!important}
 .emp-bottom-item.is-active .emp-bottom-icon,.emp-bottom-item.is-active .emp-bottom-label{color:#234fc8!important}
 .emp-bottom-item.is-active>div[style*="background"]{background:#315cf5!important}
-.emp-shift-screen{display:grid;gap:12px}
+.emp-shift-screen{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
+/* v1.0.188 · nothing in the employee screens may be wider than the phone: a long line used to stretch the
+   grid column (auto = as wide as its widest child) and every card went past the right edge. */
+.emp-content{overflow-x:hidden}
+.emp-content>*,.emp-shift-screen>*{min-width:0;max-width:100%}
 .emp-section-heading{padding:4px 3px 8px}
 .emp-section-heading>span,.emp-empty-kicker{color:#315cf5;font-size:9px;font-weight:850;letter-spacing:.13em;text-transform:uppercase}
 .emp-section-heading h1{margin:3px 0;color:#172033;font-size:23px;font-weight:800;letter-spacing:-.04em}

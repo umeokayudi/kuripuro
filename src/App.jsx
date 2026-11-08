@@ -3,6 +3,7 @@ import TimeOffCenter from './components/TimeOffCenter'
 import { maybeAutoSync } from './lib/googleAgenda'
 import ClientSheetHost from './components/ClientSheetHost'
 import { APP_VERSION, APP_BUILD_LABEL } from './version'
+import { startAppUpdateWatch } from './lib/appUpdate'
 
 // Version stays known to the system only (not shown on screen).
 if (typeof window !== 'undefined') {
@@ -342,6 +343,8 @@ function AppContent() {
 }
 
 export default function App() {
+  // v1.0.188 · a tab left open for days picks up the newly published version by itself
+  React.useEffect(() => startAppUpdateWatch(), [])
   return (
     <BrowserRouter>
       <AuthProvider>
