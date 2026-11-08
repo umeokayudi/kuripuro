@@ -19,12 +19,14 @@ function copy(tr) {
     unsupported: tr('This browser does not support notifications.', 'このブラウザは通知に対応していません。', 'Este navegador não aceita notificações.'),
     ios: tr('On iPhone: tap Share ⬆︎ → “Add to Home Screen”, open KuriPuro from the new icon, then turn notifications on.', 'iPhoneの場合：共有 ⬆︎ →「ホーム画面に追加」→ 新しいアイコンからKuriPuroを開いて通知をオンにしてください。', 'No iPhone: toque em Compartilhar ⬆︎ → “Adicionar à Tela de Início”, abra a KuriPuro pelo novo ícone e ative as notificações.'),
     notReady: tr('Notifications are not set up on the server yet.', 'サーバーの通知設定がまだです。', 'As notificações ainda não foram configuradas no servidor.'),
+    testFailed: tr('The test did not arrive. Turn notifications off and on again on this device.', 'テストが届きませんでした。この端末で通知をオフにしてから再度オンにしてください。', 'O teste não chegou. Desligue e ligue de novo as notificações neste aparelho.'),
     failed: tr('Could not turn on notifications.', '通知をオンにできませんでした。', 'Não foi possível ativar as notificações.'),
   }
 }
 
-function errorText(c, err) {
+function errorText(c, err, isTest = false) {
   const m = String(err?.message || '')
+  if (isTest && (m === 'not-delivered' || m === 'not-subscribed')) return c.testFailed
   if (m === 'denied') return c.denied
   if (m === 'unsupported') return c.unsupported
   if (m === 'not-configured') return c.notReady
@@ -97,7 +99,16 @@ export function PushToggle({ style }) {
   const [busy, setBusy] = useState(false)
   const state = pushState()
 
-  useEffect(() => { isSubscribed().then(v => setOn(v && state === 'granted')) }, [state])
+  // on = this browser is subscribed AND saved on the server for the signed-in person
+  useEffect(() => {
+    let alive = true
+    isSubscribed().then(async v => {
+      if (!v || state !== 'granted') { if (alive) setOn(false); return }
+      const saved = await syncPush(user, lang)
+      if (alive) setOn(saved)
+    })
+    return () => { alive = false }
+  }, [state, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = async () => {
     setBusy(true)
@@ -107,8 +118,8 @@ export function PushToggle({ style }) {
     } catch (err) { toast.error(errorText(c, err)) } finally { setBusy(false) }
   }
   const test = async () => {
-    const sent = await sendTestPush(user)
-    if (sent) toast.success(c.testSent); else toast.error(c.failed)
+    setBusy(true)
+    try { await sendTestPush(user, lang); toast.success(c.testSent) } catch (err) { toast.error(errorText(c, err, true)) } finally { setBusy(false) }
   }
 
   const hint = state === 'ios-needs-home' ? c.ios : state === 'denied' ? c.denied : state === 'unsupported' ? c.unsupported : on ? c.on : c.body

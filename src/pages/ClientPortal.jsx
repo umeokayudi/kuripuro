@@ -33,6 +33,7 @@ import { listModels, listRecommendations, decideRecommendation } from '../lib/fa
 const Facility = lazy(() => import('./Facility'))
 import './client-portal.css'
 import { PushToggle } from '../components/PushNotifications'
+import ClientBell, { clientBellItems } from '../components/ClientBell'
 import { tabFromUrl, clearTabParam } from '../lib/push'
 
 function sanitizePostgrestToken(value) {
@@ -87,7 +88,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
     return typeof window !== 'undefined' && window.innerWidth >= 900
   })
 
-  const [tab, setTab] = useState(() => tabFromUrl(['home','visits','stores','chat','billing','requests','complaints','facility','settings']) || 'home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','visits','stores','chat','billing','reports','requests','complaints','facility','settings']) || 'home')
   useEffect(() => { clearTabParam() }, [])
   const [jobs, setJobs] = useState([])
   const [contracts, setContracts] = useState([])
@@ -617,6 +618,12 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
   const pendingFacilityRecs = facilityRecs.filter(r => r.status === 'pending')
 
   const quotesWaiting = requests.filter(rq => rq.quote_status === 'quoted').length
+  // v1.0.191 · client bell: everything new or waiting for the client
+  const lastAdminMsg = [...messages].reverse().find(m => m.sender === 'admin' && !m.read) || null
+  const bellItems = clientBellItems({
+    lang, today, invoices, unreadMsgs, lastAdminMsg, requests, complaints, reports: unseenReports, jobs,
+    placeOf: j => locationFromJob(j) || j.title, unratedCount: unratedVisits.length, facilityRecs: pendingFacilityRecs, maintAlerts,
+  })
   const navItems = [
     { key: 'home', icon: <NavIcon name="home" />, label: c.home },
     { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits, badge: unratedVisits.length },
@@ -774,6 +781,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
                 </div>
               )}
               <div className="cp-header-actions">
+                {!preview && <ClientBell items={bellItems} lang={lang} userId={user.id} onOpenTab={setTab} />}
                 <LanguageToggle variant="light" />
                 {!desktopMode && (
                   <button type="button" className="cpx-icon-btn" onClick={toggleView} title={c.desktopView} aria-label={c.desktopView}>

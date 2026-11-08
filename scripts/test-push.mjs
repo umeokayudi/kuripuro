@@ -148,7 +148,7 @@ await ok('subscribe: admin from cookie, client only when the login exists', asyn
   assert.equal(r.status, 200)
   assert.equal(db.subs.find(s => s.endpoint === 'https://push.test/c2').client_id, 'cl-1')
   r = await call('subscribe', { subscription: { ...sub, endpoint: 'https://push.test/x' }, role: 'employee', user_id: 'em-1' })
-  assert.equal(r.status, 401) // employees need their login cookie
+  assert.equal(r.status, 401) // an employee id that does not exist is refused without the cookie
 })
 
 await ok('unknown table or op is refused', async () => {

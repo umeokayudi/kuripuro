@@ -105,12 +105,28 @@ export async function disablePush({ keepBrowser = false } = {}) {
   } catch { /* ignore */ }
 }
 
-export async function sendTestPush(user) {
+async function testOnce(user) {
   const r = await fetch('/api/push?op=test', {
     method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ role: user?.role, user_id: user?.id }),
   })
-  return r.ok ? (await r.json()).sent || 0 : 0
+  const data = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
+  return data
+}
+
+/** Sends a test to this person's devices. If this browser was never saved on the server, saves it and tries again. */
+export async function sendTestPush(user, lang) {
+  let data = await testOnce(user)
+  if (!data.sent) {
+    const reg = await navigator.serviceWorker.getRegistration('/')
+    const sub = reg && await reg.pushManager.getSubscription()
+    if (!sub) throw new Error('not-subscribed')
+    await saveOnServer(sub, user, lang) // throws with the server's reason
+    data = await testOnce(user)
+  }
+  if (!data.sent) throw new Error(data.error || 'not-delivered')
+  return data.sent
 }
 
 export const pushDismissedRecently = (days = 7) => {
