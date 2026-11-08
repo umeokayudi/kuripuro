@@ -14,6 +14,7 @@ const steps = [
   ['node scripts/test-day-check.mjs', 'Conferir o dia (feito certo / conferir / falta)'],
   ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],
   ['npx vite-node scripts/test-deep-month.mjs', 'deep cleaning of the month (Painel + Deep & Spot)'],
+  ['npx vite-node scripts/test-deep-items-edit.mjs', 'editar só os itens feitos num restaurante (deep)'],
   ['npx vite-node scripts/test-quote-later.mjs', 'accepted quote: suggested dates + Agendar depois'],
   ['npm run test:google-agenda', 'Google Agenda: event → service, company tag, Google event'],
   ['npx vite-node scripts/test-shift-estimate.mjs', 'Próximo turno: horas estimadas + ideal começar'],
