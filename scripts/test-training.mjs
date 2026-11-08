@@ -1,4 +1,4 @@
-// v1.0.189 · Treinamento: link parsing, catalog order, real watched seconds
+// v1.0.190 · Treinamento: link parsing, catalog order, real watched seconds
 import assert from 'node:assert/strict'
 import { parseYouTube, videoIdsIn, addVideos, moveVideo, tickProgress, endProgress, summary, videosFor } from '../src/lib/trainingCore.js'
 import { isoDuration } from '../api/_youtube.js'

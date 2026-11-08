@@ -19,6 +19,7 @@ import Sidebar, { usePendingCounts } from './components/Sidebar'
 import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import ConfirmDialogHost from './components/ConfirmDialog'
+import { PushPrompt } from './components/PushNotifications'
 import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
 import { supabase } from './lib/supabase'
@@ -353,6 +354,7 @@ export default function App() {
       <AuthProvider>
         <LangProvider>
           <AppContent />
+          <PushPrompt />
           <Toaster position="top-right" toastOptions={{ style:{ fontSize:13 } }} />
           <ConfirmDialogHost />
         </LangProvider>

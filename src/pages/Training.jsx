@@ -1,4 +1,4 @@
-// v1.0.189 · Admin "Treinamento": pick the YouTube videos the team must watch (paste links, or
+// v1.0.190 · Admin "Treinamento": pick the YouTube videos the team must watch (paste links, or
 // import a whole playlist/channel when YOUTUBE_API_KEY is set), mark required, choose who sees each,
 // order them, and see who watched what. Employees watch in ☰ → Treinamento.
 // Tip: upload as "Não listado" on YouTube — only people with the link (the app) can see it.

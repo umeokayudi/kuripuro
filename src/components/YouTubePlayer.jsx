@@ -1,4 +1,4 @@
-// v1.0.189 · YouTube IFrame Player API (no key needed) — plays a training video inside the app,
+// v1.0.190 · YouTube IFrame Player API (no key needed) — plays a training video inside the app,
 // resumes where the person stopped, and reports real watched seconds once per second.
 import { useEffect, useRef } from 'react'
 

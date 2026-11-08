@@ -1,4 +1,4 @@
-// v1.0.189 · Treinamento — storage + API calls. No SQL: small JSON files in the public
+// v1.0.190 · Treinamento — storage + API calls. No SQL: small JSON files in the public
 // service-photos bucket (same as job signatures / reports):
 //   training/videos.json             → the catalog the admin curates
 //   training/progress/<employeeId>.json → what each employee watched

@@ -1,4 +1,4 @@
-// v1.0.189 · Treinamento: YouTube lookups for the admin (routed through api/sales.js as
+// v1.0.190 · Treinamento: YouTube lookups for the admin (routed through api/sales.js as
 // /api/youtube/:op to stay inside the 12-function Hobby limit).
 //   status            → { apiKey }  is YOUTUBE_API_KEY set?
 //   info?id=VIDEO     → title / channel / thumbnail (oEmbed, no key) + length (only with the key)

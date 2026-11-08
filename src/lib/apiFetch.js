@@ -3,7 +3,7 @@
  * Sends x-kuripuro-admin-key when VITE_ADMIN_API_SECRET is configured.
  */
 
-const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_SECRET || ''
+const ADMIN_KEY = import.meta.env?.VITE_ADMIN_API_SECRET || ''
 
 export function apiFetch(url, options = {}) {
   const headers = new Headers(options.headers || {})

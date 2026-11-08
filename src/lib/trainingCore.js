@@ -1,4 +1,4 @@
-// v1.0.189 · Treinamento (training videos) — pure helpers, no Supabase, shared by the admin page,
+// v1.0.190 · Treinamento (training videos) — pure helpers, no Supabase, shared by the admin page,
 // the employee screen and the tests.
 //
 // Catalog (one JSON for the company):  { videos: [Video], updated_at }

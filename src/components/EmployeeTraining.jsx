@@ -1,4 +1,4 @@
-// v1.0.189 · Employee ☰ → Treinamento: the videos the office picked, watched inside the app with
+// v1.0.190 · Employee ☰ → Treinamento: the videos the office picked, watched inside the app with
 // the YouTube player. Progress counts only seconds really played; 90% watched = ✓ done.
 // Resumes where the person stopped. Required videos are marked and counted on the ☰ badge.
 import { useCallback, useEffect, useRef, useState } from 'react'

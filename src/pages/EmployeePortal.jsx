@@ -107,6 +107,8 @@ import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdat
 import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
 import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
+import { PushToggle } from '../components/PushNotifications'
+import { tabFromUrl, clearTabParam } from '../lib/push'
 import {
   enrichJobValues,
   formatShiftElapsed,
@@ -164,7 +166,9 @@ export default function EmployeePortal() {
   const personalGreeting = employeeGreetingFor(user)
   const quickRoundOn = quickRoundEnabledFor(user)
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
-  const [tab, setTab] = useState('home')
+  // A push notification opens the app on its screen (?tab=chat, ?tab=salary…).
+  const [tab, setTab] = useState(() => tabFromUrl(['home','shift','ai','spots','history','salary','transport','equipment','chat','calendar','availability','achievements']) || 'home')
+  useEffect(() => { clearTabParam() }, [])
   const [menuOpen, setMenuOpen] = useState(false)
   const [facilityIndex, setFacilityIndex] = useState([])
   const [facilityJob, setFacilityJob] = useState(null)
@@ -275,7 +279,7 @@ export default function EmployeePortal() {
   const [userScrolled, setUserScrolled] = useState(false)
   const teamUnread = teamUnreadTotal(teamMessages, user.id)
   const unreadMsgs = officeUnread + teamUnread
-  const trainingLeft = useTrainingLeft(user?.id) // v1.0.189 · ☰ Treinamento badge = required videos not watched yet
+  const trainingLeft = useTrainingLeft(user?.id) // v1.0.190 · ☰ Treinamento badge = required videos not watched yet
   const chatOnOffice = !teamReady || chatKey === OFFICE_KEY
 
   const timerRef = useRef()
@@ -2148,6 +2152,7 @@ export default function EmployeePortal() {
               </button>
             ))}
             </div>
+            <PushToggle style={{ margin: '4px 0 10px' }} />
             <div className="emp-menu-footer"><button onClick={logout} className="emp-menu-logout">
               <span style={{fontSize:18}}>🚪</span> {e.logout}
             </button></div>

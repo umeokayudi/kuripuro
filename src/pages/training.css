@@ -1,4 +1,4 @@
-/* v1.0.189 · Treinamento (employee screen + admin page) */
+/* v1.0.190 · Treinamento (employee screen + admin page) */
 .tr-wrap{display:grid;gap:12px;min-width:0}
 .tr-empty{padding:22px 16px;border:1px dashed #cfd8e6;border-radius:16px;text-align:center;color:#64748b;font-size:14px;line-height:1.5}
 .tr-summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 14px;border:1px solid #e2e8f2;border-radius:14px;background:#fff;color:#28364b;font-size:14px}
