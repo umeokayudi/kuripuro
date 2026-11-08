@@ -1,5 +1,5 @@
 /**
- * v1.0.191 · Edit only the items done in one deep clean (one restaurant, one day).
+ * v1.0.192 · Edit only the items done in one deep clean (one restaurant, one day).
  * The items live in the job title "Loc — Deep Clean (Range Hood, Grease Trap)"; changing them
  * also rebuilds the employee checklist so x of y, reports and the month's deep count stay right.
  * Nothing else of the job (date, person, value, pay) is touched.

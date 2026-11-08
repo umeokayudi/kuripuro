@@ -337,7 +337,16 @@ async function identify(req) {
   if (session) return { role: session.role, user_id: session.id, client_id: null }
   // Clients sign in without a server cookie; accept their id only for an active client login.
   const { role, user_id: userId } = req.body || {}
-  if (role !== 'client' || !userId) return null
+  if (!userId) return null
+  // v1.0.191 · admin/employee/seller whose server login cookie is missing or expired: accept the id
+  // only when that person exists and is active (same check as clients; sending goes only to them).
+  const STAFF = { admin: 'admins', employee: 'employees', salesperson: 'salespeople' }
+  if (STAFF[role]) {
+    const { data } = await salesDb().from(STAFF[role]).select('*').eq('id', userId).maybeSingle()
+    if (!data || data.is_active === false || data.active === false) return null
+    return { role, user_id: data.id, client_id: null }
+  }
+  if (role !== 'client') return null
   const { data } = await salesDb().from('client_users').select('id,client_id,is_active').eq('id', userId).maybeSingle()
   if (!data || data.is_active === false) return null
   return { role: 'client', user_id: data.id, client_id: data.client_id }
@@ -384,6 +393,7 @@ export default async function handler(req, res) {
     if (op === 'test') {
       const { data: subs } = await db.from('push_subscriptions').select('id,endpoint,p256dh,auth,lang,fail_count')
         .eq('role', who.role).eq('user_id', who.user_id).limit(20)
+      if (!(subs || []).length) return res.status(200).json({ ok: false, sent: 0, error: 'not-subscribed' })
       const sent = await sendTo(db, subs || [], l => ({
         title: pick(l, '🔔 Notifications are on', '🔔 通知がオンになりました', '🔔 Notificações ativadas'),
         body: pick(l, 'You will get KuriPuro notices even with the app closed.', 'アプリを閉じていてもKuriPuroのお知らせが届きます。', 'Você vai receber os avisos da KuriPuro mesmo com o app fechado.'),

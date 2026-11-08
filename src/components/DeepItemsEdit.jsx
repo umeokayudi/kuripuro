@@ -6,7 +6,7 @@ import { deepItemsOf, deepItemsPatch } from '../lib/deepItemsEdit'
 import { agendaChecklistItems, checklistProgress } from '../lib/agenda'
 
 /**
- * v1.0.191 · "✨ Coifa, Caixa de gordura … ✏️" on a deep job card. The pencil opens only the items
+ * v1.0.192 · "✨ Coifa, Caixa de gordura … ✏️" on a deep job card. The pencil opens only the items
  * done at this restaurant on this day (tap to add/remove, type an extra one); Save changes nothing
  * else of the job. The checklist x of y follows the new list.
  */

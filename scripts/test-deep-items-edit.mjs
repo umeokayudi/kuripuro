@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * v1.0.191 · Edit only the items done in one deep clean (no DB).
+ * v1.0.192 · Edit only the items done in one deep clean (no DB).
  * Run: npx vite-node scripts/test-deep-items-edit.mjs
  */
 import assert from 'node:assert/strict'
