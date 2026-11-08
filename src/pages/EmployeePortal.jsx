@@ -20,6 +20,8 @@ import { isDeadlineJob, jobTimeText, deadlineLateText } from '../lib/jobDeadline
 import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
+import { estimateShift, fmtDur } from '../lib/shiftEstimate'
+import ShiftEstimateBox from '../components/ShiftEstimateBox'
 import { VOICE_EVERY_SEC, voicePrefOn, setVoicePref, voiceMessage, speak, unlockSpeech, canSpeak } from '../lib/voiceAlert'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { dueAlertJobs, dueAlertSlot, acceptSpotUpdate, isBrokenRunningJob, isPendingSpot } from '../lib/jobDueAlert'
@@ -93,9 +95,12 @@ import { askConfirm } from '../components/ConfirmDialog'
 import JaFizSheet from '../components/JaFizSheet'
 import { isJaFizCandidate } from '../lib/jaFiz'
 import EmployeeWorkReports from '../components/EmployeeWorkReports'
+import WorkReportEditor from '../components/WorkReportEditor'
 import TeamDay from '../components/TeamDay'
 import { REVIEW_PREFIX } from '../lib/deductionReview'
 import MyProfile from '../components/MyProfile'
+import EmployeeGoogleAgenda from '../components/EmployeeGoogleAgenda'
+import FaceAvatar from '../components/FaceAvatar'
 import PendingVideos from '../components/PendingVideos'
 import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate, sortByOrder, nextPendingJob, MANUAL_ORDER_BASE } from '../lib/agenda'
 import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
@@ -105,7 +110,6 @@ import { PushToggle } from '../components/PushNotifications'
 import { tabFromUrl, clearTabParam } from '../lib/push'
 import {
   enrichJobValues,
-  employeeEarningsForJob,
   formatShiftElapsed,
   isStaleActiveJob,
   salaryTypeLabel,
@@ -741,20 +745,6 @@ export default function EmployeePortal() {
       await supabase.from('messages').insert({ employee_id: user.id, employee_name: user.name, sender: 'employee', read: false, content: photoMessage(path) })
     }
     loadMessages()
-  }
-
-  const weekSummary = () => {
-    const { start, end } = getWeekRange()
-    const weekJobs = enrichJobValues(
-      allJobs.filter(j => j.status === 'completed' && j.scheduled_date >= start && j.scheduled_date <= end),
-      serviceContracts,
-    )
-    const gross = weekJobs.reduce((s, j) => s + employeeEarningsForJob(j, empData), 0)
-    const deductions = weekDeductions.reduce((s,d)=>s+Number(d.amount||0),0)
-    const totalChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_total||0),0)
-    const doneChecklist = weekJobs.reduce((s,j)=>s+(j.checklist_done??0),0)
-    const rate = totalChecklist>0 ? Math.round((doneChecklist/totalChecklist)*100) : 100
-    return { start, end, weekJobs, gross, deductions, net:gross-deductions, totalChecklist, doneChecklist, rate }
   }
 
   const calcSalary = (allData, empInfo, deductionsList = []) => {
@@ -1599,6 +1589,15 @@ export default function EmployeePortal() {
   const tomorrow = tokyoTomorrow()
   const laterJobs = upcomingJobs(allJobs, today)
   const tomorrowJobs = laterJobs.filter(j => j.scheduled_date === tomorrow)
+  // v1.0.175 · next shift day: probable total time + ideal start (history of each place)
+  const nextShiftDate = laterJobs[0]?.scheduled_date || null
+  const nextShiftJobs = nextShiftDate ? sortByOrder(laterJobs.filter(j => j.scheduled_date === nextShiftDate)) : []
+  const nextShiftEst = estimateShift(nextShiftJobs, allJobs, { contractFor: j => contractForAgendaJob(j, serviceContracts) })
+  const estRowText = j => {
+    const est = nextShiftEst?.perJob.get(j.id)
+    if (!est) return jobTimeText(j, lang)
+    return isDeadlineJob(j) ? `≈ ${fmtDur(est.minutes)}` : `${jobTimeText(j, lang)} · ≈ ${fmtDur(est.minutes)}`
+  }
   const whenLabel = (date) => date === tomorrow ? e.tomorrow : date
 
   const S = {
@@ -1645,11 +1644,14 @@ export default function EmployeePortal() {
     {key:'home',icon:'🏠',label:e.home},
     {key:'shift',icon:'🗺',label:L('My day','今日の予定','Meu dia')},
     ...(quickRoundOn?[{key:'quickround',icon:'⚡',label:L('Quick round','クイックラウンド','Rodada rápida'),hint:L('Time only, no checklist or photo','時刻のみ・チェックリストや写真なし','Só horário, sem checklist nem foto')}]:[]),
-    {key:'history',group:'jobs',icon:'📅',label:L('My jobs','自分の作業','Meus jobs'),hint:L('History · calendar & availability · spots','履歴・カレンダーと勤務可能日・スポット','Histórico · calendário e disponibilidade · spots'),badge:spotJobs.length+(planAlert?1:0)},
+    {key:'history',group:'jobs',icon:'📅',label:L('My jobs','自分の作業','Meus jobs'),hint:L('History · calendar & availability · spots','履歴・カレンダーと勤務可能日・スポット','Histórico · calendário e disponibilidade · spots'),badge:spotJobs.length},
+    {key:'availability',icon:'📅',label:L('My weekly shift','週のシフト','Meu shift semanal'),hint:planAlert?L(`Send the week of ${fmtDay(planAlert.week,lang)}`,`${fmtDay(planAlert.week,lang)}の週を送信`,`Enviar a semana de ${fmtDay(planAlert.week,lang)}`):L('Calendar · days off · extra','カレンダー・休み・追加勤務','Calendário · folgas · extra'),badge:planAlert?1:0},
+    {key:'reports',icon:'📄',label:L('Service reports','作業報告書','Relatórios de serviço'),hint:L('Make all of the day at once','その日の分をまとめて作成','Fazer todos do dia de uma vez')},
     {key:'salary',icon:'💴',label:L('My salary','自分の給与','Meu salário')},
     {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport}`},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
     {key:'world',icon:'🌏',label:tr.facility.tab},
+    {key:'google',icon:'📅',label:'Google Agenda',hint:L('Connect and sync my Google','自分のGoogleを接続・同期','Conectar e sincronizar meu Google')},
     {key:'profile',icon:'👤',label:L('My profile','マイプロフィール','Meu perfil'),hint:L('Your data and password','自分の情報とパスワード','Seus dados e senha')},
   ]
 
@@ -1830,12 +1832,15 @@ export default function EmployeePortal() {
     && (!m.location_name || m.location_name === locationFromJob(job)))
 
   const [focusJobId, setFocusJobId] = useState(null)
-  const openAvailability = () => { goToTab('calendar'); setTimeout(() => document.getElementById('my-availability')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300) }
+  const openAvailability = () => goToTab('availability') // v1.0.172 · its own screen (☰ → Meu shift semanal)
   // AI help lives inside the job (sheet opened from the job card), not as a main tab.
   const [aiJob, setAiJob] = useState(null)
+  // v1.0.180 · 作業報告書 straight from the job detail (same editor as Meu dia → Relatório de serviço)
+  const [reportJob, setReportJob] = useState(null)
   const JobModal = ({ job, onClose }) => {
     const duration = job.started_at&&job.completed_at?Math.round((new Date(job.completed_at)-new Date(job.started_at))/60000):null
-    const cl = (job.checklist_template||'').split('\n').filter(Boolean)
+    // v1.0.180 · finished job: the list that was ticked; otherwise the list it will get (deep = only its tasks)
+    const cl = parseChecklistTemplate(job.status==='completed' ? job.checklist_template : (checklistTemplateForJob(job) || job.checklist_template))
     const dDate = displayDate(job)
     const instructions = keyboxForJob(job)
     return (
@@ -1866,7 +1871,7 @@ export default function EmployeePortal() {
           </div>}
           {cl.length>0&&<div style={{marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:7,letterSpacing:1,textTransform:'uppercase'}}>Checklist — {job.checklist_total ? `${job.checklist_done ?? 0}/${job.checklist_total}` : fill(e.checklistCount,{n:cl.length})}</div>
-            {cl.map((label,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:10,color:'rgba(255,255,255,0.4)'}}>{i+1}</div><span style={{fontSize:13,color:'rgba(255,255,255,0.75)'}}>{label}</span></div>)}
+            {cl.map((label,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><div style={{width:20,height:20,borderRadius:6,background:'rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:10,color:'rgba(255,255,255,0.4)'}}>{i+1}</div><span style={{fontSize:13,color:'rgba(255,255,255,0.75)'}}>{checklistDisplayLabel(label,lang)}</span></div>)}
           </div>}
           {job.notes_employee&&<div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{e.yourNotes}</div>
@@ -1879,6 +1884,7 @@ export default function EmployeePortal() {
               <JobPhoto url={job.photo_end_url} label={e.photoEnd} />
             </div>
           </div>}
+          {['completed','in_progress'].includes(job.status)&&<button type="button" onClick={()=>{ onClose(); setReportJob(job) }} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'linear-gradient(135deg,#1f3a5f,#2c5282)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',marginBottom:10}}>📄 {L('Make the service report','作業報告書を作成','Criar relatório do serviço')}</button>}
           {hasFacility(job)&&<button type="button" onClick={()=>setFacilityJob(job)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.3)',borderRadius:14,padding:'13px',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:10}}>{tr.facility.openModel}</button>}
           {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:14,padding:'13px',textAlign:'center',color:'#60a5fa',fontSize:14,fontWeight:600,textDecoration:'none',marginBottom:10}}>🗺 {e.openMaps}</a>}
           {jobContract&&jobContract.job_id===job.id&&<div style={{background:'rgba(193,156,86,0.08)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:14,padding:'12px 14px',marginBottom:10}}>
@@ -1931,6 +1937,7 @@ export default function EmployeePortal() {
         onDecline={async job=>{ await handleDeclineSpot(job); setDueAlert(null) }}
         onGoStart={goStartDueJob}
         onLater={()=>setDueAlert(null)} />}
+      {reportJob&&<WorkReportEditor job={reportJob} role="employee" author={{ name: user?.name || '' }} onSaved={()=>{}} onClose={()=>setReportJob(null)} />}
       {facilityJob&&<FacilityModal clientId={facilityJob.client_id} locationName={locationFromJob(facilityJob)} title={locationFromJob(facilityJob) || facilityJob.client_name} t={tr.facility} lang={lang} job={facilityJob} employee={{ id: user?.id, name: user?.name }} onClose={()=>setFacilityJob(null)} />}
       {nfcScan&&<NfcScanSheet
         phase={nfcScan.phase}
@@ -1982,7 +1989,10 @@ export default function EmployeePortal() {
       )}
 
       {jaFizJob&&<JaFizSheet job={jaFizJob} actor={{ id: user.id, name: user.name, role: 'employee' }} contracts={serviceContracts}
-        onClose={()=>setJaFizJob(null)} onDone={()=>{ setJaFizJob(null); loadAll() }} />}
+        onClose={()=>setJaFizJob(null)} onDone={async (res)=>{ setJaFizJob(null); await loadAll()
+          // v1.0.188 · the service just registered stays in Meu dia even if the reload came back without it
+          const saved = res?.job ? employeeSafeJob(res.job) : null
+          if (saved?.id) setAllJobs(list => list.some(j => j.id === saved.id) ? list : [saved, ...list]) }} />}
 
       {retroJob&&(
         <div className="emp-sheet-backdrop" style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>!retroBusy&&setRetroJob(null)}>
@@ -2045,6 +2055,9 @@ export default function EmployeePortal() {
         </div>
         {/* Same greeting header on every screen except the AI helper, which gets the whole height */}
         {tab!=='ai'&&<div className="ex-greet emp-hello">
+          <button type="button" className="emp-hello-face" onClick={()=>setTab('profile')} aria-label={L('My profile','マイプロフィール','Meu perfil')}>
+            <FaceAvatar id={user.id} name={user.name} size={44} className="" />
+          </button>
           <div>
             {personalGreeting?(
               <>
@@ -2151,7 +2164,7 @@ export default function EmployeePortal() {
           <div className="tab-pills" style={{marginBottom:12,flexWrap:'wrap'}}>
             {MENU_GROUPS[groupOf(tab)].map(([k,label])=>(
               <button key={k} type="button" className={`tab-pill${tab===k?' active':''}`} onClick={()=>setTab(k)}>
-                {label}{k==='spots'&&spotJobs.length>0?` (${spotJobs.length})`:''}{k==='availability'&&planAlert?' •':''}
+                {label}{k==='spots'&&spotJobs.length>0?` (${spotJobs.length})`:''}{k==='calendar'&&planAlert?' •':''}
               </button>
             ))}
           </div>
@@ -2204,13 +2217,12 @@ export default function EmployeePortal() {
               )
             })()}
 
-            {/* v1.0.163 · weekly shift: one button that opens the calendar */}
-            <ShiftWeekButton plans={weekPlans} lang={lang} onOpen={()=>openAvailability()} />
+            {/* v1.0.172 · weekly shift on Início ONLY while next week still has to be sent (always in the ☰ menu) */}
+            {planAlert&&<ShiftWeekButton plans={weekPlans} lang={lang} onOpen={()=>openAvailability()} />}
             <PendingVideos jobs={allJobs} L={L} />
             {/* v1.0.154 · free services of the day: "Pegar — é meu" */}
             <FreeJobsCard jobs={spotJobs} lang={lang} L={L} onTake={handleAcceptSpot} onSkip={handleDeclineSpot} />
             {/* v1.0.161 · no daily "confirme cada dia" card and no "Falta a foto de depois" card: the shift is sent weekly (Calendário) */}
-            <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />
 
 
             {/* No shift today */}
@@ -2233,8 +2245,9 @@ export default function EmployeePortal() {
                 <div className="emp-empty-icon">☾</div>
                 <div className="emp-empty-kicker">{e.nextShiftLabel}</div>
                 <div className="emp-empty-title">{whenLabel(laterJobs[0].scheduled_date)} · {jobTimeText(laterJobs[0],lang)}</div>
-                {laterJobs.filter(j=>j.scheduled_date===laterJobs[0].scheduled_date).map(j=>(
-                  <div key={j.id} className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(j)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(j)}} style={{cursor:'pointer'}}><span>{j.title.split(' —')[0]}</span><span>{jobTimeText(j,lang)}</span></div>
+                <ShiftEstimateBox est={nextShiftEst} L={L} />
+                {nextShiftJobs.map(j=>(
+                  <div key={j.id} className="emp-next-job" role="button" tabIndex={0} onClick={()=>setSelectedJob(j)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob(j)}} style={{cursor:'pointer'}}><span>{j.title.split(' —')[0]}</span><span>{estRowText(j)}</span></div>
                 ))}
               </div>
             )}
@@ -2375,7 +2388,16 @@ export default function EmployeePortal() {
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{L('My day','今日の予定','Meu dia')}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
           <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRegister} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} photoStatus={photoStatus} onRetryPhotos={retryPhotos} onReportProblem={setProblemJob} />
+          {/* v1.0.172 · service reports live here (and in ☰ → Relatórios), with "fazer todos do dia" */}
+          <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />
           <TeamDay userId={user.id} L={L} />
+          </section>
+        )}
+
+        {tab==='reports'&&(
+          <section className="emp-shift-screen">
+            <div className="emp-section-heading"><span>{L('Last 7 days','過去7日間','Últimos 7 dias')}</span><h1>📄 {L('Service reports','作業報告書','Relatórios de serviço')}</h1><p>{L('Photos and notes now or later — the AI writes it, the office sends it to the client.','写真とメモは作業中でも後でもOK。AIが文章を作成し、事務所が送付します。','Fotos e notas agora ou depois — a IA escreve e o escritório envia ao cliente.')}</p></div>
+            <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} flat />
           </section>
         )}
 
@@ -2388,6 +2410,7 @@ export default function EmployeePortal() {
         )}
 
         {tab==='profile'&&<MyProfile user={user} L={L} />}
+        {tab==='google'&&<section><div className="emp-section-heading"><span>{L('Account','アカウント','Conta')}</span><h1>Google Agenda</h1></div><EmployeeGoogleAgenda L={L} /></section>}
 
         {tab==='ai'&&(
           <section className="emp-ai-screen">
@@ -2646,10 +2669,16 @@ export default function EmployeePortal() {
 
         {/* CALENDAR */}
         {/* v1.0.96 · one calendar: jobs (read) and availability / day off (the only place to edit them) */}
-        {(tab==='calendar'||tab==='availability')&&(<>
+        {tab==='calendar'&&(<>
           <CalendarView jobs={allJobs} today={today} displayDate={displayDate} onSelect={setSelectedJob} labels={e} statusLabels={tr.status} lang={lang} />
           <div id="my-availability" style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'22px 2px 10px'}}>🗓 {L('My availability and day off','勤務可能日と休み','Minha disponibilidade e folgas')}</div>
           <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} jobs={allJobs} />
+          <TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />
+        </>)}
+        {/* v1.0.172 · ☰ → Meu shift semanal: the weekly calendar first, nothing above it */}
+        {tab==='availability'&&(<>
+          <AvailabilityPlanner user={user} e={e} lang={lang} plans={weekPlans} onPlansChanged={loadWeekPlans} jobs={allJobs} />
+          <div style={{height:14}} />
           <TimeOffList rows={timeOffListRows(myTimeOff, tokyoToday())} e={e} lang={lang} />
         </>)}
 

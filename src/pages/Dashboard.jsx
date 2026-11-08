@@ -22,6 +22,7 @@ import { isTestJob, isTestClient, isTestName } from '../lib/testData'
 import { useHideTests } from '../hooks/useHideTests'
 import AIChatPanel from '../components/AIChatPanel'
 import DayPanelView from '../components/DayPanelView'
+import DeepMonthCard from '../components/DeepMonthCard'
 import { fetchDayPanel } from '../lib/dayPanel'
 
 const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
@@ -57,6 +58,16 @@ export default function Dashboard() {
   const [exceptions, setExceptions] = useState([])
   // v1.0.151 · Painel do Dia (by store + team of today) — same source as Reports / Agenda / Ao vivo / bell
   const [dayPanel, setDayPanel] = useState(null)
+  // v1.0.178 · the panel can show another day (‹ Ontem / Hoje ›) to check yesterday's work
+  const [panelDate, setPanelDate] = useState(() => tokyoToday())
+  const [panelLoading, setPanelLoading] = useState(false)
+  const panelDateRef = useRef(panelDate)
+  const loadPanel = (d = panelDateRef.current) => {
+    const today = tokyoToday()
+    const nowT = new Date(Date.now() + 9 * 3600e3)
+    return fetchDayPanel(d, { nowMin: nowT.getUTCHours() * 60 + nowT.getUTCMinutes(), today }).then(p => { if (p?.date === panelDateRef.current) setDayPanel(p) }).catch(() => {})
+  }
+  const pickPanelDate = d => { panelDateRef.current = d; setPanelDate(d); setPanelLoading(true); loadPanel(d).finally(() => setPanelLoading(false)) }
   const [monthMoney, setMonthMoney] = useState({ billed: 0, received: 0 })
   const [hideTests, setHideTests] = useHideTests()
   const [more, setMore] = useState(false)
@@ -78,8 +89,7 @@ export default function Dashboard() {
     const trendStart = addDays(range.from, -daysBetween(range.from, range.to))
     const trendEnd = addDays(range.to, 1)
     const month = today.slice(0, 7)
-    const nowT = new Date(Date.now() + 9 * 3600e3)
-    fetchDayPanel(today, { nowMin: nowT.getUTCHours() * 60 + nowT.getUTCMinutes(), today }).then(setDayPanel).catch(() => {})
+    loadPanel()
     const [c, j, ev, stale, tj, tc, fm, cm, exc] = await Promise.all([
       supabase.from('clients').select('*').eq('is_active', true),
       supabase.from('jobs').select('*').eq('scheduled_date', today).order('scheduled_time'),
@@ -394,7 +404,10 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <DayPanelView panel={dayPanel} L={tr} admin={user?.name} onChanged={load} dateLabel={new Date().toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Tokyo' })} />
+      <DayPanelView panel={dayPanel} L={tr} admin={user?.name} onChanged={load} date={panelDate} today={tokyoToday()} onDate={pickPanelDate} loading={panelLoading} dateLabel={new Date(`${panelDate}T12:00:00+09:00`).toLocaleDateString(dateLocale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Tokyo' })} />
+
+      {/* v1.0.167 · new card: Deep Cleaning of the month per client (opens Serviços › Deep & Spot) */}
+      <DeepMonthCard L={tr} />
 
       {/* v1.0.130 · "Needs attention": a clean list, one row per kind (count + who + one button).
           The AI is a small bar under it that opens in a side panel with the same items as context. */}

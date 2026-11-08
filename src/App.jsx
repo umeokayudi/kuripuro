@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import TimeOffCenter from './components/TimeOffCenter'
+import { maybeAutoSync } from './lib/googleAgenda'
 import ClientSheetHost from './components/ClientSheetHost'
 import { APP_VERSION, APP_BUILD_LABEL } from './version'
+import { startAppUpdateWatch } from './lib/appUpdate'
 
 // Version stays known to the system only (not shown on screen).
 if (typeof window !== 'undefined') {
@@ -37,6 +39,7 @@ const FacilityBuilder = lazy(() => import('./pages/FacilityBuilder'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Videos = lazy(() => import('./pages/Videos'))
+const GoogleAgenda = lazy(() => import('./pages/GoogleAgenda'))
 const WorkReports = lazy(() => import('./pages/WorkReports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
 const Evaluations = lazy(() => import('./pages/Evaluations'))
@@ -100,6 +103,7 @@ function Clock() {
 const PAGE_KEYS = {
   '/': 'dashboard',
   '/jobs': 'jobs',
+  '/google-agenda': 'googleAgenda',
   '/employees': 'employees',
   '/salary': 'salary',
   '/clients': 'clients',
@@ -151,6 +155,8 @@ function AppContent() {
   const navigate = useNavigate()
   const a = t.app
   const title = pageTitle(location.pathname, t.sidebar)
+  // v1.0.179 · Google Agenda: quiet background sync when an admin opens the app (max every 30 min).
+  React.useEffect(() => { maybeAutoSync() }, [])
   // tela cheia (Mundo Kuripuro) abre o menu pelo próprio botão ☰
   React.useEffect(() => {
     const open = () => setSidebarOpen(true)
@@ -304,6 +310,7 @@ function AppContent() {
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/videos" element={<Videos />} />
+              <Route path="/google-agenda" element={<GoogleAgenda />} />
               <Route path="/work-reports" element={<WorkReports />} />
               <Route path="/ryoshu" element={<Ryoshu />} />
               <Route path="/evaluations" element={<Evaluations />} />
@@ -337,6 +344,8 @@ function AppContent() {
 }
 
 export default function App() {
+  // v1.0.188 · a tab left open for days picks up the newly published version by itself
+  React.useEffect(() => startAppUpdateWatch(), [])
   return (
     <BrowserRouter>
       <AuthProvider>

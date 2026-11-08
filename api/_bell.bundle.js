@@ -693,7 +693,7 @@ async function fetchDayPanels(from, to = from, { nowMin = null, now = /* @__PURE
     supabase2.from("service_contracts").select("*").eq("is_active", true),
     supabase2.from("clients").select("id,company_name,is_active"),
     supabase2.from("employees").select("*"),
-    supabase2.from("jobs").select("id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template").gte("scheduled_date", from).lte("scheduled_date", to).limit(5e3),
+    supabase2.from("jobs").select("id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template,checklist_missed_items,photo_required,photo_start_url,photo_end_url,checklist_total,checklist_done,gps_start_distance,start_lat,retro_time_min").gte("scheduled_date", from).lte("scheduled_date", to).limit(5e3),
     supabase2.from("jobs").select("title,employee_id").gte("scheduled_date", addDays(from, -28)).lt("scheduled_date", from).not("employee_id", "is", null).neq("status", "cancelled").limit(3e3),
     supabase2.from("employee_availability").select("*").gte("date", from).lte("date", to),
     fetchRouteSettings2().catch(() => null)
@@ -831,6 +831,25 @@ init_dates();
 // src/lib/quoteLaterOps.js
 init_supabase();
 
+// src/lib/reportVideoCell.js
+import QRCode from "qrcode";
+var PRINT_RULES = (sel) => `${sel} .vid video,${sel} .vid .vtag{display:none}
+${sel} .vqr{display:block}
+${sel} .vlink{display:block}
+${sel} .vposter{display:block;position:relative;height:0;padding-top:133.33%;background:#1f3a5f;overflow:hidden}
+${sel} .vposter img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+${sel} .vposter b{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px;line-height:44px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:20px;text-align:center;padding-left:3px}
+${sel} .vrow{display:flex;gap:6px;align-items:center;margin-top:4px}
+${sel} .vqr img{display:block;width:70px;height:70px;aspect-ratio:auto;flex:0 0 70px}
+${sel} .vtxt small{display:block;font-size:8.5px;line-height:1.35;color:#556;margin-top:1px}`;
+var VIDEO_STYLE = `.vlink{display:inline-block;margin-top:3px;color:#1f5fbf;font-size:11px;text-decoration:underline;word-break:break-all}
+.vposter,.vqr,.vtxt small{display:none}
+.vtxt b{font-weight:600}
+${PRINT_RULES(".as-pdf")}
+@media print{${PRINT_RULES("body")}
+.vlink{color:#1f5fbf;text-decoration:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}.vposter{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+`;
+
 // src/lib/workReport.js
 init_supabase();
 
@@ -955,6 +974,41 @@ function storagePublicUrl(path) {
   if (/^(https?:|data:|blob:)/.test(path)) return path;
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${String(path).split("/").map(encodeURIComponent).join("/")}`;
 }
+var STYLE = `@page{size:A4;margin:16mm 14mm 14mm}
+*{box-sizing:border-box}
+body{font-family:"Noto Sans JP","Hiragino Sans","Yu Gothic",-apple-system,sans-serif;color:#1d2533;margin:0;font-size:13px;line-height:1.75;background:#fff}
+.bar{background:#1f3a5f;color:#fff;font-size:11px;padding:9px 18px;letter-spacing:.04em}
+.page{max-width:820px;margin:0 auto;padding:22px 18px 30px}
+h1{color:#1f3a5f;font-weight:500;font-size:24px;margin:10px 0 2px}
+.meta{color:#667;font-size:11.5px;margin-bottom:16px}
+section{margin:0 0 14px}
+h2{background:#1f3a5f;color:#fff;font-weight:500;font-size:16px;margin:16px 0 10px;padding:8px 12px;break-after:avoid}
+h3{color:#1f3a5f;font-weight:500;font-size:14.5px;margin:14px 0 6px;break-after:avoid}
+p{margin:0 0 8px}
+.to{margin-bottom:6px}
+table{width:100%;border-collapse:collapse;margin:8px 0 6px;font-size:12px}
+.kv th{width:30%;background:#eef2f7;font-weight:400;text-align:left;border:1px solid #c9d3e0;padding:6px 9px;vertical-align:top}
+.kv td{border:1px solid #c9d3e0;padding:6px 9px}
+.pt th{background:#1f3a5f;color:#fff;font-weight:400;text-align:left;padding:6px 7px;border:1px solid #c9d3e0}
+.pt td{border:1px solid #c9d3e0;padding:6px 7px;vertical-align:top}
+tr{break-inside:avoid}
+ol,ul{margin:4px 0 8px;padding-left:24px}
+li{margin:2px 0}
+.grid{display:grid;gap:4px;margin:8px auto 4px;max-width:600px;break-inside:avoid}
+figure{margin:0}
+.grid img,.grid video{width:100%;aspect-ratio:3/4;object-fit:contain;display:block;background:#eef2f7}
+.vid{position:relative}.vtag{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:1px 7px;border-radius:99px;pointer-events:none}
+.svc{border-top:1px solid #dce2ea;padding:10px 0 4px;break-inside:avoid}.svc-h{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;margin-bottom:4px}.svc-h b{color:#1f3a5f}.svc-h span{color:#556}.ba{font-size:11px;color:#1f3a5f;margin:6px 0 0}
+.lst td,.lst th{border:1px solid #c9d3e0;padding:5px 8px;text-align:left}.lst th{background:#eef2f7;font-weight:400}
+figcaption{font-size:10.5px;color:#556;margin-top:2px}
+.cap{font-size:10.5px;color:#667;margin:2px 0 10px}
+.pair{break-inside:avoid;margin-bottom:8px}
+.pair .grid{max-width:360px}
+.sigs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 0;break-inside:avoid}.sigbox{border:1px solid #c9d3e0;padding:8px 10px;min-height:96px}.sigbox small{display:block;color:#556;font-size:10.5px}.sigbox img{max-height:64px;max-width:100%;display:block;margin:4px 0}.sigbox .nos{color:#b4232c;font-size:11.5px;padding:18px 0}.sigbox .wait{color:#8a6d1a;font-size:11.5px;padding:18px 0}.miss{display:inline-block;background:#fdecee;color:#b4232c;font-size:11px;padding:1px 8px;border-radius:99px;margin:2px 0 6px}.ck{list-style:none;padding-left:4px}.ck li::before{content:attr(data-m);display:inline-block;width:18px;font-weight:700}.ck li.no{color:#b4232c}.pend{color:#8a6d1a;font-size:11px}.svsig{display:flex;align-items:center;gap:8px;margin:6px 0 2px;font-size:11px;color:#556}.svsig img{height:38px;max-width:160px;object-fit:contain;border-bottom:1px solid #c9d3e0;background:#fff}.svsig .nos{color:#b4232c}
+.sign{border:1px solid #1f3a5f;background:#eef2f7;padding:10px 12px;font-size:11.5px;margin-top:18px;line-height:1.6;break-inside:avoid}
+@media print{.page{padding:14px 0 0}.bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.pt th,.kv th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media (max-width:560px){h1{font-size:19px}.kv th{width:38%}.pt{font-size:10.5px}}
+${VIDEO_STYLE}`;
 
 // src/lib/quoteSuggest.js
 init_schedulePlan();

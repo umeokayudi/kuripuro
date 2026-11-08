@@ -118,7 +118,7 @@ function buttonsOf(toolLog, commands) {
 // Requests still running per chat (survive the panel closing).
 const PENDING = new Map()
 
-export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0, context = '', commands = null, historyId, welcomeText, hideHero = false, initialPrompt = '' }) {
+export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0, context = '', commands = null, historyId, welcomeText, hideHero = false, initialPrompt = '', pendingPrompt = null }) {
   const navigate = useNavigate()
   // v1.0.125 · the Dashboard keeps its own conversation (historyId) and sends what it shows as context.
   const historyKey = historyId || employeeId
@@ -447,6 +447,18 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     }, 0)
     return () => clearTimeout(timer)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // v1.0.177 · admin /ai side panel ("O que posso fazer"): a quick action either goes out right away
+  // or fills the text box for the admin to complete.
+  const handledPendingRef = useRef(null)
+  useEffect(() => {
+    if (!pendingPrompt?.text || handledPendingRef.current === pendingPrompt.id) return
+    handledPendingRef.current = pendingPrompt.id
+    if (!pendingPrompt.send) { pickSuggestion(pendingPrompt.text); return }
+    const userMsg = { role: 'user', content: pendingPrompt.text }
+    if (loading) { setMessages(m => [...m, { ...userMsg, queued: true }]); return }
+    sendRequest([...messagesRef.current, userMsg], userMsg)
+  }, [pendingPrompt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendRequest = async (newMessages, userMsg) => {
     if (userMsg) setMessages(m => [...m, userMsg])

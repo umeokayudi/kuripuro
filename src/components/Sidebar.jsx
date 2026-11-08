@@ -20,6 +20,7 @@ const groups = [
       { to: '/reports', key: 'reports', icon: Icons.file },
       { to: '/work-reports', key: 'workReports', icon: Icons.file },
       { to: '/videos', key: 'videos', icon: Icons.file },
+      { to: '/google-agenda', key: 'googleAgenda', icon: Icons.list },
     ],
   },
   {

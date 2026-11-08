@@ -8,6 +8,7 @@ import { useLang } from '../hooks/useLang'
 import { supabase } from '../lib/supabase'
 import { askConfirm } from './ConfirmDialog'
 import { openPrintHtml } from '../lib/openPrintHtml'
+import ShareReportButton from './ShareReportButton'
 import {
   blankReport, loadReport, saveReport, addReportPhoto, reportHtml, reportAi, draftPayload, applyDraft,
   storagePublicUrl, quoteMoney, LEVELS, reportLabels, statusLabel, reportIdForJob,
@@ -245,6 +246,7 @@ function EditorBody({ reportId, job, client, role, author, onClose, onSaved }) {
           <span>{[r.client_name, r.location, r.work_date].filter(Boolean).join(' · ') || '—'} · <em className={`wr-st st-${r.status}`}>{statusLabel(r.status, tr)}</em></span>
         </div>
         <button type="button" className="btn btn-sm" onClick={preview}>👁 {tr('Preview / PDF', 'プレビュー・PDF', 'Ver / PDF')}</button>
+        {isAdmin && <ShareReportButton report={r} />}
         <button type="button" className="btn btn-sm btn-primary" disabled={saving || !dirty} onClick={() => save()}>{saving ? '…' : tr('Save', '保存', 'Salvar')}</button>
       </header>
 

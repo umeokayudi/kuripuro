@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth'
 import { loadReport, reportHtml } from '../lib/workReport'
 import { quickJobReport, quickDayReport, acceptDayReport, readOwnerSig, keepOwnerSig } from '../lib/quickReport'
 import { openPrintHtml } from '../lib/openPrintHtml'
+import ShareReportButton from './ShareReportButton'
 import { SIGNATURE_INK } from '../lib/signature'
 import './work-report.css'
 
@@ -90,6 +91,7 @@ export function QuickReportViewer({ report: initial, onClose }) {
             : [report.location, report.work_date].filter(Boolean).join(' · ')}</span></div>
         <div className="qr-actions">
           <button type="button" className="btn btn-sm" onClick={() => openPrintHtml(reportHtml(report))}>🖨 PDF</button>
+          <ShareReportButton report={report} />
           <button type="button" className="btn btn-sm" onClick={() => setEdit(true)}>✎ {L('Edit', '編集', 'Editar')}</button>
           {isDay && !signed && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => setPad(true)}>✍ {L('Accept and sign', '承認して署名', 'Aceitar e assinar')}</button>}
         </div>

@@ -1,0 +1,35 @@
+/* v1.0.183 · Service Reports cards (phone) */
+.rpc-legend-btn{border:0;background:none;color:#315cf5;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;padding:2px 0 10px}
+.rpc-tr{cursor:pointer}
+.rpc-tr:hover td{background:#f5f8ff}
+.rpc-filters{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 10px}
+.rpc-f{border:1px solid #dfe5ee;background:#fff;border-radius:999px;padding:8px 10px;font:inherit;font-size:13px;font-weight:700;color:#4a5870;cursor:pointer}
+.rpc-f b{margin-left:4px;font-weight:800;color:#14213a}
+.rpc-f.on{background:#14213a;border-color:#14213a;color:#fff}
+.rpc-f.on b{color:#fff}
+.rpc-f.is-warn:not(.on) b{color:#b45309}
+.rpc-f.is-ok:not(.on) b{color:#0f7a52}
+.rpc-f.is-todo:not(.on) b{color:#b91c1c}
+.rpc-empty{font-size:13px;color:#7a8799}
+.rpc-day{display:grid;gap:8px;margin-bottom:14px}
+.rpc-day h4{position:sticky;top:0;z-index:1;margin:0;padding:6px 2px;font-size:12px;font-weight:800;color:#5f6b7d;text-transform:uppercase;letter-spacing:.04em;background:var(--surface,#fff);display:flex;align-items:center;gap:6px}
+.rpc-day h4 span{font-size:11px;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#eef2f7;color:#3d4a5c;display:inline-grid;place-items:center}
+.rpc-card{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:#fff;border:1px solid #e6ebf2;border-left:5px solid #93a4bd;border-radius:14px;padding:12px;cursor:pointer;color:inherit;font:inherit}
+.rpc-card:active{transform:scale(.995)}
+.rpc-card.is-ok{border-left-color:#16a34a}
+.rpc-card.is-warn{border-left-color:#f59e0b;background:#fffdf7}
+.rpc-card.is-todo{border-left-color:#dc2626}
+.rpc-main{flex:1;min-width:0;display:grid;gap:3px}
+.rpc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.rpc-top strong{font-size:15.5px;color:#14213a;min-width:0;overflow-wrap:anywhere}
+.rpc-badge{flex-shrink:0;font-size:11.5px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.rpc-badge.is-ok{background:#e6f6ee;color:#0f7a52}
+.rpc-badge.is-warn{background:#fff3d6;color:#8a5300}
+.rpc-badge.is-todo{background:#fdecec;color:#b91c1c}
+.rpc-who{font-size:13px;color:#4a5870}
+.rpc-facts{font-size:13px;color:#334155;white-space:pre-wrap}
+.rpc-issues{font-size:12.5px;font-weight:700;color:#8a5300}
+.rpc-open{font-size:12.5px;font-weight:800;color:#315cf5;margin-top:2px}
+.rpc-thumb{flex-shrink:0;margin-top:26px}
+.rpc-thumb .storage-image-failed{display:none}
+.rpc-thumb img{height:64px!important;aspect-ratio:auto!important}
