@@ -7,6 +7,7 @@ import salesData from './_sales-data.js'
 import salesFiles from './_sales-files.js'
 import salesReminders from './_sales-reminders.js'
 import salesSession from './_sales-session.js'
+import youtube from './_youtube.js'
 
 export const config = { api: { bodyParser: { sizeLimit: '32mb' } } }
 
@@ -22,6 +23,7 @@ const handlers = {
   'payroll-close': payrollClose,
   reminders: salesReminders,
   session: salesSession,
+  youtube,
 }
 
 export default async function handler(req, res) {

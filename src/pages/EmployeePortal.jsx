@@ -100,6 +100,7 @@ import TeamDay from '../components/TeamDay'
 import { REVIEW_PREFIX } from '../lib/deductionReview'
 import MyProfile from '../components/MyProfile'
 import EmployeeGoogleAgenda from '../components/EmployeeGoogleAgenda'
+import EmployeeTraining, { useTrainingLeft } from '../components/EmployeeTraining'
 import FaceAvatar from '../components/FaceAvatar'
 import PendingVideos from '../components/PendingVideos'
 import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdate, sortByOrder, nextPendingJob, MANUAL_ORDER_BASE } from '../lib/agenda'
@@ -274,6 +275,7 @@ export default function EmployeePortal() {
   const [userScrolled, setUserScrolled] = useState(false)
   const teamUnread = teamUnreadTotal(teamMessages, user.id)
   const unreadMsgs = officeUnread + teamUnread
+  const trainingLeft = useTrainingLeft(user?.id) // v1.0.189 · ☰ Treinamento badge = required videos not watched yet
   const chatOnOffice = !teamReady || chatKey === OFFICE_KEY
 
   const timerRef = useRef()
@@ -1642,6 +1644,7 @@ export default function EmployeePortal() {
     ...(quickRoundOn?[{key:'quickround',icon:'⚡',label:L('Quick round','クイックラウンド','Rodada rápida'),hint:L('Time only, no checklist or photo','時刻のみ・チェックリストや写真なし','Só horário, sem checklist nem foto')}]:[]),
     {key:'history',group:'jobs',icon:'📅',label:L('My jobs','自分の作業','Meus jobs'),hint:L('History · calendar & availability · spots','履歴・カレンダーと勤務可能日・スポット','Histórico · calendário e disponibilidade · spots'),badge:spotJobs.length},
     {key:'availability',icon:'📅',label:L('My weekly shift','週のシフト','Meu shift semanal'),hint:planAlert?L(`Send the week of ${fmtDay(planAlert.week,lang)}`,`${fmtDay(planAlert.week,lang)}の週を送信`,`Enviar a semana de ${fmtDay(planAlert.week,lang)}`):L('Calendar · days off · extra','カレンダー・休み・追加勤務','Calendário · folgas · extra'),badge:planAlert?1:0},
+    {key:'training',icon:'🎓',label:L('Training','研修','Treinamento'),hint:trainingLeft.requiredLeft?L(`${trainingLeft.requiredLeft} required video(s) to watch`,`必須動画あと${trainingLeft.requiredLeft}本`,`${trainingLeft.requiredLeft} vídeo(s) obrigatório(s) para assistir`):L('Videos from the office','事務所からの研修動画','Vídeos do escritório'),badge:trainingLeft.requiredLeft},
     {key:'reports',icon:'📄',label:L('Service reports','作業報告書','Relatórios de serviço'),hint:L('Make all of the day at once','その日の分をまとめて作成','Fazer todos do dia de uma vez')},
     {key:'salary',icon:'💴',label:L('My salary','自分の給与','Meu salário')},
     {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport}`},
@@ -2405,6 +2408,7 @@ export default function EmployeePortal() {
         )}
 
         {tab==='profile'&&<MyProfile user={user} L={L} />}
+        {tab==='training'&&<section><div className="emp-section-heading"><span>{L('Learn','学ぶ','Aprender')}</span><h1>🎓 {L('Training','研修','Treinamento')}</h1><p>{L('Videos the office picked for you. Watch to the end to complete.','事務所が選んだ動画です。最後まで見ると完了になります。','Vídeos que o escritório escolheu para você. Assista até o fim para concluir.')}</p></div><EmployeeTraining user={user} L={L} /></section>}
         {tab==='google'&&<section><div className="emp-section-heading"><span>{L('Account','アカウント','Conta')}</span><h1>Google Agenda</h1></div><EmployeeGoogleAgenda L={L} /></section>}
 
         {tab==='ai'&&(

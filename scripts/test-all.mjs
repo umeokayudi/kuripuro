@@ -9,6 +9,7 @@ const steps = [
   ['npm run test:payroll-close', 'payroll-close'],
   ['npm run test:money', 'money'],
   ['npm run test:exception-queue', 'exception queue'],
+  ['node scripts/test-training.mjs', 'treinamento (links do YouTube + assistido de verdade)'],
   ['node scripts/test-day-panel.mjs', 'day panel (Painel do Dia)'],
   ['node scripts/test-day-check.mjs', 'Conferir o dia (feito certo / conferir / falta)'],
   ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],

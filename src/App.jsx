@@ -38,6 +38,7 @@ const FacilityBuilder = lazy(() => import('./pages/FacilityBuilder'))
 const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Videos = lazy(() => import('./pages/Videos'))
+const Training = lazy(() => import('./pages/Training'))
 const GoogleAgenda = lazy(() => import('./pages/GoogleAgenda'))
 const WorkReports = lazy(() => import('./pages/WorkReports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
@@ -113,6 +114,7 @@ const PAGE_KEYS = {
   '/cashflow': 'cashflow',
   '/reports': 'reports',
   '/videos': 'videos',
+  '/training': 'training',
   '/work-reports': 'workReports',
   '/ryoshu': 'ryoshu',
   '/evaluations': 'evaluations',
@@ -309,6 +311,7 @@ function AppContent() {
               <Route path="/cashflow" element={<Cashflow />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/videos" element={<Videos />} />
+              <Route path="/training" element={<Training />} />
               <Route path="/google-agenda" element={<GoogleAgenda />} />
               <Route path="/work-reports" element={<WorkReports />} />
               <Route path="/ryoshu" element={<Ryoshu />} />

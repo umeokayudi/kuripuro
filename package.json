@@ -75,6 +75,7 @@
     "test:job-deadline": "npx vite-node scripts/test-job-deadline.mjs",
     "test:job-eliminate": "npx vite-node scripts/test-job-eliminate.mjs",
     "test:app-update": "npx vite-node scripts/test-app-update.mjs",
+    "test:training": "node scripts/test-training.mjs",
     "test:day-check": "node scripts/test-day-check.mjs"
   },
   "dependencies": {
