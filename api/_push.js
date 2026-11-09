@@ -44,6 +44,19 @@ const day = (value, lang) => {
   return d.toLocaleDateString(lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Tokyo' })
 }
 
+const hm = iso => {
+  const d = iso ? new Date(iso) : null
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : ''
+}
+/** "took 1h 25min" from start → finish (empty when a time is missing or odd). */
+export const took = (a, b, lang) => {
+  const ms = new Date(b || Date.now()) - new Date(a)
+  if (!a || !Number.isFinite(ms) || ms < 0 || ms > 24 * 3600_000) return ''
+  const m = Math.max(1, Math.round(ms / 60000)), h = Math.floor(m / 60), r = m % 60
+  const t = h ? `${h}h${r ? ` ${r}min` : ''}` : `${r}min`
+  return pick(lang, `took ${t}`, `所要 ${t}`, `levou ${t}`)
+}
+
 // ── Who gets what ─────────────────────────────────────────────────────────
 // Each rule returns a list of { to, key, msg(lang) }.
 //   to: { role:'admin' } | { role:'employee', id } | { role:'salesperson', id } | { role:'client', id } | { role:'client', clientId }
@@ -93,7 +106,7 @@ const TABLES = {
     return []
   }],
 
-  jobs: ['id,title,client_id,client_name,employee_id,scheduled_date,scheduled_time,status', (r, op, old) => {
+  jobs: ['id,title,client_id,client_name,employee_id,employee_name,scheduled_date,scheduled_time,status,started_at,completed_at', (r, op, old) => {
     const out = []
     const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10)
     const newlyMine = r.employee_id && r.status === 'assigned' && String(r.scheduled_date || '') >= today
@@ -106,6 +119,17 @@ const TABLES = {
         msg: l => ({ title: pick(l, '📋 New job in your schedule', '📋 新しい作業が入りました', '📋 Novo serviço na sua agenda'), body: [r.title || r.client_name, day(r.scheduled_date, l), r.scheduled_time].filter(Boolean).join(' · '), url: '/?tab=history', tag: 'jobs-new' }),
       })
     }
+    // v1.0.194 · Admin: someone started / finished a service (finish says how long it took).
+    const place = cut(String(r.title || r.client_name || '').split(' — ')[0], 50)
+    const who = r.employee_name || ''
+    if (op === 'UPDATE' && r.status === 'in_progress' && old?.status !== 'in_progress') out.push({
+      to: { role: 'admin' }, key: `job-start:${r.id}:${r.started_at || ''}`,
+      msg: l => ({ title: `▶️ ${pick(l, 'Started', '開始', 'Começou')} · ${place}`, body: [who, hm(r.started_at)].filter(Boolean).join(' · '), url: '/live', tag: `job-${r.id}` }),
+    })
+    if (op === 'UPDATE' && r.status === 'completed' && old?.status !== 'completed') out.push({
+      to: { role: 'admin' }, key: `job-end:${r.id}`,
+      msg: l => ({ title: `✅ ${pick(l, 'Finished', '完了', 'Terminou')} · ${place}`, body: [who, took(r.started_at, r.completed_at, l), hm(r.completed_at)].filter(Boolean).join(' · '), url: '/live', tag: `job-${r.id}` }),
+    })
     if (op === 'UPDATE' && r.status === 'completed' && old?.status !== 'completed' && r.client_id) out.push({
       to: { role: 'client', clientId: r.client_id }, key: `job-done:${r.id}`,
       msg: l => ({ title: pick(l, '✨ Cleaning finished', '✨ 清掃が完了しました', '✨ Limpeza concluída'), body: cut(r.title || r.client_name, 80), url: '/?tab=visits', tag: `job-${r.id}` }),
@@ -261,6 +285,8 @@ async function sendTo(db, subs, msg) {
 }
 
 async function deliver(db, notice) {
+  // v1.0.194 · Clients get no push (owner's call); their portal bell shows the same news.
+  if (notice.to?.role === 'client') return { key: notice.key, skipped: 'client-push-off' }
   // Claim the key first: a second identical call (retry, forged replay) stops here.
   const { error: claimErr } = await db.from('push_log').insert({ dedupe_key: notice.key, recipient: JSON.stringify(notice.to) })
   if (claimErr) return { key: notice.key, skipped: claimErr.code === '23505' ? 'duplicate' : claimErr.message }

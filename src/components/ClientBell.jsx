@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { pickLang } from '../hooks/useLang'
 import { invoiceState } from '../lib/clientCare'
-import { PushToggle } from './PushNotifications'
 
 const yen = v => `¥${Math.round(Number(v) || 0).toLocaleString('ja-JP')}`
 const dm = d => (d && d.length >= 10 ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '')
@@ -90,7 +89,6 @@ export default function ClientBell({ items, lang, userId, onOpenTab }) {
                 </button>
               ))}
             </div>
-            <PushToggle style={{ margin: '10px 12px 12px' }} />
           </div>
         </div>,
         document.body,

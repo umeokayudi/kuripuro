@@ -32,7 +32,6 @@ import { listModels, listRecommendations, decideRecommendation } from '../lib/fa
 // v1.0.90 · Kuripuro World só para ver (three.js baixa só quando abre)
 const Facility = lazy(() => import('./Facility'))
 import './client-portal.css'
-import { PushToggle } from '../components/PushNotifications'
 import ClientBell, { clientBellItems } from '../components/ClientBell'
 import { tabFromUrl, clearTabParam } from '../lib/push'
 
@@ -1195,7 +1194,6 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
             {!loading && tab === 'settings' && (
               <>
                 <div className="cp-section-title">{c.settingsTitle}</div>
-                <PushToggle style={{ marginBottom: 16 }} />
                 <div className="cp-card" style={{ marginBottom: 16 }}>
                   <div className="cp-field">
                     <span className="cp-label">{c.company}</span>

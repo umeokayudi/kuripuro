@@ -81,6 +81,13 @@ export async function syncPush(user, lang) {
   } catch { return false }
 }
 
+/** v1.0.194 · Always on: with permission already given, (re)subscribe this browser and save it. */
+export async function ensurePush(user, lang) {
+  if (!user || pushState() !== 'granted') return false
+  if (await syncPush(user, lang)) return true
+  try { await enablePush(user, lang); return true } catch { return false }
+}
+
 export async function isSubscribed() {
   if (!pushSupported()) return false
   try {

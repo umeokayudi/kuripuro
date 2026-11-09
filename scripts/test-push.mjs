@@ -96,12 +96,12 @@ await ok('day off approved reaches the employee, not on unrelated edits', async 
   assert.equal(noticesFor('employee_availability', 'UPDATE', { ...db.rows['employee_availability:o1'], status: 'pending' }, {}).length, 0)
 })
 
-await ok('admin chat reply to a client arrives in Japanese', async () => {
+await ok('clients get no push (v1.0.194): admin reply to a client is not sent', async () => {
   sent.length = 0
   db.rows['client_messages:c1'] = { id: 'c1', client_id: 'cl-1', client_user_id: 'cu-1', sender: 'admin', content: '明日伺います' }
   await call('event', { table: 'client_messages', op: 'INSERT', id: 'c1' })
-  assert.deepEqual(sent.map(s => s.endpoint), ['https://push.test/cli1'])
-  assert.equal(sent[0].title, '💬 KuriPuroからのメッセージ')
+  assert.deepEqual(sent, [])
+  assert.equal(noticesFor('client_messages', 'INSERT', db.rows['client_messages:c1'])[0].msg('ja').title, '💬 KuriPuroからのメッセージ')
 })
 
 await ok('invoice sent and job completed notify the client company', async () => {
@@ -109,8 +109,19 @@ await ok('invoice sent and job completed notify the client company', async () =>
   assert.equal(fat[0].to.clientId, 'cl-1')
   assert.match(fat[0].msg('ja').body, /33,000/)
   assert.equal(noticesFor('faturas', 'UPDATE', { id: 'f1', client_id: 'cl-1', status: 'paid' }, { status: 'sent' }).length, 0)
-  const job = noticesFor('jobs', 'UPDATE', { id: 'j1', client_id: 'cl-1', status: 'completed', title: '店舗清掃' }, { status: 'in_progress' })
-  assert.equal(job.length, 1)
+  const job = noticesFor('jobs', 'UPDATE', { id: 'j1', client_id: 'cl-1', status: 'completed', title: '店舗清掃', started_at: '2026-11-09T01:00:00Z', completed_at: '2026-11-09T02:25:00Z' }, { status: 'in_progress' })
+  assert.equal(job.filter(x => x.to.role === 'client').length, 1)
+  const end = job.find(x => x.to.role === 'admin')
+  assert.match(end.msg('pt').body, /levou 1h 25min/)
+  assert.match(end.msg('pt').title, /Terminou/)
+})
+
+await ok('admin gets a push when a service starts', async () => {
+  const s = noticesFor('jobs', 'UPDATE', { id: 'j9', employee_name: 'Gabriel', title: 'Kodama — Basic', status: 'in_progress', started_at: '2026-11-09T01:00:00Z' }, { status: 'assigned' })
+  assert.equal(s.length, 1)
+  assert.equal(s[0].to.role, 'admin')
+  assert.match(s[0].msg('pt').title, /Começou · Kodama$/)
+  assert.match(s[0].msg('pt').body, /Gabriel · 10:00/)
 })
 
 await ok('schedule generator burst: one "new job" per employee per 10 minutes', async () => {
