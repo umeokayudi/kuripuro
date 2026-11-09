@@ -93,8 +93,9 @@ export function PushToggle({ style }) {
   const c = copy(tr)
   const [state, setState] = useState(() => pushState())
   const [busy, setBusy] = useState(false)
-  if (!wantsPush(user)) return null
-  const on = state === 'granted'
+  // v1.0.196 · Silent when it works: the row only shows up in menus when this phone still needs a tap.
+  if (!wantsPush(user) || state === 'granted' || state === 'unsupported') return null
+  const on = false
   const enable = async () => {
     setBusy(true)
     try { await enablePush(user, lang); setState('granted'); toast.success(c.on) } catch (err) { toast.error(errorText(c, err)); setState(pushState()) } finally { setBusy(false) }

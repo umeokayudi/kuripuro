@@ -34,7 +34,6 @@ import { OPEN_BELL } from './DayPanelView'
 import EmployeePayEdit from './EmployeePayEdit'
 
 const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
-import { PushToggle } from './PushNotifications'
 
 const SEEN_KEY = 'kp_timeoff_seen_v1'
 const readSeen = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) } catch { return new Set() } }
@@ -506,7 +505,6 @@ export default function TimeOffCenter() {
             </header>
             {n > 0 && <p className="bq-order">{L('Order: late today → no cover → covered (your decision) → other exceptions by date', '順番: 本日の遅れ → 担当不在 → カバー済み（判断待ち）→ その他（日付順）', 'Ordem: atrasados de hoje → sem cobertura → cobertos (sua decisão) → demais exceções por data')}</p>}
 
-            <PushToggle style={{ margin: '0 0 10px' }} />
             {queue.groups.length > 1 && (
               <div className="bq-chips" role="tablist">
                 {[{ key: 'all', label: L('All', 'すべて', 'Todos'), n }, ...queue.groups.map(g => ({ key: g.key, label: GROUP_TITLE[g.key], n: g.items.length, notCounted: g.notCounted }))].map(k => (
