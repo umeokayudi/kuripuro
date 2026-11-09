@@ -3,6 +3,7 @@
 // The numbers come from lib/dayPanel (the same source as Reports, Agenda, Ao vivo and the bell).
 import { JaFizButton } from './JaFizSheet'
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { DayReportButton, QuickReportButton } from './QuickReport'
 import { checkRows, filterRows, checkCounts, serviceCheck } from '../lib/dayCheck'
 import JobQuickSheet from './JobQuickSheet'
@@ -18,6 +19,18 @@ import './dayPanel.css'
 
 export const OPEN_BELL = 'kp-open-bell'
 export const openBell = () => { try { window.dispatchEvent(new Event(OPEN_BELL)) } catch { /* SSR */ } }
+
+// v1.0.195 · "Aguardando você hoje" opens Ao vivo (Live Track) focused on the person, or on the
+// contract stores list (stores without job / late / without person) — not the bell.
+export function liveTrackUrl(a) {
+  const q = new URLSearchParams()
+  if (a?.employeeId) q.set('emp', a.employeeId)
+  else {
+    q.set('focus', 'contracts')
+    if (a?.stores?.length) q.set('stores', a.stores.join('|'))
+  }
+  return `/live?${q}`
+}
 
 const stop = e => e.stopPropagation()
 const onKeyOpen = fn => e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); fn() } }
@@ -396,6 +409,7 @@ function DayNav({ date, today, onDate, L, dateLabel }) {
 
 /** Full Painel do Dia. `alerts` default to the panel's own (same source as the bell). */
 export default function DayPanelView({ panel, L, dateLabel, admin, employees = [], onChanged, date, today, onDate, loading = false }) {
+  const navigate = useNavigate()
   const head = (
     <div className="dx-overview-head dc-head">
       <div><h2>{L('Day panel', '本日のパネル', 'Painel do Dia')}</h2><DayNav date={date || panel?.date} today={today} onDate={onDate} L={L} dateLabel={dateLabel} /></div>
@@ -414,7 +428,7 @@ export default function DayPanelView({ panel, L, dateLabel, admin, employees = [
             {panel.alerts.map(a => (
               <li key={a.id} className={`is-${a.kind}`}>
                 <span className="dp-alert-text">{alertText(a, L)}{a.stores?.length && a.kind !== 'late' ? <small>{a.stores.join(' · ')}</small> : null}</span>
-                <button type="button" className="btn btn-sm" onClick={openBell}>{L('Open in the bell', 'ベルで開く', 'Abrir no sino')}</button>
+                <button type="button" className="btn btn-sm" onClick={() => navigate(liveTrackUrl(a))}>{L('Open Live Track', 'ライブ追跡を開く', 'Abrir Live Track')}</button>
               </li>
             ))}
           </ul>
