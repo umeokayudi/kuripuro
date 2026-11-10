@@ -1,4 +1,4 @@
-// v1.0.190 · Treinamento: YouTube lookups for the admin (routed through api/sales.js as
+// v1.0.190/208 · Treinamento: YouTube lookups for the admin (routed through api/sales.js as
 // /api/youtube/:op to stay inside the 12-function Hobby limit).
 //   status            → { apiKey }  is YOUTUBE_API_KEY set?
 //   info?id=VIDEO     → title / channel / thumbnail (oEmbed, no key) + length (only with the key)
@@ -67,7 +67,10 @@ async function list(source) {
   if (!src) throw Object.assign(new Error('Cole o link de uma playlist ou do canal (@nome).'), { status: 400 })
   let playlistId = src.playlistId
   let from = ''
-  if (!playlistId) {
+  if (playlistId) {
+    const pl = await getJson(`${YT}/playlists?part=snippet&id=${encodeURIComponent(playlistId)}&key=${KEY()}`).catch(() => ({}))
+    from = pl.items?.[0]?.snippet?.title || ''
+  } else {
     const q = src.handle ? `forHandle=${encodeURIComponent(src.handle)}` : `id=${src.channelId}`
     const c = await getJson(`${YT}/channels?part=contentDetails,snippet&${q}&key=${KEY()}`)
     const ch = c.items?.[0]
@@ -96,7 +99,16 @@ export default async function handler(req, res) {
   const user = await requireAppSession(req, res, ['admin'])
   if (!user) return
   try {
-    if (op === 'status') return res.status(200).json({ apiKey: !!KEY() })
+    if (op === 'status') {
+      // v1.0.208 · also checks that the key really works (wrong key / API not enabled → says why)
+      if (!KEY()) return res.status(200).json({ apiKey: false, works: false })
+      try {
+        await getJson(`${YT}/videos?part=id&id=dQw4w9WgXcQ&key=${KEY()}`)
+        return res.status(200).json({ apiKey: true, works: true })
+      } catch (e) {
+        return res.status(200).json({ apiKey: true, works: false, error: e.message })
+      }
+    }
     if (op === 'info') return res.status(200).json(await info(String(first(req.query?.id) || '')))
     if (op === 'list') return res.status(200).json(await list(first(req.query?.source)))
     return res.status(404).json({ error: 'YouTube endpoint not found.' })

@@ -2535,7 +2535,7 @@ export default function EmployeePortal() {
         )}
 
         {tab==='profile'&&<MyProfile user={user} L={L} />}
-        {tab==='training'&&<section><div className="emp-section-heading"><span>{L('Learn','学ぶ','Aprender')}</span><h1>🎓 {L('Training','研修','Treinamento')}</h1><p>{L('Videos the office picked for you. Watch to the end to complete.','事務所が選んだ動画です。最後まで見ると完了になります。','Vídeos que o escritório escolheu para você. Assista até o fim para concluir.')}</p></div><EmployeeTraining user={user} L={L} /></section>}
+        {tab==='training'&&<section><div className="emp-section-heading"><span>{L('Learn','学ぶ','Aprender')}</span><h1>🎓 {L('Training','研修','Treinamento')}</h1><p>{L('Your course: watch each lesson, answer the question and get your certificate.','あなたのコース：レッスンを見て、質問に答えて、修了証をもらいましょう。','Seu curso: assista cada aula, responda a pergunta e ganhe seu certificado.')}</p></div><EmployeeTraining user={user} L={L} /></section>}
         {tab==='google'&&<section><div className="emp-section-heading"><span>{L('Account','アカウント','Conta')}</span><h1>Google Agenda</h1></div><EmployeeGoogleAgenda L={L} /></section>}
 
         {tab==='ai'&&(
