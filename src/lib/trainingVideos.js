@@ -1,4 +1,4 @@
-// v1.0.190 · Treinamento — storage + API calls. No SQL: small JSON files in the public
+// v1.0.190/208 · Treinamento (curso) — storage + API calls. No SQL: small JSON files in the public
 // service-photos bucket (same as job signatures / reports):
 //   training/videos.json             → the catalog the admin curates
 //   training/progress/<employeeId>.json → what each employee watched
@@ -6,6 +6,7 @@
 import { supabase } from './supabase'
 import { storagePublicUrl } from './workReport'
 import { apiFetch } from './apiFetch'
+import { normalizeCatalog } from './trainingCore'
 
 const BUCKET = 'service-photos'
 const CATALOG = 'training/videos.json'
@@ -24,15 +25,14 @@ async function writeJson(path, data) {
   if (error) throw new Error(error.message)
 }
 
+/** v1.0.208 · always { course, modules, videos } (old video lists become modules by category). */
 export async function loadCatalog() {
-  try {
-    const j = await readJson(CATALOG)
-    return Array.isArray(j?.videos) ? j.videos : []
-  } catch { return [] }
+  try { return normalizeCatalog(await readJson(CATALOG)) } catch { return normalizeCatalog(null) }
 }
 
-export async function saveCatalog(videos) {
-  await writeJson(CATALOG, { videos, updated_at: new Date().toISOString() })
+export async function saveCatalog(cat) {
+  const c = normalizeCatalog(cat)
+  await writeJson(CATALOG, { ...c, updated_at: new Date().toISOString() })
   window.dispatchEvent(new Event(TRAINING_CHANGED))
 }
 
