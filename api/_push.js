@@ -315,7 +315,8 @@ async function handleEvent(req, res) {
 // ── The bell (v1.0.171) ───────────────────────────────────────────────────
 // Same list the admin sees under 🔔. Each item is pushed once ever (push_log 'bell:<id>').
 // First run, or many new items at once: one summary notice instead of a flood.
-const SUMMARY_FROM = 5
+// v1.0.200 · was 5: the 7 'late' items at 10:00 came as one vague summary. Now each item arrives on its own.
+const SUMMARY_FROM = 15
 
 export async function handleBell(req, res, { snapshot = fetchBellSnapshot, db = salesDb() } = {}) {
   const secret = process.env.PUSH_BELL_SECRET
@@ -350,6 +351,7 @@ export async function handleBell(req, res, { snapshot = fetchBellSnapshot, db = 
     await db.from('push_log').upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true })
     const subs = await subscriptionsFor(db, { role: 'admin' })
     const sent = subs.length ? await sendTo(db, subs, l => bellSummary(fresh, l)) : 0
+    if (sent) await db.from('push_log').update({ sent }).in('dedupe_key', rows.map(r => r.dedupe_key))
     return res.status(200).json({ ok: true, total: items.length, summary: fresh.length, sent })
   }
   const results = []
@@ -404,7 +406,9 @@ export default async function handler(req, res) {
       const sub = req.body?.subscription
       const endpoint = String(sub?.endpoint || '')
       if (!/^https:\/\//.test(endpoint) || !sub?.keys?.p256dh || !sub?.keys?.auth) return res.status(400).json({ error: 'Inscrição inválida.' })
-      const lang = ['en', 'ja', 'pt'].includes(req.body?.lang) ? req.body.lang : 'en'
+      let lang = ['en', 'ja', 'pt'].includes(req.body?.lang) ? req.body.lang : 'en'
+      // v1.0.200 · The office reads Portuguese: an admin browser left on English gets pushes in PT (Japanese stays).
+      if (who.role === 'admin' && lang === 'en') lang = 'pt'
       // One row per browser: signing in with another account on the same phone moves it.
       const { error } = await db.from('push_subscriptions').upsert({
         endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth,

@@ -38,7 +38,7 @@ function fakeDb(log = new Set()) {
         like(_c, v) { q.filters.push(['like', v]); return chain },
         insert(row) { if (log.has(row.dedupe_key)) return Promise.resolve({ error: { code: '23505' } }); log.add(row.dedupe_key); return Promise.resolve({ error: null }) },
         upsert(rows) { for (const r of [].concat(rows)) log.add(r.dedupe_key); return Promise.resolve({ error: null }) },
-        update() { return { eq: () => Promise.resolve({ error: null }) } },
+        update() { return { eq: () => Promise.resolve({ error: null }), in: () => Promise.resolve({ error: null }) } },
         delete() { return { eq: () => Promise.resolve({ error: null }) } },
       }
       return chain
@@ -116,10 +116,10 @@ await ok('a new item later: its own notification, in each phone language', async
   assert.equal(sent[0].url, '/schedule')
 })
 
-await ok('burst of 5+ new items → one summary', async () => {
+await ok('6 new items (v1.0.200): each one arrives on its own, no summary', async () => {
   const db = fakeDb(new Set(['bell:x'])); sent.length = 0
   const r = res(); await handleBell(req(), r, { snapshot: snap(ITEMS.slice(0, 6)), db })
-  assert.equal(r.body.summary, 6); assert.equal(sent.length, 2)
+  assert.equal(r.body.summary, undefined); assert.equal(r.body.results.length, Math.min(6, ITEMS.length))
 })
 
 await ok('dry run lists without sending', async () => {

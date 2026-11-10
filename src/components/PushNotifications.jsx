@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../hooks/useAuth'
 import { useLang } from '../hooks/useLang'
-import { pushState, enablePush, ensurePush } from '../lib/push'
+import { pushState, enablePush, ensurePush, watchNotificationTaps } from '../lib/push'
 
 function copy(tr) {
   return {
@@ -41,6 +41,8 @@ export function PushPrompt() {
   const [state, setState] = useState(() => pushState())
   const [busy, setBusy] = useState(false)
   const [hidden, setHidden] = useState(false)
+
+  useEffect(() => { watchNotificationTaps() }, [])
 
   useEffect(() => {
     if (!wantsPush(user)) return

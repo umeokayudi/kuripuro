@@ -35,6 +35,23 @@ async function registration() {
   return existing || navigator.serviceWorker.register('/sw.js', { scope: '/' })
 }
 
+/** v1.0.198 · Picks up a new sw.js right away and follows taps on notifications (sw → 'kp-open'). */
+let openListening = false
+export function watchNotificationTaps() {
+  if (!pushSupported() || openListening) return
+  openListening = true
+  navigator.serviceWorker.getRegistration('/').then(reg => reg && reg.update()).catch(() => {})
+  navigator.serviceWorker.addEventListener('message', e => {
+    const d = e.data || {}
+    if (d.type !== 'kp-open' || !d.url) return
+    try {
+      const to = new URL(d.url, window.location.origin)
+      if (to.origin !== window.location.origin) return
+      if (to.pathname + to.search !== window.location.pathname + window.location.search) window.location.assign(to.href)
+    } catch { /* bad url */ }
+  })
+}
+
 let publicKeyCache = null
 async function publicKey() {
   if (publicKeyCache) return publicKeyCache
