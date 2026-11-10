@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { salesDb, requireSalesSession } from './_salesSession.js'
 import { buildIcs } from '../src/lib/calendar.js'
+import { readSellerVisits } from './_sales-visits.js'
+import { visitAsCalendarJob } from '../src/lib/sellerVisits.js'
 
 // Private iCalendar feed per worker (or "all" for the admin). Google Calendar subscribes to it
 // with "Other calendars → From URL" and refreshes it on its own, so new jobs and spot jobs
@@ -35,8 +37,14 @@ function shiftDays(days) {
 }
 
 async function link(req, res) {
-  const user = requireSalesSession(req, res, ['admin', 'employee'])
+  const user = requireSalesSession(req, res, ['admin', 'employee', 'salesperson'])
   if (!user) return
+  // v1.0.206 · seller: their own scheduled visits ("s-<id>", its own token).
+  if (user.role === 'salesperson') {
+    if (!UUID.test(String(user.id || ''))) return res.status(400).json({ error: 'Vendedor inválido.' })
+    const who = `s-${user.id}`
+    return res.status(200).json({ url: `${origin(req)}/api/calendar/${who}/${calendarToken(who)}/kuripuro.ics` })
+  }
   const asked = String(req.query?.employee || '')
   const who = user.role === 'admin' ? (asked === 'all' || UUID.test(asked) ? asked : 'all') : user.id
   if (who !== 'all' && !UUID.test(who)) return res.status(400).json({ error: 'Funcionário inválido.' })
@@ -44,8 +52,33 @@ async function link(req, res) {
   res.status(200).json({ url: `${origin(req)}/api/calendar/${who}/${token}/kuripuro.ics` })
 }
 
+async function sellerFeed(res, who) {
+  const sellerId = who.slice(2)
+  const db = salesDb()
+  const [visits, { data: seller }] = await Promise.all([
+    readSellerVisits(db, sellerId),
+    db.from('salespeople').select('full_name').eq('id', sellerId).maybeSingle(),
+  ])
+  const from = shiftDays(-30)
+  const rows = visits.filter(v => v.date >= from) // cancelled ones go out as CANCELLED so Google removes them
+  const leadIds = [...new Set(rows.map(v => v.lead_id).filter(Boolean))]
+  const { data: leads } = leadIds.length
+    ? await db.from('sales_leads').select('id,company_name,site_name,contact_name,contact_phone,address,maps_url').in('id', leadIds)
+    : { data: [] }
+  const byId = new Map((leads || []).map(l => [l.id, l]))
+  const events = rows.map(v => visitAsCalendarJob(v, byId.get(v.lead_id), { sellerName: seller?.full_name || '' }))
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8')
+  res.setHeader('Content-Disposition', 'inline; filename="kuripuro.ics"')
+  res.setHeader('Cache-Control', 'private, max-age=900')
+  res.status(200).send(buildIcs(events, { name: `KuriPuro · Visitas${seller?.full_name ? ` · ${seller.full_name}` : ''}` }))
+}
+
 async function feed(req, res) {
   const who = String(req.query?.e || '')
+  if (/^s-/.test(who)) {
+    if (!UUID.test(who.slice(2)) || !validToken(who, req.query?.t)) return res.status(404).send('Not found')
+    return sellerFeed(res, who)
+  }
   if (who !== 'all' && !UUID.test(who)) return res.status(404).send('Not found')
   if (!validToken(who, req.query?.t)) return res.status(404).send('Not found')
   const db = salesDb()

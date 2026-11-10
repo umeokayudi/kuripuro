@@ -25,6 +25,7 @@ export function buildDeals(data, today) {
   for (const row of data?.quotes || []) push(quotes, row.lead_id, row)
   for (const row of data?.contracts || []) push(contracts, row.lead_id, row)
   const sellers = new Map((data?.salespeople || []).map(p => [p.id, p.full_name]))
+  const booked = new Set((data?.scheduledVisits || []).filter(r => r.status === 'scheduled' && (!today || r.date >= today)).map(r => r.lead_id))
   return (data?.leads || []).map(lead => {
     const q = (quotes.get(lead.id) || []).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
     const subs = (contracts.get(lead.id) || []).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
@@ -39,7 +40,8 @@ export function buildDeals(data, today) {
     return {
       lead, quotes: q, accepted, submissions: subs, value, expired,
       quoteValue: Number(accepted?.total || q[0]?.total || 0), touchpoints: t, visits: v,
-      phase: phaseOf(lead, q, subs, v, t.length),
+      // v1.0.206 · a booked visit (seller's "Visita agendada") puts an early lead in "Visit booked".
+      phase: (p => ['lead', 'contact'].includes(p) && booked.has(lead.id) ? 'visit' : p)(phaseOf(lead, q, subs, v, t.length)),
       contactsCount: t.length + v.length, last,
       seller: sellers.get(lead.salesperson_id) || (lead.salesperson_id && lead.salesperson_id === data?.user?.id ? data.user.name || data.user.full_name : '') || '', info: today ? followupStatus(lead, today, data?.touchpoints || []) : null,
     }

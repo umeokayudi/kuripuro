@@ -8,6 +8,8 @@ import { toCsv, zipFiles } from '../lib/zipStore'
 import { escapeHtml } from '../lib/escapeHtml'
 import { pickLang } from '../hooks/useLang'
 import { STEP_PHASES, day, funnelCopy, initials, mapUrlOf, phaseOf, serviceFromQuote, shortDay, timeOf, yen } from '../lib/salesPhases'
+import { isImagePath, upcomingVisits } from '../lib/sellerVisits'
+import { visitGoogleUrl } from './SellerVisits'
 
 // One page per client: the funnel steps (each clickable, with date, who, notes,
 // documents and the next action), then quote → contract → active client, the
@@ -81,7 +83,7 @@ function contractHtml(c, lead, seller, t, lang) {
   </body></html>`
 }
 
-export default function ClientPage({ deal, data, lang, today, isAdmin, onClose, onChanged, onEdit, onLogVisit, startWithContact = false }) {
+export default function ClientPage({ deal, data, lang, today, isAdmin, onClose, onChanged, onEdit, onLogVisit, onScheduleVisit, startWithContact = false }) {
   const t = funnelCopy(lang)
   const f = followupCopy(lang)
   const { lead } = deal
@@ -103,7 +105,7 @@ export default function ClientPage({ deal, data, lang, today, isAdmin, onClose, 
   useEffect(() => { load() }, [load])
   useEffect(() => {
     setCardUrl('')
-    if (!lead.business_card_object_path) return
+    if (!isImagePath(lead.business_card_object_path)) return
     let gone = false
     signedUrl(lead.business_card_object_path).then(url => { if (!gone) setCardUrl(url) }).catch(() => {})
     return () => { gone = true }
@@ -176,10 +178,11 @@ export default function ClientPage({ deal, data, lang, today, isAdmin, onClose, 
   }, [deal, lead, quotes, submissions, jobs, invoices, t])
 
   const files = [
-    lead.business_card_object_path && { key: 'card', icon: '📇', label: t.files.card, path: lead.business_card_object_path, name: 'cartao-de-visita.jpg', at: lead.first_contact_date },
+    isImagePath(lead.business_card_object_path) && { key: 'card', icon: '📇', label: t.files.card, path: lead.business_card_object_path, name: 'cartao-de-visita.jpg', at: lead.first_contact_date },
     ...submissions.filter(r => r.signed_pdf_object_path).map(r => ({ key: r.id, icon: '📄', label: t.files.signed, path: r.signed_pdf_object_path, submission: r.id, name: r.signed_pdf_name || 'contrato-assinado.pdf', at: r.submitted_at || r.created_at })),
     ...deal.visits.filter(r => r.audio_object_path).map(r => ({ key: r.id, icon: '🎙', label: `${t.files.audio} · ${day(r.work_date)}`, path: r.audio_object_path, name: `reuniao-${day(r.work_date)}.${r.audio_object_path.split('.').pop()}`, at: r.work_date })),
   ].filter(Boolean)
+  const nextVisits = upcomingVisits(data?.scheduledVisits, today || '', lead.id).slice(0, 3)
   const others = [...new Map(deal.visits.filter(r => r.contact_name && r.contact_name !== lead.contact_name).map(r => [r.contact_name, r])).values()]
   const client = detail?.client
   const maps = mapUrlOf(lead)
@@ -391,7 +394,9 @@ export default function ClientPage({ deal, data, lang, today, isAdmin, onClose, 
           {maps && <a href={maps} target="_blank" rel="noreferrer"><span>📍</span>{t.map}</a>}
           <button type="button" onClick={() => setContactOpen(v => !v)}><span>💬</span>{t.logContact}</button>
           {onLogVisit && <button type="button" onClick={() => onLogVisit(lead)}><span>📝</span>{t.logVisit}</button>}
+          {onScheduleVisit && <button type="button" onClick={() => onScheduleVisit(lead)}><span>📅</span>{pickLang(lang, 'Schedule visit', '訪問を予約', 'Agendar visita')}</button>}
         </div>
+        {nextVisits.length > 0 && <div className="cp-next-visits">{nextVisits.map(v => <a key={v.id} className="cp-next-visit" href={visitGoogleUrl(v, lead)} target="_blank" rel="noreferrer" title="Google">📅 <strong>{v.date.slice(8)}/{v.date.slice(5, 7)}{v.time ? ` ${v.time}` : ''}</strong>{v.note ? ` · ${v.note}` : ''}</a>)}</div>}
         {contactOpen && <div className="fn-contact-form"><ContactLogForm lead={lead} today={today} f={f} busy={busy === 'contact'} onSave={logContact} onCancel={() => setContactOpen(false)} /></div>}
 
         <nav className="cp-tabs">{Object.entries(t.tabs).map(([k, label]) => <button key={k} type="button" className={`${tab === k ? 'is-active' : ''}${k === 'history' ? ' cp-only-narrow' : ''}`} onClick={() => setTab(k)}>{label}{k === 'files' ? ` (${files.length})` : k === 'contacts' ? ` (${(lead.contact_name ? 1 : 0) + others.length})` : ''}</button>)}</nav>
@@ -428,6 +433,7 @@ export default function ClientPage({ deal, data, lang, today, isAdmin, onClose, 
                   {lead.contact_phone && <a className="fa-btn fa-btn-sm" href={`tel:${lead.contact_phone}`}>📞 {t.call}</a>}
                   <button type="button" className="fa-btn fa-btn-sm" onClick={() => setContactOpen(true)}>💬 {t.logContact}</button>
                   {onLogVisit && <button type="button" className="fa-btn fa-btn-sm" onClick={() => onLogVisit(lead)}>📝 {t.logVisit}</button>}
+                  {onScheduleVisit && <button type="button" className="fa-btn fa-btn-sm" onClick={() => onScheduleVisit(lead)}>📅 {pickLang(lang, 'Schedule visit', '訪問を予約', 'Agendar visita')}</button>}
                   <button type="button" className="fa-btn fa-btn-sm" onClick={() => setContactOpen(true)}>＋ {t.followup}</button>
                 </div>
               </section>
