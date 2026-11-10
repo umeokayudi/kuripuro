@@ -1442,6 +1442,13 @@ export default function EmployeePortal() {
 
   const handleCompleteWithSig = async (job) => {
     if (finishBlocked(job)) return
+    // v1.0.203 · the Before photo is checked HERE, before the signature (it used to be checked
+    // only after signing, sending the worker back to post it).
+    if (!job.photo_start_url && !jobPhotos.some(p => p.slot === 'start')) {
+      toast.error(e.beforeFirst || L('Add the Before photo first (above), then finish.', '先に上の「作業前」写真を追加してから完了してください。', 'Coloque a foto do Antes primeiro (logo acima) e depois conclua.'))
+      document.getElementById('active-job-before')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
     if (!jobPhotos.some(p => p.slot === 'end')) {
       const ok = await askConfirm({
         title: L('Finish without the After photo?', 'After写真なしで完了しますか？', 'Concluir sem a foto Depois?'),
@@ -2929,6 +2936,8 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
     ? (activeChecklist.length <= 3 ? activeChecklist.length : Math.ceil(activeChecklist.length * 0.7))
     : activeChecklist.length
   const activeChecklistDone = activeChecklist.filter(c => c.done).length
+  // v1.0.203 · finishing needs the Before photo (sent at Start, or picked now in the card)
+  const needBefore = !!activeJob && !activeJob.photo_start_url && beforePhotos.length === 0
   const activeChecklistBlocked = activeChecklist.length > 0 && (
     activeIsStale
       ? !checklistCompleteForRetro(activeChecklist)
@@ -2981,8 +2990,8 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
             </button>
           )}
           {!activeJob.photo_start_url && (
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:10,color:activeJob.photo_required?'#f87171':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({activeJob.photo_required?labels.required:L('optional','任意','opcional')})</div>
+            <div id="active-job-before" style={{marginBottom:12,...(needBefore?{padding:'10px 10px 8px',borderRadius:12,border:'1.5px solid rgba(248,113,113,0.55)',background:'rgba(248,113,113,0.08)'}:{})}}>
+              <div style={{fontSize:10,color:needBefore?'#f87171':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1,fontWeight:needBefore?800:400}}>📷 {labels.before} ({labels.required}){needBefore ? ` — ${L('needed to finish','完了に必要','precisa para concluir')}` : ''}</div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                 {beforePhotos.map((p,i)=>(
                   <PhotoThumb key={i} p={p} st={photoStatus[p.id]} alt={labels.before} onRetry={onRetryPhotos} L={L} />
@@ -3009,8 +3018,13 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
           )}
           <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} labels={labels} lang={lang} />
           <div id="active-job-finish" style={{position:'sticky',bottom:'calc(74px + env(safe-area-inset-bottom,0px))',zIndex:20,paddingTop:6}}>
-          <button onClick={()=>{ if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked?'#64748b':'linear-gradient(135deg,#4ade80,#22c55e)',color:submitting||activeChecklistBlocked?'#fff':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8,boxShadow:'0 6px 18px rgba(0,0,0,0.18)'}}>
-            {submitting?L('Saving...','保存中...','Salvando...'):activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
+          {needBefore && !submitting && (
+            <button type="button" onClick={()=>document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'})} style={{width:'100%',padding:'9px 12px',marginBottom:6,borderRadius:12,border:'1px solid #fca5a5',background:'#fee2e2',color:'#b91c1c',fontSize:12,fontWeight:700,cursor:'pointer',textAlign:'left',boxShadow:'0 4px 12px rgba(0,0,0,0.12)'}}>
+              📷 {L('Add the Before photo first (above) — then you can finish.','先に「作業前」の写真を追加してください（上）— その後に完了できます。','Coloque a foto do Antes primeiro (acima) — depois dá para concluir.')}
+            </button>
+          )}
+          <button onClick={()=>{ if(needBefore){document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'});return}; if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked||needBefore} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked||needBefore?'#64748b':'linear-gradient(135deg,#4ade80,#22c55e)',color:submitting||activeChecklistBlocked||needBefore?'#fff':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked||needBefore?'not-allowed':'pointer',marginBottom:8,boxShadow:'0 6px 18px rgba(0,0,0,0.18)'}}>
+            {submitting?L('Saving...','保存中...','Salvando...'):needBefore?`📷 ${L('Before photo missing','作業前の写真がありません','Falta a foto do Antes')}`:activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
           </button>
           </div>
           <button type="button" onClick={()=>handleAbandonStale?.(activeJob)} disabled={submitting} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(251,191,36,0.35)',background:'rgba(251,191,36,0.08)',color:'#fbbf24',fontSize:13,fontWeight:600,cursor:submitting?'not-allowed':'pointer'}}>
@@ -3190,7 +3204,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
 
             {isActive&&(() => {
               const jobChecklist = resolveChecklistForJob(job, checklist)
-              const checklistBlocked = jobChecklist.length > 0 && !checklistComplete(jobChecklist)
+              const checklistBlocked = (jobChecklist.length > 0 && !checklistComplete(jobChecklist)) || needBefore
               return (
               <div>
                 {instructions&&(
@@ -3234,8 +3248,8 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
 
                 <ChecklistPicker checklist={jobChecklist} setChecklist={setChecklist} labels={labels} lang={lang} />
 
-                <button onClick={()=>{ if(!activeJob){toast.error(L('No active job','進行中の作業がありません','Nenhum serviço ativo'));return}; if(checklistBlocked){toast.error(labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||checklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||checklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||checklistBlocked?'not-allowed':'pointer'}}>
-                  {submitting?L('Saving...','保存中...','Salvando...'):checklistBlocked?`✓ Checklist ${jobChecklist.filter(c=>c.done).length}/${jobChecklist.length}`:L('✅ Done → Next','✅ 完了 → 次へ','✅ Feito → Próximo')}
+                <button onClick={()=>{ if(!activeJob){toast.error(L('No active job','進行中の作業がありません','Nenhum serviço ativo'));return}; if(needBefore){toast.error(L('Add the Before photo first (above), then finish.','先に上の「作業前」写真を追加してから完了してください。','Coloque a foto do Antes primeiro (logo acima) e depois conclua.'));return}; if(checklistBlocked){toast.error(labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||checklistBlocked} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||checklistBlocked?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#4ade80,#22c55e)',color:'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||checklistBlocked?'not-allowed':'pointer'}}>
+                  {submitting?L('Saving...','保存中...','Salvando...'):needBefore?`📷 ${L('Before photo missing','作業前の写真がありません','Falta a foto do Antes')}`:checklistBlocked?`✓ Checklist ${jobChecklist.filter(c=>c.done).length}/${jobChecklist.length}`:L('✅ Done → Next','✅ 完了 → 次へ','✅ Feito → Próximo')}
                 </button>
               </div>
             )})()}
