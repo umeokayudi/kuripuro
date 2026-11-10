@@ -5,6 +5,7 @@ import { fetchDayPanel } from '../lib/dayPanel'
 import { PENDING_CHANGED } from '../lib/adminPending'
 import { DayCounter } from './DayPanelView'
 import { tokyoToday } from '../lib/dates'
+import { pollWhileVisible } from '../lib/visiblePoll'
 
 export default function DayStoreStrip({ date, L }) {
   const [count, setCount] = useState(null)
@@ -15,9 +16,9 @@ export default function DayStoreStrip({ date, L }) {
       fetchDayPanel(date, { nowMin: t.getUTCHours() * 60 + t.getUTCMinutes(), today: tokyoToday() }).then(p => { if (alive) setCount(p.count) }).catch(() => {})
     }
     load()
-    const id = setInterval(load, 30000)
+    const stopPoll = pollWhileVisible(load, 30000)
     window.addEventListener(PENDING_CHANGED, load)
-    return () => { alive = false; clearInterval(id); window.removeEventListener(PENDING_CHANGED, load) }
+    return () => { alive = false; stopPoll(); window.removeEventListener(PENDING_CHANGED, load) }
   }, [date])
   return count ? <DayCounter count={count} L={L} compact /> : null
 }

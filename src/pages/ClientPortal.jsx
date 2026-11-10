@@ -34,6 +34,7 @@ const Facility = lazy(() => import('./Facility'))
 import './client-portal.css'
 import ClientBell, { clientBellItems } from '../components/ClientBell'
 import { tabFromUrl, clearTabParam } from '../lib/push'
+import { pollWhileVisible } from '../lib/visiblePoll'
 
 function sanitizePostgrestToken(value) {
   return String(value || '').replace(/[%(),.\\]/g, '').trim()
@@ -250,8 +251,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
   useEffect(() => {
     if (!c) return
     loadAll({ silent: false })
-    const refresh = setInterval(() => loadAll({ silent: true }), 20000)
-    return () => clearInterval(refresh)
+    return pollWhileVisible(() => loadAll({ silent: true }), 20000)
   }, [user?.id, c, loadAll])
 
   const loadFacility = useCallback(async () => {

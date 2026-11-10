@@ -74,17 +74,49 @@ const groups = [
   },
 ]
 
+// v1.0.204 · ONE shared fetch for every place that shows the menu numbers (side menu, phone menu
+// button, Quotes page). Before, each one ran the same 11 queries on its own, every minute and on
+// every focus. Same events and same 60 s refresh as before; the minute tick is skipped while the
+// tab is hidden and runs at once when it comes back.
+const pendingStore = { counts: {}, subs: new Set(), inflight: null, timer: null, stop: null }
+function loadPendingShared() {
+  if (pendingStore.inflight) return pendingStore.inflight
+  pendingStore.inflight = fetchPendingCounts(tokyoToday())
+    .then(c => { pendingStore.counts = c; pendingStore.subs.forEach(fn => fn(c)) })
+    .catch(() => {})
+    .finally(() => { pendingStore.inflight = null })
+  return pendingStore.inflight
+}
+function startPendingWatch() {
+  const load = () => loadPendingShared()
+  const tick = () => { if (document.visibilityState !== 'hidden') load() }
+  const onVisible = () => { if (document.visibilityState === 'visible') load() }
+  pendingStore.timer = setInterval(tick, 60000)
+  const events = [TIME_OFF_CHANGED, PAYROLL_CHANGED, PENDING_CHANGED]
+  events.forEach(e => window.addEventListener(e, load))
+  window.addEventListener('focus', load)
+  document.addEventListener('visibilitychange', onVisible)
+  pendingStore.stop = () => {
+    clearInterval(pendingStore.timer)
+    events.forEach(e => window.removeEventListener(e, load))
+    window.removeEventListener('focus', load)
+    document.removeEventListener('visibilitychange', onVisible)
+  }
+}
+
 export function usePendingCounts() {
-  const [counts, setCounts] = useState({})
+  const [counts, setCounts] = useState(() => pendingStore.counts)
   useEffect(() => {
     let alive = true
-    const load = () => fetchPendingCounts(tokyoToday()).then(c => { if (alive) setCounts(c) }).catch(() => {})
-    load()
-    const id = setInterval(load, 60000)
-    const events = [TIME_OFF_CHANGED, PAYROLL_CHANGED, PENDING_CHANGED]
-    events.forEach(e => window.addEventListener(e, load))
-    window.addEventListener('focus', load)
-    return () => { alive = false; clearInterval(id); events.forEach(e => window.removeEventListener(e, load)); window.removeEventListener('focus', load) }
+    const fn = c => { if (alive) setCounts(c) }
+    if (!pendingStore.subs.size) startPendingWatch()
+    pendingStore.subs.add(fn)
+    loadPendingShared()
+    return () => {
+      alive = false
+      pendingStore.subs.delete(fn)
+      if (!pendingStore.subs.size && pendingStore.stop) { pendingStore.stop(); pendingStore.stop = null }
+    }
   }, [])
   return counts
 }

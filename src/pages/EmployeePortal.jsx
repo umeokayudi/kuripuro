@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { pollWhileVisible } from '../lib/visiblePoll'
 import { coveredJobs } from '../lib/jobCoverage'
 import { syncServiceReport } from '../lib/jobReport'
 import { keyboxForJob } from '../lib/scheduleGenerator'
@@ -337,7 +338,7 @@ export default function EmployeePortal() {
   useEffect(() => {
     loadAll()
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
-    const msgPoll = setInterval(() => { loadMessages(); loadTeamMessages() }, 10000)
+    const stopMsgPoll = pollWhileVisible(() => { loadMessages(); loadTeamMessages() }, 10000) // v1.0.204 · paused in background, catches up on return
     // Ping presence every 60s
     const pingPresence = async () => {
       const update = { last_seen: new Date().toISOString(), is_online: true }
@@ -361,7 +362,7 @@ export default function EmployeePortal() {
     return () => {
       clearInterval(clockRef.current)
       clearInterval(timerRef.current)
-      clearInterval(msgPoll)
+      stopMsgPoll()
       clearInterval(presencePoll)
       supabase.from('employees').update({ is_online: false }).eq('id', user.id)
     }
