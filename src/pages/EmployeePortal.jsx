@@ -37,6 +37,7 @@ const FacilityWorld = lazy(() => import('./Facility'))
 import EmployeeChat from '../components/EmployeeChat'
 import { OFFICE_KEY, buildChatSections, officeThread, threadWith, teamUnreadTotal } from '../lib/teamChat'
 import PhotoLightbox from '../components/PhotoLightbox'
+import PhotoPickTiles from '../components/PhotoPickTiles'
 import { photoMessage, chatPreview } from '../lib/chatContent'
 import { shouldAskForgot, employeeSlipState, employeeSlipText, problemMessage } from '../lib/fieldExec'
 import { askClientRating } from '../lib/clientRatingAsk'
@@ -2911,10 +2912,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                 {beforePhotos.map((p,i)=>(
                   <PhotoThumb key={i} p={p} st={photoStatus[p.id]} alt={labels.before} onRetry={onRetryPhotos} L={L} />
                 ))}
-                <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(248,113,113,0.4)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                  <span style={{fontSize:20}}>📷</span>
-                  <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                </label>
+                <PhotoPickTiles L={L} required={!!activeJob.photo_required} onFiles={files=>addPhoto('start',files)} />
               </div>
             </div>
           )}
@@ -2925,10 +2923,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
               {afterPhotos.map((p,i)=>(
                 <PhotoThumb key={i} p={p} st={photoStatus[p.id]} alt={labels.after} onRetry={onRetryPhotos} L={L} />
               ))}
-              <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                <span style={{fontSize:20}}>📷</span>
-                <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
-              </label>
+              <PhotoPickTiles L={L} onFiles={files=>addPhoto('end',files)} />
             </div>
           </div>
           {onPickVideo && <JobVideoPicker video={jobVideo} onPick={onPickVideo} onRemove={onRemoveVideo} labels={videoLabels} />}
@@ -3143,11 +3138,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                       {beforePhotos.map((p,i)=>(
                         <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.before} />
                       ))}
-                      <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(248,113,113,0.4)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                        <span style={{fontSize:20}}>📷</span>
-                        <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{labels.before}</span>
-                        <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                      </label>
+                      <PhotoPickTiles L={L} required onFiles={files=>addPhoto('start',files)} />
                     </div>
                   </div>
                 )}
@@ -3161,11 +3152,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                     {afterPhotos.map((p,i)=>(
                       <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.after} />
                     ))}
-                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                      <span style={{fontSize:20}}>📷</span>
-                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{labels.after}</span>
-                      <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>addPhoto('end',e.target.files)} />
-                    </label>
+                    <PhotoPickTiles L={L} onFiles={files=>addPhoto('end',files)} />
                   </div>
                 </div>
                 {onPickVideo && <JobVideoPicker video={jobVideo} onPick={onPickVideo} onRemove={onRemoveVideo} labels={videoLabels} />}
@@ -3202,11 +3189,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                     {beforePhotos.map((p,i)=>(
                       <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.before} />
                     ))}
-                    <label style={{width:64,height:64,borderRadius:8,border:'1.5px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexDirection:'column',gap:2}}>
-                      <span style={{fontSize:20}}>📷</span>
-                      <span style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{labels.before}</span>
-                      <input type="file" accept="image/*" capture="environment" multiple style={{display:'none'}} onChange={e=>addPhoto('start',e.target.files)} />
-                    </label>
+                    <PhotoPickTiles L={L} required={!!job.photo_required} onFiles={files=>addPhoto('start',files)} />
                   </div>
                 </div>
                 {(() => { const needPhoto = job.photo_required && beforePhotos.length===0; return (
