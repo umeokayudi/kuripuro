@@ -110,7 +110,6 @@ import { contractForAgendaJob, expectedMinutes as plannedMinutes, checklistUpdat
 import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
 import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
-import { PushToggle } from '../components/PushNotifications'
 import { tabFromUrl, clearTabParam } from '../lib/push'
 import { canJoinDupla, isDupla, duplaInfo } from '../lib/duplaJob'
 import { joinDupla, leaveDupla } from '../lib/duplaJobOps'
@@ -2275,7 +2274,6 @@ export default function EmployeePortal() {
               </button>
             ))}
             </div>
-            <PushToggle style={{ margin: '4px 0 10px' }} />
             <div className="emp-menu-footer"><button onClick={logout} className="emp-menu-logout">
               <span style={{fontSize:18}}>🚪</span> {e.logout}
             </button></div>
