@@ -116,7 +116,7 @@ await ok('a new item later: its own notification, in each phone language', async
   assert.equal(sent[0].url, '/schedule')
 })
 
-await ok('6 new items (v1.0.199): each one arrives on its own, no summary', async () => {
+await ok('6 new items (v1.0.200): each one arrives on its own, no summary', async () => {
   const db = fakeDb(new Set(['bell:x'])); sent.length = 0
   const r = res(); await handleBell(req(), r, { snapshot: snap(ITEMS.slice(0, 6)), db })
   assert.equal(r.body.summary, undefined); assert.equal(r.body.results.length, Math.min(6, ITEMS.length))
