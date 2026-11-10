@@ -1838,7 +1838,7 @@ export default function EmployeePortal() {
   const dueSeenRef = useRef({})
   const dueMinute = Math.floor(clock.getTime() / 60000)
   const dueList = useMemo(() => {
-    const list = dueAlertJobs(allJobs, { activeJobId: activeJob?.id, hasActiveJob: !!activeJob })
+    const list = dueAlertJobs(allJobs, { activeJobId: activeJob?.id })
     // Quick round (Alexandre) ticks places off its own list: only spot offers alert there.
     return quickRoundOn ? list.filter(x => x.kind === 'accept') : list
   }, [allJobs, activeJob, quickRoundOn, dueMinute]) // eslint-disable-line react-hooks/exhaustive-deps
