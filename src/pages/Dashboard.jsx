@@ -135,7 +135,7 @@ export default function Dashboard() {
   useEffect(() => {
     load()
     const tick = setInterval(() => setClock(new Date()), 1000)
-    const refresh = setInterval(load, 15000)
+    const refresh = setInterval(() => { if (document.visibilityState !== 'hidden') load() }, 15000) // v1.0.204 · paused while hidden; onVisible reloads
     // v1.0.149 · something resolved in the bell or another screen → this list reloads now, not in 15 s
     const onChanged = () => load()
     const onVisible = () => { if (document.visibilityState === 'visible') load() }
