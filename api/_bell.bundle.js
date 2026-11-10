@@ -276,6 +276,37 @@ var init_testData = __esm({
   }
 });
 
+// src/lib/duplaJob.js
+function duplaInfo(job2) {
+  const d = String(job2?.description || "");
+  if (!d.includes("\u{1F465}")) return null;
+  const undone = new Set([...d.matchAll(LEFT_RE)].map((m) => m[1].toLowerCase()));
+  let found = null;
+  for (const line of d.split("\n")) {
+    const h = line.match(HELPER_RE);
+    const m = h ? null : line.match(MAIN_RE);
+    const hit = h || m;
+    if (!hit || undone.has(hit[2].toLowerCase())) continue;
+    found = { role: h ? "helper" : "main", partnerName: hit[1].trim(), partnerJobId: hit[2] };
+  }
+  return found;
+}
+function areDuplaPartners(a, b) {
+  if (!a || !b) return false;
+  const ia = duplaInfo(a), ib = duplaInfo(b);
+  return ia?.partnerJobId === b.id || ib?.partnerJobId === a.id;
+}
+var UUID, MAIN_RE, HELPER_RE, LEFT_RE;
+var init_duplaJob = __esm({
+  "src/lib/duplaJob.js"() {
+    init_jobEmployeePay();
+    UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+    MAIN_RE = new RegExp(`\u{1F465} Dupla com (.+?) \xB7 job (${UUID})`, "i");
+    HELPER_RE = new RegExp(`\u{1F465} Ajudando (.+?) \xB7 job (${UUID})`, "i");
+    LEFT_RE = new RegExp(`\u{1F465} Dupla desfeita[^\\n]*?\xB7 job (${UUID})`, "gi");
+  }
+});
+
 // src/lib/jobCoverage.js
 function coveredJobs(jobs = []) {
   const doneBy = /* @__PURE__ */ new Map();
@@ -289,7 +320,7 @@ function coveredJobs(jobs = []) {
   if (!doneBy.size) return out;
   for (const a of jobs || []) {
     if (!a || !a.employee_id || !["assigned", "in_progress"].includes(a.status) || isKeptCover(a)) continue;
-    const b = (doneBy.get(coverKey(a)) || []).find((x) => x.id !== a.id && x.employee_id && x.employee_id !== a.employee_id);
+    const b = (doneBy.get(coverKey(a)) || []).find((x) => x.id !== a.id && x.employee_id && x.employee_id !== a.employee_id && !areDuplaPartners(a, x));
     if (b) out.set(a.id, b);
   }
   return out;
@@ -298,6 +329,7 @@ var getCleaningType2, KEEP_MARK, norm2, placeOf, serviceOf, coverKey, isKeptCove
 var init_jobCoverage = __esm({
   "src/lib/jobCoverage.js"() {
     init_jobEmployeePay();
+    init_duplaJob();
     getCleaningType2 = (job2) => {
       const t = `${job2?.title || ""} ${job2?.description || ""}`.toLowerCase();
       return /deep\s*clean|profunda|limpeza profunda|range hood|grease trap|grating|ac cleaning|stove|fog[aã]o|レンジフード|グリストラップ|コンロ/.test(t) ? "deep" : "basic";
@@ -328,6 +360,7 @@ var init_jobCounts = __esm({
   "src/lib/jobCounts.js"() {
     init_testData();
     init_jobCoverage();
+    init_duplaJob();
     init_dates();
     init_jobDeadline();
     LATE_AFTER_MIN = 5;
@@ -1004,7 +1037,7 @@ figcaption{font-size:10.5px;color:#556;margin-top:2px}
 .cap{font-size:10.5px;color:#667;margin:2px 0 10px}
 .pair{break-inside:avoid;margin-bottom:8px}
 .pair .grid{max-width:360px}
-.sigs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 0;break-inside:avoid}.sigbox{border:1px solid #c9d3e0;padding:8px 10px;min-height:96px}.sigbox small{display:block;color:#556;font-size:10.5px}.sigbox img{max-height:64px;max-width:100%;display:block;margin:4px 0}.sigbox .nos{color:#b4232c;font-size:11.5px;padding:18px 0}.sigbox .wait{color:#8a6d1a;font-size:11.5px;padding:18px 0}.miss{display:inline-block;background:#fdecee;color:#b4232c;font-size:11px;padding:1px 8px;border-radius:99px;margin:2px 0 6px}.ck{list-style:none;padding-left:4px}.ck li::before{content:attr(data-m);display:inline-block;width:18px;font-weight:700}.ck li.no{color:#b4232c}.pend{color:#8a6d1a;font-size:11px}.svsig{display:flex;align-items:center;gap:8px;margin:6px 0 2px;font-size:11px;color:#556}.svsig img{height:38px;max-width:160px;object-fit:contain;border-bottom:1px solid #c9d3e0;background:#fff}.svsig .nos{color:#b4232c}
+.sigs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 0;break-inside:avoid}.sigbox{border:1px solid #c9d3e0;padding:8px 10px;min-height:96px}.sigbox small{display:block;color:#556;font-size:10.5px}.sigbox img{max-height:64px;max-width:100%;display:block;margin:4px 0}.sigbox .nos{color:#b4232c;font-size:11.5px;padding:18px 0}.sigbox .wait{color:#8a6d1a;font-size:11.5px;padding:18px 0}.miss{display:inline-block;background:#fdecee;color:#b4232c;font-size:11px;padding:1px 8px;border-radius:99px;margin:2px 0 6px}.ck{list-style:none;padding-left:4px}.ck li::before{content:attr(data-m);display:inline-block;width:18px;font-weight:700}.ck li.no{color:#b4232c}.pend{color:#8a6d1a;font-size:11px}.svsig{display:flex;align-items:center;gap:8px;margin:6px 0 2px;font-size:11px;color:#556}.svsig img{height:38px;max-width:160px;object-fit:contain;border-bottom:1px solid #c9d3e0;background:#fff}.svsig .nos{color:#b4232c}.team{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mem{border:1px solid #c9d3e0;padding:8px 10px;break-inside:avoid}.mem h3{margin:0 0 4px;font-size:13px}.mem .mt{color:#556;font-size:10.5px;margin-top:6px}
 .sign{border:1px solid #1f3a5f;background:#eef2f7;padding:10px 12px;font-size:11.5px;margin-top:18px;line-height:1.6;break-inside:avoid}
 @media print{.page{padding:14px 0 0}.bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.pt th,.kv th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 @media (max-width:560px){h1{font-size:19px}.kv th{width:38%}.pt{font-size:10.5px}}

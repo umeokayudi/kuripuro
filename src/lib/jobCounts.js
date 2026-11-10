@@ -10,6 +10,7 @@
 //   atrasados    not started and past its time (today, LATE_AFTER_MIN after the hour) or of a past day
 import { isTestJob } from './testData.js'
 import { coveredJobs } from './jobCoverage.js'
+import { isDuplaHelper } from './duplaJob.js'
 import { tokyoToday, tokyoNow } from './dates.js'
 import { isDeadlineJob, isDeadlineLate } from './jobDeadline.js'
 
@@ -48,6 +49,8 @@ export function countJobs(jobs, { from = null, to = null, today = tokyoToday(), 
   // v1.0.148 · a service covered by another person counts once (B's completed job), never as A's pending/late
   const cov = coveredJobs(list)
   if (cov.size) list = list.filter(j => !cov.has(j.id))
+  // v1.0.197 · a service done in pair counts once (the helper's own row is for pay / report only)
+  list = list.filter(j => !isDuplaHelper(j))
   const c = { scheduled: list.length, covered: cov.size, assigned: 0, unassigned: 0, completed: 0, inProgress: 0, pending: 0, notStarted: 0, late: 0, list }
   for (const j of list) {
     if (j.employee_id) c.assigned++; else c.unassigned++

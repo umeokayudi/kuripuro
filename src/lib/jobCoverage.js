@@ -12,6 +12,7 @@ const getCleaningType = job => {
 }
 
 import { jobEmployeePay } from './jobEmployeePay.js'
+import { areDuplaPartners } from './duplaJob.js'
 
 export const KEEP_MARK = '⟲ Cobertura: mantido'
 export const REMOVED_MARK = '⊘ Baixado por autorização do dono'
@@ -44,7 +45,8 @@ export function coveredJobs(jobs = []) {
   if (!doneBy.size) return out
   for (const a of jobs || []) {
     if (!a || !a.employee_id || !['assigned', 'in_progress'].includes(a.status) || isKeptCover(a)) continue
-    const b = (doneBy.get(coverKey(a)) || []).find(x => x.id !== a.id && x.employee_id && x.employee_id !== a.employee_id)
+    // v1.0.197 · the two halves of a pair ("serviço em dupla") are never a cover of each other
+    const b = (doneBy.get(coverKey(a)) || []).find(x => x.id !== a.id && x.employee_id && x.employee_id !== a.employee_id && !areDuplaPartners(a, x))
     if (b) out.set(a.id, b)
   }
   return out

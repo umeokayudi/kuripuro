@@ -12,6 +12,7 @@ const steps = [
   ['node scripts/test-training.mjs', 'treinamento (links do YouTube + assistido de verdade)'],
   ['node scripts/test-day-panel.mjs', 'day panel (Painel do Dia)'],
   ['node scripts/test-day-check.mjs', 'Conferir o dia (feito certo / conferir / falta)'],
+  ['node scripts/test-dupla.mjs', 'Serviço em dupla (valor meio a meio, relatório dos dois)'],
   ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],
   ['npx vite-node scripts/test-deep-month.mjs', 'deep cleaning of the month (Painel + Deep & Spot)'],
   ['npx vite-node scripts/test-deep-items-edit.mjs', 'editar só os itens feitos num restaurante (deep)'],

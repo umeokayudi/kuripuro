@@ -109,6 +109,8 @@ import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
 import { PushToggle } from '../components/PushNotifications'
 import { tabFromUrl, clearTabParam } from '../lib/push'
+import { canJoinDupla, isDupla, duplaInfo } from '../lib/duplaJob'
+import { joinDupla, leaveDupla } from '../lib/duplaJobOps'
 import {
   enrichJobValues,
   formatShiftElapsed,
@@ -871,7 +873,7 @@ export default function EmployeePortal() {
   const openAddService = async () => {
     const { data } = await supabase
       .from('jobs')
-      .select('id, title, employee_id, employee_name, status, started_at, scheduled_date, retro_report, photo_end_url, completed_at')
+      .select('id, title, description, job_category, employee_id, employee_name, status, started_at, scheduled_date, retro_report, photo_end_url, completed_at')
       .in('scheduled_date', [tokyoToday(), tokyoTomorrow()])
       .in('status', ['assigned', 'in_progress', 'completed'])
     setTodayAllJobs((data || []).filter(j => !isDuskinJob(j)))
@@ -975,8 +977,46 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleAddService = async (location, cleaningType, deepComponents, option, plan = null) => {
+  // v1.0.197 · join a coworker's service as a pair: own job for the same service, pay split 50/50
+  const handleJoinDupla = async (mainJob) => {
+    if (addServiceBusy || !mainJob?.id) return
+    setAddServiceBusy(true)
+    try {
+      const result = await joinDupla({ mainJobId: mainJob.id, helper: { id: user.id, name: user.name } })
+      if (!result.ok) {
+        if (result.error === 'helper_busy') toast.error(fill(e.duplaBusy, { title: result.detail || '' }))
+        else if (result.error === 'already_dupla') toast.error(e.duplaAlready)
+        else toast.error(result.detail ? `${e.duplaFailed} (${result.detail})` : e.duplaFailed)
+        return
+      }
+      toast.success(fill(e.duplaJoined, { name: mainJob.employee_name || '—' }))
+      setShowAddService(false)
+      await loadAll()
+      setTab('shift')
+    } catch (err) {
+      toast.error(`${e.duplaFailed} (${err?.message || err})`)
+    } finally {
+      setAddServiceBusy(false)
+    }
+  }
+
+  const handleLeaveDupla = async (job, pair) => {
+    if (!job || addServiceBusy) return
+    if (!(await askConfirm({ message: fill(e.duplaLeaveConfirm, { name: pair?.partnerName || '—' }), danger: true }))) return
+    setAddServiceBusy(true)
+    try {
+      const r = await leaveDupla({ job, by: user.name })
+      if (!r.ok) return toast.error(r.detail || e.duplaFailed)
+      toast.success(e.duplaLeft)
+      await loadAll()
+    } finally {
+      setAddServiceBusy(false)
+    }
+  }
+
+  const handleAddService = async (location, cleaningType, deepComponents, option, plan = null, mode = 'take') => {
     if (addServiceBusy) return
+    if (mode === 'dupla') return handleJoinDupla(option?.job)
     const date = plan?.date || tokyoToday()
     const forTomorrow = date !== tokyoToday()
     if (option?.state === 'mine') {
@@ -2390,7 +2430,7 @@ export default function EmployeePortal() {
         {tab==='shift'&&(
           <section className="emp-shift-screen">
             <div className="emp-section-heading"><span>{e.workspace}</span><h1>{L('My day','今日の予定','Meu dia')}</h1><p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}</p></div>
-          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRegister} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} photoStatus={photoStatus} onRetryPhotos={retryPhotos} onReportProblem={setProblemJob} />
+          <ShiftView allJobs={allJobs} tomorrowJobs={tomorrowJobs} activeJob={activeJob} elapsed={elapsed} checklist={checklist} setChecklist={setChecklist} notes={notes} setNotes={setNotes} jobPhotos={jobPhotos} PhotoGrid={PhotoGrid} handleStart={handleStart} handleComplete={handleComplete} handleCompleteWithSig={handleCompleteWithSig} handleAbandonStale={handleAbandonStaleShift} submitting={submitting} overdueBusy={overdueBusy} fmt={fmt} today={today} S={S} addPhoto={addPhoto} openRetro={openRegister} setSelectedJob={setSelectedJob} serviceContracts={serviceContracts} onOpenTraining={setTrainingModal} hasFacility={hasFacility} onOpenFacility={setFacilityJob} facilityLabel={tr.facility.openModel} onOpenAddService={openAddService} onOpenPastService={openPastService} onRegisterLate={handleRegisterLate} onMoveJob={handleMoveJob} reorderBusy={reorderBusy} onAcceptSpot={handleAcceptSpot} onDeclineSpot={handleDeclineSpot} jobVideo={jobVideo} onPickVideo={pickJobVideo} onRemoveVideo={clearJobVideo} videoLabels={vt} voiceOn={voiceOn} onToggleVoice={canSpeak() ? toggleVoice : null} labels={e} lang={lang} focusJobId={focusJobId} onAskAI={setAiJob} photoStatus={photoStatus} onRetryPhotos={retryPhotos} onReportProblem={setProblemJob} onLeaveDupla={handleLeaveDupla} />
           {/* v1.0.172 · service reports live here (and in ☰ → Relatórios), with "fazer todos do dia" */}
           <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} />
           <TeamDay userId={user.id} L={L} />
@@ -2798,7 +2838,7 @@ function payText(job, L, lang) {
   return `¥${jobEmployeePay(job).toLocaleString(localeOf(lang))}`
 }
 
-function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId, onAskAI, photoStatus = {}, onRetryPhotos, onReportProblem }) {
+function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, setChecklist, notes, setNotes, jobPhotos, PhotoGrid, handleStart, handleComplete, handleCompleteWithSig, handleAbandonStale, submitting, overdueBusy, fmt, today, S, addPhoto, openRetro, setSelectedJob, serviceContracts, onOpenTraining, hasFacility, onOpenFacility, facilityLabel, onOpenAddService, onOpenPastService, onRegisterLate, onMoveJob, reorderBusy, onAcceptSpot, onDeclineSpot, jobVideo, onPickVideo, onRemoveVideo, videoLabels, voiceOn, onToggleVoice, labels, lang, focusJobId, onAskAI, photoStatus = {}, onRetryPhotos, onReportProblem, onLeaveDupla }) {
   const todayJobs = sortByOrder(allJobs.filter(j=>j.scheduled_date===today))
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
@@ -2839,6 +2879,12 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
               <div style={{fontSize:10,color:activeIsStale?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:4}}>● {activeIsStale ? labels.staleShiftTitle : labels.activeShiftTitle}</div>
               <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.replace(/ — .*/,'')}</div>
               <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:3}}>{activeJob.scheduled_date} · {labels.tapToFinish}</div>
+              {(() => { const pair = duplaInfo(activeJob); return pair ? (
+                <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:8,marginTop:6}}>
+                  <span style={{fontSize:11,fontWeight:800,color:'#7c3aed',background:'rgba(124,58,237,0.12)',padding:'3px 9px',borderRadius:99}}>{fill(labels.duplaWith, { name: pair.partnerName })} · {labels.duplaHalf}</span>
+                  {pair.role === 'helper' && onLeaveDupla && <button type="button" onClick={()=>onLeaveDupla(activeJob, pair)} style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.55)',background:'none',border:'1px solid rgba(255,255,255,0.15)',borderRadius:99,padding:'3px 9px',cursor:'pointer'}}>{labels.duplaLeave}</button>}
+                </div>
+              ) : null })()}
             </div>
             {activeIsStale&&<div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
               {formatShiftElapsed(elapsed, lang)}
@@ -3484,6 +3530,8 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   const [day, setDay] = useState('today')
   const [shiftStart, setShiftStart] = useState('00:30')
   const [shiftEnd, setShiftEnd] = useState('05:00')
+  // v1.0.197 · 'take' = the service becomes mine; 'dupla' = I join the other person, pay split 50/50
+  const [mode, setMode] = useState('take')
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
@@ -3501,7 +3549,13 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
     ? options.filter(o => o.location.name.toLowerCase().includes(q) || (o.location.group || '').toLowerCase().includes(q))
     : options
 
+  const joinable = (opt) => !isTomorrow && !!opt?.job && (opt.state === 'blocked' || opt.state === 'transfer')
+    && canJoinDupla(opt.job, employeeId, dayDate).ok
+  const partnerName = (opt) => opt?.job?.employee_name || opt?.fromEmployee || '—'
+
   const badge = (opt) => {
+    if (opt.state === 'blocked' && joinable(opt)) return { text: fill(labels.duplaJoinBadge, { name: partnerName(opt) }), color: '#7c3aed', bg: 'rgba(124,58,237,0.12)' }
+    if (opt.state === 'blocked' && isDupla(opt.job)) return { text: labels.duplaAlready, color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }
     if (opt.state === 'mine') return { text: labels.addServiceMine, color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
     if (opt.state === 'done_today') {
       if (isJobFullyRegistered(opt.job)) return { text: labels.addServiceDoneToday, color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' }
@@ -3531,9 +3585,12 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
 
   const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
   const doneNeedsRetro = picked?.state === 'done_today' && !isJobFullyRegistered(picked.job)
-  const canConfirm = picked && deepReady && shiftCheck.ok && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || (doneNeedsRetro && !isTomorrow))
+  const duplaMode = mode === 'dupla' && joinable(picked)
+  const canConfirm = duplaMode || (picked && deepReady && shiftCheck.ok && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || (doneNeedsRetro && !isTomorrow)))
 
-  const confirmLabel = picked?.state === 'done_today' && doneNeedsRetro
+  const confirmLabel = duplaMode
+    ? fill(labels.duplaConfirm, { name: partnerName(picked) })
+    : picked?.state === 'done_today' && doneNeedsRetro
     ? labels.addServiceDoneTodayRetro
     : picked?.state === 'transfer'
       ? fill(labels.addServiceTransferConfirm, { name: picked.fromEmployee })
@@ -3643,13 +3700,13 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           {filtered.map(opt => {
             const b = badge(opt)
             const selected = picked?.location?.name === opt.location.name
-            const disabled = opt.state === 'mine' || opt.state === 'blocked' || (opt.state === 'done_today' && isJobFullyRegistered(opt.job))
+            const disabled = opt.state === 'mine' || (opt.state === 'blocked' && !joinable(opt)) || (opt.state === 'done_today' && isJobFullyRegistered(opt.job))
             return (
               <button
                 key={opt.location.name}
                 type="button"
                 disabled={disabled}
-                onClick={() => setPicked(opt)}
+                onClick={() => { setPicked(opt); setMode(opt.state === 'blocked' ? 'dupla' : 'take') }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, borderRadius: 12,
                   border: selected ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.08)',
@@ -3669,10 +3726,34 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           })}
         </div>
 
+        {picked && joinable(picked) && (
+          <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 12, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.3)' }}>
+            {picked.state === 'transfer' && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: duplaMode ? 10 : 0 }}>
+                {['take', 'dupla'].map(m => (
+                  <button key={m} type="button" onClick={() => setMode(m)} style={{
+                    flex: 1, minWidth: 0, padding: '10px 8px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                    background: mode === m ? (m === 'dupla' ? '#c4b5fd' : 'rgba(251,191,36,0.25)') : 'rgba(255,255,255,0.05)',
+                    color: mode === m ? (m === 'dupla' ? '#2e1065' : '#fbbf24') : 'rgba(255,255,255,0.5)',
+                  }}>
+                    {m === 'dupla' ? labels.duplaDo : labels.duplaTake}
+                  </button>
+                ))}
+              </div>
+            )}
+            {duplaMode && (
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: 'rgba(255,255,255,0.75)' }}>
+                <div style={{ fontWeight: 800, color: '#7c3aed', marginBottom: 4 }}>{fill(labels.duplaWith, { name: partnerName(picked) })} · {labels.duplaHalf}</div>
+                {labels.duplaHint}
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           type="button"
           disabled={!canConfirm || busy}
-          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked, isTomorrow ? { date: dayDate, start: shiftStart, end: shiftEnd } : null)}
+          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked, isTomorrow ? { date: dayDate, start: shiftStart, end: shiftEnd } : null, duplaMode ? 'dupla' : 'take')}
           style={{
             width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
             background: canConfirm && !busy ? 'linear-gradient(135deg,#60a5fa,#3b82f6)' : 'rgba(255,255,255,0.08)',

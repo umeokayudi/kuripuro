@@ -13,6 +13,7 @@ import { checklistDisplayLabel, splitChecklist } from './jobChecklist'
 import { signatureForDisplay } from './signature'
 import { getCleaningType } from './cleaningType'
 import { loadJobAdminSignature } from './jobAdminSignature'
+import { duplaInfo, memberWork } from './duplaJob'
 
 const LANG = 'ja' // client-facing documents are in Japanese, like the other reports
 
@@ -41,13 +42,64 @@ export async function loadJob(jobOrId) {
   return data
 }
 
+// v1.0.197 · service done in pair: the other person's job (null when alone or gone)
+async function pairJob(job) {
+  const info = duplaInfo(job)
+  if (!info) return null
+  const { data } = await supabase.from('jobs').select('*').eq('id', info.partnerJobId).maybeSingle()
+  return data && data.status !== 'cancelled' ? data : null
+}
+
+/**
+ * v1.0.197 · Pair data on the report: both people's work ("o que cada um fez"), both cleaner signatures,
+ * the checklist done by either, and the partner's photos. Main person first. Returns true when it changed.
+ */
+async function applyPair(r, main, partner) {
+  if (!partner) return false
+  const people = [main, partner]
+  const team = await Promise.all(people.map(async j => ({ ...memberWork(j, jobChecklistRows(j)), sig: j.signature_url ? await signatureForDisplay(j.signature_url).catch(() => j.signature_url) : null })))
+  const cleaners = team.map(m => ({ name: m.name, url: m.sig }))
+  // checklist: an item counts as done when either of the two did it
+  const rows = jobChecklistRows(main)
+  const byLabel = new Map(team.flatMap(m => m.done.map(l => [l, true])))
+  const checklist = rows.map(x => ({ ...x, done: x.done || byLabel.has(x.label) }))
+  const media = await listJobMedia(partner).catch(() => [])
+  const have = new Set((r.photos || []).map(p => p.path))
+  const extra = media.filter(m => !have.has(m.path)).map(m => ({ path: m.path, section: m.section, kind: m.kind, by: partner.employee_name || '', at: partner.completed_at || null }))
+  const next = {
+    team: team.map(m => ({ ...m, sig: null })), // signatures live in r.signatures
+    cleaners,
+    checklist,
+    job_ids: [...new Set([...(r.job_ids || []), main.id, partner.id])],
+    lead: people.map(j => j.employee_name).filter(Boolean).join('・'),
+  }
+  const before = JSON.stringify([r.team, r.signatures?.cleaners, r.checklist, r.job_ids, r.fields?.lead])
+  r.team = next.team
+  r.signatures = { ...(r.signatures || {}), cleaner: cleaners[0], cleaners, owner: r.signatures?.owner || null }
+  r.checklist = rows.length ? checklist : r.checklist
+  r.job_ids = next.job_ids
+  r.fields = { ...(r.fields || {}), lead: next.lead || r.fields?.lead || '' }
+  if (extra.length) r.photos = [...(r.photos || []), ...extra]
+  return extra.length > 0 || before !== JSON.stringify([r.team, r.signatures?.cleaners, r.checklist, r.job_ids, r.fields?.lead])
+}
+
 /** Builds (first tap) or opens (next taps) the simple report of a service. */
 export async function quickJobReport(jobOrId, { author } = {}) {
-  const job = await loadJob(jobOrId)
+  let job = await loadJob(jobOrId)
+  // v1.0.197 · a pair has ONE report, built on the main job (the helper's tap opens the same one)
+  if (duplaInfo(job)?.role === 'helper') {
+    const main = await pairJob(job)
+    if (main) job = main
+  }
+  const partner = await pairJob(job)
   const existingId = await reportIdForJob(job.id)
   if (existingId) {
     const r = await loadReport(existingId)
     if (r) {
+      if (partner && await applyPair(r, job, partner)) {
+        if (!r.signatures?.cleaner && job.signature_url) r.signatures = { ...r.signatures, cleaner: await cleanerSignature(job) }
+        return saveReport(r, { by: author?.name || '', action: 'pair' })
+      }
       // An older report without the cleaner's signature gets it now (nothing else changes).
       if (!r.signatures && job.signature_url) { r.signatures = { cleaner: await cleanerSignature(job), owner: null }; return saveReport(r, { by: author?.name || '', action: 'signature-added' }) }
       // v1.0.164 · the admin signed the service in Reports after the report was made
@@ -72,6 +124,7 @@ export async function quickJobReport(jobOrId, { author } = {}) {
   r.checklist = jobChecklistRows(job)
   const adm = await loadJobAdminSignature(job.id)
   r.signatures = { cleaner: await cleanerSignature(job), owner: adm ? { name: adm.name, url: adm.url, at: adm.at } : null }
+  if (partner) await applyPair(r, job, partner)
   return saveReport(r, { by: author?.name || '', action: 'quick' })
 }
 

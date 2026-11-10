@@ -237,7 +237,7 @@ figcaption{font-size:10.5px;color:#556;margin-top:2px}
 .cap{font-size:10.5px;color:#667;margin:2px 0 10px}
 .pair{break-inside:avoid;margin-bottom:8px}
 .pair .grid{max-width:360px}
-.sigs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 0;break-inside:avoid}.sigbox{border:1px solid #c9d3e0;padding:8px 10px;min-height:96px}.sigbox small{display:block;color:#556;font-size:10.5px}.sigbox img{max-height:64px;max-width:100%;display:block;margin:4px 0}.sigbox .nos{color:#b4232c;font-size:11.5px;padding:18px 0}.sigbox .wait{color:#8a6d1a;font-size:11.5px;padding:18px 0}.miss{display:inline-block;background:#fdecee;color:#b4232c;font-size:11px;padding:1px 8px;border-radius:99px;margin:2px 0 6px}.ck{list-style:none;padding-left:4px}.ck li::before{content:attr(data-m);display:inline-block;width:18px;font-weight:700}.ck li.no{color:#b4232c}.pend{color:#8a6d1a;font-size:11px}.svsig{display:flex;align-items:center;gap:8px;margin:6px 0 2px;font-size:11px;color:#556}.svsig img{height:38px;max-width:160px;object-fit:contain;border-bottom:1px solid #c9d3e0;background:#fff}.svsig .nos{color:#b4232c}
+.sigs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 0;break-inside:avoid}.sigbox{border:1px solid #c9d3e0;padding:8px 10px;min-height:96px}.sigbox small{display:block;color:#556;font-size:10.5px}.sigbox img{max-height:64px;max-width:100%;display:block;margin:4px 0}.sigbox .nos{color:#b4232c;font-size:11.5px;padding:18px 0}.sigbox .wait{color:#8a6d1a;font-size:11.5px;padding:18px 0}.miss{display:inline-block;background:#fdecee;color:#b4232c;font-size:11px;padding:1px 8px;border-radius:99px;margin:2px 0 6px}.ck{list-style:none;padding-left:4px}.ck li::before{content:attr(data-m);display:inline-block;width:18px;font-weight:700}.ck li.no{color:#b4232c}.pend{color:#8a6d1a;font-size:11px}.svsig{display:flex;align-items:center;gap:8px;margin:6px 0 2px;font-size:11px;color:#556}.svsig img{height:38px;max-width:160px;object-fit:contain;border-bottom:1px solid #c9d3e0;background:#fff}.svsig .nos{color:#b4232c}.team{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mem{border:1px solid #c9d3e0;padding:8px 10px;break-inside:avoid}.mem h3{margin:0 0 4px;font-size:13px}.mem .mt{color:#556;font-size:10.5px;margin-top:6px}
 .sign{border:1px solid #1f3a5f;background:#eef2f7;padding:10px 12px;font-size:11.5px;margin-top:18px;line-height:1.6;break-inside:avoid}
 @media print{.page{padding:14px 0 0}.bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.pt th,.kv th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 @media (max-width:560px){h1{font-size:19px}.kv th{width:38%}.pt{font-size:10.5px}}
@@ -300,21 +300,42 @@ function photoGrid(photos, { cols = 3, caption = '', cell = 0 } = {}) {
 // v1.0.158 · signatures (cleaner registered on the job; owner only after "Aceitar e assinar"),
 // checklist and "no photo / no signature" tags of the one-tap reports.
 const SIG = {
-  ja: { cleaner: '作業担当者 署名', owner: '責任者 承認・署名', none: '署名なし', wait: '責任者の承認待ち', noPhoto: '写真なし', checklist: 'チェックリスト', day: '作業日報', staff: '担当者', pending: '（未完了）' },
-  en: { cleaner: 'Cleaner signature', owner: 'Approved and signed by', none: 'No signature', wait: 'Waiting for the owner to accept', noPhoto: 'No photo', checklist: 'Checklist', day: 'Daily work report', staff: 'Cleaner', pending: '(not finished)' },
-  pt: { cleaner: 'Assinatura do limpador', owner: 'Aceito e assinado por', none: 'Sem assinatura', wait: 'Aguardando o aceite do dono', noPhoto: 'Sem foto', checklist: 'Checklist', day: 'Relatório do dia', staff: 'Limpador', pending: '(não concluído)' },
+  ja: { cleaner: '作業担当者 署名', owner: '責任者 承認・署名', none: '署名なし', wait: '責任者の承認待ち', noPhoto: '写真なし', checklist: 'チェックリスト', day: '作業日報', staff: '担当者', pending: '（未完了）', team: '作業担当（2名で実施）', did: '実施した作業', notDid: '未実施', note: 'コメント', time: '作業時間' },
+  // v1.0.197 · pair: team / did / notDid / time
+  en: { cleaner: 'Cleaner signature', owner: 'Approved and signed by', none: 'No signature', wait: 'Waiting for the owner to accept', noPhoto: 'No photo', checklist: 'Checklist', day: 'Daily work report', staff: 'Cleaner', pending: '(not finished)', team: 'Team (done in pair)', did: 'What was done', notDid: 'Not done', note: 'Note', time: 'Time' },
+  pt: { cleaner: 'Assinatura do limpador', owner: 'Aceito e assinado por', none: 'Sem assinatura', wait: 'Aguardando o aceite do dono', noPhoto: 'Sem foto', checklist: 'Checklist', day: 'Relatório do dia', staff: 'Limpador', pending: '(não concluído)', team: 'Equipe (feito em dupla)', did: 'O que fez', notDid: 'Não fez', note: 'Observação', time: 'Horário' },
 }
 export const sigLabels = lang => SIG[lang] || SIG.ja
 function sigBlock(r) {
   if (!r.signatures) return ''
   const L = sigLabels(r.lang)
   const c = r.signatures.cleaner, o = r.signatures.owner
+  // v1.0.197 · service done in pair: one signature box per cleaner, then the owner
+  const many = (r.signatures.cleaners || []).filter(x => x && (x.name || x.url))
+  if (many.length > 1) {
+    const when = o?.at ? new Date(o.at).toLocaleDateString(r.lang === 'ja' ? 'ja-JP' : r.lang === 'pt' ? 'pt-BR' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Tokyo' }) : ''
+    const box = x => `<div class="sigbox"><small>${esc(L.cleaner)}</small>${x?.url ? `<img src="${esc(x.url)}" alt="">` : `<div class="nos">${esc(L.none)}</div>`}<small>${esc(x?.name || '')}</small></div>`
+    return `<div class="sigs" style="grid-template-columns:repeat(${Math.min(3, many.length + 1)},1fr)">${many.map(box).join('')}<div class="sigbox"><small>${esc(L.owner)}</small>${o?.url ? `<img src="${esc(o.url)}" alt=""><small>${esc(o.name || '')}${when ? ` · ${esc(when)}` : ''}</small>` : `<div class="wait">${esc(L.wait)}</div>`}</div></div>`
+  }
   const when = o?.at ? new Date(o.at).toLocaleDateString(r.lang === 'ja' ? 'ja-JP' : r.lang === 'pt' ? 'pt-BR' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Tokyo' }) : ''
   return `<div class="sigs"><div class="sigbox"><small>${esc(L.cleaner)}</small>${c?.url ? `<img src="${esc(c.url)}" alt="">` : `<div class="nos">${esc(L.none)}</div>`}<small>${esc(c?.name || '')}</small></div><div class="sigbox"><small>${esc(L.owner)}</small>${o?.url ? `<img src="${esc(o.url)}" alt=""><small>${esc(o.name || '')}${when ? ` · ${esc(when)}` : ''}</small>` : `<div class="wait">${esc(L.wait)}</div>`}</div></div>`
 }
 const checklistBlock = r => {
   const items = (r.checklist || []).filter(x => String(x?.label || '').trim())
   return items.length ? `<section><h2>${esc(sigLabels(r.lang).checklist)}</h2><ul class="ck">${items.map(x => `<li data-m="${x.done ? '✓' : '✗'}"${x.done ? '' : ' class="no"'}>${esc(x.label)}</li>`).join('')}</ul></section>` : ''
+}
+
+// v1.0.197 · "o que cada um fez": one card per person of the pair (times, items done / not done, note)
+const hhmm = (iso, lang) => (iso ? new Date(iso).toLocaleTimeString(lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : '')
+export function teamBlock(r) {
+  const team = (r.team || []).filter(m => m && m.name)
+  if (team.length < 2) return ''
+  const L = sigLabels(r.lang)
+  const card = m => {
+    const time = [hhmm(m.started_at, r.lang), hhmm(m.completed_at, r.lang)].filter(Boolean).join('〜')
+    return `<div class="mem"><h3>${esc(m.name)}${m.status && m.status !== 'completed' ? ` <span class="pend">${esc(L.pending)}</span>` : ''}</h3>${time ? `<div class="mt">${esc(L.time)}：${esc(time)}</div>` : ''}${(m.done || []).length ? `<div class="mt">${esc(L.did)}</div><ul class="ck">${m.done.map(x => `<li data-m="✓">${esc(x)}</li>`).join('')}</ul>` : ''}${(m.not_done || []).length && !(m.done || []).length ? `<div class="mt">${esc(L.notDid)}</div><ul class="ck">${m.not_done.map(x => `<li data-m="✗" class="no">${esc(x)}</li>`).join('')}</ul>` : ''}${m.note ? `<div class="mt">${esc(L.note)}</div>${paras(m.note)}` : ''}</div>`
+  }
+  return `<section><h2>${esc(L.team)}</h2><div class="team">${team.map(card).join('')}</div></section>`
 }
 
 /** Full A4 HTML of the report (print / save as PDF / client portal). */
@@ -354,6 +375,7 @@ export function reportHtml(r, opts = {}) {
     sec(t.overview, `${r.client_name || r.contact_name ? `<p class="to">${esc([r.client_name, r.contact_name ? `${r.contact_name}${t.sama}` : ''].filter(Boolean).join(' '))}</p>` : ''}${paras(r.summary || t.greeting(r.client_name, r.quote?.number))}${rows.length ? `<table class="kv">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>` : ''}`),
     steps.length ? sec(t.work, `<p>${esc(t.workIntro)}</p><ol>${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`) : '',
     checklistBlock(r),
+    teamBlock(r),
     r.quick && !(r.photos || []).length ? `<section><h2>${esc(t.before)} / ${esc(t.after)}</h2><span class="miss">${esc(sigLabels(r.lang).noPhoto)}</span></section>` : '',
     (photos('before').length || r.before?.text) ? sec(t.before, `${paras(r.before?.text)}${photoGrid(photos('before'), { caption: r.before?.caption, cell: 200 })}`) : '',
     detailed && photos('during').length ? `<h3 class="sub">${esc(t.during)}</h3>${photoGrid(photos('during'), { caption: r.during?.caption, cell: 200 })}` : '',
