@@ -21,18 +21,28 @@ self.addEventListener('push', event => {
   }))
 })
 
+// v1.0.198 · Tapping a notification always opens KuriPuro on the right page.
+// Focus/navigate can fail (window in another Space, uncontrolled tab, old Safari): then open a new window.
 self.addEventListener('notificationclick', event => {
   event.notification.close()
   const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href
   event.waitUntil((async () => {
-    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    const open = wins.find(w => new URL(w.url).origin === self.location.origin)
-    if (open) {
-      await open.focus()
-      // The app reads ?tab= on load; navigate so it opens the right screen.
-      if ('navigate' in open) return open.navigate(url).catch(() => {})
-      return undefined
+    let wins = []
+    try { wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }) } catch { wins = [] }
+    const mine = wins.filter(w => { try { return new URL(w.url).origin === self.location.origin } catch { return false } })
+    const target = mine.find(w => w.focused) || mine.find(w => w.visibilityState === 'visible') || mine[0]
+    if (target) {
+      try {
+        // Ask the page to move itself (works on every client, controlled or not)…
+        target.postMessage({ type: 'kp-open', url })
+        const focused = await target.focus()
+        if (focused) {
+          // …and navigate from here too when the browser allows it.
+          if ('navigate' in target && target.url !== url) { try { await target.navigate(url) } catch { /* page handles kp-open */ } }
+          return
+        }
+      } catch { /* fall through to a new window */ }
     }
-    return self.clients.openWindow(url)
+    try { await self.clients.openWindow(url) } catch { /* nothing else to try */ }
   })())
 })
