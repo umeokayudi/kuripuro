@@ -58,7 +58,7 @@ export function jaFizTimes(job, start, end) {
 }
 
 /** 'times' | 'future' | 'long' | 'checklist' | 'photo' | null */
-export function jaFizError({ times, checklist = [], photos = { before: 0, after: 0 }, role }, now = new Date()) {
+export function jaFizError({ times, checklist = [], photos = { before: 0, after: 0 }, role, signature, requireSignature = false }, now = new Date()) {
   if (!times) return 'times'
   if (new Date(times.completedAt).getTime() > now.getTime() + 60000) return 'future'
   if (times.minutes > 16 * 60) return 'long'
@@ -70,11 +70,13 @@ export function jaFizError({ times, checklist = [], photos = { before: 0, after:
   // Employee: at least one photo (same rule as the old late report). Admin may close without
   // one; the job then waits for the After photo like the manual close.
   if (role !== 'admin' && !(photos.before + photos.after)) return 'photo'
+  // v1.0.207 · "Já fiz" is signed like Concluir
+  if (requireSignature && !signature) return 'signature'
   return null
 }
 
 /** Fields written on the job. `audit` false = the SQL columns are not there yet. */
-export function jaFizPatch({ times, checklist = [], note = '', actor, photoStart = null, photoEnd = null, now = new Date(), audit = true }) {
+export function jaFizPatch({ times, checklist = [], note = '', actor, photoStart = null, photoEnd = null, signature = null, now = new Date(), audit = true }) {
   const total = checklist.length
   const done = checklist.filter(c => c.done).length
   const missed = checklist.filter(c => !c.done).map(c => c.label)
@@ -93,6 +95,8 @@ export function jaFizPatch({ times, checklist = [], note = '', actor, photoStart
   if ((note || '').trim()) patch.notes_employee = note.trim()
   if (photoStart) patch.photo_start_url = photoStart
   if (photoEnd) patch.photo_end_url = photoEnd
+  // v1.0.207 · signed like a normal finish (same column the report and PDF read)
+  if (signature) patch.signature_url = signature
   if (audit) {
     patch.retro_registered_by = actor?.name || null
     patch.retro_registered_role = actor?.role || null
@@ -107,7 +111,7 @@ export const isMissingJaFizColumn = err => {
 }
 
 /** Audit record kept next to the job's photos. */
-export function jaFizAudit({ job, times, checklist = [], note = '', actor, photos, now = new Date() }) {
+export function jaFizAudit({ job, times, checklist = [], note = '', actor, photos, signature = null, now = new Date() }) {
   return {
     kind: 'ja_fiz',
     job_id: job.id,
@@ -127,6 +131,7 @@ export function jaFizAudit({ job, times, checklist = [], note = '', actor, photo
     note: (note || '').trim() || null,
     photos_before: photos?.before || 0,
     photos_after: photos?.after || 0,
+    signed: !!signature,
   }
 }
 

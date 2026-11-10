@@ -159,3 +159,7 @@
   .jf-time-arrow { display: none; }
 }
 @keyframes jf-up { from { transform: translateY(40px); opacity: .6 } to { transform: none; opacity: 1 } }
+/* v1.0.207 · signature in the popup */
+.jf-sig canvas { display: block; width: 100%; height: 140px; background: #fff; border: 1.5px dashed var(--jf-line, #e2e8f0); border-radius: 12px; touch-action: none; cursor: crosshair; }
+.jf-sig.is-bad canvas { border-color: var(--jf-bad, #dc2626); }
+.jf-sig-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
