@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
 import LanguageToggle from './LanguageToggle'
-import { PushToggle } from './PushNotifications'
 import { localeOf, pickLang } from '../hooks/useLang'
 
 // Phone-first frame shared by the seller and marketing portals, built like the
@@ -116,7 +115,6 @@ export default function FieldAppShell({
             </button>
           </Fragment>))}
         </div>
-        <PushToggle style={{ margin: '10px 0 0' }} />
         <div className="fa-menu-footer">
           <LanguageToggle variant="light" />
           <button type="button" className="fa-btn fa-btn-ghost is-danger" onClick={onLogout}>{logoutLabel}</button>
