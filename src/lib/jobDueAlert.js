@@ -1,8 +1,7 @@
-// Alert for a job whose time has come but that was not accepted / started yet.
+// Alert for a spot offer whose time has come but that was not accepted yet.
 // It pops up (with vibration, a beep and the voice when it is on) and repeats every
-// DUE_ALERT_EVERY_MIN minutes until the worker accepts or starts it.
-import { hoursPastScheduled, hoursPastDue, tokyoDateString, OVERDUE_SKIP_HOURS } from './jobOverdue'
-import { isDeadlineJob } from './jobDeadline.js'
+// DUE_ALERT_EVERY_MIN minutes until the worker answers it.
+import { hoursPastScheduled, OVERDUE_SKIP_HOURS } from './jobOverdue'
 
 export const DUE_ALERT_EVERY_MIN = 5
 // A spot offer is announced this many minutes before its time, so it can be accepted in advance.
@@ -18,11 +17,10 @@ export function minutesPastScheduled(job, now = new Date()) {
 /**
  * Jobs that need the alert now, most urgent first.
  * - spot offers still waiting for an answer, from SPOT_ALERT_BEFORE_MIN before their time;
- * - today's jobs not started yet once their time has come (only while no job is running),
- *   until they turn into the late registration (OVERDUE_SKIP_HOURS).
+ * v1.0.198 · no more "time to start / X min late" pop-up for the worker's own scheduled jobs
+ * (the owner found it got in the way on Meu dia). The job card on Meu dia still shows it is late.
  */
-export function dueAlertJobs(jobs, { activeJobId = null, hasActiveJob = false, now = new Date() } = {}) {
-  const today = tokyoDateString(now)
+export function dueAlertJobs(jobs, { activeJobId = null, now = new Date() } = {}) {
   const out = []
   for (const job of jobs || []) {
     if (!job?.scheduled_date || job.id === activeJobId) continue
@@ -31,13 +29,9 @@ export function dueAlertJobs(jobs, { activeJobId = null, hasActiveJob = false, n
     if (isPendingSpot(job)) {
       if (['completed', 'cancelled'].includes(job.status)) continue
       if (past >= -SPOT_ALERT_BEFORE_MIN && past < OVERDUE_SKIP_HOURS * 60) out.push({ job, past, kind: 'accept' })
-    } else if (!hasActiveJob && job.status === 'assigned' && job.scheduled_date === today) {
-      // v1.0.147 · OTP night jobs have no start time: no "time to start" nag from 00:30, only after the 10:00 deadline
-      const due = isDeadlineJob(job) ? Math.round(hoursPastDue(job, now) * 60) : past
-      if (due >= 0 && due < OVERDUE_SKIP_HOURS * 60) out.push({ job, past: due, kind: 'start' })
     }
   }
-  return out.sort((a, b) => (a.kind === b.kind ? b.past - a.past : a.kind === 'accept' ? -1 : 1))
+  return out.sort((a, b) => b.past - a.past)
 }
 
 /**

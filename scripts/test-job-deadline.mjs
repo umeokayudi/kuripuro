@@ -61,9 +61,9 @@ t('acceptance 3: not finished at 10:00 → late (not started AND running)', () =
   // retro-only box: 8 h after the deadline (18:00), not 8 h after 00:30
   assert.equal(isOverdueAssignedJob(otp(), 8, at('09:00')), false)
   assert.equal(isOverdueAssignedJob(otp(), 8, at('18:00')), true)
-  // employee "start now" pop-up: none at 00:30..09:59, from 10:00
+  // v1.0.198 · employee "start now / late" pop-up removed: never, not even after 10:00
   assert.equal(dueAlertJobs([otp()], { now: at('01:00') }).length, 0)
-  assert.equal(dueAlertJobs([otp()], { now: at('10:00') }).length, 1)
+  assert.equal(dueAlertJobs([otp()], { now: at('10:00') }).length, 0)
   // Live Track coverage: late at 10:00, waiting before
   const target = [{ kind: 'weekly', days: [0, 1, 2, 3, 4, 5, 6], base: 'On The Planet Shibuya', clientName: 'On The Planet' }]
   const st = nm => dayCoverage(target, D, [otp({ title: 'On The Planet Shibuya' })], { nowMin: min(nm), empById: { g: { id: 'g', full_name: 'Guilherme Henrique', is_active: true } } }).items[0]?.state
