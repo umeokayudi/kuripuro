@@ -5,7 +5,7 @@
 // v1.0.182 · restyled as cards (app design) + hour/minute selects instead of the phone's time dialog,
 // whose Done/OK button got cut off or misplaced on phones.
 // Never shows client values (role rule): only times, checklist, photos and the note.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
@@ -18,6 +18,7 @@ import { compressVideo, canUseWebCodecs } from '../lib/videoCompress'
 import { uploadJobVideo, videoPoster, writeVideoStatus } from '../lib/jobVideo'
 import { enqueueAndSend } from '../lib/videoQueue'
 import TimeSelect from './TimeSelect'
+import { SIGNATURE_INK } from '../lib/signature'
 import './ja-fiz.css'
 
 const fmtMin = m => {
@@ -110,6 +111,36 @@ function VideoPick({ id, video, onPick, onRemove, tr }) {
 }
 
 /** One step of the popup: round icon (turns ✓ when done) + title + optional action on the right. */
+/** v1.0.207 · signature pad inside the popup (dark ink on white, like the normal Concluir). */
+function SigPad({ value, onChange, tr, bad }) {
+  const ref = useRef(null)
+  const drawing = useRef(false)
+  const inked = useRef(false)
+  const paper = () => { const c = ref.current; if (!c) return; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height) }
+  useEffect(() => { paper() }, [])
+  const pos = e => { const c = ref.current, b = c.getBoundingClientRect(), t = e.touches?.[0] || e; return [(t.clientX - b.left) * c.width / b.width, (t.clientY - b.top) * c.height / b.height] }
+  const down = e => { e.preventDefault(); drawing.current = true; const x = ref.current.getContext('2d'); const [a, b] = pos(e); x.beginPath(); x.moveTo(a, b) }
+  const move = e => {
+    if (!drawing.current) return
+    e.preventDefault()
+    const x = ref.current.getContext('2d')
+    x.strokeStyle = SIGNATURE_INK; x.lineWidth = 3; x.lineCap = 'round'; x.lineJoin = 'round'
+    const [a, b] = pos(e); x.lineTo(a, b); x.stroke(); inked.current = true
+  }
+  const up = () => { if (!drawing.current) return; drawing.current = false; if (inked.current) onChange(ref.current.toDataURL('image/png')) }
+  const clear = () => { paper(); inked.current = false; onChange(null) }
+  return (
+    <div className={`jf-sig${bad ? ' is-bad' : ''}`}>
+      <canvas ref={ref} width={600} height={180} aria-label={tr('Signature', '署名', 'Assinatura')}
+        onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={up} onTouchStart={down} onTouchMove={move} onTouchEnd={up} />
+      <div className="jf-sig-row">
+        <span className="jf-hint">{value ? `✓ ${tr('Signed', '署名済み', 'Assinado')}` : tr('Sign with your finger in the box', '枠の中に指で署名してください', 'Assine com o dedo no quadro')}</span>
+        {value && <button type="button" className="jf-link" onClick={clear}>{tr('Clear', 'クリア', 'Limpar')}</button>}
+      </div>
+    </div>
+  )
+}
+
 function Sec(props) {
   const { icon, title, meta, ok, bad, children, action } = props
   return (
@@ -133,6 +164,7 @@ export default function JaFizSheet({ job, actor, contracts: contractsProp, dark 
   const [before, setBefore] = useState([])
   const [after, setAfter] = useState([])
   const [note, setNote] = useState('')
+  const [signature, setSignature] = useState(null) // v1.0.207 · required, like Concluir
   const [video, setVideo] = useState(null) // { status: 'compressing' | 'ready', progress, size }
   const [videoTask, setVideoTask] = useState(null)
   const [err, setErr] = useState(null)
@@ -193,6 +225,7 @@ export default function JaFizSheet({ job, actor, contracts: contractsProp, dark 
     future: tr('The finish cannot be in the future.', '終了を未来の時刻にはできません。', 'O fim não pode ser no futuro.'),
     long: tr('More than 16 hours — check the times.', '16時間を超えています。時刻を確認してください。', 'Mais de 16 horas — confira os horários.'),
     checklist: tr('Confirm the checklist items you did.', '実施したチェック項目を確認してください。', 'Confirme os itens do checklist que você fez.'),
+    signature: tr('Sign before saving.', '保存する前に署名してください。', 'Assine antes de salvar.'),
     photo: tr('Add at least one photo or the video.', '写真か動画を1つ以上追加してください。', 'Envie pelo menos uma foto (antes ou depois) ou o vídeo.'),
     closed: tr('This service changed meanwhile (it may have been started). Refresh.', 'この作業は変更されました（開始された可能性があります）。更新してください。', 'Este serviço mudou enquanto isso (pode ter sido iniciado). Atualize.'),
     day_closed: tr('The day of this service is over — only the office can register it now.', 'この作業の日は終わりました。登録は事務所のみ可能です。', 'O dia deste serviço já passou — agora só o escritório pode registrar.'),
@@ -202,12 +235,12 @@ export default function JaFizSheet({ job, actor, contracts: contractsProp, dark 
   }
 
   const save = async () => {
-    const bad = jaFizError({ times, checklist: list, photos: { before: before.length, after: after.length + (video ? 1 : 0) }, role: actor?.role })
+    const bad = jaFizError({ times, checklist: list, photos: { before: before.length, after: after.length + (video ? 1 : 0) }, role: actor?.role, signature, requireSignature: true })
     setErr(bad)
     if (bad) return
     setSaving(true)
     try {
-      const res = await saveJaFiz(job, { times, checklist: list, note, photos: { before, after }, actor })
+      const res = await saveJaFiz(job, { times, checklist: list, note, photos: { before, after }, actor, signature })
       if (videoTask) sendVideoLater(job.id, videoTask, tr)
       toast.success(isAdmin && res.notified
         ? tr('Saved as done · employee notified', '完了として保存 · スタッフに通知', 'Salvo como concluído · funcionário avisado')
@@ -225,6 +258,7 @@ export default function JaFizSheet({ job, actor, contracts: contractsProp, dark 
     times: !!times && times.minutes > 0,
     checklist: list.length === 0 ? checklist !== null : allDone,
     photos: before.length + after.length > 0 || !!video,
+    signature: !!signature,
   }
 
   return (
@@ -301,6 +335,11 @@ export default function JaFizSheet({ job, actor, contracts: contractsProp, dark 
 
         <Sec icon="📝" title={tr('Note', 'メモ', 'Observação')} ok={!!note.trim()} meta={<span className="jf-count">{tr('optional', '任意', 'opcional')}</span>}>
           <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder={tr('e.g. forgot to open the app', '例：アプリを開き忘れた', 'ex.: esqueci de abrir o app')} />
+        </Sec>
+
+        <Sec icon="✍" title={tr('Signature', '署名', 'Assinatura')} ok={stepOk.signature} bad={err === 'signature'}
+          meta={<span className="jf-count">{isAdmin ? tr('of who registers', '登録者', 'de quem registra') : tr('required', '必須', 'obrigatória')}</span>}>
+          <SigPad value={signature} onChange={v => { setSignature(v); if (v && err === 'signature') setErr(null) }} tr={tr} bad={err === 'signature'} />
         </Sec>
 
         {err && <div className="jf-error" role="alert">⚠ {errText[err] || err}</div>}

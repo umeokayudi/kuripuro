@@ -42,7 +42,7 @@ function officeMessage(job, times, actor, lang) {
  * actor = { id, name, role: 'employee' | 'admin' }.
  * Returns { job, audit: { columns, file, log }, notified }. Throws Error('closed' | <permission reason>).
  */
-export async function saveJaFiz(job, { times, checklist = [], note = '', photos = { before: [], after: [] }, actor }) {
+export async function saveJaFiz(job, { times, checklist = [], note = '', photos = { before: [], after: [] }, actor, signature = null }) {
   const perm = jaFizPermission(job, { role: actor.role, userId: actor.id })
   if (!perm.ok) throw new Error(perm.reason)
   const before = (photos.before || []).slice(0, 10)
@@ -53,7 +53,7 @@ export async function saveJaFiz(job, { times, checklist = [], note = '', photos 
   for (let i = 0; i < after.length; i++) endPaths.push(await uploadJobPhoto(`jobs/${job.id}/end_${i}.jpg`, after[i]))
 
   const now = new Date()
-  const base = { times, checklist, note, actor, photoStart: startPaths[0] || null, photoEnd: endPaths[0] || null, now }
+  const base = { times, checklist, note, actor, photoStart: startPaths[0] || null, photoEnd: endPaths[0] || null, signature, now }
   // Only a job still never opened: if the employee started it meanwhile, nothing is overwritten.
   // v1.0.157 · the row coming back never carries the client value (the employee may be the one saving)
   const cols = await employeeJobColumns(supabase)
@@ -68,7 +68,7 @@ export async function saveJaFiz(job, { times, checklist = [], note = '', photos 
   if (!data) throw new Error('closed')
   const done = columns ? data : { ...data, ...Object.fromEntries(JA_FIZ_COLUMNS.map(k => [k, null])) }
 
-  const audit = jaFizAudit({ job, times, checklist, note, actor, photos: { before: startPaths.length, after: endPaths.length }, now })
+  const audit = jaFizAudit({ job, times, checklist, note, actor, photos: { before: startPaths.length, after: endPaths.length }, signature, now })
   const file = await putAudit(job.id, audit).catch(() => false)
   const log = await logJobAdmin(job.id, 'ja_fiz', {
     reason: note?.trim() || null,
