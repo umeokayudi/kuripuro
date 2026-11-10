@@ -1,5 +1,5 @@
-import { jsPDF } from 'jspdf'
-import html2canvas from 'html2canvas'
+// v1.0.204 · jsPDF + html2canvas (~700 KB) load only when a PDF is made, not when the app opens.
+const loadPdfLibs = () => Promise.all([import('jspdf'), import('html2canvas')]).then(([p, h]) => ({ jsPDF: p.jsPDF, html2canvas: h.default }))
 
 // Turns the printable 業務委託契約書 HTML into an A4 PDF in the browser.
 // The page is rendered as an image (so Japanese text looks exactly like the print preview)
@@ -49,6 +49,7 @@ function blankRowAbove(ctx, width, from, to) {
 
 /** A4 PDF Blob for one contract's print HTML. */
 export async function contractPdfBlob(html, { footer = '' } = {}) {
+  const { jsPDF, html2canvas } = await loadPdfLibs()
   const iframe = await renderFrame(html)
   let canvas
   try {

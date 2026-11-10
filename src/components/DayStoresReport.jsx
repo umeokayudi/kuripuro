@@ -7,6 +7,7 @@ import { PENDING_CHANGED } from '../lib/adminPending'
 import { DayCounter, StoreList } from './DayPanelView'
 import { fmtDay } from './AvailabilityPlanner'
 import './dayPanel.css'
+import { pollWhileVisible } from '../lib/visiblePoll'
 
 const SHORTCUTS = ['today', 'yesterday', '7']
 
@@ -22,9 +23,9 @@ export default function DayStoresReport({ f, setF, range, today, lang, L }) {
       fetchDayPanels(range.from, range.to, { nowMin: t.getUTCHours() * 60 + t.getUTCMinutes(), today }).then(p => { if (alive) setPanels(p) }).catch(() => { if (alive) setPanels([]) })
     }
     load()
-    const id = setInterval(load, 60000)
+    const stopPoll = pollWhileVisible(load, 60000)
     window.addEventListener(PENDING_CHANGED, load)
-    return () => { alive = false; clearInterval(id); window.removeEventListener(PENDING_CHANGED, load) }
+    return () => { alive = false; stopPoll(); window.removeEventListener(PENDING_CHANGED, load) }
   }, [range.from, range.to, enabled, today])
 
   const people = useMemo(() => [...new Set((panels || []).flatMap(p => p.services.flatMap(s => [s.assigned, s.coveredBy]).filter(Boolean)))].sort(), [panels])
