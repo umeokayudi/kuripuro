@@ -21,6 +21,7 @@ import DayStoreStrip from '../components/DayStoreStrip'
 const TZ = 'Asia/Tokyo'
 import { countJobs, LATE_AFTER_MIN } from '../lib/jobCounts'
 import { isDeadlineJob, isDeadlineLate, DEADLINE_MIN, OTP_DEADLINE, otpRouteAlerts, otpRouteAlertText, jobTimeLabel, jobTimeShort } from '../lib/jobDeadline'
+import { pollWhileVisible } from '../lib/visiblePoll'
 const LOCATION_FRESH_MIN = 15
 
 // "Now" as a Date whose local fields are Tokyo wall-clock time.
@@ -165,7 +166,7 @@ export default function LiveTracking() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { load(); const iv = setInterval(load, 30000); return ()=>clearInterval(iv) }, [load])
+  useEffect(() => { load(); return pollWhileVisible(load, 30000) }, [load])
 
   useEffect(() => {
     if (focusDone || loading || (!focusEmp && !focusContracts)) return

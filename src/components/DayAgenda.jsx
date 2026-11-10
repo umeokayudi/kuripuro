@@ -102,7 +102,7 @@ export default function DayAgenda({ onChanged, onEditJob }) {
   useEffect(() => { setLoading(true); loadDay(date) }, [date])
   // Fresh data: every minute, when the tab comes back, and right after any write (refresh()).
   useEffect(() => {
-    const tick = setInterval(() => { setNow(new Date()); loadDay() }, 60000)
+    const tick = setInterval(() => { if (document.visibilityState === 'hidden') return; setNow(new Date()); loadDay() }, 60000) // v1.0.204 · paused while hidden; onFocus catches up
     const onFocus = () => { setNow(new Date()); loadDay() }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onFocus)
