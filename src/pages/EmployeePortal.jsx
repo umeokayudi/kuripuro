@@ -5,7 +5,9 @@ import { keyboxForJob } from '../lib/scheduleGenerator'
 import KeyReveal from '../components/KeyReveal'
 import { splitKeyLine } from '../lib/keyReveal'
 import { uploadJobPhoto } from '../lib/uploadPhoto'
-import { compressVideo, canUseWebCodecs, videoTypeInfo } from '../lib/videoCompress'
+import { compressVideo, canUseWebCodecs, videoTypeInfo, VIDEO_MAX_SECONDS, RAW_KEEP_MAX_BYTES } from '../lib/videoCompress'
+import { holdScreenOn } from '../lib/wakeLock'
+import { NEXT_JOB_KEY, loadDraftPhotos, syncDraftPhotos } from '../lib/jobPhotoDrafts'
 import { uploadJobVideo, videoPoster, writeVideoStatus, videoAlreadyUploaded } from '../lib/jobVideo'
 import { enqueueAndSend, enqueueVideo, flushVideoQueue, holdQueuedVideo, removeQueuedVideo } from '../lib/videoQueue'
 import JobVideoPicker from '../components/JobVideoPicker'
@@ -195,7 +197,7 @@ export default function EmployeePortal() {
   const photoStatusRef = useRef({})
   const setPhotoState = (id, v) => { photoStatusRef.current = { ...photoStatusRef.current, [id]: v }; setPhotoStatus(photoStatusRef.current) }
   const [problemJob, setProblemJob] = useState(null)
-  // Vídeo opcional do serviço: comprimido ao escolher, enviado só depois de finalizar
+  // Vídeo opcional do serviço: comprimido ao escolher e enviado na hora, durante o serviço (v1.0.199)
   const [jobVideo, setJobVideo] = useState(null)
   const videoTaskRef = useRef(null)
   const [submitting, setSubmitting] = useState(false)
@@ -308,6 +310,29 @@ export default function EmployeePortal() {
   useEffect(() => () => {
     jobPhotos.forEach(p => { if (p.preview) URL.revokeObjectURL(p.preview) })
   }, [jobPhotos])
+
+  // v1.0.199 · Every photo of the job is kept on this phone as soon as it is picked, and comes
+  // back by itself if the page closed (heavy video, low memory). It leaves the phone when the
+  // job is started / finished or the photo is removed.
+  const photoDraftsRef = useRef(new Map())
+  const jobPhotosRef = useRef(jobPhotos)
+  jobPhotosRef.current = jobPhotos
+  const draftKey = activeJob?.id || NEXT_JOB_KEY
+  useEffect(() => { syncDraftPhotos(photoDraftsRef.current, draftKey, jobPhotos) }, [jobPhotos]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let alive = true
+    loadDraftPhotos(draftKey).then(saved => {
+      if (!alive || !saved.length) return
+      const have = new Set(jobPhotosRef.current.map(p => String(p.id)))
+      const back = saved.filter(p => !have.has(String(p.id)))
+      if (!back.length) return
+      back.forEach(p => photoDraftsRef.current.set(String(p.id), draftKey))
+      const restored = back.map(p => ({ ...p, preview: URL.createObjectURL(p.file) }))
+      setJobPhotos(cur => [...restored.filter(p => !cur.some(c => String(c.id) === p.id)), ...cur])
+      toast(L(`${back.length} photo(s) of this job recovered`, `この作業の写真${back.length}枚を復元しました`, `${back.length} foto(s) deste serviço recuperada(s)`), { icon: '📷' })
+    })
+    return () => { alive = false }
+  }, [draftKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadAll()
@@ -1240,24 +1265,107 @@ export default function EmployeePortal() {
 
   const vt = tr.jobVideo || {}
 
+  // v1.0.199 · The video goes up while the job is still running, as soon as it is compressed
+  // (before, it waited for "Finish" and many workers closed the app right after, so it arrived
+  // up to an hour later or never). The camera file is kept on the phone while it is compressed,
+  // and the screen stays on while it is compressed and sent.
+  const deleteUploadedVideo = (jobId, path) => {
+    if (!path) return
+    const poster = path.replace(/\.[a-z0-9]+$/, '.jpg')
+    // The status file goes too, so the office does not see "video uploading…" forever.
+    supabase.storage.from('service-photos').remove([path, poster, `jobs/${jobId}/video_status.json`]).catch(() => {})
+  }
+
   const clearJobVideo = () => {
-    videoTaskRef.current?.abort.abort()
+    const task = videoTaskRef.current
     videoTaskRef.current = null
     setJobVideo(null)
+    if (!task) return
+    task.cancelled = true
+    task.abort.abort()
+    task.releaseScreen?.()
+    // Already on the server or in the phone queue: take it out again.
+    if (task.queueId) { removeQueuedVideo(task.queueId); holdQueuedVideo(task.queueId, false) }
+    task.rawSaved?.then(id => { if (id) { removeQueuedVideo(id); holdQueuedVideo(id, false) } })
+    if (task.path) deleteUploadedVideo(task.jobId, task.path)
+    else task.sent?.then(path => { if (path) deleteUploadedVideo(task.jobId, path) }).catch(() => {})
+  }
+
+  const fmtVideoSize = (b) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`
+
+  // Sends one compressed video. While the job card is on screen the progress shows in the card;
+  // after "Finish" it shows in a toast.
+  const sendJobVideoNow = (task, res) => {
+    let toastId = null
+    let lastPct = -1
+    const onScreen = () => videoTaskRef.current === task
+    const onProgress = (p) => {
+      const pct = Math.round(p * 100)
+      if (pct === lastPct) return
+      lastPct = pct
+      if (onScreen()) setJobVideo(v => v ? { ...v, status: 'uploading', progress: p } : v)
+      else if (!task.cancelled) toastId = toast.loading(fill(vt.uploadingPct || 'Sending video… {pct}% · {size}', { pct, size: fmtVideoSize(res.size) }), toastId ? { id: toastId } : undefined)
+    }
+    if (onScreen()) setJobVideo({ status: 'uploading', progress: 0, size: res.size, trimmed: res.trimmed })
+    task.sent = enqueueAndSend(task.jobId, res, uploadJobVideo, { onProgress, onQueued: id => { task.queueId = id } })
+      .then(path => {
+        task.path = path
+        task.queueId = null
+        if (task.cancelled) { deleteUploadedVideo(task.jobId, path); return null }
+        if (onScreen()) setJobVideo({ status: 'uploaded', progress: 1, size: res.size, trimmed: res.trimmed })
+        else toast.success(vt.uploaded || 'Video sent', toastId ? { id: toastId } : undefined)
+        return path
+      }, err => {
+        if (task.cancelled) return null
+        const msg = err?.queued
+          ? (vt.queuedDuring || vt.queued || 'Video saved on this phone; it will be sent when the internet is back.')
+          : fill(vt.uploadFailed || 'Video failed: {msg}', { msg: err?.message || '' })
+        if (onScreen()) setJobVideo({ status: err?.queued ? 'queued' : 'failed', progress: 0, size: res.size })
+        if (err?.queued) toast(msg, { id: toastId || undefined, icon: '📶', duration: 7000 })
+        else toast.error(msg, { id: toastId || undefined, duration: 6000 })
+        return null
+      })
+      .finally(() => task.releaseScreen?.())
+    return task.sent
   }
 
   const pickJobVideo = (file) => {
-    videoTaskRef.current?.abort.abort()
-    const task = { abort: new AbortController(), file }
+    clearJobVideo()
+    const jobId = activeJobRef.current?.id
+    if (!jobId) return
+    const task = { abort: new AbortController(), file, jobId }
     videoTaskRef.current = task
+    task.releaseScreen = holdScreenOn()
     setJobVideo({ status: 'compressing', progress: 0, slow: !canUseWebCodecs() })
+    // The camera file stays on the phone while it is compressed, so a page that closes in the
+    // middle does not lose it (the background retry compresses it, at most twice). A huge file
+    // is not copied: writing it could itself run the phone out of memory.
+    const type = videoTypeInfo(file.type, file.name)
+    let compressed = false
+    task.rawSaved = (type && file.size <= RAW_KEEP_MAX_BYTES)
+      ? enqueueVideo(jobId, { blob: file, ...type, raw: true }).then(id => {
+        if (!id) return null
+        if (compressed || task.cancelled) { removeQueuedVideo(id); return null }
+        holdQueuedVideo(id) // this page compresses it; the background retry only takes it if the page closes
+        return id
+      }).catch(() => null)
+      : Promise.resolve(null)
     task.promise = compressVideo(file, {
       signal: task.abort.signal,
       onProgress: (progress) => { if (videoTaskRef.current === task) setJobVideo(v => v && v.status === 'compressing' ? { ...v, progress } : v) },
     }).then(async res => ({ ...res, ...(await videoPoster(res.blob)) })) // poster + duration saved with the video
     task.promise.then(
-      (res) => { if (videoTaskRef.current === task) setJobVideo({ status: 'ready', progress: 1, size: res.size }) },
+      async (res) => {
+        compressed = true
+        const rawId = await task.rawSaved
+        if (rawId) { await removeQueuedVideo(rawId); holdQueuedVideo(rawId, false) }
+        if (task.cancelled) return
+        if (res.trimmed) toast(fill(vt.trimmed || 'Only the first {min} minutes of the video are sent.', { min: Math.round(VIDEO_MAX_SECONDS / 60) }), { icon: '✂️', duration: 6000 })
+        sendJobVideoNow(task, res)
+      },
       (err) => {
+        task.releaseScreen?.()
+        task.rawSaved.then(id => { if (id) { removeQueuedVideo(id); holdQueuedVideo(id, false) } })
         if (videoTaskRef.current !== task) return
         videoTaskRef.current = null
         setJobVideo(null)
@@ -1267,46 +1375,12 @@ export default function EmployeePortal() {
     )
   }
 
-  // Não bloqueia a finalização: espera a compressão (se ainda rodando) e envia em segundo plano.
-  // O vídeo fica guardado no celular até o Storage confirmar (ver videoQueue).
+  // At "Finish" the video is already on its way (or in the phone queue): only the card leaves.
+  // If it is still being compressed, it goes up by itself when ready, with a toast.
   const sendJobVideoAfterComplete = (jobId, task) => {
     if (!task?.promise) return
-    // v1.0.100: the admin sees "video uploading…" right away, and while the video is still being
-    // compressed the camera file is kept on the phone, so closing the app does not lose it.
-    writeVideoStatus(jobId, { status: 'uploading', path: null })
-    let compressed = false
-    task.promise.then(() => { compressed = true }, () => {})
-    const type = task.file && videoTypeInfo(task.file.type, task.file.name)
-    const rawSaved = Promise.resolve().then(async () => {
-      if (compressed || !type) return null
-      const id = await enqueueVideo(jobId, { blob: task.file, ...type, raw: true })
-      holdQueuedVideo(id) // this page sends it; the background retry only takes it if the app closes
-      return id
-    })
-    // Compression failed here: release the camera copy so the background retry can try again
-    task.promise.catch(() => rawSaved.then(id => holdQueuedVideo(id, false)))
-    task.promise
-      .then(async (res) => {
-        const rawId = await rawSaved
-        if (rawId) { await removeQueuedVideo(rawId); holdQueuedVideo(rawId, false) }
-        const id = toast.loading(vt.uploading || 'Sending video…')
-        const sizeLabel = res.size >= 1024 * 1024 ? `${(res.size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(res.size / 1024))} KB`
-        let lastPct = -1
-        const onProgress = (p) => {
-          const pct = Math.round(p * 100)
-          if (pct === lastPct) return
-          lastPct = pct
-          toast.loading(fill(vt.uploadingPct || 'Sending video… {pct}% · {size}', { pct, size: sizeLabel }), { id })
-        }
-        try {
-          await enqueueAndSend(jobId, res, uploadJobVideo, { onProgress })
-          toast.success(vt.uploaded || 'Video sent', { id })
-        } catch (err) {
-          if (err?.queued) toast(vt.queued || 'Video saved on this phone; it will be sent later.', { id, icon: '📶', duration: 7000 })
-          else toast.error(fill(vt.uploadFailed || 'Video failed: {msg}', { msg: err?.message || '' }), { id, duration: 6000 })
-        }
-      })
-      .catch(() => { /* erro de compressão já foi avisado */ })
+    if (!task.path && !task.sent) writeVideoStatus(jobId, { status: 'uploading', path: null })
+    if (!task.sent) task.promise.then(() => { if (!task.sent) toast.loading(vt.uploading || 'Sending video…', { duration: 4000 }) }, () => {})
   }
 
   // Checks what finishing needs (After photo, checklist) before the NFC and signature steps,
@@ -1349,8 +1423,9 @@ export default function EmployeePortal() {
   useEffect(() => {
     const flush = () => {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-      flushVideoQueue(uploadJobVideo, { alreadySent: videoAlreadyUploaded }).then(({ sent }) => {
+      flushVideoQueue(uploadJobVideo, { alreadySent: videoAlreadyUploaded }).then(({ sent, gaveUp }) => {
         if (sent) toast.success(fill(vt.queueSent || 'Pending video sent ({n})', { n: sent }))
+        if (gaveUp) toast.error(vt.gaveUp || 'This phone could not prepare the video. Pick it again (or record a shorter one).', { duration: 9000 })
       }).catch(() => {})
     }
     const t = setTimeout(flush, 4000)

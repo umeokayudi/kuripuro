@@ -1,4 +1,4 @@
-import { targetSize, videoTypeInfo } from '../src/lib/videoCompress.js'
+import { targetSize, videoTypeInfo, bitrateFor, VIDEO_MAX_SECONDS } from '../src/lib/videoCompress.js'
 
 function assert(c, m) { if (!c) { console.error('❌', m); process.exit(1) } }
 
@@ -18,4 +18,13 @@ assert(videoTypeInfo('', 'IMG_0001.MOV').ext === 'mov', 'mov by name')
 assert(videoTypeInfo('video/mp4;codecs=avc1').contentType === 'video/mp4', 'mp4 with codecs')
 assert(videoTypeInfo('image/jpeg', 'a.jpg') === null, 'not a video')
 
+// v1.0.199 · up to 3 minutes; the bitrate keeps the file under ~40 MB (Supabase limit 50 MB)
+assert(VIDEO_MAX_SECONDS === 180, 'max 3 min')
+assert(bitrateFor(60, 2_000_000, 192_000) === 2_000_000, '1 min keeps 2 Mbps')
+for (const sec of [90, 120, 180, 600]) {
+  const v = bitrateFor(sec, 2_000_000, 192_000)
+  const mb = Math.min(sec, 180) * (v + 192_000) / 8 / 1024 / 1024
+  assert(mb <= 40, `${sec}s → ${mb.toFixed(1)} MB (over 40)`)
+  assert(v >= 1_000_000, `${sec}s keeps a decent bitrate (${v})`)
+}
 console.log('✅ video compress helpers ok')
