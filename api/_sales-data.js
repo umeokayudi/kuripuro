@@ -4,6 +4,8 @@ import { sellerCommissionSummary, quoteCommissionState } from '../src/lib/contra
 import { serviceOffers } from '../src/lib/facilityModel.js'
 import { quoteSellerFor } from '../src/lib/quoteSeller.js'
 import { estimateMinimum, signMinimum, readMinimum } from './_quoteMinimum.js'
+import { readSellerVisits, writeSellerVisits, readAllVisits } from './_sales-visits.js'
+import { normalizeVisit, upsertVisit, followupForVisit } from '../src/lib/sellerVisits.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -329,7 +331,11 @@ async function loadDashboard(db, user) {
       hours_this_month: reports.filter(row => row.salesperson_id === person.id && String(row.work_date || '').startsWith(todayTokyo().slice(0, 7))).reduce((sum, row) => sum + Number(row.hours_worked || 0), 0),
     }
   })
-  const facilityOffers = await loadFacilityOffers(db, isAdmin ? null : [...new Set(fixedCommissions.filter(row => row.salesperson_id === id).map(row => row.client_id).filter(Boolean))])
+  const [facilityOffers, scheduledVisits] = await Promise.all([
+    loadFacilityOffers(db, isAdmin ? null : [...new Set(fixedCommissions.filter(row => row.salesperson_id === id).map(row => row.client_id).filter(Boolean))]),
+    // v1.0.206 · visitas agendadas (Storage); a failure never takes the dashboard down.
+    (isAdmin ? readAllVisits(db, people.map(p => p.id)) : readSellerVisits(db, id)).catch(() => []),
+  ])
   const channels = channelsRes.data || []
   const campaigns = campaignsRes.data || []
   const spend = spendRes.data || []
@@ -339,7 +345,7 @@ async function loadDashboard(db, user) {
     const conversions = relatedLeads.filter(row => row.stage === 'won').length
     return { ...campaign, spend: campaignSpend, leads: relatedLeads.length, conversions, cost_per_lead: relatedLeads.length ? campaignSpend / relatedLeads.length : 0, customer_acquisition_cost: conversions ? campaignSpend / conversions : 0 }
   })
-  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions }, quoteRequests, quoteClients, facilityOffers }
+  return { user, today: todayTokyo(), leads, quotes, approaches, reports, contracts: submissions, salespeople: people, commissionRules: rulesRes.data || [], notifications: notificationsRes.data || [], metrics, marketing: { channels, campaigns: marketing, spend, goals: marketingGoalsRes.data || [] }, touchpoints: touchpointsRes.data || [], goals: goalsRes.data || [], contractCommissions: { spot: spotCommissions, fixed: fixedCommissions }, quoteRequests, quoteClients, facilityOffers, scheduledVisits }
 }
 
 async function getAction(db, user, action, query = {}) {
@@ -522,7 +528,9 @@ async function postAction(db, user, body, res) {
     if (payload.maps_url && !isMapsLink(payload.maps_url)) return jsonError(res, 400, 'Cole um link do Google Maps (google.com/maps ou maps.app.goo.gl).')
     // Every lead a seller registers carries the business card photo and where they were.
     if (!admin && !body.id) {
-      if (!String(payload.business_card_object_path || '').startsWith(`cards/${own}/`)) return jsonError(res, 400, 'Tire a foto do cartão de visita (business card) antes de salvar o lead.')
+      // v1.0.206 · proof = the card photo OR what the seller dumped into the AI (kept in system-private).
+      const proof = String(payload.business_card_object_path || '')
+      if (proof.includes('..') || !(proof.startsWith(`cards/${own}/`) || proof.startsWith(`sales-dumps/${own}/`))) return jsonError(res, 400, 'Jogue os dados na IA (texto, foto ou áudio) ou tire a foto do cartão antes de salvar o lead.')
       if (payload.gps_lat == null || payload.gps_lng == null) return jsonError(res, 400, 'Ative a localização (GPS) para registrar o lead.')
     }
     if (body.id) {
@@ -536,6 +544,59 @@ async function postAction(db, user, body, res) {
     const { data, error } = await writeLead(db, payload)
     if (error) throw error
     return { lead: data }
+  }
+
+  // v1.0.206 · "Visita agendada": the seller books a visit (date + time) for one of their leads.
+  // Stored in Storage, goes to the seller's Google Agenda (feed .ics + one-tap link) and moves
+  // the lead's next follow-up to the visit day when that day is sooner.
+  if (action === 'schedule-visit') {
+    const input = body.visit || {}
+    let leadQuery = db.from('sales_leads').select('id,salesperson_id,company_name,site_name,address,next_followup_date,stage').eq('id', String(input.lead_id || ''))
+    if (!admin) leadQuery = leadQuery.eq('salesperson_id', own)
+    const { data: lead, error: leadErr } = await leadQuery.maybeSingle()
+    if (leadErr) throw leadErr
+    if (!lead) return jsonError(res, 404, 'Lead não encontrado nesta conta.')
+    const sellerId = admin ? lead.salesperson_id : own
+    if (!sellerId) return jsonError(res, 400, 'Escolha primeiro o vendedor deste lead.')
+    const rows = await readSellerVisits(db, sellerId)
+    const before = input.id ? rows.find(r => r.id === input.id) : null
+    if (input.id && !before) return jsonError(res, 404, 'Visita não encontrada.')
+    const { visit, error } = normalizeVisit({ ...before, ...input, lead_id: lead.id }, { today, allowPast: Boolean(before && input.status && input.status !== 'scheduled') })
+    if (error) return jsonError(res, 400, error)
+    visit.id = before?.id || crypto.randomUUID()
+    if (!visit.place) visit.place = lead.site_name || lead.company_name || ''
+    if (!visit.address) visit.address = lead.address || ''
+    visit.created_at = before?.created_at || new Date().toISOString()
+    visit.updated_at = new Date().toISOString()
+    visit.created_by = before?.created_by || String(user.name || '').slice(0, 120)
+    await writeSellerVisits(db, sellerId, upsertVisit(rows, visit))
+    if (visit.status === 'scheduled') {
+      const next = followupForVisit(lead.next_followup_date, visit.date, today)
+      const patch = { updated_at: new Date().toISOString() }
+      if (next) patch.next_followup_date = next
+      if (next) await db.from('sales_leads').update(patch).eq('id', lead.id)
+      if (!before || before.date !== visit.date || before.time !== visit.time) {
+        await db.from('sales_notifications').insert({
+          salesperson_id: sellerId, audience: 'admin', event_type: 'visit_scheduled', title: 'Visita agendada',
+          body: `${lead.site_name || lead.company_name} · ${visit.date}${visit.time ? ` ${visit.time}` : ''} · ${user.name || ''}`.trim(),
+          lead_id: lead.id, sender_name: String(user.name || '').slice(0, 120), dedupe_key: `admin:visit:${visit.id}:${visit.date}:${visit.time}`,
+        }).then(() => {}, () => {})
+      }
+    }
+    return { visit: { ...visit, salesperson_id: sellerId } }
+  }
+
+  if (action === 'set-visit-status') {
+    const status = ['scheduled', 'done', 'cancelled'].includes(body.status) ? body.status : ''
+    if (!status) return jsonError(res, 400, 'Situação inválida.')
+    const sellerId = admin ? String(body.salesperson_id || '') : own
+    const rows = await readSellerVisits(db, sellerId)
+    const row = rows.find(r => r.id === body.id)
+    if (!row) return jsonError(res, 404, 'Visita não encontrada.')
+    const visit = { ...row, status, updated_at: new Date().toISOString() }
+    delete visit.salesperson_id
+    await writeSellerVisits(db, sellerId, upsertVisit(rows, visit))
+    return { visit: { ...visit, salesperson_id: sellerId } }
   }
 
   if (action === 'log-contact') {
