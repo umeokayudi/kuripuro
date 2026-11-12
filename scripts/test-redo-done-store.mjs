@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// v1.0.215 · a store a coworker already finished today: right labels, no silent re-add, redo only with a reason.
+// v1.0.216 · a store a coworker already finished today: right labels, no silent re-add, redo only with a reason.
 // Run: npx vite-node scripts/test-redo-done-store.mjs   (fake database, writes nothing)
 import { buildAddServiceOptions, employeeAddService, preparePastServiceJob, manualAddLocations, doneTimeText } from '../src/lib/employeeAddJob.js'
 import { coveredJobs } from '../src/lib/jobCoverage.js'

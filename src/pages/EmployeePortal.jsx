@@ -2935,7 +2935,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
-  // v1.0.215 · a job a coworker already did ("Coberto por") is not part of my day's count
+  // v1.0.216 · a job a coworker already did ("Coberto por") is not part of my day's count
   const total = todayJobs.filter(j=>j.status!=='covered').length
   const beforePhotos = jobPhotos.filter(p=>p.slot==='start')
   const afterPhotos = jobPhotos.filter(p=>p.slot==='end')
@@ -3614,7 +3614,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   const [shiftEnd, setShiftEnd] = useState('05:00')
   // v1.0.197 · 'take' = the service becomes mine; 'dupla' = I join the other person, pay split 50/50
   const [mode, setMode] = useState('take')
-  // v1.0.215 · reason to redo a store a coworker already finished today
+  // v1.0.216 · reason to redo a store a coworker already finished today
   const [redoReason, setRedoReason] = useState('')
 
   const typeLabels = cleaningTypesForLang(lang)

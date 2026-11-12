@@ -23,7 +23,7 @@ import { tokyoToday } from './dates'
 import { tokyoTomorrow, validateShiftWindow, shiftWindowNote } from './nextDayShift'
 import { REDO_MARK } from './jobCoverage.js'
 
-/** v1.0.215 · a store someone else already did today is only taken again with a written reason. */
+/** v1.0.216 · a store someone else already did today is only taken again with a written reason. */
 export const REDO_REASON_MIN = 8
 
 /** "06:19" (Tokyo) of a finished job, or '' */
@@ -341,7 +341,7 @@ export async function employeeAddService(supabase, {
   if (completed) {
     const byOther = !!completed.employee_id && completed.employee_id !== employee.id
     const reason = String(redoReason || '').trim()
-    // v1.0.215 · already done today by a coworker: never again by accident — only with a written reason.
+    // v1.0.216 · already done today by a coworker: never again by accident — only with a written reason.
     if (!byOther || isTomorrow) return { ok: false, error: 'already_done_today' }
     if (reason.length < REDO_REASON_MIN) {
       return { ok: false, error: 'done_by_other', doneBy: completed.employee_name || '—', doneAt: doneTimeText(completed) }
@@ -510,7 +510,7 @@ export async function preparePastServiceJob(supabase, {
     return { ok: true, action: 'retro_existing', job: completedOther }
   }
 
-  // v1.0.215 · a coworker already finished it today: "Já fiz" can't put it on my route
+  // v1.0.216 · a coworker already finished it today: "Já fiz" can't put it on my route
   // (that is how Kodama Shinbashi landed on Alexandre's route on 12/11). Redo needs a reason (Adicionar serviço).
   const doneByOther = atLocation.find(j => j.status === 'completed' && j.employee_id && j.employee_id !== employee.id)
   if (doneByOther) {

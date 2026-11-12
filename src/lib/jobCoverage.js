@@ -16,7 +16,7 @@ import { areDuplaPartners } from './duplaJob.js'
 
 export const KEEP_MARK = '⟲ Cobertura: mantido'
 export const REMOVED_MARK = '⊘ Baixado por autorização do dono'
-// v1.0.215 · an employee redid a store already done today, with a written reason: not a cover.
+// v1.0.216 · an employee redid a store already done today, with a written reason: not a cover.
 export const REDO_MARK = '🔁 Refeito com justificativa'
 
 const norm = s => String(s || '').toLowerCase().normalize('NFKC').replace(/\s+/g, '').trim()
