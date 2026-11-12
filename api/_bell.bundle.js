@@ -85,6 +85,12 @@ function splitName(name) {
   const m = /^(.*?)\s+[—–-]\s+(.*)$/.exec(String(name || "").trim());
   return m ? { base: m[1].trim(), rest: m[2].trim() } : { base: String(name || "").trim(), rest: "" };
 }
+function contractStartDate(c) {
+  const raw = String(c?.contract_details?.start_date || "").trim().replace(/\//g, "-");
+  const m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!m) return null;
+  return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+}
 function contractTargets(contracts, clients = []) {
   const clientById = Object.fromEntries((clients || []).map((c) => [c.id, c]));
   return (contracts || []).filter((c) => c.is_active !== false && clientById[c.client_id]?.is_active !== false).map((c) => {
@@ -105,7 +111,8 @@ function contractTargets(contracts, clients = []) {
       address: c.location_address || "",
       kind: !days.length ? "nodays" : weekly ? "weekly" : "periodic",
       hours: Number(c.hours_per_visit) || null,
-      price: c.price_per_visit ?? null
+      price: c.price_per_visit ?? null,
+      startDate: contractStartDate(c)
     };
   });
 }

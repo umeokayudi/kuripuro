@@ -20,6 +20,95 @@ export const CHANNEL_ROOT = 'team-channel'
 export const MSG_DIR = `${CHANNEL_ROOT}/msgs`
 export const REQ_DIR = `${CHANNEL_ROOT}/requests`
 export const MAX_TEXT = 1000
+export const MEMBERS_PATH = `${CHANNEL_ROOT}/members.json`
+
+// ── v1.0.221 · Channels by area ─────────────────────────────────────────────
+// Geral: every active internal user. Limpeza / Vendas / Marketing: whoever has the area's role.
+// The admin is in every channel and can add or remove anyone from any channel (members.json):
+//   { channels: { <key>: { add: ['employee:<id>', …], remove: [...] } }, mirrorCoversInGeral, updated_at, updated_by }
+// Removing someone only hides the channel from them; the messages stay (the admin still sees them).
+// Clients are never in a channel (their chat stays private, 1 to 1).
+export const CHANNELS = [
+  { key: 'geral', icon: '💬', en: 'General', ja: '全体', pt: 'Geral' },
+  { key: 'limpeza', icon: '🧽', en: 'Cleaning', ja: '清掃', pt: 'Limpeza' },
+  { key: 'vendas', icon: '🤝', en: 'Sales', ja: '営業', pt: 'Vendas' },
+  { key: 'marketing', icon: '📣', en: 'Marketing', ja: 'マーケティング', pt: 'Marketing' },
+]
+export const CHANNEL_KEYS = CHANNELS.map(c => c.key)
+export const channelDir = ch => `${CHANNEL_ROOT}/c/${ch}`
+export const LEGACY_DIR_CHANNEL = 'limpeza'
+export const COVER_CHANNEL = 'limpeza'
+export const INTERNAL_ROLES = ['admin', 'employee', 'salesperson']
+export const personKey = p => `${p?.role}:${p?.id}`
+
+const SALES_ROLE = /\b(vendas?|sales|seller|営業)/i
+const MKT_ROLE = /\b(mkt|marketing)/i
+const NOT_FIELD = /\b(mkt|marketing|vendas?|sales|seller|office|escrit|admin|事務|営業)/i
+
+/** Is this person an active internal user? (clients and inactive people are never members) */
+export const isInternalActive = p => !!p?.id && INTERNAL_ROLES.includes(p.role) && p.is_active !== false
+
+/** Channels a person is in by role alone (before the admin's changes). */
+export function autoChannels(p) {
+  if (!isInternalActive(p)) return []
+  if (p.role === 'admin') return [...CHANNEL_KEYS]
+  const out = ['geral']
+  if (p.role === 'salesperson') out.push(p.team === 'marketing' ? 'marketing' : 'vendas')
+  if (p.role === 'employee') {
+    const r = String(p.job_role || '').trim()
+    if (MKT_ROLE.test(r)) out.push('marketing')
+    else if (SALES_ROLE.test(r)) out.push('vendas')
+    else if (!NOT_FIELD.test(r)) out.push('limpeza') // cleaner, leader, driver, trainee, no role…
+  }
+  return out
+}
+
+/** Clean members.json (unknown channels / bad keys dropped). */
+export function normalizeMembers(raw) {
+  const channels = {}
+  for (const k of CHANNEL_KEYS) {
+    const c = raw?.channels?.[k] || {}
+    const ok = v => typeof v === 'string' && /^(employee|salesperson|admin):[\w-]+$/.test(v)
+    const add = [...new Set((c.add || []).filter(ok))]
+    const remove = [...new Set((c.remove || []).filter(ok))].filter(x => !add.includes(x))
+    channels[k] = { add, remove }
+  }
+  return { channels, mirrorCoversInGeral: !!raw?.mirrorCoversInGeral, updated_at: raw?.updated_at || null, updated_by: raw?.updated_by || null }
+}
+
+/** Is the person in the channel? Admin: always. Inactive / client: never. */
+export function inChannel(p, channel, members) {
+  if (!isInternalActive(p) || !CHANNEL_KEYS.includes(channel)) return false
+  if (p.role === 'admin') return true
+  const m = normalizeMembers(members).channels[channel]
+  const key = personKey(p)
+  if (m.remove.includes(key)) return false
+  if (m.add.includes(key)) return true
+  return autoChannels(p).includes(channel)
+}
+
+/** Channels this person sees, in the fixed order. */
+export const myChannels = (p, members) => CHANNEL_KEYS.filter(k => inChannel(p, k, members))
+
+/** Members of a channel among `people` ({ role, id, name, … }). */
+export const channelMembers = (channel, people = [], members) => people.filter(p => inChannel(p, channel, members))
+
+/** members.json after the admin ticks (on = true) or unticks a person in a channel. */
+export function setMember(members, channel, p, on) {
+  const m = normalizeMembers(members)
+  if (!CHANNEL_KEYS.includes(channel) || p?.role === 'admin') return m
+  const key = personKey(p)
+  const c = m.channels[channel]
+  const auto = autoChannels(p).includes(channel)
+  c.add = c.add.filter(x => x !== key)
+  c.remove = c.remove.filter(x => x !== key)
+  if (on && !auto) c.add.push(key)
+  if (!on && auto) c.remove.push(key)
+  return m
+}
+
+/** Does the channel show the cover cards? Limpeza always; Geral when the admin mirrors them. */
+export const showsCovers = (channel, members) => channel === COVER_CHANNEL || (channel === 'geral' && normalizeMembers(members).mirrorCoversInGeral)
 
 const MONTH_RE = /^\d{4}-\d{2}$/
 export const monthOf = iso => String(iso || '').slice(0, 7)
@@ -33,16 +122,26 @@ export function prevMonth(month) {
   return `${y}-${String(m).padStart(2, '0')}`
 }
 
-/** Path for a new message. Name sorts by time (13-digit epoch ms). */
-export function messagePath(now = new Date(), rand = Math.random().toString(36).slice(2, 8)) {
+/**
+ * Path for a new message. Name sorts by time (13-digit epoch ms).
+ * v1.0.221 · one folder per channel: team-channel/c/<channel>/<YYYY-MM>/… (the v1.0.217 folder
+ * team-channel/msgs/<YYYY-MM>/… is read as the history of Limpeza, where the covers live).
+ */
+export function messagePath(now = new Date(), rand = Math.random().toString(36).slice(2, 8), channel = 'limpeza') {
   const d = new Date(now)
   const tokyoMonth = new Date(d.getTime() + 9 * 3600_000).toISOString().slice(0, 7)
-  return `${MSG_DIR}/${tokyoMonth}/${String(d.getTime()).padStart(13, '0')}_${String(rand).replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'x'}.json`
+  const ch = CHANNEL_KEYS.includes(channel) ? channel : 'geral'
+  return `${channelDir(ch)}/${tokyoMonth}/${String(d.getTime()).padStart(13, '0')}_${String(rand).replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'x'}.json`
 }
 export const requestPath = jobId => `${REQ_DIR}/${jobId}.json`
 
 /** Only these paths may be read by the push route (no way to point it anywhere else). */
-export const CHANNEL_PATH_RE = /^team-channel\/(msgs\/\d{4}-\d{2}\/\d{13}_[a-z0-9]{1,8}|requests\/[0-9a-f-]{36})\.json$/i
+export const CHANNEL_PATH_RE = /^team-channel\/((msgs|c\/(geral|limpeza|vendas|marketing))\/\d{4}-\d{2}\/\d{13}_[a-z0-9]{1,8}|requests\/[0-9a-f-]{36})\.json$/i
+/** Channel of a message path ('limpeza' for the v1.0.217 folder and for cover requests). */
+export function channelOfPath(p) {
+  const m = String(p || '').match(/^team-channel\/c\/(geral|limpeza|vendas|marketing)\//)
+  return m ? m[1] : 'limpeza'
+}
 export const isChannelPath = p => CHANNEL_PATH_RE.test(String(p || ''))
 
 /** Clean text of a message (trimmed, max length, no empty). */
@@ -67,12 +166,14 @@ export function jobBrief(job) {
 }
 
 /** A new message object (without the path). */
-export function buildMessage({ kind = 'text', text = '', author, job = null, now = new Date() }) {
-  if (!author?.id || !['admin', 'employee'].includes(author.role)) throw new Error('author')
+export function buildMessage({ kind = 'text', text = '', author, job = null, now = new Date(), channel = 'geral' }) {
+  if (!author?.id || !INTERNAL_ROLES.includes(author.role)) throw new Error('author')
+  if (!CHANNEL_KEYS.includes(channel)) throw new Error('channel')
   const body = cleanText(text)
   if (kind === 'text' && !body) throw new Error('empty')
   return {
     kind,
+    channel,
     text: body,
     at: new Date(now).toISOString(),
     author: { role: author.role, id: author.id, name: String(author.name || '').slice(0, 60) },
@@ -155,4 +256,17 @@ export function coverPushText(msg, lang = 'pt') {
     }
   }
   return { title: L('🙋 Service needs someone', '🙋 担当者募集', '🙋 Serviço precisa de alguém'), body: where }
+}
+
+export const channelLabel = (key, lang = 'pt') => {
+  const c = CHANNELS.find(x => x.key === key)
+  if (!c) return key
+  return lang === 'ja' ? c.ja : lang === 'pt' ? c.pt : c.en
+}
+
+/** Push for a plain message: "#Limpeza · Gabriel" + the text. */
+export function textPushText(msg, lang = 'pt') {
+  const ch = CHANNELS.find(x => x.key === msg?.channel)
+  const t = String(msg?.text || '').replace(/\s+/g, ' ').trim()
+  return { title: `${ch?.icon || '💬'} ${channelLabel(msg?.channel, lang)} · ${msg?.author?.name || ''}`.trim(), body: t.length > 120 ? `${t.slice(0, 119)}…` : t }
 }
