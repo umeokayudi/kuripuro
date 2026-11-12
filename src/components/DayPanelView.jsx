@@ -38,7 +38,26 @@ const onKeyOpen = fn => e => { if ((e.key === 'Enter' || e.key === ' ') && e.tar
 
 const STATE_CLS = { late: 'late', not_started: 'idle', working: 'working', done: 'done' }
 
-export function DayCounter({ count, L, compact = false }) {
+export function DayCounter({ count, L, compact = false, unified = false }) {
+  // v1.0.227 · Painel do Dia: ONE count of SERVICES (done + in progress + not started = total);
+  // stores only in their own labelled line (a store is done when all its services are done).
+  if (unified) {
+    const svc = n => L(n === 1 ? 'service' : 'services', '件', n === 1 ? 'serviço' : 'serviços')
+    return (
+      <div className={`dp-counter${compact ? ' is-compact' : ''}`} role="group" aria-label={L('Services of the day', '本日の作業', 'Serviços do dia')}>
+        <div className="dp-counter-main">
+          <strong>{L(`${count.servicesDone} of ${count.services}`, `${count.services}件中 ${count.servicesDone}`, `${count.servicesDone} de ${count.services}`)}</strong>
+          <span>{L(`${svc(count.services)} done`, '件 完了', `${svc(count.services)} ${count.services === 1 ? 'concluído' : 'concluídos'}`)}</span>
+        </div>
+        <div className="dp-counter-pills">
+          <span className="dp-pill working">{L(`${count.inProgress} in progress`, `作業中 ${count.inProgress}`, `${count.inProgress} em andamento`)}</span>
+          <span className="dp-pill idle">{L(`${count.toStart} not started`, `未開始 ${count.toStart}`, `${count.toStart} não ${count.toStart === 1 ? 'iniciado' : 'iniciados'}`)}</span>
+          <span className={`dp-pill late${count.servicesLate ? '' : ' zero'}`}>{L(`${count.servicesLate} late`, `遅れ ${count.servicesLate}`, plural(count.servicesLate, 'atrasado', 'atrasados'))}</span>
+          <span className="dp-pill muted">{L(`${count.storesDone} of ${count.stores} stores done`, `${count.stores}店舗中 ${count.storesDone}店舗 完了`, `${count.storesDone} de ${plural(count.stores, 'loja feita', 'lojas feitas')}`)}</span>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className={`dp-counter${compact ? ' is-compact' : ''}`} role="group" aria-label={L('Stores of the day', '本日の店舗', 'Lojas do dia')}>
       <div className="dp-counter-main">
@@ -292,8 +311,9 @@ function RowSummary({ r, L }) {
       <span className="dc-bar" aria-hidden="true"><i className="ok" style={{ width: `${(r.ok / r.total) * 100}%` }} /><i className="warn" style={{ width: `${(r.warn / r.total) * 100}%` }} /></span>
       <span className="dc-frac">{doneN}/{r.total}</span>
       {r.warn > 0 && <span className="dc-pill warn">! {r.warn}</span>}
+      {r.working > 0 && <span className="dc-pill working">{L(`${r.working} in progress`, `作業中${r.working}`, `${r.working} em andamento`)}</span>}
       {r.todo > 0 && <span className="dc-pill todo">{L(`${r.todo} left`, `残り${r.todo}`, `falta ${r.todo}`)}</span>}
-      {!r.warn && !r.todo && <span className="dc-pill ok">✓ {L('all OK', 'すべてOK', 'tudo certo')}</span>}
+      {!r.warn && !r.todo && !r.working && <span className="dc-pill ok">✓ {L('all OK', 'すべてOK', 'tudo certo')}</span>}
     </span>
   )
 }
@@ -349,7 +369,7 @@ function sheetOf(key, rows, panel, ctx) {
   const r = rows.find(x => `row:${x.key}` === key)
   if (!r) return { title: '—', services: [] }
   const sub = r.kind === 'person'
-    ? [L(`${r.ok + r.warn} of ${r.total} done`, `${r.total}件中${r.ok + r.warn}件完了`, `${r.ok + r.warn} de ${r.total} feitos`), r.warn ? L(`${r.warn} to check`, `要確認${r.warn}`, `${r.warn} para conferir`) : '', r.todo ? L(`${r.todo} left`, `残り${r.todo}`, `falta ${r.todo}`) : ''].filter(Boolean).join(' · ')
+    ? [L(`${r.ok + r.warn} of ${r.total} done`, `${r.total}件中${r.ok + r.warn}件完了`, `${r.ok + r.warn} de ${r.total} concluídos`), r.working ? L(`${r.working} in progress`, `作業中${r.working}`, `${r.working} em andamento`) : '', r.warn ? L(`${r.warn} to check`, `要確認${r.warn}`, `${r.warn} para conferir`) : '', r.todo ? L(`${r.todo} left`, `残り${r.todo}`, `falta ${r.todo}`) : ''].filter(Boolean).join(' · ')
     : storeStateText(r.store, L)
   return { title: r.title, sub, by: r.kind, services: r.rows.map(x => x.s), footer: rowFooter(r, ctx), empty: r.kind === 'store' && r.store.noJob ? storeStateText(r.store, L) : undefined }
 }
@@ -369,7 +389,8 @@ export function DayCheck({ panel, L, admin, employees = [], onChanged }) {
   const allOpen = openable.length > 0 && openable.every(r => open.has(r.key))
   const F = [
     ['all', L('All', 'すべて', 'Todos'), counts.total],
-    ['todo', L('Not done', '未完了', 'Falta fazer'), counts.todo],
+    ['working', L('In progress', '作業中', 'Em andamento'), counts.working],
+    ['todo', L('Not started', '未開始', 'Falta fazer'), counts.todo],
     ['warn', L('To check', '要確認', 'Conferir'), counts.warn],
     ['ok', L('OK', 'OK', 'Tudo certo'), counts.ok],
   ]
@@ -420,7 +441,7 @@ export default function DayPanelView({ panel, L, dateLabel, admin, employees = [
   return (
     <section className="card dp-card" aria-label={L('Day panel', '本日のパネル', 'Painel do Dia')}>
       {head}
-      <DayCounter count={panel.count} L={L} />
+      <DayCounter count={panel.count} L={L} unified />
 
       {panel.alerts.length > 0 && (
         <div className="dp-block">

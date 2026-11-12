@@ -65,6 +65,9 @@ export function serviceCheck(s, L = (en, ja, pt) => pt) {
   return { verdict: issues.length && !j.admin_reviewed ? 'warn' : 'ok', done: true, checks, issues, durMin }
 }
 
+// v1.0.227 · one count with the Painel header: done (ok + warn) / working (started, not done) /
+// todo (not started). A service in progress is never "done" and never "falta fazer".
+const isWorking = r => r.c.verdict === 'todo' && r.s.phase === 'working'
 const tally = (list, L) => {
   const rows = list.map(s => ({ s, c: serviceCheck(s, L) }))
   return {
@@ -72,10 +75,11 @@ const tally = (list, L) => {
     total: rows.length,
     ok: rows.filter(r => r.c.verdict === 'ok').length,
     warn: rows.filter(r => r.c.verdict === 'warn').length,
-    todo: rows.filter(r => r.c.verdict === 'todo').length,
+    working: rows.filter(isWorking).length,
+    todo: rows.filter(r => r.c.verdict === 'todo' && !isWorking(r)).length,
   }
 }
-const levelOf = t => (t.total === 0 ? 'none' : t.todo ? 'todo' : t.warn ? 'warn' : 'ok')
+const levelOf = t => (t.total === 0 ? 'none' : t.todo || t.working ? 'todo' : t.warn ? 'warn' : 'ok')
 
 /**
  * Rows of the check list.
@@ -90,7 +94,7 @@ export function checkRows(panel, by = 'person', L = (en, ja, pt) => pt) {
     return (panel.stores || []).map(st => {
       const t = tally(st.services, L)
       const level = st.noJob ? 'todo' : levelOf(t)
-      return { key: `s:${st.key}`, kind: 'store', title: st.store, store: st, level, ...t, todo: st.noJob ? 1 : t.todo }
+      return { key: `s:${st.key}`, kind: 'store', title: st.store, store: st, level, ...t } // v1.0.227 · a store with no job is not a service: shown under "Falta fazer" but not counted
     }).sort((a, b) => ORDER[a.level] - ORDER[b.level] || a.title.localeCompare(b.title))
   }
   return (panel.team || []).map(p => {
@@ -102,15 +106,15 @@ export function checkRows(panel, by = 'person', L = (en, ja, pt) => pt) {
 }
 const ORDER = { todo: 0, warn: 1, ok: 2, none: 3 }
 
-/** Filter: 'all' | 'todo' | 'warn' | 'ok'. A row stays when it has at least one service of that kind. */
+/** Filter: 'all' | 'working' | 'todo' | 'warn' | 'ok'. A row stays when it has at least one service of that kind. */
 export function filterRows(rows, f) {
   if (!f || f === 'all') return rows
-  return rows.filter(r => (r[f] || 0) > 0)
+  return rows.filter(r => (r[f] || 0) > 0 || (f === 'todo' && r.store?.noJob))
 }
 
 /** Counts for the filter chips (services, not rows). */
 export function checkCounts(rows) {
-  return rows.reduce((a, r) => ({ total: a.total + r.total, ok: a.ok + r.ok, warn: a.warn + r.warn, todo: a.todo + r.todo }), { total: 0, ok: 0, warn: 0, todo: 0 })
+  return rows.reduce((a, r) => ({ total: a.total + r.total, ok: a.ok + r.ok, warn: a.warn + r.warn, working: a.working + (r.working || 0), todo: a.todo + r.todo }), { total: 0, ok: 0, warn: 0, working: 0, todo: 0 })
 }
 
 export { ON_SITE_METERS }

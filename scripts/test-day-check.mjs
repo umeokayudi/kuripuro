@@ -23,5 +23,11 @@ assert.deepEqual(people.map(r => [r.title, r.level, r.ok, r.warn, r.todo]), [['G
 const stores = checkRows(panel, 'store')
 assert.deepEqual(stores.map(r => [r.title, r.level]), [['A', 'todo'], ['C', 'todo'], ['B', 'warn']])
 assert.deepEqual(filterRows(stores, 'warn').map(r => r.title), ['B'])
-assert.deepEqual(checkCounts(people), { total: 3, ok: 1, warn: 1, todo: 1 })
+assert.deepEqual(checkCounts(people), { total: 3, ok: 1, warn: 1, working: 0, todo: 1 })
+// v1.0.227 · a started service is "em andamento", never "falta fazer" nor done
+const run = checkRows({ ...panel, stores: [{ key: 'd', store: 'D', services: [svc({ id: 9, status: 'working', phase: 'working' })] }] }, 'person')
+assert.deepEqual([run[0].working, run[0].todo, run[0].ok + run[0].warn], [1, 0, 0])
+// a store with no job is listed under "Falta fazer" but is not a service in the counts
+assert.deepEqual(filterRows(stores, 'todo').map(r => r.title), ['A', 'C'])
+assert.equal(checkCounts(stores).todo, 1)
 console.log('day-check ok')

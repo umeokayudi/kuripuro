@@ -71,7 +71,8 @@ const cov = buildDayPanel({ date, jobs: [...jobs, { id: 'x', title: 'Tooda — B
 const tooda = cov.stores.find(s => s.store === 'Tooda')
 assert(tooda.state === 'done' && tooda.covered && storeStateText(tooda) === 'Feita por Gabriel Santos Petricevich · 09:40', storeStateText(tooda))
 assert(cov.count.storesDone === 1 && cov.count.services === 10, 'covered service counts once')
-assert(teamProgressText(cov.team.find(t => t.id === G)) === '0 de 9 · nada iniciado · 9 atrasados · 1 coberto por Gabriel Santos Petricevich', teamProgressText(cov.team.find(t => t.id === G)))
+// v1.0.227 · the person's line counts the same services as their rows (the covered one is done, once)
+assert(teamProgressText(cov.team.find(t => t.id === G)) === '1 de 10 · 9 atrasados · 1 coberto por Gabriel Santos Petricevich', teamProgressText(cov.team.find(t => t.id === G)))
 
 assert(plural(1, 'item', 'itens') === '1 item' && plural(49, 'item', 'itens') === '49 itens', 'plural')
 console.log('day panel: ok')
