@@ -1,5 +1,8 @@
 // v1.0.217 · Canal da Equipe (Fase 1): one conversation for the whole team + cover cards with "Eu pego".
 // Same component for the admin page (/team-channel) and the employee portal (tab 'team').
+// v1.0.221 · channels by area (Geral, Limpeza, Vendas, Marketing): each person sees only their channels;
+// the admin sees all and adds / removes people (👥 Membros). Covers live in Limpeza (Geral if mirrored).
+// Also used by the sales and marketing portals (tab 'team').
 // Rules: a card shows only store · service · day · time (never money); whoever taps "Eu pego" becomes
 // responsible at once (atomic, first wins); nobody is assigned automatically.
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -9,13 +12,16 @@ import { askConfirm } from './ConfirmDialog'
 import { fmtDay } from './AvailabilityPlanner'
 import { pollWhileVisible } from '../lib/visiblePoll'
 import { tokyoToday } from '../lib/dates'
-import { jobBrief, MAX_TEXT } from '../lib/teamChannel'
+import { jobBrief, MAX_TEXT, CHANNELS, myChannels, inChannel, autoChannels, showsCovers, channelLabel, personKey } from '../lib/teamChannel'
 import {
   loadMessages, postMessage, deleteMessage, loadCoverState, takeCover, askCover, cancelCover, offerToTeam, CHANNEL_CHANGED,
+  loadMembers, loadPeople, saveMember, saveMirror, pushChannel,
 } from '../lib/teamChannelOps'
 import './team-channel.css'
 
 const POLL_MS = 20_000
+const PEOPLE_MS = 5 * 60_000
+const chFromUrl = () => { try { const c = new URLSearchParams(window.location.search).get('ch'); return CHANNELS.some(x => x.key === c) ? c : null } catch { return null } }
 
 export default function TeamChannel({ me, lang = 'pt', L = (en, ja, pt) => pt, onChanged }) {
   const isAdmin = me?.role === 'admin'
@@ -27,6 +33,16 @@ export default function TeamChannel({ me, lang = 'pt', L = (en, ja, pt) => pt, o
   const [askJob, setAskJob] = useState('')
   const [askReason, setAskReason] = useState('')
   const [showUnassigned, setShowUnassigned] = useState(false)
+  const [members, setMembers] = useState(null)
+  const [people, setPeople] = useState([])
+  const [channel, setChannel] = useState(() => chFromUrl() || (me?.role === 'employee' ? 'limpeza' : me?.role === 'salesperson' ? 'geral' : 'geral'))
+  const [showMembers, setShowMembers] = useState(false)
+  const peopleAt = useRef(0)
+  // the person with role details (job_role / team) once the people list is in
+  const meFull = people.find(p => p.role === me?.role && p.id === me?.id) || { ...me, is_active: true }
+  const visible = members ? myChannels(meFull, members) : []
+  const current = visible.includes(channel) ? channel : (visible[0] || null)
+  const covers = !!current && !!members && showsCovers(current, members)
   const endRef = useRef(null)
   const lastCount = useRef(0)
   const today = tokyoToday()
@@ -36,14 +52,23 @@ export default function TeamChannel({ me, lang = 'pt', L = (en, ja, pt) => pt, o
   const timeOf = iso => new Date(iso).toLocaleString(lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
 
   const reload = useCallback(async () => {
+    const needPeople = Date.now() - peopleAt.current > PEOPLE_MS
+    const [mem, ppl] = await Promise.all([loadMembers().catch(() => null), needPeople ? loadPeople().catch(() => null) : Promise.resolve(null)])
+    if (ppl) { peopleAt.current = Date.now(); setPeople(ppl) }
+    const list = ppl || people
+    const who = list.find(p => p.role === me?.role && p.id === me?.id) || { ...me, is_active: true }
+    const mine = mem ? myChannels(who, mem) : []
+    if (mem) setMembers(mem)
+    const ch = mine.includes(channel) ? channel : mine[0]
+    if (!ch) { setMsgs([]); return }
     const [m, s] = await Promise.all([
-      loadMessages().catch(() => null),
-      loadCoverState(me).catch(err => { console.warn('[team-channel]', err); return null }),
+      loadMessages(ch).catch(() => null),
+      mem && showsCovers(ch, mem) ? loadCoverState(me).catch(err => { console.warn('[team-channel]', err); return null }) : Promise.resolve(null),
     ])
     if (m) setMsgs(m)
     else setMsgs(prev => prev || [])
     if (s) setState(s)
-  }, [me?.id, me?.role]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me?.id, me?.role, channel, people]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     reload()
@@ -67,7 +92,11 @@ export default function TeamChannel({ me, lang = 'pt', L = (en, ja, pt) => pt, o
     const body = text.trim()
     if (!body || busy) return
     setBusy('send')
-    try { await postMessage({ kind: 'text', text: body, author }); setText('') } catch (err) { toast.error(err.message) }
+    try {
+      const saved = await postMessage({ channel: current, kind: 'text', text: body, author })
+      setText('')
+      pushChannel(saved.path, me)
+    } catch (err) { toast.error(err.message) }
     setBusy(null)
   }
 
@@ -162,22 +191,85 @@ export default function TeamChannel({ me, lang = 'pt', L = (en, ja, pt) => pt, o
     <div className={`tc${isAdmin ? ' tc-admin' : ''}`}>
       <header className="tc-head">
         <div>
-          <h2>👥 {L('Team channel', 'チームチャンネル', 'Canal da Equipe')}</h2>
-          <p>{L('Everyone on the team and the office. Ask for and offer cover here.', 'チーム全員と事務所。代わりの募集はここで。', 'Toda a equipe e o escritório. Peça e ofereça cobertura aqui.')}</p>
+          <h2>👥 {L('Team channels', 'チームチャンネル', 'Canais da Equipe')}</h2>
+          <p>{L('One conversation per area. You only see the channels you are in.', 'エリアごとの会話。自分が入っているチャンネルだけ表示されます。', 'Uma conversa por área. Você só vê os canais em que está.')}</p>
         </div>
+        {visible.length > 0 && (
+          <div className="tc-tabs" role="tablist">
+            {visible.map(k => {
+              const c = CHANNELS.find(x => x.key === k)
+              return (
+                <button key={k} type="button" role="tab" aria-selected={current === k} className={`tc-tab${current === k ? ' is-on' : ''}`}
+                  onClick={() => { if (k !== current) { setMsgs(null); setChannel(k); setShowMembers(false) } }}>
+                  {c.icon} {channelLabel(k, lang)}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {isAdmin && current && (
+          <button type="button" className="tc-members-btn" onClick={() => setShowMembers(v => !v)} aria-expanded={showMembers}>
+            👥 {L('Members', 'メンバー', 'Membros')} · {people.filter(p => inChannel(p, current, members)).length}
+          </button>
+        )}
       </header>
 
-      <section className="tc-covers" aria-label={L('Needs cover', '代わり募集', 'Precisa de cobertura')}>
+      {isAdmin && showMembers && current && (
+        <section className="tc-members" aria-label={L('Members', 'メンバー', 'Membros')}>
+          <div className="tc-sec-head">
+            <h3>👥 {L(`Who is in ${channelLabel(current, 'en')}`, `${channelLabel(current, 'ja')}のメンバー`, `Quem está em ${channelLabel(current, 'pt')}`)}</h3>
+          </div>
+          <p className="tc-muted">{L('Ticked = sees the channel. "By role" people come in by themselves; untick to remove. Removing hides the channel from the person; the messages stay.', 'チェック＝チャンネルが見えます。「役割で自動」の人は自動で入ります。外すとその人には見えなくなりますが、メッセージは残ります。', 'Marcado = vê o canal. Quem é "pela função" entra sozinho; desmarque para retirar. Retirar só esconde o canal da pessoa; as mensagens ficam.')}</p>
+          {current === 'geral' && (
+            <label className="tc-mirror">
+              <input type="checkbox" checked={!!members?.mirrorCoversInGeral} disabled={busy === 'mirror'}
+                onChange={async e => { setBusy('mirror'); try { setMembers(await saveMirror(e.target.checked, me)) } catch (err) { toast.error(err.message) } setBusy(null) }} />
+              <span>{L('Also show the cover cards here (they always stay in Cleaning)', '代わり募集カードもここに表示（清掃には常に表示）', 'Mostrar também os cartões de cobertura aqui (eles sempre ficam no Limpeza)')}</span>
+            </label>
+          )}
+          {[
+            ['admin', L('Office (admin) — always in every channel', '事務所（管理者）— 全チャンネル', 'Escritório (admin) — sempre em todos os canais')],
+            ['employee', L('Employees', 'スタッフ', 'Funcionários')],
+            ['salesperson', L('Sales and marketing', '営業・マーケティング', 'Vendas e marketing')],
+          ].map(([role, title]) => {
+            const list = people.filter(p => p.role === role)
+            if (!list.length) return null
+            return (
+              <div key={role} className="tc-mem-group">
+                <div className="tc-mem-title">{title}</div>
+                {list.map(p => {
+                  const on = inChannel(p, current, members)
+                  const auto = autoChannels(p).includes(current)
+                  const key = personKey(p)
+                  return (
+                    <label key={key} className={`tc-mem${on ? ' is-on' : ''}`}>
+                      <input type="checkbox" checked={on} disabled={p.role === 'admin' || busy === key}
+                        onChange={async e => { setBusy(key); try { setMembers(await saveMember(current, p, e.target.checked, me)) } catch (err) { toast.error(err.message) } setBusy(null) }} />
+                      {p.role === 'admin' ? <span className="tc-av tc-av-office" style={{ width: 28, height: 28 }}>KP</span> : <FaceAvatar id={p.id} name={p.name} size={28} className="tc-av" />}
+                      <span className="tc-mem-name">{p.name}</span>
+                      <small>{p.role === 'admin' ? L('always', '常に', 'sempre') : auto ? (on ? L('by role', '役割で自動', 'pela função') : L('removed by you', '外しました', 'retirado por você')) : (on ? L('added by you', '追加しました', 'adicionado por você') : '')}</small>
+                    </label>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </section>
+      )}
+
+      {members && !current && <p className="tc-empty tc-head">{L('You are not in any channel yet. The office adds you.', 'まだチャンネルに入っていません。事務所が追加します。', 'Você ainda não está em nenhum canal. O escritório adiciona você.')}</p>}
+
+      {covers && <section className="tc-covers" aria-label={L('Needs cover', '代わり募集', 'Precisa de cobertura')}>
         <div className="tc-sec-head">
           <h3>🙋 {L('Needs cover', '代わり募集', 'Precisa de cobertura')} <span className="tc-n">{cards.length}</span></h3>
-          {!isAdmin && (
+          {me?.role === 'employee' && (
             <button type="button" className="tc-ask-btn" onClick={() => setAskOpen(v => !v)} aria-expanded={askOpen}>
               🆘 {L("I can't go to a service", '行けない作業がある', 'Não posso ir num serviço')}
             </button>
           )}
         </div>
 
-        {askOpen && !isAdmin && (
+        {askOpen && me?.role === 'employee' && (
           <div className="tc-ask">
             {state.myJobs.length === 0
               ? <p className="tc-muted">{L('You have no upcoming service that has not started.', '開始前の予定作業はありません。', 'Você não tem serviço futuro ainda não iniciado.')}</p>
@@ -245,9 +337,9 @@ export default function TeamChannel({ me, lang = 'pt', L = (en, ja, pt) => pt, o
             )}
           </div>
         )}
-      </section>
+      </section>}
 
-      <section className="tc-feed" aria-label={L('Messages', 'メッセージ', 'Mensagens')}>
+      {current && <section className="tc-feed" aria-label={L('Messages', 'メッセージ', 'Mensagens')}>
         {msgs === null && <p className="tc-muted">{L('Loading…', '読み込み中…', 'Carregando…')}</p>}
         {msgs && msgs.length === 0 && <p className="tc-empty">👋 {L('No messages yet. Say hi to the team!', 'まだメッセージはありません。', 'Nenhuma mensagem ainda. Diga oi para a equipe!')}</p>}
         {(msgs || []).map(m => {
@@ -266,14 +358,14 @@ export default function TeamChannel({ me, lang = 'pt', L = (en, ja, pt) => pt, o
           )
         })}
         <div ref={endRef} />
-      </section>
+      </section>}
 
-      <div className="tc-compose">
+      {current && <div className="tc-compose">
         <textarea rows={1} value={text} maxLength={MAX_TEXT} onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
-          placeholder={L('Message to the team…', 'チームへのメッセージ…', 'Mensagem para a equipe…')} aria-label={L('Message to the team', 'チームへのメッセージ', 'Mensagem para a equipe')} />
+          placeholder={L(`Message to ${channelLabel(current, 'en')}…`, `${channelLabel(current, 'ja')}へのメッセージ…`, `Mensagem para ${channelLabel(current, 'pt')}…`)} aria-label={L('Message to the team', 'チームへのメッセージ', 'Mensagem para a equipe')} />
         <button type="button" className="tc-send" disabled={!text.trim() || busy === 'send'} onClick={send}>{L('Send', '送信', 'Enviar')}</button>
-      </div>
+      </div>}
     </div>
   )
 }

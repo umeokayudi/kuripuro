@@ -1776,7 +1776,7 @@ export default function EmployeePortal() {
     {key:'reports',icon:'📄',label:L('Service reports','作業報告書','Relatórios de serviço'),hint:L('Make all of the day at once','その日の分をまとめて作成','Fazer todos do dia de uma vez')},
     {key:'salary',icon:'💴',label:L('My salary','自分の給与','Meu salário')},
     {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport}`},
-    {key:'team',icon:'👥',label:L('Team channel','チームチャンネル','Canal da Equipe'),hint:spotJobs.some(j=>j._open)?L(`${spotJobs.filter(j=>j._open).length} service(s) need someone`,`担当募集 ${spotJobs.filter(j=>j._open).length}件`,`${spotJobs.filter(j=>j._open).length} serviço(s) precisando de alguém`):L('Cover, help and notices of the team','代わり・手伝い・チームのお知らせ','Cobertura, ajuda e avisos da equipe'),badge:spotJobs.filter(j=>j._open).length},
+    {key:'team',icon:'👥',label:L('Team channels','チームチャンネル','Canais da Equipe'),hint:spotJobs.some(j=>j._open)?L(`${spotJobs.filter(j=>j._open).length} service(s) need someone`,`担当募集 ${spotJobs.filter(j=>j._open).length}件`,`${spotJobs.filter(j=>j._open).length} serviço(s) precisando de alguém`):L('Cover, help and notices of the team','代わり・手伝い・チームのお知らせ','Cobertura, ajuda e avisos da equipe'),badge:spotJobs.filter(j=>j._open).length},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
     {key:'world',icon:'🌏',label:tr.facility.tab},
     {key:'google',icon:'📅',label:'Google Agenda',hint:L('Connect and sync my Google','自分のGoogleを接続・同期','Conectar e sincronizar meu Google')},

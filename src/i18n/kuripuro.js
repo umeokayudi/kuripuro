@@ -55,7 +55,7 @@ export const kuripuroEn = {
     ryoshu: 'Receipts',
     chat: 'Chat',
     liveTrack: 'Live Track',
-    teamChannel: 'Team channel',
+    teamChannel: 'Team channels',
     transport: 'Transport',
     equipmentRequests: 'Equipment Requests',
     deductions: 'Deductions',
