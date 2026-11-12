@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import SkeletonRows from '../components/SkeletonRows'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { usePendingCounts } from '../components/Sidebar'
@@ -37,6 +37,10 @@ import { fetchContractSellers } from '../lib/contractSellers'
 import { quoteSellerFor } from '../lib/quoteSeller'
 import { ClientLink } from '../components/ClientSheetHost'
 import { askConfirm } from '../components/ConfirmDialog'
+import { listProposalIds } from '../lib/proposal'
+
+// v1.0.210 · Proposta visual (提案書 com fotos, planos, valores e agenda) — carrega só quando abre
+const ProposalEditor = lazy(() => import('../components/ProposalEditor'))
 
 const QUOTE_FILTERS = ['all', 'draft', 'sent', 'accepted', 'declined']
 
@@ -87,6 +91,10 @@ export default function Mitsumori() {
   }, [form.company_name, form.site_name])
   const [items, setItems] = useState([emptyQuoteItem()])
   const [saving, setSaving] = useState(false)
+  const [proposalFor, setProposalFor] = useState(null)
+  const [proposalIds, setProposalIds] = useState(() => new Set())
+  const refreshProposals = () => listProposalIds().then(setProposalIds).catch(() => {})
+  useEffect(() => { refreshProposals() }, [])
 
   const locked = editingId ? !isQuoteEditable(editingStatus) : false
 
@@ -464,6 +472,7 @@ export default function Mitsumori() {
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
                 <button type="button" className="btn btn-sm btn-primary" onClick={() => startEdit(q)}>{s.edit}</button>
+                <button type="button" className="btn btn-sm" style={{ background: '#12386b', color: '#fff', borderColor: '#12386b' }} onClick={() => setProposalFor(q)}>🎨 {proposalIds.has(q.id) ? L('Visual proposal', '提案書を開く', 'Proposta visual') : L('Make visual proposal', '提案書を作成', 'Criar proposta visual')}</button>
                 <button type="button" className="btn btn-sm" onClick={() => openPrint(q, false, 'ja')}>{s.printJa}</button>
                 <button type="button" className="btn btn-sm" onClick={() => openPrint(q, false, 'en')}>{s.printEn}</button>
                 {q.status === 'draft' && <button type="button" className="btn btn-sm btn-primary" onClick={() => handleStatus(q, 'sent')}>{s.markSent}</button>}
@@ -583,11 +592,18 @@ export default function Mitsumori() {
               <>
                 <button type="button" className="btn" onClick={() => openPrint(editingQuote, false, 'ja')}>{s.printJa}</button>
                 <button type="button" className="btn" onClick={() => openPrint(editingQuote, false, 'en')}>{s.printEn}</button>
+                <button type="button" className="btn" style={{ background: '#12386b', color: '#fff', borderColor: '#12386b' }} onClick={() => setProposalFor(editingQuote)}>🎨 {proposalIds.has(editingQuote.id) ? L('Visual proposal', '提案書を開く', 'Proposta visual') : L('Make visual proposal', '提案書を作成', 'Criar proposta visual')}</button>
               </>
             )}
+            {!editingQuote && <span style={{ fontSize: 12, color: 'var(--text3)', alignSelf: 'center' }}>🎨 {L('Save the quote to make the visual proposal (photos, plans, prices).', '見積を保存すると、写真入りの提案書を作成できます。', 'Salve o orçamento para criar a proposta visual (fotos, planos, valores).')}</span>}
             <button type="button" className="btn" onClick={() => setTab('list')}>{s.cancel}</button>
           </div>
         </div>
+      )}
+      {proposalFor && (
+        <Suspense fallback={null}>
+          <ProposalEditor quote={proposalFor} onClose={() => { setProposalFor(null); refreshProposals() }} />
+        </Suspense>
       )}
       {tracking && <QuoteTracker quote={tracking} onClose={() => { setTracking(null); load(); loadRequests() }} />}
     </div>

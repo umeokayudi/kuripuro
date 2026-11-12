@@ -4,9 +4,16 @@
 import { geminiGenerate } from './_gemini.js'
 import { aiRateLimited, requireAppSession } from './_auth.js'
 import { workReportAi } from './_work-report-ai.js'
+import { proposalAi } from './_proposal-ai.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
+  // v1.0.210 · Proposta visual (提案書): office only (admin login), same function (12-function limit).
+  if (req.body?.kind === 'proposal') {
+    const admin = await requireAppSession(req, res, ['admin'])
+    if (!admin || aiRateLimited(admin, res, { max: 60, windowMin: 10 })) return
+    return proposalAi(req, res)
+  }
   const user = await requireAppSession(req, res)
   if (!user || aiRateLimited(user, res)) return
   // v1.0.150 · 作業報告書: same function (Vercel Hobby = max 12 functions), other job.
