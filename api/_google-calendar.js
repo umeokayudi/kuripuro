@@ -416,7 +416,32 @@ async function status(req, res, user, db) {
     const { data } = await db.from('google_calendar_links').select('draft,account_id,calendar_id,google_event_id').eq('status', 'pending').order('created_at').limit(300)
     pending = (data || []).map(l => l.draft).filter(Boolean).filter(d => !d.event?.date || d.event.date >= addDays(tokyoToday(), -1))
   }
-  res.status(200).json({ configured: googleConfigured(), redirectUri: redirectUri(req), settings, accounts: (accounts || []).map(publicAccount), pending })
+  const setup = user.role === 'admin' ? await setupStatus(db, accounts || []) : undefined
+  res.status(200).json({ configured: googleConfigured(), redirectUri: redirectUri(req), settings, accounts: (accounts || []).map(publicAccount), pending, setup })
+}
+
+/**
+ * v1.0.223 · what the admin "Integração Google Agenda" box shows: which server keys exist (names only,
+ * never values) and how many people connected their own calendar. Read on every request, so once the
+ * keys are in Vercel and the deploy restarts, the employee button turns on with no code change.
+ */
+export function setupChecks(env = process.env) {
+  return [
+    { name: 'GOOGLE_CLIENT_ID', ok: Boolean(env.GOOGLE_CLIENT_ID) },
+    { name: 'GOOGLE_CLIENT_SECRET', ok: Boolean(env.GOOGLE_CLIENT_SECRET) },
+    { name: 'SALES_SESSION_SECRET', ok: Boolean(env.SALES_SESSION_SECRET && env.SALES_SESSION_SECRET.length >= 32) },
+  ]
+}
+async function setupStatus(db, accounts) {
+  const live = accounts.filter(a => a.refresh_token_enc)
+  const { count } = await db.from('employees').select('id', { count: 'exact', head: true }).eq('is_active', true)
+  return {
+    checks: setupChecks(),
+    tables: true,
+    employeesConnected: new Set(live.filter(a => a.owner_kind === 'employee').map(a => a.owner_id)).size,
+    employeesTotal: count ?? null,
+    adminConnected: live.filter(a => a.owner_kind === 'admin').length,
+  }
 }
 
 function startUrl(req, who) {
