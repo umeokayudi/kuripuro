@@ -89,6 +89,7 @@ import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
 import { monthLabel } from '../lib/earnings'
 import AvailabilityPlanner, { TimeOffList, ShiftWeekButton, fmtDay } from '../components/AvailabilityPlanner'
 import FreeJobsCard from '../components/FreeJobsCard'
+import TeamChannel from '../components/TeamChannel'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
@@ -172,7 +173,7 @@ export default function EmployeePortal() {
   const quickRoundOn = quickRoundEnabledFor(user)
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   // A push notification opens the app on its screen (?tab=chat, ?tab=salary…).
-  const [tab, setTab] = useState(() => tabFromUrl(['home','shift','ai','spots','history','salary','transport','equipment','chat','calendar','availability','achievements']) || 'home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','shift','ai','spots','history','salary','transport','equipment','chat','team','calendar','availability','achievements']) || 'home')
   useEffect(() => { clearTabParam() }, [])
   const [menuOpen, setMenuOpen] = useState(false)
   const [facilityIndex, setFacilityIndex] = useState([])
@@ -1775,6 +1776,7 @@ export default function EmployeePortal() {
     {key:'reports',icon:'📄',label:L('Service reports','作業報告書','Relatórios de serviço'),hint:L('Make all of the day at once','その日の分をまとめて作成','Fazer todos do dia de uma vez')},
     {key:'salary',icon:'💴',label:L('My salary','自分の給与','Meu salário')},
     {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport}`},
+    {key:'team',icon:'👥',label:L('Team channel','チームチャンネル','Canal da Equipe'),hint:spotJobs.some(j=>j._open)?L(`${spotJobs.filter(j=>j._open).length} service(s) need someone`,`担当募集 ${spotJobs.filter(j=>j._open).length}件`,`${spotJobs.filter(j=>j._open).length} serviço(s) precisando de alguém`):L('Cover, help and notices of the team','代わり・手伝い・チームのお知らせ','Cobertura, ajuda e avisos da equipe'),badge:spotJobs.filter(j=>j._open).length},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
     {key:'world',icon:'🌏',label:tr.facility.tab},
     {key:'google',icon:'📅',label:'Google Agenda',hint:L('Connect and sync my Google','自分のGoogleを接続・同期','Conectar e sincronizar meu Google')},
@@ -2767,6 +2769,9 @@ export default function EmployeePortal() {
           </div>
         )}
 
+        {/* v1.0.217 · CANAL DA EQUIPE */}
+        {tab==='team'&&<TeamChannel me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L} onChanged={loadAll} />}
+
         {/* CHAT */}
         {tab==='chat'&&(
           <EmployeeChat
@@ -3016,13 +3021,9 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
             </div>
           )}
           <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} labels={labels} lang={lang} />
-          <div id="active-job-finish" style={{position:'sticky',bottom:'calc(74px + env(safe-area-inset-bottom,0px))',zIndex:20,paddingTop:6}}>
-          {needBefore && !submitting && (
-            <button type="button" onClick={()=>document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'})} style={{width:'100%',padding:'9px 12px',marginBottom:6,borderRadius:12,border:'1px solid #fca5a5',background:'#fee2e2',color:'#b91c1c',fontSize:12,fontWeight:700,cursor:'pointer',textAlign:'left',boxShadow:'0 4px 12px rgba(0,0,0,0.12)'}}>
-              📷 {L('Add the Before photo first (above) — then you can finish.','先に「作業前」の写真を追加してください（上）— その後に完了できます。','Coloque a foto do Antes primeiro (acima) — depois dá para concluir.')}
-            </button>
-          )}
-          <button onClick={()=>{ if(needBefore){document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'});return}; if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked||needBefore} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked||needBefore?'#64748b':'linear-gradient(135deg,#4ade80,#22c55e)',color:submitting||activeChecklistBlocked||needBefore?'#fff':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked||needBefore?'not-allowed':'pointer',marginBottom:8,boxShadow:'0 6px 18px rgba(0,0,0,0.18)'}}>
+          {/* v1.0.218: fixed in place (no sticky float) and no red hint box — the button text already says what is missing */}
+          <div id="active-job-finish">
+          <button onClick={()=>{ if(needBefore){document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'});return}; if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||(activeChecklistBlocked&&!needBefore)} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked||needBefore?'#64748b':'linear-gradient(135deg,#4ade80,#22c55e)',color:submitting||activeChecklistBlocked||needBefore?'#fff':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
             {submitting?L('Saving...','保存中...','Salvando...'):needBefore?`📷 ${L('Before photo missing','作業前の写真がありません','Falta a foto do Antes')}`:activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
           </button>
           </div>

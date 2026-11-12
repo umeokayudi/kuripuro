@@ -59,6 +59,7 @@ const steps = [
   ['npm run test:quick-round', 'quick-round'],
   ['npm run test:next-day-shift', 'next-day-shift'],
   ['npm run test:team-chat', 'team-chat'],
+  ['npm run test:team-channel', 'team-channel'],
   ['npm run test:spot-contract', 'spot-contract'],
   ['npm run test:invoice-quote', 'invoice-quote'],
   ['npm run test:nfc-clock', 'nfc-clock'],
