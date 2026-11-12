@@ -390,7 +390,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ configured: pushConfigured(), publicKey: process.env.VAPID_PUBLIC_KEY || null })
   }
   if (req.method !== 'POST' && op !== 'bell') return res.status(405).json({ error: 'Method not allowed' })
-  // v1.0.211 · the same job event also drives the client confirmation e-mail (day / spot).
+  // v1.0.213 · the same job event also drives the client confirmation e-mail (day / spot).
   // Push goes out first; the e-mail runs after it, on its own, and works even without VAPID keys.
   const emailEvent = op === 'event' && req.body?.table === 'jobs' && req.body?.op === 'UPDATE'
   const runEmail = () => (emailEvent ? clientEmailOnJobEvent(req.body).catch(err => ({ error: err?.message })) : null)

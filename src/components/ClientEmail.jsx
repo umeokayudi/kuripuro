@@ -1,4 +1,4 @@
-// v1.0.211 · E-mail de confirmação com relatórios: interruptor por cliente (cadastro/lista) e a aba
+// v1.0.213 · E-mail de confirmação com relatórios: interruptor por cliente (cadastro/lista) e a aba
 // "E-mails enviados" (registro + "Reenviar relatório do dia"). Tudo passa por /api/client-email (só admin).
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'

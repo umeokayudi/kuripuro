@@ -2107,7 +2107,7 @@ body { background: var(--hq-bg); }
 .emp-shift-est-label{font-weight:650}
 .emp-shift-est-note{margin-top:7px;font-size:11px;line-height:1.4;color:#6b7891}
 
-/* v1.0.211 · E-mail de confirmação com relatórios (por cliente) */
+/* v1.0.213 · E-mail de confirmação com relatórios (por cliente) */
 .badge-gray { background: var(--surface2); color: var(--text3); }
 .client-email-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; background: var(--surface2); font-size: 12px; color: var(--text2); }
 .client-email-row.on { box-shadow: inset 3px 0 0 var(--green); }

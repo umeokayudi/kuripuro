@@ -1,4 +1,4 @@
-// v1.0.211 · E-mail de confirmação com relatórios, por cliente (liga/desliga no cadastro).
+// v1.0.213 · E-mail de confirmação com relatórios, por cliente (liga/desliga no cadastro).
 //
 // Gatilho 1 (dia, automático): o banco já avisa /api/push?op=event quando um job muda de status
 // (sql/2026-10-25_push_notificacoes.sql). Quando o ÚLTIMO serviço regular do cliente naquele dia

@@ -1,4 +1,4 @@
-// v1.0.211 · PDF anexado ao e-mail de confirmação: capa com a lista do dia + uma página por serviço
+// v1.0.213 · PDF anexado ao e-mail de confirmação: capa com a lista do dia + uma página por serviço
 // (loja, tipo, horário, responsável, notas e fotos de antes/depois). Feito no servidor com jsPDF e a
 // fonte Noto Sans JP (o jsPDF grava só os caracteres usados, então o arquivo fica pequeno).
 import { readFile } from 'node:fs/promises'

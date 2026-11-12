@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// v1.0.211 · E-mail de confirmação com relatórios: teste de aceite SEM e-mail real e SEM banco real.
+// v1.0.213 · E-mail de confirmação com relatórios: teste de aceite SEM e-mail real e SEM banco real.
 // Storage e banco são simulados em memória; qualquer chamada ao Resend faz o teste falhar.
 import assert from 'node:assert/strict'
 import { buildClientEmail, serviceLine, parseEmails, clientRecipients } from '../src/lib/clientEmailContent.js'

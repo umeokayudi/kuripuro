@@ -1,4 +1,4 @@
-// v1.0.211 · E-mail de confirmação com relatórios ao cliente — texto (puro, sem imports, roda no
+// v1.0.213 · E-mail de confirmação com relatórios ao cliente — texto (puro, sem imports, roda no
 // servidor e nos testes). Recebe só o que pode ir para o cliente: loja, tipo, horários, responsável
 // e as notas do relatório. Nunca recebe valor do serviço, pagamento do funcionário nem outro cliente.
 
