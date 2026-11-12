@@ -9,7 +9,7 @@ import { getPeriodDates, fmtPeriod } from '../lib/salaryPeriod'
 import { isDeductionToReview, reviewText, cancelText, isSilentCancel, reactivatePatch } from '../lib/deductionReview'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { loadPayBasis, savePayBasis, isMissingColumn } from '../lib/jobEmployeePay'
-import { locationNameFromTitle } from '../lib/cleaningType'
+import PayrollReportEditor from './PayrollReportEditor'
 import './SalaryPopups.css'
 
 // 6.1 · Payroll of ONE person for ONE month on one screen: what the month adds up to (jobs / fixed),
@@ -108,7 +108,8 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
   const live = L.filter(p => p.status !== 'cancelled')
   const sum = arr => arr.reduce((s, p) => s + Number(p.amount || 0), 0)
   const salaryLine = live.find(p => p.payment_type === 'salary')
-  const extras = live.filter(p => ['extra', 'bonus', 'transport', 'other'].includes(p.payment_type) && !p.is_deduction)
+  // v1.0.209 · 'extra' lines are inside the payslip (shown above the net); bonus / transport are paid apart
+  const extras = live.filter(p => ['bonus', 'transport', 'other'].includes(p.payment_type) && !p.is_deduction)
   const advances = live.filter(p => p.payment_type === 'advance')
   const deductions = data?.calc.dedRows || []
   const toReview = L.filter(isDeductionToReview)
@@ -120,25 +121,16 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
   const pstate = data ? payrollState(st, salaryLine) : 'none'
   const paid = pstate === 'paid'
   const paidUnconfirmed = pstate === 'paid_unconfirmed'
-  const openToPay = live.filter(p => !p.is_deduction && p.status === 'scheduled')
+  const openToPay = live.filter(p => !p.is_deduction && p.payment_type !== 'extra' && p.status === 'scheduled')
   const jobsPay = data?.calc.jobsPay || 0
   const preview = data?.calc.net || 0
   const outdated = st && !paid && !paidUnconfirmed && (Number(st.net_total) !== preview || Number(st.base_salary) !== data.base)
 
-  const kind = data?.person?.salary_type
   const basisPick = data?.calc.basis
   // v1.0.133 · no choice yet → the rule that applies (fixed when there is a fixed salary)
   const basisShown = basisPick || data?.calc.autoBasis || null
   const perJob = data?.calc.perJob
   const showBasis = !!data && (perJob.priced > 0 || !!basisPick)
-  const fmtDay = d => d ? new Date(`${d}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short', weekday: 'short' }) : ''
-  const baseHow = basisShown === 'fixed' ? tr('Fixed salary (chosen for this month)', '固定給（今月の選択）', 'Salário fixo (escolhido no mês)')
-    : basisShown === 'per_job' ? tr(`Sum per job (${perJob.priced} jobs)`, `件数合計（${perJob.priced}件）`, `Soma por job (${perJob.priced} jobs)`)
-    : kind === 'fixed' ? tr('Fixed salary for the month', '月の固定給', 'Salário fixo do mês')
-    : kind === 'hourly' ? tr(`${data?.jobs.length || 0} completed jobs × hours`, `完了 ${data?.jobs.length || 0}件 × 時間`, `${data?.jobs.length || 0} serviços concluídos × horas`)
-    : kind === 'mixed' ? tr(`Fixed + ${data?.jobs.length || 0} jobs`, `固定 + ${data?.jobs.length || 0}件`, `Fixo + ${data?.jobs.length || 0} serviços`)
-    : tr(`${data?.jobs.length || 0} completed jobs`, `完了 ${data?.jobs.length || 0}件`, `${data?.jobs.length || 0} serviços concluídos`)
-
   const step = paid ? 4 : !st || outdated ? 0 : slip !== 'confirmed' ? 1 : st.status !== 'finalized' ? 2 : 3
   const steps = [
     tr('Calculate', '計算', 'Calcular'),
@@ -155,7 +147,7 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
 
   return (
     <div className="sp-overlay" onClick={() => !busy && onClose()}>
-      <section className="sp-modal is-admin" role="dialog" aria-modal="true" style={{ maxWidth: 520, maxHeight: '92vh', overflowY: 'auto' }} onClick={ev => ev.stopPropagation()}>
+      <section className="sp-modal is-admin" role="dialog" aria-modal="true" style={{ maxWidth: 760, width: 'min(760px, calc(100vw - 24px))', maxHeight: '92vh', overflowY: 'auto' }} onClick={ev => ev.stopPropagation()}>
         <h3>{tr('Payroll', '給与締め', 'Folha')} · {emp.full_name} · {fmtPeriod(period)}</h3>
         {!data ? <p style={{ color: 'var(--text3)' }}>{tr('Loading…', '読み込み中…', 'Carregando…')}</p> : (
           <>
@@ -195,29 +187,21 @@ export default function PayrollCloseSheet({ emp, period, onClose, onChanged }) {
                       ? tr('The fixed salary counts (default when there is one). Tap the other to switch. The two are never added.', '固定給で計算中（固定給がある場合の標準）。切り替えるにはもう一方をタップ。合算はしません。', 'Vale o salário fixo (padrão quando há fixo). Toque no outro para trocar. Os dois nunca são somados.')
                       : tr('The sum per job counts (no fixed salary on the record). The two are never added.', '件数合計で計算中（固定給の登録なし）。合算はしません。', 'Vale a soma por job (sem salário fixo no cadastro). Os dois nunca são somados.')}
                 </p>
-                <details style={{ marginTop: 4 }} open={basisPick === 'per_job'}>
-                  <summary style={{ fontSize: 13, cursor: 'pointer' }}>{tr('Completed jobs with employee pay', '完了した作業（作業者への支払い）', 'Jobs concluídos com pagamento do funcionário')} ({perJob.rows.length})</summary>
-                  <dl className="sp-rows">
-                    {perJob.rows.map(r => (
-                      <div key={r.id}><dt>{fmtDay(r.date)} · {locationNameFromTitle(r.title) || r.title}</dt>
-                        <dd style={r.pay === null ? { color: 'var(--text3)', fontWeight: 500 } : undefined}>{r.pay === null ? tr('to be defined', '未定', 'a definir') : fmt(r.pay)}</dd></div>
-                    ))}
-                    <div><dt><b>{tr('Sum per job', '件数合計', 'Soma por job')}</b></dt><dd>{fmt(perJob.total)}</dd></div>
-                  </dl>
-                  {perJob.undefinedCount > 0 && <p className="pm-hint" style={{ marginTop: 6 }}>⚠️ {tr(`${perJob.undefinedCount} completed job(s) without employee pay — not in the sum.`, `${perJob.undefinedCount}件は支払い未定（合計に含まれません）。`, `${perJob.undefinedCount} job(s) concluído(s) sem pagamento definido — fora da soma.`)}</p>}
-                </details>
               </div>
             )}
 
+            <PayrollReportEditor person={data.person} period={period} jobs={data.jobs} lines={data.lines} basis={data.basis}
+              locked={paid || paidUnconfirmed} onSend={canCloseMonth(period) ? calculate : async () => { toast.success(tr('Values saved. The payslip is sent when the month closes.', '保存しました。明細は月締め後に送られます。', 'Valores salvos. O holerite vai ao funcionário quando o mês fechar.')); changed() }} onChanged={changed} />
+
             <dl className="sp-rows">
-              <div><dt>{baseHow}</dt><dd>{data.calc.needsBasis ? tr('choose above', '上で選択', 'escolha acima') : fmt(data.base - (data.calc.packageTotal || 0))}</dd></div>
               {(data.calc.packages || []).map((p, i) => <div key={`pkg${i}`}><dt>{tr('Monthly package', '月額パッケージ', 'Pacote mensal')} · {p.client_name || '—'}{data.calc.packageJobs ? ` (${tr(`${data.calc.packageJobs} jobs in the package`, `${data.calc.packageJobs}件含む`, `${data.calc.packageJobs} jobs no pacote`)})` : ''}</dt><dd>+{fmt(p.amount)}</dd></div>)}
               {jobsPay > 0 && <div><dt>{tr('Spot jobs', 'スポット', 'Jobs spot')}</dt><dd>+{fmt(jobsPay)}</dd></div>}
+              {(data.calc.extraRows || []).map(p => <div key={p.id}><dt>{tr('Extra', '追加', 'Extra')} · {p.description || ''}</dt><dd>+{fmt(p.amount)}</dd></div>)}
               {deductions.map(p => <div key={p.id}><dt>{tr('Deduction', '控除', 'Desconto')} · {cancelText(p)}</dt><dd style={{ color: 'var(--red, #dc2626)' }}>−{fmt(p.amount)}</dd></div>)}
               {cancelledDeds.map(p => <div key={p.id} style={{ opacity: .7 }}><dt>{tr('Deduction', '控除', 'Desconto')} · <s>{cancelText(p)}</s> · <b>{isSilentCancel(p) ? tr('cancelled with no confirmation', '確認なしで取消', 'cancelado sem confirmação') : tr('cancelled', '取消', 'cancelado')}</b>
                 {isSilentCancel(p) && !paid && <> · <button type="button" className="btn btn-sm" disabled={busy} onClick={() => reactivate(p)}>{tr('Count again', '再び控除する', 'Voltar a valer')}</button></>}</dt>
                 <dd style={{ color: 'var(--text3)' }}><s>−{fmt(p.amount)}</s></dd></div>)}
-              <div><dt><b>{tr('Payslip (net salary)', '明細（差引支給）', 'Holerite (salário líquido)')}</b></dt><dd className="sp-big">{paid || paidUnconfirmed ? fmt(salaryLine.amount) : data.calc.needsBasis ? '—' : fmt(preview)}</dd></div>
+              {(paid || paidUnconfirmed) && <div><dt><b>{tr('Payslip paid', '支払済の明細', 'Holerite pago')}</b></dt><dd className="sp-big">{fmt(salaryLine.amount)}</dd></div>}
               {extras.map(p => <div key={p.id}><dt>{p.payment_type === 'bonus' ? tr('Bonus', 'ボーナス', 'Bônus') : tr('Extra', '追加', 'Extra')} · {p.description || ''}</dt><dd>+{fmt(p.amount)}</dd></div>)}
               {advances.map(p => <div key={p.id}><dt>{tr('Advance', '前払い', 'Adiantamento')} · {p.description || ''} {p.status === 'paid' ? `(${tr('already paid', '支払済', 'já pago')})` : ''}</dt><dd>{fmt(p.amount)}</dd></div>)}
             </dl>

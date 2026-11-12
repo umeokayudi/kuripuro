@@ -18,7 +18,7 @@ const L = {
     net: '差引支給額', schedule: '支払予定', date: '日付', desc: '内容', status: '状態', detail: '作業明細',
     place: '現場', time: '時間', none: '控除はありません', confidential: '社外秘', created: '作成日',
     noRate: '給与の単価が設定されていません（月給・時給が ¥0）。金額が ¥0 の場合は管理者に確認してください。',
-    basePerJob: '作業ごとの支給', perJobRate: '作業ごと（作業ごとの支給額）', perMonth: '/月', perHour: '/時', perDay: '日給', dayUnit: '日', jobUnit: '件',
+    extra: '追加', basePerJob: '作業ごとの支給', perJobRate: '作業ごと（作業ごとの支給額）', perMonth: '/月', perHour: '/時', perDay: '日給', dayUnit: '日', jobUnit: '件',
     status_scheduled: '予定', status_paid: '支払済', status_pending: '保留',
   },
   en: {
@@ -28,7 +28,7 @@ const L = {
     net: 'Net pay', schedule: 'Payment schedule', date: 'Date', desc: 'Description', status: 'Status', detail: 'Work detail',
     place: 'Place', time: 'Time', none: 'No deductions', confidential: 'Confidential', created: 'Created',
     noRate: 'No pay rate is set for this employee (monthly and hourly are ¥0). If the amount shows ¥0, check with the admin.',
-    basePerJob: 'Pay per job', perJobRate: 'Per job (each job\'s own pay)', perMonth: '/mo', perHour: '/h', perDay: 'Daily', dayUnit: 'days', jobUnit: 'jobs',
+    extra: 'Extra', basePerJob: 'Pay per job', perJobRate: 'Per job (each job\'s own pay)', perMonth: '/mo', perHour: '/h', perDay: 'Daily', dayUnit: 'days', jobUnit: 'jobs',
     status_scheduled: 'Scheduled', status_paid: 'Paid', status_pending: 'Pending',
   },
   pt: {
@@ -38,7 +38,7 @@ const L = {
     net: 'Valor líquido', schedule: 'Pagamentos programados', date: 'Data', desc: 'Descrição', status: 'Situação', detail: 'Detalhe dos serviços',
     place: 'Local', time: 'Horário', none: 'Sem descontos', confidential: 'Confidencial', created: 'Gerado em',
     noRate: 'Nenhum valor de pagamento cadastrado para este funcionário (mensal e por hora são ¥0). Se o valor aparecer ¥0, fale com o admin.',
-    basePerJob: 'Pagamento por serviço', perJobRate: 'Por serviço (pagamento de cada serviço)', perMonth: '/mês', perHour: '/h', perDay: 'Diária', dayUnit: 'dias', jobUnit: 'serviços',
+    extra: 'Extra', basePerJob: 'Pagamento por serviço', perJobRate: 'Por serviço (pagamento de cada serviço)', perMonth: '/mês', perHour: '/h', perDay: 'Diária', dayUnit: 'dias', jobUnit: 'serviços',
     status_scheduled: 'Agendado', status_paid: 'Pago', status_pending: 'Pendente',
   },
 }
@@ -50,7 +50,7 @@ function rateText(emp, salary, t) {
   const type = emp?.salary_type || 'fixed'
   if (type === 'fixed') return `${yen(emp?.fixed_salary)}${t.perMonth} · ${t.perDay} ${yen(salary?.dailyRate)}`
   if (type === 'hourly') return `${yen(emp?.hourly_rate)}${t.perHour}`
-  if (type === 'per_job') return `${emp?.job_bonus_rate || 100}%`
+  if (type === 'per_job') return Number(emp?.job_bonus_rate) > 0 ? `${emp.job_bonus_rate}%` : t.perJobRate
   return `${yen(emp?.fixed_salary)}${t.perMonth} + ${yen(emp?.hourly_rate)}${t.perHour} + ${emp?.job_bonus_rate || 0}%`
 }
 
@@ -62,7 +62,7 @@ export function payslipHtml({ employee, month, salary, deductions = [], payments
   const dedTotal = dedRows.reduce((a, d) => a + d.amount, 0)
   const gross = Number(s.total || 0)
   const net = Math.max(0, gross - dedTotal)
-  const paid = payments.filter(p => !p.is_deduction && p.payment_type !== 'advance')
+  const paid = payments.filter(p => !p.is_deduction && p.payment_type !== 'advance' && p.payment_type !== 'extra')
   const rule = s.payRule || null
   const perJobMonth = rule?.used === 'per_job'
   const showJobAmounts = ruleShowsJobAmounts(employee, rule) || jobs.some(j => j.job_category === 'spot')
@@ -110,6 +110,7 @@ ${s.notConfigured ? `<div class="warn">⚠ ${esc(t.noRate)}</div>` : ''}
 <table><tr><th>${t.item}</th><th class="r">${t.amount}</th></tr>
 <tr><td>${perJobMonth ? t.basePerJob : t.base}</td><td class="r">${yen(s.base)}</td></tr>
 ${Number(s.spotEarned || 0) ? `<tr><td>${t.spot}</td><td class="r">${yen(s.spotEarned)}</td></tr>` : ''}
+${(s.extraRows || []).map(x => `<tr><td>${esc(x.description || t.extra)}</td><td class="r">${yen(x.amount)}</td></tr>`).join('')}
 <tr class="sum"><td>${t.gross}</td><td class="r">${yen(gross)}</td></tr></table>
 <h3>${t.deductionsTitle}</h3>
 ${dedRows.length ? `<table><tr><th>${t.item}</th><th class="r">${t.amount}</th></tr>

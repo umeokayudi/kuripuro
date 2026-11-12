@@ -158,7 +158,7 @@ function useMonthWork(employeeId, month) {
       setData({
         emp: emp.data || {}, jobs: enrichJobValues(visible, contracts.data || []),
         deductions: all.filter(p => p.is_deduction && p.status !== 'cancelled'), payments: all,
-        payroll: { jobs: jobs.data || [], lines: all.filter(p => p.is_deduction), basisByMonth: Object.fromEntries((bases?.error ? [] : bases?.data || []).map(b => [b.period, b])) },
+        payroll: { jobs: jobs.data || [], lines: all.filter(p => p.is_deduction || p.payment_type === 'extra'), basisByMonth: Object.fromEntries((bases?.error ? [] : bases?.data || []).map(b => [b.period, b])) },
       })
     }).catch(() => alive && setData({ emp: {}, jobs: [], deductions: [], payments: [] }))
     return () => { alive = false }
@@ -242,6 +242,8 @@ export function PayslipPopup({ statement, employeeId, employeeName, lang, onClos
       <div className="sp-h">{L.detail}</div>
       <div className="sp-break">
         <div><span>{L.gross}</span><b>{yen(statement.base_salary)}</b></div>
+        {Number(statement.breakdown?.jobs_pay || 0) > 0 && <div><span>Spot</span><b>+{yen(statement.breakdown.jobs_pay)}</b></div>}
+        {(statement.breakdown?.extras || []).map(x => <div key={x.id || x.description}><span>{x.description || 'Extra'}</span><b>+{yen(x.amount)}</b></div>)}
         {dedRows.length && Math.abs(dedSum - stDed) <= 1
           ? dedRows.map(d => <div key={d.id} className="is-neg"><span>{d.description || L.deductions}</span><b>-{yen(d.amount)}</b></div>)
           : <div className="is-neg"><span>{L.deductions}</span><b>-{yen(stDed)}</b></div>}

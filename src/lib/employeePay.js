@@ -37,7 +37,8 @@ export function employeeEarningsForJob(job, empInfo) {
     // v1.0.157 · the job's own worker pay first (never the client value on employee screens)
     const own = jobEmployeePay(job)
     if (own !== null) return own
-    const rate = (empInfo?.job_bonus_rate ?? 100) / 100
+    // v1.0.209 · never the client's price unless a % is set on the record
+    const rate = (Number(empInfo?.job_bonus_rate) || 0) / 100
     return Math.round(clientVal * rate)
   }
   if (type === 'mixed') {
