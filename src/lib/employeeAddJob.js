@@ -21,6 +21,27 @@ import { checklistTemplateForJob } from './jobChecklist'
 import { employeeJobColumns } from './jobEmployeePay'
 import { tokyoToday } from './dates'
 import { tokyoTomorrow, validateShiftWindow, shiftWindowNote } from './nextDayShift'
+import { REDO_MARK } from './jobCoverage.js'
+
+/** v1.0.215 · a store someone else already did today is only taken again with a written reason. */
+export const REDO_REASON_MIN = 8
+
+/** "06:19" (Tokyo) of a finished job, or '' */
+export function doneTimeText(job) {
+  const at = job?.completed_at || job?.started_at
+  if (!at) return ''
+  const d = new Date(at)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('sv-SE', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
+}
+
+/** Audit line written on the new job when an employee redoes a store already done by a coworker. */
+export function redoNote({ employeeName, doneJob, reason, stamp }) {
+  const who = doneJob?.employee_name || 'outra pessoa'
+  const at = doneTimeText(doneJob)
+  const ref = doneJob?.id ? ` (job ${String(doneJob.id).slice(0, 8)})` : ''
+  return `${REDO_MARK} [${stamp}] ${employeeName} — já feito hoje por ${who}${at ? ` às ${at}` : ''}${ref}. Motivo: ${String(reason || '').trim()}`
+}
 
 export { titleMatchesLocation }
 
@@ -106,9 +127,12 @@ export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, 
       return { location: loc, state: 'mine', job: mine }
     }
 
-    const doneToday = completed.find(j => matchLoc(j, loc.name))
+    // My own finished job first (retro report is mine to fill); else the coworker who did it.
+    const doneToday = completed.find(j => j.employee_id === currentEmployeeId && matchLoc(j, loc.name))
+      || completed.find(j => matchLoc(j, loc.name))
     if (doneToday) {
-      return { location: loc, state: 'done_today', job: doneToday }
+      const byOther = !!doneToday.employee_id && doneToday.employee_id !== currentEmployeeId
+      return { location: loc, state: 'done_today', job: doneToday, byOther, doneBy: byOther ? (doneToday.employee_name || '—') : null }
     }
 
     const unassigned = active.find(j =>
@@ -129,7 +153,7 @@ export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, 
       !j.started_at
     )
     if (other && !allowTransfer) {
-      return { location: loc, state: 'blocked', job: other, reason: 'planned' }
+      return { location: loc, state: 'blocked', job: other, reason: 'planned', byName: other.employee_name || '—' }
     }
     if (other) {
       return {
@@ -150,6 +174,7 @@ export function buildAddServiceOptions(locations, todayJobs, currentEmployeeId, 
         state: 'blocked',
         job: blocked,
         reason: blocked.status === 'in_progress' ? 'in_progress' : 'started',
+        byName: blocked.employee_name || '—',
       }
     }
 
@@ -261,6 +286,7 @@ export async function employeeAddService(supabase, {
   deepComponents = [],
   shiftStart = null,
   shiftEnd = null,
+  redoReason = '',
 }) {
   if (!employee?.id || !location?.name || !date) {
     return { ok: false, error: 'invalid_input' }
@@ -311,11 +337,20 @@ export async function employeeAddService(supabase, {
 
   const atLocation = jobsAtLocationAndType(dayJobs, location.name, cleaningType)
   const completed = atLocation.find(j => j.status === 'completed')
+  let redoLine = ''
   if (completed) {
-    return { ok: false, error: 'already_done_today' }
+    const byOther = !!completed.employee_id && completed.employee_id !== employee.id
+    const reason = String(redoReason || '').trim()
+    // v1.0.215 · already done today by a coworker: never again by accident — only with a written reason.
+    if (!byOther || isTomorrow) return { ok: false, error: 'already_done_today' }
+    if (reason.length < REDO_REASON_MIN) {
+      return { ok: false, error: 'done_by_other', doneBy: completed.employee_name || '—', doneAt: doneTimeText(completed) }
+    }
+    const stamp = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).replace('T', ' ').slice(0, 16)
+    redoLine = redoNote({ employeeName: employee.name, doneJob: completed, reason, stamp })
   }
 
-  const unassigned = atLocation.find(j =>
+  const unassigned = !redoLine && atLocation.find(j =>
     !j.employee_id && j.status === 'assigned' && !j.started_at
   )
   if (unassigned) {
@@ -336,7 +371,7 @@ export async function employeeAddService(supabase, {
     return { ok: true, action: 'claimed', job: result.job }
   }
 
-  const transferJob = atLocation.find(j =>
+  const transferJob = !redoLine && atLocation.find(j =>
     j.employee_id &&
     j.employee_id !== employee.id &&
     j.status === 'assigned' &&
@@ -371,6 +406,7 @@ export async function employeeAddService(supabase, {
 
   const blocking = atLocation.find(j =>
     j.employee_id !== employee.id &&
+    j.status !== 'completed' &&
     (j.status === 'in_progress' || j.started_at)
   )
   if (blocking) {
@@ -387,7 +423,7 @@ export async function employeeAddService(supabase, {
     scheduled_date: date,
     scheduled_time: isTomorrow ? shiftStart : (location.scheduledTime || '00:30'),
     address: location.address || '',
-    description,
+    description: [description, redoLine].filter(Boolean).join('\n'),
     value,
     checklist_template: checklist || null,
     status: 'assigned',
@@ -397,6 +433,17 @@ export async function employeeAddService(supabase, {
   }).select().single()
 
   if (insErr) return { ok: false, error: 'create_failed', detail: insErr.message }
+  if (redoLine) {
+    // The office sees why right away, in the employee's chat.
+    await supabase.from('messages').insert({
+      employee_id: employee.id,
+      employee_name: employee.name,
+      sender: 'employee',
+      read: false,
+      content: `🔁 Vou refazer ${title} hoje — ${redoLine.split('] ').slice(1).join('] ')}`,
+    }).then(() => null, () => null)
+    return { ok: true, action: 'redo', job: created }
+  }
   return { ok: true, action: 'created', job: created }
 }
 
@@ -461,6 +508,13 @@ export async function preparePastServiceJob(supabase, {
   const completedOther = atLocation.find(j => j.status === 'completed' && j.employee_id === employee.id)
   if (completedOther && !isJobFullyRegistered(completedOther)) {
     return { ok: true, action: 'retro_existing', job: completedOther }
+  }
+
+  // v1.0.215 · a coworker already finished it today: "Já fiz" can't put it on my route
+  // (that is how Kodama Shinbashi landed on Alexandre's route on 12/11). Redo needs a reason (Adicionar serviço).
+  const doneByOther = atLocation.find(j => j.status === 'completed' && j.employee_id && j.employee_id !== employee.id)
+  if (doneByOther) {
+    return { ok: false, error: 'done_by_other', job: doneByOther, doneBy: doneByOther.employee_name || '—', doneAt: doneTimeText(doneByOther) }
   }
 
   const registered = atLocation.find(j => isJobFullyRegistered(j))

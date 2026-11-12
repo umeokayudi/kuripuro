@@ -319,13 +319,13 @@ function coveredJobs(jobs = []) {
   const out = /* @__PURE__ */ new Map();
   if (!doneBy.size) return out;
   for (const a of jobs || []) {
-    if (!a || !a.employee_id || !["assigned", "in_progress"].includes(a.status) || isKeptCover(a)) continue;
+    if (!a || !a.employee_id || !["assigned", "in_progress"].includes(a.status) || isKeptCover(a) || isRedoJob(a)) continue;
     const b = (doneBy.get(coverKey(a)) || []).find((x) => x.id !== a.id && x.employee_id && x.employee_id !== a.employee_id && !areDuplaPartners(a, x));
     if (b) out.set(a.id, b);
   }
   return out;
 }
-var getCleaningType2, KEEP_MARK, norm2, placeOf, serviceOf, coverKey, isKeptCover;
+var getCleaningType2, KEEP_MARK, REDO_MARK, norm2, placeOf, serviceOf, coverKey, isKeptCover, isRedoJob;
 var init_jobCoverage = __esm({
   "src/lib/jobCoverage.js"() {
     init_jobEmployeePay();
@@ -335,6 +335,7 @@ var init_jobCoverage = __esm({
       return /deep\s*clean|profunda|limpeza profunda|range hood|grease trap|grating|ac cleaning|stove|fog[aã]o|レンジフード|グリストラップ|コンロ/.test(t) ? "deep" : "basic";
     };
     KEEP_MARK = "\u27F2 Cobertura: mantido";
+    REDO_MARK = "\u{1F501} Refeito com justificativa";
     norm2 = (s) => String(s || "").toLowerCase().normalize("NFKC").replace(/\s+/g, "").trim();
     placeOf = (j) => norm2(String(j?.title || "").split(" \u2014 ")[0]);
     serviceOf = (j) => {
@@ -343,6 +344,7 @@ var init_jobCoverage = __esm({
     };
     coverKey = (j) => `${j?.scheduled_date || ""}|${placeOf(j)}|${serviceOf(j)}`;
     isKeptCover = (j) => String(j?.description || "").includes(KEEP_MARK);
+    isRedoJob = (j) => String(j?.description || "").includes(REDO_MARK);
   }
 });
 

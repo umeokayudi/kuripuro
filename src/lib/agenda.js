@@ -149,7 +149,8 @@ export function sortByOrder(list) {
 
 /** Next job of the day: first one not finished, in the order shown. */
 export function nextPendingJob(list) {
-  return sortByOrder(list || []).find(j => !['completed', 'cancelled'].includes(j.status)) || null
+  // 'covered' = a coworker already did it (employee portal): never the "next place".
+  return sortByOrder(list || []).find(j => !['completed', 'cancelled', 'covered'].includes(j.status)) || null
 }
 
 /** Columns for the Agenda: one per person with jobs (or in `people`), plus "no one" when needed. */
