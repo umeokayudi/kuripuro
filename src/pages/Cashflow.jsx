@@ -117,7 +117,7 @@ export default function Cashflow() {
   const overdueList = invoices.filter(f=>isOverdueInvoice(f, today))
   const overdue = overdueList.reduce((s,f)=>s+Number(f.total||0),0)
   const paidSalary = salaryPayments
-    .filter(p => p.status === 'paid' && !p.is_deduction && p.payment_date?.startsWith(month))
+    .filter(p => p.status === 'paid' && !p.is_deduction && p.payment_type !== 'extra' && p.payment_date?.startsWith(month))
     .reduce((s,p)=>s+Number(p.amount||0),0)
   const paidTransport = transportClaims
     .filter(p => ['paid','approved','reimbursed'].includes(p.status) && p.claim_date?.startsWith(month))

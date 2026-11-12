@@ -42,17 +42,7 @@ async function queryEmployeeData(employee, args) {
     .limit(limit)
   if (error) throw new Error(error.message)
   if (!isJobs) return maskPendingRows(data)
-  return employeeJobRows(data, employee, columns, await contractPrices(employee))
-}
-
-/** Price per visit by store, only needed when the employee's pay is a share of the job. */
-async function contractPrices(employee) {
-  if (!['per_job', 'mixed'].includes(employee.salary_type)) return []
-  if (!employee.contracts) {
-    employee.contracts = salesDb().from('service_contracts').select('location_name,price_per_visit')
-      .then(({ data }) => data || [], () => [])
-  }
-  return employee.contracts
+  return employeeJobRows(data, employee, columns)
 }
 
 async function activeEmployee(id) {

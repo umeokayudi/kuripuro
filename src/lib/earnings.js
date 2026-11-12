@@ -148,15 +148,16 @@ export function summarizeRange({ emp, jobs, deductions = [], from, to, today = t
 
   const base = salary ? salary.base : days.reduce((s, d) => s + d.base, 0)
   const spot = salary ? salary.spotEarned : days.reduce((s, d) => s + d.spot, 0)
-  const total = base + spot
+  const extras = salary ? (salary.extras || 0) : 0
+  const total = base + spot + extras
   const minutes = days.reduce((s, d) => s + d.minutes, 0)
   for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = shiftMonth(m, 1)) ruleFor(m)
   return {
     from, to, month, salary, days, rules,
     /** rule of the job's month, for job rows: jobEarnings(job, emp, summary.ruleOf(job)) */
     ruleOf: job => rules[String(dayOf(job)).slice(0, 7)] || ruleFor(dayOf(job)),
-    total, base, spot,
-    deductions: monthDed, deductionRows: monthLines ? monthLines.filter(l => l.status !== 'cancelled') : dedRows,
+    total, base, spot, extras, extraRows: salary?.extraRows || [],
+    deductions: monthDed, deductionRows: monthLines ? monthLines.filter(l => l.is_deduction && l.status !== 'cancelled') : dedRows,
     net: Math.max(0, total - monthDed),
     jobs: inRange.length,
     hours: minutes / 60,

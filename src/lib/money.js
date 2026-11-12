@@ -1,7 +1,7 @@
 // v1.0.109 · ONE source for money facts: the monthly value of a contract / client, invoice month and
 // "billed", and the real team cost of a client. Contracts, Clients, Dashboard, Cashflow, Invoices and the
 // charts all read these functions, so the same fact shows the same value everywhere.
-import { payrollMonth, jobMinutes, jobPay, spotExtra, yenAmount } from './salaryCalc.js'
+import { payrollMonth, jobMinutes, jobPay, perJobWorkerPay, spotExtra, yenAmount } from './salaryCalc.js'
 
 const pct = v => Math.min(100, Math.max(0, Number(v) || 0))
 
@@ -106,7 +106,8 @@ export function teamCostByClient({ jobs = [], employees = [], month }) {
       let cost
       if (own !== null && Number.isFinite(own)) cost = own
       else if (used === 'fixed' || type === 'fixed' || type === 'mixed') cost = Math.round(calc.base * jobMinutes(j) / minutes)
-      else if (type === 'per_job') cost = Math.round(jobPay(j) * ((emp.job_bonus_rate || 100) / 100))
+      // v1.0.214 · no employee_pay → cost unknown ('a definir'), never 100% of the client price
+      else if (type === 'per_job') cost = perJobWorkerPay(j, emp.job_bonus_rate)
       else if (type === 'hourly') cost = Math.round(jobMinutes(j) / 60 * yenAmount(emp.hourly_rate))
       else cost = 0
       const extra = spotExtra(j)
