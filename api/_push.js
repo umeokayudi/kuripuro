@@ -17,7 +17,7 @@
 import webpush from 'web-push'
 import { salesDb, readSalesSession } from './_salesSession.js'
 import { fetchBellSnapshot, bellNotice, bellSummary, BELL_SKIP_KINDS, BELL_SKIP_GROUPS } from './_bell.bundle.js'
-import { isChannelPath, coverPushText, textPushText, channelOfPath, inChannel, showsCovers, MEMBERS_PATH } from '../src/lib/teamChannel.js'
+import { isChannelPath, coverPushText, textPushText, channelOfPath, inChannel, showsCovers, MEMBERS_PATH, isDmKey, inDm } from '../src/lib/teamChannel.js'
 
 const MAX_FAILS = 3
 
@@ -385,6 +385,8 @@ export async function handleTeam(req, res, { db = salesDb(), who, readFile = nul
   if (!msg.at || Date.now() - new Date(msg.at).getTime() > TEAM_FRESH_MS) return res.status(200).json({ ok: true, sent: 0, skipped: 'old' })
   // v1.0.221 · only the caller's own message (or own cover request) can be pushed
   if (who && msg.author?.id && who.user_id !== msg.author.id && who.role !== 'admin') return res.status(403).json({ error: 'not yours' })
+  // v1.0.228 · a private conversation: the author must be one of the two
+  if (isDmKey(channel) && !inDm(msg.author, channel)) return res.status(403).json({ error: 'not in this conversation' })
   if (isReq) {
     const { data: job } = await db.from('jobs').select('id,title,client_name,scheduled_date,scheduled_time').eq('id', file.job_id).maybeSingle()
     if (job) {
@@ -408,8 +410,12 @@ export async function handleTeam(req, res, { db = salesDb(), who, readFile = nul
   const tag = isCover ? `team-${msg.job?.id || path}` : `team-ch-${channel}`
   const text = l => (isCover ? coverPushText(msg, l) : textPushText(msg, l))
   const emps = targets.filter(s => s.role !== 'admin'), admins = targets.filter(s => s.role === 'admin')
-  const sent = (emps.length ? await sendTo(db, emps, l => ({ ...text(l), url: `/?tab=team&ch=${channel}`, tag })) : 0)
-    + (admins.length ? await sendTo(db, admins, l => ({ ...text(l), url: `/team-channel?ch=${channel}`, tag })) : 0)
+  // employees open private conversations in the Chat tab (v1.0.228); sellers / marketing keep the channel tab
+  const empsChat = isDmKey(channel) ? emps.filter(x => x.role === 'employee') : []
+  const empsTeam = emps.filter(x => !empsChat.includes(x))
+  const sent = (empsChat.length ? await sendTo(db, empsChat, l => ({ ...text(l), url: `/?tab=chat&ch=${encodeURIComponent(channel)}`, tag })) : 0)
+    + (empsTeam.length ? await sendTo(db, empsTeam, l => ({ ...text(l), url: `/?tab=team&ch=${encodeURIComponent(channel)}`, tag })) : 0)
+    + (admins.length ? await sendTo(db, admins, l => ({ ...text(l), url: `/team-channel?ch=${encodeURIComponent(channel)}`, tag })) : 0)
   await db.from('push_log').update({ sent }).eq('dedupe_key', key)
   return res.status(200).json({ ok: true, sent })
 }
