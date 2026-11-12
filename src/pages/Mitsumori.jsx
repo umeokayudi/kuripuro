@@ -38,6 +38,10 @@ import { quoteSellerFor } from '../lib/quoteSeller'
 import { ClientLink } from '../components/ClientSheetHost'
 import { askConfirm } from '../components/ConfirmDialog'
 import { listProposalIds } from '../lib/proposal'
+import { companyKey } from '../lib/clientQuotes'
+import { addQuoteHistory } from '../lib/quoteHistory'
+import QuoteAttachments from '../components/QuoteAttachments'
+import { useAuth } from '../hooks/useAuth'
 
 // v1.0.210 · Proposta visual (提案書 com fotos, planos, valores e agenda) — carrega só quando abre
 const ProposalEditor = lazy(() => import('../components/ProposalEditor'))
@@ -63,6 +67,7 @@ export default function Mitsumori() {
   const today = tokyoToday()
   const [params] = useSearchParams()
   const pending = usePendingCounts()
+  const { user } = useAuth()
   const leadId = params.get('lead')
   const [quotes, setQuotes] = useState([])
   const [leads, setLeads] = useState([])
@@ -176,6 +181,8 @@ export default function Mitsumori() {
     setForm(f => ({
       ...blankForm(today),
       ...leadFromRow(row, today),
+      // v1.0.211 · the store field starts EMPTY: the 見積書 goes to the company (御中), the store is only the service place
+      site_name: '',
       tax_rate: f.tax_rate,
       valid_until: f.valid_until || defaultValidUntil(today),
     }))
@@ -191,7 +198,7 @@ export default function Mitsumori() {
     const row = leads.find(x => x.id === id)
     if (!row) return
     setEditingLeadId(row.id)
-    setForm(f => ({ ...f, ...leadFromRow(row, today), tax_rate: f.tax_rate, valid_until: f.valid_until }))
+    setForm(f => ({ ...f, ...leadFromRow(row, today), site_name: f.site_name || '', tax_rate: f.tax_rate, valid_until: f.valid_until }))
   }
 
   const startNew = () => {
@@ -280,7 +287,6 @@ export default function Mitsumori() {
 
   const handleSave = async () => {
     if (!String(form.company_name || '').trim()) return toast.error(s.missingCompany)
-    if (!String(form.site_name || '').trim()) return toast.error(s.missingSite)
     if (!String(form.contact_name || '').trim()) return toast.error(s.missingContact)
     if (!locked && (!items.length || items.every(it => !it.description))) return toast.error(s.addItem)
     setSaving(true)
@@ -349,7 +355,16 @@ export default function Mitsumori() {
     if (status === 'declined' && row.lead_id) {
       await supabase.from('sales_leads').update({ stage: 'lost', ...(patch.decision_reason ? { lost_reason: patch.decision_reason } : {}), last_contact_date: today, updated_at: new Date().toISOString() }).eq('id', row.lead_id)
     }
+    addQuoteHistory(row.id, { action: status, by: user?.full_name || user?.name || 'admin', ...(patch.decision_reason ? { note: patch.decision_reason } : {}) })
     toast.success(fill(s.statusChanged, { status: s.quoteStatuses?.[status] || status }))
+    // v1.0.211 · the client sees a sent quote in the portal when its company is a client with that same name
+    if (status === 'sent') {
+      const key = companyKey(row.company_name)
+      const { data: cls } = await supabase.from('clients').select('id,company_name')
+      const owner = (cls || []).find(c => companyKey(c.company_name) === key)
+      if (owner) toast.success(L(`Visible in ${owner.company_name}'s client portal.`, `${owner.company_name} のお客様ポータルに表示されます。`, `Aparece no portal do cliente ${owner.company_name}.`))
+      else toast(L(`No client named "${row.company_name}" yet: it will show in the portal once a client with this company name exists.`, `「${row.company_name}」という顧客がまだありません。同じ会社名の顧客を登録するとポータルに表示されます。`, `Ainda não há cliente com o nome "${row.company_name}": aparece no portal quando existir um cliente com esse nome de empresa.`), { icon: 'ℹ️', duration: 7000 })
+    }
     if (editingId === row.id) setEditingStatus(status)
     load()
   }
@@ -395,10 +410,30 @@ export default function Mitsumori() {
     load()
   }
 
+  // v1.0.211 · Admin reopens a sent (or declined) quote to fix it: back to draft, same number, history kept.
+  // While in draft the client no longer sees it in the portal; "Mark as sent" shows it again.
+  const reopenQuote = async (row) => {
+    const ok = await askConfirm({
+      title: L('Back to draft?', '下書きに戻しますか？', 'Voltar para rascunho?'),
+      message: L(
+        `${row.quote_number} can be edited again (same number). The client stops seeing it until you mark it as sent again.`,
+        `${row.quote_number} を再編集できます（番号はそのまま）。再度「送付済み」にするまで、お客様のポータルには表示されません。`,
+        `${row.quote_number} volta a ser editável (mesmo número). O cliente deixa de ver no portal até você marcar como enviado de novo.`),
+      confirmLabel: L('Back to draft', '下書きに戻す', 'Voltar para rascunho'),
+    })
+    if (!ok) return
+    const { data, error } = await supabase.from('mitsumori').update({ status: 'draft' }).eq('id', row.id).in('status', ['sent', 'declined', 'expired', 'pending']).select('id')
+    if (error) return toast.error(error.message)
+    if (!data?.length) return toast.error(L('This quote can no longer be reopened.', 'この見積書は戻せません。', 'Este orçamento não pode mais voltar para rascunho.'))
+    await addQuoteHistory(row.id, { action: 'reopened', from: row.status, by: user?.full_name || user?.name || 'admin' })
+    toast.success(L('Back to draft: you can edit it now.', '下書きに戻しました。編集できます。', 'Voltou para rascunho: já pode editar.'))
+    if (editingId === row.id) setEditingStatus('draft')
+    load()
+  }
+
   const openPrint = async (row, autoPrint, lang = 'ja') => {
     const { data, error } = await supabase.from('mitsumori_items').select('*').eq('mitsumori_id', row.id)
     if (error) return toast.error(error.message)
-    const lead = leads.find(x => x.id === row.lead_id)
     const fromForm = editingId && row.id === editingId ? form : {}
     const printRow = {
       ...row,
@@ -410,12 +445,10 @@ export default function Mitsumori() {
       notes: fromForm.notes || row.notes,
       frequency: fromForm.frequency || row.frequency,
       hours_per_visit: fromForm.hours_per_visit || row.hours_per_visit,
-      site_name: fromForm.site_name
-        || row.site_name
-        || restaurantFromNotes(fromForm.notes || row.notes)
-        || lead?.site_name
-        || restaurantFromNotes(lead?.notes)
-        || '',
+      // v1.0.211 · only the quote's own store (never the lead's): it is the service place, not the recipient
+      site_name: editingId && row.id === editingId
+        ? (fromForm.site_name || '')
+        : (row.site_name || restaurantFromNotes(row.notes) || ''),
     }
     const opened = openPrintHtml(buildMitsumoriPrintHtml(printRow, data || [], {}, lang), { autoPrint })
     if (!opened.ok) toast.error(s.popupBlocked)
@@ -459,8 +492,8 @@ export default function Mitsumori() {
             <div key={q.id} className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}><ClientLink name={q.company_name}>{q.site_name || q.company_name}</ClientLink></div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>{q.quote_number} · {q.site_name ? `${q.company_name} · ` : ''}{s.contact}: {q.contact_name || '—'}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}><ClientLink name={q.company_name}>{q.company_name || q.site_name}</ClientLink></div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>{q.quote_number} · {q.site_name && q.company_name ? `${q.site_name} · ` : ''}{s.contact}: {q.contact_name || '—'}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{s.firstContact}: {q.first_contact_date || '—'} · {s.validUntil}: {q.valid_until || '—'}</div>
                   {q.needs && <div style={{ fontSize: 12, marginTop: 4 }}>{s.needs}: {q.needs}</div>}
                 </div>
@@ -486,6 +519,7 @@ export default function Mitsumori() {
                   </button>
                 )}
                 {q.status !== 'declined' && q.status !== 'accepted' && <button type="button" className="btn btn-sm btn-danger" onClick={() => handleStatus(q, 'declined')}>{s.markDeclined}</button>}
+                {(q.status === 'sent' || q.status === 'declined' || q.status === 'expired') && <button type="button" className="btn btn-sm" onClick={() => reopenQuote(q)}>↩ {L('Back to draft', '下書きに戻す', 'Voltar para rascunho')}</button>}
                 <button type="button" className="btn btn-sm btn-danger" onClick={() => handleDelete(q.id)}>{s.delete}</button>
               </div>
             </div>
@@ -529,7 +563,12 @@ export default function Mitsumori() {
         <div>
           <div className="card" style={{ marginBottom: 14 }}>
             <div className="card-title">{editingId ? s.quoteTitleEdit : s.quoteTitle}</div>
-            {locked && <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 10 }}>{s.lockedAfterSend}</div>}
+            {locked && (
+              <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>{s.lockedAfterSend}</span>
+                {editingStatus !== 'accepted' && <button type="button" className="btn btn-sm" onClick={() => { const row = quotes.find(x => x.id === editingId); if (row) reopenQuote(row) }}>↩ {L('Back to draft', '下書きに戻す', 'Voltar para rascunho')}</button>}
+              </div>
+            )}
             {leads.length > 0 && !editingId && (
               <div className="form-group">
                 <label>{s.prefillLead}</label>
@@ -585,6 +624,10 @@ export default function Mitsumori() {
             </div>
           </div>
 
+          {/* v1.0.211 · images attached to the quote (the client sees them in the portal with the quote) */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <QuoteAttachments quoteId={editingId} lang={lang} editable />
+          </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>{saving ? t.app.loading : (editingId ? s.saveQuote : s.createQuote)}</button>
