@@ -1,4 +1,4 @@
-// v1.0.211 · The ONE place the server talks to an AI provider.
+// v1.0.212 · The ONE place the server talks to an AI provider.
 //
 // Every route (admin AI, employee AI, sales AI, photo/report/contract analysis, 作業報告書,
 // 提案書, Google Agenda drafts, voice transcription, quote minimum…) calls aiGenerate() or
@@ -16,7 +16,7 @@
 // speaks another format translates inside its own file.
 import * as gemini from './_ai-gemini.js'
 
-export const API_BUILD = '2026-11-12-v1.0.211'
+export const API_BUILD = '2026-11-12-v1.0.212'
 
 const PROVIDERS = { gemini }
 const KNOWN = ['gemini', 'muse']
