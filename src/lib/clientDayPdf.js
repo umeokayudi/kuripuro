@@ -42,22 +42,24 @@ const pageOf = html => {
 }
 
 /** One A4 HTML with a cover (list of stores) and every report on its own page. */
-export function combinedReportsHtml(reports, { clientName, date, lang } = {}) {
-  const list = [...(reports || [])].filter(isServiceReport).sort((a, b) => storeOf(a).localeCompare(storeOf(b), 'ja'))
+// v1.0.224 · `period` (e.g. '06/11 – 12/11') for a PDF of several days: cover shows it, reports go by date then store
+export function combinedReportsHtml(reports, { clientName, date, lang, period } = {}) {
+  const list = [...(reports || [])].filter(isServiceReport).sort((a, b) => String(a.work_date || '').localeCompare(String(b.work_date || '')) || storeOf(a).localeCompare(storeOf(b), 'ja'))
   if (!list.length) return ''
   const lg = lang || list[0].lang || 'ja'
   const L = COVER[lg] || COVER.ja
   const client = clientName ?? (list[0].client_name || '')
   const mixed = new Set(list.map(r => r.client_name || '')).size > 1
   const day = date || list[0].work_date
-  const dayTxt = day ? new Date(`${day}T12:00:00`).toLocaleDateString(locale(lg), { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }) : ''
+  const dayTxt = period || (day ? new Date(`${day}T12:00:00`).toLocaleDateString(locale(lg), { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }) : '')
   const htmls = list.map(r => reportHtml(r))
   const style = (/<style>([\s\S]*?)<\/style>/.exec(htmls[0]) || [])[1] || ''
-  const rows = list.map(r => `<tr><td>${mixed && r.client_name ? `${esc(r.client_name)}<br>` : ''}${esc(storeOf(r))}</td><td>${esc(r.title || '')}</td><td>${esc(r.fields?.lead || r.signatures?.cleaner?.name || r.created_by || '')}</td><td>${(r.photos || []).length}</td></tr>`).join('')
+  const multiDay = new Set(list.map(r => r.work_date || '')).size > 1
+  const rows = list.map(r => `<tr><td>${multiDay && r.work_date ? `${esc(r.work_date.slice(5).replace('-', '/'))} ` : ''}${mixed && r.client_name ? `${esc(r.client_name)}<br>` : ''}${esc(storeOf(r))}</td><td>${esc(r.title || '')}</td><td>${esc(r.fields?.lead || r.signatures?.cleaner?.name || r.created_by || '')}</td><td>${(r.photos || []).length}</td></tr>`).join('')
   const cover = `<h1>${esc(L.doc)}</h1><div class="meta">${client ? `${esc(client)}${L.sama} ｜ ` : ''}${esc(L.date)}：${esc(dayTxt)} ｜ ${esc(L.n(list.length))}</div>
 <section><p>${esc(L.intro(client, dayTxt))}</p><table class="lst"><tr><th>${esc(L.store)}</th><th>${esc(L.service)}</th><th>${esc(L.who)}</th><th>${esc(L.photos)}</th></tr>${rows}</table></section>`
   const pages = htmls.map(h => `<div class="brk">${pageOf(h)}</div>`).join('')
-  const title = `${L.doc} · ${client} · ${day || ''}`
+  const title = `${L.doc} · ${client} · ${period || day || ''}`
   return `<!doctype html><html lang="${esc(lg)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
 ${style}
 .brk{break-before:page;page-break-before:always;margin-top:26px;padding-top:18px;border-top:3px solid #1f3a5f}
