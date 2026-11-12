@@ -26,6 +26,8 @@ export const TABLE_COLUMNS = {
   client_ratings: 'id,client_id,client_user_id,job_id,employee_name,location_name,stars,comment,created_at,photo_url',
   client_requests: 'id,client_id,client_user_id,location_name,description,preferred_date,status,admin_notes,ticket_number,created_at,completed_at,request_type,category,quote_amount,quote_note,quote_status,quoted_at,decided_at,salesperson_id,base_amount,seller_markup,priced_at,commission_paid_at',
   service_contracts: 'id,client_id,location_name,location_address,service_type,price_per_visit,hours_per_visit,days_of_week,visits_per_month,monthly_revenue,notes,is_active,created_at,tax_rate,price_includes_tax,training_video_url,training_checklist,billing_type,fixed_monthly,discount_percent,billing_day,billing_notes,area,contract_pdf_path,contract_pdf_saved_at,salesperson_id,commission_type,commission_value,commission_amount,contract_details',
+  mitsumori: 'id,quote_number,lead_id,company_name,site_name,address,contact_name,contact_title,issue_date,valid_until,frequency,hours_per_visit,tax_rate,subtotal,tax_amount,total,status,notes,sent_at,decided_at,decision_reason,salesperson_id,created_at',
+  mitsumori_items: 'id,mitsumori_id,description,quantity,unit_price,total',
   service_reports: 'id,checkin_id,employee_id,employee_name,client_name,report_date,time_in,time_out,transport_route,transport_cost,notes_in,notes_out,photo_before_url,photo_during_url,photo_after_url,pdf_url,created_at,checklist,gps_lat_in,gps_lng_in,gps_lat_out,gps_lng_out,client_id,location_name,photo_comment,job_id,job_title,duration_min,report_type,retro_ai_summary,checklist_done,checklist_total,checklist_missed_items,photo_ai_score,photo_ai_approved,photo_ai_issues,signature_url,job_value',
 }
 

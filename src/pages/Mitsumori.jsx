@@ -38,6 +38,7 @@ import { quoteSellerFor } from '../lib/quoteSeller'
 import { ClientLink } from '../components/ClientSheetHost'
 import { askConfirm } from '../components/ConfirmDialog'
 import { listProposalIds } from '../lib/proposal'
+import { companyKey } from '../lib/clientQuotes'
 
 // v1.0.210 · Proposta visual (提案書 com fotos, planos, valores e agenda) — carrega só quando abre
 const ProposalEditor = lazy(() => import('../components/ProposalEditor'))
@@ -350,6 +351,14 @@ export default function Mitsumori() {
       await supabase.from('sales_leads').update({ stage: 'lost', ...(patch.decision_reason ? { lost_reason: patch.decision_reason } : {}), last_contact_date: today, updated_at: new Date().toISOString() }).eq('id', row.lead_id)
     }
     toast.success(fill(s.statusChanged, { status: s.quoteStatuses?.[status] || status }))
+    // v1.0.211 · the client sees a sent quote in the portal when its company is a client with that same name
+    if (status === 'sent') {
+      const key = companyKey(row.company_name)
+      const { data: cls } = await supabase.from('clients').select('id,company_name')
+      const owner = (cls || []).find(c => companyKey(c.company_name) === key)
+      if (owner) toast.success(L(`Visible in ${owner.company_name}'s client portal.`, `${owner.company_name} のお客様ポータルに表示されます。`, `Aparece no portal do cliente ${owner.company_name}.`))
+      else toast(L(`No client named "${row.company_name}" yet: it will show in the portal once a client with this company name exists.`, `「${row.company_name}」という顧客がまだありません。同じ会社名の顧客を登録するとポータルに表示されます。`, `Ainda não há cliente com o nome "${row.company_name}": aparece no portal quando existir um cliente com esse nome de empresa.`), { icon: 'ℹ️', duration: 7000 })
+    }
     if (editingId === row.id) setEditingStatus(status)
     load()
   }

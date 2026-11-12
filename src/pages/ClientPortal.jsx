@@ -15,6 +15,8 @@ import { jobDurationMin } from '../lib/jobReport'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import JobPhotos from '../components/JobPhotos'
 import JobVideos from '../components/JobVideos'
+import { ClientQuoteDoc, CLIENT_QUOTE_CSS } from '../components/ClientQuoteDocs'
+import { fetchClientQuotes, quoteExpired } from '../lib/clientQuotes'
 import { ManagerCard, BillingView, BillingAlerts, StoresView, QuoteForm, RequestCard, MaintenanceList, maintenanceAlertsFor, itemLabel } from '../components/ClientCare'
 import { summarizeCleaningMonth, deepSummaryFromPlan, weeklyCompleted, shiftMonth } from '../lib/clientProgress'
 import PhotoLightbox from '../components/PhotoLightbox'
@@ -97,6 +99,8 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
   const [compliments, setCompliments] = useState([])
   const [ratings, setRatings] = useState([])
   const [requests, setRequests] = useState([])
+  // v1.0.211 · 見積書 sent by the office (table mitsumori), matched by company name
+  const [quoteDocs, setQuoteDocs] = useState([])
   const [invoices, setInvoices] = useState([])
   const [clientRow, setClientRow] = useState(null)
   const [profiles, setProfiles] = useState([])
@@ -226,6 +230,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
       setCompliments(filterByLocation(cmplRes.data, user.location_name))
       setRatings((ratRes.data || []).filter(r => ratingMatchesClientUser(r, user)))
       setRequests(filterByLocation(reqRes.data, user.location_name))
+      setQuoteDocs(await fetchClientQuotes({ companyName: cliRes.data?.company_name || user.client_name, locationName: user.location_name }))
       setUnreadMsgs(filterByLocation(msgsRes.data, user.location_name).filter(m => m.sender === 'admin' && !m.read).length)
       await supabase.from('client_users').update({ last_seen: new Date().toISOString() }).eq('id', user.id)
     } catch (err) {
@@ -617,11 +622,12 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
   const pendingFacilityRecs = facilityRecs.filter(r => r.status === 'pending')
 
   const quotesWaiting = requests.filter(rq => rq.quote_status === 'quoted').length
+    + quoteDocs.filter(q => q.status === 'sent' && !quoteExpired(q, today)).length
   // v1.0.191 · client bell: everything new or waiting for the client
   const lastAdminMsg = [...messages].reverse().find(m => m.sender === 'admin' && !m.read) || null
   const bellItems = clientBellItems({
     lang, today, invoices, unreadMsgs, lastAdminMsg, requests, complaints, reports: unseenReports, jobs,
-    placeOf: j => locationFromJob(j) || j.title, unratedCount: unratedVisits.length, facilityRecs: pendingFacilityRecs, maintAlerts,
+    placeOf: j => locationFromJob(j) || j.title, unratedCount: unratedVisits.length, facilityRecs: pendingFacilityRecs, maintAlerts, quoteDocs,
   })
   const navItems = [
     { key: 'home', icon: <NavIcon name="home" />, label: c.home },
@@ -1171,6 +1177,15 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
                 {showRequestForm && (
                   <QuoteForm locations={storeNames} defaults={quoteDefaults} labels={c} lang={lang}
                     onSubmit={submitRequest} onCancel={() => { setShowRequestForm(false); setQuoteDefaults({}) }} />
+                )}
+                {quoteDocs.length > 0 && (
+                  <>
+                    <style>{CLIENT_QUOTE_CSS}</style>
+                    <div className="cp-section-title cpx-section">{pickLang(lang, 'Quotes from KuriPuro', 'KuriPuroからのお見積もり', 'Orçamentos da KuriPuro')}</div>
+                    {quoteDocs.map(q => (
+                      <ClientQuoteDoc key={q.id} quote={q} lang={lang} today={today} who={user.contact_name || user.name || ''} onChanged={() => loadAll({ silent: true })} />
+                    ))}
+                  </>
                 )}
                 <div className="cp-section-title cpx-section">{c.requestHistory}</div>
                 {requests.length === 0 ? <PortalEmpty icon="📝" text={c.noRequests} /> : requests.map(rq => (
