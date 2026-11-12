@@ -17,6 +17,7 @@ export default function EmployeeChat({
   messages, labels, lang, value, onChange, onSend, onPhoto, sendingPhoto, onPhotoClick,
   containerRef, endRef, onScroll, unreadBelow, onJumpDown,
   teamReady = false, sections = null, activeKey = OFFICE_KEY, onOpen, onBack,
+  showBack = false, onBackToList = null, // v1.0.224 · back to the Chat list (office, groups, gerência)
 }) {
   const fileRef = useRef()
   const dateLocale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
@@ -69,7 +70,7 @@ export default function EmployeeChat({
   const conversation = active && (
     <div className="ec-chat">
       <div className="ec-head">
-        {teamReady && <button type="button" className="ec-back" onClick={onBack} aria-label={labels.chatBack}>‹</button>}
+        {(teamReady || showBack) && <button type="button" className={`ec-back${showBack ? ' is-shown' : ''}`} onClick={() => (showBack && onBackToList ? onBackToList() : onBack?.())} aria-label={labels.chatBack}>‹</button>}
         <span className={`ec-avatar${isOffice ? '' : ` ec-av-${active.kind}`}`}>{isOffice ? 'KP' : initials(active.name)}</span>
         <div>
           <strong>{isOffice ? (teamReady ? labels.chatOffice : labels.chatWith) : active.name}</strong>

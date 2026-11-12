@@ -90,6 +90,7 @@ import { monthLabel } from '../lib/earnings'
 import AvailabilityPlanner, { TimeOffList, ShiftWeekButton, fmtDay } from '../components/AvailabilityPlanner'
 import FreeJobsCard from '../components/FreeJobsCard'
 import TeamChannel from '../components/TeamChannel'
+import ChatHub from '../components/ChatHub'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
@@ -233,6 +234,8 @@ export default function EmployeePortal() {
   const [coworkers, setCoworkers] = useState([])
   const [teamMessages, setTeamMessages] = useState([])
   const [chatKey, setChatKey] = useState(null)
+  // v1.0.224 · Chat tab: null = list (office, groups, gerência); 'office' = office chat; else a group / private key
+  const [chatView, setChatView] = useState(() => { try { const q = new URLSearchParams(window.location.search); return q.get('tab') === 'chat' ? (q.get('ch') || null) : null } catch { return null } })
   const coworkersRef = useRef([])
   coworkersRef.current = coworkers
   const [badges, setBadges] = useState([])
@@ -433,7 +436,7 @@ export default function EmployeePortal() {
   }, [activeJob])
 
   useEffect(() => {
-    if (tab==='chat') {
+    if (tab==='chat' && chatView==='office') {
       if (chatOnOffice) { if (officeUnread > 0) markRead() }
       else if (chatKey && teamMessages.some(m=>m.from_employee_id===chatKey&&m.to_employee_id===user.id&&!m.read)) markTeamRead(chatKey)
       // Only auto-scroll if user hasn't scrolled up
@@ -441,13 +444,16 @@ export default function EmployeePortal() {
         setTimeout(()=>msgEndRef.current?.scrollIntoView({behavior:'smooth'}),100)
       }
     }
-  }, [tab, messages, teamMessages, chatKey])
+  }, [tab, messages, teamMessages, chatKey, chatView])
 
   // Phones open the people list first; wider screens open the leader (or the office) beside it.
   useEffect(() => {
     if (tab!=='chat' || !teamReady || chatKey) return
     if (window.matchMedia('(min-width: 821px)').matches) setChatKey(coworkers.find(c=>c.id===user.id)?.leader_id || OFFICE_KEY)
   }, [tab, teamReady])
+
+  // leaving the Chat tab goes back to its list next time
+  useEffect(() => { if (tab!=='chat') setChatView(null) }, [tab])
 
   const openChat = (key) => { setChatKey(key); setNewMsg(''); setUserScrolled(false) }
 
@@ -2773,12 +2779,25 @@ export default function EmployeePortal() {
         {tab==='team'&&<TeamChannel me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L} onChanged={loadAll} />}
 
         {/* CHAT */}
-        {tab==='chat'&&(
+        {tab==='chat'&&chatView===null&&(
+          <ChatHub me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L}
+            officeUnread={officeUnread}
+            officeLast={lastAdminMsg ? chatPreview(lastAdminMsg.content, '📷').substring(0,60) : ''}
+            coverCount={spotJobs.filter(j=>j._open).length}
+            onOpen={k=>{ if (k==='office') openChat(OFFICE_KEY); setChatView(k) }} />
+        )}
+        {tab==='chat'&&chatView&&chatView!=='office'&&(
+          <TeamChannel key={chatView} me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L} onChanged={loadAll}
+            focus={chatView} onBack={()=>setChatView(null)} />
+        )}
+        {tab==='chat'&&chatView==='office'&&(
           <EmployeeChat
-            messages={chatOnOffice ? officeThread(messages) : threadWith(teamMessages, user.id, chatKey)}
-            teamReady={teamReady}
+            showBack
+            onBackToList={()=>{ setChatView(null); setChatKey(null) }}
+            messages={officeThread(messages)}
+            teamReady={false}
             sections={chatSections}
-            activeKey={teamReady ? chatKey : OFFICE_KEY}
+            activeKey={OFFICE_KEY}
             onOpen={openChat}
             onBack={()=>setChatKey(null)}
             labels={e}

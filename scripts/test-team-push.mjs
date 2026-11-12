@@ -39,4 +39,11 @@ r = res(); await handleTeam({ body: { path: p2 } }, r, { db, loadPeople: people,
 assert.equal(r.code, 403)
 r = res(); await handleTeam({ body: { path: p2 } }, r, { db, loadPeople: people, who: { role: 'salesperson', user_id: 's1' }, readFile: async () => ({ kind: 'text', text: 'oi', at: now, author: { id: 's1' } }) })
 assert.equal(r.body.ok, true)
+// v1.0.224 · private conversation: only one of the two can push it
+const E = '11111111-1111-4111-8111-111111111111', A = '44444444-4444-4444-8444-444444444444'
+const dmP = `team-channel/dm/admin-${A}__employee-${E}/2026-11/1794452400002_dm.json`
+r = res(); await handleTeam({ body: { path: dmP } }, r, { db, loadPeople: people, who: { role: 'employee', user_id: 'e9' }, readFile: async () => ({ kind: 'text', text: 'oi', at: now, author: { role: 'employee', id: 'e9' } }) })
+assert.equal(r.code, 403)
+r = res(); await handleTeam({ body: { path: dmP } }, r, { db, loadPeople: people, who: { role: 'employee', user_id: E }, readFile: async () => ({ kind: 'text', text: 'Posso falar?', at: now, author: { role: 'employee', id: E, name: 'Gabriel' } }) })
+assert.equal(r.body.ok, true)
 console.log('team push ok')

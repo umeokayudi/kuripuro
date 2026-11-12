@@ -1,6 +1,6 @@
 // v1.0.217 · Canal da Equipe — node scripts/test-team-channel.mjs
 import assert from 'node:assert/strict'
-import { autoChannels, inChannel, myChannels, setMember, normalizeMembers, showsCovers, channelOfPath, textPushText, messagePath, isChannelPath, requestPath, buildMessage, buildCoverCards, cantGoCandidates, requestStillOpen, jobBrief, takeCantGoPatch, coverPushText, prevMonth, cleanText, sortMessages } from '../src/lib/teamChannel.js'
+import { autoChannels, inChannel, myChannels, setMember, normalizeMembers, showsCovers, channelOfPath, textPushText, messagePath, isChannelPath, requestPath, buildMessage, buildCoverCards, cantGoCandidates, requestStillOpen, jobBrief, takeCantGoPatch, coverPushText, prevMonth, cleanText, sortMessages, dmKey, isDmKey, managersOf, dmOther } from '../src/lib/teamChannel.js'
 
 const today = '2026-11-12'
 const J = (id, extra = {}) => ({ id: `${id}`.padEnd(8, '0') + '-0000-4000-8000-000000000000', title: 'Kodama Kinshicho — Deep Clean (Range Hood)', client_name: 'OTP', scheduled_date: today, scheduled_time: '01:00:00', status: 'assigned', employee_id: null, spot_status: 'pending', value: 30000, ...extra })
@@ -111,4 +111,29 @@ assert.equal(channelOfPath('team-channel/msgs/2026-11/1_a.json'), 'limpeza')
 assert.equal(buildMessage({ text: 'oi', author: { role: 'salesperson', id: 's1' }, channel: 'vendas' }).channel, 'vendas')
 assert.throws(() => buildMessage({ text: 'oi', author: { role: 'employee', id: 'e1' }, channel: 'clientes' }))
 assert.match(textPushText({ channel: 'limpeza', author: { name: 'Gabriel' }, text: 'Cheguei' }, 'pt').title, /Limpeza · Gabriel/)
+// v1.0.224 · private conversation with the gerência
+{
+  const U = n => `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n}${n}${n}-8${n}${n}${n}-${n.repeat(12)}`
+  const emp = { role: 'employee', id: U('1'), name: 'Gabriel', job_role: 'cleaner', is_active: true }
+  const boss = { role: 'admin', id: U('4'), name: 'Umeoka', is_active: true }
+  const lead = { role: 'employee', id: U('5'), name: 'Líder', job_role: 'leader', is_active: true }
+  const other = { role: 'employee', id: U('2'), name: 'Guilherme', job_role: 'cleaner', is_active: true }
+  const k = dmKey(emp, boss)
+  assert.equal(k, dmKey(boss, emp)) // same conversation from both sides
+  assert.equal(isDmKey(k), true)
+  assert.equal(inChannel(emp, k, {}), true)
+  assert.equal(inChannel(boss, k, {}), true)
+  assert.equal(inChannel(other, k, {}), false) // a colleague never sees it
+  assert.equal(inChannel({ ...boss, id: U('6') }, k, {}), false) // another admin neither
+  assert.deepEqual(myChannels(emp, {}).includes(k), false) // never listed as a group
+  const path = messagePath('2026-11-12T03:00:00Z', 'abc', k)
+  assert.equal(isChannelPath(path), true)
+  assert.equal(channelOfPath(path), k)
+  assert.equal(buildMessage({ text: 'oi', author: emp, channel: k }).channel, k)
+  assert.throws(() => buildMessage({ text: 'oi', author: other, channel: k })) // not a participant
+  assert.throws(() => dmKey(emp, emp))
+  assert.deepEqual(managersOf([emp, boss, lead, other, { ...lead, id: U('7'), is_active: false }], emp).map(p => p.name), ['Umeoka', 'Líder'])
+  assert.equal(dmOther(k, emp, [boss]).name, 'Umeoka')
+  assert.equal(textPushText({ channel: k, author: emp, text: 'Posso falar?' }).title, '💬 Gabriel')
+}
 console.log('team-channel ok')
