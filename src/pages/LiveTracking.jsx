@@ -150,7 +150,7 @@ export default function LiveTracking() {
     loadRetros()
     const today = tokyoToday()
     const n = tokyoNow()
-    fetchDayCoverage(today, { nowMin: n.getHours() * 60 + n.getMinutes() }).then(setCov, () => {})
+    fetchDayCoverage(today, { nowMin: n.getHours() * 60 + n.getMinutes(), respectStart: true }).then(setCov, () => {})
     const [e, activeRes, todayRes, offRes] = await Promise.all([
       supabase.from('employees').select('id,full_name,phone,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').eq('status','in_progress'),

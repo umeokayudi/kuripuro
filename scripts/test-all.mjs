@@ -31,6 +31,7 @@ const steps = [
   ['npm run test:push', 'push'],
   ['npm run test:schedule', 'schedule generator'],
   ['npm run test:assign-flow', 'assign flow'],
+  ['npm run test:contract-start', 'contract start date'],
   ['npm run test:offer-text', 'offer text (pay not twice)'],
   ['npm run test:sales-kpi', 'sales-kpi'],
   ['npm run test:sales-insights', 'sales-insights'],
