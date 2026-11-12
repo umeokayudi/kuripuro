@@ -424,7 +424,7 @@
 .emp-hello{margin-top:10px;padding:12px 14px;border-radius:16px;background:#fff;border:1px solid #e4e9f1;box-shadow:0 4px 14px rgba(24,39,75,.05)}
 .emp-hello>div:first-child{min-width:0}
 .emp-hello h1{font-size:18px}
-.emp-hello p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emp-hello p{white-space:normal;overflow-wrap:anywhere;line-height:1.35}
 .emp-hello p b{color:#3b62f0;font-weight:800}
 .av-planner{display:flex;flex-direction:column;gap:12px}
 .av-intro{font-size:12px;color:#66758b;line-height:1.5;margin:0}
