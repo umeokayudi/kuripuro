@@ -234,7 +234,7 @@ export default function EmployeePortal() {
   const [coworkers, setCoworkers] = useState([])
   const [teamMessages, setTeamMessages] = useState([])
   const [chatKey, setChatKey] = useState(null)
-  // v1.0.225 · Chat tab: null = list (office, groups, gerência); 'office' = office chat; else a group / private key
+  // v1.0.228 · Chat tab: null = list (office, groups, gerência); 'office' = office chat; else a group / private key
   const [chatView, setChatView] = useState(() => { try { const q = new URLSearchParams(window.location.search); return q.get('tab') === 'chat' ? (q.get('ch') || null) : null } catch { return null } })
   const coworkersRef = useRef([])
   coworkersRef.current = coworkers

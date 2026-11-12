@@ -17,7 +17,7 @@ export default function EmployeeChat({
   messages, labels, lang, value, onChange, onSend, onPhoto, sendingPhoto, onPhotoClick,
   containerRef, endRef, onScroll, unreadBelow, onJumpDown,
   teamReady = false, sections = null, activeKey = OFFICE_KEY, onOpen, onBack,
-  showBack = false, onBackToList = null, // v1.0.225 · back to the Chat list (office, groups, gerência)
+  showBack = false, onBackToList = null, // v1.0.228 · back to the Chat list (office, groups, gerência)
 }) {
   const fileRef = useRef()
   const dateLocale = lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-GB'
