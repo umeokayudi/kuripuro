@@ -2106,3 +2106,30 @@ body { background: var(--hq-bg); }
 .emp-shift-est-row.is-start strong{color:#0f7a43}
 .emp-shift-est-label{font-weight:650}
 .emp-shift-est-note{margin-top:7px;font-size:11px;line-height:1.4;color:#6b7891}
+
+/* v1.0.213 · E-mail de confirmação com relatórios (por cliente) */
+.badge-gray { background: var(--surface2); color: var(--text3); }
+.client-email-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; background: var(--surface2); font-size: 12px; color: var(--text2); }
+.client-email-row.on { box-shadow: inset 3px 0 0 var(--green); }
+.client-email-row select { max-width: 130px; font-size: 12px; padding: 4px 6px; }
+.client-email-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0; flex: 1 1 220px; }
+.client-email-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.client-email-knob { position: relative; flex: none; width: 34px; height: 20px; border-radius: 999px; background: var(--border, #cbd5e1); transition: background .15s; }
+.client-email-knob::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.client-email-switch input:checked + .client-email-knob { background: var(--green); }
+.client-email-switch input:checked + .client-email-knob::after { transform: translateX(14px); }
+.client-email-switch input:focus-visible + .client-email-knob { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; }
+.client-email-switch input:disabled + .client-email-knob { opacity: .5; }
+.client-email-hint { flex-basis: 100%; font-size: 11px; color: var(--text3); overflow-wrap: anywhere; }
+.client-email-mode { font-size: 13px; }
+.client-email-mode.test { border-left: 4px solid var(--amber); }
+.client-email-mode.live { border-left: 4px solid var(--green); }
+.client-email-resend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.client-email-resend select { flex: 1 1 200px; min-width: 0; }
+.client-email-resend input[type=date] { flex: 0 1 160px; min-width: 0; }
+.client-email-preview { margin-top: 10px; padding: 10px; border-radius: 8px; background: var(--surface2); font-size: 13px; overflow-wrap: anywhere; }
+.client-email-log { display: flex; flex-direction: column; gap: 8px; }
+.client-email-item { padding: 8px 10px; border-radius: 8px; background: var(--surface2); font-size: 13px; min-width: 0; }
+.client-email-item-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.client-email-when { font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
+.client-email-item a { font-size: 12px; }

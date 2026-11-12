@@ -7,5 +7,6 @@ export default async function handler(_req, res) {
     geminiKey: !!process.env.GEMINI_API_KEY,
     aiApprovalPassword: !!process.env.AI_APPROVAL_PASSWORD,
     push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+    clientEmail: process.env.CLIENT_EMAIL_MODE === 'live' && process.env.RESEND_API_KEY ? 'live' : 'test',
   })
 }
