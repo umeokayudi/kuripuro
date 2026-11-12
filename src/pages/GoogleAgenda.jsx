@@ -199,12 +199,7 @@ export default function GoogleAgenda() {
         'Traga a Google Agenda inteira: a IA transforma cada evento em serviço, você confere e cria. Cada serviço também vai para a Google Agenda de cada pessoa, sempre marcado com a empresa.')}</p>
 
       {loadError && <div className="card ga-setup ga-warn">{loadError.message}</div>}
-      {state && !state.configured && (
-        <div className="card ga-setup ga-warn">
-          <b>{tr('Google is not set up on the server yet', 'サーバーにGoogle設定がまだありません', 'O Google ainda não está configurado no servidor')}</b>
-          <p>{tr('Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel. Authorized redirect URI:', 'VercelにGOOGLE_CLIENT_IDとGOOGLE_CLIENT_SECRETを追加。リダイレクトURI：', 'Coloque GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no Vercel. URI de redirecionamento autorizado:')} <code>{state.redirectUri}</code></p>
-        </div>
-      )}
+      {state && <GoogleSetupStatus state={state} tr={tr} />}
 
       {/* 1 · Sync */}
       <div className="card ga-sync">
@@ -324,6 +319,107 @@ export default function GoogleAgenda() {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+/**
+ * v1.0.223 · "Integração Google Agenda": is it on, which Vercel keys are missing (names the server really
+ * reads), the callback URL to paste in Google Cloud, the steps, and how many employees connected.
+ * No key is ever typed here: the owner puts them straight in Vercel.
+ */
+function GoogleSetupStatus({ state, tr }) {
+  const setup = state.setup || {}
+  const checks = setup.checks || [
+    { name: 'GOOGLE_CLIENT_ID', ok: state.configured },
+    { name: 'GOOGLE_CLIENT_SECRET', ok: state.configured },
+  ]
+  const missing = checks.filter(c => !c.ok)
+  const on = state.configured && !missing.length
+  const [open, setOpen] = useState(!on)
+  const copy = async text => {
+    try { await navigator.clipboard.writeText(text); toast.success(tr('Copied', 'コピーしました', 'Copiado')) }
+    catch { toast(text) }
+  }
+  const total = setup.employeesTotal
+  const connected = setup.employeesConnected ?? 0
+  const steps = [
+    [tr('Create the project', 'プロジェクトを作成', 'Criar o projeto'), 'https://console.cloud.google.com/projectcreate',
+      tr('Name it KuriPuro and click Create.', '名前を KuriPuro にして「作成」。', 'Nome KuriPuro e clique em Criar.')],
+    [tr('Turn on the Google Calendar API', 'Google Calendar API を有効にする', 'Ativar a Google Calendar API'), 'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com',
+      tr('Click Enable.', '「有効にする」をクリック。', 'Clique em Ativar.')],
+    [tr('Consent screen', '同意画面', 'Tela de consentimento'), 'https://console.cloud.google.com/auth/overview',
+      tr('Get started → name KuriPuro → External → your e-mail. Under Audience → Test users, add your Gmail and each employee\'s.', '開始 → 名前 KuriPuro → 外部 → メール。対象 → テストユーザーにあなたと各スタッフのGmailを追加。', 'Começar → nome KuriPuro → Externo → seu e-mail. Em Público-alvo → Usuários de teste, adicione o seu Gmail e o de cada funcionário.')],
+    [tr('Create the OAuth credential', 'OAuth 認証情報を作成', 'Criar a credencial OAuth'), 'https://console.cloud.google.com/auth/clients',
+      tr('Create client → Web application. In "Authorized redirect URIs" paste the return URL below.', 'クライアントを作成 → ウェブアプリケーション。「承認済みのリダイレクト URI」に下の戻りURLを貼り付け。', 'Criar cliente → Aplicativo da Web. Em "URIs de redirecionamento autorizados" cole a URL de retorno abaixo.')],
+    [tr('Paste the keys in Vercel (Production)', 'Vercel にキーを貼る（Production）', 'Colar as chaves no Vercel (Production)'), 'https://vercel.com/umeokayudis-projects/kuripuro/settings/environment-variables',
+      tr('Create GOOGLE_CLIENT_ID with the Client ID and GOOGLE_CLIENT_SECRET with the Client secret. Tick Production.', 'GOOGLE_CLIENT_ID にクライアントID、GOOGLE_CLIENT_SECRET にシークレットを入れ、Production にチェック。', 'Crie GOOGLE_CLIENT_ID com o ID do cliente e GOOGLE_CLIENT_SECRET com a chave secreta. Marque Production.')],
+    [tr('Restart the site', 'サイトを再起動', 'Reiniciar o site'), 'https://vercel.com/umeokayudis-projects/kuripuro/deployments',
+      tr('Vercel only reads new keys on the next deploy: Promote the next version, or ⋯ → Redeploy on the current Production one. No code change.', 'Vercel は次のデプロイで新しいキーを読み込みます：次のバージョンを Promote するか、今の Production で ⋯ → Redeploy。コード変更は不要。', 'O Vercel só lê chaves novas no próximo deploy: promova a próxima versão ou, na versão de Production atual, ⋯ → Redeploy. Não muda código.')],
+  ]
+  return (
+    <div className={`card ga-int ${on ? 'on' : 'off'}`}>
+      <button type="button" className="ga-int-head" onClick={() => setOpen(v => !v)} aria-expanded={open}>
+        <span className="ga-int-dot" aria-hidden="true">{on ? '✓' : '!'}</span>
+        <span className="ga-int-title">
+          <b>{tr('Google Calendar integration', 'Googleカレンダー連携', 'Integração Google Agenda')}</b>
+          <small>{on
+            ? tr('Active. Employees can connect their own calendar.', '有効。スタッフは自分のカレンダーを接続できます。', 'Ativada. Os funcionários já podem conectar a própria agenda.')
+            : tr(`Not active yet · missing ${missing.map(c => c.name).join(', ')}`, `まだ無効 · 不足: ${missing.map(c => c.name).join(', ')}`, `Ainda não ativada · falta ${missing.map(c => c.name).join(', ')}`)}</small>
+        </span>
+        <span className="ga-int-count" title={tr('Employees with their own calendar connected', '自分のカレンダーを接続したスタッフ', 'Funcionários com a própria agenda conectada')}>
+          👥 {connected}{total != null ? ` / ${total}` : ''}
+        </span>
+        <span className="ga-int-caret" aria-hidden="true">{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && (
+        <div className="ga-int-body">
+          <div className="ga-int-sec">
+            <div className="ga-int-label">{tr('Server keys (Vercel → Environment Variables)', 'サーバーのキー（Vercel → Environment Variables）', 'Chaves no servidor (Vercel → Environment Variables)')}</div>
+            {checks.map(c => (
+              <div key={c.name} className={`ga-int-check ${c.ok ? 'ok' : 'miss'}`}>
+                <span>{c.ok ? '✅' : '❌'}</span>
+                <code>{c.name}</code>
+                <span className="ga-int-state">{c.ok ? tr('in place', '設定済み', 'cadastrada') : tr('missing', '未設定', 'falta')}</span>
+              </div>
+            ))}
+            <div className="ga-int-check ok"><span>✅</span><span>{tr('Database tables', 'データベースのテーブル', 'Tabelas no banco')}</span><span className="ga-int-state">{tr('in place', '設定済み', 'prontas')}</span></div>
+          </div>
+
+          <div className="ga-int-sec">
+            <div className="ga-int-label">{tr('Return URL (paste it in Google Cloud)', '戻りURL（Google Cloud に貼る）', 'URL de retorno (cole no Google Cloud)')}</div>
+            <div className="ga-int-url">
+              <code>{state.redirectUri}</code>
+              <button type="button" className="btn btn-sm" onClick={() => copy(state.redirectUri)}>📋 {tr('Copy', 'コピー', 'Copiar')}</button>
+            </div>
+          </div>
+
+          <div className="ga-int-sec">
+            <div className="ga-int-label">{tr('Step by step', '手順', 'Passo a passo')}</div>
+            <ol className="ga-int-steps">
+              {steps.map(([title, href, text], i) => (
+                <li key={i}>
+                  <a href={href} target="_blank" rel="noreferrer"><b>{title}</b> ↗</a>
+                  <span>{text}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="ga-int-sec">
+            <div className="ga-int-label">{tr('Connected', '接続済み', 'Conectados')}</div>
+            <p className="ga-int-p">
+              {tr(`${connected} employee(s) connected their own Google Calendar`, `${connected} 人のスタッフが自分のGoogleカレンダーを接続`, `${connected} funcionário(s) conectaram a própria Google Agenda`)}
+              {total != null ? tr(` out of ${total} active.`, `（有効 ${total} 人中）。`, ` de ${total} ativos.`) : '.'}
+              {' '}{setup.adminConnected
+                ? tr(`Office: ${setup.adminConnected} account(s).`, `事務所：${setup.adminConnected} アカウント。`, `Escritório: ${setup.adminConnected} conta(s).`)
+                : tr('Office: none yet.', '事務所：まだなし。', 'Escritório: nenhuma ainda.')}
+            </p>
+            {!on && <p className="ga-int-p ga-int-muted">{tr('Until then, the employee button stays grey with "The office is still turning Google on". It turns on by itself after step 6.', 'それまでスタッフのボタンはグレーのままです。手順6の後、自動で使えるようになります。', 'Até lá, o botão do funcionário fica cinza com "O escritório ainda está ativando o Google". Ele liga sozinho depois do passo 6.')}</p>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
