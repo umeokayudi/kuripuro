@@ -2,6 +2,8 @@ export const kuripuroPtB = {
   jobVideo: {
     add: 'Adicionar vídeo (opcional)',
     hint: 'Vídeo do serviço pronto · até 3 min, comprimido',
+    record: 'Gravar vídeo',
+    gallery: 'Da galeria',
     compressing: 'Comprimindo vídeo… {pct}%',
     ready: 'Vídeo pronto · {size}',
     remove: 'Remover',

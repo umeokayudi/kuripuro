@@ -10,16 +10,25 @@ const fmtSize = (b) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` :
 export default function JobVideoPicker({ video, onPick, onRemove, labels = {} }) {
   const L = labels
   if (!video) {
+    // v1.0.215: two choices, like the photos: record now (camera) or pick a video already on the phone (gallery).
+    const take = ev => { const f = ev.target.files?.[0]; ev.target.value = ''; if (f) onPick(f) }
+    const btn = { flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 8px', borderRadius: 10, border: '1.5px solid #3b82f666', background: '#3b82f614', color: '#3b82f6', fontSize: 13, fontWeight: 800, cursor: 'pointer', boxSizing: 'border-box' }
     return (
       <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: '1.5px dashed rgba(255,255,255,0.2)', cursor: 'pointer' }}>
-          <span style={{ fontSize: 20 }}>🎬</span>
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>{L.add || 'Add video (optional)'}</span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{L.hint}</span>
-          </span>
-          <input type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={ev => { const f = ev.target.files?.[0]; ev.target.value = ''; if (f) onPick(f) }} />
-        </label>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>🎬 {L.add || 'Add video (optional)'}</span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{L.hint}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={btn} data-testid="video-camera">
+            <span style={{ fontSize: 18 }}>⏺</span>{L.record || 'Record video'}
+            <input type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={take} />
+          </label>
+          <label style={btn} data-testid="video-gallery">
+            <span style={{ fontSize: 18 }}>🖼</span>{L.gallery || 'From gallery'}
+            <input type="file" accept="video/*" style={{ display: 'none' }} onChange={take} />
+          </label>
+        </div>
       </div>
     )
   }
