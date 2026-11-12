@@ -42,7 +42,7 @@ const pageOf = html => {
 }
 
 /** One A4 HTML with a cover (list of stores) and every report on its own page. */
-// v1.0.224 · `period` (e.g. '06/11 – 12/11') for a PDF of several days: cover shows it, reports go by date then store
+// v1.0.229 · `period` (e.g. '06/11 – 12/11') for a PDF of several days: cover shows it, reports go by date then store
 export function combinedReportsHtml(reports, { clientName, date, lang, period } = {}) {
   const list = [...(reports || [])].filter(isServiceReport).sort((a, b) => String(a.work_date || '').localeCompare(String(b.work_date || '')) || storeOf(a).localeCompare(storeOf(b), 'ja'))
   if (!list.length) return ''

@@ -951,7 +951,7 @@
 .ex-greet.emp-hello{align-items:center!important}
 .ex-greet.emp-hello>*{align-self:center!important}
 .emp-hello>.emp-hello-face{display:flex;align-items:center;justify-content:center;width:44px;height:44px}
-/* v1.0.224 · Relatório de serviço: período, contadores, criar relatórios */
+/* v1.0.229 · Relatório de serviço: período, contadores, criar relatórios */
 .ewr-period{display:flex;gap:4px;padding:4px;margin:0 0 8px;border-radius:14px;background:#f1f4f9;overflow-x:auto;scrollbar-width:none}
 .ewr-period::-webkit-scrollbar{display:none}
 .ewr-period button{flex:1 0 auto;min-height:34px;padding:6px 10px;border:0;border-radius:10px;background:transparent;color:#4a5870;font:inherit;font-size:12.5px;font-weight:700;white-space:nowrap;cursor:pointer}
