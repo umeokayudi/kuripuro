@@ -146,14 +146,18 @@ export function countNeedle(hay, needle) {
   return String(hay).split(needle).length - 1
 }
 
-export function printPartyHtml(L, { restaurant, company, contact, address, extra = '' }) {
+// v1.0.211 · `companyFirst` (見積書): the recipient (御中) is the COMPANY; the store / building is only
+// where the service happens, shown under it. The store is the headline only when there is no company.
+export function printPartyHtml(L, { restaurant, company, contact, address, extra = '', companyFirst = false }) {
   const site = String(restaurant || '').trim()
   const co = String(company || '').trim()
-  const headline = site || co
+  const headline = companyFirst ? (co || site) : (site || co)
   const honor = L.honorific && headline ? ` ${L.honorific}` : ''
-  const coLine = co && co !== headline
-    ? `<div class="party-co">${escapeHtml(co)}</div>`
-    : ''
+  const coLine = companyFirst
+    ? (site && site !== headline ? `<div class="party-co">${escapeHtml(L.serviceSite || L.store || '')}${escapeHtml(L.colon || '：')}${escapeHtml(site)}</div>` : '')
+    : co && co !== headline
+      ? `<div class="party-co">${escapeHtml(co)}</div>`
+      : ''
   return `<div class="party">
       <div class="party-name">${escapeHtml(headline)}${honor}</div>
       ${coLine}

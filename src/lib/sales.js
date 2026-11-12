@@ -117,7 +117,8 @@ export function mergeLeadFromQuote(existing, form, today) {
   const keepWon = existing?.stage === 'won'
   return {
     company_name: String(form.company_name || '').trim(),
-    site_name: form.site_name || '',
+    // v1.0.211 · a quote without store name never wipes the store saved on the lead
+    site_name: form.site_name || existing?.site_name || '',
     address: form.address || '',
     phone: form.phone || '',
     email: form.email || '',
@@ -125,7 +126,7 @@ export function mergeLeadFromQuote(existing, form, today) {
     contact_title: form.contact_title || '',
     first_contact_date: first,
     last_contact_date: today,
-    notes: embedRestaurantNote(form.notes, form.site_name),
+    notes: embedRestaurantNote(form.notes, form.site_name || existing?.site_name),
     stage: keepWon ? 'won' : 'followup',
     updated_at: new Date().toISOString(),
   }
@@ -198,6 +199,7 @@ export const QUOTE_PRINT_COPY = {
     docTitle: '見積書',
     honorific: '御中',
     store: '店舗',
+    serviceSite: '作業場所',
     company: '会社',
     contact: 'ご担当',
     issueDate: '発行日',
@@ -226,6 +228,7 @@ export const QUOTE_PRINT_COPY = {
     docTitle: 'QUOTATION',
     honorific: '',
     store: 'Store',
+    serviceSite: 'Service site',
     company: 'Company',
     contact: 'Contact',
     issueDate: 'Issue date',
@@ -261,7 +264,7 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') 
   const loc = printIssuer(issuer, lang)
   const restaurant = localizePrintText(quoteRestaurantName(quote), lang)
   const company = localizePrintText(String(quote.company_name || '').trim(), lang)
-  const printTitle = escapeHtml(restaurant || company)
+  const printTitle = escapeHtml(company || restaurant)
   const contact = localizePrintText([quote.contact_title, quote.contact_name].filter(Boolean).join(' '), lang)
   const number = quote.quote_number || quote.id?.slice?.(0, 8) || ''
   const printNotes = localizePrintText(notesForPrint(quote.notes), lang)
@@ -283,15 +286,16 @@ export function buildMitsumoriPrintHtml(quote, items, issuer = {}, lang = 'ja') 
       <tr><td>${L.tax} (${escapeHtml(String(quote.tax_rate ?? 10))}%)</td><td class="num">${yen(quote.tax_amount)}</td></tr>
       <tr class="total-row"><td>${L.total}</td><td class="num">${yen(quote.total)}</td></tr>
     </table>`
+  // v1.0.211 · 備考 keeps the line breaks and blank lines typed in the field (was one paragraph)
   const notesHtml = printNotes
-    ? `<p class="muted" style="margin-top:16px">${escapeHtml(L.notes)}${L.colon}${escapeHtml(printNotes)}</p>`
+    ? `<div class="muted quote-notes" style="margin-top:16px"><div style="font-weight:700;margin-bottom:4px">${escapeHtml(L.notes)}</div><div style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(printNotes.replace(/\r\n?/g, '\n'))}</div></div>`
     : ''
   return wrapPrintHtml({
     L,
     number,
     printTitle,
     stamp: quote.status === 'accepted' ? L.accepted : '',
-    partyHtml: printPartyHtml(L, { restaurant, company, contact, address: clientAddress, extra: extraHtml }),
+    partyHtml: printPartyHtml(L, { restaurant, company, contact, address: clientAddress, extra: extraHtml, companyFirst: true }),
     datesHtml: printDatesHtml([
       [L.issueDate, escapeHtml(quote.issue_date || '')],
       [L.validUntil, escapeHtml(quote.valid_until || '—')],

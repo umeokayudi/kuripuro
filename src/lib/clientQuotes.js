@@ -9,6 +9,7 @@
 // equals the client's company (`clients.company_name`). Only quotes already sent are shown; drafts stay
 // in the office. A login tied to one store also needs the quote's store to be that store (or blank).
 import { supabase } from './supabase'
+import { addQuoteHistory } from './quoteHistory'
 
 /** Statuses the client may see. A draft never leaves the office. */
 export const PORTAL_QUOTE_STATUSES = ['sent', 'accepted', 'declined', 'expired']
@@ -95,5 +96,6 @@ export async function answerClientQuote(quote, decision, { who = '', reason = ''
     body: [quote.company_name, quote.site_name, quote.total != null ? `¥${Math.round(Number(quote.total)).toLocaleString('ja-JP')}` : '', reason].filter(Boolean).join(' · '),
     lead_id: quote.lead_id || null, dedupe_key: `mit:${quote.id}:${decision}`, sender_name: who || null,
   }).then(() => {}, () => {})
+  await addQuoteHistory(quote.id, { action: decision, by: who || 'client', via: 'portal', ...(reason ? { note: String(reason).trim() } : {}) })
   return data[0]
 }

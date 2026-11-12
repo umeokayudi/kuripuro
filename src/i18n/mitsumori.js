@@ -1,7 +1,7 @@
 export const mitsumoriEn = {
   clientQuoteRequests:'Client quote requests',
   companySection:'Restaurant and company', contactSection:'Person in charge', salesSection:'Lead details',
-  siteName:'Restaurant / store name', siteHint:'Name shown on the quote', company:'Company', companyKana:'Kana / English name', industry:'Industry', address:'Address', phone:'Phone', email:'Email', website:'Website', locations:'Number of sites',
+  siteName:'Restaurant / store name', siteHint:'Service location (optional) — the quote is addressed to the Company', company:'Company', companyKana:'Kana / English name', industry:'Industry', address:'Address', phone:'Phone', email:'Email', website:'Website', locations:'Number of sites',
   contact:'Responsible person', contactTitle:'Title', contactPhone:'Direct phone', contactEmail:'Direct email', contactLine:'LINE ID', decisionMaker:'Decision maker',
   firstContact:'First contact', nextFollowup:'Next follow-up', source:'Source', sources:{visit:'In-person visit',phone:'Phone',referral:'Referral',web:'Website / SNS',walkin:'Walk-in',other:'Other'},
   expectedMonthly:'Expected monthly (¥)', expectedStart:'Wanted start', competitor:'Current provider', needs:'Needs', needsHint:'Daily / deep cleaning / extra hours…', stillNeeded:'Still needed to close', stillNeededHint:'Site visit, keys, approval, price…',
@@ -17,7 +17,7 @@ export const mitsumoriEn = {
 export const mitsumoriJa = {
   clientQuoteRequests:'お客様からの見積依頼',
   companySection:'店舗・会社情報', contactSection:'担当者情報', salesSection:'営業情報',
-  siteName:'店舗名', siteHint:'見積書に表示する店舗名', company:'会社名', companyKana:'会社名（カナ・英語）', industry:'業種', address:'住所', phone:'電話番号', email:'メール', website:'ウェブサイト', locations:'店舗数',
+  siteName:'店舗名', siteHint:'作業場所（任意）— 見積書の宛名は会社名です', company:'会社名', companyKana:'会社名（カナ・英語）', industry:'業種', address:'住所', phone:'電話番号', email:'メール', website:'ウェブサイト', locations:'店舗数',
   contact:'担当者', contactTitle:'役職', contactPhone:'担当者電話番号', contactEmail:'担当者メール', contactLine:'LINE ID', decisionMaker:'決裁者',
   firstContact:'初回連絡日', nextFollowup:'次回フォロー日', source:'流入経路', sources:{visit:'訪問',phone:'電話',referral:'紹介',web:'ウェブサイト・SNS',walkin:'来店',other:'その他'},
   expectedMonthly:'想定月額（¥）', expectedStart:'希望開始日', competitor:'現在の業者', needs:'ご要望', needsHint:'日常清掃・定期清掃・追加時間など', stillNeeded:'受注に必要な事項', stillNeededHint:'現地確認・鍵・承認・価格など',
