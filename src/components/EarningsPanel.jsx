@@ -191,7 +191,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
       own ? Promise.resolve({ data: [] }) : supabase.from('service_contracts').select('location_name,price_per_visit').eq('is_active', true),
       supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true).neq('status', 'cancelled').gte('payment_date', from).lte('payment_date', today),
       // v1.0.133 · month totals = payrollMonth (same jobs, same deductions by month, same fixed / per-job choice)
-      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true),
+      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).or('is_deduction.eq.true,payment_type.eq.extra'),
       supabase.from('payroll_pay_basis').select('*').eq('employee_id', employeeId).then(r => r, () => ({ data: [] })),
     ]).then(([emp, jobs, contracts, ded, lines, bases]) => {
       if (!alive) return
@@ -334,6 +334,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
         <div className="earn-break">
           <div><span>{t.base}</span><b>{yen(summary.base)}</b></div>
           {summary.spot > 0 && <div><span>{t.spot}</span><b>{yen(summary.spot)}</b></div>}
+          {(summary.extraRows || []).map(r => <div key={r.id}><span>{r.description || 'Extra'}</span><b>+{yen(r.amount)}</b></div>)}
           {summary.deductionRows.map(r => (
             <div key={r.id} className="is-neg"><span>{r.description || t.ded}</span><b>-{yen(r.amount)}</b></div>
           ))}

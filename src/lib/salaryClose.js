@@ -129,6 +129,8 @@ export async function closeEmployeeMonth(db, period, emp, { salaryDesc = `Salary
     base_salary: base, deductions: dedTotal, net_total: net,
     breakdown: {
       jobs: calc.jobs, jobs_pay: calc.jobsPay, salary_type: emp.salary_type,
+      // v1.0.209 · extras added in Folha (inside the payslip total)
+      extras: (calc.extraRows || []).map(x => ({ id: x.id, description: x.description || '', amount: Number(x.amount || 0) })),
       // v1.0.131 · both totals and which one counted (who chose it lives in payroll_pay_basis)
       pay_basis: calc.basis || calc.autoBasis || null, fixed_total: calc.fixedTotal, per_job_total: calc.perJob.total,
       per_job_jobs: calc.perJob.rows.filter(r => r.pay !== null).map(r => ({ id: r.id, date: r.date, title: r.title, pay: r.pay })),
