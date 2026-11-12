@@ -6,8 +6,10 @@ import { employeeJobColumns } from '../lib/jobEmployeePay'
 import { tokyoToday } from '../lib/dates'
 import { enrichJobValues } from '../lib/employeePay'
 import { isDuskinJob } from '../lib/employeeAddJob'
-import { jobMinutes, payRatesMissing, ruleShowsJobAmounts } from '../lib/salaryCalc'
+import { jobMinutes, lineMonth, payRatesMissing, ruleShowsJobAmounts } from '../lib/salaryCalc'
 import DateRangeSheet from './DateRangeSheet'
+import SalaryReportSheet from './SalaryReportSheet'
+import './SalaryReportSheet.css'
 import {
   addDays, chartBars, daysBetween, dayLabel, jobEarnings, monthEnd, monthLabel, rangeLabel,
   shiftMonth, summarizeRange, trendPercent, weekStart,
@@ -24,7 +26,7 @@ const T = {
     title: '収入', week: '週', month: '月', custom: '期間', net: '手取り', gross: '支給', ded: '控除', jobs: '件数', hours: '時間',
     days: '勤務日', perHour: '時給換算', vsPrev: '前の期間比', base: '基本給', spot: 'スポット', breakdown: '内訳',
     list: '作業', empty: 'この期間の作業はありません', dayEmpty: 'この日の作業はありません', loading: '読み込み中…',
-    payslip: m => `${m}の給与明細 (PDF)`, making: 'PDF作成中…', done: '給与明細をダウンロードしました',
+    payslip: m => `${m}の給与明細 (PDF)`, report: m => `${m}の詳細レポート（日付・時間・金額）`, making: 'PDF作成中…', done: '給与明細をダウンロードしました',
     noRate: '給与の単価が未設定のため ¥0 です。管理者に確認してください。', fixedNote: '月給制：日ごとに日給を計算',
     calendar: 'カレンダー', prev: '前へ', next: '次へ', allDays: '期間の全作業', back: '期間に戻る', thisWeek: '今週', thisMonth: '今月',
     pickRange: '期間を選択', perDay: '1日平均',
@@ -33,7 +35,7 @@ const T = {
     title: 'Earnings', week: 'Week', month: 'Month', custom: 'Range', net: 'Net', gross: 'Gross', ded: 'Deductions', jobs: 'Jobs', hours: 'Hours',
     days: 'Days', perHour: 'Per hour', vsPrev: 'vs previous', base: 'Base pay', spot: 'Spot', breakdown: 'Breakdown',
     list: 'Jobs', empty: 'No jobs in this period', dayEmpty: 'No jobs on this day', loading: 'Loading…',
-    payslip: m => `Payslip ${m} (PDF)`, making: 'Making PDF…', done: 'Payslip downloaded',
+    payslip: m => `Payslip ${m} (PDF)`, report: m => `Detailed report ${m} (dates, hours, amounts)`, making: 'Making PDF…', done: 'Payslip downloaded',
     noRate: 'No pay rate is set, so this shows ¥0. Check with the admin.', fixedNote: 'Monthly salary: paid per worked day',
     calendar: 'Calendar', prev: 'Previous', next: 'Next', allDays: 'All jobs in this period', back: 'Back to period', thisWeek: 'This week', thisMonth: 'This month',
     pickRange: 'Pick dates', perDay: 'Per day',
@@ -42,7 +44,7 @@ const T = {
     title: 'Ganhos', week: 'Semana', month: 'Mês', custom: 'Período', net: 'Líquido', gross: 'Bruto', ded: 'Descontos', jobs: 'Serviços', hours: 'Horas',
     days: 'Dias', perHour: 'Por hora', vsPrev: 'vs período anterior', base: 'Salário base', spot: 'Spot', breakdown: 'Detalhes',
     list: 'Serviços', empty: 'Nenhum serviço neste período', dayEmpty: 'Nenhum serviço neste dia', loading: 'Carregando…',
-    payslip: m => `Holerite de ${m} (PDF)`, making: 'Gerando PDF…', done: 'Holerite baixado',
+    payslip: m => `Holerite de ${m} (PDF)`, report: m => `Relatório detalhado de ${m} (datas, horas, valores)`, making: 'Gerando PDF…', done: 'Holerite baixado',
     noRate: 'Nenhum valor de pagamento cadastrado, por isso aparece ¥0. Fale com o admin.', fixedNote: 'Salário mensal: pago por dia trabalhado',
     calendar: 'Calendário', prev: 'Anterior', next: 'Próximo', allDays: 'Todos os serviços do período', back: 'Voltar ao período', thisWeek: 'Esta semana', thisMonth: 'Este mês',
     pickRange: 'Escolher datas', perDay: 'Por dia',
@@ -165,6 +167,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
   const [data, setData] = useState(null)
   const [loadedFrom, setLoadedFrom] = useState(null)
   const [making, setMaking] = useState(false)
+  const [report, setReport] = useState(false)
 
   const anchor = mode === 'week' ? weekAnchor : monthAnchor
   const range = rangeFor(mode, anchor, custom)
@@ -346,6 +349,16 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
       <button type="button" className="earn-pdf" onClick={downloadPayslip} disabled={making}>
         📄 {making ? t.making : t.payslip(monthLabel(payslipMonth, lang, true))}
       </button>
+      {/* v1.0.214 · every job of the month with date, hours and value, subtotal per day, month total */}
+      <button type="button" className="earn-report" onClick={() => setReport(true)}>
+        🧾 {t.report(monthLabel(payslipMonth, lang, true))}
+      </button>
+      {report && (
+        <SalaryReportSheet emp={data.emp} month={payslipMonth} lang={lang} onClose={() => setReport(false)}
+          jobs={(data.payroll?.jobs || data.jobs).filter(j => j.status === 'completed' && j.scheduled_date <= today)}
+          lines={(data.payroll?.lines || []).filter(l => lineMonth(l) === payslipMonth)}
+          basis={data.payroll?.basisByMonth?.[payslipMonth] || null} />
+      )}
 
       <div className="earn-block">
         <div className="earn-block-h">

@@ -50,8 +50,8 @@ function rateText(emp, salary, t) {
   const type = emp?.salary_type || 'fixed'
   if (type === 'fixed') return `${yen(emp?.fixed_salary)}${t.perMonth} · ${t.perDay} ${yen(salary?.dailyRate)}`
   if (type === 'hourly') return `${yen(emp?.hourly_rate)}${t.perHour}`
-  if (type === 'per_job') return Number(emp?.job_bonus_rate) > 0 ? `${emp.job_bonus_rate}%` : t.perJobRate
-  return `${yen(emp?.fixed_salary)}${t.perMonth} + ${yen(emp?.hourly_rate)}${t.perHour} + ${emp?.job_bonus_rate || 0}%`
+  if (type === 'per_job') return t.perJobRate
+  return `${yen(emp?.fixed_salary)}${t.perMonth} + ${yen(emp?.hourly_rate)}${t.perHour} + ${t.perJobRate}`
 }
 
 /** Printable HTML for one month. `salary` is calcEmployeeMonthlySalary(...) for that month. */

@@ -28,22 +28,13 @@ export function employeeEarningsForJob(job, empInfo) {
   if (!job || job.status !== 'completed') return 0
   const type = empInfo?.salary_type || 'fixed'
   const mins = jobMinutes(job)
-  const clientVal = clientValueForJob(job)
 
   if (type === 'hourly') {
     return Math.round((mins / 60) * (empInfo?.hourly_rate || 0))
   }
-  if (type === 'per_job') {
-    // v1.0.157 · the job's own worker pay first (never the client value on employee screens)
-    const own = jobEmployeePay(job)
-    if (own !== null) return own
-    // v1.0.209 · never the client's price unless a % is set on the record
-    const rate = (Number(empInfo?.job_bonus_rate) || 0) / 100
-    return Math.round(clientVal * rate)
-  }
-  if (type === 'mixed') {
-    return Math.round(clientVal * ((empInfo?.job_bonus_rate || 0) / 100))
-  }
+  // v1.0.214 · per_job / mixed: only the job's own "Pagamento do funcionário" (never client price or %)
+  if (type === 'per_job') return jobEmployeePay(job) ?? 0
+  if (type === 'mixed') return jobEmployeePay(job) ?? 0
   // fixed: monthly — per-job share shown as 0 (use monthly total on home)
   return 0
 }

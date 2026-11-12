@@ -15,8 +15,8 @@ const oct = [
 
 // before: 100% of the client price (¥11.846). Now: nothing defined → ¥0, never the client price.
 assert.equal(payrollMonth({ emp: gabriel, jobs: oct, month: '2026-10' }).net, 0, 'no client price as salary')
-// an explicit % on the record still works
-assert.equal(payrollMonth({ emp: { ...gabriel, job_bonus_rate: 50 }, jobs: oct, month: '2026-10' }).net, Math.round(6000 / 2) + 500 + 1923 + 500)
+// v1.0.214 · owner rule: not even a % on the record turns the client price into pay
+assert.equal(payrollMonth({ emp: { ...gabriel, job_bonus_rate: 50 }, jobs: oct, month: '2026-10' }).net, 0)
 
 // report: fill the empty ones (Basic ¥1.000 / Deep ¥1.500) and edit one line
 let rows = reportRows(oct)
