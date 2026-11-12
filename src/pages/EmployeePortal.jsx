@@ -2189,11 +2189,11 @@ export default function EmployeePortal() {
           <div>
             {personalGreeting?(
               <>
-                <h1 lang="pt">{personalGreeting.title} <span aria-hidden="true">{personalGreeting.emoji}</span></h1>
+                <h1 lang="pt">{personalGreeting.title}{'\u00a0'}<span aria-hidden="true">{personalGreeting.emoji}</span></h1>
                 <p className="emp-hello-love" lang="pt">{personalGreeting.subtitle}</p>
               </>
             ):(
-              <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})} <span aria-hidden="true">😊</span></h1>
+              <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})}{'\u00a0'}<span aria-hidden="true">😊</span></h1>
             )}
             <p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}{tab!=='home'&&currentTabLabel?<b> · {currentTabLabel}</b>:null}</p>
           </div>
