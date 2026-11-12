@@ -6,6 +6,7 @@ const steps = [
   ['npm run build', 'build'],
   ['npm run test:salary-calc', 'salary-calc'],
   ['npx vite-node scripts/test-salary-unified.mjs', 'salary-unified'],
+  ['npx vite-node scripts/test-payroll-report.mjs', 'payroll-report'],
   ['npm run test:payroll-close', 'payroll-close'],
   ['npm run test:money', 'money'],
   ['npm run test:exception-queue', 'exception queue'],
