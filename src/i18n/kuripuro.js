@@ -4,6 +4,8 @@ export const kuripuroEn = {
   jobVideo: {
     add: 'Add video (optional)',
     hint: 'Clip of the finished work · up to 3 min, compressed',
+    record: 'Record video',
+    gallery: 'From gallery',
     compressing: 'Compressing video… {pct}%',
     compressingSlow: 'Compressing video… {pct}% · keep this screen open',
     ready: 'Video ready · {size}',
@@ -1324,6 +1326,8 @@ export const kuripuroJa = {
   jobVideo: {
     add: '動画を追加（任意）',
     hint: '作業後の動画・最大3分・圧縮して送信',
+    record: '動画を撮影',
+    gallery: 'ギャラリーから',
     compressing: '動画を圧縮中… {pct}%',
     compressingSlow: '動画を圧縮中… {pct}%・この画面を開いたままにしてください',
     ready: '動画の準備完了・{size}',

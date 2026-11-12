@@ -3021,13 +3021,9 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
             </div>
           )}
           <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} labels={labels} lang={lang} />
-          <div id="active-job-finish" style={{position:'sticky',bottom:'calc(74px + env(safe-area-inset-bottom,0px))',zIndex:20,paddingTop:6}}>
-          {needBefore && !submitting && (
-            <button type="button" onClick={()=>document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'})} style={{width:'100%',padding:'9px 12px',marginBottom:6,borderRadius:12,border:'1px solid #fca5a5',background:'#fee2e2',color:'#b91c1c',fontSize:12,fontWeight:700,cursor:'pointer',textAlign:'left',boxShadow:'0 4px 12px rgba(0,0,0,0.12)'}}>
-              📷 {L('Add the Before photo first (above) — then you can finish.','先に「作業前」の写真を追加してください（上）— その後に完了できます。','Coloque a foto do Antes primeiro (acima) — depois dá para concluir.')}
-            </button>
-          )}
-          <button onClick={()=>{ if(needBefore){document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'});return}; if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||activeChecklistBlocked||needBefore} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked||needBefore?'#64748b':'linear-gradient(135deg,#4ade80,#22c55e)',color:submitting||activeChecklistBlocked||needBefore?'#fff':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked||needBefore?'not-allowed':'pointer',marginBottom:8,boxShadow:'0 6px 18px rgba(0,0,0,0.18)'}}>
+          {/* v1.0.218: fixed in place (no sticky float) and no red hint box — the button text already says what is missing */}
+          <div id="active-job-finish">
+          <button onClick={()=>{ if(needBefore){document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'});return}; if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||(activeChecklistBlocked&&!needBefore)} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked||needBefore?'#64748b':'linear-gradient(135deg,#4ade80,#22c55e)',color:submitting||activeChecklistBlocked||needBefore?'#fff':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
             {submitting?L('Saving...','保存中...','Salvando...'):needBefore?`📷 ${L('Before photo missing','作業前の写真がありません','Falta a foto do Antes')}`:activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
           </button>
           </div>
