@@ -1,5 +1,5 @@
 import { tokyoToday, workedDayKey } from './dates.js'
-import { calcEmployeeMonthlySalary, jobMinutes, jobPay, lineMonth, perJobWorkerPay } from './salaryCalc.js'
+import { calcEmployeeMonthlySalary, dailyFixedShare, jobMinutes, jobWorkerPay, lineMonth, monthPayRule, spotExtra } from './salaryCalc.js'
 
 // Earnings history for the Salary screens (employee Salary tab + admin Salary page).
 // Each worked day gets its own amount, like a driver-app earnings screen. A full calendar
@@ -73,27 +73,19 @@ export function rangeLabel(from, to, lang = 'en') {
   return from === to ? left : `${left} – ${right}`
 }
 
-const spotPay = j => (j.job_category === 'spot' ? Number(j.spot_value || 0) : 0)
+const spotPay = j => spotExtra(j)
 
-/** What one completed job pays on its own (fixed salary pays per day, not per job). */
-export function jobEarnings(job, emp) {
-  const type = emp?.salary_type || 'fixed'
-  const mins = jobMinutes(job)
-  let pay = 0
-  if (type === 'hourly') pay = Math.round((mins / 60) * Number(emp?.hourly_rate || 0))
-  else if (type === 'per_job') pay = perJobWorkerPay(job, emp?.job_bonus_rate || 100)
-  else if (type === 'mixed') {
-    pay = Math.round((mins / 60) * Number(emp?.hourly_rate || 0))
-      + Math.round(jobPay(job) * ((emp?.job_bonus_rate || 0) / 100))
-  } else if (type !== 'fixed') pay = Math.round((mins / 60) * Number(emp?.hourly_rate || 0))
-  return pay + spotPay(job)
+/**
+ * What one completed job pays on its own. v1.0.173 · pass the month's `rule` (summary.rules / salary.payRule)
+ * so it matches the payslip: a person paid by "Pagamento do funcionário" sees each job's own pay here too.
+ */
+export function jobEarnings(job, emp, rule = null) {
+  return jobWorkerPay(job, emp, rule)
 }
 
 /** Daily share of a fixed salary (paid once per worked day). */
-export function dailyFixedRate(emp) {
-  const type = emp?.salary_type || 'fixed'
-  if (type !== 'fixed' && type !== 'mixed') return 0
-  return Number(emp?.fixed_salary || 0) / (emp?.monthly_work_days || 22)
+export function dailyFixedRate(emp, rule = null) {
+  return dailyFixedShare(emp, rule)
 }
 
 const dayOf = j => workedDayKey(j) || j.scheduled_date
@@ -107,7 +99,14 @@ export function summarizeRange({ emp, jobs, deductions = [], from, to, today = t
   const end = to > today ? today : to
   const done = (jobs || []).filter(j => j.status === 'completed' && j.scheduled_date && j.scheduled_date <= today)
   const inRange = done.filter(j => { const d = dayOf(j); return d >= from && d <= end })
-  const rate = dailyFixedRate(emp)
+  // v1.0.173 · each day/job is paid by the same rule as its month in Payments / Fechar folha / payslip
+  const ruleJobs = (payroll?.jobs || done).filter(j => j.status === 'completed' && j.scheduled_date && j.scheduled_date <= today)
+  const rules = {}
+  const ruleFor = day => {
+    const m = String(day).slice(0, 7)
+    if (!rules[m]) rules[m] = monthPayRule(emp, ruleJobs, m, payroll?.basisByMonth?.[m] || null)
+    return rules[m]
+  }
 
   const byDay = new Map()
   for (const j of inRange) {
@@ -119,8 +118,9 @@ export function summarizeRange({ emp, jobs, deductions = [], from, to, today = t
   const days = []
   for (let d = from; d <= to; d = addDays(d, 1)) {
     const list = (byDay.get(d) || []).sort((a, b) => (a.scheduled_time || '').localeCompare(b.scheduled_time || ''))
-    const fixed = list.length && list.some(j => j.counts_as_work_day !== false) ? Math.round(rate) : 0
-    const perJob = list.reduce((s, j) => s + jobEarnings(j, emp) - spotPay(j), 0)
+    const rule = ruleFor(d)
+    const fixed = list.length && list.some(j => j.counts_as_work_day !== false) ? Math.round(dailyFixedShare(emp, rule)) : 0
+    const perJob = list.reduce((s, j) => s + jobWorkerPay(j, emp, rule) - spotPay(j), 0)
     const spot = list.reduce((s, j) => s + spotPay(j), 0)
     days.push({
       day: d, future: d > today, jobs: list,
@@ -148,12 +148,16 @@ export function summarizeRange({ emp, jobs, deductions = [], from, to, today = t
 
   const base = salary ? salary.base : days.reduce((s, d) => s + d.base, 0)
   const spot = salary ? salary.spotEarned : days.reduce((s, d) => s + d.spot, 0)
-  const total = base + spot
+  const extras = salary ? (salary.extras || 0) : 0
+  const total = base + spot + extras
   const minutes = days.reduce((s, d) => s + d.minutes, 0)
+  for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = shiftMonth(m, 1)) ruleFor(m)
   return {
-    from, to, month, salary, days,
-    total, base, spot,
-    deductions: monthDed, deductionRows: monthLines ? monthLines.filter(l => l.status !== 'cancelled') : dedRows,
+    from, to, month, salary, days, rules,
+    /** rule of the job's month, for job rows: jobEarnings(job, emp, summary.ruleOf(job)) */
+    ruleOf: job => rules[String(dayOf(job)).slice(0, 7)] || ruleFor(dayOf(job)),
+    total, base, spot, extras, extraRows: salary?.extraRows || [],
+    deductions: monthDed, deductionRows: monthLines ? monthLines.filter(l => l.is_deduction && l.status !== 'cancelled') : dedRows,
     net: Math.max(0, total - monthDed),
     jobs: inRange.length,
     hours: minutes / 60,

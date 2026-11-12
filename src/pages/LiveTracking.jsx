@@ -14,13 +14,14 @@ import { ManualCloseButton } from '../components/ManualCloseModal'
 import { JaFizButton } from '../components/JaFizSheet'
 import { adminMarkNotDone } from '../lib/jobAdminOps'
 import { EliminateJobButton } from '../components/EliminateJobButton'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchDayCoverage } from '../lib/dayCoverage'
 import DayStoreStrip from '../components/DayStoreStrip'
 
 const TZ = 'Asia/Tokyo'
 import { countJobs, LATE_AFTER_MIN } from '../lib/jobCounts'
 import { isDeadlineJob, isDeadlineLate, DEADLINE_MIN, OTP_DEADLINE, otpRouteAlerts, otpRouteAlertText, jobTimeLabel, jobTimeShort } from '../lib/jobDeadline'
+import { pollWhileVisible } from '../lib/visiblePoll'
 const LOCATION_FRESH_MIN = 15
 
 // "Now" as a Date whose local fields are Tokyo wall-clock time.
@@ -100,6 +101,13 @@ export default function LiveTracking() {
   const [cov, setCov] = useState(null)
   const [showCovDone, setShowCovDone] = useState(false)
   const navigate = useNavigate()
+  // v1.0.195 · opened from Painel "Aguardando você hoje": ?emp=<id> (open + scroll to that person)
+  // or ?focus=contracts&stores=A|B (scroll to the contract stores list, those stores highlighted).
+  const [params] = useSearchParams()
+  const focusEmp = params.get('emp')
+  const focusContracts = params.get('focus') === 'contracts'
+  const focusStores = new Set((params.get('stores') || '').split('|').filter(Boolean))
+  const [focusDone, setFocusDone] = useState(false)
 
   const checkPhotos = async () => {
     try {
@@ -158,7 +166,16 @@ export default function LiveTracking() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { load(); const iv = setInterval(load, 30000); return ()=>clearInterval(iv) }, [load])
+  useEffect(() => { load(); return pollWhileVisible(load, 30000) }, [load])
+
+  useEffect(() => {
+    if (focusDone || loading || (!focusEmp && !focusContracts)) return
+    if (focusContracts && !cov) return
+    if (focusEmp) { setOpen(focusEmp); setShowFree(true) }
+    setFocusDone(true)
+    const id = focusEmp ? `lt-emp-${focusEmp}` : 'lt-contracts'
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+  }, [focusDone, loading, focusEmp, focusContracts, cov])
 
   const now = tokyoNow()
   const today = tokyoToday()
@@ -265,7 +282,7 @@ export default function LiveTracking() {
     const focusJob = p.staleOpen || active || next
     const isOpen = open === emp.id
     return (
-      <div key={emp.id} className={`lt-card is-${group}`}>
+      <div key={emp.id} id={`lt-emp-${emp.id}`} className={`lt-card is-${group}${focusEmp === emp.id ? ' is-focus' : ''}`}>
         <button type="button" className="lt-card-head" onClick={() => setOpen(isOpen ? null : emp.id)} aria-expanded={isOpen}>
           <span className="lt-avatar">{(emp.full_name || '?').trim().charAt(0)}</span>
           <span className="lt-who">
@@ -357,7 +374,7 @@ export default function LiveTracking() {
             {shown.length > 0 && (
               <ul className="lt-cov-list">
                 {shown.map(it => (
-                  <li key={it.place}>
+                  <li key={it.place} className={focusStores.has(it.place) ? 'is-focus' : undefined}>
                     <span className="lt-cov-place">
                       <b>{it.place}</b>
                       <span>{it.personName ? (it.usual ? fill(L.covUsual, { name: it.personName }) : it.personName) : L.covNobody}{it.job && isDeadlineJob(it.job) ? ` · ${jobTimeLabel(it.job, tr)}` : it.job?.scheduled_time ? ` · ${shortTime(it.job.scheduled_time)}` : ''}</span>

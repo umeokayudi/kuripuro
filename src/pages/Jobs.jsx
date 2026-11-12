@@ -6,7 +6,6 @@ import { geocodeAddress, isPlaceholderCoords } from '../lib/geocode'
 import { isNavigableAddress, mapsOpenUrl, hasMapsLink } from '../lib/mapsLink'
 import {
   getCleaningType, locationNameFromTitle, applyCleaningTypeToTitle, cleaningTypesForLang,
-  DEEP_TASKS, deepTaskName, parseDeepTaskList,
 } from '../lib/cleaningType'
 import { useLang, fill, localeOf } from '../hooks/useLang'
 import JobPhotos from '../components/JobPhotos'
@@ -36,6 +35,7 @@ import JobCountStrip from '../components/JobCountStrip'
 import DeepSpotCoverage from '../components/DeepSpotCoverage'
 import AddressInput from '../components/AddressInput'
 import { QuickReportButton } from '../components/QuickReport'
+import DeepItemsEdit from '../components/DeepItemsEdit'
 import {
   periodRange, previousRange, inRange, matchesPeople, summarize, summarizeByPerson, fmtMinutes, fmtStartEnd,
 } from '../lib/jobsPeriod'
@@ -52,13 +52,6 @@ function applyGeocodeResult(result, setCoords, mapsMsg) {
     return true
   }
   return false
-}
-
-/** "Coifa, Fritadeira" from a "Deep Clean (Range Hood, Fryer)" title, or '' when it has no list. */
-function deepTaskList(title, lang) {
-  return (parseDeepTaskList(title) || [])
-    .map(l => { const t = DEEP_TASKS.find(x => x.label.toLowerCase() === l.toLowerCase()); return t ? deepTaskName(t, lang) : l })
-    .join(', ')
 }
 
 function toDateStr(d) {
@@ -91,7 +84,7 @@ export default function Jobs() {
   const jt = t.jobs
   const st = t.status
   const CLEANING_TYPES = cleaningTypesForLang(lang)
-  const [tab, setTab] = useState(() => searchId ? 'list' : ['locations', 'deepspot'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'agenda')
+  const [tab, setTab] = useState(() => searchId ? 'list' : ['locations', 'deepspot', 'new'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'agenda')
   const [cleaningFilter, setCleaningFilter] = useState('all')
   const [period, setPeriod] = useState('7d')
   const [customRange, setCustomRange] = useState(() => ({ from: shiftDate(tokyoToday(), -6), to: tokyoToday() }))
@@ -280,8 +273,10 @@ export default function Jobs() {
                       {ctype === 'deep' ? jt.filterDeep : jt.filterBasic}
                     </span>
                   </div>
-                  {ctype === 'deep' && deepTaskList(j.title, lang) && (
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#b7791f', marginBottom: 4 }}>✨ {deepTaskList(j.title, lang)}</div>
+                  {ctype === 'deep' && (
+                    <DeepItemsEdit job={j} lang={lang} tr={tr} contract={contractForAgendaJob(j, contractList)}
+                      place={locations.find(p => (j.location_id && p.id === j.location_id) || p.name?.toLowerCase() === storeName(locationNameFromTitle(j.title)).toLowerCase())}
+                      onSaved={patch => setJobs(list => list.map(x => x.id === j.id ? { ...x, ...patch } : x))} />
                   )}
                   <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 6 }}>
                     👤 {j.employee_name || '—'} · 📅 {j.scheduled_date} · 🕐 {j.scheduled_time || '—'}
@@ -400,6 +395,7 @@ export default function Jobs() {
       {tab==='new' && (
         <NewJobForm
           jobs={jobs} employees={employees} clients={clients} locations={locations} sellers={sellers}
+          prefill={searchParams.get('place') ? { place: searchParams.get('place'), client: searchParams.get('client') || '', deep: searchParams.get('deep') || '' } : null}
           onCreated={({ another }) => { loadAll(); if (!another) setTab('list') }}
         />
       )}

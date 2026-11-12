@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 import { useSearchParams, Link } from 'react-router-dom'
 import { looksLikeSalaryMessage, salaryIssueFromChat } from '../lib/salaryIssueLink'
 import './admin-chat.css'
+import { pollWhileVisible } from '../lib/visiblePoll'
 
 const initials = name => String(name || '?').split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
 const timeOf = iso => new Date(iso).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })
@@ -62,8 +63,7 @@ export default function AdminChat() {
     setMessages([])
     setQuery('')
     loadList()
-    const poll = setInterval(loadList, 10000)
-    return () => clearInterval(poll)
+    return pollWhileVisible(loadList, 10000)
   }, [mode])
 
   useEffect(() => {
@@ -73,8 +73,7 @@ export default function AdminChat() {
     setNewMsgCount(0)
     loadMessages()
     markRead()
-    const poll = setInterval(loadMessages, 5000)
-    return () => clearInterval(poll)
+    return pollWhileVisible(loadMessages, 5000)
   }, [selected, mode])
 
   const loadList = async () => {

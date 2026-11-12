@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import SkeletonRows from '../components/SkeletonRows'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { useLang, pickLang } from '../hooks/useLang'
 import EarningsPanel from '../components/EarningsPanel'
 import { tokyoToday } from '../lib/dates'
-import { payrollMonth, monthLastDay } from '../lib/salaryCalc'
+import { payrollMonth, monthLastDay, payRuleOf, jobWorkerPay } from '../lib/salaryCalc'
 import { isPayrollActive } from '../lib/salaryClose'
 import { loadPayBasis } from '../lib/jobEmployeePay'
+import { packageOfJob } from '../lib/payPackages'
 
 export default function Salary() {
   const { lang } = useLang()
@@ -21,9 +22,17 @@ export default function Salary() {
   const [newAdv, setNewAdv] = useState({ amount:'', desc:'' })
   const [loading, setLoading] = useState(true)
   const [basis, setBasis] = useState(null)
+  // v1.0.193 · which person/month the data on screen belongs to: an answer that arrives after the admin
+  // picked someone else is dropped (it used to show Gabriel's base and jobs on Guilherme's page).
+  const reqKey = useRef('')
 
   useEffect(() => { loadEmployees() }, [])
-  useEffect(() => { if (selected) { loadJobs(); loadAdvances() } }, [selected, period])
+  useEffect(() => {
+    if (!selected) return
+    reqKey.current = `${selected.id}:${period}`
+    setJobs([]); setLines([]); setAdvances([]); setBasis(null)
+    loadJobs(); loadAdvances()
+  }, [selected, period])
 
   const loadEmployees = async () => {
     const { data } = await supabase.from('employees').select('*').order('full_name')
@@ -32,21 +41,29 @@ export default function Salary() {
   }
 
   const loadJobs = async () => {
-    const { data } = await supabase.from('jobs').select('*')
-      .eq('employee_id', selected.id)
-      .eq('status', 'completed')
-      .gte('scheduled_date', period + '-01')
-      .lte('scheduled_date', monthLastDay(period))
-    setJobs(data || [])
+    const key = `${selected.id}:${period}`
+    const id = selected.id
     // v1.0.131 · fixed or sum per job, as chosen in Payroll close
-    loadPayBasis(supabase, period, selected.id).then(b => setBasis(b[selected.id] || null))
+    const [{ data }, b] = await Promise.all([
+      supabase.from('jobs').select('*')
+        .eq('employee_id', id)
+        .eq('status', 'completed')
+        .gte('scheduled_date', period + '-01')
+        .lte('scheduled_date', monthLastDay(period)),
+      loadPayBasis(supabase, period, id),
+    ])
+    if (reqKey.current !== key) return
+    setJobs((data || []).filter(j => j.employee_id === id))
+    setBasis(b[id] || null)
   }
 
   const loadAdvances = async () => {
+    const key = `${selected.id}:${period}`
     const { data } = await supabase.from('salary_payments').select('*')
       .eq('employee_id', selected.id)
       .eq('period', period)
       .order('created_at')
+    if (reqKey.current !== key) return
     setLines(data || [])
     setAdvances((data || []).filter(p => p.payment_type === 'advance'))
   }
@@ -77,6 +94,8 @@ export default function Salary() {
   }
 
   const salary = calcSalary()
+  // v1.0.193 · what each job pays THIS person under the month's rule (same as Fechar folha / payslip)
+  const rule = selected ? payRuleOf(salary) : null
 
   // v1.0.133 · Tokyo months (the old list used UTC dates and could skip / repeat a month)
   const months = []
@@ -143,7 +162,9 @@ export default function Salary() {
               <div className="card-title">💴 {L('Salary Calculation', '給与計算', 'Cálculo do salário')} — {period}</div>
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 {[
-                  [L('Base salary', '基本給', 'Salário base'), `¥${salary.base?.toLocaleString()}`],
+                  [rule?.used === 'per_job'
+                    ? L(`Base salary (sum of employee pay of ${salary.perJob?.priced ?? 0} jobs${salary.packageTotal ? ' + monthly package' : ''})`, `基本給（${salary.perJob?.priced ?? 0}件の作業者支払い合計${salary.packageTotal ? '＋月額パッケージ' : ''}）`, `Salário base (soma do pagamento do funcionário de ${salary.perJob?.priced ?? 0} jobs${salary.packageTotal ? ' + pacote mensal' : ''})`)
+                    : L('Base salary', '基本給', 'Salário base'), `¥${salary.base?.toLocaleString()}`],
                   [L(`Jobs (${salary.jobs ?? jobs.length} completed · spot extras)`, `作業（完了${salary.jobs ?? jobs.length}件・スポット追加分）`, `Jobs (${salary.jobs ?? jobs.length} concluídos · extras spot)`), `+¥${salary.jobsPay?.toLocaleString()}`],
                   [L('Deductions', '控除', 'Descontos'), `-¥${salary.deductions?.toLocaleString()}`],
                 ].map(([l,v]) => (
@@ -169,7 +190,10 @@ export default function Salary() {
                     <div style={{ fontWeight:500 }}>{j.title}</div>
                     <div style={{ fontSize:11, color:'var(--text3)' }}>{j.scheduled_date}</div>
                   </div>
-                  <span style={{ color:'var(--text2)', fontSize:12, whiteSpace:'nowrap' }}>{L('Client pays', '顧客支払', 'Cliente paga')}: <b style={{ color:'var(--green)', fontWeight:600 }}>¥{Number(j.value||0).toLocaleString()}</b></span>
+                  <span style={{ color:'var(--text2)', fontSize:12, whiteSpace:'nowrap', textAlign:'right' }}>
+                    {L('Client pays', '顧客支払', 'Cliente paga')}: <b style={{ color:'var(--green)', fontWeight:600 }}>¥{Number(j.value||0).toLocaleString()}</b>
+                    <br />{L('Employee', 'スタッフ', 'Funcionário')}: <b style={{ fontWeight:600 }}>{rule?.packages?.length && packageOfJob(j, rule.packages) ? L('Monthly package', '月額パッケージ', 'Pacote mensal') : `¥${jobWorkerPay(j, selected, rule).toLocaleString()}`}</b>
+                  </span>
                 </div>
               ))}
             </div>

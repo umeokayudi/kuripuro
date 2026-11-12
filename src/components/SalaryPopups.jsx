@@ -6,7 +6,7 @@ import { employeeJobColumns } from '../lib/jobEmployeePay'
 import { pickLang } from '../hooks/useLang'
 import { enrichJobValues } from '../lib/employeePay'
 import { isDuskinJob } from '../lib/employeeAddJob'
-import { jobMinutes } from '../lib/salaryCalc'
+import { jobMinutes, ruleShowsJobAmounts } from '../lib/salaryCalc'
 import { getPeriodDates } from '../lib/salaryPeriod'
 import { summarizeRange, monthEnd, monthLabel, dayLabel, jobEarnings } from '../lib/earnings'
 import './SalaryPopups.css'
@@ -144,24 +144,27 @@ function useMonthWork(employeeId, month) {
     let alive = true
     const from = `${month}-01`, to = monthEnd(month)
     Promise.all([
-      supabase.from('employees').select('id,full_name,contract_type,hourly_rate,fixed_salary,salary_type,job_bonus_rate,monthly_work_days').eq('id', employeeId).maybeSingle(),
+      supabase.from('employees').select('*').eq('id', employeeId).maybeSingle(),
       // v1.0.157 · employee's payslip: never the client's value / contract price
       employeeJobColumns(supabase).then(cols => supabase.from('jobs').select(cols).eq('employee_id', employeeId).eq('status', 'completed').gte('scheduled_date', from).lte('scheduled_date', to).limit(2000)),
       Promise.resolve({ data: [] }),
       supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('period', month).order('payment_date'),
-    ]).then(([emp, jobs, contracts, pays]) => {
+      // v1.0.173 · same fixed / per-job choice as Payments, so the PDF and the job amounts match it
+      supabase.from('payroll_pay_basis').select('*').eq('employee_id', employeeId).eq('period', month).then(r => r, () => ({ data: [] })),
+    ]).then(([emp, jobs, contracts, pays, bases]) => {
       if (!alive) return
       const visible = (jobs.data || []).filter(j => !isDuskinJob(j))
       const all = pays.data || []
       setData({
         emp: emp.data || {}, jobs: enrichJobValues(visible, contracts.data || []),
         deductions: all.filter(p => p.is_deduction && p.status !== 'cancelled'), payments: all,
+        payroll: { jobs: jobs.data || [], lines: all.filter(p => p.is_deduction || p.payment_type === 'extra'), basisByMonth: Object.fromEntries((bases?.error ? [] : bases?.data || []).map(b => [b.period, b])) },
       })
     }).catch(() => alive && setData({ emp: {}, jobs: [], deductions: [], payments: [] }))
     return () => { alive = false }
   }, [employeeId, month])
   const summary = useMemo(() => data && summarizeRange({
-    emp: data.emp, jobs: data.jobs, deductions: [], from: `${month}-01`, to: monthEnd(month),
+    emp: data.emp, jobs: data.jobs, deductions: [], payroll: data.payroll, from: `${month}-01`, to: monthEnd(month),
   }), [data, month])
   return { data, summary }
 }
@@ -201,7 +204,7 @@ export function PayslipPopup({ statement, employeeId, employeeName, lang, onClos
     setMaking(true)
     try {
       const { downloadPayslipPdf } = await import('../lib/payslipPdf')
-      const full = summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: dedRows, from: `${month}-01`, to: monthEnd(month) })
+      const full = summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: dedRows, payroll: data.payroll, from: `${month}-01`, to: monthEnd(month) })
       await downloadPayslipPdf({
         employee: data.emp, month, salary: full.salary, lang,
         deductions: full.deductionRows, payments: data.payments, jobs: full.days.flatMap(d => d.jobs),
@@ -239,6 +242,8 @@ export function PayslipPopup({ statement, employeeId, employeeName, lang, onClos
       <div className="sp-h">{L.detail}</div>
       <div className="sp-break">
         <div><span>{L.gross}</span><b>{yen(statement.base_salary)}</b></div>
+        {Number(statement.breakdown?.jobs_pay || 0) > 0 && <div><span>Spot</span><b>+{yen(statement.breakdown.jobs_pay)}</b></div>}
+        {(statement.breakdown?.extras || []).map(x => <div key={x.id || x.description}><span>{x.description || 'Extra'}</span><b>+{yen(x.amount)}</b></div>)}
         {dedRows.length && Math.abs(dedSum - stDed) <= 1
           ? dedRows.map(d => <div key={d.id} className="is-neg"><span>{d.description || L.deductions}</span><b>-{yen(d.amount)}</b></div>)
           : <div className="is-neg"><span>{L.deductions}</span><b>-{yen(stDed)}</b></div>}
@@ -253,7 +258,7 @@ export function PayslipPopup({ statement, employeeId, employeeName, lang, onClos
             {(allJobs ? jobs : jobs.slice(0, 4)).map(j => (
               <div key={j.id} className="sp-job">
                 <div><b>{j.title || '—'}</b><small>{dayLabel(j.scheduled_date, lang)} · {(jobMinutes(j) / 60).toFixed(1)}h</small></div>
-                {(data.emp.salary_type || 'fixed') !== 'fixed' || j.job_category === 'spot' ? <b>{yen(jobEarnings(j, data.emp))}</b> : null}
+                {ruleShowsJobAmounts(data.emp, summary.ruleOf(j)) || j.job_category === 'spot' ? <b>{yen(jobEarnings(j, data.emp, summary.ruleOf(j)))}</b> : null}
               </div>
             ))}
           </div>

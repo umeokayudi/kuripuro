@@ -21,7 +21,9 @@ export function jobTimes(job, hours = DEFAULT_HOURS) {
   if (!t) return null
   const [y, mo, d] = String(job.scheduled_date).split('-').map(Number)
   const start = new Date(Date.UTC(y, mo - 1, d, t.h - 9, t.min))
-  const end = new Date(start.getTime() + Number(hours || DEFAULT_HOURS) * 3600000)
+  // v1.0.206 · a seller visit carries its own length (duration_hours); jobs keep the default.
+  const length = Number(job.duration_hours) > 0 ? Number(job.duration_hours) : Number(hours || DEFAULT_HOURS)
+  const end = new Date(start.getTime() + length * 3600000)
   return { start, end }
 }
 
@@ -93,7 +95,7 @@ function eventLines(job, opts) {
   const status = job.status === 'cancelled' || job.spot_status === 'declined' ? 'CANCELLED' : 'CONFIRMED'
   return [
     'BEGIN:VEVENT',
-    `UID:job-${job.id}@kuripuro`,
+    `UID:${job.uid || `job-${job.id}@kuripuro`}`,
     `DTSTAMP:${utcStamp(opts.now || new Date())}`,
     ...(times
       ? [`DTSTART:${utcStamp(times.start)}`, `DTEND:${utcStamp(times.end)}`]

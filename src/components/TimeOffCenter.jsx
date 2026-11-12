@@ -32,6 +32,7 @@ import { markReviewed, markNotDone } from '../lib/attentionActions'
 import { SHIFT_MARK_CHANGED } from '../lib/shiftMarks'
 import { OPEN_BELL } from './DayPanelView'
 import EmployeePayEdit from './EmployeePayEdit'
+import { pollWhileVisible } from '../lib/visiblePoll'
 
 const tokyoMinutes = () => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })); return d.getHours() * 60 + d.getMinutes() }
 
@@ -140,12 +141,21 @@ export default function TimeOffCenter() {
 
   useEffect(() => {
     load()
-    const id = setInterval(load, 60000)
+    const stopPoll = pollWhileVisible(load, 60000)
     const openFromOutside = () => openRef.current?.()
+    // v1.0.171 · a push notification opens /?bell=1 → the bell opens by itself
+    try {
+      const qs = new URLSearchParams(window.location.search)
+      if (qs.get('bell') === '1') {
+        qs.delete('bell')
+        window.history.replaceState(null, '', window.location.pathname + (qs.toString() ? `?${qs}` : ''))
+        setTimeout(openFromOutside, 400)
+      }
+    } catch { /* old browser */ }
     const evs = [TIME_OFF_CHANGED, PAYROLL_CHANGED, QUOTE_REQUESTS_CHANGED, QUOTE_FLOW_CHANGED, PENDING_CHANGED, HIDE_TESTS_CHANGED, SHIFT_MARK_CHANGED, ROUTE_SETTINGS_CHANGED]
     evs.forEach(e => window.addEventListener(e, load))
     window.addEventListener(OPEN_BELL, openFromOutside)
-    return () => { clearInterval(id); evs.forEach(e => window.removeEventListener(e, load)); window.removeEventListener(OPEN_BELL, openFromOutside) }
+    return () => { stopPoll(); evs.forEach(e => window.removeEventListener(e, load)); window.removeEventListener(OPEN_BELL, openFromOutside) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The pop-up alert goes away on its own; the bell number stays.

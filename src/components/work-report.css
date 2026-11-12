@@ -86,6 +86,8 @@
 .wr-new > div { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .wr-new b { font-size: 13px; color: #1f3a5f; }
 .wr-new select { font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; width: 100%; }
+.wr-new > div { min-width: 0; }
+.wr-new > div:nth-child(3) { grid-column: 1 / -1; }
 @media (max-width: 640px) { .wr-new { grid-template-columns: 1fr; } }
 /* v1.0.155 · client vs internal */
 .wr-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--surface2); padding: 4px; border-radius: 12px; }

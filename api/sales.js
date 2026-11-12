@@ -1,11 +1,14 @@
 import calendar from './_calendar.js'
 import contractSales from './_contract-sales.js'
+import google from './_google-calendar.js'
 import payrollClose from './_payroll-close.js'
+import push from './_push.js'
 import salesAi from './_sales-ai.js'
 import salesData from './_sales-data.js'
 import salesFiles from './_sales-files.js'
 import salesReminders from './_sales-reminders.js'
 import salesSession from './_sales-session.js'
+import youtube from './_youtube.js'
 
 export const config = { api: { bodyParser: { sizeLimit: '32mb' } } }
 
@@ -15,10 +18,14 @@ const handlers = {
   'calendar-link': calendar,
   'contract-sellers': contractSales,
   data: salesData,
+  google,
+  'google-sync': google,
   files: salesFiles,
   'payroll-close': payrollClose,
+  push,
   reminders: salesReminders,
   session: salesSession,
+  youtube,
 }
 
 export default async function handler(req, res) {

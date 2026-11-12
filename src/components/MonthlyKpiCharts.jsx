@@ -6,6 +6,7 @@ import { avgStars } from '../lib/satisfaction'
 import { summarizeJobs, formatMinutes } from '../lib/workKpis'
 import MonthBars from './MonthBars'
 import { pickLang, localeOf } from '../hooks/useLang'
+import { pollWhileVisible } from '../lib/visiblePoll'
 
 // v1.0.34 — the editable number tiles at the top of the dashboard, now one roomy
 // month-by-month bar chart per metric (last 6 or 12 months, current month highlighted).
@@ -68,8 +69,8 @@ export default function MonthlyKpiCharts({ lang, snapshot = {}, snapshotLoading 
       setLoaded(true)
     }
     load()
-    const timer = setInterval(load, 60000)
-    return () => { alive = false; clearInterval(timer) }
+    const stopPoll = pollWhileVisible(load, 60000)
+    return () => { alive = false; stopPoll() }
   }, [start])
 
   const buckets = useMemo(() => keys.map(key => {

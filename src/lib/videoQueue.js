@@ -3,9 +3,15 @@
 // a tela bloquear ou a internet cair, ele é enviado de novo quando o app abrir ou a rede voltar.
 // Tudo com try/catch: sem IndexedDB (aba anônima etc.) o envio segue normal, só sem a fila.
 
+import { holdScreenOn } from './wakeLock'
+
 const DB_NAME = 'kp-video-queue'
 const STORE = 'pending'
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+// v1.0.199 · A camera file that the phone could not compress (the page closed in the middle,
+// usually out of memory) was compressed again at every app open, crashed again, and so on.
+// Now it is tried at most twice; then it leaves the queue and the worker is told to pick it again.
+const MAX_RAW_TRIES = 2
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -103,12 +109,20 @@ async function saveResume(item, resume) {
   try { await withStore('readwrite', store => { store.put({ ...item, resume }) }) } catch { /* ignora */ }
 }
 
-/** Camera file left in the queue: compress it now (same 720p / ~2 Mbps rule) before sending. */
+/** Camera file left in the queue: compress it now (same rule as on the job screen) before sending. */
 async function compressRaw(item) {
+  // Counted BEFORE compressing: when the phone kills the page, no catch runs.
+  const tries = (item.rawTries || 0) + 1
+  if (tries > MAX_RAW_TRIES) {
+    const err = new Error('O celular não conseguiu preparar este vídeo. Escolha o vídeo de novo (ou grave um mais curto).')
+    err.code = 'raw_gave_up'
+    throw err
+  }
+  try { await withStore('readwrite', store => { store.put({ ...item, rawTries: tries }) }) } catch { /* ignora */ }
   const [{ compressVideo }, { videoPoster }] = await Promise.all([import('./videoCompress'), import('./jobVideo')])
   const res = await compressVideo(item.blob)
   const extra = await videoPoster(res.blob)
-  const next = { ...item, blob: res.blob, contentType: res.contentType, ext: res.ext, poster: extra.poster, duration: extra.duration, raw: false }
+  const next = { ...item, blob: res.blob, contentType: res.contentType, ext: res.ext, poster: extra.poster, duration: extra.duration, raw: false, rawTries: tries }
   try { await withStore('readwrite', store => { store.put(next) }) } catch { /* ignora */ }
   return next
 }
@@ -117,6 +131,7 @@ async function sendItem(item, upload, onProgress) {
   inFlight.add(item.id)
   progressById.set(item.id, 0)
   notify()
+  const releaseScreen = holdScreenOn() // a locked screen pauses the page and the upload with it
   let lastPct = -1
   const track = (p) => {
     progressById.set(item.id, p)
@@ -132,12 +147,13 @@ async function sendItem(item, upload, onProgress) {
     return path
   } catch (err) {
     // Limite de vídeos do serviço, ou vídeo grande demais / inválido: tentar de novo não resolve
-    if (isLimitError(err) || err?.code === 'too_large' || err?.code === 'not_video') {
+    if (isLimitError(err) || err?.code === 'too_large' || err?.code === 'not_video' || err?.code === 'raw_gave_up') {
       await removeQueuedVideo(item.id)
       import('./jobVideo').then(m => m.writeVideoStatus(item.jobId, { status: 'failed', path: null, error: String(err?.message || err).slice(0, 200) })).catch(() => {})
     } else await markAttempt(item)
     throw err
   } finally {
+    releaseScreen()
     inFlight.delete(item.id)
     progressById.delete(item.id)
     notify()
@@ -148,9 +164,10 @@ async function sendItem(item, upload, onProgress) {
  * Guarda o vídeo na fila e já tenta enviar. Se falhar, ele continua na fila (err.queued = true)
  * e `flushVideoQueue` manda depois. `upload(jobId, video, { onProgress })` é o uploadJobVideo.
  */
-export async function enqueueAndSend(jobId, video, upload, { onProgress } = {}) {
+export async function enqueueAndSend(jobId, video, upload, { onProgress, onQueued } = {}) {
   const id = await enqueueVideo(jobId, video)
   if (!id) return upload(jobId, video, { onProgress })
+  onQueued?.(id)
   notify()
   try {
     return await sendItem({ id, jobId, ...video, attempts: 0, createdAt: Date.now() }, upload, onProgress)
@@ -165,13 +182,14 @@ let running = null
 /**
  * Envia o que estiver na fila, um por vez (pula o que já está sendo enviado agora).
  * Vídeos com mais de 7 dias são descartados. Chamadas ao mesmo tempo reaproveitam a mesma rodada.
- * @returns {Promise<{sent: number, failed: number}>}
+ * @returns {Promise<{sent: number, failed: number, gaveUp: number}>} gaveUp = camera files the phone could not compress after 2 tries (removed)
  */
 export function flushVideoQueue(upload, { alreadySent } = {}) {
   if (running) return running
   running = (async () => {
     let sent = 0
     let failed = 0
+    let gaveUp = 0
     for (const item of await listQueuedVideos()) {
       if (inFlight.has(item.id)) continue
       if (Date.now() - (item.createdAt || 0) > MAX_AGE_MS || !item.blob) {
@@ -188,11 +206,12 @@ export function flushVideoQueue(upload, { alreadySent } = {}) {
       try {
         await sendItem(item, upload)
         sent++
-      } catch {
-        failed++
+      } catch (err) {
+        if (err?.code === 'raw_gave_up') gaveUp++
+        else failed++
       }
     }
-    return { sent, failed }
+    return { sent, failed, gaveUp }
   })().finally(() => { running = null })
   return running
 }

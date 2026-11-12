@@ -11,6 +11,8 @@ import WorkReportEditor from '../components/WorkReportEditor'
 import WorkReportList from '../components/WorkReportList'
 import PeriodReportEditor from '../components/PeriodReportEditor'
 import { ReportViewerById } from '../components/QuickReport'
+import { combinedReportsHtml, isOnThePlanet, loadClientDayReports } from '../lib/clientDayPdf'
+import { openPrintHtml } from '../lib/openPrintHtml'
 import '../components/work-report.css'
 
 const lastMonth = () => { const d = new Date(Date.now() + 9 * 3600e3); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
@@ -32,6 +34,10 @@ export default function WorkReports() {
   const [viewing, setViewing] = useState(null) // v1.0.158 · id shown in the clean preview
   const [pClient, setPClient] = useState('')
   const [pMonth, setPMonth] = useState(lastMonth)
+  // v1.0.181 · optional "um PDF só": all reports of one client (On The Planet by default) on one day
+  const [dClient, setDClient] = useState('')
+  const [dDate, setDDate] = useState(() => daysAgo(0))
+  const [dBusy, setDBusy] = useState(false)
   const author = useMemo(() => ({ name: user?.name || '' }), [user?.name])
 
   const load = useCallback(async () => {
@@ -65,6 +71,20 @@ export default function WorkReports() {
     const cid = p.get('client')
     if (cid && clients.length) { const client = clients.find(c => c.id === cid); if (client) setOpen({ client }) }
   }, [location.search, jobs.length > 0, clients.length > 0]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (!dClient && clients.length) { const otp = clients.find(c => isOnThePlanet(c.company_name)); if (otp) setDClient(otp.id) } }, [clients, dClient])
+  const makeDayPdf = async () => {
+    const client = clients.find(c => c.id === dClient)
+    if (!client || !dDate) return
+    setDBusy(true)
+    try {
+      const reports = await loadClientDayReports(client.id, dDate)
+      const missing = jobs.filter(j => j.client_id === client.id && j.scheduled_date === dDate && !reports.some(r => r.job_id === j.id || (r.job_ids || []).includes(j.id)))
+      if (!reports.length) { toast.error(tr('No report of this client on this day yet.', 'この日の報告書はまだありません。', 'Nenhum relatório deste cliente neste dia ainda.')); return }
+      openPrintHtml(combinedReportsHtml(reports, { clientName: client.company_name, date: dDate }))
+      if (missing.length) toast(tr(`${missing.length} service(s) of this day have no report yet: ${missing.map(j => j.title).join(', ')}`, `報告書がない作業 ${missing.length}件: ${missing.map(j => j.title).join('、')}`, `${missing.length} serviço(s) deste dia ainda sem relatório: ${missing.map(j => j.title).join(', ')}`), { icon: 'ℹ️', duration: 7000 })
+    } catch (e) { toast.error(String(e.message || e)) } finally { setDBusy(false) }
+  }
 
   const withReport = useMemo(() => new Set((items || []).flatMap(s => [s.job_id, ...(s.job_ids || [])]).filter(Boolean)), [items])
   const pendingJobs = jobs.filter(j => !withReport.has(j.id))
@@ -103,6 +123,18 @@ export default function WorkReports() {
             <button type="button" className="btn btn-sm btn-primary" disabled={!pClient || !pMonth} onClick={() => setPeriod({ client: clients.find(c => c.id === pClient), ...monthRange(pMonth) })}>{tr('Build', '作成', 'Montar')}</button>
           </div>
           <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('The system gathers the month\'s services and every photo/video, store by store.', '当月の作業と写真・動画を店舗ごとに自動で集めます。', 'O sistema junta os serviços do mês e todas as fotos/vídeos, loja por loja.')}</small>
+        </div>
+        <div>
+          <b>📑 {tr('One PDF: all stores of a client on a day', '1日分・全店舗を1つのPDFに', 'Um PDF só: todas as lojas do cliente no dia')}</b>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <select value={dClient} onChange={e => setDClient(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }}>
+              <option value="">{tr('Choose the client', '顧客を選択', 'Escolha o cliente')}</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+            </select>
+            <input type="date" value={dDate} onChange={e => setDDate(e.target.value)} style={{ font: 'inherit', fontSize: 13, padding: '7px 8px', border: '1px solid var(--border)', borderRadius: 8 }} />
+            <button type="button" className="btn btn-sm btn-primary" disabled={!dClient || !dDate || dBusy} onClick={makeDayPdf}>{dBusy ? '…' : `📑 ${tr('Make PDF', 'PDF作成', 'Gerar PDF')}`}</button>
+          </div>
+          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('Optional. A cover with the list of stores, then each store\'s report on its own page. The separate reports stay as they are.', '任意。表紙に店舗一覧、その後に店舗ごとの報告書を1ページずつ。個別の報告書はそのまま残ります。', 'Opcional. Capa com a lista de lojas e depois o relatório de cada loja numa página. Os relatórios separados continuam iguais.')}</small>
         </div>
       </div>
 

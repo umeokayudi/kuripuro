@@ -1,0 +1,53 @@
+/* v1.0.179 · Google Agenda page */
+.ga-page { max-width: 980px; }
+.ga-sub { margin: 0 0 14px; font-size: 13px; color: var(--text2); }
+.ga-hint { font-size: 12px; color: var(--text3); margin-top: 6px; }
+.ga-setup p { margin: 6px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.ga-warn { border-left: 4px solid var(--amber); }
+.ga-sync { display: grid; gap: 10px; }
+.ga-sync-row, .ga-seg, .ga-cals, .ga-colors, .ga-preview-actions, .ga-emp-btns, .ga-edit-foot, .ga-notjob-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ga-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); font-size: 13px; cursor: pointer; }
+.ga-chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.ga-chip input { display: none; }
+.ga-dates { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ga-dates input, .ga-dates select { width: auto; min-width: 0; }
+.ga-big { width: 100%; padding: 14px; font-size: 16px; font-weight: 800; }
+.ga-preview-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 10px; }
+.ga-draft { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+.ga-draft.bad { border-color: var(--amber); background: var(--amber-bg); }
+.ga-draft-row { display: flex; gap: 10px; align-items: flex-start; }
+.ga-draft-row > input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
+.ga-draft-main { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; display: grid; gap: 2px; color: inherit; }
+.ga-draft-title { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+.ga-draft-meta { font-size: 12px; color: var(--text2); }
+.ga-draft-src { font-size: 11px; color: var(--text3); overflow-wrap: anywhere; }
+.ga-miss, .ga-miss-line { color: var(--amber); font-weight: 700; font-style: normal; }
+.ga-miss-line { font-size: 12px; margin-top: 4px; }
+.ga-edit { display: grid; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.ga-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.ga-field { display: grid; gap: 4px; font-size: 12px; color: var(--text2); min-width: 0; }
+.ga-field input, .ga-field select, .ga-field textarea { width: 100%; box-sizing: border-box; min-width: 0; }
+.ga-settings, .ga-accounts { display: grid; gap: 12px; }
+.ga-toggle { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.ga-color { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.ga-color.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--surface) inset; }
+.ga-acc { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.ga-acc-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; overflow-wrap: anywhere; }
+.ga-acc-body { display: grid; gap: 8px; margin-top: 8px; }
+.ga-emp-head { font-weight: 800; font-size: 13px; margin-top: 4px; }
+.ga-emp { border-top: 1px solid var(--border); padding-top: 8px; display: grid; gap: 6px; }
+.ga-emp-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ga-emp-row .badge { overflow-wrap: anywhere; }
+.ga-emp-btns { margin-left: auto; }
+.ga-notjobs { margin-top: 12px; font-size: 13px; }
+.ga-notjob { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); }
+.ga-page input:not([type=checkbox]), .ga-page select, .ga-page textarea {
+  padding: 8px 11px; font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-family: inherit; box-sizing: border-box;
+}
+.ga-page input:focus, .ga-page select:focus, .ga-page textarea:focus { outline: none; border-color: var(--navy2); }
+.ga-dates input[type=time] { width: 120px; }
+.ga-dates input[type=number] { width: 110px; }
+.ga-dates select { width: auto; }
+.ga-disabled { opacity: .45; pointer-events: none; }
+.ga-off { color: var(--amber); font-weight: 600; }

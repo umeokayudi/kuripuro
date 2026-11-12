@@ -19,10 +19,13 @@ export function jobPay(job) {
  * is set (field or description line), else the old rule (client value × rate). On employee screens the
  * client value is never loaded, so there only the worker's own pay counts.
  */
-export function perJobWorkerPay(job, rate = 100) {
+export function perJobWorkerPay(job, rate = 0) {
   const own = jobEmployeePay(job)
   if (own !== null) return own
-  return Math.round(jobPay(job) * (rate / 100))
+  // v1.0.209 · the client's price is NEVER the worker's pay: only an explicit % on the record uses it.
+  // No "Pagamento do funcionário" and no % → ¥0 'a definir' (October 2026 showed ¥3.846/¥4.000 per visit).
+  const r = Number(rate) || 0
+  return r > 0 ? Math.round(jobPay(job) * (r / 100)) : 0
 }
 
 export function completedJobsInMonth(jobs, month, todayStr = tokyoToday()) {
@@ -86,7 +89,7 @@ export function monthBase(emp, jobs, month) {
   const hourly = Math.round(minutes / 60 * yenAmount(emp?.hourly_rate))
   const type = emp?.salary_type
   if (type === 'hourly') return hourly
-  if (type === 'per_job') return done.reduce((s, j) => s + perJobWorkerPay(j, emp?.job_bonus_rate || 100), 0)
+  if (type === 'per_job') return done.reduce((s, j) => s + perJobWorkerPay(j, emp?.job_bonus_rate), 0)
   if (type === 'mixed') {
     return fixedMonthBase(emp, month) + hourly + done.reduce((s, j) => s + Math.round(jobPay(j) * ((emp?.job_bonus_rate || 0) / 100)), 0)
   }
@@ -118,8 +121,12 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [],
     if (day !== 0 && day !== 6) remain++
   }
 
-  const total = base + spotEarned
+  const extras = one.extras || 0
+  const total = base + spotEarned + extras
   return {
+    extras, extraRows: one.extraRows || [],
+    // v1.0.173 · which rule paid the month + its packages, so each job / day is shown with the same rule
+    payRule: payRuleOf(one),
     jobs: completed.length,
     hours: (totalMins / 60).toFixed(1),
     base,
@@ -133,8 +140,8 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [],
     projected: isCurrentMonth ? Math.min(base + Math.round(dailyRate * remain), fixedMax) : 0,
     month,
     salaryType: empInfo?.salary_type || 'fixed',
-    /** True when nothing in the employee record can produce pay (all rates are 0). */
-    notConfigured: payRatesMissing(empInfo),
+    /** True when nothing can produce pay: all rates are 0 AND no job carries a "Pagamento do funcionário". */
+    notConfigured: payRatesMissing(empInfo) && !(one.gross > 0) && !(one.perJob?.priced > 0),
   }
 }
 
@@ -161,6 +168,9 @@ export function payRatesMissing(empInfo) {
 
 /** Month a salary_payments row belongs to: its period, else the month of its date. */
 export const lineMonth = row => row?.period || String(row?.payment_date || row?.created_at || '').slice(0, 7)
+
+/** v1.0.209 · An "extra" line of the month: part of the payslip total (added in Folha), paid with the salary. */
+export const isPayslipExtra = row => row?.payment_type === 'extra' && !row?.is_deduction && row?.status !== 'cancelled'
 
 /** A deduction that counts in pay: not cancelled (automatic suggestions wait as cancelled until approved). */
 export const countsAsDeduction = row => !!row?.is_deduction && row.status !== 'cancelled'
@@ -204,15 +214,18 @@ export function payrollMonth({ emp, jobs = [], lines = [], month, basis = null }
   const mine = (lines || []).filter(l => lineMonth(l) === month)
   const dedRows = mine.filter(countsAsDeduction)
   const deductions = dedRows.reduce((s, d) => s + yenAmount(d.amount), 0)
+  // v1.0.209 · lines the admin adds to the payslip (Folha → relatório) count inside it, never paid apart
+  const extraRows = mine.filter(isPayslipExtra)
+  const extras = extraRows.reduce((s, d) => s + yenAmount(d.amount), 0)
   return {
-    month, base, jobsPay, deductions, dedRows,
+    month, base, jobsPay, deductions, dedRows, extras, extraRows,
     basis: pick, autoBasis: pick ? null : auto, fixedTotal, perJob, packages, packageTotal, packageJobs: pkgJobs.length,
     // v1.0.133 · never blocks the close any more (fixed wins by default); kept for old callers.
     needsBasis: false,
     // both a fixed salary and jobs with employee pay: the admin may switch (fixed counts until then)
     bothOptions: !pick && fixedTotal > 0 && perJob.priced > 0,
-    gross: base + jobsPay,
-    net: Math.max(0, base + jobsPay - deductions),
+    gross: base + jobsPay + extras,
+    net: Math.max(0, base + jobsPay + extras - deductions),
     jobs: done.length,
     minutes: done.reduce((s, j) => s + jobMinutes(j), 0),
     salaryLine: mine.find(l => l.payment_type === 'salary' && l.status !== 'cancelled') || null,
@@ -222,4 +235,55 @@ export function payrollMonth({ emp, jobs = [], lines = [], month, basis = null }
 /** First day a month may be closed: the 1st of the following month (Tokyo). */
 export function canCloseMonth(month, today = tokyoToday()) {
   return today.slice(0, 7) > month
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v1.0.173 · ONE rule for each job and each day, taken from payrollMonth's choice for that month.
+// Meu salário (week / month / period), the payslip PDF, the payslip popup and admin Salary all use
+// jobWorkerPay / dayWorkerPay, so a job never shows ¥0 in one place and ¥1.000 in another.
+//   'per_job' → the job's "Pagamento do funcionário" (package jobs and 'a definir' = ¥0)
+//   'fixed'   → the fixed salary (per worked day on day views; the whole month on the month)
+//   null      → old rule by salary type (hourly / per_job × rate / mixed)
+// Spot jobs always add their own extra on top.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The rule a payrollMonth result used: { used: 'fixed'|'per_job'|null, packages } */
+export const payRuleOf = calc => ({ used: calc?.basis || calc?.autoBasis || null, packages: calc?.packages || [] })
+
+/** Rule of one month for one person (same choice as Payments / Fechar folha). */
+export function monthPayRule(emp, jobs, month, basis = null) {
+  return payRuleOf(payrollMonth({ emp, jobs, lines: [], month, basis }))
+}
+
+/** What one completed job pays the worker under the month's rule (spot extra included). */
+export function jobWorkerPay(job, emp, rule = null) {
+  const used = rule?.used ?? null
+  const spot = spotExtra(job)
+  if (rule?.packages?.length && packageOfJob(job, rule.packages)) return spot
+  if (used === 'fixed') return spot
+  if (used === 'per_job') return (jobEmployeePay(job) ?? 0) + spot
+  const type = emp?.salary_type || 'fixed'
+  const hourly = Math.round(jobMinutes(job) / 60 * yenAmount(emp?.hourly_rate))
+  if (type === 'hourly') return hourly + spot
+  if (type === 'per_job') return perJobWorkerPay(job, emp?.job_bonus_rate) + spot
+  if (type === 'mixed') return hourly + Math.round(jobPay(job) * ((emp?.job_bonus_rate || 0) / 100)) + spot
+  if (type !== 'fixed') return hourly + spot
+  return spot
+}
+
+/** Share of the fixed salary paid on one worked day (0 when the month is not paid by the fixed salary). */
+export function dailyFixedShare(emp, rule = null) {
+  const used = rule?.used ?? null
+  const type = emp?.salary_type || 'fixed'
+  if (used === 'per_job') return 0
+  if (used !== 'fixed' && type !== 'fixed' && type !== 'mixed') return 0
+  return yenAmount(emp?.fixed_salary) / (emp?.monthly_work_days || 22)
+}
+
+/** Does this rule pay per job (so job amounts are worth showing)? */
+export const ruleShowsJobAmounts = (emp, rule) => {
+  const used = rule?.used ?? null
+  if (used === 'per_job') return true
+  if (used === 'fixed') return false
+  return (emp?.salary_type || 'fixed') !== 'fixed'
 }

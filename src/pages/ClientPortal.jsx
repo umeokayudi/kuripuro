@@ -32,6 +32,9 @@ import { listModels, listRecommendations, decideRecommendation } from '../lib/fa
 // v1.0.90 · Kuripuro World só para ver (three.js baixa só quando abre)
 const Facility = lazy(() => import('./Facility'))
 import './client-portal.css'
+import ClientBell, { clientBellItems } from '../components/ClientBell'
+import { tabFromUrl, clearTabParam } from '../lib/push'
+import { pollWhileVisible } from '../lib/visiblePoll'
 
 function sanitizePostgrestToken(value) {
   return String(value || '').replace(/[%(),.\\]/g, '').trim()
@@ -85,7 +88,8 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
     return typeof window !== 'undefined' && window.innerWidth >= 900
   })
 
-  const [tab, setTab] = useState('home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','visits','stores','chat','billing','reports','requests','complaints','facility','settings']) || 'home')
+  useEffect(() => { clearTabParam() }, [])
   const [jobs, setJobs] = useState([])
   const [contracts, setContracts] = useState([])
   const [messages, setMessages] = useState([])
@@ -247,8 +251,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
   useEffect(() => {
     if (!c) return
     loadAll({ silent: false })
-    const refresh = setInterval(() => loadAll({ silent: true }), 20000)
-    return () => clearInterval(refresh)
+    return pollWhileVisible(() => loadAll({ silent: true }), 20000)
   }, [user?.id, c, loadAll])
 
   const loadFacility = useCallback(async () => {
@@ -614,6 +617,12 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
   const pendingFacilityRecs = facilityRecs.filter(r => r.status === 'pending')
 
   const quotesWaiting = requests.filter(rq => rq.quote_status === 'quoted').length
+  // v1.0.191 · client bell: everything new or waiting for the client
+  const lastAdminMsg = [...messages].reverse().find(m => m.sender === 'admin' && !m.read) || null
+  const bellItems = clientBellItems({
+    lang, today, invoices, unreadMsgs, lastAdminMsg, requests, complaints, reports: unseenReports, jobs,
+    placeOf: j => locationFromJob(j) || j.title, unratedCount: unratedVisits.length, facilityRecs: pendingFacilityRecs, maintAlerts,
+  })
   const navItems = [
     { key: 'home', icon: <NavIcon name="home" />, label: c.home },
     { key: 'visits', icon: <NavIcon name="visits" />, label: c.visits, badge: unratedVisits.length },
@@ -771,6 +780,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
                 </div>
               )}
               <div className="cp-header-actions">
+                {!preview && <ClientBell items={bellItems} lang={lang} userId={user.id} onOpenTab={setTab} />}
                 <LanguageToggle variant="light" />
                 {!desktopMode && (
                   <button type="button" className="cpx-icon-btn" onClick={toggleView} title={c.desktopView} aria-label={c.desktopView}>

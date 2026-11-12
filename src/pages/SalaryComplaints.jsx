@@ -6,6 +6,8 @@ import toast from 'react-hot-toast'
 import { fmtPeriod } from '../lib/salaryPeriod'
 import { useLang } from '../hooks/useLang'
 import { Link } from 'react-router-dom'
+import { payrollState, payStateText } from '../lib/salaryClose'
+import { isTestEmployee } from '../lib/testData'
 
 // Employees read EN or JA, so the chat note carries both.
 function salaryAnswerMessage(c, status, answer) {
@@ -27,14 +29,27 @@ export default function SalaryComplaints() {
   const [filter, setFilter] = useState('pending')
   const [notes, setNotes] = useState({})
   const [loading, setLoading] = useState(true)
+  // v1.0.193 · months marked paid WITHOUT the employee's confirmation are salary problems too
+  // (same payrollState as Fechar folha / Payments); they open the payroll of that month to check.
+  const [unconfirmed, setUnconfirmed] = useState([])
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
     pendingChanged()
     setLoading(true)
-    const { data } = await supabase.from('salary_complaints').select('*').order('created_at', { ascending: false })
+    const [{ data }, paid, sts, emps] = await Promise.all([
+      supabase.from('salary_complaints').select('*').order('created_at', { ascending: false }),
+      supabase.from('salary_payments').select('id,employee_id,employee_name,period,status,amount,payment_date').eq('payment_type', 'salary').eq('status', 'paid'),
+      supabase.from('salary_statements').select('id,employee_id,period,status,employee_confirmed_at,employee_disputed_at'),
+      supabase.from('employees').select('*'),
+    ])
     setComplaints(data || [])
+    const empById = Object.fromEntries((emps.data || []).map(e => [e.id, e]))
+    setUnconfirmed((paid.data || [])
+      .filter(l => l.period && !isTestEmployee(empById[l.employee_id] || { full_name: l.employee_name }))
+      .filter(l => payrollState((sts.data || []).find(st => st.employee_id === l.employee_id && st.period === l.period) || null, l) === 'paid_unconfirmed')
+      .sort((a, b) => String(b.period).localeCompare(String(a.period))))
     setLoading(false)
   }
 
@@ -60,7 +75,8 @@ export default function SalaryComplaints() {
   }
 
   const filtered = complaints.filter(c => filter === 'all' || c.status === filter)
-  const pending = complaints.filter(c => c.status === 'pending').length
+  const pending = complaints.filter(c => c.status === 'pending').length + unconfirmed.length
+  const showUnconfirmed = filter === 'pending' || filter === 'all' ? unconfirmed : []
 
   return (
     <div>
@@ -72,7 +88,21 @@ export default function SalaryComplaints() {
       </div>
 
       {loading && <SkeletonRows rows={3} label={t.app.loading} />}
-      {filtered.length === 0 && !loading && <div className="card"><div style={{ color: 'var(--text3)' }}>{s.empty}</div></div>}
+      {filtered.length === 0 && showUnconfirmed.length === 0 && !loading && <div className="card"><div style={{ color: 'var(--text3)' }}>{s.empty}</div></div>}
+
+      {showUnconfirmed.map(l => (
+        <div key={`pu-${l.id}`} className="card" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>{l.employee_name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtPeriod(l.period)} · 💴 ¥{Math.round(Number(l.amount || 0)).toLocaleString()}</div>
+            </div>
+            <span className="badge badge-red">{payStateText('paid_unconfirmed', tr).short}</span>
+          </div>
+          <div style={{ fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>{payStateText('paid_unconfirmed', tr).text}</div>
+          <Link to={`/salary-periods?period=${l.period}`} className="btn btn-sm">{tr('Open payroll', '給与締めを開く', 'Abrir Fechar folha')} →</Link>
+        </div>
+      ))}
 
       {filtered.map(c => (
         <div key={c.id} className="card" style={{ marginBottom: 12 }}>

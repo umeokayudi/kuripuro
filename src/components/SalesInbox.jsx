@@ -7,19 +7,19 @@ const COPY = {
     inbox: 'Messages & alerts', empty: 'Nothing new.', read: 'Mark read', readAll: 'Mark all read', from: 'from',
     compose: 'Send a message', to: 'To', allSellers: 'All sellers', someSellers: 'Chosen sellers', managers: 'Managers (admin / marketing)', alsoManagers: 'Copy managers',
     kind: 'Type', kinds: { message: 'Message', alert: 'Alert', praise: 'Congrats' }, title: 'Subject', body: 'Message', send: 'Send', sent: n => `Sent to ${n}`, pick: 'Pick at least one seller.',
-    events: { message: 'Message', alert: 'Alert', praise: 'Congrats', lead_assigned: 'New lead', day_report: 'Day report', seller_closed: 'Closing reported', followup_due: 'Follow-up', approach_saved: 'Approach' },
+    events: { visit_scheduled: 'Visit booked', message: 'Message', alert: 'Alert', praise: 'Congrats', lead_assigned: 'New lead', day_report: 'Day report', seller_closed: 'Closing reported', followup_due: 'Follow-up', approach_saved: 'Approach' },
   },
   ja: {
     inbox: 'メッセージ・通知', empty: '新しい通知はありません。', read: '既読', readAll: 'すべて既読', from: '送信者',
     compose: 'メッセージを送る', to: '宛先', allSellers: '営業全員', someSellers: '選んだ営業', managers: '管理者（管理・マーケ）', alsoManagers: '管理者にも送る',
     kind: '種類', kinds: { message: 'メッセージ', alert: '注意', praise: 'おめでとう' }, title: '件名', body: '本文', send: '送信', sent: n => `${n}件送信しました`, pick: '営業を1人以上選んでください。',
-    events: { message: 'メッセージ', alert: '注意', praise: 'おめでとう', lead_assigned: '新規リード', day_report: '日報', seller_closed: '成約報告', followup_due: 'フォロー', approach_saved: '営業活動' },
+    events: { visit_scheduled: '訪問予約', message: 'メッセージ', alert: '注意', praise: 'おめでとう', lead_assigned: '新規リード', day_report: '日報', seller_closed: '成約報告', followup_due: 'フォロー', approach_saved: '営業活動' },
   },
   pt: {
     inbox: 'Mensagens e alertas', empty: 'Nada novo.', read: 'Marcar como lida', readAll: 'Marcar todas como lidas', from: 'de',
     compose: 'Enviar mensagem', to: 'Para', allSellers: 'Todos os vendedores', someSellers: 'Vendedores escolhidos', managers: 'Gestores (admin / marketing)', alsoManagers: 'Copiar gestores',
     kind: 'Tipo', kinds: { message: 'Mensagem', alert: 'Alerta', praise: 'Parabéns' }, title: 'Assunto', body: 'Mensagem', send: 'Enviar', sent: n => `Enviado para ${n}`, pick: 'Escolha pelo menos um vendedor.',
-    events: { message: 'Mensagem', alert: 'Alerta', praise: 'Parabéns', lead_assigned: 'Novo lead', day_report: 'Relatório do dia', seller_closed: 'Fechamento informado', followup_due: 'Follow-up', approach_saved: 'Abordagem' },
+    events: { visit_scheduled: 'Visita agendada', message: 'Mensagem', alert: 'Alerta', praise: 'Parabéns', lead_assigned: 'Novo lead', day_report: 'Relatório do dia', seller_closed: 'Fechamento informado', followup_due: 'Follow-up', approach_saved: 'Abordagem' },
   },
 }
 

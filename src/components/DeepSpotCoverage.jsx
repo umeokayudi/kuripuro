@@ -1,116 +1,146 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
-import { contractTargets, contractCheck, addDays } from '../lib/schedulePlan'
-import { isTestJob, isTestClient } from '../lib/testData'
+import { isTestJob } from '../lib/testData'
 import { locationNameFromTitle } from '../lib/cleaningType'
+import { monthBounds, pct, deepItemName, itemTone } from '../lib/deepMonthProgress'
+import { loadDeepMonth, DeepBar } from './DeepMonthCard'
 
-// v1.0.133 · Serviços → "Deep & Spot": for a month, does EVERY deep / periodic contract item have its visit
-// ("tem de todos?"), and which spot jobs happened. Same contract rules as the Schedule Generator
-// (contractTargets + contractCheck); a contract without weekdays still needs its monthly visit.
-const monthDays = m => {
-  const [y, mo] = m.split('-').map(Number)
-  const n = new Date(y, mo, 0).getDate()
-  return Array.from({ length: n }, (_, i) => `${m}-${String(i + 1).padStart(2, '0')}`)
-}
+// v1.0.133 · Serviços → "Deep & Spot". v1.0.167 · the deep part shows the PROGRESS of the month per store
+// (lib/deepMonthProgress): expected = deep items of the active contracts (store × subtype × times a month),
+// done / scheduled / missing; one job never counted twice; the generic "OTP — …" items are not a store.
+// Chips: green done · blue scheduled · amber part · red missing. No money on this screen.
 const shift = (m, n) => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+const TONE = {
+  done: { bg: 'var(--green-bg)', fg: 'var(--green)' },
+  scheduled: { bg: 'var(--blue-bg)', fg: 'var(--blue)' },
+  partial: { bg: 'var(--amber-bg)', fg: 'var(--amber)' },
+  missing: { bg: 'var(--red-bg)', fg: 'var(--red)' },
+}
 
 export default function DeepSpotCoverage() {
-  const { tr, locale } = useLang()
+  const { tr, locale, lang } = useLang()
+  const navigate = useNavigate()
   const today = tokyoToday()
   const [month, setMonth] = useState(today.slice(0, 7))
-  const [data, setData] = useState(null)
+  const [deep, setDeep] = useState(null)
+  const [spots, setSpots] = useState(null)
   useEffect(() => {
     let alive = true
-    setData(null)
-    const days = monthDays(month)
-    Promise.all([
-      supabase.from('service_contracts').select('*').eq('is_active', true),
-      supabase.from('clients').select('id,company_name,is_active,is_test').then(r => r.error ? supabase.from('clients').select('id,company_name,is_active') : r),
-      supabase.from('jobs').select('id,title,scheduled_date,scheduled_time,status,employee_id,employee_name,client_id,client_name,job_category,spot_status,completed_at')
-        .gte('scheduled_date', days[0]).lte('scheduled_date', days[days.length - 1]).neq('status', 'cancelled').limit(5000),
-    ]).then(([c, cl, j]) => {
-      if (!alive) return
-      const clients = (cl.data || []).filter(x => !isTestClient(x))
-      setData({ contracts: c.data || [], clients, jobs: (j.data || []).filter(x => !isTestJob(x)), days })
-    })
+    setDeep(null); setSpots(null)
+    const [from, to] = monthBounds(month)
+    loadDeepMonth(month).then(r => { if (alive) setDeep(r) }).catch(() => { if (alive) setDeep([]) })
+    supabase.from('jobs').select('id,title,scheduled_date,status,employee_id,employee_name,client_name,job_category,spot_status')
+      .eq('job_category', 'spot').gte('scheduled_date', from).lte('scheduled_date', to).neq('status', 'cancelled').limit(2000)
+      .then(({ data }) => { if (alive) setSpots((data || []).filter(x => !isTestJob(x))) })
     return () => { alive = false }
   }, [month])
 
   const view = useMemo(() => {
-    if (!data) return null
-    // deep / periodic items; "no weekdays" contracts are still one visit per month here
-    const targets = contractTargets(data.contracts, data.clients)
-      .filter(t => t.kind !== 'weekly')
-      .map(t => (t.kind === 'nodays' ? { ...t, kind: 'periodic' } : t))
-    const check = contractCheck(targets, data.days, data.jobs, [], { wholeMonth: true })
-    const byClient = {}
-    for (const p of check.places) (byClient[p.target.clientName] = byClient[p.target.clientName] || []).push(p)
-    const spots = data.jobs.filter(j => j.job_category === 'spot')
+    if (!spots) return null
     const spotByClient = {}
     for (const j of spots) (spotByClient[j.client_name || '—'] = spotByClient[j.client_name || '—'] || []).push(j)
-    return { check, byClient, spots, spotByClient }
-  }, [data])
+    return { spots, spotByClient }
+  }, [spots])
 
   const fmtDay = d => (d ? new Date(`${d}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short', weekday: 'short' }) : '—')
+  const shortDay = d => (d ? new Date(`${d}T12:00:00`).toLocaleDateString(locale, { day: '2-digit', month: '2-digit' }) : '—')
+  const firstName = n => String(n || '').trim().split(/\s+/)[0] || tr('no person', '担当なし', 'sem pessoa')
   const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' })
-  const slotText = (s) => {
-    const j = s.jobs.find(x => x.status === 'completed') || s.jobs[0]
-    if (!j) return { icon: '❌', text: tr('Missing — no job this month', '未作成 — 今月の作業なし', 'Falta — nenhum job no mês'), tone: 'var(--red)' }
-    if (j.status === 'completed') return { icon: '✓', text: tr(`Done ${fmtDay(j.scheduled_date)} · ${j.employee_name || '—'}`, `完了 ${fmtDay(j.scheduled_date)}・${j.employee_name || '—'}`, `Feito ${fmtDay(j.scheduled_date)} · ${j.employee_name || '—'}`), tone: 'var(--green)' }
-    if (!j.employee_id) return { icon: '⚠️', text: tr(`${fmtDay(j.scheduled_date)} · no person`, `${fmtDay(j.scheduled_date)}・担当なし`, `${fmtDay(j.scheduled_date)} · sem pessoa`), tone: '#d97706' }
-    const late = j.scheduled_date < today
-    return { icon: late ? '⏰' : '⏳', text: tr(`${late ? 'Not done' : 'Scheduled'} ${fmtDay(j.scheduled_date)} · ${j.employee_name}`, `${late ? '未完了' : '予定'} ${fmtDay(j.scheduled_date)}・${j.employee_name}`, `${late ? 'Não feito' : 'Agendado'} ${fmtDay(j.scheduled_date)} · ${j.employee_name}`), tone: late ? 'var(--red)' : 'var(--text2)' }
+  const openJob = id => navigate(`/jobs?search=${id}`)
+  const createJob = (c, st, it) => navigate(`/jobs?tab=new&place=${encodeURIComponent(st.name)}&client=${c.clientId}&deep=${it.id}`)
+
+  const chipText = it => {
+    const name = deepItemName(it.id, lang)
+    const tone = itemTone(it)
+    if (tone === 'done') return `${name} ${it.done}/${it.times} ✓`
+    if (tone === 'scheduled') {
+      const next = it.jobs.find(j => j.status !== 'completed')
+      return `${name} · ${shortDay(next?.scheduled_date)} · ${firstName(next?.employee_name)}${it.times > 1 ? ` · ${it.done}/${it.times}` : ''}`
+    }
+    return `${name} ${it.done + it.scheduled}/${it.times}`
   }
-  const doneOf = list => list.filter(p => p.slots.some(s => s.jobs.some(j => j.status === 'completed'))).length
+  const chipTitle = it => it.jobs.map(j => `${shortDay(j.scheduled_date)} · ${j.employee_name || '—'} · ${j.status === 'completed' ? tr('done', '完了', 'feito') : tr('scheduled', '予定', 'agendado')}`).join('\n')
 
   return (
     <div>
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div>
-            <div className="card-title" style={{ marginBottom: 2 }}>🧽 {tr('Deep & Spot — does every contract have it?', 'ディープ＆スポット — 全契約分ある？', 'Deep & Spot — tem de todos?')}</div>
-            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{tr('Each deep / periodic contract item needs one visit in the month.', 'ディープ・定期項目は月に1回の訪問が必要です。', 'Cada item deep / periódico do contrato precisa de uma visita no mês.')}</div>
+            <div className="card-title" style={{ marginBottom: 2 }}>🧽 {tr('Deep Cleaning of the month', '今月のディープクリーニング', 'Deep Cleaning do mês')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{tr('Expected = deep items of the active contracts (store × item × times a month). A cancelled job goes back to missing.', '予定数＝有効な契約のディープ項目（店舗×項目×月の回数）。キャンセルした作業は未作成に戻ります。', 'Esperado = itens de deep dos contratos ativos (loja × item × vezes no mês). Job cancelado volta para faltando.')}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <button type="button" className="btn btn-sm" onClick={() => setMonth(m => shift(m, -1))}>‹</button>
+            <button type="button" className="btn btn-sm" onClick={() => setMonth(m => shift(m, -1))} aria-label={tr('Previous month', '前月', 'Mês anterior')}>‹</button>
             <b style={{ minWidth: 130, textAlign: 'center' }}>{monthLabel}</b>
-            <button type="button" className="btn btn-sm" onClick={() => setMonth(m => shift(m, 1))}>›</button>
+            <button type="button" className="btn btn-sm" onClick={() => setMonth(m => shift(m, 1))} aria-label={tr('Next month', '翌月', 'Próximo mês')}>›</button>
           </div>
         </div>
-        {view && (
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
-            <span><b>{doneOf(view.check.places)}</b>/{view.check.places.length} {tr('done', '完了', 'feitos')}</span>
-            <span>{view.check.totals.ok}/{view.check.totals.expected} {tr('with a job and a person', '作業・担当あり', 'com job e pessoa')}</span>
-            {view.check.totals.missing > 0 && <span style={{ color: 'var(--red)' }}>❌ {view.check.totals.missing} {tr('missing', '未作成', 'faltando')}</span>}
-            <span>⚡ {view.spots.length} {tr('spot jobs', 'スポット', 'spots')}</span>
-          </div>
-        )}
       </div>
 
-      {!view && <div aria-busy="true">{[0, 1, 2].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
-      {view && Object.keys(view.byClient).sort().map(name => {
-        const list = view.byClient[name]
+      {!deep && <div aria-busy="true">{[0, 1, 2].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
+      {deep && deep.length === 0 && <div className="card" style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 14 }}>{tr('No deep items in the active contracts.', '有効な契約にディープ項目はありません。', 'Nenhum item de deep nos contratos ativos.')}</div>}
+      {deep && deep.map(c => {
+        const p = pct(c.totals)
         return (
-          <div key={name} className="card" style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-              <b>{name}</b>
-              <span className={`badge ${doneOf(list) === list.length ? 'badge-green' : 'badge-amber'}`}>{doneOf(list)}/{list.length}</span>
+          <div key={c.clientId} className="card" style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 8 }}>
+              <b style={{ fontSize: 15 }}>{c.clientName}</b>
+              <b style={{ fontSize: 15 }}>{p}%</b>
             </div>
-            {list.map(p => {
-              const s = slotText(p.slots[0])
-              return (
-                <div key={p.target.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '7px 0', borderTop: '1px solid var(--border)', fontSize: 13 }}>
-                  <span style={{ minWidth: 0 }}>{p.target.base} <span style={{ color: 'var(--text3)' }}>· {p.target.service}</span></span>
-                  <span style={{ color: s.tone, textAlign: 'right' }}>{s.icon} {s.text}</span>
-                </div>
-              )
-            })}
+            <DeepBar value={p} height={12} />
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
+              <b>{tr(`Done ${c.totals.done} of ${c.totals.expected}`, `完了 ${c.totals.expected}件中 ${c.totals.done}件`, `Feitos ${c.totals.done} de ${c.totals.expected}`)}</b>
+              <span style={{ color: 'var(--blue)' }}>{tr(`Scheduled ${c.totals.scheduled}`, `予定 ${c.totals.scheduled}`, `Agendados ${c.totals.scheduled}`)}</span>
+              <span style={{ color: c.totals.missing ? 'var(--red)' : 'var(--text3)' }}>{tr(`Missing ${c.totals.missing}`, `未作成 ${c.totals.missing}`, `Faltando ${c.totals.missing}`)}</span>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              {c.stores.map(st => {
+                const sp = pct(st.totals)
+                return (
+                  <div key={st.key} style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+                      <b style={{ fontSize: 14, minWidth: 0, overflowWrap: 'anywhere' }}>{st.name}</b>
+                      <span style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{st.totals.done}/{st.totals.expected}</span>
+                    </div>
+                    <DeepBar value={sp} height={6} />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                      {st.items.map(it => {
+                        const tone = itemTone(it)
+                        const col = TONE[tone]
+                        const target = it.jobs.find(j => j.status !== 'completed') || it.jobs[0]
+                        return (
+                          <span key={it.id} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button type="button" className="btn btn-sm" title={chipTitle(it) || undefined}
+                              onClick={() => (target ? openJob(target.id) : createJob(c, st, it))}
+                              style={{ background: col.bg, color: col.fg, borderColor: col.fg, fontWeight: 600, maxWidth: '100%', whiteSpace: 'normal', textAlign: 'left' }}>
+                              {chipText(it)}
+                            </button>
+                            {it.missing > 0 && (
+                              <button type="button" className="btn btn-sm" onClick={() => createJob(c, st, it)}
+                                aria-label={tr(`Create job: ${st.name} · ${deepItemName(it.id, lang)}`, `作業を作成：${st.name}・${deepItemName(it.id, lang)}`, `Criar job: ${st.name} · ${deepItemName(it.id, lang)}`)}>
+                                ＋ {tr('Create job', '作業を作成', 'Criar job')}
+                              </button>
+                            )}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {c.extras.length > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                {tr(`${c.extras.length} deep job(s) this month fill no contract item (store or item outside the contract, or extra) — not counted.`, `今月の契約外・重複のディープ作業 ${c.extras.length}件 — 集計に含めません。`, `${c.extras.length} job(s) de deep no mês não entram em nenhum item do contrato (loja/item fora do contrato ou a mais) — não contam.`)}
+              </div>
+            )}
           </div>
         )
       })}
-      {view && view.check.places.length === 0 && <div className="card" style={{ fontSize: 13, color: 'var(--text3)' }}>{tr('No deep / periodic contract items.', 'ディープ・定期の契約項目はありません。', 'Nenhum item deep / periódico nos contratos.')}</div>}
 
       {view && (
         <div className="card">

@@ -9,14 +9,15 @@ const regular = { id: 'r', job_category: 'regular', status: 'assigned', schedule
 const later = { id: 'l', job_category: 'regular', status: 'assigned', scheduled_date: '2026-10-25', scheduled_time: '23:50' }
 
 let list = dueAlertJobs([spot, regular, later], { now })
-assert(list.length === 2, 'spot + due regular')
-assert(list[0].job.id === 's' && list[0].kind === 'accept' && list[0].past === 10, 'spot first, 10 min past')
-assert(list[1].job.id === 'r' && list[1].past === 40, 'regular 40 min past')
+// v1.0.198 · a scheduled job that is late gets no pop-up any more, only spot offers do
+assert(list.length === 1, 'only the spot offer, no late pop-up for the regular job')
+assert(list[0].job.id === 's' && list[0].kind === 'accept' && list[0].past === 10, 'spot, 10 min past')
+assert(dueAlertJobs([regular], { now: new Date('2026-10-25T15:00:00Z') }).length === 0, 'regular 90 min late: still no pop-up')
 assert(dueAlertJobs([spot], { now: new Date('2026-10-25T13:20:00Z') }).length === 0, 'spot 40 min ahead: not yet')
 assert(dueAlertJobs([spot], { now: new Date('2026-10-25T13:35:00Z') }).length === 1, 'spot 25 min ahead: announced')
-assert(dueAlertJobs([spot, regular], { now, hasActiveJob: true }).map(x => x.job.id).join() === 's', 'while working only the spot offer')
+assert(dueAlertJobs([spot, regular], { now, activeJobId: 'x' }).map(x => x.job.id).join() === 's', 'while working only the spot offer')
 assert(dueAlertJobs([{ ...spot, started_at: '2026-10-25T13:51:45Z' }], { now }).length === 0, 'started spot: no alert')
-assert(dueAlertJobs([{ ...spot, spot_status: 'accepted' }], { now }).map(x => x.kind).join() === 'start', 'accepted spot becomes a start alert')
+assert(dueAlertJobs([{ ...spot, spot_status: 'accepted' }], { now }).length === 0, 'accepted spot: no more pop-up (no late alert)')
 // after midnight the pending 23:00 spot is still announced
 assert(dueAlertJobs([spot], { now: new Date('2026-10-25T15:40:00Z') }).length === 1, 'still pending after midnight')
 

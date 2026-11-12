@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { buildDeepCleanProgress, currentYearMonth, formatScheduleDate, tuesdaySlotInfo, DEEP_CLEAN_LOCATIONS } from '../lib/cleaningType'
 import { useLang, fill, localeOf } from '../hooks/useLang'
+import { pollWhileVisible } from '../lib/visiblePoll'
 
 // On The Planet deep-cleaning contract tracker. Lived on the admin dashboard until
 // v1.0.34; now a tab of the Contracts page.
@@ -21,8 +22,8 @@ export default function DeepCleanTracker() {
       .gte('scheduled_date', progressMonth + '-01').lte('scheduled_date', progressMonth + '-31').neq('status', 'cancelled')
       .then(({ data }) => { if (alive) setMonthJobs(data || []) })
     load()
-    const timer = setInterval(load, 30000)
-    return () => { alive = false; clearInterval(timer) }
+    const stopPoll = pollWhileVisible(load, 30000)
+    return () => { alive = false; stopPoll() }
   }, [progressMonth])
 
   const deepProgress = useMemo(() => buildDeepCleanProgress(monthJobs, progressMonth), [monthJobs, progressMonth])

@@ -3,7 +3,6 @@ import toast from 'react-hot-toast'
 import { useAuth } from '../hooks/useAuth'
 import { pickLang, useLang } from '../hooks/useLang'
 import FieldAppShell, { Sheet } from '../components/FieldAppShell'
-import { prepareImageForUpload } from '../lib/imageUpload'
 import { ContactHistory, ContactLogForm, FollowupChip, GoalBars, LastContactLine, followupCopy, AlertReasons, alertReasonCopy } from '../components/SalesFollowupParts'
 import { RESPONSE_TAGS, alertCounts, followupQueue, followupAlerts, goalFor, monthOf, monthResults } from '../lib/salesFollowup'
 import SalesKpiPanel from '../components/SalesKpiPanel'
@@ -14,6 +13,10 @@ import SellerQuoteRequests, { QuoteRequestsAlert, quoteRequestsToSend, quoteRequ
 import SellerFacilityOffers, { offersCopy } from '../components/SellerFacilityOffers'
 import SalesFunnel, { buildDeals } from '../components/SalesFunnel'
 import ClientPage from '../components/ClientPage'
+import { tabFromUrl, clearTabParam } from '../lib/push'
+import SellerLeadDump from '../components/SellerLeadDump'
+import { GoogleAgendaConnect, UpcomingVisits, VisitFields, VisitRow, blankVisit, visitCopy, visitGoogleUrl } from '../components/SellerVisits'
+import { isImagePath, normalizeVisit, upcomingVisits } from '../lib/sellerVisits'
 
 const COPY = {
   en: {
@@ -161,10 +164,15 @@ export default function SalespersonPortal() {
   const { user, logout } = useAuth()
   const { lang } = useLang()
   const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
-  const [tab, setTab] = useState('home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','leads','followups','offers','clients','quotes','commissions','approaches']) || 'home')
+  useEffect(() => { clearTabParam() }, [])
   const [sheet, setSheet] = useState('')
   const [gps, setGps] = useState({ state: 'idle' })
-  const [cardPreview, setCardPreview] = useState('')
+  // v1.0.206 · visit booked while adding a lead / from a client, and the "done" sheet with Google.
+  const [visitDraft, setVisitDraft] = useState(null) // { on, date, time, duration_min, note }
+  const [visitSheet, setVisitSheet] = useState(null) // { lead, visit }
+  const [visitDone, setVisitDone] = useState(null) // { lead, visit }
+  const [dumpBusy, setDumpBusy] = useState(false)
   const [cardUrl, setCardUrl] = useState('')
   const [editingLead, setEditingLead] = useState(false)
   const [dealView, setDealView] = useState(null)
@@ -181,7 +189,6 @@ export default function SalespersonPortal() {
   const [recording, setRecording] = useState(false)
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
-  const cardRef = useRef(null)
   const audioRef = useRef(null)
 
   const load = useCallback(async () => {
@@ -248,40 +255,77 @@ export default function SalespersonPortal() {
   }
 
   const openNewLead = () => {
-    setLead(blankLead()); setLeadId(''); setCardPreview(''); setGps({ state: 'idle' }); setSheet('newLead')
-  }
-
-  const runCardAI = async file => {
-    if (!file) return
-    setBusyAi(true)
-    setCardPreview(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file) })
-    // Location is taken while the card is read, so the seller waits once.
-    const gpsJob = captureGps()
-    try {
-      const photo = await prepareImageForUpload(file)
-      const upload = await uploadFile(photo, 'business-card')
-      setLead(prev => ({ ...prev, business_card_object_path: upload.path }))
-      const { answer } = await callApi('/api/sales-ai', { task: 'business-card', object_path: upload.path, mime_type: upload.mime_type, language: lang }).catch(() => ({ answer: null }))
-      if (answer) setLead(prev => ({ ...prev, company_name:answer.company_name || prev.company_name, site_name:answer.site_name || prev.site_name, contact_name:answer.contact_name || prev.contact_name, contact_title:answer.contact_title || prev.contact_title, contact_phone:answer.phone || prev.contact_phone, contact_email:answer.email || prev.contact_email, address:answer.address || prev.address, first_contact_date: answer.date || prev.first_contact_date }))
-      toast.success(c.confirm)
-    } catch (error) { toast.error(error.message); setCardPreview('') }
-    finally { setBusyAi(false); if (cardRef.current) cardRef.current.value = ''; await gpsJob }
+    setLead(blankLead()); setLeadId(''); setVisitDraft({ on: false, ...blankVisit(today) }); setSheet('newLead')
+    // Location is taken right away, so the seller never waits for it at the end.
+    setGps({ state: 'idle' }); captureGps()
   }
 
   const saveLead = async event => {
     event?.preventDefault()
-    if (!leadId && !lead.business_card_object_path) return toast.error(c.needCard)
     if (!leadId && (lead.gps_lat == null || lead.gps_lng == null)) return toast.error(c.needGps)
     if (!lead.company_name.trim()) return toast.error(c.companyRequired)
     if (lead.maps_url && !MAPS_RE.test(lead.maps_url.trim())) return toast.error(c.mapsBad)
+    const wantsVisit = !leadId && visitDraft?.on
+    const checked = wantsVisit ? normalizeVisit(visitDraft, { today }) : null
+    if (checked?.error) return toast.error(checked.error)
     setSaving(true)
     try {
-      await post({ action: 'save-lead', id: leadId || undefined, lead })
+      let proof = lead.business_card_object_path
+      // Typed by hand (no photo, nothing dumped into the AI): what was typed is kept as the proof.
+      if (!leadId && !proof) {
+        const typed = [lead.company_name, lead.site_name, lead.contact_name, lead.contact_phone, lead.contact_email, lead.address, lead.notes].filter(Boolean).join('\n')
+        proof = (await callApi('/api/sales-ai', { task: 'lead-dump', proof_only: true, text: typed, language: lang })).proof_path
+      }
+      const saved = await callApi('/api/sales-data', { action: 'save-lead', id: leadId || undefined, lead: { ...lead, ...(proof ? { business_card_object_path: proof } : {}) } })
+      let booked = null
+      if (checked?.visit && saved?.lead?.id) {
+        try { booked = (await callApi('/api/sales-data', { action: 'schedule-visit', visit: { ...checked.visit, lead_id: saved.lead.id } })).visit }
+        catch (error) { toast.error(error.message) }
+      }
+      await load()
       toast.success(c.leadSaved)
-      if (leadId) { setEditingLead(false); setSheet('') } else { setLead(blankLead()); setCardPreview(''); setSheet(''); setTab('leads') }
+      if (leadId) { setEditingLead(false); setSheet('') }
+      else {
+        setLead(blankLead()); setVisitDraft(null); setTab('leads')
+        if (booked) { setVisitDone({ lead: saved.lead, visit: booked }); setSheet('visitDone') } else setSheet('')
+      }
     } catch (error) { toast.error(error.message) }
     finally { setSaving(false) }
   }
+
+  // v1.0.206 · book / change / finish a visit for one lead.
+  const openScheduleVisit = (row, visit = null) => {
+    setDealView(null)
+    setVisitSheet({ lead: row, visit: visit ? { ...visit } : { ...blankVisit(today), place: row.site_name || row.company_name || '' } })
+    setSheet('scheduleVisit')
+  }
+  const saveScheduledVisit = async event => {
+    event?.preventDefault()
+    const checked = normalizeVisit(visitSheet.visit, { today })
+    if (checked.error) return toast.error(checked.error)
+    setSaving(true)
+    try {
+      const { visit } = await callApi('/api/sales-data', { action: 'schedule-visit', visit: { ...checked.visit, id: visitSheet.visit.id || undefined, lead_id: visitSheet.lead.id } })
+      await load()
+      toast.success(visitCopy(lang).saved)
+      setVisitDone({ lead: visitSheet.lead, visit }); setVisitSheet(null); setSheet('visitDone')
+    } catch (error) { toast.error(error.message) }
+    finally { setSaving(false) }
+  }
+  const setVisitStatus = async (visit, status) => {
+    setSaving(true)
+    try {
+      await callApi('/api/sales-data', { action: 'set-visit-status', id: visit.id, status })
+      await load()
+      if (status === 'cancelled') toast.success(visitCopy(lang).cancelled)
+    } catch (error) { toast.error(error.message) }
+    finally { setSaving(false) }
+  }
+  const visitFinished = async (visit, row) => {
+    await setVisitStatus(visit, 'done')
+    if (row) openVisit(row, visit)
+  }
+  const cancelVisit = visit => { if (window.confirm(visitCopy(lang).cancelAsk)) setVisitStatus(visit, 'cancelled') }
 
   const pasteMaps = async () => {
     try { const text = (await navigator.clipboard.readText()).trim(); if (text) setLead(v => ({ ...v, maps_url: text })) } catch { /* clipboard blocked: the seller types or long-presses to paste */ }
@@ -443,7 +487,7 @@ export default function SalespersonPortal() {
 
   const editLead = row => {
     setLead({ ...blankLead(), ...row }); setLeadId(row.id); setEditingLead(false); setContactLeadId(''); setCardUrl(''); setSheet('lead')
-    if (row.business_card_object_path) {
+    if (isImagePath(row.business_card_object_path)) {
       fetch(`/api/sales-files?path=${encodeURIComponent(row.business_card_object_path)}`, { credentials: 'same-origin' })
         .then(r => r.ok ? r.json() : null).then(r => { if (r?.url) setCardUrl(r.url) }).catch(() => {})
     }
@@ -453,8 +497,8 @@ export default function SalespersonPortal() {
   const markFollowup = row => openDeal(row, true)
   const openEditLead = row => { setLead({ ...blankLead(), ...row }); setLeadId(row.id); setEditingLead(true); setContactLeadId(''); setSheet('lead') }
 
-  const openVisit = row => {
-    setApproach({ ...blankApproach(), ...(row ? { lead_id: row.id, company_name: row.company_name || '', site_name: row.site_name || '', contact_name: row.contact_name || '', place: row.site_name || row.company_name || '' } : {}) })
+  const openVisit = (row, booked = null) => {
+    setApproach({ ...blankApproach(), ...(row ? { lead_id: row.id, company_name: row.company_name || '', site_name: row.site_name || '', contact_name: row.contact_name || '', place: row.site_name || row.company_name || '' } : {}), ...(booked ? { work_date: booked.date <= today ? booked.date : today, notes: booked.note || '', duration_minutes: booked.duration_min || 0 } : {}) })
     setSheet('visit')
   }
 
@@ -586,12 +630,16 @@ export default function SalespersonPortal() {
           <div className="sp-cta-grid">
             <button type="button" className="sp-cta is-main" onClick={openNewLead}>
               <span className="sp-cta-icon" aria-hidden="true">📇</span>
-              <span><strong>{c.newLeadShort}</strong><small>{c.cardStep} + GPS</small></span>
+              <span><strong>{c.newLeadShort}</strong><small>{pickLang(lang, 'Drop anything · the AI fills it', '何でも入れるだけ・AIが入力', 'Jogue qualquer dado · a IA preenche')}</small></span>
             </button>
             <button type="button" className="sp-cta" onClick={() => openVisit(null)}><span className="sp-cta-icon" aria-hidden="true">📝</span><span><strong>{c.logVisit}</strong></span></button>
             <button type="button" className="sp-cta" onClick={() => setTab('followups')}><span className="sp-cta-icon" aria-hidden="true">↻</span><span><strong>{c.followups}</strong>{counts.needsAction > 0 && <small>{counts.needsAction}</small>}</span></button>
           </div>
 
+          <UpcomingVisits visits={data.scheduledVisits || []} leads={leads} lang={lang} today={today} sellerName={user.name} busy={saving}
+            onOpenLead={row => openDeal(row)} onDone={visitFinished} onEdit={(visit, row) => row && openScheduleVisit(row, visit)} onCancel={cancelVisit}>
+            <GoogleAgendaConnect lang={lang} compact={upcomingVisits(data.scheduledVisits, today).length === 0} />
+          </UpcomingVisits>
           <NextFollowups queue={queue} lang={lang} onOpen={row => openDeal(row)} onLog={markFollowup} logLabel={f.logContact} />
           {offersTodo.length > 0 && <SellerFacilityOffers offers={offersTodo} lang={lang} limit={3} onSeeAll={() => setTab('offers')} />}
           <MyNumbers data={data} today={today} lang={lang} />
@@ -690,20 +738,39 @@ export default function SalespersonPortal() {
       </>}
 
       {dealView && deals.find(d => d.lead.id === dealView.id) && <ClientPage key={dealView.id} deal={deals.find(d => d.lead.id === dealView.id)} data={data} lang={lang} today={today}
-        startWithContact={dealView.contact} onClose={() => setDealView(null)} onChanged={load} onEdit={openEditLead} onLogVisit={row => openVisit(row)} />}
+        startWithContact={dealView.contact} onClose={() => setDealView(null)} onChanged={load} onEdit={openEditLead} onLogVisit={row => openVisit(row)} onScheduleVisit={row => openScheduleVisit(row)} />}
 
-      {sheet === 'newLead' && <Sheet title={c.addLead} onClose={() => !busyAi && !saving && setSheet('')}>
+      {sheet === 'newLead' && <Sheet title={c.addLead} onClose={() => !dumpBusy && !saving && setSheet('')}>
         <form onSubmit={saveLead} className="sp-form">
-          <div className={`sp-card-capture${cardPreview ? ' has-photo' : ''}`}>
-            <input ref={cardRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => runCardAI(e.target.files?.[0])} />
-            {cardPreview ? <img src={cardPreview} alt={c.card} /> : <div className="sp-card-empty"><span aria-hidden="true">📇</span><strong>{c.cardStep} <em>({c.required})</em></strong><small>{c.cardStepHint}</small></div>}
-            <button type="button" className={`fa-btn ${cardPreview ? 'fa-btn-sm' : 'fa-btn-primary fa-btn-block'}`} disabled={busyAi} onClick={() => cardRef.current?.click()}>{busyAi ? c.reading : cardPreview ? c.retake : `📷 ${c.takePhoto}`}</button>
-          </div>
+          <SellerLeadDump lang={lang} today={today} leads={leads} lead={lead} onLead={setLead} uploadFile={uploadFile} onBusy={setDumpBusy}
+            onProof={path => setLead(prev => ({ ...prev, business_card_object_path: path }))}
+            onVisit={visit => setVisitDraft({ ...visit, on: true })}
+            onOpenDuplicate={row => { setSheet(''); openDeal(row) }} />
           {gpsChip}
           {leadFields}
-          <button disabled={saving || busyAi || !lead.business_card_object_path || lead.gps_lat == null} className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" type="submit">{saving ? c.saving : c.save}</button>
-          {(!lead.business_card_object_path || lead.gps_lat == null) && <p className="sp-hint is-center">{!lead.business_card_object_path ? c.needCard : c.needGps}</p>}
+          {visitDraft && <div className={`sp-visit-box${visitDraft.on ? ' is-on' : ''}`}>
+            <label className="sp-visit-toggle"><input type="checkbox" checked={visitDraft.on} onChange={e => setVisitDraft(v => ({ ...v, on: e.target.checked }))} /><span>📅 {visitCopy(lang).toggle}</span></label>
+            {visitDraft.on && <VisitFields visit={visitDraft} onChange={next => setVisitDraft({ ...next, on: true })} lang={lang} today={today} />}
+          </div>}
+          <button disabled={saving || dumpBusy || lead.gps_lat == null} className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" type="submit">{saving ? c.saving : visitDraft?.on ? `${c.save} + ${visitCopy(lang).title.toLowerCase()}` : c.save}</button>
+          {lead.gps_lat == null && <p className="sp-hint is-center">{c.needGps}</p>}
         </form>
+      </Sheet>}
+
+      {sheet === 'scheduleVisit' && visitSheet && <Sheet title={`${visitCopy(lang).schedule} · ${visitSheet.lead.site_name || visitSheet.lead.company_name}`} onClose={() => !saving && (setSheet(''), setVisitSheet(null))}>
+        <form className="sp-form" onSubmit={saveScheduledVisit}>
+          <VisitFields visit={visitSheet.visit} onChange={visit => setVisitSheet(v => ({ ...v, visit }))} lang={lang} today={today} />
+          <button type="submit" className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" disabled={saving || !visitSheet.visit.date}>{saving ? visitCopy(lang).saving : `📅 ${visitCopy(lang).save}`}</button>
+        </form>
+      </Sheet>}
+
+      {sheet === 'visitDone' && visitDone && <Sheet title={`✓ ${visitCopy(lang).saved}`} onClose={() => { setSheet(''); setVisitDone(null) }}>
+        <div className="sp-form">
+          <VisitRow visit={visitDone.visit} lead={visitDone.lead} lang={lang} today={today} sellerName={user.name} />
+          <a className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" href={visitGoogleUrl(visitDone.visit, visitDone.lead, user.name)} target="_blank" rel="noreferrer">📅 {visitCopy(lang).addGoogle}</a>
+          <GoogleAgendaConnect lang={lang} />
+          <button type="button" className="fa-btn fa-btn-block" onClick={() => { setSheet(''); setVisitDone(null) }}>OK</button>
+        </div>
       </Sheet>}
 
       {sheet === 'lead' && selectedLead && <Sheet title={selectedLead.site_name || selectedLead.company_name} onClose={() => { setSheet(''); setLeadId(''); setContactLeadId('') }}>
@@ -720,13 +787,16 @@ export default function SalespersonPortal() {
           {leadMapUrl(selectedLead) && <a className="sp-qa" href={leadMapUrl(selectedLead)} target="_blank" rel="noreferrer"><span>📍</span>{c.map}</a>}
           <button type="button" className="sp-qa" onClick={() => setContactLeadId(selectedLead.id)}><span>💬</span>{f.logContact}</button>
           <button type="button" className="sp-qa" onClick={() => openVisit(selectedLead)}><span>📝</span>{c.logVisit}</button>
+          <button type="button" className="sp-qa" onClick={() => openScheduleVisit(selectedLead)}><span>📅</span>{visitCopy(lang).schedule}</button>
         </div>
+        {upcomingVisits(data?.scheduledVisits, today, selectedLead.id).map(v => <VisitRow key={v.id} visit={v} lead={selectedLead} lang={lang} today={today} sellerName={user.name} busy={saving}
+          onDone={visitFinished} onEdit={(visit, row) => openScheduleVisit(row, visit)} onCancel={cancelVisit} />)}
         {!['won', 'lost'].includes(selectedLead.stage) && <div className="form-group"><span>{c.stage}</span><div className="sp-chip-row">{SELLER_STAGES.map(key => <button type="button" key={key} className={`fa-chip${selectedLead.stage === key ? ' is-active' : ''}`} disabled={saving} onClick={async () => { if (selectedLead.stage === key) return; setSaving(true); try { await post({ action: 'save-lead', id: selectedLead.id, lead: { stage: key, company_name: selectedLead.company_name } }) } catch (error) { toast.error(error.message) } finally { setSaving(false) } }}>{c.stages[key]}</button>)}</div></div>}
         {contactLeadId === selectedLead.id && <div className="fa-card is-inset"><ContactLogForm key={selectedLead.id} lead={selectedLead} today={today} f={f} busy={saving} onSave={logContact} onCancel={() => setContactLeadId('')} /></div>}
         {!editingLead ? <div className="sp-info-list">
           {[[c.phone, selectedLead.contact_phone], [c.email, selectedLead.contact_email], [c.address, selectedLead.address], [c.followupDate, selectedLead.next_followup_date], [c.followupNote, selectedLead.notes], [c.gps, selectedLead.gps_lat != null ? `${Number(selectedLead.gps_lat).toFixed(5)}, ${Number(selectedLead.gps_lng).toFixed(5)}${selectedLead.gps_accuracy ? ` (±${Math.round(selectedLead.gps_accuracy)} m)` : ''}` : ''], [c.mapsLink, selectedLead.maps_url]].filter(([, v]) => v).map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
           <button type="button" className="fa-btn fa-btn-block" onClick={() => setEditingLead(true)}>✎ {c.editLead}</button>
-        </div> : <form onSubmit={saveLead} className="sp-form">{leadFields}<div className="sp-two"><button type="button" className="fa-btn" onClick={() => { setLead({ ...blankLead(), ...selectedLead }); setEditingLead(false) }}>{f.cancel}</button><button className="fa-btn fa-btn-primary" disabled={saving}>{saving ? c.saving : c.save}</button></div></form>}
+        </div> : <form onSubmit={saveLead} className="sp-form"><SellerLeadDump lang={lang} today={today} leads={leads} lead={lead} onLead={setLead} uploadFile={uploadFile} editingId={selectedLead.id} onBusy={setDumpBusy} onVisit={visit => openScheduleVisit(selectedLead, visit)} />{leadFields}<div className="sp-two"><button type="button" className="fa-btn" onClick={() => { setLead({ ...blankLead(), ...selectedLead }); setEditingLead(false) }}>{f.cancel}</button><button className="fa-btn fa-btn-primary" disabled={saving}>{saving ? c.saving : c.save}</button></div></form>}
         <ContactHistory leadId={selectedLead.id} touchpoints={touchpoints} f={f} />
       </Sheet>}
 

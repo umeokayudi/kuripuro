@@ -5,7 +5,18 @@
 //    grava com MediaRecorder (leva o tempo do vídeo).
 // Tudo com try/catch: se o aparelho não suportar nada disso, usa o original quando cabe.
 
-export const VIDEO_MAX_SECONDS = 60
+// v1.0.199 · up to 3 minutes (was 60 s). The bitrate is chosen from the length so the result
+// stays under ~38 MB (Supabase takes up to 50 MB per file). Longer videos: first 3 minutes.
+export const VIDEO_MAX_SECONDS = 180
+const TARGET_RESULT_BYTES = 38 * 1024 * 1024
+/** Camera files up to this size are kept on the phone while compressing (bigger ones would risk memory). */
+export const RAW_KEEP_MAX_BYTES = 400 * 1024 * 1024
+/** Video bitrate that keeps `seconds` of video (+ audio) under the target size, never above `max`. */
+export function bitrateFor(seconds, max, audioBps = 64_000) {
+  const s = Math.max(1, Math.min(seconds || VIDEO_MAX_SECONDS, VIDEO_MAX_SECONDS))
+  const fit = Math.floor((TARGET_RESULT_BYTES * 8 * 0.95) / s) - audioBps
+  return Math.max(600_000, Math.min(max, fit))
+}
 const MAX_SIDE = 720
 const FPS = 24
 const VIDEO_BPS = 1_500_000
@@ -104,7 +115,10 @@ async function compressWithWebCodecs(file, { onProgress, signal }) {
     if (!videoTrack || !(await videoTrack.canDecode())) return null
     const size = targetSize(videoTrack.displayWidth, videoTrack.displayHeight)
     if (!size) return null
-    const bitrate = FAST_VIDEO_BPS
+    const duration = await input.computeDuration().catch(() => 0)
+    const end = duration > 0 ? Math.min(duration, VIDEO_MAX_SECONDS) : VIDEO_MAX_SECONDS
+    const trimmed = duration > VIDEO_MAX_SECONDS + 0.5
+    const bitrate = bitrateFor(end, FAST_VIDEO_BPS, 192_000) // phone AAC is copied as is (up to ~192 kbps)
     const videoCodec = await mb.getFirstEncodableVideoCodec(['avc'], { ...size, bitrate })
     if (!videoCodec) return null
     const audioTrack = await input.getPrimaryAudioTrack().catch(() => null)
@@ -112,8 +126,6 @@ async function compressWithWebCodecs(file, { onProgress, signal }) {
       ? await mb.getFirstEncodableAudioCodec(['aac', 'opus'], { numberOfChannels: Math.min(2, audioTrack.numberOfChannels || 2), sampleRate: 48000, bitrate: FAST_AUDIO_BPS }).catch(() => null)
       : null
 
-    const duration = await input.computeDuration().catch(() => 0)
-    const end = duration > 0 ? Math.min(duration, VIDEO_MAX_SECONDS) : VIDEO_MAX_SECONDS
     const target = new mb.BufferTarget()
     const output = new mb.Output({ format: new mb.Mp4OutputFormat({ fastStart: 'in-memory' }), target })
     conversion = await mb.Conversion.init({
@@ -138,7 +150,7 @@ async function compressWithWebCodecs(file, { onProgress, signal }) {
     if (!buffer || !buffer.byteLength) return null
     const blob = new Blob([buffer], { type: 'video/mp4' })
     onProgress?.(1)
-    return { blob, contentType: 'video/mp4', ext: 'mp4', size: blob.size, compressed: true }
+    return { blob, contentType: 'video/mp4', ext: 'mp4', size: blob.size, compressed: true, trimmed }
   } catch (err) {
     if (signal?.aborted || err instanceof VideoCompressError || err?.name === 'ConversionCanceledError') throw new VideoCompressError('aborted')
     console.warn('webcodecs compress fallback:', err?.message)
@@ -240,7 +252,8 @@ export async function compressVideo(file, { onProgress, signal } = {}) {
 
     const stream = new MediaStream(tracks)
     const chunks = []
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: VIDEO_BPS, audioBitsPerSecond: AUDIO_BPS })
+    const srcSeconds = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : VIDEO_MAX_SECONDS
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrateFor(srcSeconds, VIDEO_BPS, AUDIO_BPS), audioBitsPerSecond: AUDIO_BPS })
     recorder.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data) }
     const stopped = new Promise(resolve => { recorder.onstop = resolve })
 
@@ -282,7 +295,7 @@ export async function compressVideo(file, { onProgress, signal } = {}) {
     const blob = new Blob(chunks, { type: outType })
     cleanup()
     if (!blob.size) return originalResult(file)
-    const info = videoTypeInfo(outType)
+    const info = { ...videoTypeInfo(outType), trimmed: srcSeconds > VIDEO_MAX_SECONDS + 0.5 }
     // Se a "compressão" ficou maior que o original, ou grande demais, usa o original (se couber)
     if (blob.size >= file.size || blob.size > MAX_RESULT_BYTES) {
       try { return originalResult(file) } catch (err) {

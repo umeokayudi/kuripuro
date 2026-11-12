@@ -6,7 +6,7 @@ import { employeeJobColumns } from '../lib/jobEmployeePay'
 import { tokyoToday } from '../lib/dates'
 import { enrichJobValues } from '../lib/employeePay'
 import { isDuskinJob } from '../lib/employeeAddJob'
-import { jobMinutes } from '../lib/salaryCalc'
+import { jobMinutes, payRatesMissing, ruleShowsJobAmounts } from '../lib/salaryCalc'
 import DateRangeSheet from './DateRangeSheet'
 import {
   addDays, chartBars, daysBetween, dayLabel, jobEarnings, monthEnd, monthLabel, rangeLabel,
@@ -138,14 +138,14 @@ function MonthCalendar({ summary, selected, onPick, lang }) {
   )
 }
 
-function JobRow({ job, emp, showAmount, lang }) {
+function JobRow({ job, emp, rule, showAmount, lang }) {
   return (
     <div className="earn-job">
       <div>
         <b>{job.title}</b>
         <small>{dayLabel(job.scheduled_date, lang)}{job.scheduled_time ? ` · ${job.scheduled_time.slice(0, 5)}` : ''} · {(jobMinutes(job) / 60).toFixed(1)}h</small>
       </div>
-      {showAmount && <span>{yen(jobEarnings(job, emp))}</span>}
+      {showAmount && <span>{yen(jobEarnings(job, emp, rule))}</span>}
     </div>
   )
 }
@@ -191,7 +191,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
       own ? Promise.resolve({ data: [] }) : supabase.from('service_contracts').select('location_name,price_per_visit').eq('is_active', true),
       supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true).neq('status', 'cancelled').gte('payment_date', from).lte('payment_date', today),
       // v1.0.133 · month totals = payrollMonth (same jobs, same deductions by month, same fixed / per-job choice)
-      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).eq('is_deduction', true),
+      supabase.from('salary_payments').select('*').eq('employee_id', employeeId).or('is_deduction.eq.true,payment_type.eq.extra'),
       supabase.from('payroll_pay_basis').select('*').eq('employee_id', employeeId).then(r => r, () => ({ data: [] })),
     ]).then(([emp, jobs, contracts, ded, lines, bases]) => {
       if (!alive) return
@@ -204,7 +204,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
   }, [employeeId, employeeProp, needFrom, loadedFrom, today])
 
   const summary = useMemo(() => data && summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: data.deductions, payroll: data.payroll, ...range }), [data, range.from, range.to])
-  const prevSummary = useMemo(() => data && summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: data.deductions, ...prevRange }), [data, prevRange.from, prevRange.to])
+  const prevSummary = useMemo(() => data && summarizeRange({ emp: data.emp, jobs: data.jobs, deductions: data.deductions, payroll: data.payroll, ...prevRange }), [data, prevRange.from, prevRange.to])
   const bars = useMemo(() => (summary ? chartBars(summary, lang) : []), [summary, lang])
 
   if (!data || !summary) return <div className={`earn is-${theme}`}><div className="earn-loading">{t.loading}</div></div>
@@ -241,10 +241,10 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
   const trend = trendPercent(summary.net, prevSummary?.net)
   const dayInfo = selectedDay ? summary.days.find(d => d.day === selectedDay) : null
   const activeWeek = activeBar != null && !dayInfo ? bars[activeBar] : null
-  const fixedOnly = (data.emp.salary_type || 'fixed') === 'fixed'
-  const notConfigured = summary.salary?.notConfigured ?? (
-    (data.emp.salary_type || 'fixed') === 'fixed' ? !Number(data.emp.fixed_salary)
-      : data.emp.salary_type === 'hourly' ? !Number(data.emp.hourly_rate) : false)
+  // v1.0.173 · same rule as the payslip / Payments (fixed salary or "Pagamento do funcionário" per job)
+  const rangeRule = summary.rules?.[(range.to > today ? today : range.to).slice(0, 7)] || null
+  const fixedOnly = !ruleShowsJobAmounts(data.emp, rangeRule)
+  const notConfigured = summary.salary ? summary.salary.notConfigured : (payRatesMissing(data.emp) && !(summary.total > 0) && rangeRule?.used !== 'per_job')
   const payslipMonth = mode === 'month' ? anchor : (range.to > today ? today : range.to).slice(0, 7)
   const jobsShown = dayInfo ? dayInfo.jobs
     : activeWeek ? summary.days.filter(d => d.day >= activeWeek.from && d.day <= activeWeek.to).flatMap(d => d.jobs)
@@ -334,6 +334,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
         <div className="earn-break">
           <div><span>{t.base}</span><b>{yen(summary.base)}</b></div>
           {summary.spot > 0 && <div><span>{t.spot}</span><b>{yen(summary.spot)}</b></div>}
+          {(summary.extraRows || []).map(r => <div key={r.id}><span>{r.description || 'Extra'}</span><b>+{yen(r.amount)}</b></div>)}
           {summary.deductionRows.map(r => (
             <div key={r.id} className="is-neg"><span>{r.description || t.ded}</span><b>-{yen(r.amount)}</b></div>
           ))}
@@ -352,7 +353,7 @@ export default function EarningsPanel({ employeeId, employee: employeeProp, lang
         </div>
         {!listJobs.length && <div className="earn-empty">{dayInfo ? t.dayEmpty : t.empty}</div>}
         {listJobs.slice(0, 60).map(j => (
-          <JobRow key={j.id} job={j} emp={data.emp} lang={lang} showAmount={!fixedOnly || j.job_category === 'spot'} />
+          <JobRow key={j.id} job={j} emp={data.emp} rule={summary.ruleOf(j)} lang={lang} showAmount={ruleShowsJobAmounts(data.emp, summary.ruleOf(j)) || j.job_category === 'spot'} />
         ))}
       </div>
 

@@ -1,0 +1,42 @@
+/* v1.0.190 · Treinamento (employee screen + admin page) */
+.tr-wrap{display:grid;gap:12px;min-width:0}
+.tr-empty{padding:22px 16px;border:1px dashed #cfd8e6;border-radius:16px;text-align:center;color:#64748b;font-size:14px;line-height:1.5}
+.tr-summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 14px;border:1px solid #e2e8f2;border-radius:14px;background:#fff;color:#28364b;font-size:14px}
+.tr-summary b{font-size:18px}
+.tr-group{display:grid;gap:8px}
+.tr-cat{margin:6px 2px 0;color:#315cf5;font-size:11px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}
+.tr-card{display:flex;align-items:center;gap:12px;width:100%;min-width:0;padding:8px;border:1px solid #e2e8f2;border-radius:14px;background:#fff;color:#28364b;text-align:left;cursor:pointer}
+.tr-card.is-done{background:#f6fbf7;border-color:#cde9d5}
+.tr-thumb{position:relative;flex:0 0 128px;width:128px;aspect-ratio:16/9;overflow:hidden;border-radius:10px;background:#0f172a}
+.tr-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.tr-thumb em{position:absolute;right:4px;bottom:4px;padding:1px 5px;border-radius:5px;background:rgba(0,0,0,.75);color:#fff;font-size:10px;font-style:normal;font-weight:700}
+.tr-thumb i{position:absolute;inset:0;display:grid;place-items:center;background:rgba(22,163,74,.55);color:#fff;font-size:26px;font-style:normal;font-weight:900}
+.tr-card-copy{display:grid;gap:5px;flex:1;min-width:0}
+.tr-card-title{font-size:14px;font-weight:750;line-height:1.3;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tr-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:#64748b;font-size:12px}
+.tr-req{padding:2px 8px;border-radius:999px;background:#fff1e6;color:#c2410c;font-size:11px;font-weight:800}
+.tr-ok{color:#15803d;font-weight:800}
+.tr-mini{height:6px;border-radius:99px;background:#e6ebf3;overflow:hidden}
+.tr-mini>span{display:block;height:100%;border-radius:99px;background:#315cf5}
+.tr-back{justify-self:start;padding:8px 12px;border:1px solid #dbe3ef;border-radius:10px;background:#fff;color:#315cf5;font-weight:800;font-size:14px;cursor:pointer}
+.tr-title{margin:2px 0 0;color:#172033;font-size:18px;line-height:1.3;overflow-wrap:anywhere}
+.tr-progress{display:grid;gap:6px;font-size:13px;color:#475569}
+.tr-note{margin:0;padding:10px 12px;border-radius:12px;background:#f3f6fb;color:#334155;font-size:13px;line-height:1.5;white-space:pre-wrap}
+@media (max-width:420px){.tr-thumb{flex-basis:112px;width:112px}}
+
+/* admin */
+.tra-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tra-row{display:flex;gap:12px;align-items:flex-start;padding:10px;border-bottom:1px solid var(--border,#e5e7eb);min-width:0}
+.tra-row:last-child{border-bottom:none}
+.tra-row .tr-thumb{flex-basis:140px;width:140px}
+.tra-body{flex:1;min-width:0;display:grid;gap:6px}
+.tra-body input[type=text],.tra-body textarea,.tra-body select{width:100%;box-sizing:border-box}
+.tra-actions{display:flex;flex-wrap:wrap;gap:6px}
+.tra-grid{width:100%;border-collapse:collapse;font-size:13px}
+.tra-grid th,.tra-grid td{padding:7px 8px;border-bottom:1px solid var(--border,#e5e7eb);text-align:center;white-space:nowrap}
+.tra-grid th:first-child,.tra-grid td:first-child{text-align:left;position:sticky;left:0;background:var(--card,#fff)}
+.tra-grid th{font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+.tra-scroll{overflow-x:auto;max-width:100%}
+.tra-who{display:flex;flex-wrap:wrap;gap:6px}
+.tra-who label{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--border,#e5e7eb);border-radius:999px;font-size:12px;cursor:pointer}
+@media (max-width:640px){.tra-row{flex-direction:column}.tra-row .tr-thumb{width:100%;flex-basis:auto}}
