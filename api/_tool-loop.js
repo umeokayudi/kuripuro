@@ -1,4 +1,4 @@
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 
 // Vercel stops a function at 60 s (vercel.json maxDuration). The loop keeps its own
 // budget below that so it can still answer with what it found instead of being killed.
@@ -7,7 +7,7 @@ const MAX_CALL_MS = 25000
 const MIN_CALL_MS = 5000
 
 /** Gemini 3 exige devolver os parts completos (com thought_signature) no loop de tools */
-export async function runGeminiToolLoop({
+export async function runToolLoop({
   contents,
   tools,
   systemInstruction,
@@ -27,7 +27,7 @@ export async function runGeminiToolLoop({
     if (callTimeout() < MIN_CALL_MS) { outOfTime = true; break }
     let data
     try {
-      data = await geminiGenerate({ contents, tools, systemInstruction }, { timeoutMs: callTimeout(), lowThinking: true })
+      data = await aiGenerate({ contents, tools, systemInstruction }, { timeoutMs: callTimeout(), lowThinking: true })
     } catch (err) {
       // Lookups already done are worth an answer; with nothing done yet, report the error.
       if (!toolLog.length) throw err
@@ -75,7 +75,7 @@ export async function runGeminiToolLoop({
     ).join('\n')
 
     try {
-      const synth = await geminiGenerate({
+      const synth = await aiGenerate({
         contents: [
           ...contents,
           {

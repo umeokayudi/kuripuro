@@ -10,7 +10,7 @@
 //   and only the service role can read the tables (RLS on, no policies).
 import { createHash, createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto'
 import { salesDb, readSalesSession, salesSessionConfigured } from './_salesSession.js'
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate, aiConfigured } from './_ai.js'
 import {
   DEFAULT_SETTINGS, AUTO_IMPORT_MODES, normalizeEvent, isKuripuroEvent, heuristicDraft, finishDraft,
   draftToJobRow, draftProblems, jobToGoogleEvent, jobHash, jobGoneFromAgenda, DEEP_TASK_LABELS,
@@ -170,7 +170,7 @@ function sessionOf(req, res, roles) {
 
 // ── AI ──────────────────────────────────────────────────────────────────────────────────────
 async function aiDrafts(events, ctx) {
-  if (!events.length || !process.env.GEMINI_API_KEY) return null
+  if (!events.length || !aiConfigured()) return null
   const places = ctx.places.slice(0, 250).map(p => ({ id: p.id, name: p.name, address: p.address?.slice(0, 80) || '', client_id: p.client_id }))
   const employees = ctx.employees.map(e => ({ id: e.id, name: e.full_name }))
   const items = events.map(e => ({
@@ -194,7 +194,7 @@ Responda JSON: {"drafts":[{"key","is_job","confidence","reason","place_name","lo
 LOCAIS: ${JSON.stringify(places)}
 FUNCIONÁRIOS: ${JSON.stringify(employees)}
 EVENTOS: ${JSON.stringify(items)}`
-  const data = await geminiGenerate({
+  const data = await aiGenerate({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
   }, { timeoutMs: 30000 })

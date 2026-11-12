@@ -3,7 +3,7 @@
 //                  and resize it (short / normal / long).
 //   task 'draft' : from the employee's notes (any language) + fields, fill the whole report.
 // Never invents prices, model numbers or facts that are not in the notes.
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 
 const LANG_NAME = { ja: 'Japanese (polite business keigo, as a Japanese cleaning company writes to a client: ～いたしました／～しておりました)', en: 'English (polite, professional)', pt: 'Brazilian Portuguese (polite, professional)' }
 const SIZE = {
@@ -34,7 +34,7 @@ function parseJson(raw) {
 }
 
 async function ask(prompt) {
-  const data = await geminiGenerate({
+  const data = await aiGenerate({
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', temperature: 0.4 },
   })

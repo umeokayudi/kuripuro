@@ -1,7 +1,7 @@
 // api/analyze-photo.js
 // Recebe a URL/path de uma foto e usa o Gemini para dar nota de qualidade.
 
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 import { fetchStorageBuffer } from './_storage.js'
 import { aiRateLimited, requireAppSession } from './_auth.js'
 
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
 {"nota": <número de 1 a 10>, "aprovado": <true ou false>, "problemas": [<lista curta, em português, vazia se não houver; cada item no formato "problema visível => o que corrigir", ex.: "gordura no fogão => passar desengordurante e secar">]}
 Considere aprovado (true) apenas se nota >= 7. Seja objetivo: sujeira visível, lixo, bagunça, manchas, poeira acumulada, chão sujo são motivos para reprovar.`
 
-    const data = await geminiGenerate({
+    const data = await aiGenerate({
       contents: [{
         parts: [
           { inlineData: { mimeType: mediaType, data: base64 } },

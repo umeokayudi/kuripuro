@@ -1,5 +1,5 @@
 import { requireActiveSalesSession, salesDb } from './_salesSession.js'
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 import { sellerCommissionSummary, quoteCommissionState } from '../src/lib/contractCommission.js'
 import { serviceOffers } from '../src/lib/facilityModel.js'
 import { quoteSellerFor } from '../src/lib/quoteSeller.js'
@@ -150,7 +150,7 @@ async function writeDayReport(input) {
   const fallback = plainDayReport(input)
   const lang = input.language === 'ja' ? 'Japanese' : input.language === 'en' ? 'English' : 'Portuguese'
   try {
-    const result = await geminiGenerate({
+    const result = await aiGenerate({
       contents: [{ role: 'user', parts: [{ text: `Write the end-of-day report of a cleaning-services salesperson for their manager, in ${lang}. Use only the data below. Sections: 1) Day in numbers (one line), 2) Visits and what happened (bullets, one per place), 3) What clients answered and objections, 4) Follow-ups: overdue and next, 5) Points of attention for the manager (max 3, only if supported by the data). Short, factual, no invented names or amounts.
 DATA:
 ${JSON.stringify({ seller: input.seller, date: input.date, start: input.started, end: input.ended, hours: input.hours, seller_note: input.note, ...input.stats }).slice(0, 30000)}` }] }],
