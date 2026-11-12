@@ -1,4 +1,4 @@
-// v1.0.215 · Admin page of the Canal da Equipe (the admin sees and takes part in everything).
+// v1.0.217 · Admin page of the Canal da Equipe (the admin sees and takes part in everything).
 import TeamChannel from '../components/TeamChannel'
 import { useAuth } from '../hooks/useAuth'
 import { useLang, pickLang } from '../hooks/useLang'

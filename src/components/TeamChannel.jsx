@@ -1,4 +1,4 @@
-// v1.0.215 · Canal da Equipe (Fase 1): one conversation for the whole team + cover cards with "Eu pego".
+// v1.0.217 · Canal da Equipe (Fase 1): one conversation for the whole team + cover cards with "Eu pego".
 // Same component for the admin page (/team-channel) and the employee portal (tab 'team').
 // Rules: a card shows only store · service · day · time (never money); whoever taps "Eu pego" becomes
 // responsible at once (atomic, first wins); nobody is assigned automatically.

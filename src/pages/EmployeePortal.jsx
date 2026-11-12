@@ -2769,7 +2769,7 @@ export default function EmployeePortal() {
           </div>
         )}
 
-        {/* v1.0.215 · CANAL DA EQUIPE */}
+        {/* v1.0.217 · CANAL DA EQUIPE */}
         {tab==='team'&&<TeamChannel me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L} onChanged={loadAll} />}
 
         {/* CHAT */}

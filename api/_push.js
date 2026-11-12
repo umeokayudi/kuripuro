@@ -7,7 +7,7 @@
 //   POST ?op=test          send a test notification to the caller's own devices
 //   POST ?op=bell          every 5 min (Supabase pg_cron): each NEW item of the admin bell → push to admins.
 //                          ?dry=1 only lists what would be sent.
-//   POST ?op=team          v1.0.215 · Canal da Equipe: a new cover request → push to the team (and admins).
+//   POST ?op=team          v1.0.217 · Canal da Equipe: a new cover request → push to the team (and admins).
 //                          { path } of the channel file; it is re-read from Storage, so only a real,
 //                          fresh request is pushed, once (push_log 'team:<path>').
 //   POST ?op=event         called by the database triggers (sql/2026-10-25_push_notificacoes.sql)
@@ -363,7 +363,7 @@ export async function handleBell(req, res, { snapshot = fetchBellSnapshot, db = 
   return res.status(200).json({ ok: true, total: items.length, results })
 }
 
-// ── Canal da Equipe (v1.0.215) ───────────────────────────────────────────
+// ── Canal da Equipe (v1.0.217) ───────────────────────────────────────────
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co'
 const TEAM_FRESH_MS = 30 * 60_000
 

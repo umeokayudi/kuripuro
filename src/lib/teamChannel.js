@@ -1,4 +1,4 @@
-// v1.0.215 · Canal da Equipe (Fase 1) — pure rules, no database here (see teamChannelOps.js).
+// v1.0.217 · Canal da Equipe (Fase 1) — pure rules, no database here (see teamChannelOps.js).
 //
 // One conversation for the whole team (admin + every employee). No SQL: each message is one small
 // JSON file in the public service-photos bucket (one file per message = two people posting at the

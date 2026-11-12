@@ -1,4 +1,4 @@
-// v1.0.215 · Canal da Equipe — node scripts/test-team-channel.mjs
+// v1.0.217 · Canal da Equipe — node scripts/test-team-channel.mjs
 import assert from 'node:assert/strict'
 import { messagePath, isChannelPath, requestPath, buildMessage, buildCoverCards, cantGoCandidates, requestStillOpen, jobBrief, takeCantGoPatch, coverPushText, prevMonth, cleanText, sortMessages } from '../src/lib/teamChannel.js'
 
