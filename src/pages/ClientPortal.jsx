@@ -638,7 +638,8 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
     { key: 'reports', icon: <NavIcon name="camera" />, label: reportsLabel, badge: unseenReports.length },
     { key: 'requests', icon: <NavIcon name="requests" />, label: c.quotesTab, badge: quotesWaiting },
     { key: 'complaints', icon: <NavIcon name="complaints" />, label: c.complaints },
-    ...(facilityModels.length || pendingFacilityRecs.length
+    // v1.0.211 · only with a PUBLISHED 3D plan (a pending recommendation alone no longer shows the menu)
+    ...(facilityModels.length
       ? [{ key: 'facility', icon: <NavIcon name="store" />, label: tr.facility.tab, badge: pendingFacilityRecs.length }]
       : []),
     { key: 'settings', icon: <NavIcon name="settings" />, label: c.settings },
