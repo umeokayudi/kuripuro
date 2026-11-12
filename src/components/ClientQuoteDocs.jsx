@@ -7,6 +7,8 @@ import { askConfirm } from './ConfirmDialog'
 import { answerClientQuote, quoteExpired } from '../lib/clientQuotes'
 import { buildMitsumoriPrintHtml, notesForPrint } from '../lib/sales'
 import { openPrintHtml } from '../lib/openPrintHtml'
+import { proposalHtml } from '../lib/proposal'
+import QuoteAttachments from './QuoteAttachments'
 
 const yen = n => `¥${Math.round(Number(n || 0)).toLocaleString('ja-JP')}`
 const fmtDate = (iso, lang) => iso
@@ -52,6 +54,14 @@ export function ClientQuoteDoc({ quote, lang, today, who, onChanged }) {
     if (!opened?.ok) toast.error(L('Allow pop-ups to open the document.', 'ポップアップを許可してください。', 'Permita pop-ups para abrir o documento.'))
   }
 
+  const openProposal = () => {
+    // the sheet is a fixed 1600px landscape page: on screen it shrinks to the window width (print is untouched)
+    const fit = '<style>@media screen{html,body{overflow-x:hidden}}</style><script>(function(){function f(){var w=document.documentElement.clientWidth;var s=Math.min(1,w/1640);document.body.style.zoom=s<1?String(s):""}addEventListener("load",f);addEventListener("resize",f);if(document.body)f()})()</script>'
+    const html = proposalHtml(quote.proposal).replace('</body>', `${fit}</body>`)
+    const opened = openPrintHtml(html)
+    if (!opened?.ok) toast.error(L('Allow pop-ups to open the document.', 'ポップアップを許可してください。', 'Permita pop-ups para abrir o documento.'))
+  }
+
   return (
     <article className="cpx-request cpq-doc">
       <button type="button" className="cpq-head" onClick={() => setOpen(v => !v)} aria-expanded={open}>
@@ -84,8 +94,10 @@ export function ClientQuoteDoc({ quote, lang, today, who, onChanged }) {
             {quote.decided_at && quote.status !== 'sent' && <span>{L('Answered', '回答日', 'Respondido em')}: {fmtDate(quote.decided_at, lang)}</span>}
           </div>
           {notes && <div className="cpq-notes"><small>{L('Notes', '備考', 'Observações')}</small><p>{notes}</p></div>}
+          {quote.attachments?.length > 0 && <QuoteAttachments quoteId={quote.id} lang={lang} files={quote.attachments} />}
           <div className="cpx-row-btns">
-            <button type="button" className="cp-btn" onClick={openDoc}>📄 {L('Open 見積書 (PDF)', '見積書を開く（PDF）', 'Abrir 見積書 (PDF)')}</button>
+            <button type="button" className="cp-btn" onClick={openDoc}>📄 {L('見積書 (PDF)', '見積書（PDF）', '見積書 (PDF)')}</button>
+            {quote.proposal && <button type="button" className="cp-btn" onClick={openProposal}>🎨 {L('Visual proposal', '提案書を見る', 'Proposta visual')}</button>}
             {quote.status === 'sent' && !expired && (
               <>
                 <button type="button" className="cp-btn" disabled={busy} onClick={() => decide('declined')}>{L('Decline', '見送る', 'Recusar')}</button>
@@ -120,6 +132,7 @@ export const CLIENT_QUOTE_CSS = `
 .cpq-notes small{font-size:11px;color:var(--cp-muted,#64748b)}
 .cpq-notes p{margin:2px 0 0;white-space:pre-wrap;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
 .cpq-hint{margin:0;font-size:12px;color:#b45309}
-.cpq-doc .cpx-row-btns{flex-wrap:wrap}
+.cpq-doc .cpx-row-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cpq-doc .cpx-row-btns .cp-btn{white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:420px){.cpq-lines th:nth-child(3),.cpq-lines td:nth-child(3){display:none}.cpq-lines th:first-child,.cpq-lines td:first-child{width:56%}}
 `

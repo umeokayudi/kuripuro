@@ -40,6 +40,7 @@ import { askConfirm } from '../components/ConfirmDialog'
 import { listProposalIds } from '../lib/proposal'
 import { companyKey } from '../lib/clientQuotes'
 import { addQuoteHistory } from '../lib/quoteHistory'
+import QuoteAttachments from '../components/QuoteAttachments'
 import { useAuth } from '../hooks/useAuth'
 
 // v1.0.210 · Proposta visual (提案書 com fotos, planos, valores e agenda) — carrega só quando abre
@@ -623,6 +624,10 @@ export default function Mitsumori() {
             </div>
           </div>
 
+          {/* v1.0.211 · images attached to the quote (the client sees them in the portal with the quote) */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <QuoteAttachments quoteId={editingId} lang={lang} editable />
+          </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}>{saving ? t.app.loading : (editingId ? s.saveQuote : s.createQuote)}</button>

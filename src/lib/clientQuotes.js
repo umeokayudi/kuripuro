@@ -10,6 +10,8 @@
 // in the office. A login tied to one store also needs the quote's store to be that store (or blank).
 import { supabase } from './supabase'
 import { addQuoteHistory } from './quoteHistory'
+import { listQuoteAttachments } from './quoteFiles'
+import { loadProposal } from './proposal'
 
 /** Statuses the client may see. A draft never leaves the office. */
 export const PORTAL_QUOTE_STATUSES = ['sent', 'accepted', 'declined', 'expired']
@@ -61,7 +63,13 @@ export async function fetchClientQuotes({ companyName, locationName } = {}) {
     .in('mitsumori_id', mine.map(q => q.id))
   const byQuote = {}
   for (const it of items || []) (byQuote[it.mitsumori_id] ||= []).push(it)
-  return mine.map(q => ({ ...q, items: byQuote[q.id] || [] }))
+  // v1.0.211 · attached images + the visual proposal (提案書) the office chose to show
+  const extras = await Promise.all(mine.map(async q => {
+    const [files, prop] = await Promise.all([listQuoteAttachments(q.id), loadProposal(q.id).catch(() => null)])
+    return [q.id, { attachments: files, proposal: prop && prop.client_visible !== false ? prop : null }]
+  }))
+  const ex = Object.fromEntries(extras)
+  return mine.map(q => ({ ...q, items: byQuote[q.id] || [], ...ex[q.id] }))
 }
 
 /**
