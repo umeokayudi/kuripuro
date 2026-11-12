@@ -1,4 +1,4 @@
-// v1.0.224 · Employee Chat tab = one list of conversations (no second chat system):
+// v1.0.225 · Employee Chat tab = one list of conversations (no second chat system):
 //   • Escritório (privado) — the existing office chat (table messages)
 //   • Grupos — the area channels of v1.0.221 (Geral, Limpeza with every cleaner + cover cards)
 //   • Gerência — start a private conversation with management (admins + leader / supervisor employees),

@@ -37,7 +37,7 @@ export const CHANNELS = [
 export const CHANNEL_KEYS = CHANNELS.map(c => c.key)
 export const channelDir = ch => (isDmKey(ch) ? `${CHANNEL_ROOT}/dm/${ch.slice(3)}` : `${CHANNEL_ROOT}/c/${ch}`)
 
-// ── v1.0.224 · Private conversations (DM) between two internal people ───────
+// ── v1.0.225 · Private conversations (DM) between two internal people ───────
 // Key 'dm:<role>-<id>__<role>-<id>' (sorted), files in team-channel/dm/<pair>/<YYYY-MM>/…
 // Only the two people see it. Used for "falar com a gerência" (leaders, supervisors, admins).
 const TOKEN_RE = /^(admin|employee|salesperson)-[0-9a-f-]{36}$/i

@@ -385,7 +385,7 @@ export async function handleTeam(req, res, { db = salesDb(), who, readFile = nul
   if (!msg.at || Date.now() - new Date(msg.at).getTime() > TEAM_FRESH_MS) return res.status(200).json({ ok: true, sent: 0, skipped: 'old' })
   // v1.0.221 · only the caller's own message (or own cover request) can be pushed
   if (who && msg.author?.id && who.user_id !== msg.author.id && who.role !== 'admin') return res.status(403).json({ error: 'not yours' })
-  // v1.0.224 · a private conversation: the author must be one of the two
+  // v1.0.225 · a private conversation: the author must be one of the two
   if (isDmKey(channel) && !inDm(msg.author, channel)) return res.status(403).json({ error: 'not in this conversation' })
   if (isReq) {
     const { data: job } = await db.from('jobs').select('id,title,client_name,scheduled_date,scheduled_time').eq('id', file.job_id).maybeSingle()
@@ -410,7 +410,7 @@ export async function handleTeam(req, res, { db = salesDb(), who, readFile = nul
   const tag = isCover ? `team-${msg.job?.id || path}` : `team-ch-${channel}`
   const text = l => (isCover ? coverPushText(msg, l) : textPushText(msg, l))
   const emps = targets.filter(s => s.role !== 'admin'), admins = targets.filter(s => s.role === 'admin')
-  // employees open private conversations in the Chat tab (v1.0.224); sellers / marketing keep the channel tab
+  // employees open private conversations in the Chat tab (v1.0.225); sellers / marketing keep the channel tab
   const empsChat = isDmKey(channel) ? emps.filter(x => x.role === 'employee') : []
   const empsTeam = emps.filter(x => !empsChat.includes(x))
   const sent = (empsChat.length ? await sendTo(db, empsChat, l => ({ ...text(l), url: `/?tab=chat&ch=${encodeURIComponent(channel)}`, tag })) : 0)

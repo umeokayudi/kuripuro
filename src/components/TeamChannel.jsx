@@ -5,7 +5,7 @@
 // Also used by the sales and marketing portals (tab 'team').
 // Rules: a card shows only store · service · day · time (never money); whoever taps "Eu pego" becomes
 // responsible at once (atomic, first wins); nobody is assigned automatically.
-// v1.0.224 · private conversations (DM, e.g. an employee with the gerência): `focus` opens one conversation only
+// v1.0.225 · private conversations (DM, e.g. an employee with the gerência): `focus` opens one conversation only
 // (the employee Chat hub uses it, with a back button); without focus, the DMs I am in show as extra tabs.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'

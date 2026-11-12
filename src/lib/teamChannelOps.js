@@ -40,7 +40,7 @@ async function listNames(dir) {
   return (data || []).map(f => f.name).filter(n => n.endsWith('.json'))
 }
 
-/** v1.0.224 · private conversations I am in (keys 'dm:<a>__<b>'), from the folder names under team-channel/dm. */
+/** v1.0.225 · private conversations I am in (keys 'dm:<a>__<b>'), from the folder names under team-channel/dm. */
 export async function listMyDms(me) {
   const mine = personToken(me)
   const { data, error } = await supabase.storage.from(BUCKET).list(`${CHANNEL_ROOT}/dm`, { limit: 1000 })

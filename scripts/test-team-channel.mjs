@@ -111,7 +111,7 @@ assert.equal(channelOfPath('team-channel/msgs/2026-11/1_a.json'), 'limpeza')
 assert.equal(buildMessage({ text: 'oi', author: { role: 'salesperson', id: 's1' }, channel: 'vendas' }).channel, 'vendas')
 assert.throws(() => buildMessage({ text: 'oi', author: { role: 'employee', id: 'e1' }, channel: 'clientes' }))
 assert.match(textPushText({ channel: 'limpeza', author: { name: 'Gabriel' }, text: 'Cheguei' }, 'pt').title, /Limpeza · Gabriel/)
-// v1.0.224 · private conversation with the gerência
+// v1.0.225 · private conversation with the gerência
 {
   const U = n => `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n}${n}${n}-8${n}${n}${n}-${n.repeat(12)}`
   const emp = { role: 'employee', id: U('1'), name: 'Gabriel', job_role: 'cleaner', is_active: true }
