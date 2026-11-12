@@ -257,7 +257,7 @@ export default function EmployeePortal() {
   // Payslip to confirm + admin answers to salary disputes, both shown as home pop-ups
   const [salaryAnswers, setSalaryAnswers] = useState([])
   const [myQuestions, setMyQuestions] = useState([]) // every salary question of this employee (hub)
-  const [salaryView, setSalaryView] = useState('payslip')
+  const [salaryView, setSalaryView] = useState(null) // v1.0.224: null = só Ganhos; 'payslip' | 'questions' abre embaixo dos botões
   const [seenAnswers, setSeenAnswers] = useState(() => loadSeenAnswers(user?.id))
   const [payslipOpen, setPayslipOpen] = useState(false)
   const [answerOpen, setAnswerOpen] = useState(null)
@@ -2576,11 +2576,16 @@ export default function EmployeePortal() {
         {/* SALARY */}
         {tab==='salary'&&(
           <div>
-            {/* v1.0.96 · three parts: payslip (confirm / dispute), earnings by period, and one hub for salary questions */}
-            <div className="tab-pills" style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
-              {[['payslip',L('Payslip','給与明細','Holerite'),payslipPending?1:0],['earnings',L('Earnings','収入','Ganhos'),0],['questions',L('My salary questions','給与の質問','Minhas questões de salário'),salaryNotices.length]].map(([k,label,badge])=>(
-                <button key={k} type="button" onClick={()=>setSalaryView(k)} style={{padding:'7px 12px',borderRadius:999,border:'1px solid rgba(255,255,255,0.15)',background:salaryView===k?'#c19c56':'rgba(255,255,255,0.05)',color:salaryView===k?'#0a1929':'rgba(255,255,255,0.75)',fontSize:12,fontWeight:700,cursor:'pointer'}}>
-                  {label}{badge>0?` · ${badge}`:''}
+            <EarningsPanel employeeId={user.id} lang={lang} theme="portal" />
+
+            {/* v1.0.224 · Ganhos fica sempre na tela; Holerite e Minhas questões de salário viram dois botões logo abaixo (abrem/fecham aqui mesmo) */}
+            <div className="salary-more-btns" role="group" aria-label={L('More about your salary','給与の詳細','Mais sobre o salário')}>
+              {[['payslip','📋',L('Payslip','給与明細','Holerite'),payslipPending?1:0],['questions','💬',L('My salary questions','給与の質問','Minhas questões de salário'),salaryNotices.length]].map(([k,icon,label,badge])=>(
+                <button key={k} type="button" aria-expanded={salaryView===k} className={`salary-more-btn${salaryView===k?' is-open':''}`} onClick={()=>setSalaryView(v=>v===k?null:k)}>
+                  <span className="salary-more-icon" aria-hidden="true">{icon}</span>
+                  <span className="salary-more-label">{label}</span>
+                  {badge>0&&<span className="salary-more-badge">{badge}</span>}
+                  <span className="salary-more-chev" aria-hidden="true">{salaryView===k?'▴':'▾'}</span>
                 </button>
               ))}
             </div>
@@ -2618,8 +2623,7 @@ export default function EmployeePortal() {
               </div>
             )}
 
-            {salaryView==='earnings'&&<>
-            <EarningsPanel employeeId={user.id} lang={lang} theme="portal" />
+            <>
             {payments.filter(p=>!p.is_deduction&&p.payment_type!=='advance').length>0&&(
               <div className="earn-card">
                 <h4>💴 {L('Upcoming payments', '支払予定', 'Próximos pagamentos')}</h4>
@@ -2649,8 +2653,8 @@ export default function EmployeePortal() {
                 </div>}
               </>)
             })()}
-            </>}
-            {salaryView==='earnings'&&<button type="button" className="earn-secondary" onClick={async()=>{
+            </>
+            <button type="button" className="earn-secondary" onClick={async()=>{
               const today2 = tokyoToday()
               const todayJobsForPDF = allJobs.filter(j=>j.scheduled_date===today2||displayDate(j)===today2)
               if (!todayJobsForPDF.length) return toast.error(e.noJobsToday)
@@ -2660,7 +2664,7 @@ export default function EmployeePortal() {
               toast.success(L('Report downloaded!', '報告書をダウンロードしました', 'Relatório baixado!'))
             }}>
               📋 {L("Today's service report (PDF)", '今日の作業報告書 (PDF)', 'Relatório de serviço de hoje (PDF)')}
-            </button>}
+            </button>
           </div>
         )}
 
