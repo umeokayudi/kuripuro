@@ -89,6 +89,7 @@ import { PayslipPopup, SalaryAnswerPopup } from '../components/SalaryPopups'
 import { monthLabel } from '../lib/earnings'
 import AvailabilityPlanner, { TimeOffList, ShiftWeekButton, fmtDay } from '../components/AvailabilityPlanner'
 import FreeJobsCard from '../components/FreeJobsCard'
+import TeamChannel from '../components/TeamChannel'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
@@ -172,7 +173,7 @@ export default function EmployeePortal() {
   const quickRoundOn = quickRoundEnabledFor(user)
   useEffect(() => { if (personalTheme) loadEmployeeTheme(personalTheme) }, [personalTheme])
   // A push notification opens the app on its screen (?tab=chat, ?tab=salary…).
-  const [tab, setTab] = useState(() => tabFromUrl(['home','shift','ai','spots','history','salary','transport','equipment','chat','calendar','availability','achievements']) || 'home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','shift','ai','spots','history','salary','transport','equipment','chat','team','calendar','availability','achievements']) || 'home')
   useEffect(() => { clearTabParam() }, [])
   const [menuOpen, setMenuOpen] = useState(false)
   const [facilityIndex, setFacilityIndex] = useState([])
@@ -1775,6 +1776,7 @@ export default function EmployeePortal() {
     {key:'reports',icon:'📄',label:L('Service reports','作業報告書','Relatórios de serviço'),hint:L('Make all of the day at once','その日の分をまとめて作成','Fazer todos do dia de uma vez')},
     {key:'salary',icon:'💴',label:L('My salary','自分の給与','Meu salário')},
     {key:'equipment',group:'requests',icon:'🧾',label:L('My requests','申請','Meus pedidos'),hint:`${e.equipment} · ${e.transport}`},
+    {key:'team',icon:'👥',label:L('Team channel','チームチャンネル','Canal da Equipe'),hint:spotJobs.some(j=>j._open)?L(`${spotJobs.filter(j=>j._open).length} service(s) need someone`,`担当募集 ${spotJobs.filter(j=>j._open).length}件`,`${spotJobs.filter(j=>j._open).length} serviço(s) precisando de alguém`):L('Cover, help and notices of the team','代わり・手伝い・チームのお知らせ','Cobertura, ajuda e avisos da equipe'),badge:spotJobs.filter(j=>j._open).length},
     {key:'chat',icon:'💬',label:e.chat,badge:unreadMsgs,preview:unreadMsgs>0&&chatMenuPreview?chatPreview(chatMenuPreview, '📷').substring(0,30):null},
     {key:'world',icon:'🌏',label:tr.facility.tab},
     {key:'google',icon:'📅',label:'Google Agenda',hint:L('Connect and sync my Google','自分のGoogleを接続・同期','Conectar e sincronizar meu Google')},
@@ -2766,6 +2768,9 @@ export default function EmployeePortal() {
             ))}
           </div>
         )}
+
+        {/* v1.0.215 · CANAL DA EQUIPE */}
+        {tab==='team'&&<TeamChannel me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L} onChanged={loadAll} />}
 
         {/* CHAT */}
         {tab==='chat'&&(

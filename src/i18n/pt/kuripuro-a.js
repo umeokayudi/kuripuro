@@ -51,6 +51,7 @@ export const kuripuroPtA = {
     ryoshu: 'Recibos',
     chat: 'Chat',
     liveTrack: 'Ao vivo',
+    teamChannel: 'Canal da Equipe',
     transport: 'Transporte',
     equipmentRequests: 'Pedidos equip.',
     deductions: 'Descontos',
