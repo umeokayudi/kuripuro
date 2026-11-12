@@ -40,6 +40,7 @@
     "test:manual-close": "npx vite-node scripts/test-manual-close.mjs",
     "test:assign-flow": "npx vite-node scripts/test-assign-flow.mjs",
     "test:contract-start": "npx vite-node scripts/test-contract-start.mjs",
+    "test:job-duration": "npx vite-node scripts/test-job-duration.mjs",
     "test:past-service": "npx vite-node scripts/test-past-service.mjs",
     "test:employee-theme": "node scripts/test-employee-theme.mjs",
     "test:employee-pt": "npx vite-node scripts/test-employee-pt.mjs",

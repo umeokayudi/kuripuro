@@ -71,3 +71,8 @@
   .ag-board { grid-template-columns: minmax(0, 1fr); }
   .ag-form-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* v1.0.220 · planned duration on the card (looks like the meta text; tap to edit) */
+.ag-dur { border: none; background: transparent; color: inherit; font: inherit; padding: 0; cursor: pointer; }
+.ag-dur-edit { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.ag-dur-edit select, .ag-dur-edit input { min-height: 30px; padding: 2px 6px; font-size: 12px; }

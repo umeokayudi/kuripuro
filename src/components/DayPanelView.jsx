@@ -10,6 +10,7 @@ import JobQuickSheet from './JobQuickSheet'
 import toast from 'react-hot-toast'
 import { askConfirm } from './ConfirmDialog'
 import { saveShiftMark, clearShiftMark } from '../lib/shiftMarks'
+import { slotText } from '../lib/jobDuration'
 import { shiftBadge, teamProgressText, teamLoadText, storeStateText, alertText, serviceLabel, plural } from '../lib/dayPanel'
 import { hoursText } from '../lib/routePlan'
 import { offerJob } from '../lib/assignOps'
@@ -78,7 +79,7 @@ export function StoreList({ stores, L, emptyText, actions = false, employees = [
                 <li key={s.id}>
                   <span className="dp-svc-type">{serviceLabel(s.job, L)}</span>
                   <span className="dp-svc-who">{s.coveredBy ? L(`done by ${s.coveredBy} (was ${s.assigned})`, `${s.coveredBy}が実施（担当 ${s.assigned}）`, `feito por ${s.coveredBy} (era de ${s.assigned})`) : s.taken ? L(`with ${s.assigned} (took it)`, `${s.assigned}が担当（取得）`, `com ${s.assigned} (pegou)`) : s.assigned || (s.free ? L('free — nobody took it yet', '空き — まだ誰も取っていません', 'livre — ninguém pegou ainda') : L('nobody assigned', '担当なし', 'sem pessoa'))}</span>
-                  {s.minutes ? <span className="dp-svc-h">{hoursText(s.minutes)}{s.deadline ? L(` · by ${s.deadline}`, ` · ${s.deadline}まで`, ` · até ${s.deadline}`) : ''}</span> : null}
+                  {s.minutes ? <span className="dp-svc-h">{s.deadline ? `${hoursText(s.minutes)}${L(` · by ${s.deadline}`, ` · ${s.deadline}まで`, ` · até ${s.deadline}`)}` : s.time ? slotText(s.time, s.minutes, L) : hoursText(s.minutes)}</span> : null}
                   {s.uncovered && <span className="dp-tag bad">{L('no cover', '担当不在', 'sem cobertura')}</span>}
                   {s.retro && <span className="dp-tag retro" title={L('Registered afterwards, not live in the app', 'アプリで当日記録せず、後から登録', 'Registrado depois, não na hora pelo app')}>📝 {L('Retroactive', '事後', 'Retroativo')}</span>}
                   {actions && s.assignedId && (s.status === 'not_started' || s.status === 'late') && !s.startedAt && <span onClick={stop}><ReleaseBtn s={s} L={L} onChanged={onChanged} /></span>}
