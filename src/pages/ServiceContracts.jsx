@@ -16,7 +16,8 @@ import SellerCommissionFields from '../components/SellerCommissionFields'
 import SetupChain from '../components/SetupChain'
 import KeyReveal from '../components/KeyReveal'
 import KeyRevealLog from '../components/KeyRevealLog'
-import { contractMonthly, contractGross, contractIssues, groupByStore } from '../lib/money'
+import { contractMonthly, contractGross, contractIssues, groupByStore, isEmbeddedItem, storeVisitReference, itemUnits } from '../lib/money'
+import { tokyoToday } from '../lib/dates'
 import { askConfirm } from '../components/ConfirmDialog'
 import { splitChecklist } from '../lib/agenda'
 import { ensurePlaceForContract } from '../lib/places'
@@ -32,7 +33,6 @@ const ISSUE_TEXT = {
   zero_value: ['¥0/month: remove or merge into the store', '月額¥0：削除するか店舗の契約にまとめてください', '¥0/mês: remova ou junte ao contrato da loja'],
   zero_visits: ['0 visits/month: bills nothing. Remove it or set the days', '月0回：請求が発生しません。削除するか曜日を設定してください', '0 visitas/mês: não cobra nada. Remova ou marque os dias'],
   generic_deep: ['Generic "Deep Clean ¥5,000": merge into the store contract or describe it', '汎用の「Deep Clean ¥5,000」：店舗の契約にまとめるか内容を書いてください', '"Deep Clean ¥5.000" genérico: junte ao contrato da loja ou descreva'],
-  stored_mismatch: ['Saved total differs from visits × price: open and save to fix', '保存済みの合計が回数×単価と違います：開いて保存すると直ります', 'Total salvo diferente de visitas × preço: abra e salve para corrigir'],
 }
 // saved values stay in EN (other screens and the contract read them); the screen shows the translation
 const DAY_TEXT = { Mon:['Mon','月','Seg'], Tue:['Tue','火','Ter'], Wed:['Wed','水','Qua'], Thu:['Thu','木','Qui'], Fri:['Fri','金','Sex'], Sat:['Sat','土','Sáb'], Sun:['Sun','日','Dom'] }
@@ -74,6 +74,8 @@ function RecurringContracts() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, discount_percent:0, tax_rate:10, price_includes_tax:true, billing_day:10, billing_notes:'', hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'', ...NO_SELLER })
   const [sellers, setSellers] = useState({ salespeople: [], rules: [] })
+  // v1.0.256 · month shown for the REFERENCE value per visit (fixed ÷ visits of that month); the fixed never changes
+  const [refMonth, setRefMonth] = useState(() => tokyoToday().slice(0, 7))
 
   useEffect(() => { loadClients(); fetchContractSellers().then(setSellers) }, [])
   useEffect(() => { if (selectedClient) loadContracts(selectedClient) }, [selectedClient])
@@ -120,7 +122,8 @@ function RecurringContracts() {
   }
 
   const visitsPerMonth = calcVisits(form.days_of_week)
-  const monthlyRevenue = visitsPerMonth * parseFloat(form.price_per_visit||0)
+  // v1.0.256 · operational item (deep inside the store's fixed): saved with ¥0/month
+  const monthlyRevenue = form.embedded ? 0 : visitsPerMonth * parseFloat(form.price_per_visit||0)
   const totalHours = visitsPerMonth * parseFloat(form.hours_per_visit||0)
 
   const handleSave = async () => {
@@ -133,15 +136,12 @@ function RecurringContracts() {
     setErrors(errs)
     if (Object.keys(errs).length) return
     const visits = calcVisits(form.days_of_week)
-    const revenue = form.billing_type==='fixed_monthly' ? parseFloat(form.fixed_monthly||0) : visits * parseFloat(form.price_per_visit||0)
-    // v1.0.109 · visits × price must match the monthly total; when it does not, show the difference first.
-    const byVisits = visits * (parseFloat(form.price_per_visit)||0)
-    if (form.billing_type==='fixed_monthly' && byVisits > 0 && Math.round(byVisits) !== Math.round(revenue)) {
-      const ok = await askConfirm({ title: L('Visits × price ≠ monthly total','回数×単価 ≠ 月額','Visitas × preço ≠ total mensal'), message: `${visits} ${L('visits','回','visitas')} × ¥${Number(form.price_per_visit).toLocaleString()} = ¥${Math.round(byVisits).toLocaleString()}\n${L('Fixed monthly','固定月額','Mensal fixo')}: ¥${Math.round(revenue).toLocaleString()}\n${L('Difference','差額','Diferença')}: ¥${Math.round(revenue - byVisits).toLocaleString()}\n\n${L('Save anyway? The invoice uses the fixed monthly amount.','このまま保存しますか？請求書には固定月額が使われます。','Salvar mesmo assim? A fatura usa o valor mensal fixo.')}`, confirmLabel: L('Save','保存','Salvar') })
-      if (!ok) return
-    }
-    if (!(revenue > 0)) { setErrors({ price_per_visit: L('This contract would be ¥0/month: pick the days or enter the price','この契約は月額¥0になります。曜日を選ぶか料金を入力してください','Este contrato ficaria ¥0/mês: escolha os dias ou informe o preço') }); return }
-    const payload = { client_id:selectedClient, ...form, location_name:form.location_name.trim(), training_checklist:splitChecklist(form.training_checklist).join('\n')||null, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, area:(form.area||'').trim()||null, monthly_revenue:revenue }
+    const embedded = form.billing_type!=='fixed_monthly' && !!form.embedded && visits > 0
+    const revenue = form.billing_type==='fixed_monthly' ? parseFloat(form.fixed_monthly||0) : embedded ? 0 : visits * parseFloat(form.price_per_visit||0)
+    // v1.0.256 · no more 'visits × price ≠ monthly total' check: the saved monthly value is the contract's total.
+    if (!(revenue > 0) && !embedded) { setErrors({ price_per_visit: L('This contract would be ¥0/month: pick the days or enter the price','この契約は月額¥0になります。曜日を選ぶか料金を入力してください','Este contrato ficaria ¥0/mês: escolha os dias ou informe o preço') }); return }
+    const { embedded: _embedded, ...formFields } = form
+    const payload = { client_id:selectedClient, ...formFields, location_name:form.location_name.trim(), training_checklist:splitChecklist(form.training_checklist).join('\n')||null, price_per_visit:parseFloat(form.price_per_visit)||0, fixed_monthly:parseFloat(form.fixed_monthly||0), hours_per_visit:parseFloat(form.hours_per_visit)||0, visits_per_month:visits, discount_percent:Math.max(0,Math.min(100,parseFloat(form.discount_percent)||0)), tax_rate:parseInt(form.tax_rate)||0, price_includes_tax:form.price_includes_tax!==false, billing_day:Math.max(1,Math.min(28,parseInt(form.billing_day)||10)), billing_notes:form.billing_notes||null, area:(form.area||'').trim()||null, monthly_revenue:revenue }
     // Seller of this location: monthly commission (salesperson_name is only on spot contracts).
     Object.assign(payload, sellerFields(form))
     delete payload.salesperson_name
@@ -170,7 +170,7 @@ function RecurringContracts() {
 
   const handleEdit = (c) => {
     setEditing(c.id)
-    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', area:c.area||'', service_type:c.service_type||'Basic Cleaning', billing_type:c.billing_type||'per_visit', price_per_visit:c.price_per_visit||0, fixed_monthly:c.fixed_monthly||0, discount_percent:c.discount_percent||0, tax_rate:c.tax_rate??10, price_includes_tax:c.price_includes_tax!==false, billing_day:c.billing_day||10, billing_notes:c.billing_notes||'', hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'', salesperson_id:c.salesperson_id||'', salesperson_name:'', commission_type:c.commission_type||null, commission_value:c.commission_value??null, commission_amount:c.commission_amount||0 })
+    setForm({ location_name:c.location_name||'', location_address:c.location_address||'', area:c.area||'', service_type:c.service_type||'Basic Cleaning', billing_type:c.billing_type||'per_visit', price_per_visit:c.price_per_visit||0, fixed_monthly:c.fixed_monthly||0, discount_percent:c.discount_percent||0, tax_rate:c.tax_rate??10, price_includes_tax:c.price_includes_tax!==false, billing_day:c.billing_day||10, billing_notes:c.billing_notes||'', hours_per_visit:c.hours_per_visit||2, days_of_week:c.days_of_week||[], notes:c.notes||'', training_video_url:c.training_video_url||'', training_checklist:c.training_checklist||'', embedded:isEmbeddedItem(c), salesperson_id:c.salesperson_id||'', salesperson_name:'', commission_type:c.commission_type||null, commission_value:c.commission_value??null, commission_amount:c.commission_amount||0 })
     setShowForm(true)
   }
 
@@ -278,7 +278,10 @@ function RecurringContracts() {
 
           {/* Add button */}
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-            <div style={{fontSize:14,fontWeight:600}}>{client?.company_name} — {L('Service Locations','サービス拠点','Locais de serviço')}</div>
+            <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+              <div style={{fontSize:14,fontWeight:600}}>{client?.company_name} — {L('Service Locations','サービス拠点','Locais de serviço')}</div>
+              <label style={{fontSize:12,color:'var(--text3)',display:'flex',gap:6,alignItems:'center'}}>{L('Reference month','参考の月','Mês de referência')}<input type="month" value={refMonth} onChange={e=>e.target.value&&setRefMonth(e.target.value)} style={{width:'auto',padding:'4px 8px',fontSize:12}} /></label>
+            </div>
             <button className="btn btn-primary" onClick={()=>{setShowForm(!showForm);setEditing(null);setForm({ location_name:'', location_address:'', area:'', service_type:'Basic Cleaning', billing_type:'per_visit', price_per_visit:0, fixed_monthly:0, hours_per_visit:2, days_of_week:[], notes:'', training_video_url:'', training_checklist:'' })}}>
               {showForm?L('Cancel','キャンセル','Cancelar'):`+ ${L('Add Location','拠点を追加','Adicionar local')}`}
             </button>
@@ -304,6 +307,7 @@ function RecurringContracts() {
                   </select>
                 </div>
                 {(form.billing_type||'per_visit')==='per_visit'&&<div className="form-group"><label>{L('Price per Visit (¥)','1回の料金（¥）','Preço por visita (¥)')}</label><input type="number" className={errors.price_per_visit?'ag-invalid':''} value={form.price_per_visit} onChange={e=>upd('price_per_visit',e.target.value)} />{fieldErr('price_per_visit')}</div>}
+                {(form.billing_type||'per_visit')==='per_visit'&&<label className="form-group" style={{gridColumn:'1/-1',display:'flex',gap:8,alignItems:'flex-start',fontSize:13,cursor:'pointer'}}><input type="checkbox" style={{width:'auto',marginTop:3}} checked={!!form.embedded} onChange={e=>upd('embedded',e.target.checked)} /><span>{L("Operational: already inside the store's fixed monthly amount (generates the jobs, ¥0 in the monthly total, never billed on its own)",'運用項目：店舗の固定月額に含まれる（作業は作成、月額合計は¥0、単独で請求しない）','Operacional: já embutido no fixo mensal da loja (gera os serviços, ¥0 no total mensal, não é faturado à parte)')}</span></label>}
                 {form.billing_type==='fixed_monthly'&&<div className="form-group"><label>{L('Fixed Monthly (¥)','固定月額（¥）','Mensal fixo (¥)')}</label><input type="number" className={errors.fixed_monthly?'ag-invalid':''} value={form.fixed_monthly||0} onChange={e=>upd('fixed_monthly',e.target.value)} />{fieldErr('fixed_monthly')}</div>}
                 <div className="form-group"><label>{L('Hours per Visit','1回の時間','Horas por visita')}</label><input type="number" step="0.5" className={errors.hours_per_visit?'ag-invalid':''} value={form.hours_per_visit} onChange={e=>upd('hours_per_visit',e.target.value)} />{fieldErr('hours_per_visit')}</div>
                 <div className="form-group"><label>{L('Discount (%)','割引（%）','Desconto (%)')}</label><input type="number" min="0" max="100" step="0.1" value={form.discount_percent||0} onChange={e=>upd('discount_percent',e.target.value)} /></div>
@@ -356,8 +360,11 @@ function RecurringContracts() {
           {stores.map(g=>(
             <div key={g.store} className="card" style={{marginBottom:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}}>
-                <div style={{fontWeight:700,fontSize:15}}>🏪 {g.store} <span style={{fontSize:12,fontWeight:500,color:'var(--text3)'}}>· {g.items.length} {g.items.length>1?L('items','項目','itens'):L('item','項目','item')} · {g.visits} {L('visits/mo','回/月','visitas/mês')} · {g.hours.toFixed(0)}h/{L('mo','月','mês')}</span></div>
-                <div style={{fontSize:16,fontWeight:700,color:'var(--green)'}}>¥{g.monthly.toLocaleString()}/{L('mo','月','mês')}</div>
+                <div style={{fontWeight:700,fontSize:15}}>🏪 {g.store} <span style={{fontSize:12,fontWeight:500,color:'var(--text3)'}}>· {g.units} {g.units>1?L('items','項目','itens'):L('item','項目','item')} · {g.visits} {L('visits/mo','回/月','visitas/mês')} · {g.hours.toFixed(0)}h/{L('mo','月','mês')}</span></div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:16,fontWeight:700,color:'var(--green)'}}>¥{g.monthly.toLocaleString()}/{L('mo','月','mês')}</div>
+                  {(()=>{ const r = storeVisitReference(g, refMonth); return r.fixed>0&&r.visits>0 ? <div style={{fontSize:11,color:'var(--text3)'}}>{L('reference','参考','referência')} ¥{r.perVisit.toLocaleString()}/{L('visit','回','visita')} · {r.visits} {L('visits in','回 /','visitas em')} {refMonth.slice(5)}/{refMonth.slice(0,4)}</div> : null })()}
+                </div>
               </div>
           {g.items.map(c=>(
             <div key={c.id} style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:10}}>
@@ -370,12 +377,14 @@ function RecurringContracts() {
                   {c.training_video_url&&<div style={{fontSize:11,color:'#60a5fa',marginTop:2}}>🎬 {L('Training video configured','研修動画あり','Vídeo de treinamento configurado')}</div>}
                 </div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:15,fontWeight:700,color:'var(--green)'}}>¥{contractMonthly(c).toLocaleString()}/{L('mo','月','mês')}</div>
+                  {isEmbeddedItem(c)
+                    ? <div style={{fontSize:12,fontWeight:700,color:'var(--text2)'}}>{L("Inside the store's fixed",'店舗の固定月額に含む','Embutido no fixo da loja')}</div>
+                    : <div style={{fontSize:15,fontWeight:700,color:'var(--green)'}}>¥{contractMonthly(c).toLocaleString()}/{L('mo','月','mês')}{itemUnits(c)>1&&<span style={{fontSize:11,color:'var(--text3)',fontWeight:500}}> · ×{itemUnits(c)}</span>}</div>}
                   {contractMonthly(c)!==contractGross(c)&&<div style={{fontSize:11,color:'var(--text3)'}}>−{c.discount_percent}% {L('of','／','de')} ¥{contractGross(c).toLocaleString()}</div>}
-                  <div style={{fontSize:11,color:'var(--text3)'}}>¥{Number(c.price_per_visit||0).toLocaleString()}/{L('visit','回','visita')}</div>
+                  {c.billing_type!=='fixed_monthly'&&!isEmbeddedItem(c)&&<div style={{fontSize:11,color:'var(--text3)'}}>¥{Number(c.price_per_visit||0).toLocaleString()}/{L('visit','回','visita')}</div>}
                 </div>
               </div>
-              {contractIssues(c).length>0&&<div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>{contractIssues(c).map(k=><span key={k} className="badge badge-amber" style={{whiteSpace:'normal'}}>⚠️ {k==='stored_mismatch'?`${issueText(k)} (${L('saved','保存値','salvo')} ¥${Number(c.monthly_revenue||0).toLocaleString()})`:issueText(k)}</span>)}</div>}
+              {contractIssues(c).length>0&&<div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>{contractIssues(c).map(k=><span key={k} className="badge badge-amber" style={{whiteSpace:'normal'}}>⚠️ {issueText(k)}</span>)}</div>}
               <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
                 {(c.days_of_week||[]).map(d=><span key={d} style={{background:'var(--navy)',color:'#fff',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:500}}>{dayText(d)}</span>)}
                 <span style={{background:'var(--surface2)',borderRadius:20,padding:'2px 10px',fontSize:11,color:'var(--text3)'}}>{c.visits_per_month} {L('visits/mo','回/月','visitas/mês')}</span>

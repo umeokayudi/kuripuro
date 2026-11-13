@@ -5,11 +5,61 @@ import { payrollMonth, jobMinutes, jobPay, perJobWorkerPay, spotExtra, yenAmount
 
 const pct = v => Math.min(100, Math.max(0, Number(v) || 0))
 
-/** Monthly value of one contract BEFORE discount: fixed amount, else visits × price per visit. */
+/**
+ * Monthly value of one contract BEFORE discount = the SAVED monthly value of the item, never visits × price.
+ * v1.0.256 · fixed monthly → fixed_monthly (else the saved monthly_revenue); per visit → the saved
+ * monthly_revenue. A per-visit/deep item saved with monthly_revenue ¥0 still generates jobs and is billed per
+ * execution (price_per_visit, see invoiceAutomation.js) — it just does not count in the contract's monthly total.
+ */
 export function contractGross(c) {
   if (!c) return 0
-  if (c.billing_type === 'fixed_monthly') return yenAmount(c.fixed_monthly)
-  return Math.round(Number(c.visits_per_month || 0) * yenAmount(c.price_per_visit))
+  const saved = c.monthly_revenue == null || c.monthly_revenue === '' ? 0 : yenAmount(c.monthly_revenue)
+  if (c.billing_type === 'fixed_monthly') return yenAmount(c.fixed_monthly) || saved
+  return saved
+}
+
+/**
+ * v1.0.256 · a scheduled per-visit item saved with ¥0/month is OPERATIONAL: it generates and records the jobs
+ * (e.g. the Deep Clean of a store), but its value is already inside the store's fixed monthly amount — out of the
+ * monthly total and never billed on its own. An on-demand item (no visits planned) with ¥0 stays billed per execution.
+ */
+export function isEmbeddedItem(c) {
+  if (!c || c.billing_type === 'fixed_monthly') return false
+  const saved = c.monthly_revenue == null || c.monthly_revenue === '' ? null : yenAmount(c.monthly_revenue)
+  return saved === 0 && Number(c.visits_per_month || 0) > 0
+}
+
+/** v1.0.256 · how many monthly units an item counts as: 1 each; floor cleaning with the POLISHER counts 4 (4×/month). */
+export const itemUnits = c => (/polidora|polisher|ポリッシャー/i.test(`${c?.service_type || ''} ${c?.location_name || ''}`) ? 4 : 1)
+
+const DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+/**
+ * v1.0.256 · visits of one item in a given month ('YYYY-MM'): a weekly item counts its weekdays in that month
+ * (a 7-day store has 30 visits in a 30-day month and 31 in a 31-day month); an item done N times a month
+ * (fewer visits than weekdays, e.g. deep 2×/month) keeps its N.
+ */
+export function visitsInMonth(c, month) {
+  const planned = Number(c?.visits_per_month || 0)
+  const days = (c?.days_of_week || []).map(d => DOW[String(d).slice(0, 3)]).filter(d => d !== undefined)
+  if (!days.length || !/^\d{4}-\d{2}$/.test(String(month || ''))) return planned
+  const [y, m] = month.split('-').map(Number)
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  let n = 0
+  for (let d = 1; d <= last; d++) if (days.includes(new Date(Date.UTC(y, m - 1, d)).getUTCDay())) n++
+  return planned >= 4 * days.length ? n : planned
+}
+
+/**
+ * v1.0.256 · REFERENCE value of one visit of a store in a month = store fixed ÷ visits of that month. It only
+ * serves the adjustment when a service is not done (fixed ÷ planned visits × visits not done); it never changes
+ * the fixed amount. Visits come from the store's main item (the one carrying the value).
+ */
+export function storeVisitReference(group, month) {
+  const active = (group?.items || []).filter(c => c.is_active !== false && contractGross(c) > 0)
+  const main = active.sort((a, b) => contractGross(b) - contractGross(a))[0]
+  const visits = main ? visitsInMonth(main, month) : 0
+  const fixed = Number(group?.monthly || 0)
+  return { fixed, visits, perVisit: visits > 0 ? Math.round(fixed / visits) : 0 }
 }
 
 /** Monthly value of one contract AFTER its discount — what is billed and what every screen shows. */
@@ -18,16 +68,14 @@ export function contractMonthly(c) {
   return Math.round(gross * (1 - pct(c?.discount_percent) / 100))
 }
 
-/** Problems that inflate visits / hours or make the monthly value wrong. */
+/** Problems that inflate visits / hours or make the monthly value wrong.
+ * v1.0.256 · no more 'stored_mismatch' (saved total ≠ visits × price): the saved total IS the monthly value. */
 export function contractIssues(c) {
   const issues = []
-  const gross = contractGross(c)
   const visits = Number(c?.visits_per_month || 0)
   if (c?.billing_type !== 'fixed_monthly' && visits === 0) issues.push('zero_visits')
-  else if (gross === 0) issues.push('zero_value')
+  else if (c?.billing_type === 'fixed_monthly' ? contractGross(c) === 0 : yenAmount(c?.price_per_visit) === 0) issues.push('zero_value')
   if (/^deep\s*clean(ing)?$/i.test(String(c?.service_type || '').trim()) && yenAmount(c?.price_per_visit) === 5000 && !c?.billing_notes) issues.push('generic_deep')
-  const stored = c?.monthly_revenue
-  if (stored != null && stored !== '' && Math.round(Number(stored)) !== gross) issues.push('stored_mismatch')
   return issues
 }
 
@@ -39,8 +87,9 @@ export function groupByStore(contracts) {
   const map = new Map()
   for (const c of contracts || []) {
     const key = storeOf(c.location_name)
-    const s = map.get(key) || { store: key, items: [], monthly: 0, visits: 0, hours: 0 }
+    const s = map.get(key) || { store: key, items: [], monthly: 0, visits: 0, hours: 0, units: 0 }
     s.items.push(c)
+    s.units += itemUnits(c)
     if (c.is_active !== false) {
       s.monthly += contractMonthly(c)
       s.visits += Number(c.visits_per_month || 0)
