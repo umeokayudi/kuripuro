@@ -2163,6 +2163,6 @@ body { background: var(--hq-bg); }
 .kp-owner-log-title{font-size:12px;font-weight:800;color:var(--text2);margin-bottom:2px}
 .kp-owner-log-row{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--text3)}
 .kp-owner-log-row strong{color:var(--text2)}
-@media(max-width:720px){.kp-owner-card-grid{grid-template-columns:1fr}.kp-owner-pop{right:-8px;width:min(260px,calc(100vw - 24px))}}
+@media(max-width:720px){.kp-owner-card-grid{grid-template-columns:1fr}.kp-owner-pop{right:-8px;width:min(330px,calc(100vw - 24px))}}
 /* v1.0.251 · owner's direct profile buttons in the side menu (same look as the other footer buttons) */
-.sidebar-footer .sidebar-switch{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kp-owner-pop{width:330px}.kp-owner-pop-log{margin:6px 4px 2px;padding:10px 6px 4px}.kp-owner-pop-log .kp-owner-log-row{display:grid;grid-template-columns:96px 1fr;font-size:11px;gap:8px;flex-wrap:nowrap}
