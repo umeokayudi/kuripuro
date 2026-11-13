@@ -278,3 +278,7 @@
   .dc-sum{grid-column:1/2;margin-left:0}
   .dc-report-day{margin:0 12px 12px 12px}
 }
+
+/* v1.0.227 · in progress (started, not done) in the check rows and filter */
+.dc-pill.working{background:#fff7e6;color:#a8640a}
+.dc-f.is-working:not(.on) b{color:#a8640a}

@@ -10,7 +10,7 @@
 //                      and the cut-off (21:00 of the day before) passed; before it: "aguardando".
 // The weekly pattern (employees.work_days) is only the reference ("esperado"); it is never changed here.
 // Jobs of a person who said "Não posso" are NOT reassigned and do not disappear: they show "sem cobertura".
-import { splitName, contractTargets, jobFulfils, dowOf, addDays, workDaysOf } from './schedulePlan.js'
+import { splitName, contractTargets, jobFulfils, dowOf, addDays, workDaysOf, startedOn } from './schedulePlan.js'
 import { roleCan } from './employeeRoles.js'
 import { isTestJob, isTestEmployee } from './testData.js'
 import { coveredJobs } from './jobCoverage.js'
@@ -108,6 +108,11 @@ function storeRow(st, planBNames = []) {
   const showPlanB = planBNames.length > 0 && state !== 'done' && (uncovered || (state === 'late' && (notStartedAll || st.noJob)))
   return { ...st, state, doneN, total: sv.length, doneBy, doneAt, workers, since, people, covered, uncovered, deadline, firstTime, free, freeOpen, takenBy, planB: planBNames, showPlanB }
 }
+/** v1.0.227 · one person's numbers, from the same services the rows list: done / working / not started. */
+export const personCount = list => ({
+  total: list.length, done: list.filter(s => s.phase === 'done').length, working: list.filter(s => s.phase === 'working').length,
+  late: list.filter(s => s.status === 'late').length, notStarted: list.filter(s => s.phase === 'not_started').length,
+})
 const sortStores = list => list.sort((a, b) => STORE_ORDER[a.state] - STORE_ORDER[b.state] || a.store.localeCompare(b.store))
 const countOf = (stores, services) => ({
   stores: stores.length, storesDone: stores.filter(s => s.state === 'done').length, storesWorking: stores.filter(s => s.state === 'working').length,
@@ -115,6 +120,8 @@ const countOf = (stores, services) => ({
   storesCovered: stores.filter(s => s.covered).length, storesUncovered: stores.filter(s => s.uncovered && s.state !== 'done').length,
   services: services.length, servicesDone: services.filter(s => s.status === 'done').length, servicesWorking: services.filter(s => s.status === 'working').length,
   servicesLate: services.filter(s => s.status === 'late').length, servicesNotStarted: services.filter(s => s.status === 'not_started').length,
+  // v1.0.227 · one count (done + inProgress + toStart = services); late is a part of the last two
+  inProgress: services.filter(s => s.phase === 'working').length, toStart: services.filter(s => s.phase === 'not_started').length,
 })
 
 /**
@@ -127,7 +134,9 @@ const countOf = (stores, services) => ({
  */
 export function buildDayPanel({ date, jobs = [], employees = [], availability = [], targets = [], owners = {}, planB = {}, now = new Date(), nowMin = null, cutoff = SHIFT_CUTOFF, keepTests = false, today = null }) {
   const live = (jobs || []).filter(j => j && j.scheduled_date === date && j.status !== 'cancelled' && (keepTests || !isTestJob(j)))
-  const cov = coveredJobs(live) // A.id → B (completed the same service)
+  // A.id → B (completed the same service). v1.0.227 · a job A has STARTED is never "covered": it is
+  // A's own service in progress (it used to count as done while A was still working on it).
+  const cov = new Map([...coveredJobs(live)].filter(([id]) => { const a = live.find(x => x.id === id); return a && a.status !== 'in_progress' && !a.started_at }))
   const nm = nowMin ?? (() => { const d = new Date(now.getTime() + 9 * 3600e3); return d.getUTCHours() * 60 + d.getUTCMinutes() })()
   const day = today || (() => { const d = new Date(now.getTime() + 9 * 3600e3); return d.toISOString().slice(0, 10) })()
   const nowMs = date === day && nowMin != null ? new Date(`${day}T${hm(nm)}:00+09:00`).getTime() : now.getTime()
@@ -155,6 +164,9 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
       id: j.id, job: j, store: storeOf(j), service: serviceOf(j), assigned: j.employee_name || '', assignedId: j.employee_id || null,
       status: done ? 'done' : j.status === 'in_progress' ? 'working' : late ? 'late' : 'not_started',
       late, deadline, time: isDeadlineJob(j) ? null : String(j.scheduled_time || '').slice(0, 5) || null, bucket, minutes,
+      // v1.0.227 · THE count of the day: done = completed (or done by the person who covered it),
+      // working = started and not completed (late or not), not_started = everything else
+      phase: done ? 'done' : (j.status === 'in_progress' || j.started_at) ? 'working' : 'not_started',
       doneBy: b ? (b.employee_name || '') : (done ? j.employee_name || '' : ''), doneAt: tokyoHM(b ? b.completed_at : j.completed_at),
       coveredBy: b ? (b.employee_name || '') : '', startedAt: tokyoHM(j.started_at),
       // v1.0.156 · done but registered afterwards ("Já fiz" / late report): counts as done, shows "Retroativo"
@@ -187,6 +199,7 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
   const noJobRows = []
   for (const t of targets || []) {
     if (t.kind !== 'weekly' || !t.days.includes(dowOf(date))) continue
+    if (!startedOn(t, date)) continue // v1.0.227 · contract not started yet (contract_details.start_date)
     const k = norm(t.base)
     if (byStore.has(k) || noJobRows.some(r => r.key === k)) continue
     if (live.some(j => jobFulfils(j.title, t))) continue
@@ -211,8 +224,9 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
   const people = (employees || []).filter(e => e.is_active !== false && (keepTests || !isTestEmployee(e)))
   const loadOf = id => ({ morning: loads.find(l => l.employeeId === id && l.bucket === 'morning') || null, deep: loads.find(l => l.employeeId === id && l.bucket === 'deep') || null })
   for (const emp of people) {
-    const mine = services.filter(s => s.assignedId === emp.id && !s.coveredBy)
-    const coveredMine = services.filter(s => s.assignedId === emp.id && s.coveredBy)
+    // v1.0.227 · from `counted` (= the services the rows list), so a person's line and the rows agree
+    const mine = counted.filter(s => s.assignedId === emp.id && !s.coveredBy)
+    const coveredMine = counted.filter(s => s.assignedId === emp.id && s.coveredBy)
     if (!mine.length && !coveredMine.length && !roleCan(emp.job_role, 'routes')) continue
     seenEmp.add(emp.id)
     const mark = marks[emp.id] || null
@@ -223,21 +237,19 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
     const noServiceReason = mine.length || coveredMine.length ? null : mark?.kind === 'off' ? 'off' : !sh.expected ? 'weekday' : 'none'
     team.push({
       id: emp.id, name: emp.full_name || '—', first: firstName(emp.full_name), mark, ...sh,
-      total: mine.length, done: mine.filter(s => s.status === 'done').length, working: mine.filter(s => s.status === 'working').length,
-      late: mine.filter(s => s.status === 'late').length, notStarted: mine.filter(s => s.status === 'not_started').length,
+      ...personCount([...mine, ...coveredMine]),
       taken: mine.filter(s => s.taken).length,
       coveredByOthers: coveredMine.map(s => s.coveredBy), firstStart, noServiceReason, load: loadOf(emp.id),
       uncoveredStores: sh.state === 'cant' ? [...new Set([...notDone.map(s => s.store), ...usual.map(u => u.store)])] : [],
     })
   }
   // jobs of people who are not in the employee list (inactive / deleted): still visible
-  for (const s of services) {
+  for (const s of counted) {
     if (!s.assignedId || seenEmp.has(s.assignedId)) continue
     seenEmp.add(s.assignedId)
-    const mine = services.filter(x => x.assignedId === s.assignedId && !x.coveredBy)
+    const mine = counted.filter(x => x.assignedId === s.assignedId && !x.coveredBy)
     team.push({ id: s.assignedId, name: s.assigned || '—', first: firstName(s.assigned), mark: marks[s.assignedId] || null, state: 'unconfirmed', expected: false,
-      total: mine.length, done: mine.filter(x => x.status === 'done').length, working: mine.filter(x => x.status === 'working').length,
-      late: mine.filter(x => x.status === 'late').length, notStarted: mine.filter(x => x.status === 'not_started').length, taken: mine.filter(x => x.taken).length,
+      ...personCount(counted.filter(x => x.assignedId === s.assignedId)), taken: mine.filter(x => x.taken).length,
       coveredByOthers: [], firstStart: mine.map(x => x.startedAt).filter(Boolean).sort()[0] || '', noServiceReason: null, uncoveredStores: [], load: loadOf(s.assignedId) })
   }
   const TEAM_ORDER = p => (p.late ? 0 : p.total && p.done < p.total ? 1 : p.total ? 2 : 3)
