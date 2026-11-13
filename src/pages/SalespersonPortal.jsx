@@ -10,8 +10,8 @@ import { RESPONSE_TAGS, alertCounts, followupQueue, followupAlerts, goalFor, mon
 import SalesKpiPanel from '../components/SalesKpiPanel'
 import SalesInbox from '../components/SalesInbox'
 import SellerContractCommissions from '../components/SellerContractCommissions'
-import { ClientList, CommissionsCard, MyNumbers, NextFollowups } from '../components/SellerHome'
-import SellerQuoteRequests, { QuoteRequestsAlert, quoteRequestsToSend, quoteRequestsWaiting } from '../components/SellerQuoteRequests'
+import { ClientList, CommissionsCard, MyNumbers } from '../components/SellerHome'
+import SellerQuoteRequests, { quoteRequestsToSend, quoteRequestsWaiting } from '../components/SellerQuoteRequests'
 import SellerFacilityOffers, { offersCopy } from '../components/SellerFacilityOffers'
 import SalesFunnel, { buildDeals } from '../components/SalesFunnel'
 import ClientPage from '../components/ClientPage'
@@ -22,6 +22,7 @@ import { isImagePath, normalizeVisit, upcomingVisits } from '../lib/sellerVisits
 import { toMp3 } from '../lib/audioToMp3.js'
 import TeamChannel from '../components/TeamChannel'
 import SellerActivePortfolio from '../components/SellerActivePortfolio'
+import { SellerChannel, SellerGoal, SellerLeads, SellerQuotes, SellerToday } from '../components/SellerHomeBlocks'
 
 const COPY = {
   en: {
@@ -616,6 +617,28 @@ export default function SalespersonPortal() {
     { section: 'AI', key: 'ai', icon: '✦', label: c.menuAi, hint: c.menuHint.ai, onClick: () => setSheet('ai') },
   ]
 
+  // v1.0.254 · "Iniciar o dia" em destaque (same actions as the day card: start / end / reopen)
+  const dayHero = <section className={`fh-day is-${dayState}`}>
+    <div className="fh-day-top">
+      <span className="fh-day-icon" aria-hidden="true">{dayState === 'working' ? '●' : dayState === 'closed' ? '✓' : '▶'}</span>
+      <div className="fh-day-copy">
+        <span className="fh-day-kicker">{c.myDay}</span>
+        <strong>{dayState === 'idle' ? pickLang(lang, 'Your day has not started', 'まだ開始していません', 'Seu dia ainda não começou') : dayState === 'working' ? c.dayStarted(todayRow.started_at) : c.dayEnded(todayRow.started_at, todayRow.ended_at)}</strong>
+        {dayState === 'idle' && <small>{c.dayNotStarted}</small>}
+      </div>
+      {dayState === 'working' && <span className="th-chip is-blue">{pickLang(lang, 'In progress', '進行中', 'Em andamento')}</span>}
+      {dayState === 'closed' && <span className="th-chip is-green">{pickLang(lang, 'Closed', '終了', 'Encerrado')}</span>}
+    </div>
+    {dayState === 'idle' && <button type="button" className="fh-btn is-hero" disabled={dayBusy} onClick={startDay}><span aria-hidden="true">▶</span> {c.startDay}</button>}
+    {dayState === 'working' && <button type="button" className="fh-btn is-soft" disabled={dayBusy} onClick={() => setSheet('endDay')}>{c.endDaySheet}</button>}
+    {dayState === 'closed' && <button type="button" className="fh-btn is-soft is-sm" disabled={dayBusy} onClick={startDay}>{c.reopen}</button>}
+    <div className="fh-quick">
+      <button type="button" onClick={openNewLead}><span className="th-tile is-blue" aria-hidden="true">📇</span><span><strong>{c.newLeadShort}</strong><small>{pickLang(lang, 'Drop anything · the AI fills it', '何でも入れるだけ・AIが入力', 'Jogue qualquer dado · a IA preenche')}</small></span></button>
+      <button type="button" onClick={() => openVisit(null)}><span className="th-tile is-green" aria-hidden="true">📝</span><span><strong>{c.logVisit}</strong><small>{pickLang(lang, 'Visit or meeting report', '訪問・商談の記録', 'Relatório da visita ou reunião')}</small></span></button>
+    </div>
+    {todayRow?.ai_report && <details className="sp-day-report"><summary>{c.dayReport}</summary><div className="sales-ai-result">{todayRow.ai_report}</div></details>}
+  </section>
+
   const dayCard = <section className={`sp-day is-${dayState}`}>
     <div className="sp-day-icon" aria-hidden="true">{dayState === 'working' ? '●' : dayState === 'closed' ? '✓' : '▶'}</div>
     <div className="sp-day-copy">
@@ -631,37 +654,32 @@ export default function SalespersonPortal() {
 
   return (
     <FieldAppShell kicker={c.kicker} userName={user.name} lang={lang} bellCount={bellCount} onBell={() => setSheet('bell')}
+      header={{ area: pickLang(lang, 'Sales', '営業', 'Vendas'), name: user.name, photoUrl: user.photo_url || user.avatar_url || '', role: pickLang(lang, 'Sales · KuriPuro', '営業・KuriPuro', 'Vendas · KuriPuro') }} appClass="is-sp"
       menuItems={menuItems} onLogout={logout} logoutLabel={c.logout} tabs={tabs} tab={tab} onTab={key => { setTab(key); window.scrollTo(0, 0) }}
       onPlus={openNewLead} plusLabel={c.newLeadShort}>
       {tab === 'team' && <div className="fa-stack"><TeamChannel me={{ role: 'salesperson', id: user.id, name: user.name }} lang={lang} L={(en, ja, pt) => pickLang(lang, en, ja, pt)} /></div>}
       {tab !== 'team' && (loading && !data ? <div className="fa-card fa-muted">{c.loading}</div> : !data ? <div className="fa-card fa-muted">{c.unavailable}</div> : <>
 
-        {tab === 'home' && <div className="fa-stack fa-dash">
-          {dayCard}
-          <QuoteRequestsAlert data={data} lang={lang} onOpen={() => { setTab('quotes'); window.scrollTo(0, 0) }} />
-          <div className="sp-cta-grid">
-            <button type="button" className="sp-cta is-main" onClick={openNewLead}>
-              <span className="sp-cta-icon" aria-hidden="true">📇</span>
-              <span><strong>{c.newLeadShort}</strong><small>{pickLang(lang, 'Drop anything · the AI fills it', '何でも入れるだけ・AIが入力', 'Jogue qualquer dado · a IA preenche')}</small></span>
-            </button>
-            <button type="button" className="sp-cta" onClick={() => openVisit(null)}><span className="sp-cta-icon" aria-hidden="true">📝</span><span><strong>{c.logVisit}</strong></span></button>
-            <button type="button" className="sp-cta" onClick={() => setTab('followups')}><span className="sp-cta-icon" aria-hidden="true">↻</span><span><strong>{c.followups}</strong>{counts.needsAction > 0 && <small>{counts.needsAction}</small>}</span></button>
+        {/* v1.0.254 · home in the owner's order: header (shell) → Iniciar o dia → Pra hoje → Meta → Leads → Orçamentos → Contratos ativos → Canal Vendas.
+            Same data and actions as before; "Meus números" and "Comissões" moved to the end (still here and in the menu). */}
+        {tab === 'home' && <div className="fh-home">
+          {dayHero}
+          <div className="fh-col is-a">
+          <SellerToday data={data} queue={queue} leads={leads} today={today} userId={user.id} lang={lang}
+            onOpenLead={row => openDeal(row)} onLog={markFollowup} onTab={key => { setTab(key); window.scrollTo(0, 0) }} />
+          <SellerLeads deals={deals} lang={lang} onOpen={row => openDeal(row)} onSeeAll={() => setTab('leads')} />
+          <SellerActivePortfolio lang={lang} limit={4} onSeeAll={() => { setContractView('active'); setTab('contracts'); window.scrollTo(0, 0) }} />
           </div>
-
-          <UpcomingVisits visits={data.scheduledVisits || []} leads={leads} lang={lang} today={today} sellerName={user.name} busy={saving}
-            onOpenLead={row => openDeal(row)} onDone={visitFinished} onEdit={(visit, row) => row && openScheduleVisit(row, visit)} onCancel={cancelVisit}>
-            <GoogleAgendaConnect lang={lang} compact={upcomingVisits(data.scheduledVisits, today).length === 0} />
-          </UpcomingVisits>
-          <NextFollowups queue={queue} lang={lang} onOpen={row => openDeal(row)} onLog={markFollowup} logLabel={f.logContact} />
-          {offersTodo.length > 0 && <SellerFacilityOffers offers={offersTodo} lang={lang} limit={3} onSeeAll={() => setTab('offers')} />}
+          {/* phone: the two columns melt into one list in the owner's order (CSS order 3…8) */}
+          <div className="fh-col is-b">
+          <SellerGoal goal={myGoal} actual={myResults} today={today} f={f} lang={lang} onOpen={() => setTab('goals')} />
+          <SellerQuotes data={data} leads={leads} lang={lang} onOpenLead={row => openDeal(row)} onRequests={() => { setTab('quotes'); window.scrollTo(0, 0) }} />
+          <SellerChannel me={{ role: 'salesperson', id: user.id, name: user.name, team: user.team }} lang={lang}
+            onOpen={() => { try { const u = new URL(window.location.href); u.searchParams.set('ch', 'vendas'); window.history.replaceState(null, '', u) } catch { /* old browser */ } setTab('team'); window.scrollTo(0, 0) }} />
+          </div>
+          <div className="fh-more-title">{pickLang(lang, 'My numbers and commissions', '自分の数字とコミッション', 'Meus números e comissões')}</div>
           <MyNumbers data={data} today={today} lang={lang} />
           <CommissionsCard data={data} metrics={metrics} lang={lang} onDetails={() => setTab('commissions')} />
-
-          <section className="fa-card">
-            <div className="fa-card-head"><h2>{f.goalsMonth}</h2><button type="button" className="fa-link" onClick={() => setTab('goals')}>{c.open} ›</button></div>
-            <GoalBars goal={myGoal} actual={myResults} today={today} f={f} compact />
-          </section>
-          <ClientList className="fa-wide" deals={deals} lang={lang} onOpen={row => openDeal(row)} limit={6} onSeeAll={() => setTab('clients')} seeAllLabel={c.seeAll} />
         </div>}
 
         {tab === 'calls' && <div className="fa-stack"><SalesOutreach lang={lang} onChanged={load} /></div>}
@@ -683,6 +701,11 @@ export default function SalespersonPortal() {
 
         {tab === 'followups' && <div className="fa-stack">
           <div className="fa-screen-head"><h2>{c.followups}</h2></div>
+          {/* v1.0.254 · the next visits (and the Google Agenda link) moved here from the home; today's visits are in "Pra hoje" */}
+          <UpcomingVisits visits={data.scheduledVisits || []} leads={leads} lang={lang} today={today} sellerName={user.name} busy={saving}
+            onOpenLead={row => openDeal(row)} onDone={visitFinished} onEdit={(visit, row) => row && openScheduleVisit(row, visit)} onCancel={cancelVisit}>
+            <GoogleAgendaConnect lang={lang} compact={upcomingVisits(data.scheduledVisits, today).length === 0} />
+          </UpcomingVisits>
           <div className="sp-chip-row">{[['action', `${f.alertTitle} (${counts.needsAction})`], ['all', `${c.all} (${queue.length})`]].map(([key, label]) => <button type="button" key={key} className={`fa-chip${followFilter === key ? ' is-active' : ''}`} onClick={() => setFollowFilter(key)}>{label}</button>)}</div>
           <section className="fa-card is-list">
             {followFilter !== 'all' && <p className="fa-muted">{alertReasonCopy(lang).hint}</p>}

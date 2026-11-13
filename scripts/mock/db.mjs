@@ -79,9 +79,11 @@ function parseSelect(sel) {
   return splitTop(sel).map(s => s.trim()).filter(Boolean).map(s => {
     const m = s.match(/^(?:([\w]+):)?([\w]+)(?:!\w+)?\((.*)\)$/s)
     if (m) return { embed: m[2], alias: m[1] || m[2], inner: m[3] }
-    const [a, b] = s.split(':')
-    const col = (b || a).split('::')[0]
-    return { col, alias: b ? a : col }
+    const [a, b] = s.split(/:(?!:)/)
+    const raw = (b || a).split('::')[0]
+    // json path (col->>key / col->key): the alias is the alias given or the last key, like PostgREST
+    const [col, ...path] = raw.split(/->>?/)
+    return { col, path, alias: b ? a : (path.length ? path[path.length - 1] : col) }
   })
 }
 
@@ -102,7 +104,7 @@ function project(table, row, sel) {
         out[f.alias] = one ? project(f.embed, one, inner) : null
       }
     } else if (f.col === '*') Object.assign(out, row)
-    else out[f.alias] = row[f.col] ?? null
+    else out[f.alias] = (f.path?.length ? f.path.reduce((v, k) => (v == null ? v : v[k]), row[f.col]) : row[f.col]) ?? null
   }
   return out
 }
