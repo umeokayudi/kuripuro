@@ -199,7 +199,7 @@ export default function GoogleAgenda() {
         'Traga a Google Agenda inteira: a IA transforma cada evento em serviço, você confere e cria. Cada serviço também vai para a Google Agenda de cada pessoa, sempre marcado com a empresa.')}</p>
 
       {loadError && <div className="card ga-setup ga-warn">{loadError.message}</div>}
-      {state && <GoogleSetupStatus state={state} tr={tr} />}
+      {state && <GoogleSetupStatus state={state} tr={tr} mode="top" />}
 
       {/* 1 · Sync */}
       <div className="card ga-sync">
@@ -319,6 +319,9 @@ export default function GoogleAgenda() {
           )
         })}
       </div>
+
+      {/* 5 · v1.0.242: install checklist lives here (closed) once the integration is active */}
+      {state && <GoogleSetupStatus state={state} tr={tr} mode="bottom" />}
     </div>
   )
 }
@@ -328,7 +331,7 @@ export default function GoogleAgenda() {
  * reads), the callback URL to paste in Google Cloud, the steps, and how many employees connected.
  * No key is ever typed here: the owner puts them straight in Vercel.
  */
-function GoogleSetupStatus({ state, tr }) {
+function GoogleSetupStatus({ state, tr, mode = 'top' }) {
   const setup = state.setup || {}
   const checks = setup.checks || [
     { name: 'GOOGLE_CLIENT_ID', ok: state.configured },
@@ -337,6 +340,7 @@ function GoogleSetupStatus({ state, tr }) {
   const missing = checks.filter(c => !c.ok)
   const on = state.configured && !missing.length
   const [open, setOpen] = useState(!on)
+  const [supportOpen, setSupportOpen] = useState(false)
   const copy = async text => {
     try { await navigator.clipboard.writeText(text); toast.success(tr('Copied', 'コピーしました', 'Copiado')) }
     catch { toast(text) }
@@ -357,24 +361,8 @@ function GoogleSetupStatus({ state, tr }) {
     [tr('Restart the site', 'サイトを再起動', 'Reiniciar o site'), 'https://vercel.com/umeokayudis-projects/kuripuro/deployments',
       tr('Vercel only reads new keys on the next deploy: Promote the next version, or ⋯ → Redeploy on the current Production one. No code change.', 'Vercel は次のデプロイで新しいキーを読み込みます：次のバージョンを Promote するか、今の Production で ⋯ → Redeploy。コード変更は不要。', 'O Vercel só lê chaves novas no próximo deploy: promova a próxima versão ou, na versão de Production atual, ⋯ → Redeploy. Não muda código.')],
   ]
-  return (
-    <div className={`card ga-int ${on ? 'on' : 'off'}`}>
-      <button type="button" className="ga-int-head" onClick={() => setOpen(v => !v)} aria-expanded={open}>
-        <span className="ga-int-dot" aria-hidden="true">{on ? '✓' : '!'}</span>
-        <span className="ga-int-title">
-          <b>{tr('Google Calendar integration', 'Googleカレンダー連携', 'Integração Google Agenda')}</b>
-          <small>{on
-            ? tr('Active. Employees can connect their own calendar.', '有効。スタッフは自分のカレンダーを接続できます。', 'Ativada. Os funcionários já podem conectar a própria agenda.')
-            : tr(`Not active yet · missing ${missing.map(c => c.name).join(', ')}`, `まだ無効 · 不足: ${missing.map(c => c.name).join(', ')}`, `Ainda não ativada · falta ${missing.map(c => c.name).join(', ')}`)}</small>
-        </span>
-        <span className="ga-int-count" title={tr('Employees with their own calendar connected', '自分のカレンダーを接続したスタッフ', 'Funcionários com a própria agenda conectada')}>
-          👥 {connected}{total != null ? ` / ${total}` : ''}
-        </span>
-        <span className="ga-int-caret" aria-hidden="true">{open ? '▴' : '▾'}</span>
-      </button>
-
-      {open && (
-        <div className="ga-int-body">
+  const renderBody = () => (
+    <>
           <div className="ga-int-sec">
             <div className="ga-int-label">{tr('Server keys (Vercel → Environment Variables)', 'サーバーのキー（Vercel → Environment Variables）', 'Chaves no servidor (Vercel → Environment Variables)')}</div>
             {checks.map(c => (
@@ -418,8 +406,50 @@ function GoogleSetupStatus({ state, tr }) {
             </p>
             {!on && <p className="ga-int-p ga-int-muted">{tr('Until then, the employee button stays grey with "The office is still turning Google on". It turns on by itself after step 6.', 'それまでスタッフのボタンはグレーのままです。手順6の後、自動で使えるようになります。', 'Até lá, o botão do funcionário fica cinza com "O escritório ainda está ativando o Google". Ele liga sozinho depois do passo 6.')}</p>}
           </div>
-        </div>
-      )}
+    </>
+  )
+
+  // v1.0.242: active → status banner only (no install block); the block moves to a closed "Instalação e suporte" at the page end.
+  // Not active → same as before: banner on top with the checklist open.
+  if (on && mode === 'top') return (
+    <div className="card ga-int on">
+      <div className="ga-int-head ga-int-static">
+        <span className="ga-int-dot" aria-hidden="true">✓</span>
+        <span className="ga-int-title">
+          <b>{tr('Google Calendar integration', 'Googleカレンダー連携', 'Integração Google Agenda')}</b>
+          <small>{tr('Active. Employees can connect their own calendar.', '有効。スタッフは自分のカレンダーを接続できます。', 'Ativada. Os funcionários já podem conectar a própria agenda.')}</small>
+        </span>
+        <span className="ga-int-count" title={tr('Employees with their own calendar connected', '自分のカレンダーを接続したスタッフ', 'Funcionários com a própria agenda conectada')}>
+          👥 {connected}{total != null ? ` / ${total}` : ''}
+        </span>
+      </div>
+    </div>
+  )
+  if (!on && mode === 'bottom') return null
+  const wrapBody = on && mode === 'bottom'
+  if (wrapBody) return (
+    <details className="ga-support" open={supportOpen} onToggle={e => setSupportOpen(e.currentTarget.open)}>
+      <summary>{tr('Setup and support', '設定とサポート', 'Instalação e suporte')}</summary>
+      <div className="ga-int-body">{renderBody()}</div>
+    </details>
+  )
+  return (
+    <div className={`card ga-int ${on ? 'on' : 'off'}`}>
+      <button type="button" className="ga-int-head" onClick={() => setOpen(v => !v)} aria-expanded={open}>
+        <span className="ga-int-dot" aria-hidden="true">{on ? '✓' : '!'}</span>
+        <span className="ga-int-title">
+          <b>{tr('Google Calendar integration', 'Googleカレンダー連携', 'Integração Google Agenda')}</b>
+          <small>{on
+            ? tr('Active. Employees can connect their own calendar.', '有効。スタッフは自分のカレンダーを接続できます。', 'Ativada. Os funcionários já podem conectar a própria agenda.')
+            : tr(`Not active yet · missing ${missing.map(c => c.name).join(', ')}`, `まだ無効 · 不足: ${missing.map(c => c.name).join(', ')}`, `Ainda não ativada · falta ${missing.map(c => c.name).join(', ')}`)}</small>
+        </span>
+        <span className="ga-int-count" title={tr('Employees with their own calendar connected', '自分のカレンダーを接続したスタッフ', 'Funcionários com a própria agenda conectada')}>
+          👥 {connected}{total != null ? ` / ${total}` : ''}
+        </span>
+        <span className="ga-int-caret" aria-hidden="true">{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && <div className="ga-int-body">{renderBody()}</div>}
     </div>
   )
 }
