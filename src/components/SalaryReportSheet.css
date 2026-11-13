@@ -1,0 +1,24 @@
+.srs-back { position: fixed; inset: 0; z-index: 1200; background: rgba(15, 23, 42, .45); display: flex; align-items: flex-end; justify-content: center; }
+@media (min-width: 720px) { .srs-back { align-items: center; } }
+.srs { background: #fff; color: #111827; width: 100%; max-width: 640px; max-height: 92vh; overflow: auto; border-radius: 18px 18px 0 0; padding: 16px; box-sizing: border-box; }
+@media (min-width: 720px) { .srs { border-radius: 18px; } }
+.srs-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.srs-h b { display: block; font-size: 16px; }
+.srs-h small { color: #68778d; font-size: 12px; }
+.srs-x { border: 0; background: #f1f4f8; width: 34px; height: 34px; border-radius: 50%; font-size: 20px; cursor: pointer; flex: none; }
+.srs-empty { color: #68778d; font-size: 13px; padding: 8px 0; }
+.srs-warn { background: #fff7e6; color: #8a5a00; border-radius: 10px; padding: 8px 10px; font-size: 12.5px; margin-bottom: 8px; }
+.srs-day { border-top: 1px solid #e3e8f0; padding: 4px 0; }
+.srs-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 56px 78px; gap: 6px; align-items: baseline; font-size: 13px; padding: 4px 0; }
+.srs-row.is-sub { font-weight: 700; background: #f8fafc; border-radius: 8px; padding: 5px 0; }
+.srs-d { color: #68778d; font-variant-numeric: tabular-nums; }
+.srs-p { min-width: 0; overflow-wrap: anywhere; }
+.srs-p small { display: block; color: #68778d; font-size: 11.5px; }
+.srs-n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.srs-n.is-tbd { color: #b45309; font-weight: 600; }
+.srs-tot { border-top: 2px solid #111827; margin-top: 8px; padding-top: 6px; }
+.srs-tot > div { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 4px 0; }
+.srs-tot .is-neg b { color: #b91c1c; }
+.srs-tot .is-net { font-size: 15px; font-weight: 800; border-top: 1px solid #e3e8f0; margin-top: 4px; padding-top: 8px; }
+.srs-print { width: 100%; min-height: 44px; border-radius: 14px; border: 1px solid #d5dce6; background: #fff; font-weight: 700; font-size: 14px; margin-top: 12px; cursor: pointer; }
+.earn-report { width: 100%; min-height: 42px; border-radius: 14px; border: 1px solid var(--earn-border); background: transparent; color: var(--earn-text); font-weight: 700; font-size: 14px; margin-top: 8px; cursor: pointer; }
