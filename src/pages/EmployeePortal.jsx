@@ -25,6 +25,7 @@ import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
 import { estimateShift, fmtDur } from '../lib/shiftEstimate'
 import ShiftEstimateBox from '../components/ShiftEstimateBox'
+import BrandLoader from '../components/BrandLoader'
 import { VOICE_EVERY_SEC, voicePrefOn, setVoicePref, voiceMessage, speak, unlockSpeech, canSpeak } from '../lib/voiceAlert'
 import { hasMapsLink, mapsOpenUrl } from '../lib/mapsLink'
 import { dueAlertJobs, dueAlertSlot, acceptSpotUpdate, isBrokenRunningJob, isPendingSpot } from '../lib/jobDueAlert'
@@ -246,6 +247,9 @@ export default function EmployeePortal() {
   const [empScore, setEmpScore] = useState(100)
   const [empData, setEmpData] = useState(null)
   const [weekPlans, setWeekPlans] = useState([])
+  // v1.0.244 · the yellow weekly-shift reminder only shows after the plans arrived (it used to flash while [] was assumed)
+  const [plansReady, setPlansReady] = useState(false)
+  const [homeReady, setHomeReady] = useState(false)
   const [selectedJob, setSelectedJob] = useState(null)
   const [claimForm, setClaimForm] = useState({ job_id:'', amount:'', route:'', description:'' })
   const [claimPhoto, setClaimPhoto] = useState(null)
@@ -343,7 +347,8 @@ export default function EmployeePortal() {
   }, [draftKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    loadAll()
+    const readyTimer = setTimeout(() => setHomeReady(true), 8000) // never leave the loader up if the network stalls
+    Promise.resolve(loadAll()).catch(() => {}).finally(() => { clearTimeout(readyTimer); setHomeReady(true) })
     clockRef.current = setInterval(() => setClock(new Date()), 1000)
     const stopMsgPoll = pollWhileVisible(() => { loadMessages(); loadTeamMessages() }, 10000) // v1.0.204 · paused in background, catches up on return
     // Ping presence every 60s
@@ -550,12 +555,12 @@ export default function EmployeePortal() {
     loadTeam()
     awardBadges(allVisible, bdg.data||[])
     loadStatement()
-    loadWeekPlans()
+    await loadWeekPlans()
   }
 
   const loadWeekPlans = async () => {
     const { data, error } = await supabase.from('employee_week_plans').select('week_start,submitted_at').eq('employee_id', user.id).gte('week_start', tokyoToday()).limit(30)
-    if (!error) setWeekPlans(data || [])
+    if (!error) { setWeekPlans(data || []); setPlansReady(true) }
     // Day-off requests and their status (pending / approved / rejected) for the home card
     const { data: off } = await supabase.from('employee_availability')
       .select('id,date,kind,status,note,admin_note,decided_at')
@@ -1773,7 +1778,7 @@ export default function EmployeePortal() {
     )
   }
 
-  const planAlert = planningAlert(weekPlans, today)
+  const planAlert = plansReady ? planningAlert(weekPlans, today) : null
   const lastAdminMsg = messages.filter(m=>m.sender==='admin').slice(-1)[0]
   const chatSections = teamReady ? buildChatSections({ me:user, employees:coworkers, teamMessages, officeMessages:messages, teamReady }) : null
   const lastTeamUnread = teamMessages.find(m=>m.to_employee_id===user.id&&!m.read)
@@ -2317,7 +2322,8 @@ export default function EmployeePortal() {
         )}
 
         {/* HOME */}
-        {tab==='home'&&(
+        {tab==='home'&&!homeReady&&<BrandLoader label={L('Loading your day…','読み込み中…','Carregando seu dia…')} />}
+        {tab==='home'&&homeReady&&(
           <div className="emp-home ex-home">
             {/* v1.0.161 · the next service (map + Check-in) is the FIRST thing on the home, bigger */}
             {(()=>{
