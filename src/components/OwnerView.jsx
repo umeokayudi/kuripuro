@@ -1,4 +1,4 @@
-// v1.0.239 · "Ver como" do dono: menu on the admin avatar (only for the owner) + the fixed
+// v1.0.240 · "Ver como" do dono: menu on the admin avatar (only for the owner) + the fixed
 // "Você está vendo como…" strip shown in the employee / sales portals while the owner views them.
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'

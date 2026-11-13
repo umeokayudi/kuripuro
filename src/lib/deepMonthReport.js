@@ -1,181 +1,353 @@
-// v1.0.234 · Monthly Deep Cleaning report for a client (made for On The Planet, works for any client
-// with deep items in the contract). One printable page set, saved as PDF from the browser:
-//   cover with the month's numbers and a chart per store → one block per store with every deep
-//   service done: what was cleaned, the day and the START time, photos before / after.
-// By the owner's rule this report NEVER shows the finish time, how long it took, or any value.
-import { supabase } from './supabase'
-import { deepMonthProgress, deepItemName, deepSubtypes, monthBounds, pct } from './deepMonthProgress'
+// v1.0.230 · Relatório mensal de Deep Cleaning da On The Planet (PDF para o cliente).
+// READ ONLY: reads jobs, job photos (storage jobs/<id>/start_N / end_N) and the service report
+// notes (work-reports/<id>/report.json). Never writes anything to the database or storage.
+//
+// Hard rules (user, 13/11/2026):
+//   · only DATE + START TIME of each visit — never end time, duration or hours worked;
+//   · never any value (what the client pays or what the employee earns);
+//   · only deep jobs with status COMPLETED; a completed visit without a BEFORE or an AFTER photo
+//     is NOT in the client file — it goes to the admin's internal list "fora do relatório e por quê".
+import { escapeHtml as esc } from './escapeHtml'
 import { splitName } from './schedulePlan'
-import { mediaForJobs } from './workMedia'
-import { storagePublicUrl } from './workReport'
-import { QUOTE_ISSUER } from './quoteIssuer'
+import { getCleaningType, ONTHEPLANET_CLIENT_ID } from './cleaningType'
+import { isTestJob } from './testData'
+import { isVideoPath } from './workMedia'
 
-const JOB_FIELDS = 'id,title,client_id,client_name,scheduled_date,scheduled_time,status,job_category,spot_status,started_at,photo_start_url,photo_end_url'
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+export const OTP_NAME = 'On The Planet'
 
-const TXT = {
-  ja: {
-    title: 'ディープクリーニング 月次報告書', month: (y, m) => `${y}年${m}月分`, to: '御中', summary: '今月の実施状況', done: '実施済み', planned: '契約回数', rate: '実施率',
-    scheduled: '予定あり', missing: '未実施', byStore: '店舗別の実施状況', byItem: '作業別の実施状況', services: '実施した作業', date: '実施日', start: '開始時刻',
-    before: '作業前', after: '作業後', noPhoto: '写真なし', none: 'この月に実施済みのディープクリーニングはありません。', issued: '発行日', extra: '契約外の追加作業', store: '店舗',
-    note: '本報告書は実施日・開始時刻・写真のみを記載しています。', weekday: ['日', '月', '火', '水', '木', '金', '土'],
-  },
-  pt: {
-    title: 'Relatório mensal de Deep Cleaning', month: (y, m) => `${['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][m - 1]} de ${y}`, to: '', summary: 'Resumo do mês', done: 'Feitos', planned: 'Previstos no contrato', rate: 'Realizado',
-    scheduled: 'Agendados', missing: 'Faltando', byStore: 'Por loja', byItem: 'Por tipo de serviço', services: 'Serviços realizados', date: 'Data', start: 'Início',
-    before: 'Antes', after: 'Depois', noPhoto: 'sem foto', none: 'Nenhum Deep Cleaning concluído neste mês.', issued: 'Emitido em', extra: 'Serviços extras (fora do contrato)', store: 'Loja',
-    note: 'Este relatório mostra a data, a hora de início e as fotos de cada serviço.', weekday: ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'],
-  },
-  en: {
-    title: 'Monthly Deep Cleaning report', month: (y, m) => `${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m - 1]} ${y}`, to: '', summary: 'Month summary', done: 'Done', planned: 'In the contract', rate: 'Completed',
-    scheduled: 'Scheduled', missing: 'Missing', byStore: 'By store', byItem: 'By type of service', services: 'Services done', date: 'Date', start: 'Start',
-    before: 'Before', after: 'After', noPhoto: 'no photo', none: 'No Deep Cleaning completed in this month.', issued: 'Issued on', extra: 'Extra services (outside the contract)', store: 'Store',
-    note: 'This report shows the date, the start time and the photos of each service.', weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-  },
+/** "2026-11" → ["2026-11-01", "2026-11-30", 30] */
+export function monthRange(month) {
+  const [y, m] = String(month).split('-').map(Number)
+  const last = new Date(y, m, 0).getDate()
+  return [`${month}-01`, `${month}-${String(last).padStart(2, '0')}`, last]
 }
-export const deepReportText = lang => TXT[lang] || TXT.ja
 
-/** Start time in Tokyo, "HH:mm". Real start when the team pressed Start, else the booked time. */
+export const isOtpJob = j => !!j && (j.client_id === ONTHEPLANET_CLIENT_ID || /on\s*the\s*planet/i.test(j.client_name || ''))
+export const isDeepJob = j => getCleaningType(j) === 'deep' && !/basic/i.test(splitName(j?.title).rest)
+
+/** Store name of a job title: "Kodama Kinshicho — Deep Clean (AC)" → "Kodama Kinshicho". */
+export function storeOf(job) {
+  const base = splitName(job?.title).base
+  return base.replace(/\s*[-–—]\s*deep\s*clean.*$/i, '').trim() || '—'
+}
+
+/** What was cleaned, from the title: "Deep Clean (Range Hood, AC Cleaning)" → "Range Hood, AC Cleaning". */
+export function serviceOf(job) {
+  const t = String(job?.title || '')
+  const inner = /\(([^)]+)\)/.exec(t)
+  if (inner) return inner[1].replace(/,\s*Other\b/i, '').trim()
+  const rest = splitName(t).rest.replace(/^deep\s*clean\s*[-–—]?\s*/i, '').trim()
+  return rest && !/^deep\s*clean$/i.test(rest) ? rest : ''
+}
+
+const ITEM_JA = { 'range hood': 'レンジフード', 'grease trap': 'グリストラップ', 'grating': 'グレーチング', 'stove': 'コンロ', 'ac cleaning': 'エアコン', 'ac': 'エアコン', 'floor scrub': '床洗浄', 'floor wax': '床ワックス', 'fryer': 'フライヤー' }
+const ITEM_PT = { 'range hood': 'Coifa', 'grease trap': 'Caixa de gordura', 'grating': 'Grelha do piso', 'stove': 'Fogão', 'ac cleaning': 'Ar-condicionado', 'ac': 'Ar-condicionado', 'floor scrub': 'Lavagem do piso', 'floor wax': 'Cera no piso', 'fryer': 'Fritadeira' }
+export function serviceLabel(text, lang) {
+  if (!text) return ''
+  const map = lang === 'ja' ? ITEM_JA : lang === 'pt' ? ITEM_PT : null
+  if (!map) return text
+  return text.split(/\s*[,、+]\s*/).map(w => map[w.toLowerCase()] || w).join(lang === 'ja' ? '・' : ', ')
+}
+
+/** Start time HH:MM (Tokyo) — from started_at; when it was never recorded, the scheduled time (flagged). */
 export function startTimeOf(job) {
-  if (job.started_at) {
+  if (job?.started_at) {
     const d = new Date(job.started_at)
-    if (!Number.isNaN(d.getTime())) return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false }).format(d)
+    if (!Number.isNaN(d.getTime())) {
+      return { time: d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false }), recorded: true }
+    }
   }
-  const m = /^(\d{1,2}):(\d{2})/.exec(String(job.scheduled_time || ''))
-  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : ''
+  const t = String(job?.scheduled_time || '').slice(0, 5)
+  return { time: /^\d{2}:\d{2}$/.test(t) ? t : '', recorded: false }
 }
 
-export function dayLabel(date, lang) {
-  const [y, m, d] = String(date).split('-').map(Number)
-  const wd = deepReportText(lang).weekday[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
-  return lang === 'ja' ? `${m}月${d}日（${wd}）` : lang === 'pt' ? `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')} (${wd})` : `${wd} ${d}/${m}`
+// Sentences that could reveal hours worked, end time or money are dropped from the client notes.
+const RISKY = /(\d+(?:[.,]\d+)?\s*(?:時間|分間?|h(?:rs?|ours?)?\b|horas?\b|minutos?\b|minutes?\b|min\b))|[¥￥$]|円|\bR\$|\d{1,2}[:：]\d{2}\s*[〜~～\-–—]\s*\d{1,2}[:：]\d{2}|終了|作業時間|所要|duração|término|end time|finished at|terminou|料金|金額|valor|preço|price|給料|salário|pay\b/i
+
+/** Client-safe notes: removes any sentence with times, durations or money. Returns { text, removed }. */
+export function safeNotes(raw) {
+  const s = String(raw || '').replace(/\r/g, '').trim()
+  if (!s) return { text: '', removed: 0 }
+  const parts = s.split(/(?<=[。．.!?！？\n])\s*/).map(p => p.trim()).filter(Boolean)
+  const keep = parts.filter(p => !RISKY.test(p))
+  return { text: keep.join(' ').replace(/\s+\n/g, '\n').trim(), removed: parts.length - keep.length }
 }
 
-/** What was cleaned, from the job title: "Ibushio — Deep Clean (Range Hood, AC)" → "Range Hood · AC" in the report language. */
-export function serviceLabel(title, lang) {
-  const { rest } = splitName(title)
-  const ids = [...new Set(deepSubtypes(rest).map(h => h.id))]
-  return ids.length ? ids.map(id => deepItemName(id, lang)).join(' · ') : (rest || title || '')
+/** First photo (not video) of a section from listJobMedia() output. */
+export function pickPhoto(media, section) {
+  return (media || []).find(m => m.kind === 'photo' && m.section === section && !isVideoPath(m.path))?.path || null
 }
 
 /**
- * Pure: builds the report data from the month's progress + media. Only what the client may see.
- * @returns {{ client, month, totals, stores: [{ name, totals, items, services: [{ date, start, label, before:[], after:[] }] }], extras, byItem }}
+ * Builds everything the report needs from the jobs of the month.
+ * @param jobs   all jobs of the month (any client/status; filtered here)
+ * @param media  Map jobId → listJobMedia()  (only completed deep OTP jobs need it)
+ * @param notes  Map jobId → service-report notes text (client-facing ご報告事項)
  */
-export function buildDeepMonthReport({ progress, media = new Map(), month, lang = 'ja' }) {
-  const photos = (jobId, section) => (media.get(jobId) || []).filter(m => m.kind === 'photo' && m.section === section).map(m => m.path)
-  const service = job => ({ job_id: job.id, date: job.scheduled_date, start: startTimeOf(job), label: serviceLabel(job.title, lang), before: photos(job.id, 'before'), after: photos(job.id, 'after') })
-  const stores = (progress?.stores || []).map(st => {
-    const seen = new Set()
-    const done = []
-    for (const it of st.items) for (const j of it.jobs) if (j.status === 'completed' && !seen.has(j.id)) { seen.add(j.id); done.push(j) }
-    done.sort((a, b) => String(a.scheduled_date).localeCompare(String(b.scheduled_date)) || startTimeOf(a).localeCompare(startTimeOf(b)))
-    return {
-      name: st.name, totals: st.totals,
-      items: st.items.map(i => ({ id: i.id, name: deepItemName(i.id, lang), times: i.times, done: i.done, scheduled: i.scheduled, missing: i.missing })),
-      services: done.map(service),
-    }
-  })
-  const byItem = {}
-  for (const st of stores) for (const i of st.items) {
-    const b = byItem[i.id] || (byItem[i.id] = { id: i.id, name: i.name, times: 0, done: 0 })
-    b.times += i.times; b.done += i.done
+export function buildDeepMonthReport({ month, jobs, media = new Map(), notes = new Map() }) {
+  const [from, to, lastDay] = monthRange(month)
+  const deep = (jobs || []).filter(j => isOtpJob(j) && isDeepJob(j) && !isTestJob(j)
+    && j.scheduled_date >= from && j.scheduled_date <= to)
+  const programmed = deep.filter(j => j.status !== 'cancelled')
+  const completed = programmed.filter(j => j.status === 'completed')
+  const notDone = programmed.filter(j => j.status !== 'completed')
+
+  const visits = []
+  const excluded = []
+  for (const j of completed) {
+    const m = media.get(j.id) || []
+    const before = pickPhoto(m, 'before')
+    const after = pickPhoto(m, 'after')
+    const reasons = []
+    if (!before) reasons.push('no_before')
+    if (!after) reasons.push('no_after')
+    if (reasons.length) { excluded.push({ job: j, store: storeOf(j), reasons }); continue }
+    const st = startTimeOf(j)
+    const n = safeNotes(notes.get(j.id))
+    const warnings = []
+    if (!st.recorded) warnings.push('start_scheduled')
+    if (n.removed) warnings.push('notes_trimmed')
+    visits.push({
+      id: j.id, date: j.scheduled_date, start: st.time, store: storeOf(j), service: serviceOf(j),
+      before, after, notes: n.text, warnings,
+    })
   }
-  const extras = (progress?.extras || []).filter(j => j.status === 'completed')
-    .sort((a, b) => String(a.scheduled_date).localeCompare(String(b.scheduled_date)))
-    .map(j => ({ ...service(j), store: splitName(j.title).base }))
-  return { client: progress?.clientName || '', month, totals: progress?.totals || { expected: 0, done: 0, scheduled: 0, missing: 0 }, stores, byItem: Object.values(byItem), extras }
+  visits.sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start) || a.store.localeCompare(b.store))
+  excluded.sort((a, b) => a.job.scheduled_date.localeCompare(b.job.scheduled_date))
+
+  // per store: completed deep visits (the bar chart) and how many were programmed
+  const stores = new Map()
+  for (const j of programmed) {
+    const k = storeOf(j)
+    const s = stores.get(k) || { name: k, programmed: 0, done: 0 }
+    s.programmed++
+    if (j.status === 'completed') s.done++
+    stores.set(k, s)
+  }
+  const byStore = [...stores.values()].sort((a, b) => b.done - a.done || a.name.localeCompare(b.name))
+
+  // timeline: completed visits per day of the month
+  const days = Array.from({ length: lastDay }, (_, i) => ({ day: i + 1, date: `${month}-${String(i + 1).padStart(2, '0')}`, count: 0 }))
+  for (const j of completed) {
+    const d = Number(j.scheduled_date.slice(8, 10))
+    if (days[d - 1]) days[d - 1].count++
+  }
+
+  const total = { programmed: programmed.length, done: completed.length }
+  total.pct = total.programmed ? Math.round((total.done / total.programmed) * 100) : 0
+  return { month, from, to, lastDay, total, byStore, days, visits, excluded, notDone }
 }
 
-/** Loads everything for one client and month (read only). */
-export async function loadDeepMonthReport(clientId, month, { lang = 'ja', onProgress } = {}) {
-  const [from, to] = monthBounds(month)
-  const [c, cl, j] = await Promise.all([
-    supabase.from('service_contracts').select('*').eq('is_active', true).eq('client_id', clientId),
-    supabase.from('clients').select('id,company_name,is_active').eq('id', clientId),
-    supabase.from('jobs').select(JOB_FIELDS).eq('client_id', clientId).gte('scheduled_date', from).lte('scheduled_date', to).neq('status', 'cancelled').limit(3000),
-  ])
-  const failed = [c, cl, j].find(r => r.error)
-  if (failed) throw new Error(failed.error.message)
-  const progress = deepMonthProgress(c.data || [], cl.data || [], j.data || [])[0] || { clientName: cl.data?.[0]?.company_name || '', stores: [], totals: { expected: 0, done: 0, scheduled: 0, missing: 0 }, extras: [] }
-  const doneJobs = [...progress.stores.flatMap(s => s.items.flatMap(i => i.jobs)), ...(progress.extras || [])].filter(x => x.status === 'completed')
-  const media = await mediaForJobs([...new Map(doneJobs.map(x => [x.id, x])).values()], { onProgress })
-  return buildDeepMonthReport({ progress, media, month, lang })
-}
+// ───────────────────────────── client document (HTML, one <section class="pg"> per A4 page) ──
 
-// ── charts (inline SVG, print-safe) ─────────────────────────────────────────
-function ring(value, size = 132) {
-  const r = (size - 16) / 2, c = 2 * Math.PI * r, v = Math.max(0, Math.min(100, value))
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${v}%">
-    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="#e7eaf0" stroke-width="12"/>
-    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="#0b0f19" stroke-width="12" stroke-linecap="round" stroke-dasharray="${(c * v) / 100} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
-    <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-size="30" font-weight="700" fill="#0b0f19">${v}%</text></svg>`
+const TXT = {
+  ja: {
+    doc: 'ディープクリーニング 月次報告書', sub: 'Monthly Deep Cleaning Report', client: 'お客様', sama: '様',
+    month: '対象月', period: '対象期間', issued: '発行', summary: '今月のまとめ', done: '実施済み', programmed: '予定',
+    rate: '実施率', byStore: '店舗別 実施回数', timeline: '実施日（カレンダー）', visits: '回',
+    detail: '作業記録（訪問ごと）', store: '店舗', date: '日付', start: '開始時刻', service: '作業内容',
+    before: '作業前', after: '作業後', notes: 'ご報告事項', noNotes: '特記事項はございません。',
+    closing: '完了のご報告', sign: '責任者', issuer: '発行者', page: (a, b) => `${a} / ${b}`,
+    closeAll: '今月予定されていたディープクリーニングはすべて実施し、各訪問で作業前・作業後の写真を記録いたしました。',
+    closeSome: (d, p) => `今月は予定${p}件のうち${d}件のディープクリーニングを実施し、各訪問で作業前・作業後の写真を記録いたしました。`,
+    thanks: '今後とも何卒よろしくお願い申し上げます。', ofPlan: (d, p) => `予定 ${p} 件中 ${d} 件`,
+    dateFmt: d => { const [y, m, dd] = d.split('-').map(Number); const w = '日月火水木金土'[new Date(y, m - 1, dd).getDay()]; return `${y}年${m}月${dd}日（${w}）` },
+    monthFmt: m => { const [y, mm] = m.split('-').map(Number); return `${y}年${mm}月` },
+    periodFmt: (a, b) => `${a.replace(/-/g, '/')} 〜 ${b.replace(/-/g, '/')}`,
+    wd: ['日', '月', '火', '水', '木', '金', '土'], legend: '■ 実施日',
+  },
+  pt: {
+    doc: 'Relatório Mensal de Deep Cleaning', sub: 'Monthly Deep Cleaning Report', client: 'Cliente', sama: '',
+    month: 'Mês', period: 'Período', issued: 'Emitido em', summary: 'Resumo do mês', done: 'Realizados', programmed: 'Programados',
+    rate: '% cumprido', byStore: 'Visitas por loja', timeline: 'Dias com visita', visits: 'visitas',
+    detail: 'Detalhe por visita', store: 'Loja', date: 'Data', start: 'Hora de início', service: 'Serviço',
+    before: 'Antes', after: 'Depois', notes: 'Observações', noNotes: 'Sem observações.',
+    closing: 'Fechamento', sign: 'Responsável', issuer: 'Emitido por', page: (a, b) => `${a} / ${b}`,
+    closeAll: 'Neste mês, realizamos todas as limpezas profundas programadas, com registro fotográfico de antes e depois em cada visita.',
+    closeSome: (d, p) => `Neste mês, realizamos ${d} das ${p} limpezas profundas programadas, com registro fotográfico de antes e depois em cada visita.`,
+    thanks: 'Agradecemos a confiança.', ofPlan: (d, p) => `${d} de ${p} programados`,
+    dateFmt: d => { const [y, m, dd] = d.split('-').map(Number); const w = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][new Date(y, m - 1, dd).getDay()]; return `${String(dd).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y} (${w})` },
+    monthFmt: m => { const [y, mm] = m.split('-').map(Number); return `${['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][mm - 1]} de ${y}` },
+    periodFmt: (a, b) => `${a.split('-').reverse().join('/')} a ${b.split('-').reverse().join('/')}`,
+    wd: ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'], legend: '■ dia com visita',
+  },
+  en: {
+    doc: 'Monthly Deep Cleaning Report', sub: 'KuriPuro', client: 'Client', sama: '',
+    month: 'Month', period: 'Period', issued: 'Issued', summary: 'Month summary', done: 'Completed', programmed: 'Scheduled',
+    rate: 'Completion', byStore: 'Visits per store', timeline: 'Days with a visit', visits: 'visits',
+    detail: 'Visit details', store: 'Store', date: 'Date', start: 'Start time', service: 'Service',
+    before: 'Before', after: 'After', notes: 'Notes', noNotes: 'No notes.',
+    closing: 'Closing', sign: 'Person in charge', issuer: 'Issued by', page: (a, b) => `${a} / ${b}`,
+    closeAll: 'This month we carried out every scheduled deep cleaning, with before and after photos recorded at each visit.',
+    closeSome: (d, p) => `This month we carried out ${d} of the ${p} scheduled deep cleanings, with before and after photos recorded at each visit.`,
+    thanks: 'Thank you for your trust.', ofPlan: (d, p) => `${d} of ${p} scheduled`,
+    dateFmt: d => new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
+    monthFmt: m => new Date(`${m}-15T12:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }),
+    periodFmt: (a, b) => `${a} – ${b}`,
+    wd: ['S', 'M', 'T', 'W', 'T', 'F', 'S'], legend: '■ day with a visit',
+  },
 }
-function bars(rows, t) {
-  const max = Math.max(1, ...rows.map(r => r.times))
-  return `<div class="bars">${rows.map(r => {
-    const w = (r.times / max) * 100
-    const done = r.times ? (r.done / r.times) * 100 : 0
-    return `<div class="bar-row"><div class="bar-name">${esc(r.name)}</div><div class="bar-track" style="width:${w}%"><div class="bar-fill" style="width:${done}%"></div></div><div class="bar-num"><b>${r.done}</b> / ${r.times}</div></div>`
-  }).join('')}</div><div class="legend"><span><i class="lg-done"></i>${esc(t.done)}</span><span><i class="lg-plan"></i>${esc(t.planned)}</span></div>`
-}
+export const reportText = lang => TXT[lang] || TXT.ja
 
 const CSS = `
-*{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-body{margin:0;background:#e9edf3;color:#0b0f19;font-family:'Hiragino Sans','Noto Sans JP','Yu Gothic',Meiryo,-apple-system,'Segoe UI',sans-serif;font-size:12.5px;line-height:1.55}
-.page{background:#fff;width:210mm;min-height:297mm;margin:12px auto;padding:16mm 15mm;page-break-after:always;break-after:page}
-.page:last-child{page-break-after:auto;break-after:auto}
-.kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6b7280;font-weight:700}
-h1{font-size:26px;margin:6px 0 2px;letter-spacing:-.01em}h2{font-size:16px;margin:0 0 10px}h3{font-size:14px;margin:0}
-.sub{color:#4b5563;font-size:14px}.client{font-size:18px;font-weight:700;margin-top:18px}
-.hero{display:flex;gap:22px;align-items:center;border:1px solid #e7eaf0;border-radius:14px;padding:18px;margin:20px 0}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1}
-.kpi{border:1px solid #e7eaf0;border-radius:10px;padding:10px 12px}.kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums;line-height:1.1}.kpi span{font-size:11px;color:#6b7280}
-.block{margin-top:20px}.bars{display:flex;flex-direction:column;gap:7px}
-.bar-row{display:grid;grid-template-columns:38mm 1fr 18mm;align-items:center;gap:8px}.bar-name{font-size:12px;overflow-wrap:anywhere}
-.bar-track{height:12px;background:#e7eaf0;border-radius:6px;overflow:hidden;min-width:6px}.bar-fill{height:100%;background:#0b0f19;border-radius:6px}
-.bar-num{font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:#4b5563}.bar-num b{color:#0b0f19}
-.legend{display:flex;gap:14px;font-size:11px;color:#6b7280;margin-top:8px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}.lg-done{background:#0b0f19}.lg-plan{background:#e7eaf0}
-.store-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #0b0f19;padding-bottom:8px;margin-bottom:12px}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}.chip{border:1px solid #e7eaf0;border-radius:999px;padding:3px 10px;font-size:11.5px}.chip.ok{background:#0b0f19;color:#fff;border-color:#0b0f19}
-.svc{border:1px solid #e7eaf0;border-radius:12px;padding:12px;margin-bottom:12px;break-inside:avoid;page-break-inside:avoid}
-.svc-top{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:8px}.svc-when{font-size:12px;color:#4b5563;white-space:nowrap}.svc-when b{color:#0b0f19}
-.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}.side-label{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-bottom:4px}
-.photos{display:grid;grid-template-columns:repeat(2,1fr);gap:4px}.photos.one{grid-template-columns:1fr}
-.photos img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;display:block;background:#f1f3f7}
-.nophoto{border:1px dashed #d9dde6;border-radius:6px;aspect-ratio:4/3;display:grid;place-items:center;color:#9aa3b2;font-size:11px}
-.foot{margin-top:18px;font-size:10.5px;color:#6b7280;border-top:1px solid #e7eaf0;padding-top:8px;display:flex;justify-content:space-between;gap:12px}
-.empty{color:#6b7280;padding:18px;border:1px dashed #d9dde6;border-radius:12px;text-align:center}
-@page{size:A4;margin:0}@media print{body{background:#fff}.page{margin:0;width:auto;min-height:0}}
-@media screen and (max-width:820px){.page{width:auto;min-height:0;margin:8px;padding:18px}.hero{flex-direction:column;align-items:stretch}.kpis{grid-template-columns:1fr 1fr}.bar-row{grid-template-columns:30mm 1fr 14mm}}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#e9edf3}
+body{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,system-ui,-apple-system,"Segoe UI",sans-serif;color:#1b2536;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pg{width:794px;height:1123px;margin:0 auto 18px;background:#fff;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.bar{background:#1f3a5f;color:#fff;padding:14px 40px;display:flex;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.04em}
+.bar b{font-size:14px;letter-spacing:.02em}
+.body{flex:1;padding:30px 40px 0;display:flex;flex-direction:column;min-height:0}
+.foot{padding:12px 40px 18px;display:flex;justify-content:space-between;font-size:10px;color:#7a8699;border-top:1px solid #e3e8ef;margin:0 40px}
+.foot{padding-left:0;padding-right:0}
+h2{font-size:19px;color:#1f3a5f;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+h2:before{content:"";width:6px;height:22px;border-radius:3px;background:#2f6fde;display:inline-block}
+h3{font-size:13px;color:#46536a;margin:0 0 10px;font-weight:700;letter-spacing:.03em}
+/* cover */
+.cover{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:70px 64px 56px;background:linear-gradient(160deg,#1f3a5f 0%,#24497a 58%,#2f6fde 100%);color:#fff}
+.logo{display:flex;align-items:center;gap:14px}
+.logo .k{width:58px;height:58px;border-radius:16px;background:#2f6fde;border:2px solid rgba(255,255,255,.55);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#fff}
+.logo .nm{font-size:30px;font-weight:800;letter-spacing:.01em}
+.logo .by{font-size:12px;opacity:.75;margin-top:2px}
+.cover .ttl{font-size:38px;font-weight:800;line-height:1.25;margin-top:8px}
+.cover .st{font-size:15px;opacity:.8;margin-top:10px;letter-spacing:.05em}
+.cover .cl{background:#fff;color:#1b2536;border-radius:14px;padding:26px 30px;display:grid;grid-template-columns:110px 1fr;row-gap:12px;font-size:15px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.cover .cl span{color:#6a768a;font-size:13px;align-self:center}
+.cover .cl b{font-size:17px}
+.cover .cl .big{font-size:24px}
+/* summary */
+.kpis{display:grid;grid-template-columns:1fr 1fr 1.25fr;gap:14px;margin-bottom:26px}
+.kpi{border:1px solid #dfe5ee;border-radius:12px;padding:16px 18px;background:#f7f9fc}
+.kpi small{display:block;font-size:12px;color:#5d6a80;margin-bottom:6px}
+.kpi b{font-size:34px;color:#1f3a5f;line-height:1}
+.kpi b i{font-style:normal;font-size:15px;color:#5d6a80;margin-left:4px}
+.kpi.rate{background:#1f3a5f;border-color:#1f3a5f;color:#fff}
+.kpi.rate small{color:#c9d6ea}.kpi.rate b{color:#fff}
+.meter{height:10px;border-radius:5px;background:rgba(255,255,255,.22);margin-top:12px;overflow:hidden}
+.meter div{height:100%;background:#4ade80;border-radius:5px}
+.kpi.rate em{display:block;font-style:normal;font-size:11px;color:#c9d6ea;margin-top:7px}
+.bars{display:flex;flex-direction:column;gap:9px;margin-bottom:26px}
+.brow{display:grid;grid-template-columns:200px 1fr 46px;align-items:center;gap:12px;font-size:13px}
+.brow .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#2b3648}
+.brow .tr{height:20px;background:#eef2f7;border-radius:5px;overflow:hidden}
+.brow .tr div{height:100%;background:linear-gradient(90deg,#2f6fde,#4b8bf0);border-radius:5px}
+.brow .n{font-weight:700;color:#1f3a5f;text-align:right}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal .wd{font-size:11px;color:#7a8699;text-align:center;padding-bottom:2px}
+.cal .d{height:44px;border-radius:8px;border:1px solid #e3e8ef;background:#fbfcfe;font-size:12px;color:#9aa5b5;padding:5px 7px;position:relative}
+.cal .d.on{background:#e7f0ff;border-color:#9fc0f7;color:#1f3a5f;font-weight:700}
+.cal .d.on i{position:absolute;right:6px;bottom:5px;font-style:normal;font-size:11px;background:#2f6fde;color:#fff;border-radius:9px;min-width:18px;height:18px;line-height:18px;text-align:center;padding:0 4px}
+.cal .d.x{visibility:hidden}
+.lg{font-size:11px;color:#2f6fde;margin-top:8px}
+/* visit */
+.visit{border:1px solid #dfe5ee;border-radius:12px;padding:16px 18px 14px;margin-bottom:16px}
+.vh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.vh .s{font-size:17px;font-weight:800;color:#1f3a5f}
+.vh .sv{font-size:12px;color:#5d6a80;margin-top:3px}
+.vh .when{text-align:right;font-size:12px;color:#5d6a80;white-space:nowrap}
+.vh .when b{display:block;font-size:14px;color:#1b2536}
+.ph{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ph figure{position:relative;border-radius:9px;overflow:hidden;background:#eef2f7;height:250px}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph figcaption{position:absolute;left:8px;top:8px;background:rgba(18,32,55,.82);color:#fff;font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;letter-spacing:.04em}
+.ph figure.a figcaption{background:#16a34a}
+.nt{margin-top:11px;font-size:12px;line-height:1.65;color:#2b3648;background:#f7f9fc;border-radius:8px;padding:9px 12px}
+.nt span{display:block;font-size:11px;color:#6a768a;font-weight:700;margin-bottom:2px}
+.nt.empty{color:#8a95a6}
+/* closing */
+.close{border:1px solid #dfe5ee;border-radius:14px;padding:30px 32px;font-size:15px;line-height:1.9;background:#f7f9fc}
+.close .ok{font-size:44px;color:#16a34a;line-height:1;margin-bottom:12px}
+.sig{margin-top:40px;display:flex;justify-content:flex-end}
+.sig .box{min-width:330px;font-size:13px;text-align:right}
+.sig .ln{border-top:1px solid #1b2536;margin:4px 0 10px}
+.sig img{display:block;height:84px;margin:0 0 6px auto;object-fit:contain}
+.sig .blank{height:84px}
+.iss{margin-top:34px;font-size:12px;color:#5d6a80;line-height:1.7}
+@media print{html,body{background:#fff}.pg{margin:0;page-break-after:always;break-after:page}}
+@page{size:A4;margin:0}
 `
 
-/** Printable HTML (A4). `photoUrl` turns a storage path into a URL (default: public URL). */
-export function deepMonthReportHtml(report, { lang = 'ja', photoUrl = storagePublicUrl, issuedOn = '' } = {}) {
-  const t = deepReportText(lang)
-  const [y, m] = String(report.month).split('-').map(Number)
-  const tot = report.totals
-  const side = (label, paths) => `<div><div class="side-label">${esc(label)}</div>${paths.length
-    ? `<div class="photos${paths.length === 1 ? ' one' : ''}">${paths.slice(0, 4).map(p => `<img src="${esc(photoUrl(p))}" alt="${esc(label)}" loading="eager">`).join('')}</div>`
-    : `<div class="nophoto">${esc(t.noPhoto)}</div>`}</div>`
-  const svc = (s, withStore = false) => `<div class="svc"><div class="svc-top"><h3>${esc(withStore && s.store ? `${s.store} — ` : '')}${esc(s.label)}</h3>
-    <div class="svc-when">${esc(t.date)} <b>${esc(dayLabel(s.date, lang))}</b>${s.start ? ` · ${esc(t.start)} <b>${esc(s.start)}</b>` : ''}</div></div>
-    <div class="pair">${side(t.before, s.before)}${side(t.after, s.after)}</div></div>`
-  const foot = `<div class="foot"><span>${esc(QUOTE_ISSUER.company)} · KuriPuro</span><span>${esc(t.note)}</span></div>`
-  const cover = `<section class="page">
-    <div class="kicker">KuriPuro</div><h1>${esc(t.title)}</h1><div class="sub">${esc(t.month(y, m))}${issuedOn ? ` · ${esc(t.issued)} ${esc(issuedOn)}` : ''}</div>
-    <div class="client">${esc(report.client)}${t.to ? ` ${esc(t.to)}` : ''}</div>
-    <div class="hero">${ring(pct(tot))}<div class="kpis">
-      <div class="kpi"><b>${tot.done}</b><span>${esc(t.done)}</span></div><div class="kpi"><b>${tot.expected}</b><span>${esc(t.planned)}</span></div>
-      <div class="kpi"><b>${tot.scheduled}</b><span>${esc(t.scheduled)}</span></div><div class="kpi"><b>${tot.missing}</b><span>${esc(t.missing)}</span></div></div></div>
-    ${report.stores.length ? `<div class="block"><h2>${esc(t.byStore)}</h2>${bars(report.stores.map(s => ({ name: s.name, times: s.totals.expected, done: s.totals.done })), t)}</div>` : ''}
-    ${report.byItem.length ? `<div class="block"><h2>${esc(t.byItem)}</h2>${bars(report.byItem, t)}</div>` : ''}
-    ${!report.stores.some(s => s.services.length) && !report.extras.length ? `<div class="block empty">${esc(t.none)}</div>` : ''}
-    ${foot}</section>`
-  const storePages = report.stores.filter(s => s.services.length).map(s => `<section class="page">
-    <div class="store-head"><div><div class="kicker">${esc(t.store)}</div><h2 style="margin:2px 0 0;font-size:20px">${esc(s.name)}</h2></div><div class="sub"><b>${s.totals.done}</b> / ${s.totals.expected} · ${esc(t.month(y, m))}</div></div>
-    <div class="chips">${s.items.map(i => `<span class="chip${i.done >= i.times ? ' ok' : ''}">${esc(i.name)} ${i.done}/${i.times}</span>`).join('')}</div>
-    ${s.services.map(x => svc(x)).join('')}${foot}</section>`).join('')
-  const extraPage = report.extras.length ? `<section class="page"><div class="store-head"><h2 style="margin:0;font-size:20px">${esc(t.extra)}</h2></div>${report.extras.map(x => svc(x, true)).join('')}${foot}</section>` : ''
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(`${t.title} ${report.client} ${report.month}`)}</title><style>${CSS}</style></head><body>${cover}${storePages}${extraPage}</body></html>`
+/** How many visits fit on one page (two when notes are short). */
+function chunkVisits(visits) {
+  const pages = []
+  let cur = []
+  for (const v of visits) {
+    const long = (v.notes || '').length > 260
+    if (long) { if (cur.length) pages.push(cur); pages.push([v]); cur = []; continue }
+    cur.push(v)
+    if (cur.length === 2) { pages.push(cur); cur = [] }
+  }
+  if (cur.length) pages.push(cur)
+  return pages
 }
+
+/**
+ * Full client document. `images` maps a storage path → src to use (data URL after shrinking);
+ * when missing, `srcOf(path)` builds the public URL.
+ */
+export function deepMonthReportHtml(data, { lang = 'ja', clientName = OTP_NAME, issuedOn, signature, signer, issuer, srcOf = p => p, images = new Map() } = {}) {
+  const T = reportText(lang)
+  const src = p => images.get(p) || srcOf(p)
+  const visitPages = chunkVisits(data.visits)
+  const totalPages = 2 + visitPages.length + 1
+  let n = 0
+  const head = right => `<div class="bar"><b>KuriPuro</b><span>${esc(right)}</span></div>`
+  const foot = () => `<div class="foot"><span>${esc(T.doc)} · ${esc(clientName)}${T.sama ? ` ${T.sama}` : ''} · ${esc(T.monthFmt(data.month))}</span><span>${esc(T.page(++n, totalPages))}</span></div>`
+
+  n++
+  const cover = `<section class="pg"><div class="cover">
+  <div class="logo"><div class="k">K</div><div><div class="nm">KuriPuro</div><div class="by">by JBM</div></div></div>
+  <div><div class="ttl">${esc(T.doc)}</div><div class="st">${esc(T.sub)}</div></div>
+  <div class="cl">
+    <span>${esc(T.client)}</span><b class="big">${esc(clientName)}${T.sama ? ` ${T.sama}` : ''}</b>
+    <span>${esc(T.month)}</span><b>${esc(T.monthFmt(data.month))}</b>
+    <span>${esc(T.period)}</span><b>${esc(T.periodFmt(data.from, data.to))}</b>
+    ${issuedOn ? `<span>${esc(T.issued)}</span><b>${esc(T.dateFmt(issuedOn))}</b>` : ''}
+  </div></div></section>`
+
+  const max = Math.max(1, ...data.byStore.map(s => s.done))
+  const bars = data.byStore.map(s => `<div class="brow"><div class="nm">${esc(s.name)}</div><div class="tr"><div style="width:${Math.max(s.done ? 4 : 0, Math.round((s.done / max) * 100))}%"></div></div><div class="n">${s.done}</div></div>`).join('')
+  const [y, m] = data.month.split('-').map(Number)
+  const lead = new Date(y, m - 1, 1).getDay()
+  const cal = T.wd.map(w => `<div class="wd">${esc(w)}</div>`).join('')
+    + Array.from({ length: lead }, () => '<div class="d x"></div>').join('')
+    + data.days.map(d => `<div class="d${d.count ? ' on' : ''}">${d.day}${d.count ? `<i>${d.count}</i>` : ''}</div>`).join('')
+  const summary = `<section class="pg">${head(T.summary)}<div class="body">
+  <h2>${esc(T.summary)} — ${esc(T.monthFmt(data.month))}</h2>
+  <div class="kpis">
+    <div class="kpi"><small>${esc(T.done)}</small><b>${data.total.done}<i>${esc(T.visits)}</i></b></div>
+    <div class="kpi"><small>${esc(T.programmed)}</small><b>${data.total.programmed}<i>${esc(T.visits)}</i></b></div>
+    <div class="kpi rate"><small>${esc(T.rate)}</small><b>${data.total.pct}%</b><div class="meter"><div style="width:${Math.min(100, data.total.pct)}%"></div></div><em>${esc(T.ofPlan(data.total.done, data.total.programmed))}</em></div>
+  </div>
+  <h3>${esc(T.byStore)}</h3><div class="bars">${bars}</div>
+  <h3>${esc(T.timeline)}</h3><div class="cal">${cal}</div><div class="lg">${esc(T.legend)}</div>
+  </div>${foot()}</section>`
+
+  const visitHtml = v => `<div class="visit">
+  <div class="vh"><div><div class="s">${esc(v.store)}</div>${v.service ? `<div class="sv">${esc(T.service)}：${esc(serviceLabel(v.service, lang))}</div>` : ''}</div>
+  <div class="when">${esc(T.date)}<b>${esc(T.dateFmt(v.date))}</b>${v.start ? `${esc(T.start)} <b style="display:inline">${esc(v.start)}</b>` : ''}</div></div>
+  <div class="ph"><figure><img src="${esc(src(v.before))}" alt=""><figcaption>${esc(T.before)}</figcaption></figure><figure class="a"><img src="${esc(src(v.after))}" alt=""><figcaption>${esc(T.after)}</figcaption></figure></div>
+  <div class="nt${v.notes ? '' : ' empty'}"><span>${esc(T.notes)}</span>${v.notes ? esc(v.notes).replace(/\n/g, '<br>') : esc(T.noNotes)}</div>
+  </div>`
+  const detail = visitPages.map((list, i) => `<section class="pg">${head(T.detail)}<div class="body">${i === 0 ? `<h2>${esc(T.detail)}</h2>` : ''}${list.map(visitHtml).join('')}</div>${foot()}</section>`).join('')
+
+  const all = data.total.programmed > 0 && data.total.done >= data.total.programmed
+  const iss = issuer || {}
+  const closing = `<section class="pg">${head(T.closing)}<div class="body">
+  <h2>${esc(T.closing)}</h2>
+  <div class="close"><div class="ok">✓</div>${esc(all ? T.closeAll : T.closeSome(data.total.done, data.total.programmed))}<br>${esc(T.thanks)}</div>
+  <div class="sig"><div class="box">${signature ? `<img src="${esc(signature)}" alt="">` : '<div class="blank"></div>'}<div class="ln"></div>${esc(T.sign)}&nbsp;&nbsp;<b>${esc(signer || '')}</b></div></div>
+  <div class="iss">${esc(T.issuer)}：${esc([iss.company, iss.title && iss.name ? `${iss.title} ${iss.name}` : iss.name].filter(Boolean).join(' · '))}<br>${esc([iss.address, iss.phone, iss.email].filter(Boolean).join(' · '))}</div>
+  </div>${foot()}</section>`
+
+  return `<!doctype html><html lang="${esc(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=820"><title>${esc(T.doc)} · ${esc(clientName)} · ${esc(data.month)}</title><style>${CSS}</style></head><body>${cover}${summary}${detail}${closing}</body></html>`
+}
+
+/** Reason texts for the admin's internal list (never in the client file). */
+export const REASONS = {
+  no_before: ['No BEFORE photo', '作業前の写真なし', 'Sem foto de ANTES'],
+  no_after: ['No AFTER photo', '作業後の写真なし', 'Sem foto de DEPOIS'],
+  start_scheduled: ['Start was not recorded — the scheduled time is shown', '開始時刻の記録なし（予定時刻を表示）', 'Início não registrado — aparece o horário agendado'],
+  notes_trimmed: ['A sentence with time/duration/value was removed from the notes', '時間・金額を含む文を備考から削除', 'Uma frase com horário/duração/valor foi tirada das observações'],
+}
+REASONS.before_unreadable = ['The BEFORE photo could not be opened', '作業前の写真が開けません', 'A foto de ANTES não abre']
+REASONS.after_unreadable = ['The AFTER photo could not be opened', '作業後の写真が開けません', 'A foto de DEPOIS não abre']

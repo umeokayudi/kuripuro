@@ -1,7 +1,7 @@
 // v1.0.150 · Admin "作業報告書 / Relatórios de serviço": every report (draft, waiting for the
 // office, sent to the client), new report from a job or from a client, open the editor.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../hooks/useLang'
@@ -15,7 +15,6 @@ import { combinedReportsHtml, isOnThePlanet, loadClientDayReports } from '../lib
 import { openPrintHtml } from '../lib/openPrintHtml'
 import { useMediaZip } from '../components/MediaZipButton'
 import { jobsForClientPeriod } from '../lib/mediaZip'
-import { loadDeepMonthReport, deepMonthReportHtml } from '../lib/deepMonthReport'
 import '../components/work-report.css'
 
 const lastMonth = () => { const d = new Date(Date.now() + 9 * 3600e3); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
@@ -26,6 +25,7 @@ export default function WorkReports() {
   const { tr } = useLang()
   const { user } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [items, setItems] = useState(null)
   const [jobs, setJobs] = useState([])
   const [clients, setClients] = useState([])
@@ -41,12 +41,6 @@ export default function WorkReports() {
   const [dClient, setDClient] = useState('')
   const [dDate, setDDate] = useState(() => daysAgo(0))
   const [dBusy, setDBusy] = useState(false)
-  // v1.0.234 · monthly Deep Cleaning report (chart + before/after + start time; never end time, duration or values)
-  const [mClient, setMClient] = useState('')
-  const [mMonth, setMMonth] = useState(lastMonth())
-  const [mLang, setMLang] = useState('ja')
-  const [mBusy, setMBusy] = useState('')
-  useEffect(() => { if (!mClient) { const otp = clients.find(c => isOnThePlanet(c.company_name)); if (otp) setMClient(otp.id) } }, [clients]) // eslint-disable-line react-hooks/exhaustive-deps
   // v1.0.234 · every photo and video of a client in a period, one ZIP
   const [zClient, setZClient] = useState('')
   const [zFrom, setZFrom] = useState(() => monthRange(lastMonth()).from)
@@ -57,14 +51,6 @@ export default function WorkReports() {
       const c = clients.find(x => x.id === zClient)
       zip.run(await jobsForClientPeriod(zClient, zFrom, zTo), `kuripuro ${c?.company_name || ''} ${zFrom} a ${zTo}`)
     } catch (e) { toast.error(e.message) }
-  }
-  const makeDeepMonth = async () => {
-    setMBusy('…')
-    try {
-      const report = await loadDeepMonthReport(mClient, mMonth, { lang: mLang, onProgress: (n, total) => setMBusy(`${n}/${total}`) })
-      openPrintHtml(deepMonthReportHtml(report, { lang: mLang, issuedOn: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' }) }))
-    } catch (e) { toast.error(e.message) }
-    setMBusy('')
   }
   const author = useMemo(() => ({ name: user?.name || '' }), [user?.name])
 
@@ -153,19 +139,9 @@ export default function WorkReports() {
           <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('The system gathers the month\'s services and every photo/video, store by store.', '当月の作業と写真・動画を店舗ごとに自動で集めます。', 'O sistema junta os serviços do mês e todas as fotos/vídeos, loja por loja.')}</small>
         </div>
         <div>
-          <b>{tr('Monthly Deep Cleaning report (PDF with charts)', 'ディープクリーニング月次報告書（グラフ付きPDF）', 'Relatório mensal de Deep Cleaning (PDF com gráficos)')}</b>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <select value={mClient} onChange={e => setMClient(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }} aria-label={tr('Client', '顧客', 'Cliente')}>
-              <option value="">{tr('Choose the client', '顧客を選択', 'Escolha o cliente')}</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
-            </select>
-            <input type="month" value={mMonth} onChange={e => setMMonth(e.target.value)} aria-label={tr('Month', '月', 'Mês')} style={{ font: 'inherit', fontSize: 13, padding: '7px 8px', border: '1px solid var(--border)', borderRadius: 8 }} />
-            <select value={mLang} onChange={e => setMLang(e.target.value)} aria-label={tr('Language', '言語', 'Idioma')} style={{ flex: '0 0 auto' }}>
-              <option value="ja">日本語</option><option value="pt">Português</option><option value="en">English</option>
-            </select>
-            <button type="button" className="btn btn-sm btn-primary" disabled={!mClient || !mMonth || !!mBusy} onClick={makeDeepMonth}>{mBusy || tr('Make PDF', 'PDF作成', 'Gerar PDF')}</button>
-          </div>
-          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('Done against the contract, a chart per store and per service, then each Deep service with its day, start time and before/after photos. It never shows the finish time, how long it took or any value.', '契約回数に対する実施状況、店舗別・作業別のグラフ、各作業の実施日・開始時刻・作業前後の写真。終了時刻・所要時間・金額は記載しません。', 'Feitos contra o contrato, gráfico por loja e por serviço, depois cada Deep com o dia, a hora de início e as fotos de antes e depois. Nunca mostra hora de término, duração nem valores.')}</small>
+          <b>{tr('Monthly Deep Cleaning report — On The Planet', 'ディープ月次報告書 — On The Planet', 'Relatório mensal de Deep — On The Planet')}</b>
+          <a className="btn btn-sm btn-primary" href="/deep-report" onClick={e => { e.preventDefault(); navigate('/deep-report') }} style={{ alignSelf: 'flex-start' }}>{tr('Open', '開く', 'Abrir')} ›</a>
+          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('PDF of the month with charts and before/after photos of each deep visit (start time only, no values).', '今月のPDF：グラフと訪問ごとの作業前後写真（開始時刻のみ・金額なし）。', 'PDF do mês com gráficos e fotos de antes/depois de cada deep (só hora de início, sem valores).')}</small>
         </div>
         <div>
           <b>{tr('Photos and videos of a client in a period (one ZIP)', '期間内の写真・動画をまとめてダウンロード（ZIP）', 'Fotos e vídeos de um cliente no período (um ZIP)')}</b>

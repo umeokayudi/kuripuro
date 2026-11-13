@@ -1,6 +1,6 @@
 import { setDbToken } from './supabase'
 
-// v1.0.239 · "Ver como" do dono — browser side. The server (api/_owner-view.js) decides who may
+// v1.0.240 · "Ver como" do dono — browser side. The server (api/_owner-view.js) decides who may
 // switch; this file only asks it and swaps the saved login (kp_user) for the account it returns.
 
 const VIEW_KEY = 'kp_owner_view' // { role, name } while the owner is viewing as a linked account
