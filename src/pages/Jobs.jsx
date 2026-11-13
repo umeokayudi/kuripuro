@@ -10,6 +10,7 @@ import {
 import { useLang, fill, localeOf } from '../hooks/useLang'
 import JobPhotos from '../components/JobPhotos'
 import JobVideos from '../components/JobVideos'
+import DownloadAllMedia from '../components/DownloadAllMedia'
 import PhotoLightbox from '../components/PhotoLightbox'
 import toast from 'react-hot-toast'
 import { googleCalendarUrl } from '../lib/calendar'
@@ -329,6 +330,7 @@ export default function Jobs() {
                     onPhotoClick={setLightbox}
                   />
                   <JobVideos jobId={j.id} lazy style={{ marginTop: 8 }} />
+                  <DownloadAllMedia job={j} date={j.scheduled_date} place={String(j.title || j.client_name || '').replace(/ — .*/, '')} employee={j.employee_name} style={{ marginTop: 8, marginRight: 6 }} />
                   <Link to={`/work-reports?job=${j.id}`} className="btn btn-sm" style={{ marginTop: 8, display: 'inline-flex' }}>📄 {tr('Service report', '作業報告書', 'Relatório de serviço')}</Link>
                   {' '}<QuickReportButton job={j} className="btn btn-sm btn-primary" />
                 </div>

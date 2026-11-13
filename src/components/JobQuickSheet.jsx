@@ -10,6 +10,7 @@ import { serviceCheck } from '../lib/dayCheck'
 import { serviceLabel } from '../lib/dayPanel'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import './jobQuickSheet.css'
+import DownloadAllMedia from './DownloadAllMedia'
 
 const STATUS = {
   done: ['done', L => L('Done', '完了', 'Feito')],
@@ -52,6 +53,7 @@ function ServiceBlock({ s, by, L, actions, onChanged, onPhoto }) {
       )}
       <div className="jqs-acts">
         {c.done && !s.coveredBy && <QuickReportButton job={j} className="jqs-btn primary" label={L('Open report', '報告書を開く', 'Abrir relatório')} />}
+        {(j.photo_start_url || j.photo_end_url || c.done) && <DownloadAllMedia job={j} className="jqs-btn" date={j.scheduled_date} place={s.store || String(j.title || j.client_name || '').replace(/ — .*/, '')} employee={j.employee_name || s.assigned} />}
         {actions && !c.done && s.assignedId && (s.status === 'not_started' || s.status === 'late') && !s.startedAt && <JaFizButton job={j} className="jqs-btn" label={`✓ ${L('Already done', 'もう済んだ', 'Já fiz')}`} onDone={onChanged} />}
         {!c.done && <span className="jqs-muted">{L('The report appears when the service is finished.', '作業完了後に報告書が出ます。', 'O relatório aparece quando o serviço terminar.')}</span>}
       </div>

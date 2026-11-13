@@ -25,6 +25,7 @@ import { getCleaningType } from '../lib/cleaningType'
 import { fill, pickLang } from '../hooks/useLang'
 import JobPhotos from './JobPhotos'
 import JobVideos from './JobVideos'
+import DownloadAllMedia from './DownloadAllMedia'
 import SignatureImage from './SignatureImage'
 
 const box = { background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px' }
@@ -211,7 +212,9 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
       </Section>
 
       {/* 3 · media */}
-      <Section title={L('Service media', '作業メディア', 'Mídia do serviço')}>
+      <Section title={L('Service media', '作業メディア', 'Mídia do serviço')}
+        right={row.job_id ? <DownloadAllMedia job={{ id: row.job_id, photo_start_url: job?.photo_start_url || row.photo_before_url, photo_end_url: job?.photo_end_url || row.photo_after_url }}
+          date={row.report_date} place={loc} employee={row.employee_name} /> : null}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
           {[['before', tr.before, row.photo_before_url], ['after', tr.after, row.photo_after_url]].map(([k, label, url]) => (
             <div key={k} style={box}>

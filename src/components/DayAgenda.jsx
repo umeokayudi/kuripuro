@@ -22,6 +22,7 @@ import { gradeJobPhoto, aiIssueRows } from '../lib/photoAi'
 import { askConfirm, confirmAndRun } from './ConfirmDialog'
 import ProgressChart from './ProgressChart'
 import JobVideos from './JobVideos'
+import DownloadAllMedia from './DownloadAllMedia'
 import JobPhotos from './JobPhotos'
 import PhotoLightbox from './PhotoLightbox'
 import EmployeePayEdit from './EmployeePayEdit'
@@ -543,6 +544,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
         </div>
       )}
       {job.status === 'completed' && <JobVideos jobId={job.id} lazy name={`${job.scheduled_date || ''}_${String(job.title || job.client_name || '').replace(/ — .*/, '')}_${job.employee_name || ''}`} style={{ marginTop: 8 }} />}
+      {(job.status === 'completed' || job.photo_start_url || job.photo_end_url) && <DownloadAllMedia job={job} date={job.scheduled_date} place={String(job.title || job.client_name || '').replace(/ — .*/, '')} employee={job.employee_name} style={{ marginTop: 8, marginLeft: 6 }} />}
 
       <div className="ag-actions">
         <select className="ag-select" style={{ minHeight: 30, padding: '4px 8px', fontSize: 12 }} value={job.status} onChange={e => onStatus(job, e.target.value)} aria-label={tr('Status', 'ステータス', 'Status')}>
