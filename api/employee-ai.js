@@ -150,7 +150,7 @@ ${workOnlyRule(responseLanguage)}`
     const baseLength = contents.length
     contents.push(...readContinuation(req.body.continuation))
 
-    const { reply, toolLog, incomplete } = await runToolLoop({
+    const { reply, toolLog, incomplete, usage } = await runToolLoop({
       contents,
       tools: TOOLS,
       systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -160,8 +160,8 @@ ${workOnlyRule(responseLanguage)}`
     })
 
     const continuation = incomplete ? packContinuation(contents, baseLength) : null
-    if (continuation) return res.status(200).json({ reply: '', toolLog, incomplete: true, continuation })
-    res.status(200).json({ reply, toolLog })
+    if (continuation) return res.status(200).json({ reply: '', toolLog, incomplete: true, continuation, usage })
+    res.status(200).json({ reply, toolLog, usage })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

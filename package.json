@@ -59,6 +59,7 @@
     "test:offer-text": "node scripts/test-offer-text.mjs",
     "test:ai-guard": "node scripts/test-ai-guard.mjs",
     "test:tool-loop": "node scripts/test-tool-loop.mjs",
+    "test:ai-muse": "node scripts/test-ai-muse.mjs",
     "test:gemini-thinking": "node scripts/test-gemini-thinking.mjs",
     "test:employee-ai-pay": "node scripts/test-employee-ai-pay.mjs",
     "test:spot-contract": "node scripts/test-spot-contract.mjs",
@@ -83,6 +84,7 @@
     "test:visible-poll": "node scripts/test-visible-poll.mjs"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@supabase/supabase-js": "^2.39.0",
     "heic2any": "^0.0.4",
     "html2canvas": "^1.4.1",

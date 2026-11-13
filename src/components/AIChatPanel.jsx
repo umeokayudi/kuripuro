@@ -7,6 +7,7 @@ import { loadChatHistory, saveChatHistory } from '../lib/aiChatHistory'
 import { useLang, fill } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { prepareImageForUpload } from '../lib/imageUpload'
+import { toMp3 } from '../lib/audioToMp3.js'
 
 function formatText(text) {
   if (!text) return null
@@ -118,7 +119,7 @@ function buttonsOf(toolLog, commands) {
 // Requests still running per chat (survive the panel closing).
 const PENDING = new Map()
 
-export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0, context = '', commands = null, historyId, welcomeText, hideHero = false, initialPrompt = '', pendingPrompt = null }) {
+export default function AIChatPanel({ compact = false, mode = 'admin', employeeId, employeeName, dark = false, suggestions = [], newChatId = 0, context = '', commands = null, historyId, welcomeText, hideHero = false, initialPrompt = '', pendingPrompt = null, onUsage = null }) {
   const navigate = useNavigate()
   // v1.0.125 · the Dashboard keeps its own conversation (historyId) and sends what it shows as context.
   const historyKey = historyId || employeeId
@@ -249,8 +250,8 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     let data
     try { data = await resp.json() } catch {
       const unavailable = lang === 'ja'
-        ? 'AIサーバーに接続できません。Vercel Functions と GEMINI_API_KEY の設定を確認してください。'
-        : 'Não consegui conectar ao servidor de IA. Verifique as Vercel Functions e a configuração GEMINI_API_KEY.'
+        ? 'AIサーバーに接続できません。しばらくしてからもう一度お試しください。'
+        : 'Não consegui conectar ao servidor de IA. Tente de novo em instantes.'
       throw new Error(unavailable)
     }
     if (!resp.ok || data.error) throw new Error(data.error || `Error ${resp.status}`)
@@ -265,6 +266,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
   // back so it carries on: the person never has to split a big request into pieces.
   const askAI = async (allMessages) => {
     let data = await callAPI(allMessages)
+    if (data.usage) onUsage?.(data.usage)
     const toolLog = [...(data.toolLog || [])]
     let part = 1
     try {
@@ -272,6 +274,7 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
         part += 1
         setProgressPart(part)
         data = await callAPI(allMessages, { continuation: data.continuation, proposedToken: data.proposedToken })
+        if (data.usage) onUsage?.(data.usage)
         toolLog.push(...(data.toolLog || []))
       }
     } finally {
@@ -308,9 +311,10 @@ export default function AIChatPanel({ compact = false, mode = 'admin', employeeI
     stopRecordingStream()
   }, [])
 
-  const transcribeRecording = async (blob) => {
+  const transcribeRecording = async (recorded) => {
     setTranscribing(true)
     try {
+      const blob = await toMp3(recorded)
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(String(reader.result).split(',')[1] || '')

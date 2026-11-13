@@ -126,7 +126,7 @@ export default async function handler(req, res) {
     const data = await aiGenerate({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 2500 },
-    })
+    }, { heavy: true, timeoutMs: 50000 }) // owner's full report analysis → heavy model (Muse Wonder)
 
     const fallback = locale === 'ja' ? '（分析なし）' : locale === 'pt' ? '(sem análise)' : '(no analysis)'
     const analysis = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || fallback
