@@ -15,6 +15,7 @@ import { combinedReportsHtml, isOnThePlanet, loadClientDayReports } from '../lib
 import { openPrintHtml } from '../lib/openPrintHtml'
 import { useMediaZip } from '../components/MediaZipButton'
 import { jobsForClientPeriod } from '../lib/mediaZip'
+import { useCompanyStores, storesOfCompany } from '../lib/companyStores'
 import '../components/work-report.css'
 
 const lastMonth = () => { const d = new Date(Date.now() + 9 * 3600e3); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7) }
@@ -38,8 +39,11 @@ export default function WorkReports() {
   const [pClient, setPClient] = useState('')
   const [pMonth, setPMonth] = useState(lastMonth)
   // v1.0.181 · optional "um PDF só": all reports of one client (On The Planet by default) on one day
+  const companyStores = useCompanyStores()
   const [dClient, setDClient] = useState('')
   const [dDate, setDDate] = useState(() => daysAgo(0))
+  const dStores = dClient ? storesOfCompany(companyStores, dClient) : []
+  const oneDStore = dStores.length === 1 ? dStores[0] : ''
   const [dBusy, setDBusy] = useState(false)
   // v1.0.234 · every photo and video of a client in a period, one ZIP
   const [zClient, setZClient] = useState('')
@@ -157,7 +161,10 @@ export default function WorkReports() {
           <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('One folder per service (date + store), files named before / after / video. Very large periods come in more than one ZIP.', '作業ごとに1フォルダ（日付＋店舗）。大きい期間は複数のZIPに分かれます。', 'Uma pasta por serviço (data + loja), arquivos com nome antes / depois / vídeo. Períodos muito grandes saem em mais de um ZIP.')}</small>
         </div>
         <div>
-          <b>📑 {tr('One PDF: all stores of a client on a day', '1日分・全店舗を1つのPDFに', 'Um PDF só: todas as lojas do cliente no dia')}</b>
+          {/* v1.0.252 · cliente de 1 loja: nada de "todas as lojas" */}
+          <b>📑 {oneDStore
+            ? tr(`One PDF of the day: ${oneDStore}`, `1日分を1つのPDFに：${oneDStore}`, `Um PDF do dia: ${oneDStore}`)
+            : tr('One PDF: all stores of a client on a day', '1日分・全店舗を1つのPDFに', 'Um PDF só: todas as lojas do cliente no dia')}</b>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <select value={dClient} onChange={e => setDClient(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }}>
               <option value="">{tr('Choose the client', '顧客を選択', 'Escolha o cliente')}</option>
@@ -166,7 +173,7 @@ export default function WorkReports() {
             <input type="date" value={dDate} onChange={e => setDDate(e.target.value)} style={{ font: 'inherit', fontSize: 13, padding: '7px 8px', border: '1px solid var(--border)', borderRadius: 8 }} />
             <button type="button" className="btn btn-sm btn-primary" disabled={!dClient || !dDate || dBusy} onClick={makeDayPdf}>{dBusy ? '…' : `📑 ${tr('Make PDF', 'PDF作成', 'Gerar PDF')}`}</button>
           </div>
-          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('Optional. A cover with the list of stores, then each store\'s report on its own page. The separate reports stay as they are.', '任意。表紙に店舗一覧、その後に店舗ごとの報告書を1ページずつ。個別の報告書はそのまま残ります。', 'Opcional. Capa com a lista de lojas e depois o relatório de cada loja numa página. Os relatórios separados continuam iguais.')}</small>
+          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{oneDStore ? tr('Optional. A cover, then each service report on its own page. The separate reports stay as they are.', '任意。表紙のあと、作業報告書を1ページずつ。個別の報告書はそのまま残ります。', 'Opcional. Capa e depois o relatório de cada serviço numa página. Os relatórios separados continuam iguais.') : tr('Optional. A cover with the list of stores, then each store\'s report on its own page. The separate reports stay as they are.', '任意。表紙に店舗一覧、その後に店舗ごとの報告書を1ページずつ。個別の報告書はそのまま残ります。', 'Opcional. Capa com a lista de lojas e depois o relatório de cada loja numa página. Os relatórios separados continuam iguais.')}}</small>
         </div>
       </div>
 

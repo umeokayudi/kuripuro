@@ -25,14 +25,15 @@ export function groupByClientDay(reports, { min = 2 } = {}) {
     map.get(key).reports.push(r)
   }
   return [...map.values()]
+    .map(g => ({ ...g, stores: new Set(g.reports.map(r => storeOf(r).trim().toLowerCase())).size })) // v1.0.252 · lojas distintas
     .filter(g => g.reports.length >= min)
     .sort((a, b) => b.date.localeCompare(a.date) || (isOnThePlanet(b.client_name) - isOnThePlanet(a.client_name)) || a.client_name.localeCompare(b.client_name))
 }
 
 const COVER = {
-  ja: { doc: '作業報告書（店舗まとめ）', date: '作業日', stores: '店舗', store: '店舗', service: '作業内容', who: '担当', photos: '写真', sama: '様', n: n => `${n}店舗`, intro: (c, d) => `いつも大変お世話になっております。KuriPuroでございます。${d}に${c ? `${c}様の各店舗で` : ''}実施いたしました清掃作業につきまして、店舗ごとの作業報告書を下記の通りまとめてご報告申し上げます。` },
-  en: { doc: 'Service reports (all stores)', date: 'Service date', stores: 'Stores', store: 'Store', service: 'Service', who: 'Done by', photos: 'Photos', sama: '', n: n => `${n} stores`, intro: (c, d) => `Below are the service reports of every ${c ? `${c} ` : ''}store cleaned on ${d}, one store per page.` },
-  pt: { doc: 'Relatórios de serviço (todas as lojas)', date: 'Data', stores: 'Lojas', store: 'Loja', service: 'Serviço', who: 'Feito por', photos: 'Fotos', sama: '', n: n => `${n} lojas`, intro: (c, d) => `Seguem os relatórios de serviço de todas as lojas ${c ? `${c} ` : ''}limpas em ${d}, uma loja por página.` },
+  ja: { docOne: '作業報告書', nOne: n => `${n}件`, introOne: (c, d, st) => `いつも大変お世話になっております。KuriPuroでございます。${d}に${c ? `${c}様` : ''}${st}で実施いたしました清掃作業につきまして、作業報告書を下記の通りご報告申し上げます。`, doc: '作業報告書（店舗まとめ）', date: '作業日', stores: '店舗', store: '店舗', service: '作業内容', who: '担当', photos: '写真', sama: '様', n: n => `${n}店舗`, intro: (c, d) => `いつも大変お世話になっております。KuriPuroでございます。${d}に${c ? `${c}様の各店舗で` : ''}実施いたしました清掃作業につきまして、店舗ごとの作業報告書を下記の通りまとめてご報告申し上げます。` },
+  en: { docOne: 'Service reports', nOne: n => `${n} ${n === 1 ? 'service' : 'services'}`, introOne: (c, d, st) => `Below are the service reports of ${c ? `${c} · ` : ''}${st}, cleaned on ${d}.`, doc: 'Service reports (all stores)', date: 'Service date', stores: 'Stores', store: 'Store', service: 'Service', who: 'Done by', photos: 'Photos', sama: '', n: n => `${n} stores`, intro: (c, d) => `Below are the service reports of every ${c ? `${c} ` : ''}store cleaned on ${d}, one store per page.` },
+  pt: { docOne: 'Relatórios de serviço', nOne: n => `${n} ${n === 1 ? 'serviço' : 'serviços'}`, introOne: (c, d, st) => `Seguem os relatórios de serviço de ${c ? `${c} · ` : ''}${st}, limpeza de ${d}.`, doc: 'Relatórios de serviço (todas as lojas)', date: 'Data', stores: 'Lojas', store: 'Loja', service: 'Serviço', who: 'Feito por', photos: 'Fotos', sama: '', n: n => `${n} lojas`, intro: (c, d) => `Seguem os relatórios de serviço de todas as lojas ${c ? `${c} ` : ''}limpas em ${d}, uma loja por página.` },
 }
 const locale = lang => (lang === 'ja' ? 'ja-JP' : lang === 'pt' ? 'pt-BR' : 'en-US')
 const storeOf = r => r.location || r.fields?.place || r.title || '—'
@@ -47,7 +48,10 @@ export function combinedReportsHtml(reports, { clientName, date, lang, period } 
   const list = [...(reports || [])].filter(isServiceReport).sort((a, b) => String(a.work_date || '').localeCompare(String(b.work_date || '')) || storeOf(a).localeCompare(storeOf(b), 'ja'))
   if (!list.length) return ''
   const lg = lang || list[0].lang || 'ja'
-  const L = COVER[lg] || COVER.ja
+  const L0 = COVER[lg] || COVER.ja
+  // v1.0.252 · empresa com 1 loja só: nada de "todas as lojas" — título e texto falam da loja
+  const oneStore = new Set(list.map(r => storeOf(r).trim().toLowerCase())).size === 1
+  const L = oneStore ? { ...L0, doc: L0.docOne, n: L0.nOne, intro: (c, d) => L0.introOne(c, d, storeOf(list[0])) } : L0
   const client = clientName ?? (list[0].client_name || '')
   const mixed = new Set(list.map(r => r.client_name || '')).size > 1
   const day = date || list[0].work_date

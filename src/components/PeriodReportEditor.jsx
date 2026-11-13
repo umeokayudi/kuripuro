@@ -136,7 +136,7 @@ function Body({ reportId, client, from, to, author, onClose, onSaved }) {
               <label className="wr-grid" style={{ gridTemplateColumns: '1fr' }}><span style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('Title', 'タイトル', 'Título')}</span><input value={r.title || ''} onChange={e => set({ title: e.target.value })} /></label>
               <AiText value={r.summary} onChange={v => set({ summary: v })} field="summary" lang={r.lang} rows={3} context={`${r.client_name} · ${r.from}〜${r.to} · ${total} services`} />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 12.5, color: 'var(--text2)' }}>
-                <span>{r.stores.length} {tr('stores', '店舗', 'lojas')} · {total} {tr('services', '件', 'serviços')} · {periodMediaCount(r)} {tr('photos/videos', '写真・動画', 'fotos/vídeos')}</span>
+                <span>{r.stores.length === 1 ? `🏪 ${r.stores[0].name}` : `${r.stores.length} ${tr('stores', '店舗', 'lojas')}`} · {total} {tr('services', '件', 'serviços')} · {periodMediaCount(r)} {tr('photos/videos', '写真・動画', 'fotos/vídeos')}</span>
                 <button type="button" className="btn btn-sm" disabled={!!busy} onClick={refresh} style={{ marginLeft: 'auto' }}>{busy === 'refresh' ? `… ${progress ? `${progress.d}/${progress.n}` : ''}` : `↻ ${tr('Update with new services and media', '新しい作業・写真で更新', 'Atualizar com serviços e mídias novos')}`}</button>
               </div>
             </section>

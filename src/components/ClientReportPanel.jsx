@@ -8,6 +8,7 @@ import { showPrintOverlay } from '../lib/openPrintHtml'
 import { isTestJob } from '../lib/testData'
 import { tokyoToday } from '../lib/dates'
 import { useLang, pickLang } from '../hooks/useLang'
+import { hasManyStores, uniqueStores } from '../lib/companyStores'
 
 const lastDay = m => { const [y, mo] = m.split('-').map(Number); return `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}` }
 
@@ -21,7 +22,7 @@ export default function ClientReportPanel({ client, onClose }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    supabase.from('locations').select('name').eq('client_id', client.id).then(({ data }) => setStores((data || []).map(l => l.name).filter(Boolean)))
+    supabase.from('locations').select('name').eq('client_id', client.id).then(({ data }) => setStores(uniqueStores((data || []).map(l => l.name))))
   }, [client.id])
 
   const generate = async () => {
@@ -35,7 +36,9 @@ export default function ClientReportPanel({ client, onClose }) {
     if (error) { toast.error(error.message); return }
     let rows = clientReportRows((data || []).filter(j => !isTestJob(j)))
     if (store) rows = rows.filter(r => r.place === store)
-    const name = store ? `${client.company_name} · ${store}` : client.company_name
+    // v1.0.252 · 1 loja: o relatório sai com o nome do local único (mesmos serviços de antes)
+    const only = stores.length === 1 ? stores[0] : ''
+    const name = (store || only) ? `${client.company_name} · ${store || only}` : client.company_name
     showPrintOverlay(clientReportHtml({ clientName: name, from, to, rows, lang: reportLang }))
   }
 
@@ -45,10 +48,12 @@ export default function ClientReportPanel({ client, onClose }) {
       <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>{L('Shows day, store, type of service and who did it. No times, values or internal notes.', '日付・店舗・作業内容・担当のみ。時間・金額・社内メモは表示しません。', 'Mostra dia, loja, tipo de serviço e quem fez. Sem horários, valores ou notas internas.')}</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <input type="month" value={month} onChange={e => setMonth(e.target.value)} />
-        <select value={store} onChange={e => setStore(e.target.value)}>
-          <option value="">{L('All stores', '全店舗', 'Todas as lojas')}</option>
-          {stores.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {hasManyStores(stores) ? (
+          <select value={store} onChange={e => setStore(e.target.value)}>
+            <option value="">{L('All stores', '全店舗', 'Todas as lojas')}</option>
+            {stores.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        ) : stores.length === 1 ? <b style={{ fontSize: 13 }}>🏪 {stores[0]}</b> : null}
         <select value={reportLang} onChange={e => setReportLang(e.target.value)}>
           <option value="ja">日本語</option><option value="en">English</option><option value="pt">Português</option>
         </select>
