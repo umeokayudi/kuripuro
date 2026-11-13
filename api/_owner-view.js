@@ -31,6 +31,13 @@ const LOG_DIR = 'owner-view/log'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ROLES = ['admin', 'employee', 'salesperson']
 
+// v1.0.251 · the owner's login(s), same list the read-only "Ver como…" uses (api/_sales-data.js).
+// Only an admin with one of these e-mails can be (or become) the owner; anything else is inert.
+export function ownerEmails() {
+  return String(process.env.OWNER_EMAILS || 'admin@kuripuro.com').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
+}
+const isOwnerEmail = email => ownerEmails().includes(String(email || '').trim().toLowerCase())
+
 function ownerKey() {
   const value = process.env.SALES_SESSION_SECRET
   if (!value || value.length < 32) throw new Error('SALES_SESSION_SECRET deve ter pelo menos 32 caracteres.')
@@ -168,14 +175,16 @@ export default async function handler(req, res) {
 
   try {
     const db = salesDb()
-    const cfg = await readOwnerConfig(db)
+    let cfg = await readOwnerConfig(db)
+    // A config whose owner is not (or no longer) an owner login does nothing and can be claimed again.
+    if (cfg && !isOwnerEmail((await loadAdmin(db, cfg.owner_admin_id))?.email)) cfg = null
     const owner = ownerBehind(req, session, cfg)
 
     // ── GET status: everyone may ask; non-owners only learn "no" ──
     if (req.method === 'GET' && op === 'status') {
       if (!owner) {
         // An admin may claim ownership only while nobody owns it yet.
-        return res.status(200).json({ isOwner: false, canClaim: session.role === 'admin' && !cfg })
+        return res.status(200).json({ isOwner: false, canClaim: session.role === 'admin' && !cfg && isOwnerEmail(session.email) })
       }
       const [emp, seller, ownerAdmin] = await Promise.all([
         cfg.employee_id ? loadEmployee(db, cfg.employee_id) : null,
@@ -203,12 +212,12 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
     const body = req.body || {}
 
-    // ── POST claim: the first admin to set it makes HIS OWN login the owner. Locked afterwards. ──
+    // ── POST claim: the owner login (OWNER_EMAILS) makes ITSELF the owner, by id. Locked afterwards. ──
     if (op === 'claim') {
       if (session.role !== 'admin') return res.status(403).json({ error: 'Só um administrador.' })
       if (cfg) return res.status(409).json({ error: 'A conta do dono já foi definida. Só ela pode mudar as contas vinculadas.' })
       const me = await loadAdmin(db, session.id)
-      if (!me) return res.status(403).json({ error: 'Administrador não encontrado.' })
+      if (!me || !isOwnerEmail(me.email)) return res.status(403).json({ error: 'Só a conta do dono.' })
       const next = { owner_admin_id: me.id, employee_id: null, salesperson_id: null, updated_at: new Date().toISOString(), updated_by: me.id }
       await writeOwnerConfig(db, next)
       await writeLog(db, { at: next.updated_at, owner_id: me.id, owner_name: me.name, action: 'claim', ip: clientIp(req) }).catch(() => {})

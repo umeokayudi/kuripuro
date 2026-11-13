@@ -1,6 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { homeLogoProps } from '../lib/homeLogo'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { isOwner } from '../lib/viewAs'
+import { OwnerSwitchButtons } from './OwnerView'
 import { TIME_OFF_CHANGED } from '../lib/timeOff'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { fetchPendingCounts, PENDING_CHANGED } from '../lib/adminPending'
@@ -10,6 +12,8 @@ import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
 
 import LanguageToggle from './LanguageToggle'
+
+const ViewAsPicker = lazy(() => import('./ViewAs'))
 
 const groups = [
   {
@@ -127,8 +131,9 @@ export function usePendingCounts() {
 }
 
 export default function Sidebar({ mobileOpen = false, onMobileClose }) {
-  const { t } = useLang()
-  const { logout } = useAuth()
+  const { t, tr } = useLang()
+  const { logout, user } = useAuth()
+  const [viewAs, setViewAs] = useState(false)
   const s = t.sidebar
   const [collapsed, setCollapsed] = useState(false)
   // Unresolved items per menu entry (day-off requests, client quote requests, unread chat…):
@@ -168,7 +173,11 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }) {
         ))}
       </nav>
       <div className="sidebar-footer">
-        {/* v1.0.239 · "Ver como" moved to the owner's name at the top (OwnerView.jsx: real session switch) */}
+        {/* v1.0.251 · owner only: read-only "Ver como…" (anyone, search by name) as it was in v1.0.234,
+            plus the two direct buttons that really switch to his own Seller / Cleaner profile. */}
+        {isOwner(user) && <button type="button" onClick={() => setViewAs(true)} className="sidebar-logout sidebar-viewas">{tr('View as…', '画面を見る…', 'Ver como…')}</button>}
+        {viewAs && <Suspense fallback={null}><ViewAsPicker onClose={() => setViewAs(false)} /></Suspense>}
+        <OwnerSwitchButtons />
         <LanguageToggle variant="dark" />
         <button type="button" onClick={logout} className="sidebar-logout">
           {s.logout}

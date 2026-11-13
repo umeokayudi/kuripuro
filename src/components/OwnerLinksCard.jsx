@@ -34,7 +34,7 @@ export default function OwnerLinksCard({ me, rows = [] }) {
   const employees = rows.filter(r => r.type === 'employee' && r.active)
   const sellers = rows.filter(r => r.type === 'salesperson' && r.active)
   const fmt = iso => new Date(iso).toLocaleString(localeOf(lang), { timeZone: 'Asia/Tokyo', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-  const roleName = r => r === 'employee' ? tr('Employee', '従業員', 'Funcionário') : r === 'salesperson' ? tr('Sales', '営業', 'Vendas') : tr('Administrator', '管理者', 'Administrador')
+  const roleName = r => r === 'employee' ? tr('Cleaner', '清掃スタッフ', 'Limpador') : r === 'salesperson' ? tr('Seller', '営業', 'Vendedor') : 'Admin'
 
   const claim = async () => {
     setBusy(true)
@@ -81,7 +81,7 @@ export default function OwnerLinksCard({ me, rows = [] }) {
             </p>
             <div className="kp-owner-card-grid">
               <div className="form-group">
-                <label htmlFor="owner-emp">{tr('Linked employee', '連携する従業員', 'Funcionário vinculado')}</label>
+                <label htmlFor="owner-emp">{tr('Your Cleaner profile', '清掃スタッフのプロフィール', 'Seu perfil de Limpador')}</label>
                 <select id="owner-emp" value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
                   <option value="">{tr('— none —', '— なし —', '— nenhum —')}</option>
                   {employees.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -89,7 +89,7 @@ export default function OwnerLinksCard({ me, rows = [] }) {
                 {status.saved?.employee_id && !status.links?.employee && <small className="kp-owner-warn">{tr('The saved employee login is inactive.', '保存された従業員は無効です。', 'O funcionário salvo está inativo.')}</small>}
               </div>
               <div className="form-group">
-                <label htmlFor="owner-seller">{tr('Linked sales login', '連携する営業', 'Vendas vinculada')}</label>
+                <label htmlFor="owner-seller">{tr('Your Seller profile', '営業のプロフィール', 'Seu perfil de Vendedor')}</label>
                 <select id="owner-seller" value={sellerId} onChange={e => setSellerId(e.target.value)}>
                   <option value="">{tr('— none —', '— なし —', '— nenhuma —')}</option>
                   {sellers.map(r => <option key={r.id} value={r.id}>{r.name}{r.team === 'marketing' ? ' · Marketing' : ''}</option>)}
@@ -103,7 +103,9 @@ export default function OwnerLinksCard({ me, rows = [] }) {
               {log.filter(l => l.action === 'switch').slice(0, 10).map((l, i) => (
                 <div key={l.at + i} className="kp-owner-log-row">
                   <span>{fmt(l.at)}</span>
-                  <span>{roleName(l.from)} → <strong>{roleName(l.to)}</strong> ({l.to_name})</span>
+                  <span>{l.to === 'admin'
+                    ? <>{tr('Back to', '戻った：', 'Voltou para o')} <strong>Admin</strong> ({tr('from', '元', 'saiu de')} {roleName(l.from)})</>
+                    : <>{tr('Entered as', '切り替え：', 'Entrou como')} <strong>{roleName(l.to)}</strong> ({l.to_name})</>}</span>
                 </div>
               ))}
               {!log.some(l => l.action === 'switch') && <div className="kp-owner-log-row"><span>{tr('No switches yet.', 'まだありません。', 'Nenhuma troca ainda.')}</span></div>}

@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth'
 import { RoleBadge } from '../components/EmployeeRole'
 import UserEditDialog from '../components/UserEditDialog'
 import OwnerLinksCard from '../components/OwnerLinksCard'
+import { ViewAsButton } from '../components/ViewAs'
 import { isTestEmployee, isTestSeller, isTestClientUser } from '../lib/testData'
 import { maskEmail, maskPhone } from '../lib/contactMask'
 
@@ -176,6 +177,7 @@ export default function Users() {
         <button type="button" className="btn btn-sm btn-primary" onClick={() => setEditing(r)}>{t.edit}</button>
         {r.type !== 'admin' && <button type="button" className="btn btn-sm" onClick={() => open(r)}>{t.open}</button>}
         {r.type === 'client' && r.portalRow && <ViewAsClientButton row={r.portalRow} />}
+        {(r.type === 'employee' || r.type === 'salesperson') && r.active && <ViewAsButton target={r.type === 'salesperson' ? { ...r, type: 'seller' } : r} />}
         {r.type !== 'admin' && (
           <button type="button" className="btn btn-sm" disabled={busy === r.type + r.id} onClick={() => toggleActive(r)}>
             {r.active ? t.deactivate : t.activate}
