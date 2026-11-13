@@ -2,6 +2,7 @@ import calendar from './_calendar.js'
 import clientEmail from './_client-email.js'
 import contractSales from './_contract-sales.js'
 import google from './_google-calendar.js'
+import meetings from './_meetings.js'
 import payrollClose from './_payroll-close.js'
 import push from './_push.js'
 import salesAi from './_sales-ai.js'
@@ -23,6 +24,7 @@ const handlers = {
   google,
   'google-sync': google,
   files: salesFiles,
+  meetings,
   'payroll-close': payrollClose,
   push,
   reminders: salesReminders,
