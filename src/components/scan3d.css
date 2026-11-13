@@ -1,4 +1,4 @@
-/* v1.0.234 · Modelo 3D real */
+/* v1.0.234 · Modelo 3D real · v1.0.235 Planta e modelo 3D (saldo, estados, rascunho) */
 .s3-back { position: fixed; inset: 0; z-index: 2800; background: rgba(11, 15, 25, .45); display: grid; place-items: center; padding: 16px; }
 .s3-sheet { background: #fff; border-radius: 16px; width: min(560px, 100%); max-height: 92vh; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; color: #0b0f19; }
 .s3-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
@@ -9,11 +9,28 @@
 .s3-block h3 { margin: 0; font-size: 15px; } .s3-sub { margin: 0; font-size: 13.5px; color: #5b6475; line-height: 1.5; }
 .s3-pick { display: flex; gap: 8px; flex-wrap: wrap; } .s3-pick .btn { flex: 1; min-height: 44px; }
 .s3-chosen { margin: 0; font-size: 14px; font-weight: 600; } .s3-chosen.is-low { color: #8a5a00; }
-.s3-go { min-height: 46px; }
+.s3-go { min-height: 46px; flex: 1 1 200px; }
+.s3-cost { margin: 0; font-size: 13.5px; color: #5b6475; }
+.s3-go-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.s3-chip { flex: 0 1 auto; min-width: 0; padding: 7px 12px; border: 1px solid #e7eaf0; border-radius: 999px; background: #f6f7fa; font-size: 13px; font-weight: 600; color: #0b0f19; line-height: 1.35; overflow-wrap: anywhere; }
+.s3-chip.is-off { border-color: #ecd9b0; background: #fdf8ec; color: #8a5a00; font-weight: 500; }
+.s3-bad { color: #a12a1c; }
+.s3-link { border: 0; background: none; padding: 0; font: inherit; color: #1d4ed8; text-decoration: underline; cursor: pointer; }
 .s3-scan { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #eef0f4; }
 .s3-scan:first-of-type { border-top: 0; }
-.s3-scan > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .s3-scan span { font-size: 13px; color: #6b7280; }
+.s3-scan > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; } .s3-scan span { font-size: 13px; color: #6b7280; }
 .s3-scan-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.s3-steps { list-style: none; margin: 6px 0 2px; padding: 0; display: flex; gap: 4px; flex-wrap: wrap; }
+.s3-steps li { padding: 4px 10px; border: 1px solid #e7eaf0; border-radius: 999px; font-size: 12.5px; color: #9aa1ae; background: #fff; }
+.s3-steps li.is-done { color: #5b6475; background: #f1f3f7; }
+.s3-steps li.is-now { color: #fff; background: #0b0f19; border-color: #0b0f19; font-weight: 600; }
+.s3-steps li.is-now.is-ok { background: #116639; border-color: #116639; }
+.s3-steps li.is-now.is-err { background: #a12a1c; border-color: #a12a1c; }
+.s3-note { margin: 2px 0 0; font-size: 13px; color: #5b6475; line-height: 1.45; overflow-wrap: anywhere; }
+.s3-note.s3-bad { color: #a12a1c; }
+.s3-scan .s3-warn { margin-top: 4px; font-size: 13px; }
+.s3-badges { margin: 4px 0 0; }
+.s3-draft { display: inline-block; font-style: normal; padding: 2px 8px; border: 1px dashed #c3c9d4; border-radius: 6px; font-size: 12px; color: #5b6475; }
 .s3-st.st-ready { color: #116639; } .s3-st.st-failed, .s3-st.st-expired { color: #a12a1c; }
 .s3-viewer { position: fixed; inset: 0; z-index: 2850; background: #f1f3f7; display: flex; flex-direction: column; }
 .s3-viewer-bar { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; background: #0b0f19; color: #fff; }
