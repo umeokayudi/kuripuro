@@ -23,6 +23,7 @@ const groups = [
       { to: '/team-channel', key: 'teamChannel', icon: Icons.messages },
       { to: '/reports', key: 'reports', icon: Icons.chart },
       { to: '/work-reports', key: 'workReports', icon: Icons.clipboard },
+      { to: '/deep-report', key: 'deepReport', icon: Icons.chart },
       { to: '/videos', key: 'videos', icon: Icons.video },
       { to: '/google-agenda', key: 'googleAgenda', icon: Icons.calendarCheck },
     ],

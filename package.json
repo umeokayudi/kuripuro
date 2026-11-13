@@ -50,6 +50,7 @@
     "test:job-overdue": "npx vite-node scripts/test-job-overdue.mjs",
     "test:employee-pay": "npx vite-node scripts/test-employee-pay.mjs",
     "test:job-employee-pay": "npx vite-node scripts/test-job-employee-pay.mjs",
+    "test:deep-month-report": "npx vite-node scripts/test-deep-month-report.mjs",
     "lint": "eslint src api scripts --ext .js,.jsx,.mjs --max-warnings 80",
     "setup:all": "bash scripts/setup-all.sh",
     "deploy": "bash scripts/deploy.sh",

@@ -47,6 +47,7 @@ export const kuripuroPtA = {
     training: 'Treinamento',
     meetings: 'Reuniões',
     workReports: 'Relatórios de serviço',
+    deepReport: 'Relatório mensal — Deep OTP',
     googleAgenda: 'Google Agenda',
     schedule: 'Atribuir e gerar',
     contracts: 'Contratos',

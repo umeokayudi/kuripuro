@@ -48,6 +48,7 @@ const Training = lazy(() => import('./pages/Training'))
 const Meetings = lazy(() => import('./pages/Meetings'))
 const GoogleAgenda = lazy(() => import('./pages/GoogleAgenda'))
 const WorkReports = lazy(() => import('./pages/WorkReports'))
+const DeepMonthReport = lazy(() => import('./pages/DeepMonthReport'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
 const Evaluations = lazy(() => import('./pages/Evaluations'))
 const ServiceContracts = lazy(() => import('./pages/ServiceContracts'))
@@ -132,6 +133,7 @@ const PAGE_KEYS = {
   '/training': 'training',
   '/meetings': 'meetings',
   '/work-reports': 'workReports',
+  '/deep-report': 'deepReport',
   '/ryoshu': 'ryoshu',
   '/evaluations': 'evaluations',
   '/schedule': 'schedule',
@@ -334,6 +336,7 @@ function AppContent() {
               <Route path="/meetings/:id" element={<Meetings />} />
               <Route path="/google-agenda" element={<GoogleAgenda />} />
               <Route path="/work-reports" element={<WorkReports />} />
+              <Route path="/deep-report" element={<DeepMonthReport />} />
               <Route path="/ryoshu" element={<Ryoshu />} />
               <Route path="/evaluations" element={<Evaluations />} />
               <Route path="/schedule" element={<ScheduleGenerator />} />
