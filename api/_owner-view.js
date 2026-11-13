@@ -136,6 +136,33 @@ async function loadSeller(db, id) {
   return { id: data.id, name: data.full_name, email: data.email, role: 'salesperson', phone: data.phone || '', team: data.team === 'marketing' ? 'marketing' : 'sales' }
 }
 
+// v1.0.253 · the owner's own accounts are found by the server, with no setup screen:
+// 1) ids saved before (Usuários, v1.0.240) win; 2) env OWNER_EMPLOYEE_ID / OWNER_SALESPERSON_ID;
+// 3) the ONE active account whose name starts with OWNER_LINK_NAME (default "Alexandre").
+// If there is none, or more than one, that entry simply does not appear (nothing is guessed).
+// The owner can only ever enter these two accounts; nothing else is reachable from here.
+const KNOWN_OWNER_EMPLOYEE = '4c064fb5-e39d-4086-a798-f6e670730bac' // Alexandre (src/lib/employeeLang.js)
+const linkName = () => String(process.env.OWNER_LINK_NAME || 'Alexandre').trim().toLowerCase()
+const startsWithName = n => {
+  const v = String(n || '').trim().toLowerCase(), want = linkName()
+  return Boolean(want) && (v === want || v.startsWith(want + ' '))
+}
+
+async function onlyOne(db, table, activeCol) {
+  const { data, error } = await db.from(table).select(`id,full_name,${activeCol}`).ilike('full_name', `${linkName()}%`)
+  if (error) return null
+  const rows = (data || []).filter(r => r[activeCol] !== false && r[activeCol] !== null && startsWithName(r.full_name))
+  return rows.length === 1 ? rows[0].id : null
+}
+
+export async function resolveOwnerLinks(db, cfg) {
+  let employeeId = cfg.employee_id || (UUID.test(String(process.env.OWNER_EMPLOYEE_ID || '')) ? process.env.OWNER_EMPLOYEE_ID : null)
+  let sellerId = cfg.salesperson_id || (UUID.test(String(process.env.OWNER_SALESPERSON_ID || '')) ? process.env.OWNER_SALESPERSON_ID : null)
+  if (!employeeId) employeeId = (await loadEmployee(db, KNOWN_OWNER_EMPLOYEE)) ? KNOWN_OWNER_EMPLOYEE : await onlyOne(db, 'employees', 'is_active')
+  if (!sellerId) sellerId = await onlyOne(db, 'salespeople', 'is_active')
+  return { ...cfg, employee_id: employeeId || null, salesperson_id: sellerId || null }
+}
+
 const loaders = { admin: loadAdmin, employee: loadEmployee, salesperson: loadSeller }
 
 /**
@@ -178,6 +205,15 @@ export default async function handler(req, res) {
     let cfg = await readOwnerConfig(db)
     // A config whose owner is not (or no longer) an owner login does nothing and can be claimed again.
     if (cfg && !isOwnerEmail((await loadAdmin(db, cfg.owner_admin_id))?.email)) cfg = null
+    // v1.0.253 · no "Definir como dono" step any more: while nobody owns it, the owner login
+    // (OWNER_EMAILS, checked against the admins table, not only the cookie) IS the owner.
+    // (While inside a linked account the owner is named by the signed owner cookie instead.)
+    if (!cfg) {
+      const candidate = session.role === 'admin' ? session.id : readOwnerCookie(req)
+      const me = candidate ? await loadAdmin(db, candidate) : null
+      if (me && isOwnerEmail(me.email)) cfg = { owner_admin_id: me.id, employee_id: null, salesperson_id: null }
+    }
+    if (cfg) cfg = await resolveOwnerLinks(db, cfg)
     const owner = ownerBehind(req, session, cfg)
 
     // ── GET status: everyone may ask; non-owners only learn "no" ──
