@@ -45,6 +45,8 @@
 .kw-hud { position: absolute; z-index: 20; display: flex; gap: 8px; align-items: flex-start; }
 .kw-hud-tl { top: 14px; left: 14px; flex-wrap: wrap; max-width: calc(100% - 28px); }
 .kw-hud-tr { top: 14px; right: 14px; }
+/* v1.0.225 · portais (funcionário/cliente): o ✕ fixo do canto não cobre mais o placar nem o botão do mapa */
+.kw-overlay .kw-hud-tr { right: 62px; }
 .kw-hud-bl { left: 14px; bottom: 16px; }
 .kw-hud-ml { left: 14px; top: 50%; transform: translateY(-50%); flex-direction: column; }
 .kw-brand, .kw-search input, .kw-stat, .kw-pill, .kw-icon-btn, .kw-back, .kw-chip-btn, .kw-next, .kw-round, .kw-floors {
@@ -97,8 +99,9 @@
 .kw-missions-head b { min-width: 24px; height: 24px; border-radius: 12px; background: rgba(245,199,106,0.2); color: var(--kw-gold); display: grid; place-items: center; font-size: 12px; padding: 0 6px; }
 .kw-missions-head b.late { background: var(--kw-red); color: #fff; }
 .kw-missions-head i { font-style: normal; opacity: 0.6; }
-.kw-seg { display: flex; gap: 6px; padding: 0 12px 10px; }
-.kw-seg button { flex: 1; height: 38px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--kw-line); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.kw-seg { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
+/* v1.0.225 · os chips quebram linha em vez de sair pela direita (ex.: "Esta semana" cortado no Meu trabalho) */
+.kw-seg button { flex: 1 1 auto; min-width: 0; padding: 0 8px; height: 38px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--kw-line); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .kw-seg button.on { background: rgba(245,199,106,0.16); border-color: var(--kw-gold); color: #fde68a; }
 .kw-seg-inline { padding: 0 0 12px; max-width: 420px; }
 .kw-mission-list { flex: 1; overflow-y: auto; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -181,6 +184,8 @@ body:has(.kw-root) .kp-ai-trigger { bottom: 18px; }
   body:has(.kw-root) .kp-ai-trigger, body:has(.kw-root) .kp-ai-popover { display: none; }
   .kw-hud-tl { top: 10px; left: 10px; gap: 6px; }
   .kw-hud-tr { top: 66px; right: 10px; left: 10px; justify-content: flex-start; }
+  .kw-overlay .kw-hud-tl { max-width: calc(100% - 66px); }
+  .kw-overlay .kw-hud-tr { right: 10px; }
   .kw-search { flex: 1; min-width: 0; }
   .kw-search input { width: 100%; }
   .kw-brand { display: none; }

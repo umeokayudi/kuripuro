@@ -392,9 +392,9 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
         />
       ) : (
         <>
-          {mapView && loaded && isAdmin && (
+          {mapView && loaded && (isAdmin || isEmployee) && (
             <Suspense fallback={<div className="kw-loading">{w.loading}</div>}>
-              <CityMap stores={stores} m={w.cityMap || {}} lang={lang} query={query} mobile={mobile} onOpenStore={id => enterStore(id)} />
+              <CityMap stores={stores} m={w.cityMap || {}} lang={lang} query={query} mobile={mobile} onOpenStore={id => enterStore(id)} employeeId={isEmployee ? viewer?.id : null} />
             </Suspense>
           )}
           {listMode || mapView || !loaded ? null : (
@@ -457,7 +457,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                 </div>
               )}
             </div>
-            {isAdmin && <button type="button" className={`kw-pill kw-mapbtn${mapView ? ' on' : ''}`} onClick={() => setParams(mapView ? {} : { view: 'map' })}>
+            {(isAdmin || isEmployee) && <button type="button" className={`kw-pill kw-mapbtn${mapView ? ' on' : ''}`} onClick={() => setParams(mapView ? {} : { view: 'map' })}>
               {mapView ? `🌏 ${w.cityMap?.world3d}` : `🗺️ ${w.cityMap?.open}`}
             </button>}
           </div>
@@ -568,7 +568,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
               {placeOpen.place?.address
                 ? <div style={{ fontSize: 13, marginTop: 10 }}>📍 {isAdmin ? placeOpen.place.address : placeOpen.name} · <a href={mapsOpenUrl(placeOpen.place.address, placeOpen.name)} target="_blank" rel="noreferrer" style={{ color: '#7fb0ff' }}>Google Maps</a></div>
                 : <div style={{ fontSize: 13, marginTop: 10, color: '#fbbf24' }}>📍 {pickLang(lang, 'No GPS: this place has no address yet. Add it in the contract (or search it on the map).', 'GPSなし：住所が未登録です。契約に追加してください（または地図で検索）。', 'Sem GPS: este local ainda não tem endereço. Complete no contrato (ou busque no mapa).')}</div>}
-              {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 8 }} onClick={() => { setPlaceOpen(null); setParams({ view: 'map' }) }}>🗺️ {w.cityMap?.open || 'Map'}</button>}
+              {(isAdmin || isEmployee) && <button type="button" className="kw-pill" style={{ marginTop: 8 }} onClick={() => { setPlaceOpen(null); setParams({ view: 'map' }) }}>🗺️ {w.cityMap?.open || 'Map'}</button>}
               {placeOpen.todayMissing?.length > 0 && <div style={{ fontSize: 13, marginTop: 10, color: '#fca5a5' }}>⚠️ {tr.live?.covTitle}: {placeOpen.todayMissing.map(it => ({ noJob: tr.live?.covNoJob, noPerson: tr.live?.covNoPerson, late: tr.live?.covLate, waiting: tr.live?.covWaiting, working: tr.live?.covWorking })[it.state] || it.state).join(', ')}</div>}
               <div style={{ marginTop: 14, fontWeight: 700, fontSize: 13 }}>🧹 {pickLang(lang, "Today's jobs", '今日の作業', 'Jobs de hoje')} ({placeOpen.today.length})</div>
               {placeOpen.today.length === 0 && <div style={{ fontSize: 13, opacity: .7, marginTop: 6 }}>{pickLang(lang, 'Nothing today.', '今日はありません。', 'Nada hoje.')}</div>}

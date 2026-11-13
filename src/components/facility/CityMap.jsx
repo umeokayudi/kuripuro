@@ -26,7 +26,9 @@ const clusterHtml = items => `<div class="cm-pin cm-cluster st-${worstStatus(ite
  * Mapa real da cidade (Google Maps; sem chave mostra só a lista com um aviso): todos os locais que a gente atende, abrir cada um,
  * medir distância e montar rota de carro ou trem com tempo de deslocamento, inclusive na melhor ordem automática.
  */
-export default function CityMap({ stores, m, lang, query = '', mobile, onOpenStore }) {
+export default function CityMap({ stores, m, lang, query = '', mobile, onOpenStore, employeeId = null }) {
+  // v1.0.225 · employeeId = portal do funcionário: só os locais dele e nada que leve a telas do admin (ficha do cliente)
+  const viewOnly = !!employeeId
   const mapEl = useRef(null)
   const mapRef = useRef(null)
   const layers = useRef({})
@@ -56,7 +58,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
   // ---- dados ----
   useEffect(() => {
     let off = false
-    loadCityPlaces().then(async list => {
+    loadCityPlaces({ employeeId }).then(async list => {
       if (off) return
       setPlaces(list)
       setLocating({ done: 0, total: list.length })
@@ -75,7 +77,7 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
       await Promise.all([worker(), worker(), worker()])
     }).catch(() => setLocating({ done: 0, total: 0 }))
     return () => { off = true }
-  }, [])
+  }, [employeeId])
 
   const placeByKey = useMemo(() => new Map(places.map(p => [p.key, p])), [places])
   const pointOf = key => (key === ME ? (me ? { ...me, key: ME, name: m.myLocation } : null) : coords[key] ? { ...coords[key], key, name: placeByKey.get(key)?.name || key } : null)
@@ -353,8 +355,8 @@ export default function CityMap({ stores, m, lang, query = '', mobile, onOpenSto
           <div className="cm-card-actions">
             {selStore
               ? <button type="button" className="primary" onClick={() => onOpenStore(selStore.id)}>🏢 {m.openStore}</button>
-              : <button type="button" className="primary" onClick={() => openClientSheet({ id: sel.client_id, name: sel.client_name })}>📋 {m.clientSheet}</button>}
-            {selStore && <button type="button" onClick={() => openClientSheet({ id: sel.client_id, name: sel.client_name })}>📋 {m.client}</button>}
+              : !viewOnly && <button type="button" className="primary" onClick={() => openClientSheet({ id: sel.client_id, name: sel.client_name })}>📋 {m.clientSheet}</button>}
+            {selStore && !viewOnly && <button type="button" onClick={() => openClientSheet({ id: sel.client_id, name: sel.client_name })}>📋 {m.client}</button>}
             <button type="button" className={stops.includes(sel.key) ? 'on' : ''} disabled={!coords[sel.key]} onClick={() => toggleStop(sel.key)}>
               {stops.includes(sel.key) ? `✓ ${m.inRoute}` : `➕ ${m.addRoute}`}
             </button>
