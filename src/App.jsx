@@ -1,5 +1,4 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import TimeOffCenter from './components/TimeOffCenter'
 import { maybeAutoSync } from './lib/googleAgenda'
 import ClientSheetHost from './components/ClientSheetHost'
 import { APP_VERSION, APP_BUILD_LABEL } from './version'
@@ -16,7 +15,6 @@ import { Toaster } from 'react-hot-toast'
 import { LangProvider, useLang, localeOf } from './hooks/useLang'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import Sidebar, { usePendingCounts } from './components/Sidebar'
-import AIFloatingWidget from './components/AIFloatingWidget'
 import PortalErrorBoundary from './components/PortalErrorBoundary'
 import ConfirmDialogHost from './components/ConfirmDialog'
 import { PushPrompt } from './components/PushNotifications'
@@ -24,6 +22,13 @@ import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
 import { supabase } from './lib/supabase'
 import { globalSearch, groupResults } from './lib/globalSearch'
+
+// v1.0.224 · The admin bell (with the day panel, reports and PDF helpers it opens) and the floating
+// AI button load apart from the first file. Employees, clients and sellers never use them, so
+// their phones open the app without downloading the admin code first.
+const TimeOffCenter = lazy(() => import('./components/TimeOffCenter'))
+const AIFloatingWidget = lazy(() => import('./components/AIFloatingWidget'))
+const BellSlot = () => <span className="kp-bell-slot" aria-hidden="true" />
 
 const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
 const ClientPortal = lazy(() => import('./pages/ClientPortal'))
@@ -40,6 +45,7 @@ const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Videos = lazy(() => import('./pages/Videos'))
 const Training = lazy(() => import('./pages/Training'))
+const Meetings = lazy(() => import('./pages/Meetings'))
 const GoogleAgenda = lazy(() => import('./pages/GoogleAgenda'))
 const WorkReports = lazy(() => import('./pages/WorkReports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
@@ -68,10 +74,17 @@ const Marketing = lazy(() => import('./pages/Marketing'))
 const Users = lazy(() => import('./pages/Users'))
 const Partners = lazy(() => import('./pages/Partners'))
 
+// v1.0.224 · Light loading screens in the app's own look (the dark navy "Loading..." flashed
+// between the white login and the white portal).
 function PortalLoading() {
+  return <div className="kp-portal-loading" role="status" aria-label="Loading"><div className="kp-mark">K</div></div>
+}
+function PageSkeleton() {
   return (
-    <div style={{ minHeight:'100vh', background:'#0d2137', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ fontSize:13, color:'rgba(255,255,255,0.45)' }}>Loading...</div>
+    <div className="kp-skel" role="status" aria-label="Loading">
+      <i className="kp-skel-title" />
+      <div className="kp-skel-row"><i /><i /><i /><i /></div>
+      <i className="kp-skel-card" /><i className="kp-skel-card" />
     </div>
   )
 }
@@ -117,6 +130,7 @@ const PAGE_KEYS = {
   '/reports': 'reports',
   '/videos': 'videos',
   '/training': 'training',
+  '/meetings': 'meetings',
   '/work-reports': 'workReports',
   '/ryoshu': 'ryoshu',
   '/evaluations': 'evaluations',
@@ -143,6 +157,7 @@ const PAGE_KEYS = {
 
 function pageTitle(pathname, sidebar) {
   if (pathname.startsWith('/employees/')) return sidebar.employees
+  if (pathname.startsWith('/meetings/')) return sidebar.meetings
   return sidebar[PAGE_KEYS[pathname]] || sidebar.dashboard
 }
 
@@ -296,11 +311,11 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div className="topbar-right"><TimeOffCenter /><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <div className="topbar-right"><Suspense fallback={<BellSlot />}><TimeOffCenter /></Suspense><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <ClientSheetHost />
         <main className="page-content">
-          <Suspense fallback={<div style={{ padding:20, color:'var(--text3)', fontSize:13 }}>{a.loading}</div>}>
+          <Suspense fallback={<PageSkeleton />}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/jobs" element={<Jobs />} />
@@ -315,6 +330,8 @@ function AppContent() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/videos" element={<Videos />} />
               <Route path="/training" element={<Training />} />
+              <Route path="/meetings" element={<Meetings />} />
+              <Route path="/meetings/:id" element={<Meetings />} />
               <Route path="/google-agenda" element={<GoogleAgenda />} />
               <Route path="/work-reports" element={<WorkReports />} />
               <Route path="/ryoshu" element={<Ryoshu />} />
@@ -344,7 +361,7 @@ function AppContent() {
           </Suspense>
         </main>
       </div>
-      {location.pathname !== '/' && location.pathname !== '/ai' && location.pathname !== '/adminchat' && location.pathname !== '/facility/edit' && <AIFloatingWidget mode="admin" />}
+      {location.pathname !== '/' && location.pathname !== '/ai' && location.pathname !== '/adminchat' && location.pathname !== '/facility/edit' && <Suspense fallback={null}><AIFloatingWidget mode="admin" /></Suspense>}
     </div>
   )
 }

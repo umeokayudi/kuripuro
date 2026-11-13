@@ -12,7 +12,7 @@ assert(computeBase({ salary_type: 'fixed', fixed_salary: 212000, contract_end: '
 assert(computeBase({ salary_type: 'fixed', fixed_salary: 212000, contract_end: '2026-03-31', is_active: false }, [], '2026-10') === 0, 'inactive person after contract end')
 assert(computeBase({ salary_type: null, fixed_salary: 212000 }, [], '2026-10') === 212000, 'no salary type = fixed')
 const job = { status: 'completed', started_at: '2026-10-05T01:00:00Z', completed_at: '2026-10-05T03:00:00Z', value: 10000 }
-assert(computeBase({ salary_type: 'mixed', fixed_salary: 100000, hourly_rate: 1000, job_bonus_rate: 10 }, [job], '2026-10') === 100000 + 2000 + 1000, 'mixed = fixed + hours + bonus')
+assert(computeBase({ salary_type: 'mixed', fixed_salary: 100000, hourly_rate: 1000, job_bonus_rate: 10 }, [job], '2026-10') === 100000 + 2000, 'mixed = fixed + hours (no % of client price)')
 
 // Paid only with the payslip confirmed.
 assert(payrollState(null, null) === 'none', 'none')

@@ -31,6 +31,7 @@ function errorText(c, err) {
 // v1.0.194 · Notifications are always on for admin, employees and sellers: no switch, no test,
 // no "not now". Browsers still need the person to allow once per device, so until then a card
 // stays up with one button. Clients get no push (in-app bell only).
+const HIDE_KEY = 'kp_push_card_hidden_until'
 const wantsPush = user => Boolean(user && user.role && user.role !== 'client')
 
 /** Mounted once for every signed-in person: keeps this device subscribed and tied to the account. */
@@ -40,7 +41,11 @@ export function PushPrompt() {
   const c = copy(tr)
   const [state, setState] = useState(() => pushState())
   const [busy, setBusy] = useState(false)
-  const [hidden, setHidden] = useState(false)
+  // v1.0.224 · When the browser blocks notifications the card can't fix it, so the × keeps it away
+  // for 7 days on this device (it used to come back on every page load). The "Ativar" card for a
+  // phone that was never asked still has no ×, as before.
+  const [hidden, setHidden] = useState(() => { try { return Number(localStorage.getItem(HIDE_KEY) || 0) > Date.now() } catch { return false } })
+  const hide = () => { setHidden(true); try { localStorage.setItem(HIDE_KEY, String(Date.now() + 7 * 864e5)) } catch { /* private mode */ } }
 
   useEffect(() => { watchNotificationTaps() }, [])
 
@@ -51,7 +56,7 @@ export function PushPrompt() {
     if (now === 'granted') ensurePush(user, lang)
   }, [user?.role, user?.id, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!wantsPush(user) || hidden || state === 'granted' || state === 'unsupported') return null
+  if (!wantsPush(user) || (hidden && state !== 'default') || state === 'granted' || state === 'unsupported') return null
   const enable = async () => {
     setBusy(true)
     try {
@@ -77,7 +82,7 @@ export function PushPrompt() {
           <div style={{ fontWeight: 800, fontSize: 15 }}>{c.title}</div>
           <div style={{ fontSize: 13, color: '#4b5563', marginTop: 3, lineHeight: 1.4 }}>{text}</div>
         </div>
-        {state !== 'default' && <button type="button" onClick={() => setHidden(true)} aria-label="×" style={{ border: 'none', background: 'transparent', color: '#9ca3af', fontSize: 18, cursor: 'pointer', padding: 0 }}>×</button>}
+        {state !== 'default' && <button type="button" onClick={hide} aria-label="×" style={{ border: 'none', background: 'transparent', color: '#9ca3af', fontSize: 18, cursor: 'pointer', padding: 0 }}>×</button>}
       </div>
       {state === 'default' && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>

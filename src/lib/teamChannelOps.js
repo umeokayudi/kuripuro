@@ -11,7 +11,7 @@ import { notifyChanges } from './assignNotices'
 import {
   MSG_DIR, REQ_DIR, messagePath, requestPath, buildMessage, sortMessages, buildCoverCards,
   cantGoCandidates, takeCantGoPatch, monthOf, channelDir, LEGACY_DIR_CHANNEL, COVER_CHANNEL, MEMBERS_PATH,
-  normalizeMembers, setMember,
+  normalizeMembers, setMember, CHANNEL_ROOT, personToken, isDmKey,
 } from './teamChannel'
 
 const BUCKET = 'service-photos'
@@ -38,6 +38,14 @@ async function listNames(dir) {
   const { data, error } = await supabase.storage.from(BUCKET).list(dir, { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
   if (error) return []
   return (data || []).map(f => f.name).filter(n => n.endsWith('.json'))
+}
+
+/** v1.0.228 · private conversations I am in (keys 'dm:<a>__<b>'), from the folder names under team-channel/dm. */
+export async function listMyDms(me) {
+  const mine = personToken(me)
+  const { data, error } = await supabase.storage.from(BUCKET).list(`${CHANNEL_ROOT}/dm`, { limit: 1000 })
+  if (error) return []
+  return (data || []).map(f => `dm:${f.name}`).filter(k => isDmKey(k) && k.slice(3).split('__').includes(mine))
 }
 
 /** Last messages of one channel (this month + last month), oldest first. */

@@ -4,7 +4,7 @@
 // Servido por /api/admin-ai (body.facilityAction) para não passar do limite
 // de 12 funções do Vercel Hobby.
 
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 import { fetchStorageBuffer } from './_storage.js'
 import { tokyoToday } from '../src/lib/dates.js'
 import {
@@ -67,7 +67,7 @@ Reply ONLY with JSON:
  "elements": [{"id": "el_1", "name": string, "kind": string, "areaId": string, "x": number, "y": number, "w": number, "d": number, "location_hint": string, "instructions": string}],
  "notes": "what is uncertain and should be checked on site"}`
 
-  const data = await geminiGenerate({
+  const data = await aiGenerate({
     contents: [{ parts: [...images, { text: prompt }] }],
     generationConfig: { temperature: 0.3, maxOutputTokens: 6000, responseMimeType: 'application/json' },
   })
@@ -120,7 +120,7 @@ Reply ONLY with JSON:
  "elements": [{"name": string, "kind": string, "areaId": string, "x": number, "y": number, "w": number, "d": number, "location_hint": string, "instructions": string}],
  "seen": "one short sentence: what this photo shows"}`
 
-  const data = await geminiGenerate({
+  const data = await aiGenerate({
     contents: [{ parts: [image, { text: prompt }] }],
     generationConfig: { temperature: 0.2, maxOutputTokens: 3000, responseMimeType: 'application/json' },
   })
@@ -175,7 +175,7 @@ Suggest at most 6 cleaning or maintenance services the client would genuinely be
 Each element lists its cleaning and maintenance tasks with the last date done. Prefer tasks never done or past their interval, and kitchen grease/ventilation risks. When a suggestion matches a listed task, use that task name exactly as "service". Do not invent elements.
 Reply ONLY with JSON: {"recommendations": [{"element_id": string, "service": string, "reason": string (one sentence, Japanese then English), "priority": "high"|"medium"|"low"}]}`
 
-  const data = await geminiGenerate({
+  const data = await aiGenerate({
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.3, maxOutputTokens: 1500, responseMimeType: 'application/json' },
   })

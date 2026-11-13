@@ -15,9 +15,10 @@
 //                          and each event is sent once (push_log), so a forged call can only
 //                          repeat a notice that really exists, never invent one.
 import webpush from 'web-push'
+import { onJobEvent as clientEmailOnJobEvent } from './_client-email.js'
 import { salesDb, readSalesSession } from './_salesSession.js'
 import { fetchBellSnapshot, bellNotice, bellSummary, BELL_SKIP_KINDS, BELL_SKIP_GROUPS } from './_bell.bundle.js'
-import { isChannelPath, coverPushText, textPushText, channelOfPath, inChannel, showsCovers, MEMBERS_PATH } from '../src/lib/teamChannel.js'
+import { isChannelPath, coverPushText, textPushText, channelOfPath, inChannel, showsCovers, MEMBERS_PATH, isDmKey, inDm } from '../src/lib/teamChannel.js'
 
 const MAX_FAILS = 3
 
@@ -300,19 +301,22 @@ async function deliver(db, notice) {
   return { key: notice.key, sent }
 }
 
-async function handleEvent(req, res) {
+async function handleEvent(req, res, afterPush = () => null) {
   const { table, op, id, old } = req.body || {}
   const rule = TABLES[table]
   if (!rule || !id || !['INSERT', 'UPDATE'].includes(op)) return res.status(400).json({ error: 'bad event' })
   const db = salesDb()
   const { data: row, error } = await db.from(table).select(rule[0]).eq('id', id).maybeSingle()
   if (error) return res.status(500).json({ error: error.message })
-  if (!row) return res.status(200).json({ ok: true, sent: 0 })
+  if (!row) return res.status(200).json({ ok: true, sent: 0, clientEmail: await afterPush() })
   // `old` only decides whether a change is new; the text always comes from the current row.
   const notices = rule[1](row, op, old && typeof old === 'object' ? old : {})
   const results = []
-  for (const n of notices) results.push(await deliver(db, n))
-  return res.status(200).json({ ok: true, results })
+  let pushError = null
+  try { for (const n of notices) results.push(await deliver(db, n)) } catch (err) { pushError = err }
+  const clientEmail = await afterPush()
+  if (pushError) return res.status(500).json({ error: pushError?.message || 'push failed', clientEmail })
+  return res.status(200).json({ ok: true, results, ...(clientEmail ? { clientEmail } : {}) })
 }
 
 
@@ -385,6 +389,8 @@ export async function handleTeam(req, res, { db = salesDb(), who, readFile = nul
   if (!msg.at || Date.now() - new Date(msg.at).getTime() > TEAM_FRESH_MS) return res.status(200).json({ ok: true, sent: 0, skipped: 'old' })
   // v1.0.221 · only the caller's own message (or own cover request) can be pushed
   if (who && msg.author?.id && who.user_id !== msg.author.id && who.role !== 'admin') return res.status(403).json({ error: 'not yours' })
+  // v1.0.228 · a private conversation: the author must be one of the two
+  if (isDmKey(channel) && !inDm(msg.author, channel)) return res.status(403).json({ error: 'not in this conversation' })
   if (isReq) {
     const { data: job } = await db.from('jobs').select('id,title,client_name,scheduled_date,scheduled_time').eq('id', file.job_id).maybeSingle()
     if (job) {
@@ -408,8 +414,12 @@ export async function handleTeam(req, res, { db = salesDb(), who, readFile = nul
   const tag = isCover ? `team-${msg.job?.id || path}` : `team-ch-${channel}`
   const text = l => (isCover ? coverPushText(msg, l) : textPushText(msg, l))
   const emps = targets.filter(s => s.role !== 'admin'), admins = targets.filter(s => s.role === 'admin')
-  const sent = (emps.length ? await sendTo(db, emps, l => ({ ...text(l), url: `/?tab=team&ch=${channel}`, tag })) : 0)
-    + (admins.length ? await sendTo(db, admins, l => ({ ...text(l), url: `/team-channel?ch=${channel}`, tag })) : 0)
+  // employees open private conversations in the Chat tab (v1.0.228); sellers / marketing keep the channel tab
+  const empsChat = isDmKey(channel) ? emps.filter(x => x.role === 'employee') : []
+  const empsTeam = emps.filter(x => !empsChat.includes(x))
+  const sent = (empsChat.length ? await sendTo(db, empsChat, l => ({ ...text(l), url: `/?tab=chat&ch=${encodeURIComponent(channel)}`, tag })) : 0)
+    + (empsTeam.length ? await sendTo(db, empsTeam, l => ({ ...text(l), url: `/?tab=team&ch=${encodeURIComponent(channel)}`, tag })) : 0)
+    + (admins.length ? await sendTo(db, admins, l => ({ ...text(l), url: `/team-channel?ch=${encodeURIComponent(channel)}`, tag })) : 0)
   await db.from('push_log').update({ sent }).eq('dedupe_key', key)
   return res.status(200).json({ ok: true, sent })
 }
@@ -431,7 +441,7 @@ async function teamPeople(db) {
 // ── Who is this browser? ──────────────────────────────────────────────────
 async function identify(req) {
   const session = readSalesSession(req)
-  if (session) return { role: session.role, user_id: session.id, client_id: null }
+  if (session) return { role: session.role, user_id: session.id, client_id: session.client_id || null }
   // Clients sign in without a server cookie; accept their id only for an active client login.
   const { role, user_id: userId } = req.body || {}
   if (!userId) return null
@@ -455,10 +465,15 @@ export default async function handler(req, res) {
     return res.status(200).json({ configured: pushConfigured(), publicKey: process.env.VAPID_PUBLIC_KEY || null })
   }
   if (req.method !== 'POST' && op !== 'bell') return res.status(405).json({ error: 'Method not allowed' })
+  // v1.0.213 · the same job event also drives the client confirmation e-mail (day / spot).
+  // Push goes out first; the e-mail runs after it, on its own, and works even without VAPID keys.
+  const emailEvent = op === 'event' && req.body?.table === 'jobs' && req.body?.op === 'UPDATE'
+  const runEmail = () => (emailEvent ? clientEmailOnJobEvent(req.body).catch(err => ({ error: err?.message })) : null)
+  if (emailEvent && !pushConfigured()) return res.status(200).json({ ok: true, push: 'not-configured', clientEmail: await runEmail() })
   if (!pushConfigured()) return res.status(503).json({ error: 'Push não configurado no servidor (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).' })
 
   try {
-    if (op === 'event') return await handleEvent(req, res)
+    if (op === 'event') return await handleEvent(req, res, runEmail)
     if (op === 'bell') return await handleBell(req, res)
 
     const db = salesDb()

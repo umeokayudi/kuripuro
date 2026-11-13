@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, setDbToken } from '../lib/supabase'
 import { findClientUserForLogin, clientUserToSession } from '../lib/clientCredentials'
 import { isSetupPassword } from '../lib/passwordLink'
 import { disablePush } from '../lib/push'
 
-const AuthContext = createContext()
+export const AuthContext = createContext()
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -22,9 +22,25 @@ export function AuthProvider({ children }) {
     // photo checks and Sales Team refuse requests without it. Accounts saved
     // before that cookie existed (or after it expired) would look signed in but
     // every AI answer would fail, so send them back to the login screen once.
-    if (!parsed || !['admin', 'employee', 'salesperson'].includes(parsed.role)) return
+    if (!parsed || !['admin', 'employee', 'salesperson', 'client'].includes(parsed.role)) return
     fetch('/api/sales-session', { credentials: 'same-origin', cache: 'no-store' })
       .then(async response => {
+        // v1.0.234 · per-person database key (only when the server issues them)
+        const info = await response.clone().json().catch(() => ({}))
+        if (response.status === 200 && info?.user && (info.user.role !== parsed.role || info.user.id !== parsed.id)) {
+          // the cookie belongs to another login used on this device: its key must not serve this one
+          setDbToken(null)
+          if (!info.db_keys && parsed.role === 'client') return
+          localStorage.removeItem('kp_user'); setUser(null); setSessionExpired(true)
+          return
+        }
+        if (response.status === 200) setDbToken(info?.db_token || null)
+        if (parsed.role === 'client') {
+          // Client logins saved before the cookie existed keep working until the server starts
+          // issuing keys; from then on they sign in once more to receive theirs.
+          if (response.status === 401 && info?.db_keys) { setDbToken(null); localStorage.removeItem('kp_user'); setUser(null); setSessionExpired(true) }
+          return
+        }
         if (response.status === 200 && parsed.role === 'salesperson') {
           // Admin may have moved this login between sales and marketing.
           const fresh = await response.json().catch(() => ({}))
@@ -61,6 +77,7 @@ export function AuthProvider({ children }) {
       })
       const result = await response.json().catch(() => ({}))
       if (response.ok && result.user) {
+        setDbToken(result.db_token || null)
         setSessionExpired(false)
         setUser(result.user)
         localStorage.setItem('kp_user', JSON.stringify(result.user))
@@ -123,6 +140,7 @@ export function AuthProvider({ children }) {
     // The phone keeps its permission, but nothing meant for this account reaches the next person who signs in.
     disablePush({ keepBrowser: true })
     setUser(null)
+    setDbToken(null)
     localStorage.removeItem('kp_user')
     fetch('/api/sales-session', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {})
   }

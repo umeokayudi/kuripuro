@@ -18,17 +18,17 @@ export const PORTAL_QUOTE_STATUSES = ['sent', 'accepted', 'declined', 'expired']
 
 /** Same company written with other spaces / full-width letters is still the same company. */
 export function companyKey(name) {
-  return String(name || '').normalize('NFKC').replace(/[\s　]+/g, '').toLowerCase()
+  return String(name || '').normalize('NFKC').replace(/[\s\u3000]+/g, '').toLowerCase()
 }
 
 /** The ways the company name may have been typed, for an exact (indexed) database filter. */
 export function companyNameVariants(name) {
   const raw = String(name || '')
-  const trimmed = raw.replace(/　/g, ' ').trim()
+  const trimmed = raw.replace(/\u3000/g, ' ').trim()
   return [...new Set([raw, raw.trim(), trimmed, trimmed.normalize('NFKC'), trimmed.replace(/\s+/g, ' ')].filter(Boolean))]
 }
 
-const storeKey = s => String(s || '').normalize('NFKC').replace(/[\s　]+/g, '').toLowerCase()
+const storeKey = s => String(s || '').normalize('NFKC').replace(/[\s\u3000]+/g, '').toLowerCase()
 
 /** True when this quote belongs to this client login (company, then store for store-bound logins). */
 export function quoteBelongsTo(quote, { companyName, locationName } = {}) {

@@ -8,12 +8,14 @@ const keyOf = name => String(name || '').trim().toLowerCase()
 const storeBase = name => String(name || '').split(/\s+[-—–]\s+/)[0].trim().toLowerCase()
 const median = xs => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] }
 
-export async function loadCityPlaces() {
+/** employeeId (v1.0.225): portal do funcionário → só os locais dos serviços dele. */
+export async function loadCityPlaces({ employeeId = null } = {}) {
   const today = dayStr(0)
-  const { data, error } = await supabase.from('jobs')
+  let q = supabase.from('jobs')
     .select('id,title,scheduled_date,status,employee_name,client_id,client_name,address,gps_lat,gps_lng')
     .gte('scheduled_date', dayStr(-180)).lte('scheduled_date', dayStr(60))
-    .order('scheduled_date', { ascending: false }).limit(3000)
+  if (employeeId) q = q.eq('employee_id', employeeId)
+  const { data, error } = await q.order('scheduled_date', { ascending: false }).limit(3000)
   if (error) throw error
   const byKey = new Map()
   for (const j of data || []) {

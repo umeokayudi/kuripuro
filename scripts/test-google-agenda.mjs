@@ -72,3 +72,15 @@ assert.equal(jobHash(job), jobHash({ ...job }))
 assert.notEqual(jobHash(job), jobHash({ ...job, scheduled_time: '10:00' }))
 
 console.log('google agenda: ok')
+
+// v1.0.223 · setup checks name exactly the keys the server reads
+{
+  const { setupChecks } = await import('../api/_google-calendar.js')
+  const none = setupChecks({})
+  assert.deepEqual(none.map(c => c.name), ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'SALES_SESSION_SECRET'])
+  assert.ok(none.every(c => !c.ok))
+  const all = setupChecks({ GOOGLE_CLIENT_ID: 'x', GOOGLE_CLIENT_SECRET: 'y', SALES_SESSION_SECRET: 'z'.repeat(32) })
+  assert.ok(all.every(c => c.ok))
+  assert.equal(setupChecks({ SALES_SESSION_SECRET: 'short' })[2].ok, false)
+  console.log('ok setupChecks')
+}

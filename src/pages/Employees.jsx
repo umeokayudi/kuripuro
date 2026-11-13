@@ -279,13 +279,13 @@ export default function Employees() {
                 </div>
                 <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px',textAlign:'center'}}>
                   <div style={{fontSize:13,fontWeight:600}}>
-                    {e.salary_type==='fixed'?L('Fixed','固定','Fixo'):e.salary_type==='hourly'?L('Hourly','時給','Por hora'):e.salary_type==='per_job'?L('Per Job','作業ごと','Por job'):L('Mixed','混合','Misto')}
+                    {e.salary_type==='fixed'?L('Fixed','固定','Fixo'):e.salary_type==='hourly'?L('Hourly','時給','Por hora'):e.salary_type==='per_job'?L('Per Job','作業ごと','Por serviço'):L('Mixed','混合','Misto')}
                   </div>
                   <div style={{fontSize:10,color:'var(--text3)'}}>{L('Pay type','給与形態','Tipo de pagamento')}</div>
                 </div>
                 <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px',textAlign:'center'}}>
                   <div style={{fontSize:13,fontWeight:600}}>
-                    {e.salary_type==='fixed'?'¥'+Number(e.fixed_salary||0).toLocaleString():e.salary_type==='hourly'?'¥'+e.hourly_rate+'/h':e.salary_type==='per_job'?e.job_bonus_rate+'%':L('Mixed','混合','Misto')}
+                    {e.salary_type==='fixed'?'¥'+Number(e.fixed_salary||0).toLocaleString():e.salary_type==='hourly'?'¥'+e.hourly_rate+'/h':e.salary_type==='per_job'?(Number(e.job_bonus_rate)>0?Number(e.job_bonus_rate)+'%':L('Set on each job','作業ごとに設定','Em cada serviço')):L('Mixed','混合','Misto')}
                   </div>
                   <div style={{fontSize:10,color:'var(--text3)'}}>{L('Rate','単価','Valor')}</div>
                 </div>
@@ -374,7 +374,7 @@ export default function Employees() {
             <select value={form.salary_type} onChange={e=>upd('salary_type',e.target.value)}>
               <option value="fixed">{L('Fixed — monthly salary (¥/month)','固定 — 月給（¥/月）','Fixo — salário mensal (¥/mês)')}</option>
               <option value="hourly">{L('Hourly — paid per hour worked (¥/h)','時給 — 働いた時間分（¥/時）','Por hora — paga pelas horas trabalhadas (¥/h)')}</option>
-              <option value="per_job">{L('Per Job — paid per service completed','作業ごと — 完了した作業ごとに支払い','Por job — paga por serviço concluído')}</option>
+              <option value="per_job">{L('Per Job — paid per service completed','作業ごと — 完了した作業ごとに支払い','Por serviço — paga por serviço concluído')}</option>
               <option value="mixed">{L('Mixed — fixed base + job bonus (%)','混合 — 固定給＋作業ボーナス（%）','Misto — base fixa + bônus por job (%)')}</option>
             </select>
           </div>

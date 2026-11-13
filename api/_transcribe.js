@@ -2,7 +2,7 @@
 // iPhone Safari records audio/mp4 and Chrome/Android audio/webm; Gemini understands both,
 // so the phone does not depend on the browser's own speech recognition.
 
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 
 const AUDIO_TYPES = /^audio\/(mp4|m4a|x-m4a|aac|webm|ogg|mpeg|mp3|wav|x-wav|flac)$/i
 const MAX_AUDIO_BASE64 = 3_700_000
@@ -17,7 +17,7 @@ export async function transcribeAudio(res, audio) {
   }
   const mimeType = match[1].toLowerCase() === 'audio/x-m4a' || match[1].toLowerCase() === 'audio/m4a' ? 'audio/mp4' : match[1].toLowerCase()
   try {
-    const data = await geminiGenerate({
+    const data = await aiGenerate({
       contents: [{
         role: 'user',
         parts: [

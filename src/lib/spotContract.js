@@ -1,6 +1,6 @@
 import { escapeHtml } from './escapeHtml.js'
 import { PRINT_DOC_CSS } from './printDoc.js'
-import { printIssuer, bankTransferFor } from './quoteIssuer.js'
+import { printIssuer, bankTransferFor, shownRegNumber } from './quoteIssuer.js'
 import { tokyoToday } from './dates.js'
 import { clientContact } from './clientContact.js'
 
@@ -484,7 +484,7 @@ export function spotContractHtml(c, lang = 'ja', signatureSrc = '') {
       ${line(L.address, issuer.address)}
       ${line(L.company, issuer.company)}
       ${line(L.rep, `${issuer.title} ${issuer.name}`)}
-      ${line(L.reg, issuer.regNumber)}
+      ${shownRegNumber(issuer.regNumber) ? line(L.reg, shownRegNumber(issuer.regNumber)) : ''}
       ${line(L.phone, issuer.phone)}
       ${line(L.email, issuer.email)}
       ${line(L.staff, c.employee_name)}

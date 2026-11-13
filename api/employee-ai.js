@@ -1,7 +1,7 @@
 // Assistente de IA para funcionários — somente leitura e somente da própria conta.
 // O funcionário vem da sessão assinada no servidor, nunca do corpo da requisição.
 
-import { runGeminiToolLoop } from './_tool-loop.js'
+import { runToolLoop } from './_tool-loop.js'
 import { requireSalesSession, salesDb } from './_salesSession.js'
 import { trimHistory, workOnlyRule, mergeTurns, packContinuation, readContinuation, maskPendingRows, PENDING_RULE } from './_ai-guard.js'
 import { transcribeAudio } from './_transcribe.js'
@@ -42,17 +42,7 @@ async function queryEmployeeData(employee, args) {
     .limit(limit)
   if (error) throw new Error(error.message)
   if (!isJobs) return maskPendingRows(data)
-  return employeeJobRows(data, employee, columns, await contractPrices(employee))
-}
-
-/** Price per visit by store, only needed when the employee's pay is a share of the job. */
-async function contractPrices(employee) {
-  if (!['per_job', 'mixed'].includes(employee.salary_type)) return []
-  if (!employee.contracts) {
-    employee.contracts = salesDb().from('service_contracts').select('location_name,price_per_visit')
-      .then(({ data }) => data || [], () => [])
-  }
-  return employee.contracts
+  return employeeJobRows(data, employee, columns)
 }
 
 async function activeEmployee(id) {
@@ -150,7 +140,7 @@ ${workOnlyRule(responseLanguage)}`
     const baseLength = contents.length
     contents.push(...readContinuation(req.body.continuation))
 
-    const { reply, toolLog, incomplete } = await runGeminiToolLoop({
+    const { reply, toolLog, incomplete, usage } = await runToolLoop({
       contents,
       tools: TOOLS,
       systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -160,8 +150,8 @@ ${workOnlyRule(responseLanguage)}`
     })
 
     const continuation = incomplete ? packContinuation(contents, baseLength) : null
-    if (continuation) return res.status(200).json({ reply: '', toolLog, incomplete: true, continuation })
-    res.status(200).json({ reply, toolLog })
+    if (continuation) return res.status(200).json({ reply: '', toolLog, incomplete: true, continuation, usage })
+    res.status(200).json({ reply, toolLog, usage })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

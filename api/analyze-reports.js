@@ -1,6 +1,6 @@
 // api/analyze-reports.js — IA analisa relatórios de serviço (tempo, padrões, metas)
 
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 import { requireAdmin } from './_auth.js'
 
 const SUPABASE_URL = 'https://fxsakrshmldmkdmbevna.supabase.co'
@@ -123,10 +123,10 @@ export default async function handler(req, res) {
 
     const prompt = PROMPTS[locale](rows, days)
 
-    const data = await geminiGenerate({
+    const data = await aiGenerate({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 2500 },
-    })
+    }, { heavy: true, timeoutMs: 50000 }) // owner's full report analysis → heavy model (Muse Wonder)
 
     const fallback = locale === 'ja' ? '（分析なし）' : locale === 'pt' ? '(sem análise)' : '(no analysis)'
     const analysis = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || fallback

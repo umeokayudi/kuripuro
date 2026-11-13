@@ -1,11 +1,13 @@
-import { API_BUILD } from './_gemini.js'
+import { API_BUILD, aiStatus } from './_ai.js'
 
 export default async function handler(_req, res) {
   res.status(200).json({
     ok: true,
     build: API_BUILD,
+    ai: aiStatus(),
     geminiKey: !!process.env.GEMINI_API_KEY,
     aiApprovalPassword: !!process.env.AI_APPROVAL_PASSWORD,
     push: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+    clientEmail: process.env.CLIENT_EMAIL_MODE === 'live' && process.env.RESEND_API_KEY ? 'live' : 'test',
   })
 }

@@ -1,11 +1,12 @@
 import { requireActiveSalesSession, salesDb } from './_salesSession.js'
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 import { sellerCommissionSummary, quoteCommissionState } from '../src/lib/contractCommission.js'
 import { serviceOffers } from '../src/lib/facilityModel.js'
 import { quoteSellerFor } from '../src/lib/quoteSeller.js'
 import { estimateMinimum, signMinimum, readMinimum } from './_quoteMinimum.js'
 import { readSellerVisits, writeSellerVisits, readAllVisits } from './_sales-visits.js'
 import { normalizeVisit, upsertVisit, followupForVisit } from '../src/lib/sellerVisits.js'
+import { buildPortfolio, PORTFOLIO_CONTRACT_COLUMNS } from '../src/lib/activePortfolio.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -150,7 +151,7 @@ async function writeDayReport(input) {
   const fallback = plainDayReport(input)
   const lang = input.language === 'ja' ? 'Japanese' : input.language === 'en' ? 'English' : 'Portuguese'
   try {
-    const result = await geminiGenerate({
+    const result = await aiGenerate({
       contents: [{ role: 'user', parts: [{ text: `Write the end-of-day report of a cleaning-services salesperson for their manager, in ${lang}. Use only the data below. Sections: 1) Day in numbers (one line), 2) Visits and what happened (bullets, one per place), 3) What clients answered and objections, 4) Follow-ups: overdue and next, 5) Points of attention for the manager (max 3, only if supported by the data). Short, factual, no invented names or amounts.
 DATA:
 ${JSON.stringify({ seller: input.seller, date: input.date, start: input.started, end: input.ended, hours: input.hours, seller_note: input.note, ...input.stats }).slice(0, 30000)}` }] }],
@@ -263,7 +264,8 @@ async function loadDashboard(db, user) {
   const id = user.id
   const scope = q => isAdmin ? q : q.eq('salesperson_id', id)
   const [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, peopleRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes, marketingGoalsRes] = await Promise.all([
-    scope(db.from('sales_leads').select('*').order('updated_at', { ascending: false }).limit(500)),
+    // v1.0.234 · companies of the target base (stage 'target') are not in the funnel yet: they live in Ligações
+    scope(db.from('sales_leads').select('*').or('stage.is.null,stage.neq.target').order('updated_at', { ascending: false }).limit(500)),
     scope(db.from('mitsumori').select('id,salesperson_id,lead_id,quote_number,status,total,subtotal,created_at,company_name,valid_until,sent_at,decided_at,decision_reason,frequency,items:mitsumori_items(description,quantity,unit_price,total)').order('created_at', { ascending: false }).limit(500)),
     scope(db.from('sales_field_approaches').select('*').order('work_date', { ascending: false }).limit(1000)),
     scope(db.from('sales_day_reports').select('*').order('work_date', { ascending: false }).limit(500)),
@@ -359,11 +361,28 @@ async function getAction(db, user, action, query = {}) {
     return { items:data || [] }
   }
   if (action === 'deal') return loadDeal(db, user, String(query.lead_id || ''))
+  if (action === 'portfolio') return loadPortfolio(db, user)
+  if (action === 'outreach') { const { loadOutreach } = await import('./_sales-outreach.js'); return loadOutreach(db, user) }
   throw Object.assign(new Error('Ação de leitura inválida.'), { status: 400 })
 }
 
 // One client's whole story for the client page: quotes, contract, and once the
 // contract is active, the services done/scheduled and the invoices.
+// v1.0.226 · Contratos ativos (somente leitura) para a equipe de vendas: TODOS os clientes com contrato ativo.
+// Lista explícita de colunas — nada de pagamento/salário de funcionário (contract_details só a data de início).
+async function loadPortfolio(db, user) {
+  if (user.role === 'salesperson' && user.team === 'marketing') throw Object.assign(new Error('Não disponível nesta conta.'), { status: 403 })
+  const today = todayTokyo()
+  const [contractsRes, clientsRes] = await Promise.all([
+    db.from('service_contracts').select(`${PORTFOLIO_CONTRACT_COLUMNS},start_date:contract_details->>start_date`).eq('is_active', true).limit(2000),
+    db.from('clients').select('id,company_name').limit(2000),
+  ])
+  if (contractsRes.error) throw contractsRes.error
+  if (clientsRes.error) throw clientsRes.error
+  const contracts = (contractsRes.data || []).map(({ start_date, ...row }) => ({ ...row, contract_details: { start_date } }))
+  return { today, clients: buildPortfolio(contracts, clientsRes.data || [], today) }
+}
+
 async function loadDeal(db, user, leadId) {
   const notFound = () => Object.assign(new Error('Cliente não encontrado nesta conta.'), { status: 404 })
   if (!leadId || (user.role === 'salesperson' && user.team === 'marketing')) throw notFound()
@@ -531,7 +550,7 @@ async function postAction(db, user, body, res) {
       // v1.0.206 · proof = the card photo OR what the seller dumped into the AI (kept in system-private).
       const proof = String(payload.business_card_object_path || '')
       if (proof.includes('..') || !(proof.startsWith(`cards/${own}/`) || proof.startsWith(`sales-dumps/${own}/`))) return jsonError(res, 400, 'Jogue os dados na IA (texto, foto ou áudio) ou tire a foto do cartão antes de salvar o lead.')
-      if (payload.gps_lat == null || payload.gps_lng == null) return jsonError(res, 400, 'Ative a localização (GPS) para registrar o lead.')
+      // v1.0.234 · location is welcome but no longer required: a phone that refuses the GPS still saves the lead.
     }
     if (body.id) {
       const { data, error } = await writeLead(db, payload, { id: body.id, own: admin ? null : own })
@@ -1134,6 +1153,11 @@ async function postAction(db, user, body, res) {
   return jsonError(res, 400, 'Ação não reconhecida.')
 }
 
+async function sellerRow(db, id) {
+  const r = await db.from('salespeople').select('id,full_name,email,team').eq('id', id).maybeSingle()
+  return r.error ? db.from('salespeople').select('id,full_name,email').eq('id', id).maybeSingle() : r
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
   const user = await requireActiveSalesSession(req, res)
@@ -1141,8 +1165,25 @@ export default async function handler(req, res) {
   try {
     const db = salesDb()
     if (req.method === 'GET') {
+      // v1.0.234 · "Ver como": only the owner's login may read as one seller, and only read.
+      const viewAs = String(req.query?.view_as || '')
+      if (viewAs) {
+        const owners = String(process.env.OWNER_EMAILS || 'admin@kuripuro.com').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
+        if (user.role !== 'admin' || !owners.includes(String(user.email || '').toLowerCase())) return res.status(403).json({ error: 'Somente a conta do dono usa o Ver como.' })
+        const { data: seller } = await sellerRow(db, viewAs)
+        if (!seller) return res.status(404).json({ error: 'Vendedor não encontrado.' })
+        const as = { id: seller.id, role: 'salesperson', name: seller.full_name, email: seller.email, team: seller.team === 'marketing' ? 'marketing' : 'sales' }
+        return res.status(200).json(await getAction(db, as, String(req.query?.action || 'dashboard'), req.query || {}))
+      }
       const result = await getAction(db, user, String(req.query?.action || 'dashboard'), req.query || {})
       return res.status(200).json(result)
+    }
+    if (req.method === 'POST' && ['targets-import', 'call-result', 'outreach-email'].includes(req.body?.action)) {
+      // v1.0.234 · target base, call queue and meeting-request e-mails (api/_sales-outreach.js)
+      if (user.role === 'salesperson' && user.team === 'marketing') return res.status(403).json({ error: 'Não disponível nesta conta.' })
+      const outreach = await import('./_sales-outreach.js')
+      const run = { 'targets-import': outreach.importTargets, 'call-result': outreach.callResult, 'outreach-email': outreach.outreachEmail }[req.body.action]
+      return res.status(200).json(await run(db, user, req.body, req))
     }
     if (req.method === 'POST') {
       const result = await postAction(db, user, req.body || {}, res)

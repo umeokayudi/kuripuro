@@ -4,6 +4,7 @@ import { useLang } from '../hooks/useLang'
 import { salesGet } from '../lib/salesApi'
 import { tokyoToday } from '../lib/dates'
 import SalesFunnel from '../components/SalesFunnel'
+import SalesOutreach from '../components/SalesOutreach'
 import { funnelCopy, clientsOutsideFunnel } from '../lib/salesPhases'
 import { Link } from 'react-router-dom'
 import { pickLang } from '../hooks/useLang'
@@ -14,6 +15,7 @@ export default function SalesFunnelPage() {
   const t = funnelCopy(lang)
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [view, setView] = useState('funnel') // v1.0.234 · 'funnel' | 'calls'
   const load = useCallback(async () => {
     try { setData(await salesGet('/api/sales-data', lang)); setError('') }
     catch (e) { setError(e.message); toast.error(e.message) }
@@ -27,6 +29,11 @@ export default function SalesFunnelPage() {
     </div></div>
     {error && <div className="card sales-setup-note"><p>{error}</p></div>}
     {!data && !error && <div className="card">{t.loading}</div>}
-    {data && <SalesFunnel data={data} lang={lang} today={data.today || tokyoToday()} isAdmin onChanged={load} />}
+    <div className="so-tabs" role="tablist" style={{ marginBottom: 14 }}>
+      <button type="button" role="tab" aria-selected={view === 'funnel'} className={`so-tab${view === 'funnel' ? ' active' : ''}`} onClick={() => setView('funnel')}>{pickLang(lang, 'Funnel', 'ファネル', 'Funil')}</button>
+      <button type="button" role="tab" aria-selected={view === 'calls'} className={`so-tab${view === 'calls' ? ' active' : ''}`} onClick={() => setView('calls')}>{pickLang(lang, 'Calls and target companies', '架電・ターゲット企業', 'Ligações e empresas-alvo')}</button>
+    </div>
+    {view === 'calls' && <SalesOutreach lang={lang} isAdmin sellers={data?.salespeople || []} onChanged={load} />}
+    {view === 'funnel' && data && <SalesFunnel data={data} lang={lang} today={data.today || tokyoToday()} isAdmin onChanged={load} />}
   </div>
 }

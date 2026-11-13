@@ -26,7 +26,8 @@ const shiftMonth = (period, n) => {
   const d = new Date(y, m - 1 + n, 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
-const isOpen = (p) => !p.is_deduction && p.status !== 'paid' && p.status !== 'cancelled'
+// v1.0.209 · 'extra' lines live inside the salary line (payslip total), never paid apart
+const isOpen = (p) => !p.is_deduction && p.payment_type !== 'extra' && p.status !== 'paid' && p.status !== 'cancelled'
 const counts = (p) => p.status !== 'cancelled'
 
 // What the employee did with the payslip of that month.
@@ -131,7 +132,7 @@ export default function Payments() {
       const emp = employees.find(e => e.id === id) || { id, full_name: lines.find(p => p.employee_id === id)?.employee_name || '—', is_active: false }
       const mine = lines.filter(p => p.employee_id === id).sort((a, b) => (a.payment_date||'').localeCompare(b.payment_date||''))
       const live = mine.filter(counts)
-      const earn = live.filter(p => !p.is_deduction).reduce((s, p) => s + Number(p.amount||0), 0)
+      const earn = live.filter(p => !p.is_deduction && p.payment_type !== 'extra').reduce((s, p) => s + Number(p.amount||0), 0)
       const ded = live.filter(p => p.is_deduction).reduce((s, p) => s + Number(p.amount||0), 0)
       const open = mine.filter(isOpen)
       const toPay = open.reduce((s, p) => s + Number(p.amount||0), 0)
@@ -167,7 +168,7 @@ export default function Payments() {
       const state = group
       const payDate = salaryLine?.payment_date || open[0]?.payment_date || mine[0]?.payment_date
       const paidOn = mine.filter(p => !p.is_deduction && p.status === 'paid').map(p => p.payment_date).sort().pop() || null
-      const paid = live.filter(p => !p.is_deduction && p.status === 'paid').reduce((s, p) => s + Number(p.amount||0), 0)
+      const paid = live.filter(p => !p.is_deduction && p.payment_type !== 'extra' && p.status === 'paid').reduce((s, p) => s + Number(p.amount||0), 0)
       // Payroll close already takes deductions out of the salary row, so they are shown, not subtracted again.
       return { emp, lines: mine, earn, ded, net: earn, paid, toPay, due, silentDed, reviewDed, open, group, state, late, payDate, paidOn, slip, st, fixedZero, paidUnconfirmed, salaryLine, pstate, calc, outdated }
     }).sort((a, b) => a.emp.full_name.localeCompare(b.emp.full_name))
@@ -227,6 +228,11 @@ export default function Payments() {
     const { error } = !rest.length ? { error: null } : ask.kind === 'pay'
       ? await supabase.from('salary_payments').update({ status:'paid' }).in('id', rest)
       : await supabase.from('salary_payments').delete().in('id', rest)
+    // v1.0.209 · extras of the payslip are inside the salary: paid together with it
+    if (!error && ask.kind === 'pay' && month) {
+      const empIds = [...new Set(ask.lines.filter(p => p.payment_type === 'salary').map(p => p.employee_id))]
+      if (empIds.length) await supabase.from('salary_payments').update({ status: 'paid' }).eq('payment_type', 'extra').eq('status', 'scheduled').eq('period', month).in('employee_id', empIds)
+    }
     setBusy(false)
     if (error) return toast.error(error.message)
     toast.success(ask.kind === 'pay' ? tr('Marked as paid','支払済みにしました','Marcado como pago') : tr('Deleted','削除しました','Apagado'))
@@ -308,7 +314,7 @@ export default function Payments() {
     if (r.late) return {
       why: tr(`Was due on ${fmtDay(r.open[0]?.payment_date)}.`, `${fmtDay(r.open[0]?.payment_date)} が支払日でした。`, `Era para pagar em ${fmtDay(r.open[0]?.payment_date)}.`),
       ...(blocked(r.slip, r.open) ? { btn: tr('Open payroll','給与締めを開く','Abrir folha'), act: open } : { btn: tr('Mark paid','支払済にする','Marcar pago'), act: pay, go: true }) }
-    if (r.group === 'ready') return { why: tr(`Pay on ${fmtDay(r.open[0]?.payment_date)}.`, `${fmtDay(r.open[0]?.payment_date)} に支払い。`, `Pagar em ${fmtDay(r.open[0]?.payment_date)}.`), btn: tr('Mark paid','支払済にする','Marcar pago'), act: pay, go: true }
+    if (r.group === 'ready') return { why: !r.open[0]?.payment_date ? tr('Ready to pay.', '支払い可能です。', 'Pronto para pagar.') : tr(`Pay on ${fmtDay(r.open[0]?.payment_date)}.`, `${fmtDay(r.open[0]?.payment_date)} に支払い。`, `Pagar em ${fmtDay(r.open[0]?.payment_date)}.`), btn: tr('Mark paid','支払済にする','Marcar pago'), act: pay, go: true }
     if (r.group === 'waiting') return { why: tr('Payslip sent, the employee has not confirmed yet.', '明細送付済み、本人はまだ確認していません。', 'Holerite enviado, o funcionário ainda não confirmou.') }
     if (r.group === 'todo') return canCloseMonth(month, today)
       ? { why: tr('No payslip for this month yet.', 'この月の明細はまだありません。', 'Ainda não tem holerite deste mês.'), btn: tr('Make payslip','明細を作る','Fazer holerite'), act: open }

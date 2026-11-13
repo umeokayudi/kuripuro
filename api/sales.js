@@ -1,8 +1,12 @@
 import calendar from './_calendar.js'
+import clientEmail from './_client-email.js'
 import contractSales from './_contract-sales.js'
 import google from './_google-calendar.js'
+import meetings from './_meetings.js'
+import scan3d from './_kiri.js'
 import payrollClose from './_payroll-close.js'
 import push from './_push.js'
+import optout from './_sales-outreach.js'
 import salesAi from './_sales-ai.js'
 import salesData from './_sales-data.js'
 import salesFiles from './_sales-files.js'
@@ -16,11 +20,15 @@ const handlers = {
   ai: salesAi,
   calendar,
   'calendar-link': calendar,
+  'client-email': clientEmail,
   'contract-sellers': contractSales,
   data: salesData,
   google,
   'google-sync': google,
   files: salesFiles,
+  meetings,
+  optout,
+  scan3d,
   'payroll-close': payrollClose,
   push,
   reminders: salesReminders,

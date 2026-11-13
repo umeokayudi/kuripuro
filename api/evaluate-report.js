@@ -1,7 +1,7 @@
 // api/evaluate-report.js
 // Relatório retroativo — IA analisa só o texto vs checklist (sem valor/pagamento).
 
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 import { aiRateLimited, requireAppSession } from './_auth.js'
 import { workReportAi } from './_work-report-ai.js'
 import { proposalAi } from './_proposal-ai.js'
@@ -45,7 +45,7 @@ Responda APENAS com JSON válido, sem texto fora dele:
 {"itens_feitos": <número>, "itens_total": ${checklistItems.length}, "nao_feitos": [<itens não comprovados no relatório, em português>], "tempo_estimado_min": <minutos mencionados ou null>, "resumo": "<1 frase sobre a análise do relatório vs checklist — sem mencionar valor ou pagamento>"}`
 
   try {
-    const data = await geminiGenerate({
+    const data = await aiGenerate({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: 'application/json' },
     })

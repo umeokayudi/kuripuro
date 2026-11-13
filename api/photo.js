@@ -84,7 +84,18 @@ async function videoIndex(req, res) {
   }
 }
 
+// v1.0.234 · once the server issues per-person database keys (SUPABASE_JWT_SECRET set), sending a
+// photo or a video also asks for a login of any profile. Before that it stays as it was, because
+// client logins only receive their cookie from this version on.
+async function uploaderAllowed(req, res) {
+  const { dbTokensConfigured, readSalesSession } = await import('./_salesSession.js')
+  if (!dbTokensConfigured() || readSalesSession(req)) return true
+  res.status(401).json({ error: 'Entre de novo para enviar fotos.' })
+  return false
+}
+
 export default async function handler(req, res) {
+  if (req.method === 'POST' && req.body?.action !== 'video-index' && !(await uploaderAllowed(req, res))) return
   if (req.method === 'POST' && req.body?.action === 'video-upload-url') return videoUploadUrl(req, res)
   if (req.method === 'POST' && req.body?.action === 'video-index') return videoIndex(req, res)
   if (req.method === 'GET' && req.query.videos) return videoList(req, res)

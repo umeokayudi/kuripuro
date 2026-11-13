@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase'
 import { lineTotal, yen } from '../lib/quoteMath'
 import { useLang, fill, pickLang } from '../hooks/useLang'
 import { tokyoToday } from '../lib/dates'
-import { QUOTE_ISSUER } from '../lib/quoteIssuer'
+import { QUOTE_ISSUER, shownRegNumber } from '../lib/quoteIssuer'
 import { openPrintHtml } from '../lib/openPrintHtml'
 import {
   buildMitsumoriPrintHtml,
@@ -599,7 +599,7 @@ export default function Mitsumori() {
               <div style={{ fontWeight: 700 }}>{QUOTE_ISSUER.company}</div>
               <div>{s.issuerTitle}：{QUOTE_ISSUER.name}</div>
               <div>{s.issuerAddress}：{QUOTE_ISSUER.address}</div>
-              <div>{s.issuerReg}：{QUOTE_ISSUER.regNumber}</div>
+              {shownRegNumber(QUOTE_ISSUER.regNumber) && <div>{s.issuerReg}：{shownRegNumber(QUOTE_ISSUER.regNumber)}</div>}
             </div>
           </div>
 
