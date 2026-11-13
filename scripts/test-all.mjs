@@ -8,6 +8,7 @@ const steps = [
   ['npx vite-node scripts/test-salary-unified.mjs', 'salary-unified'],
   ['npm run test:payroll-close', 'payroll-close'],
   ['npm run test:money', 'money'],
+  ['node scripts/test-active-portfolio.mjs', 'Vendas: contratos ativos (só leitura, sem dados de funcionário)'],
   ['npm run test:exception-queue', 'exception queue'],
   ['node scripts/test-training.mjs', 'treinamento (links do YouTube + assistido de verdade)'],
   ['node scripts/test-day-panel.mjs', 'day panel (Painel do Dia)'],

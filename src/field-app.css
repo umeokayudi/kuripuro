@@ -620,3 +620,20 @@ body.fa-sheet-open { overflow: hidden; }
 .sp-gcal-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .cp-next-visits { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
 .cp-next-visit { display: inline-flex; gap: 4px; align-items: center; padding: 6px 10px; border-radius: 999px; background: #e9eeff; color: #3557f5; font-size: 13px; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* v1.0.226 · 契約 → Contratos ativos (somente leitura) */
+.sp-portfolio-hint { margin: 0 0 8px; font-size: 12px; }
+.sp-portfolio-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.sp-portfolio-sum span { display: flex; flex-direction: column; background: #f6f8fb; border-radius: 10px; padding: 8px 10px; font-size: 11px; color: var(--fa-muted); min-width: 0; }
+.sp-portfolio-sum b { font-size: 15px; color: #1a2233; overflow-wrap: anywhere; }
+.sp-portfolio-search { width: 100%; box-sizing: border-box; margin-bottom: 8px; padding: 9px 12px; border: 1px solid #dfe3ea; border-radius: 10px; font-size: 14px; }
+.sp-portfolio-client { border-top: 1px solid #f0f2f7; padding: 10px 0; }
+.sp-portfolio-client summary { display: flex; justify-content: space-between; gap: 10px; align-items: center; cursor: pointer; list-style: none; }
+.sp-portfolio-client summary::-webkit-details-marker { display: none; }
+.sp-portfolio-name { display: flex; flex-direction: column; min-width: 0; }
+.sp-portfolio-name strong { font-size: 14px; }
+.sp-portfolio-name small, .sp-portfolio-value small { color: var(--fa-muted); font-size: 12px; overflow-wrap: anywhere; }
+.sp-portfolio-value { display: flex; flex-direction: column; align-items: flex-end; white-space: nowrap; }
+.sp-portfolio-value strong { font-size: 15px; color: #15803d; }
+.sp-portfolio-facts { display: flex; flex-direction: column; gap: 3px; margin: 8px 0 2px; font-size: 12px; color: #3a4357; background: #f6f8fb; border-radius: 10px; padding: 8px 10px; }
+.sp-portfolio-line { font-weight: 700; font-size: 13px; white-space: nowrap; }

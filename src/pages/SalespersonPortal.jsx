@@ -18,6 +18,7 @@ import SellerLeadDump from '../components/SellerLeadDump'
 import { GoogleAgendaConnect, UpcomingVisits, VisitFields, VisitRow, blankVisit, visitCopy, visitGoogleUrl } from '../components/SellerVisits'
 import { isImagePath, normalizeVisit, upcomingVisits } from '../lib/sellerVisits'
 import TeamChannel from '../components/TeamChannel'
+import SellerActivePortfolio from '../components/SellerActivePortfolio'
 
 const COPY = {
   en: {
@@ -54,7 +55,7 @@ const COPY = {
     mapsLink: 'Google Maps link of the shop', mapsHint: 'In Google Maps: find the shop → Share → Copy link, then paste here.', openMaps: 'Open Google Maps here', paste: 'Paste', useGps: 'Use my location', mapsBad: 'Paste a Google Maps link (google.com/maps or maps.app.goo.gl).',
     needCard: 'Take the business card photo first.', needGps: 'Location is required to save a lead.', required: 'required', details: 'More details', call: 'Call', map: 'Map', card: 'Card',
     leadInfo: 'Details', editLead: 'Edit details', stage: 'Stage', history: 'History', noCard: 'No card photo', workingFor: 'Working', dayClosed: 'Day closed', endDaySheet: 'End the day',
-    menuReports: 'Visits & day reports', menuContracts: 'Contracts', menuGoals: 'My goals', menuKpi: 'My KPIs', menuAi: 'AI funnel review', menuHint: { approaches: 'Every visit and day you logged', contracts: 'Send a signed contract', goals: 'Monthly targets', kpi: 'Numbers and trends', ai: 'Ask the AI what to do next' },
+    menuReports: 'Visits & day reports', menuContracts: 'Contracts', menuGoals: 'My goals', menuKpi: 'My KPIs', menuAi: 'AI funnel review', menuHint: { approaches: 'Every visit and day you logged', contracts: 'Active contracts · send a signed one', goals: 'Monthly targets', kpi: 'Numbers and trends', ai: 'Ask the AI what to do next' },
     notifications: 'Notifications', visitFor: 'Visit', visitDetails: 'Time, travel, recording', hoursLog: 'Hours of a past day',
   },
   ja: {
@@ -91,7 +92,7 @@ const COPY = {
     mapsLink: '店舗のGoogleマップリンク', mapsHint: 'Googleマップで店舗を探し → 共有 → リンクをコピーして貼り付けてください。', openMaps: 'Googleマップを開く', paste: '貼り付け', useGps: '現在地を使う', mapsBad: 'Googleマップのリンクを貼り付けてください（google.com/maps または maps.app.goo.gl）。',
     needCard: '先に名刺を撮影してください。', needGps: 'リードの保存には現在地が必要です。', required: '必須', details: '詳細', call: '電話', map: '地図', card: '名刺',
     leadInfo: '情報', editLead: '情報を編集', stage: '段階', history: '履歴', noCard: '名刺写真なし', workingFor: '稼働中', dayClosed: '終了', endDaySheet: '業務終了',
-    menuReports: '訪問・日報', menuContracts: '契約', menuGoals: '目標', menuKpi: 'KPI・推移', menuAi: 'AI営業分析', menuHint: { approaches: '記録した訪問と日報', contracts: '署名済み契約を提出', goals: '今月の目標', kpi: '数字と推移', ai: '次にやることをAIに相談' },
+    menuReports: '訪問・日報', menuContracts: '契約', menuGoals: '目標', menuKpi: 'KPI・推移', menuAi: 'AI営業分析', menuHint: { approaches: '記録した訪問と日報', contracts: '有効契約・署名済み契約の提出', goals: '今月の目標', kpi: '数字と推移', ai: '次にやることをAIに相談' },
     notifications: 'お知らせ', visitFor: '訪問', visitDetails: '時間・交通費・録音', hoursLog: '過去日の稼働時間',
   },
   pt: {
@@ -128,7 +129,7 @@ const COPY = {
     mapsLink: 'Link do Google Maps da loja', mapsHint: 'No Google Maps: encontre a loja → Compartilhar → Copiar link e cole aqui.', openMaps: 'Abrir o Google Maps aqui', paste: 'Colar', useGps: 'Usar minha localização', mapsBad: 'Cole um link do Google Maps (google.com/maps ou maps.app.goo.gl).',
     needCard: 'Tire primeiro a foto do cartão de visita.', needGps: 'A localização é obrigatória para salvar um lead.', required: 'obrigatório', details: 'Mais detalhes', call: 'Ligar', map: 'Mapa', card: 'Cartão',
     leadInfo: 'Dados', editLead: 'Editar dados', stage: 'Etapa', history: 'Histórico', noCard: 'Sem foto do cartão', workingFor: 'Trabalhando', dayClosed: 'Dia encerrado', endDaySheet: 'Encerrar o dia',
-    menuReports: 'Visitas e relatórios do dia', menuContracts: 'Contratos', menuGoals: 'Minhas metas', menuKpi: 'Meus KPIs', menuAi: 'Análise do funil com IA', menuHint: { approaches: 'Todas as visitas e dias registrados', contracts: 'Enviar um contrato assinado', goals: 'Metas do mês', kpi: 'Números e tendências', ai: 'Pergunte à IA o que fazer agora' },
+    menuReports: 'Visitas e relatórios do dia', menuContracts: 'Contratos', menuGoals: 'Minhas metas', menuKpi: 'Meus KPIs', menuAi: 'Análise do funil com IA', menuHint: { approaches: 'Todas as visitas e dias registrados', contracts: 'Contratos ativos · enviar um assinado', goals: 'Metas do mês', kpi: 'Números e tendências', ai: 'Pergunte à IA o que fazer agora' },
     notifications: 'Notificações', visitFor: 'Visita', visitDetails: 'Horário, transporte, gravação', hoursLog: 'Horas de um dia anterior',
   },
 }
@@ -165,7 +166,7 @@ export default function SalespersonPortal() {
   const { user, logout } = useAuth()
   const { lang } = useLang()
   const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
-  const [tab, setTab] = useState(() => tabFromUrl(['home','leads','followups','offers','clients','quotes','commissions','approaches','team']) || 'home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','leads','followups','offers','clients','quotes','commissions','approaches','team','contracts']) || 'home')
   useEffect(() => { clearTabParam() }, [])
   const [sheet, setSheet] = useState('')
   const [gps, setGps] = useState({ state: 'idle' })
@@ -185,6 +186,7 @@ export default function SalespersonPortal() {
   const [approach, setApproach] = useState(blankApproach)
   const [dailyReport, setDailyReport] = useState({ work_date:todayJapan(), hours_worked:'', started_at:'', ended_at:'', areas:'', summary:'', travel_cost:0 })
   const [contract, setContract] = useState({ lead_id: '', service_type: 'Basic Cleaning', billing_type: 'fixed_monthly', base_monthly_amount: '', price_per_visit: '', visits_per_month: '', hours_per_visit: 2, days_of_week: [], billing_day: 10, tax_rate: 10, commission_type: 'percent', commission_value: '', signed_pdf_object_path: '', signed_pdf_name: '' })
+  const [contractView, setContractView] = useState('active') // v1.0.226 · 契約: 'active' (carteira, só leitura) | 'submit'
   const [aiResult, setAiResult] = useState('')
   const [busyAi, setBusyAi] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -712,6 +714,9 @@ export default function SalespersonPortal() {
 
         {tab === 'contracts' && <div className="fa-stack">
           <div className="fa-screen-head"><h2>{c.contracts}</h2></div>
+          <div className="sp-chip-row">{[['active', pickLang(lang, 'Active contracts', '有効契約', 'Contratos ativos')], ['submit', pickLang(lang, 'Send a contract', '契約を提出', 'Enviar contrato')]].map(([key, label]) => <button type="button" key={key} className={`fa-chip${contractView === key ? ' is-active' : ''}`} onClick={() => setContractView(key)}>{label}</button>)}</div>
+          {contractView === 'active' && <SellerActivePortfolio lang={lang} />}
+          {contractView === 'submit' && <>
           <form className="fa-card sp-form" onSubmit={submitContract}>
             <div className="fa-card-head"><h2>{c.prepare}</h2></div>
             <label className="form-group"><span>{c.lead}</span><select value={contract.lead_id} onChange={e => setContract(v => ({ ...v, lead_id: e.target.value }))}><option value="">—</option>{leads.filter(row => !['won','lost'].includes(row.stage)).map(row => <option key={row.id} value={row.id}>{row.site_name || row.company_name}</option>)}</select></label>
@@ -733,11 +738,12 @@ export default function SalespersonPortal() {
             {data.contracts?.filter(row => row.status === 'changes_requested' && row.salesperson_id === user.id).map(row => <div className="sales-review-note" key={row.id}><strong>{row.company_name}</strong><p>{row.admin_note}</p></div>)}
             <button className="fa-btn fa-btn-primary fa-btn-block" type="submit" disabled={saving || !contract.signed_pdf_object_path}>{saving ? c.saving : c.submit}</button>
           </form>
-          <section className="fa-card is-list"><div className="fa-card-head"><h2>{c.activeContracts}</h2></div>
+          <section className="fa-card is-list"><div className="fa-card-head"><h2>{pickLang(lang, 'Contracts I sent', '提出した契約', 'Contratos que enviei')}</h2></div>
             {(data.contracts || []).map(row => <div className="sp-history-row" key={row.id}><span className={`fa-pill is-${row.status}`}>{c.statuses[row.status] || row.status}</span><div><strong>{row.site_name || row.company_name}</strong><small>{yen(row.client_monthly_total)} {c.perMonth} · {c.commission}: {yen(row.commission_amount)}</small>{row.admin_note && <p>{row.admin_note}</p>}</div>{row.signed_pdf_object_path && <button type="button" className="fa-btn fa-btn-sm" onClick={() => openSignedPdf(row)}>PDF</button>}</div>)}
             {!data.contracts?.length && <p className="fa-muted">{c.noContracts}</p>}
           </section>
           <SellerContractCommissions data={data} lang={lang} />
+          </>}
         </div>}
       </>)}
 

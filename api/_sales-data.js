@@ -6,6 +6,7 @@ import { quoteSellerFor } from '../src/lib/quoteSeller.js'
 import { estimateMinimum, signMinimum, readMinimum } from './_quoteMinimum.js'
 import { readSellerVisits, writeSellerVisits, readAllVisits } from './_sales-visits.js'
 import { normalizeVisit, upsertVisit, followupForVisit } from '../src/lib/sellerVisits.js'
+import { buildPortfolio, PORTFOLIO_CONTRACT_COLUMNS } from '../src/lib/activePortfolio.js'
 
 const LEAD_FIELDS = new Set([
   'company_name', 'company_kana', 'site_name', 'address', 'phone', 'email', 'website', 'industry',
@@ -359,11 +360,27 @@ async function getAction(db, user, action, query = {}) {
     return { items:data || [] }
   }
   if (action === 'deal') return loadDeal(db, user, String(query.lead_id || ''))
+  if (action === 'portfolio') return loadPortfolio(db, user)
   throw Object.assign(new Error('Ação de leitura inválida.'), { status: 400 })
 }
 
 // One client's whole story for the client page: quotes, contract, and once the
 // contract is active, the services done/scheduled and the invoices.
+// v1.0.226 · Contratos ativos (somente leitura) para a equipe de vendas: TODOS os clientes com contrato ativo.
+// Lista explícita de colunas — nada de pagamento/salário de funcionário (contract_details só a data de início).
+async function loadPortfolio(db, user) {
+  if (user.role === 'salesperson' && user.team === 'marketing') throw Object.assign(new Error('Não disponível nesta conta.'), { status: 403 })
+  const today = todayTokyo()
+  const [contractsRes, clientsRes] = await Promise.all([
+    db.from('service_contracts').select(`${PORTFOLIO_CONTRACT_COLUMNS},start_date:contract_details->>start_date`).eq('is_active', true).limit(2000),
+    db.from('clients').select('id,company_name').limit(2000),
+  ])
+  if (contractsRes.error) throw contractsRes.error
+  if (clientsRes.error) throw clientsRes.error
+  const contracts = (contractsRes.data || []).map(({ start_date, ...row }) => ({ ...row, contract_details: { start_date } }))
+  return { today, clients: buildPortfolio(contracts, clientsRes.data || [], today) }
+}
+
 async function loadDeal(db, user, leadId) {
   const notFound = () => Object.assign(new Error('Cliente não encontrado nesta conta.'), { status: 404 })
   if (!leadId || (user.role === 'salesperson' && user.team === 'marketing')) throw notFound()
