@@ -35,7 +35,34 @@ export const CHANNELS = [
   { key: 'marketing', icon: '📣', en: 'Marketing', ja: 'マーケティング', pt: 'Marketing' },
 ]
 export const CHANNEL_KEYS = CHANNELS.map(c => c.key)
-export const channelDir = ch => `${CHANNEL_ROOT}/c/${ch}`
+export const channelDir = ch => (isDmKey(ch) ? `${CHANNEL_ROOT}/dm/${ch.slice(3)}` : `${CHANNEL_ROOT}/c/${ch}`)
+
+// ── v1.0.228 · Private conversations (DM) between two internal people ───────
+// Key 'dm:<role>-<id>__<role>-<id>' (sorted), files in team-channel/dm/<pair>/<YYYY-MM>/…
+// Only the two people see it. Used for "falar com a gerência" (leaders, supervisors, admins).
+const TOKEN_RE = /^(admin|employee|salesperson)-[0-9a-f-]{36}$/i
+export const personToken = p => `${p?.role}-${p?.id}`
+export function dmKey(a, b) {
+  const [x, y] = [personToken(a), personToken(b)].sort()
+  if (!TOKEN_RE.test(x) || !TOKEN_RE.test(y) || x === y) throw new Error('dm')
+  return `dm:${x}__${y}`
+}
+export const isDmKey = k => /^dm:(admin|employee|salesperson)-[0-9a-f-]{36}__(admin|employee|salesperson)-[0-9a-f-]{36}$/i.test(String(k || ''))
+/** The two people of a DM key: [{ role, id }, { role, id }]. */
+export function dmPeople(key) {
+  if (!isDmKey(key)) return []
+  return key.slice(3).split('__').map(t => { const i = t.indexOf('-'); return { role: t.slice(0, i), id: t.slice(i + 1) } })
+}
+export const inDm = (p, key) => dmPeople(key).some(x => x.role === p?.role && x.id === p?.id)
+/** The other person of a DM (with name when found in `people`). */
+export function dmOther(key, me, people = []) {
+  const o = dmPeople(key).find(x => !(x.role === me?.role && x.id === me?.id))
+  return o ? (people.find(p => p.role === o.role && p.id === o.id) || o) : null
+}
+const MANAGER_ROLES = ['leader', 'supervisor']
+/** Gerência: admins + employees whose role is leader / supervisor (never me). */
+export const managersOf = (people = [], me) => people.filter(p => isInternalActive(p) && !(p.role === me?.role && p.id === me?.id)
+  && (p.role === 'admin' || (p.role === 'employee' && MANAGER_ROLES.includes(String(p.job_role || '').trim()))))
 export const LEGACY_DIR_CHANNEL = 'limpeza'
 export const COVER_CHANNEL = 'limpeza'
 export const INTERNAL_ROLES = ['admin', 'employee', 'salesperson']
@@ -78,6 +105,7 @@ export function normalizeMembers(raw) {
 
 /** Is the person in the channel? Admin: always. Inactive / client: never. */
 export function inChannel(p, channel, members) {
+  if (isDmKey(channel)) return isInternalActive(p) && inDm(p, channel)
   if (!isInternalActive(p) || !CHANNEL_KEYS.includes(channel)) return false
   if (p.role === 'admin') return true
   const m = normalizeMembers(members).channels[channel]
@@ -130,15 +158,17 @@ export function prevMonth(month) {
 export function messagePath(now = new Date(), rand = Math.random().toString(36).slice(2, 8), channel = 'limpeza') {
   const d = new Date(now)
   const tokyoMonth = new Date(d.getTime() + 9 * 3600_000).toISOString().slice(0, 7)
-  const ch = CHANNEL_KEYS.includes(channel) ? channel : 'geral'
+  const ch = CHANNEL_KEYS.includes(channel) || isDmKey(channel) ? channel : 'geral'
   return `${channelDir(ch)}/${tokyoMonth}/${String(d.getTime()).padStart(13, '0')}_${String(rand).replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'x'}.json`
 }
 export const requestPath = jobId => `${REQ_DIR}/${jobId}.json`
 
 /** Only these paths may be read by the push route (no way to point it anywhere else). */
-export const CHANNEL_PATH_RE = /^team-channel\/((msgs|c\/(geral|limpeza|vendas|marketing))\/\d{4}-\d{2}\/\d{13}_[a-z0-9]{1,8}|requests\/[0-9a-f-]{36})\.json$/i
+export const CHANNEL_PATH_RE = /^team-channel\/((msgs|c\/(geral|limpeza|vendas|marketing)|dm\/(admin|employee|salesperson)-[0-9a-f-]{36}__(admin|employee|salesperson)-[0-9a-f-]{36})\/\d{4}-\d{2}\/\d{13}_[a-z0-9]{1,8}|requests\/[0-9a-f-]{36})\.json$/i
 /** Channel of a message path ('limpeza' for the v1.0.217 folder and for cover requests). */
 export function channelOfPath(p) {
+  const d = String(p || '').match(/^team-channel\/dm\/([^/]+)\//)
+  if (d) return `dm:${d[1]}`
   const m = String(p || '').match(/^team-channel\/c\/(geral|limpeza|vendas|marketing)\//)
   return m ? m[1] : 'limpeza'
 }
@@ -168,7 +198,7 @@ export function jobBrief(job) {
 /** A new message object (without the path). */
 export function buildMessage({ kind = 'text', text = '', author, job = null, now = new Date(), channel = 'geral' }) {
   if (!author?.id || !INTERNAL_ROLES.includes(author.role)) throw new Error('author')
-  if (!CHANNEL_KEYS.includes(channel)) throw new Error('channel')
+  if (isDmKey(channel) ? !inDm(author, channel) : !CHANNEL_KEYS.includes(channel)) throw new Error('channel')
   const body = cleanText(text)
   if (kind === 'text' && !body) throw new Error('empty')
   return {
@@ -266,6 +296,10 @@ export const channelLabel = (key, lang = 'pt') => {
 
 /** Push for a plain message: "#Limpeza · Gabriel" + the text. */
 export function textPushText(msg, lang = 'pt') {
+  if (isDmKey(msg?.channel)) {
+    const t = String(msg?.text || '').replace(/\s+/g, ' ').trim()
+    return { title: `💬 ${msg?.author?.name || ''}`.trim(), body: t.length > 120 ? `${t.slice(0, 119)}…` : t }
+  }
   const ch = CHANNELS.find(x => x.key === msg?.channel)
   const t = String(msg?.text || '').replace(/\s+/g, ' ').trim()
   return { title: `${ch?.icon || '💬'} ${channelLabel(msg?.channel, lang)} · ${msg?.author?.name || ''}`.trim(), body: t.length > 120 ? `${t.slice(0, 119)}…` : t }

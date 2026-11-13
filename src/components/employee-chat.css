@@ -48,3 +48,4 @@
   .ec-hub:not(.has-active)>.ec-chat{display:none}
   .ec-back{display:grid;place-items:center}
 }
+.ec-back.is-shown{display:grid;place-items:center}
