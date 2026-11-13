@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { statusLabel } from '../lib/statusLabel'
 import SkeletonRows from '../components/SkeletonRows'
 import { useSearchParams } from 'react-router-dom'
 import { pendingChanged } from '../lib/adminPending'
@@ -20,7 +21,7 @@ import { ClientLink } from '../components/ClientSheetHost'
 const TABS = ['ratings', 'complaints', 'compliments', 'requests']
 
 export default function ClientFeedback() {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const f = t.feedback
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState(TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'ratings')
@@ -235,7 +236,7 @@ export default function ClientFeedback() {
             <div key={row.id} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ fontWeight: 600 }}>{clientName(row.client_id)} · {row.location_name || '—'}</div>
-                <span className={`badge ${row.status === 'resolved' ? 'badge-green' : 'badge-amber'}`}>{row.status}</span>
+                <span className={`badge ${row.status === 'resolved' ? 'badge-green' : 'badge-amber'}`}>{statusLabel(row.status, lang)}</span>
               </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>{row.category} · {row.employee_name || '—'} · {new Date(row.created_at).toLocaleDateString()}</div>
               <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>{row.description}</div>
@@ -260,7 +261,7 @@ export default function ClientFeedback() {
             <div key={row.id} className="card" style={{ marginBottom: 10, borderLeft: '4px solid var(--green)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ fontWeight: 600 }}>{clientName(row.client_id)} · {row.location_name || '—'}</div>
-                <span className={`badge ${row.status === 'new' ? 'badge-blue' : 'badge-green'}`}>{row.status}</span>
+                <span className={`badge ${row.status === 'new' ? 'badge-blue' : 'badge-green'}`}>{statusLabel(row.status, lang)}</span>
               </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>{row.employee_name || '—'} · {new Date(row.created_at).toLocaleDateString()}</div>
               <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>👏 {row.message}</div>
@@ -281,7 +282,7 @@ export default function ClientFeedback() {
                 <div style={{ fontWeight: 600 }}>
                   {row.ticket_number || `#${row.id.slice(0, 8)}`} · <ClientLink id={row.client_id} name={clientName(row.client_id)} />
                 </div>
-                <span className={`badge ${row.status === 'completed' ? 'badge-green' : 'badge-amber'}`}>{row.status}</span>
+                <span className={`badge ${row.status === 'completed' ? 'badge-green' : 'badge-amber'}`}>{statusLabel(row.status, lang)}</span>
               </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>
                 {row.location_name || f.allLocations} · {new Date(row.created_at).toLocaleDateString()}

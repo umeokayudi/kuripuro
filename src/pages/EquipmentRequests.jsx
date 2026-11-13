@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { statusLabel } from '../lib/statusLabel'
 import { supabase } from '../lib/supabase'
 import { viewablePhotoUrl } from '../lib/photoUrl'
 import toast from 'react-hot-toast'
@@ -100,7 +101,7 @@ export default function EquipmentRequests() {
             <span className={`badge ${
               r.status === 'approved' || r.status === 'fulfilled' ? 'badge-green'
                 : r.status === 'rejected' ? 'badge-red' : 'badge-amber'
-            }`}>{r.status}</span>
+            }`}>{statusLabel(r.status, lang)}</span>
           </div>
 
           <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, marginBottom: 10, background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px' }}>

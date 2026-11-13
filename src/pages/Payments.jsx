@@ -308,7 +308,7 @@ export default function Payments() {
     if (r.late) return {
       why: tr(`Was due on ${fmtDay(r.open[0]?.payment_date)}.`, `${fmtDay(r.open[0]?.payment_date)} が支払日でした。`, `Era para pagar em ${fmtDay(r.open[0]?.payment_date)}.`),
       ...(blocked(r.slip, r.open) ? { btn: tr('Open payroll','給与締めを開く','Abrir folha'), act: open } : { btn: tr('Mark paid','支払済にする','Marcar pago'), act: pay, go: true }) }
-    if (r.group === 'ready') return { why: tr(`Pay on ${fmtDay(r.open[0]?.payment_date)}.`, `${fmtDay(r.open[0]?.payment_date)} に支払い。`, `Pagar em ${fmtDay(r.open[0]?.payment_date)}.`), btn: tr('Mark paid','支払済にする','Marcar pago'), act: pay, go: true }
+    if (r.group === 'ready') return { why: !r.open[0]?.payment_date ? tr('Ready to pay.', '支払い可能です。', 'Pronto para pagar.') : tr(`Pay on ${fmtDay(r.open[0]?.payment_date)}.`, `${fmtDay(r.open[0]?.payment_date)} に支払い。`, `Pagar em ${fmtDay(r.open[0]?.payment_date)}.`), btn: tr('Mark paid','支払済にする','Marcar pago'), act: pay, go: true }
     if (r.group === 'waiting') return { why: tr('Payslip sent, the employee has not confirmed yet.', '明細送付済み、本人はまだ確認していません。', 'Holerite enviado, o funcionário ainda não confirmou.') }
     if (r.group === 'todo') return canCloseMonth(month, today)
       ? { why: tr('No payslip for this month yet.', 'この月の明細はまだありません。', 'Ainda não tem holerite deste mês.'), btn: tr('Make payslip','明細を作る','Fazer holerite'), act: open }

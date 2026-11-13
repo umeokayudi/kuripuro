@@ -1,0 +1,70 @@
+/* v1.0.224 — polish pass. Loaded last. Only looks and feedback change here:
+   no screen, button or step was moved or removed. */
+
+/* Focus ring: was the old gold; now the same blue as everything selected. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid rgba(49, 92, 245, .32);
+  outline-offset: 2px;
+}
+
+/* Numbers line up (money, counters, clocks). */
+.metric-value, .badge, .nav-count, table td, .kp-clock, .tab-pill { font-variant-numeric: tabular-nums; }
+
+/* Buttons: same press and hover feedback everywhere; disabled looks disabled. */
+.btn, .tab-pill, .ref-top-action, .tor-btn {
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .08s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:disabled, .btn[disabled], .tab-pill:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.btn-primary:not(:disabled):hover { box-shadow: 0 4px 12px rgba(49, 92, 245, .22); }
+
+/* A second, softer red: "cancel" next to a solid red "delete" no longer looks like the same action. */
+.btn.btn-danger-soft { background: #fff; color: var(--kp-red, #e5484d); border-color: rgba(229, 72, 77, .45); }
+.btn.btn-danger-soft:hover { background: rgba(229, 72, 77, .07); }
+
+/* Cards: the same soft lift on hover for the ones that are clickable. */
+button.card, a.card, .card[role="button"] { transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; }
+button.card:hover, a.card:hover, .card[role="button"]:hover { box-shadow: 0 8px 24px rgba(24, 39, 75, .08); transform: translateY(-1px); }
+
+/* Pages come in with a short fade instead of popping in. */
+/* (opacity only: a transform here would shift the pop-ups that pages open) */
+@keyframes kp-page-in { from { opacity: 0; } to { opacity: 1; } }
+.page-content > * { animation: kp-page-in .22s ease both; }
+
+/* Loading placeholder while a page's code arrives (replaces the lone "Loading…" text). */
+@keyframes kp-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.kp-skel { display: grid; gap: 14px; padding: 4px 0; }
+.kp-skel i { display: block; border-radius: 14px; background: linear-gradient(90deg, #eef1f6 25%, #f7f9fc 37%, #eef1f6 63%); background-size: 400% 100%; animation: kp-shimmer 1.4s ease infinite; }
+.kp-skel .kp-skel-title { height: 30px; width: min(320px, 60%); border-radius: 10px; }
+.kp-skel .kp-skel-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.kp-skel .kp-skel-row i { height: 78px; }
+.kp-skel .kp-skel-card { height: 150px; }
+.kp-portal-loading { min-height: 100vh; min-height: 100dvh; background: #f7f9fc; display: grid; place-items: center; }
+.kp-portal-loading .kp-mark { width: 52px; height: 52px; border-radius: 15px; background: linear-gradient(135deg, #1e3fae, #315cf5); color: #fff; font-weight: 800; font-size: 22px; display: grid; place-items: center; box-shadow: 0 8px 20px rgba(49, 92, 245, .25); animation: kp-pulse 1.2s ease-in-out infinite; }
+@keyframes kp-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.94); opacity: .75; } }
+
+/* Space kept for the bell while its code loads, so the top bar does not jump. */
+.kp-bell-slot { display: inline-block; width: 40px; height: 40px; border-radius: 12px; background: #f2f5f9; }
+
+/* Thin, quiet scrollbars on PC (side menu, lists, popups). */
+@media (hover: hover) and (pointer: fine) {
+  * { scrollbar-width: thin; scrollbar-color: rgba(120, 134, 156, .45) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(120, 134, 156, .4); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(120, 134, 156, .65); background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
+
+/* Tables: header stays readable, rows react to the mouse. */
+.table-wrap table tbody tr { transition: background-color .12s ease; }
+.table-wrap table tbody tr:hover { background: rgba(49, 92, 245, .035); }
+
+/* Text never pushes a card wider than the phone. */
+.card, .tab-pill, .badge { min-width: 0; }
+.card { overflow-wrap: break-word; }
+
+/* People who ask the system for less motion get none of the above animations. */
+@media (prefers-reduced-motion: reduce) {
+  .page-content > *, .kp-skel i, .kp-portal-loading .kp-mark { animation: none; }
+  .btn, .tab-pill, button.card, a.card { transition: none; }
+}

@@ -593,7 +593,8 @@
 .lt-page{max-width:980px}
 .lt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
 .lt-head h2{font-size:22px;font-weight:700;margin:0}
-.lt-date{font-size:13px;color:var(--text3);margin-top:2px;text-transform:capitalize}
+.lt-date{font-size:13px;color:var(--text3);margin-top:2px}
+.lt-date::first-letter{text-transform:uppercase}
 .lt-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
 .lt-tile{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--border);text-decoration:none;color:var(--text);min-width:0}
 .lt-tile b{font-size:26px;line-height:1.1}
