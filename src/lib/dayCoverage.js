@@ -4,7 +4,7 @@
 import { supabase } from './supabase'
 import { contractTargets, jobFulfils, dowOf, addDays, splitName, startedOn } from './schedulePlan.js'
 import { pendingReason } from './assignFlow.js'
-import { isDeadlineJob, DEADLINE_MIN } from './jobDeadline.js'
+import { hasDeadline, deadlineMinOf } from './jobDeadline.js'
 
 const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
 const LATE_AFTER_MIN = 5
@@ -45,12 +45,12 @@ export function dayCoverage(targets, date, jobs, { empById = {}, availability = 
     let personId = job?.employee_id || null
     if (!job) { state = 'noJob'; personId = owners[key] || null }
     else if (job.status === 'completed') state = 'done'
-    else if (job.status === 'in_progress') state = isDeadlineJob(job) && nowMin != null && nowMin >= DEADLINE_MIN ? 'late' : 'working'
+    else if (job.status === 'in_progress') state = hasDeadline(job) && nowMin != null && nowMin >= deadlineMinOf(job) ? 'late' : 'working'
     else if (pendingReason(job, { empById, availability })) state = 'noPerson'
     else {
       const at = toMin(job.scheduled_time)
       // v1.0.147 · OTP night jobs: late from 10:00 (not finished), never by the 00:30 start
-      if (isDeadlineJob(job)) state = nowMin != null && nowMin >= DEADLINE_MIN ? 'late' : 'waiting'
+      if (hasDeadline(job)) state = nowMin != null && nowMin >= deadlineMinOf(job) ? 'late' : 'waiting'
       else state = at != null && nowMin != null && nowMin - at >= LATE_AFTER_MIN ? 'late' : 'waiting'
     }
     const emp = personId ? empById[personId] : null

@@ -72,7 +72,7 @@ export function seed() {
       const past = d < 0, today = d === 0
       let status = 'pending', started_at = null, completed_at = null
       if (past) { status = (i + d) % 11 === 0 ? 'cancelled' : 'completed' }
-      if (today) { status = i < 3 ? 'completed' : i === 3 ? 'in_progress' : 'pending' }
+      if (today) { status = process.env.MOCK_NO_ACTIVE ? 'completed' : i < 3 ? 'completed' : i === 3 ? 'in_progress' : 'pending' }
       if (status === 'completed') { started_at = iso(d, start); completed_at = new Date(new Date(started_at).getTime() + (38 + i * 3) * 60e3).toISOString() }
       if (status === 'in_progress') started_at = new Date(Date.now() - 25 * 60e3).toISOString()
       T('jobs', { title: `${s.name} — Basic Cleaning`, client_id: s.client.id, client_name: s.client.company_name, employee_id: w.id, employee_name: w.full_name, scheduled_date: ymd(addDays(d)), scheduled_time: start, address: s.address, gps_lat: s.gps_lat, gps_lng: s.gps_lng, value: s.price, description: `Pagamento do funcionário (${w.full_name}): ¥1,000`, photo_required: true, status, started_at, completed_at, job_category: 'routine', counts_as_work_day: true, sequence_order: ++seq, checklist_total: 8, checklist_done: status === 'completed' ? 8 : 0, admin_reviewed: past, area: 'Tokyo', employee_pay: 1000, photo_start_url: status === 'completed' ? 'https://example.invalid/antes.jpg' : null, photo_end_url: status === 'completed' ? 'https://example.invalid/depois.jpg' : null, created_at: iso(d - 3, '10:00') })
@@ -82,6 +82,8 @@ export function seed() {
   T('jobs', { title: 'Bar Aurora Roppongi — Deep Clean (Grease Trap)', client_id: clients[1].id, client_name: clients[1].company_name, employee_id: IDS.emp, employee_name: 'Teste Funcionário', scheduled_date: ymd(addDays(1)), scheduled_time: '09:00', address: stores[4].address, value: 22000, status: 'pending', job_category: 'spot', spot_value: 3000, spot_status: 'offered', employee_pay: 3000, photo_required: true, checklist_total: 5, checklist_done: 0 })
   T('jobs', { title: 'Horizonte Marunouchi — Basic Cleaning', client_id: clients[3].id, client_name: clients[3].company_name, employee_id: null, employee_name: null, scheduled_date: ymd(addDays(0)), scheduled_time: '20:00', address: stores[7].address, value: 5200, status: 'pending', job_category: 'routine', photo_required: true })
   T('jobs', { title: 'Sakura Ginza — Deep Clean (Range Hood)', client_id: IDS.client, client_name: clients[0].company_name, employee_id: IDS.emp, employee_name: 'Teste Funcionário', scheduled_date: ymd(addDays(-2)), scheduled_time: '02:00', address: stores[2].address, value: 22000, status: 'cancelled', job_category: 'routine', employee_pay: 1471, photo_required: true })
+  // v1.0.247 · Atomic Bar basic: may start from 14:00, must finish by 21:00 (21:00 is the deadline, not the start)
+  T('jobs', { title: 'Atomic Bar — Basic Cleaning', client_id: 'bf3f7ab5-24c4-4ec1-b25f-d91becb166de', client_name: 'Atomic Bar', employee_id: IDS.emp, employee_name: 'Teste Funcionário', scheduled_date: ymd(addDays(0)), scheduled_time: '21:00', address: 'ATOMIC BAR 六本木3-14-14 5F 東京', value: 37500, status: 'assigned', job_category: 'routine', employee_pay: 8000, photo_required: true, checklist_total: 13, checklist_done: 0, sequence_order: 0 })
 
   const month = ymd(new Date()).slice(0, 7)
   const prev = ymd(addDays(-31)).slice(0, 7)

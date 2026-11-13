@@ -13,6 +13,15 @@ export const OTP_ROUTE_TIME = '00:30'
 export const OTP_DEADLINE = '10:00'
 export const OTP_ALERT_AT = '05:00'
 
+// v1.0.247 · Atomic Bar basic cleaning: it may START at any time from 14:00 and must be FINISHED by 21:00.
+// 21:00 was being read as a start time ("1h 5m para começar"); it is the deadline. Same trick as OTP:
+// read from the job itself (client Atomic Bar + planned 21:00), no database change. The 20:00 garbage
+// pick-up and the 00:30 deep-clean rows of Atomic keep their own rules.
+export const ATOMIC_CLIENT_ID = 'bf3f7ab5-24c4-4ec1-b25f-d91becb166de'
+export const ATOMIC_MARK_TIME = '21:00'
+export const ATOMIC_DEADLINE = '21:00'
+export const ATOMIC_WINDOW_START = '14:00'
+
 const toMin = t => {
   const m = String(t || '').match(/^(\d{1,2}):(\d{2})/)
   return m ? Number(m[1]) * 60 + Number(m[2]) : null
@@ -36,13 +45,30 @@ export function isDeadlineJob(job) {
   return isOtpJob(job) && hhmm(job.scheduled_time) === OTP_ROUTE_TIME
 }
 
+/** Atomic Bar basic cleaning planned at 21:00: start from 14:00, finish by 21:00. */
+export function isAtomicDeadlineJob(job) {
+  if (!job) return false
+  const atomic = job.client_id ? job.client_id === ATOMIC_CLIENT_ID : /atomic\s*bar/i.test(`${job.client_name || ''} ${job.title || ''}`)
+  return atomic && hhmm(job.scheduled_time) === ATOMIC_MARK_TIME && !/coleta de lixo|garbage/i.test(job.title || '')
+}
+
+/** Any job measured by a finish deadline (OTP night route or Atomic Bar). */
+export const hasDeadline = job => isDeadlineJob(job) || isAtomicDeadlineJob(job)
+
 /** 'HH:MM' the job must be finished by, or null for a normal (start-time) job. */
-export const deadlineOf = job => (isDeadlineJob(job) ? OTP_DEADLINE : null)
+export const deadlineOf = job => (isDeadlineJob(job) ? OTP_DEADLINE : isAtomicDeadlineJob(job) ? ATOMIC_DEADLINE : null)
+
+/** Deadline in minutes of the day, or null. */
+export const deadlineMinOf = job => { const d = deadlineOf(job); return d ? toMin(d) : null }
+
+/** 'HH:MM' from which the job may be started (Atomic), or null when there is no start window. */
+export const windowStartOf = job => (isAtomicDeadlineJob(job) ? ATOMIC_WINDOW_START : null)
 
 /** Timestamp (ms) of the deadline in Tokyo time. */
 export function deadlineMs(job) {
-  if (!isDeadlineJob(job) || !job.scheduled_date) return null
-  return new Date(`${job.scheduled_date}T${OTP_DEADLINE}:00+09:00`).getTime()
+  const d = deadlineOf(job)
+  if (!d || !job.scheduled_date) return null
+  return new Date(`${job.scheduled_date}T${d}:00+09:00`).getTime()
 }
 
 /** Minutes past the deadline (negative = still ahead). null for normal jobs. */
@@ -56,12 +82,12 @@ export function minutesPastDeadline(job, now = new Date()) {
  * `today`/`nowMin` (Tokyo) can be given instead of `now` by the screens that already have them.
  */
 export function isDeadlineLate(job, { now = new Date(), today = null, nowMin = null } = {}) {
-  if (!isDeadlineJob(job) || !job.scheduled_date) return false
+  if (!hasDeadline(job) || !job.scheduled_date) return false
   if (job.status === 'completed' || job.status === 'cancelled') return false
   if (today != null && nowMin != null) {
     if (job.scheduled_date < today) return true
     if (job.scheduled_date > today) return false
-    return nowMin >= DEADLINE_MIN
+    return nowMin >= deadlineMinOf(job)
   }
   return minutesPastDeadline(job, now) >= 0
 }
@@ -142,7 +168,7 @@ const trFor = lang => (en, ja, pt) => (lang === 'ja' ? ja : lang === 'pt' ? pt :
 
 /** Time text for a card by language code: "Concluir até 10:00" or the start time (fallback when none). */
 export function jobTimeText(job, lang = 'pt', fallback = '—') {
-  if (isDeadlineJob(job)) return jobTimeLabel(job, trFor(lang))
+  if (hasDeadline(job)) return jobTimeLabel(job, trFor(lang))
   return job?.scheduled_time ? String(job.scheduled_time).slice(0, 5) : fallback
 }
 

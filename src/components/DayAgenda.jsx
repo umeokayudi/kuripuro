@@ -38,7 +38,7 @@ import { notifyChanges, fetchAckState } from '../lib/assignNotices'
 import { pendingChanged } from '../lib/adminPending'
 import { assignText, conflictLabel, RED_CONFLICTS } from './assignText'
 import './assign.css'
-import { isDeadlineJob, jobTimeLabel } from '../lib/jobDeadline'
+import { hasDeadline, jobTimeLabel } from '../lib/jobDeadline'
 import { endTime, minutesBetween, saveJobMinutes, DURATION_PICKS } from '../lib/jobDuration'
 import { aiScoreView, aiReasonShort } from '../lib/aiScore'
 
@@ -472,7 +472,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
           <div className="ag-title" style={job.covered_by ? { textDecoration: 'line-through', opacity: 0.6 } : undefined}>{loc}</div>
           <div className="ag-meta">
             {info.client && <>🏢 {info.client} · </>}
-            {isDeadlineJob(job)
+            {hasDeadline(job)
               ? <span className="ag-nowrap">🕐 {jobTimeLabel(job, tr)}</span>
               : <span className="ag-nowrap">🕐 <input type="time" className="ag-time" value={job.scheduled_time || ''} onChange={e => onTime(job, e.target.value)}
               aria-label={tr('Time', '時刻', 'Horário')} /></span>}
@@ -697,7 +697,7 @@ function DurationEdit({ job, minutes, tr, onSaved }) {
   const [open, setOpen] = useState(false)
   const [min, setMin] = useState(minutes || 0)
   const [busy, setBusy] = useState(false)
-  const deadline = isDeadlineJob(job)
+  const deadline = hasDeadline(job)
   const end = deadline ? '' : endTime(job.scheduled_time, minutes)
   if (!open) {
     return (

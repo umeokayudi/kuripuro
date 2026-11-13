@@ -19,7 +19,7 @@ import { supabase } from '../lib/supabase'
 import { finishQuoteJob } from '../lib/quoteFlow'
 import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geocode'
 import ServiceTimer from '../components/ServiceTimer'
-import { isDeadlineJob, jobTimeText, deadlineLateText } from '../lib/jobDeadline'
+import { hasDeadline, deadlineOf, windowStartOf, jobTimeText, deadlineLateText } from '../lib/jobDeadline'
 import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
@@ -1746,7 +1746,7 @@ export default function EmployeePortal() {
   const estRowText = j => {
     const est = nextShiftEst?.perJob.get(j.id)
     if (!est) return jobTimeText(j, lang)
-    return isDeadlineJob(j) ? `≈ ${fmtDur(est.minutes)}` : `${jobTimeText(j, lang)} · ≈ ${fmtDur(est.minutes)}`
+    return hasDeadline(j) ? `≈ ${fmtDur(est.minutes)}` : `${jobTimeText(j, lang)} · ≈ ${fmtDur(est.minutes)}`
   }
   const whenLabel = (date) => date === tomorrow ? e.tomorrow : date
 
@@ -2010,7 +2010,7 @@ export default function EmployeePortal() {
               <div style={{fontSize:18,fontWeight:800,color:payKind(job)==='undefined'?'rgba(255,255,255,0.4)':'#c19c56'}}>{payText(job,L,lang)}</div></div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7,marginBottom:14}}>
-            {[['📅 '+e.jobDate,dDate],[isDeadlineJob(job)?'🕐 '+jobTimeText(job,lang):'🕐 '+e.jobStart,isDeadlineJob(job)?(deadlineLateText(job,lang)||'—'):job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,isMissedJob(job)?e.statusIncomplete:`${tr.status[job.status]||job.status}${isRetroJob(job)?` · ${e.retroBadge}`:''}`]].map(([l,v])=>(
+            {[['📅 '+e.jobDate,dDate],[hasDeadline(job)?'🕐 '+jobTimeText(job,lang):'🕐 '+e.jobStart,hasDeadline(job)?(deadlineLateText(job,lang)||'—'):job.scheduled_time||'—'],['▶ '+e.jobIn,job.started_at?new Date(job.started_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['🏁 '+e.jobOut,job.completed_at?new Date(job.completed_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'}):'—'],['⏱ '+e.jobDuration,duration?`${Math.floor(duration/60)}h ${duration%60}m`:'—'],[e.jobStatus,isMissedJob(job)?e.statusIncomplete:`${tr.status[job.status]||job.status}${isRetroJob(job)?` · ${e.retroBadge}`:''}`]].map(([l,v])=>(
               <div key={l} style={{background:'rgba(255,255,255,0.06)',borderRadius:12,padding:'10px 12px'}}>
                 <div style={{fontSize:9,color:'rgba(255,255,255,0.35)',marginBottom:3}}>{l}</div>
                 <div style={{fontSize:12,fontWeight:500,color:'#fff'}}>{v}</div>
@@ -2353,11 +2353,18 @@ export default function EmployeePortal() {
                   </div>
                   <button type="button" className="ex-checkin-info" onClick={()=>goToTab('shift')}>
                     <div>
-                      <small>{activeJob?(stale?e.staleShiftTitle:e.activeShiftTitle):e.nextLocation}</small>
+                      <small>{activeJob?(stale?e.staleShiftTitle:e.activeShiftTitle):hasDeadline(mapJob)?`${e.finishByKicker} ${deadlineOf(mapJob)}`:e.nextLocation}</small>
                       <strong>{place}</strong>
-                      <span>{activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${jobTimeText(mapJob,lang)} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
+                      <span>{activeJob?(activeJob.scheduled_date!==today?`${activeJob.scheduled_date} · `:'')+e.tapToFinish:`${jobTimeText(mapJob,lang)}${windowStartOf(mapJob)?` · ${e.startFromHint} ${windowStartOf(mapJob)}`:''} · ${fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})}`}</span>
                     </div>
-                    {activeJob?<b className="ex-timer">{stale?formatShiftElapsed(elapsed,lang):fmt(elapsed)}</b>:(()=>{
+                    {activeJob?<b className="ex-timer">{stale?formatShiftElapsed(elapsed,lang):fmt(elapsed)}</b>:hasDeadline(mapJob)?(()=>{
+                      // v1.0.247 · deadline job (Atomic 21:00): the countdown is to the FINISH deadline, start is free from the window start
+                      const dd=new Date(mapJob.scheduled_date+'T'+deadlineOf(mapJob)+':00+09:00')
+                      const diffMs=dd-new Date()
+                      if(diffMs<0) return <b className="ex-countdown">{e.pastDeadline}</b>
+                      const diffH=Math.floor(diffMs/3600000), diffM=Math.floor((diffMs%3600000)/60000)
+                      return <b className="ex-countdown">{diffH>0?diffH+'h ':''}{diffM}m<small>{e.toFinish}</small></b>
+                    })():(()=>{
                       const nd=new Date(mapJob.scheduled_date+'T'+(mapJob.scheduled_time||'00:30')+':00')
                       const diffMs=nd-new Date()
                       if(diffMs<0) return <b className="ex-go">›</b>
@@ -2420,7 +2427,7 @@ export default function EmployeePortal() {
                 <button type="button" role="listitem" className="ex-card" onClick={()=>goToTab('shift')}>
                   <div className="ex-card-head"><strong>{e.tomorrowShift}</strong><span className="ex-card-icon">☾</span></div>
                   <div className="ex-card-big">{tomorrowJobs.length} <small>{e.locations}</small></div>
-                  <div className="ex-card-sub">{isDeadlineJob(tomorrowJobs[0])?jobTimeText(tomorrowJobs[0],lang):fill(e.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})} · {tomorrowJobs.map(j=>businessName(j)).slice(0,2).join(', ')}{tomorrowJobs.length>2?'…':''}</div>
+                  <div className="ex-card-sub">{hasDeadline(tomorrowJobs[0])?jobTimeText(tomorrowJobs[0],lang):fill(e.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})} · {tomorrowJobs.map(j=>businessName(j)).slice(0,2).join(', ')}{tomorrowJobs.length>2?'…':''}</div>
                   <span className="ex-pill">{e.tomorrowSee}</span>
                 </button>
               )}
@@ -3339,7 +3346,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
 
       {tomorrowJobs.length>0&&(
         <div style={{marginTop:18}}>
-          <div style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'0 2px 8px'}}>☾ {labels.tomorrowShift} · {isDeadlineJob(tomorrowJobs[0])?jobTimeText(tomorrowJobs[0],lang):fill(labels.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})}</div>
+          <div style={{fontSize:11,fontWeight:800,letterSpacing:1,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',margin:'0 2px 8px'}}>☾ {labels.tomorrowShift} · {hasDeadline(tomorrowJobs[0])?jobTimeText(tomorrowJobs[0],lang):fill(labels.tomorrowStarts,{time:tomorrowJobs[0].scheduled_time||'—'})}</div>
           {tomorrowJobs.map(job=>(
             <div key={job.id} role="button" tabIndex={0} onClick={()=>setSelectedJob?.(job)} onKeyDown={ev=>{if(ev.key==='Enter')setSelectedJob?.(job)}}
               style={{...S.card,marginBottom:8,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
