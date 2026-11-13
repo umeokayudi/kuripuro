@@ -14,17 +14,63 @@ var supabase_exports = {};
 __export(supabase_exports, {
   SUPABASE_ANON_KEY: () => SUPABASE_ANON_KEY,
   SUPABASE_URL: () => SUPABASE_URL,
+  hasDbToken: () => hasDbToken,
+  refreshDbToken: () => refreshDbToken,
+  setDbToken: () => setDbToken,
   supabase: () => supabase
 });
 import { createClient } from "@supabase/supabase-js";
-var DEFAULT_URL, DEFAULT_ANON_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, supabase;
+function setDbToken(token) {
+  dbToken = token || null;
+  try {
+    if (dbToken) localStorage.setItem(DB_TOKEN_KEY, dbToken);
+    else localStorage.removeItem(DB_TOKEN_KEY);
+  } catch {
+  }
+}
+function refreshDbToken() {
+  if (!refreshing) {
+    refreshing = fetch("/api/sales-session", { credentials: "same-origin", cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((d) => {
+      if (d?.db_token) {
+        setDbToken(d.db_token);
+        return true;
+      }
+      return false;
+    }).catch(() => false).finally(() => {
+      refreshing = null;
+    });
+  }
+  return refreshing;
+}
+async function dbFetch(input, init) {
+  const response = await fetch(input, withToken(init));
+  if (response.status !== 401 || !dbToken) return response;
+  const sent = dbToken;
+  if (!await refreshDbToken() && dbToken === sent) return response;
+  return fetch(input, withToken(init));
+}
+var DEFAULT_URL, DEFAULT_ANON_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, DB_TOKEN_KEY, dbToken, hasDbToken, refreshing, withToken, supabase;
 var init_supabase = __esm({
   "src/lib/supabase.js"() {
     DEFAULT_URL = "https://fxsakrshmldmkdmbevna.supabase.co";
     DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4c2FrcnNobWxkbWtkbWJldm5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjYwMTEsImV4cCI6MjA5NjcwMjAxMX0.OSnexIDC2bflyDmCTd_pjvcbswB77ri5lDdccEfANMo";
     SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || DEFAULT_URL;
     SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
-    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    DB_TOKEN_KEY = "kp_db_token";
+    dbToken = null;
+    try {
+      dbToken = localStorage.getItem(DB_TOKEN_KEY) || null;
+    } catch {
+    }
+    hasDbToken = () => Boolean(dbToken);
+    refreshing = null;
+    withToken = (init = {}) => {
+      if (!dbToken) return init;
+      const headers = new Headers(init.headers || {});
+      headers.set("Authorization", `Bearer ${dbToken}`);
+      return { ...init, headers };
+    };
+    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: dbFetch } });
   }
 });
 

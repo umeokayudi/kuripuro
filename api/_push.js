@@ -441,7 +441,7 @@ async function teamPeople(db) {
 // ── Who is this browser? ──────────────────────────────────────────────────
 async function identify(req) {
   const session = readSalesSession(req)
-  if (session) return { role: session.role, user_id: session.id, client_id: null }
+  if (session) return { role: session.role, user_id: session.id, client_id: session.client_id || null }
   // Clients sign in without a server cookie; accept their id only for an active client login.
   const { role, user_id: userId } = req.body || {}
   if (!userId) return null
