@@ -1,0 +1,16 @@
+/* v1.0.244 · KuriPuro mark loader. Falls back to the brand colours when cor.css tokens are absent. */
+.kp-bl { --bl-navy: var(--c-navy, #0a2138); --bl-teal: var(--c-teal, #0ba39b); --bl-green: var(--c-green, #22a06b);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 55vh; padding: 32px 16px; text-align: center; }
+.kp-bl-fill { min-height: 100vh; min-height: 100dvh; }
+.kp-bl-logo { position: relative; width: 84px; height: 84px; display: grid; place-items: center; }
+.kp-bl-mark { position: relative; z-index: 1; width: 56px; height: 56px; border-radius: 17px; display: grid; place-items: center; background: linear-gradient(145deg, var(--bl-teal), var(--bl-navy));
+  color: #fff; font: 800 24px/1 Archivo, system-ui, sans-serif; letter-spacing: -.05em; box-shadow: 0 10px 24px rgba(10, 33, 56, .28); animation: kp-bl-float 1.6s ease-in-out infinite; }
+.kp-bl-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--bl-teal); border-right-color: var(--bl-teal); animation: kp-bl-spin 1.1s linear infinite; }
+.kp-bl-ring-2 { inset: 8px; border-top-color: var(--bl-green); border-right-color: transparent; border-left-color: var(--bl-green); animation-duration: 1.7s; animation-direction: reverse; opacity: .7; }
+.kp-bl-text { margin: 0; font: 600 14px/1.3 Manrope, system-ui, sans-serif; color: var(--bl-navy); opacity: .75; }
+.kp-bl-bar { width: 120px; height: 4px; border-radius: 4px; background: rgba(11, 163, 155, .15); overflow: hidden; }
+.kp-bl-bar i { display: block; width: 40%; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--bl-teal), var(--bl-green)); animation: kp-bl-slide 1.2s ease-in-out infinite; }
+@keyframes kp-bl-spin { to { transform: rotate(360deg); } }
+@keyframes kp-bl-float { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+@keyframes kp-bl-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .kp-bl-ring, .kp-bl-mark, .kp-bl-bar i { animation: none; } }
