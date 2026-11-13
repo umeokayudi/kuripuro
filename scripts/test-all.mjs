@@ -9,6 +9,7 @@ const steps = [
   ['npx vite-node scripts/test-payroll-report.mjs', 'payroll-report'],
   ['npm run test:payroll-close', 'payroll-close'],
   ['npm run test:money', 'money'],
+  ['node scripts/test-store-billing.mjs', 'Contratos: fixo mensal por loja + fatura uma linha por loja (OTP ¥898.000)'],
   ['node scripts/test-active-portfolio.mjs', 'Vendas: contratos ativos (só leitura, sem dados de funcionário)'],
   ['npm run test:exception-queue', 'exception queue'],
   ['node scripts/test-training.mjs', 'treinamento (links do YouTube + assistido de verdade)'],

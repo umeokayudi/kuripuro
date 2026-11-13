@@ -4,10 +4,10 @@ import { buildPortfolio, nextBilling, termEnd, PORTFOLIO_CONTRACT_COLUMNS } from
 
 const clients = [{ id: 'atomic', company_name: 'Atomic Bar' }, { id: 'otp', company_name: 'On The Planet' }, { id: 'bac', company_name: 'K.K. Bacana' }]
 const contracts = [
-  { id: 'a1', client_id: 'atomic', location_name: 'Atomic Bar', service_type: 'Basic Cleaning', billing_type: 'per_visit', price_per_visit: '37500.00', visits_per_month: 4, discount_percent: '0', billing_day: null, created_at: '2026-06-14T00:00:00Z', is_active: true, contract_details: { start_date: null } },
-  { id: 'o1', client_id: 'otp', location_name: 'Kodama Kinshicho', service_type: 'Basic Cleaning', billing_type: 'per_visit', price_per_visit: '4400.00', visits_per_month: 30, billing_day: 10, created_at: '2026-06-14T00:00:00Z', is_active: true, contract_details: {} },
-  { id: 'o2', client_id: 'otp', location_name: 'Kodama Kinshicho - Deep Clean', service_type: 'Range Hood', billing_type: 'per_visit', price_per_visit: '5000.00', visits_per_month: 4, billing_day: 10, created_at: '2026-06-14T00:00:00Z', is_active: true, contract_details: {} },
-  { id: 'o3', client_id: 'otp', location_name: 'OTP — AC Cleaning', service_type: 'AC Cleaning', billing_type: 'per_visit', price_per_visit: '5000.00', visits_per_month: 0, created_at: '2026-08-18T00:00:00Z', is_active: true },
+  { id: 'a1', client_id: 'atomic', location_name: 'Atomic Bar', service_type: 'Basic Cleaning', billing_type: 'per_visit', price_per_visit: '37500.00', visits_per_month: 4, monthly_revenue: '150000.00', discount_percent: '0', billing_day: null, created_at: '2026-06-14T00:00:00Z', is_active: true, contract_details: { start_date: null } },
+  { id: 'o1', client_id: 'otp', location_name: 'Kodama Kinshicho', service_type: 'Basic Cleaning', billing_type: 'per_visit', price_per_visit: '4400.00', visits_per_month: 30, monthly_revenue: '132000.00', billing_day: 10, created_at: '2026-06-14T00:00:00Z', is_active: true, contract_details: {} },
+  { id: 'o2', client_id: 'otp', location_name: 'Kodama Kinshicho - Deep Clean', service_type: 'Range Hood', billing_type: 'per_visit', price_per_visit: '5000.00', visits_per_month: 4, monthly_revenue: '20000.00', billing_day: 10, created_at: '2026-06-14T00:00:00Z', is_active: true, contract_details: {} },
+  { id: 'o3', client_id: 'otp', location_name: 'OTP — AC Cleaning', service_type: 'AC Cleaning', billing_type: 'per_visit', price_per_visit: '5000.00', visits_per_month: 0, monthly_revenue: '0.00', created_at: '2026-08-18T00:00:00Z', is_active: true },
   { id: 'b1', client_id: 'bac', location_name: 'Super Bacana Ginza', service_type: 'Basic Cleaning', billing_type: 'fixed_monthly', fixed_monthly: '92', billing_day: 10, created_at: '2026-11-11T00:00:00Z', is_active: true, contract_details: { start_date: '2026-11-16', worker_payment: 999 } },
   { id: 'x', client_id: 'otp', location_name: 'Old', billing_type: 'fixed_monthly', fixed_monthly: 1, is_active: false },
 ]

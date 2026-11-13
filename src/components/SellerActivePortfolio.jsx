@@ -93,7 +93,7 @@ export default function SellerActivePortfolio({ lang = 'en', limit = 0, onSeeAll
             <div className="sp-history-row" key={l.id}>
               <div>
                 <strong>{l.location}</strong>
-                <small>{l.service}{l.billing === 'fixed' ? ` · ${L('fixed monthly', '月額固定', 'mensal fixo')}` : l.visits ? ` · ${l.visits}× ${yen(l.perVisit)}` : ` · ${L('on request', '依頼時', 'sob demanda')} ${yen(l.perVisit)}/${L('visit', '回', 'vez')}`}{l.discount ? ` · −${l.discount}%` : ''}</small>
+                <small>{l.service}{l.billing === 'fixed' ? ` · ${L('fixed monthly', '月額固定', 'mensal fixo')}` : l.embedded ? ` · ${L("inside the store's fixed", '店舗の固定月額に含む', 'embutido no fixo da loja')}` : l.visits ? ` · ${l.visits}× ${yen(l.perVisit)}` : ` · ${L('on request', '依頼時', 'sob demanda')} ${yen(l.perVisit)}/${L('visit', '回', 'vez')}`}{l.discount ? ` · −${l.discount}%` : ''}</small>
               </div>
               <span className="sp-portfolio-line">{l.monthly ? yen(l.monthly) : '—'}</span>
             </div>
