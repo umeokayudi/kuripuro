@@ -2,6 +2,7 @@
  * Automatic recurring billing rules.
  * Contract is the source of pricing; completed jobs are the source of delivered work.
  */
+import { isEmbeddedItem, storeOf } from './money.js'
 
 export function monthBounds(period) {
   const [year, month] = period.split('-').map(Number)
@@ -27,6 +28,9 @@ export function calculateTax(subtotal, taxRate = 10, priceIncludesTax = true) {
 }
 
 export function contractBillingAmount(contract, completedJobs = []) {
+  // v1.0.256 · operational item (scheduled, saved ¥0/month, e.g. the store's Deep Clean): already inside the
+  // store's fixed amount → never billed on its own.
+  if (isEmbeddedItem(contract)) return 0
   if (contract.billing_type === 'fixed_monthly') {
     return Math.round(Number(contract.fixed_monthly || 0))
   }
@@ -74,6 +78,32 @@ export function buildContractLine(contract, completedJobs = []) {
     contract_id: contract.id,
     job_ids: locationJobs.map(job => job.id),
   }
+}
+
+/**
+ * v1.0.256 · ONE 請求書 line per STORE (not per item): a store's items ("Kodama Kinshicho", "Kodama Kinshicho -
+ * Deep Clean") are summed into one line named after the store. Operational items add ¥0, so the line is the
+ * store's fixed amount (¥120.000 / ¥100.000 / …), with no separate deep line.
+ */
+export function buildStoreLines(contracts = [], completedJobs = []) {
+  const byStore = new Map()
+  for (const c of contracts) {
+    const line = buildContractLine(c, completedJobs)
+    if (!line) continue
+    const store = storeOf(line.restaurant)
+    const cur = byStore.get(store)
+    if (!cur) { byStore.set(store, { ...line, description: store, restaurant: store, contract_ids: [line.contract_id] }); continue }
+    cur.unit_price += line.unit_price
+    cur.total += line.total
+    cur.gross += line.gross
+    cur.discount_amount += line.discount_amount
+    cur.visits += line.visits
+    cur.monthly = cur.monthly && line.monthly
+    cur.price_per_visit = cur.monthly ? null : cur.price_per_visit
+    cur.job_ids = [...new Set([...cur.job_ids, ...line.job_ids])]
+    cur.contract_ids.push(line.contract_id)
+  }
+  return [...byStore.values()]
 }
 
 /**

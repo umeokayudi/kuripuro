@@ -6,7 +6,7 @@ import { contractMonthly, storeOf } from './money.js'
 import { contractStartDate } from './schedulePlan.js'
 
 /** Columns the server reads from service_contracts — commercial facts only. */
-export const PORTFOLIO_CONTRACT_COLUMNS = 'id,client_id,location_name,location_address,service_type,billing_type,fixed_monthly,price_per_visit,visits_per_month,discount_percent,tax_rate,price_includes_tax,billing_day,days_of_week,created_at,is_active'
+export const PORTFOLIO_CONTRACT_COLUMNS = 'id,client_id,location_name,location_address,service_type,billing_type,fixed_monthly,monthly_revenue,price_per_visit,visits_per_month,discount_percent,tax_rate,price_includes_tax,billing_day,days_of_week,created_at,is_active'
 
 const ymd = v => (v ? String(v).slice(0, 10) : '')
 const pad = n => String(n).padStart(2, '0')
