@@ -1,4 +1,4 @@
-// v1.0.236 · "Ver como" do dono: the owner (one admin login, chosen in Usuários) switches the
+// v1.0.239 · "Ver como" do dono: the owner (one admin login, chosen in Usuários) switches the
 // REAL server session to his own linked employee or seller login and back, without a password.
 //
 // Rules (all checked here, on the server — the button being hidden is only cosmetic):

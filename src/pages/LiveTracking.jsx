@@ -18,6 +18,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchDayCoverage } from '../lib/dayCoverage'
 import { ownMinutes, slotText } from '../lib/jobDuration'
 import DayStoreStrip from '../components/DayStoreStrip'
+import { fetchDayPanel } from '../lib/dayPanel'
 
 const TZ = 'Asia/Tokyo'
 import { countJobs, LATE_AFTER_MIN } from '../lib/jobCounts'
@@ -100,6 +101,8 @@ export default function LiveTracking() {
   const [retros, setRetros] = useState([])
   const [lightbox, setLightbox] = useState(null)
   const [cov, setCov] = useState(null)
+  // v1.0.238 · ONE snapshot of the day (lib/dayPanel) feeds the header counter AND the status tiles
+  const [panel, setPanel] = useState(null)
   const [showCovDone, setShowCovDone] = useState(false)
   const navigate = useNavigate()
   // v1.0.195 · opened from Painel "Aguardando você hoje": ?emp=<id> (open + scroll to that person)
@@ -152,6 +155,7 @@ export default function LiveTracking() {
     const today = tokyoToday()
     const n = tokyoNow()
     fetchDayCoverage(today, { nowMin: n.getHours() * 60 + n.getMinutes(), respectStart: true }).then(setCov, () => {})
+    fetchDayPanel(today, { nowMin: n.getHours() * 60 + n.getMinutes(), today }).then(setPanel, () => {})
     const [e, activeRes, todayRes, offRes] = await Promise.all([
       supabase.from('employees').select('id,full_name,phone,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').eq('status','in_progress'),
@@ -196,12 +200,15 @@ export default function LiveTracking() {
   // v1.0.133 · the tiles count JOBS of today with the shared counter (jobCounts), not people:
   // "Ainda não começou" = every job of the day still not started (late ones included), with or without a person.
   const dayCount = countJobs(jobs.filter(j => j.scheduled_date === today), { from: today, to: today, today, nowMin: now.getHours() * 60 + now.getMinutes() })
+  // v1.0.238 · tiles read the SAME counts as the header (dayPanel): done / in progress / not started of the services of the day
+  const pc = panel?.count
+  const tileN = { late: pc ? pc.servicesLate : dayCount.late, working: pc ? pc.inProgress : dayCount.inProgress, upcoming: pc ? pc.toStart : dayCount.notStarted, done: pc ? pc.servicesDone : dayCount.completed }
   const staleCount = jobs.filter(j => j.status === 'in_progress' && j.scheduled_date < today).length
   const tiles = [
-    { g: 'attention', n: dayCount.late + staleCount + routeAlerts.filter(a => !a.startedAt && !people.some(p => p.emp.id === a.employeeId && p.deadlineLate.length)).length, label: L.tileLate, tone: 'red' },
-    { g: 'working', n: dayCount.inProgress, label: L.tileWorking, tone: 'green' },
-    { g: 'upcoming', n: dayCount.notStarted, label: L.tileUpcoming, tone: 'blue' },
-    { g: 'done', n: dayCount.completed, label: L.tileDone, tone: 'gray' },
+    { g: 'attention', n: tileN.late + staleCount + routeAlerts.filter(a => !a.startedAt && !people.some(p => p.emp.id === a.employeeId && p.deadlineLate.length)).length, label: L.tileLate, tone: 'red' },
+    { g: 'working', n: tileN.working, label: L.tileWorking, tone: 'green' },
+    { g: 'upcoming', n: tileN.upcoming, label: L.tileUpcoming, tone: 'blue' },
+    { g: 'done', n: tileN.done, label: L.tileDone, tone: 'gray' },
   ]
 
   const statusLine = (p) => {
@@ -355,7 +362,7 @@ export default function LiveTracking() {
         </div>
         <button type="button" className="btn btn-sm" onClick={load}>↻ {updatedAt ? fill(L.updated, { time: updatedAt.toLocaleTimeString('ja-JP', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }) }) : L.refresh}</button>
       </div>
-      <DayStoreStrip date={today} L={(en, ja, pt) => pickLang(lang, en, ja, pt)} />
+      <DayStoreStrip count={panel?.count} L={(en, ja, pt) => pickLang(lang, en, ja, pt)} />
 
       {cov && cov.total > 0 && (() => {
         const missing = cov.total - cov.done

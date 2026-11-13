@@ -2133,7 +2133,7 @@ body { background: var(--hq-bg); }
 .client-email-item-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .client-email-when { font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
 .client-email-item a { font-size: 12px; }
-/* v1.0.236 · "Ver como" do dono — same avatar block as the topbar, plus a small menu; strip while viewing */
+/* v1.0.239 · "Ver como" do dono — same avatar block as the topbar, plus a small menu; strip while viewing */
 .kp-owner-menu{position:relative}
 .kp-owner-trigger{display:flex;align-items:center;gap:8px;border:0;background:transparent;padding:4px 6px;margin:-4px -6px;border-radius:9px;cursor:pointer;text-align:left;font:inherit;color:inherit}
 .kp-owner-trigger:hover,.kp-owner-trigger[aria-expanded="true"]{background:#f5f7fb}

@@ -82,7 +82,7 @@ export function createDbToken(user, ttl = DB_TOKEN_TTL) {
 
 export function setSalesSessionCookie(res, token, ttl = SESSION_TTL) {
   const secure = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'
-  // v1.0.236 · a normal sign-in always drops a leftover owner "Ver como" cookie (api/_owner-view.js)
+  // v1.0.239 · a normal sign-in always drops a leftover owner "Ver como" cookie (api/_owner-view.js)
   res.setHeader('Set-Cookie', [
     `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${ttl}${secure ? '; Secure' : ''}`,
     `kp_owner_view=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure ? '; Secure' : ''}`,

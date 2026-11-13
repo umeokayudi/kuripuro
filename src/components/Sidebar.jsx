@@ -164,7 +164,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }) {
         ))}
       </nav>
       <div className="sidebar-footer">
-        {/* v1.0.236 · "Ver como" moved to the owner's name at the top (OwnerView.jsx: real session switch) */}
+        {/* v1.0.239 · "Ver como" moved to the owner's name at the top (OwnerView.jsx: real session switch) */}
         <LanguageToggle variant="dark" />
         <button type="button" onClick={logout} className="sidebar-logout">
           {s.logout}

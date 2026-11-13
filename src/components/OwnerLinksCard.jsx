@@ -1,4 +1,4 @@
-// v1.0.236 · Usuários → "Conta do dono e contas vinculadas". Only the owner (or, before anyone
+// v1.0.239 · Usuários → "Conta do dono e contas vinculadas". Only the owner (or, before anyone
 // owns it, an admin claiming his own login) ever sees this card; every rule is enforced again on
 // the server (api/_owner-view.js).
 import { useEffect, useState } from 'react'
