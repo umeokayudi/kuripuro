@@ -364,7 +364,7 @@ body:has(> #root > .app-shell) {
 .tab-pill.active, .sales-tabs button.active, .sales-filter-pills .btn.active, .sales-quick-dates .btn.active, .sales-tag-picker .btn.active, .kp-users-tab.active, .cpx-store-tabs button.is-active, .so-tab.active {
   background: var(--c-select) !important; border-color: var(--c-select) !important; color: #fff !important;
 }
-.page-content [style*="background: var(--navy)"] { background: var(--c-select) !important; border-color: var(--c-select) !important; }
+.page-content [style*="background: var(--navy)"] { background: var(--c-kp-grad) !important; border-color: #2a4fd6 !important; }
 .login-go, .ex-checkin:not(.is-active) .ex-checkin-btn, .so-call {
   background: var(--c-kp-grad) !important; box-shadow: var(--c-kp-shadow) !important; border-radius: 14px !important; border: 0 !important; color: #fff !important;
 }
@@ -375,3 +375,34 @@ body:has(> #root > .app-shell) {
 /* ✅/❌ desenhados em uma cor só: verde quando ok, vermelho quando falta (não preto) */
 .ga-int-check > span:first-child { color: var(--c-red); }
 .ga-int-check.ok > span:first-child { color: var(--c-green); }
+
+/* ───────── v1.0.247 · NENHUM botão preto em nenhum portal (admin, funcionário, vendedor, cliente, login) ─────────
+   Pedido do dono: "tira esses pretos pq eu odeio". Tudo que era preto/quase preto em botão, aba, chip
+   ou quadradinho de ícone passa ao azul em degradê do "KP" do login. Só cor: nada muda de lugar. */
+:is(
+  .rpc-f.on, .cs-chips button.on, .dp-shortcuts button.on, .dc-f.on, .dc-seg button.on, .so-tab.active,
+  .wr-seg button.on, .ag-people button.on, .emp-portal-lang button.on, .bq-chips button.on, .ewr-days button.on,
+  .pm-chips button.is-on, .pm-types button.is-on, .cpx-store-tabs button.is-active, .ga-chip.on, .mt-tabs button.on span,
+  .sales-tabs button.active, .sales-filter-pills .btn.active, .sales-quick-dates .btn.active, .sales-tag-picker .btn.active,
+  .kp-users-tab.active, .tab-pill.active
+) {
+  background: var(--c-kp-grad) !important; border-color: #2a4fd6 !important; color: #fff !important; box-shadow: var(--c-kp-shadow) !important;
+}
+:is(
+  .login-go, .ex-checkin:not(.is-active) .ex-checkin-btn, .so-call, .fa-btn-dark, .ewr-all, .ewr-btn, .ewr-go,
+  .wr-ai-bar button:first-child, .ai-composer-send:not(:disabled), .ai-call-mic, .cpx-manager
+) {
+  background: var(--c-kp-grad) !important; border-color: transparent !important; color: #fff !important; box-shadow: var(--c-kp-shadow) !important;
+}
+.ai-call-mic { box-shadow: 0 0 0 1px #dde4ee, var(--c-kp-shadow) !important; }
+/* quadradinhos de ícone e números que eram pretos */
+:is(.tc-av-office, .ch-ico.ch-office, .qt-session-n, .mt-topic-n, .ai-card-icon, .sh-tile.is-dark, .cs-avatar) { background: var(--c-kp-grad) !important; color: #fff !important; }
+.ai-msg.is-user .ai-bubble { background: var(--c-kp-grad) !important; color: #fff !important; }
+.jf-thumb button { background: var(--c-select) !important; }
+.cpx-progress .is-deep { background: #173aa8 !important; }
+/* estilos escritos direto na tela com o marinho quase preto */
+[style*="background: var(--navy)"], [style*="background:var(--navy)"] { background: var(--c-kp-grad) !important; border-color: #2a4fd6 !important; }
+
+/* Funcionário · menu "Mais": cada ícone num quadradinho azul do KP (o item aberto continua destacado) */
+.emp-menu-item-icon { background: var(--c-kp-grad) !important; border-color: transparent !important; color: #fff !important; box-shadow: var(--c-kp-shadow); }
+.emp-menu-item.is-active .emp-menu-item-icon { box-shadow: 0 0 0 3px #d5e0ff, var(--c-kp-shadow); }
