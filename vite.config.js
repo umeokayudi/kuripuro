@@ -13,6 +13,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // v1.0.224 · tiny shared pieces are joined to a neighbour, so a page opens with fewer requests
+        experimentalMinChunkSize: 6000,
         manualChunks(id) {
           for (const [name, re] of VENDOR) if (re.test(id)) return name
           return undefined

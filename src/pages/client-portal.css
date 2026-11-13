@@ -1123,7 +1123,8 @@
 .cpx-prog-head h2{margin:0;font-size:17px;font-weight:800;letter-spacing:-.025em;color:#0c1c30}
 .cpx-prog-head small{display:block;margin-top:2px;font-size:12px;color:#7a879a}
 .cpx-month{display:inline-flex;align-items:center;gap:2px;height:36px;padding:0 4px;border-radius:12px;background:#f2f5fa;border:1px solid #e4eaf2}
-.cpx-month span{min-width:112px;text-align:center;font-size:13px;font-weight:700;color:#24324a;text-transform:capitalize}
+.cpx-month span{min-width:112px;text-align:center;font-size:13px;font-weight:700;color:#24324a}
+.cpx-month span::first-letter{text-transform:uppercase}
 .cpx-month button{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#3b62f0;font-size:20px;line-height:1;cursor:pointer}
 .cpx-month button:hover:not(:disabled){background:#fff}
 .cpx-month button:disabled{color:#c3cbd8;cursor:default}

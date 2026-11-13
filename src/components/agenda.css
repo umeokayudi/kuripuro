@@ -8,7 +8,9 @@
 .ag-field-error { color: var(--red, #ef4444); font-size: 12px; font-weight: 600; margin-top: 4px; }
 
 .ag-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-.ag-top .ag-date-label { font-weight: 800; font-size: 16px; text-transform: capitalize; margin-right: auto; min-width: 0; }
+.ag-top .ag-date-label { font-weight: 800; font-size: 16px; margin-right: auto; min-width: 0; }
+/* v1.0.224 · only the first letter goes up ("Sexta-feira, 13 de novembro", not "Sexta-Feira, 13 De Novembro") */
+.ag-top .ag-date-label::first-letter { text-transform: uppercase; }
 .ag-people { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .ag-people button { border: 1px solid var(--border); background: var(--surface); color: var(--text2); border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .ag-people button.on { background: var(--navy); color: #fff; border-color: var(--navy); }

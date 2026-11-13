@@ -285,7 +285,7 @@ export default function Employees() {
                 </div>
                 <div style={{background:'var(--surface2)',borderRadius:8,padding:'8px',textAlign:'center'}}>
                   <div style={{fontSize:13,fontWeight:600}}>
-                    {e.salary_type==='fixed'?'¥'+Number(e.fixed_salary||0).toLocaleString():e.salary_type==='hourly'?'¥'+e.hourly_rate+'/h':e.salary_type==='per_job'?e.job_bonus_rate+'%':L('Mixed','混合','Misto')}
+                    {e.salary_type==='fixed'?'¥'+Number(e.fixed_salary||0).toLocaleString():e.salary_type==='hourly'?'¥'+e.hourly_rate+'/h':e.salary_type==='per_job'?(Number(e.job_bonus_rate)>0?Number(e.job_bonus_rate)+'%':L('Per job','作業ごと','Por serviço')):L('Mixed','混合','Misto')}
                   </div>
                   <div style={{fontSize:10,color:'var(--text3)'}}>{L('Rate','単価','Valor')}</div>
                 </div>

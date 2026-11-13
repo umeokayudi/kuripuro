@@ -422,7 +422,7 @@ function routeLoads(items = []) {
     return { ...r, available, deadline: hm(r.deadlineMin), impossible: r.minutes > available };
   }).sort((a, b) => (a.bucket === b.bucket ? 0 : a.bucket === "morning" ? -1 : 1) || b.minutes - a.minutes || a.name.localeCompare(b.name));
 }
-var toMin3, hm, ROUTE_OPEN_MIN, MORNING_DEADLINE_MIN, DEFAULT_MINUTES2, norm3, deepDeadlineMin;
+var toMin3, hm, ROUTE_OPEN_MIN, MORNING_DEADLINE_MIN, DEFAULT_MINUTES2, norm3, deepDeadlineMin, hoursText;
 var init_routePlan = __esm({
   "src/lib/routePlan.js"() {
     init_schedulePlan();
@@ -437,6 +437,78 @@ var init_routePlan = __esm({
     DEFAULT_MINUTES2 = { basic: 120, deep: 240 };
     norm3 = (s) => String(s || "").toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim();
     deepDeadlineMin = (minutes) => Math.max(MORNING_DEADLINE_MIN, ROUTE_OPEN_MIN + (Number(minutes) || 0));
+    hoursText = (m) => {
+      const h = Math.floor(m / 60), r = m % 60;
+      return r ? `${h}h${String(r).padStart(2, "0")}` : `${h}h`;
+    };
+  }
+});
+
+// src/lib/jobDuration.js
+var jobDuration_exports = {};
+__export(jobDuration_exports, {
+  DURATION_PICKS: () => DURATION_PICKS,
+  DURATION_SQL_HINT: () => DURATION_SQL_HINT,
+  endTime: () => endTime,
+  hasJobMinutesColumn: () => hasJobMinutesColumn,
+  insertJobWithMinutes: () => insertJobWithMinutes,
+  minutesBetween: () => minutesBetween,
+  ownMinutes: () => ownMinutes,
+  saveJobMinutes: () => saveJobMinutes,
+  slotText: () => slotText
+});
+function endTime(start, minutes) {
+  const s = toMin4(start);
+  const m = Number(minutes);
+  if (s == null || !(m > 0)) return "";
+  return hhmm2(s + Math.round(m));
+}
+function minutesBetween(start, end) {
+  const s = toMin4(start), e = toMin4(end);
+  if (s == null || e == null) return null;
+  const d = e - s;
+  return d > 0 ? d : d + 24 * 60;
+}
+function slotText(time, minutes, L = (en, ja, pt) => pt) {
+  const t = String(time || "").slice(0, 5);
+  const parts = [];
+  if (t) parts.push(t);
+  if (Number(minutes) > 0) parts.push(`\u23F1${hoursText(Math.round(Number(minutes)))}`);
+  const end = endTime(t, minutes);
+  if (end) parts.push(L(`by ${end}`, `${end}\u307E\u3067`, `at\xE9 ${end}`));
+  return parts.join(" \xB7 ");
+}
+async function saveJobMinutes(supabase2, jobId, minutes) {
+  const value = Number(minutes) > 0 ? Math.round(Number(minutes)) : null;
+  const { error } = await supabase2.from("jobs").update({ expected_minutes: value }).eq("id", jobId);
+  if (error) throw new Error(missingColumn(error) ? DURATION_SQL_HINT : error.message);
+  return value;
+}
+async function insertJobWithMinutes(supabase2, row, select = "*") {
+  const first = await supabase2.from("jobs").insert(row).select(select).single();
+  if (!first.error || !("expected_minutes" in row) || !missingColumn(first.error)) return { ...first, durationSaved: !first.error };
+  const { expected_minutes, ...rest } = row;
+  const second = await supabase2.from("jobs").insert(rest).select(select).single();
+  return { ...second, durationSaved: false };
+}
+function hasJobMinutesColumn(supabase2) {
+  if (!probe) probe = supabase2.from("jobs").select("expected_minutes").limit(1).then((r) => !r.error, () => false);
+  return probe;
+}
+var toMin4, hhmm2, ownMinutes, DURATION_PICKS, missingColumn, DURATION_SQL_HINT, probe;
+var init_jobDuration = __esm({
+  "src/lib/jobDuration.js"() {
+    init_routePlan();
+    toMin4 = (t) => {
+      const m = String(t || "").match(/^(\d{1,2}):(\d{2})/);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    hhmm2 = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+    ownMinutes = (job2) => Number(job2?.expected_minutes) > 0 ? Math.round(Number(job2.expected_minutes)) : null;
+    DURATION_PICKS = [30, 45, 60, 90, 120, 180, 240];
+    missingColumn = (err) => /expected_minutes/i.test(String(err?.message || "")) && /column|schema|does not exist|could not find/i.test(String(err?.message || ""));
+    DURATION_SQL_HINT = "Falta rodar o SQL da dura\xE7\xE3o (jobs.expected_minutes).";
+    probe = null;
   }
 });
 
@@ -581,7 +653,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
     const b = cov.get(j.id);
     const done = !!b || j.status === "completed";
     const bucket = bucketOf(j);
-    const minutes = jobMinutes2(j, targets);
+    const minutes = ownMinutes(j) || jobMinutes2(j, targets);
     const deadline = bucketDeadline(j, minutes) || deadlineOf(j);
     let late = !done && isLateJob(j, day, nm);
     if (bucket === "deep" && !done && deadline > OTP_DEADLINE) late = date < day || date === day && nm >= deepDeadlineMin(minutes);
@@ -729,11 +801,13 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
 async function fetchDayPanels(from, to = from, { nowMin = null, now = /* @__PURE__ */ new Date(), today = null } = {}) {
   const { supabase: supabase2 } = await Promise.resolve().then(() => (init_supabase(), supabase_exports));
   const { fetchRouteSettings: fetchRouteSettings2 } = await Promise.resolve().then(() => (init_routeSettings(), routeSettings_exports));
+  const { hasJobMinutesColumn: hasJobMinutesColumn2 } = await Promise.resolve().then(() => (init_jobDuration(), jobDuration_exports));
+  const minutesCol = await hasJobMinutesColumn2(supabase2) ? ",expected_minutes" : "";
   const [c, cl, e, j, h, av, rs] = await Promise.all([
     supabase2.from("service_contracts").select("*").eq("is_active", true),
     supabase2.from("clients").select("id,company_name,is_active"),
     supabase2.from("employees").select("*"),
-    supabase2.from("jobs").select("id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template,checklist_missed_items,photo_required,photo_start_url,photo_end_url,checklist_total,checklist_done,gps_start_distance,start_lat,retro_time_min").gte("scheduled_date", from).lte("scheduled_date", to).limit(5e3),
+    supabase2.from("jobs").select("id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template,checklist_missed_items,photo_required,photo_start_url,photo_end_url,checklist_total,checklist_done,gps_start_distance,start_lat,retro_time_min" + minutesCol).gte("scheduled_date", from).lte("scheduled_date", to).limit(5e3),
     supabase2.from("jobs").select("title,employee_id").gte("scheduled_date", addDays(from, -28)).lt("scheduled_date", from).not("employee_id", "is", null).neq("status", "cancelled").limit(3e3),
     supabase2.from("employee_availability").select("*").gte("date", from).lte("date", to),
     fetchRouteSettings2().catch(() => null)
@@ -770,6 +844,7 @@ var init_dayPanel = __esm({
     init_jobCounts();
     init_jobDeadline();
     init_routePlan();
+    init_jobDuration();
     SHIFT_CUTOFF = "21:00";
     SHIFT_KINDS = ["confirmed", "off", "extra"];
     SHIFT_DAILY_CONFIRM = false;

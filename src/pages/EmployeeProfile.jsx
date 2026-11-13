@@ -1,4 +1,5 @@
 import { gradeJobPhoto } from '../lib/photoAi'
+import { statusLabel } from '../lib/statusLabel'
 import FaceAvatar from '../components/FaceAvatar'
 import { aiScoreView } from '../lib/aiScore'
 import { sortByOrder } from '../lib/agenda'
@@ -57,6 +58,7 @@ function ReassignJob({ job, onDone }) {
 }
 
 function RecentDays({ jobs, onDayClick }) {
+  const { lang } = useLang()
   const [openDay, setOpenDay] = useState(null)
   const byDay = {}
   jobs.forEach(j => {
@@ -89,7 +91,7 @@ function RecentDays({ jobs, onDayClick }) {
                       <span style={{fontSize:11,color:'var(--text3)',width:16}}>{i+1}</span>
                       <span style={{fontSize:12,color:j.status==='completed'?'var(--text3)':'var(--text)',textDecoration:j.status==='completed'?'line-through':'none'}}>{j.title.replace(/ — .*/,'')}</span>
                     </div>
-                    <span style={{fontSize:10,padding:'1px 6px',borderRadius:20,background:j.status==='completed'?'rgba(74,222,128,0.1)':'rgba(96,165,250,0.1)',color:j.status==='completed'?'var(--green)':'#60a5fa'}}>{j.status}</span>
+                    <span style={{fontSize:10,padding:'1px 6px',borderRadius:20,background:j.status==='completed'?'rgba(74,222,128,0.1)':'rgba(96,165,250,0.1)',color:j.status==='completed'?'var(--green)':'#60a5fa'}}>{statusLabel(j.status, lang)}</span>
                   </div>
                 ))}
               </div>
@@ -385,7 +387,7 @@ export default function EmployeeProfile() {
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                 <span style={{fontWeight:500,fontSize:13}}>{j.title.replace(/ — .*/,'')}</span>
                 <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                  <span className={`badge ${statusColor(j.status)}`}>{j.status}</span>
+                  <span className={`badge ${statusColor(j.status)}`}>{statusLabel(j.status, lang)}</span>
                   {j.status==='assigned'&&<ReassignJob job={j} onDone={loadAll} />}
                 </div>
               </div>

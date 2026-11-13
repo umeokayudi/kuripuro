@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { statusLabel, shortDate } from '../lib/statusLabel'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { tokyoToday } from '../lib/dates'
 import { ensureServiceReports } from '../lib/jobReport'
@@ -350,11 +351,11 @@ export default function Faturas() {
                 <div>
                   <div style={{fontWeight:700,fontSize:15}}>{f.client_name} <span onClick={ev=>ev.stopPropagation()} style={{fontSize:12,fontWeight:500}}><ClientLink id={f.client_id} name={tr('client ›','顧客 ›','cliente ›')} /></span></div>
                   <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{tr('Period','対象期間','Período')}: {periodLabel(f.period_start, f.period_end) || '—'}</div>
-                  <div style={{fontSize:12,color:'var(--text3)'}}>{tr('Issued', '発行', 'Emitida')}: {f.issue_date} · {tr('Due', '期限', 'Vencimento')}: {f.due_date||'—'}</div>
+                  <div style={{fontSize:12,color:'var(--text3)'}}>{tr('Issued', '発行', 'Emitida')}: {shortDate(f.issue_date, lang)} · {tr('Due', '期限', 'Vencimento')}: {shortDate(f.due_date, lang)}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:18,fontWeight:700,color:'var(--green)'}}>¥{Number(f.total||0).toLocaleString()}</div>
-                  <span className={`badge ${statusBadge(f.status)}`}>{f.status}</span>
+                  <span className={`badge ${statusBadge(f.status)}`}>{statusLabel(f.status, lang)}</span>
                 </div>
               </div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}} onClick={ev=>ev.stopPropagation()}>
@@ -364,7 +365,7 @@ export default function Faturas() {
                 {f.status!=='cancelled'&&<button className="btn btn-sm" onClick={()=>openDates(f,'edit')}>📅 {tr('Dates','日付','Datas')}</button>}
                 {['sent','pending','overdue'].includes(f.status)&&<button className="btn btn-sm" style={{background:'var(--green)',color:'#fff'}} onClick={()=>handleStatusChange(f.id,'paid')}>✅ {tr('Mark paid','入金済にする','Marcar paga')}</button>}
                 {['sent','pending','overdue','paid'].includes(f.status)&&<button className="btn btn-sm" onClick={()=>navigate(`/ryoshu?fatura=${f.id}`)}>🧾 {tr('Receipt','領収書','Recibo')}</button>}
-                {f.status!=='cancelled'&&<button className="btn btn-sm btn-danger" onClick={()=>handleStatusChange(f.id,'cancelled')}>{tr('Cancel','取消','Cancelar')}</button>}
+                {f.status!=='cancelled'&&<button className="btn btn-sm btn-danger-soft" onClick={()=>handleStatusChange(f.id,'cancelled')}>{tr('Cancel','取消','Cancelar')}</button>}
                 <button className="btn btn-sm btn-danger" onClick={()=>handleDelete(f.id)}>🗑 {tr('Delete','削除','Apagar')}</button>
               </div>
             </div>
@@ -507,7 +508,7 @@ export default function Faturas() {
           <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={()=>setDetail(null)}>
             <div className="card" style={{ width:'min(620px,100%)', maxHeight:'92vh', overflowY:'auto' }} onClick={e=>e.stopPropagation()}>
               <div className="card-title">📄 {f.client_name} · {periodLabel(f.period_start, f.period_end) || f.issue_date}</div>
-              <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>{tr('Issued','発行','Emitida')} {f.issue_date} · {tr('Due','期限','Vencimento')} {f.due_date || '—'} · <span className={`badge ${statusBadge(f.status)}`}>{f.status}</span></div>
+              <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>{tr('Issued','発行','Emitida')} {shortDate(f.issue_date, lang)} · {tr('Due','期限','Vencimento')} {shortDate(f.due_date, lang)} · <span className={`badge ${statusBadge(f.status)}`}>{statusLabel(f.status, lang)}</span></div>
               {its === null && <div className="kp-skel-text">{tr('Loading…','読み込み中…','Carregando…')}</div>}
               {its && its.length === 0 && <div style={{ fontSize:13, color:'var(--text3)' }}>{tr('This invoice has no lines.','明細行がありません。','Esta fatura não tem linhas.')}</div>}
               {its && its.length > 0 && (
