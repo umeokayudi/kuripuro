@@ -2,7 +2,7 @@
 // recurring contract: locations, monthly value (same contractMonthly() the admin Contracts screen uses),
 // term and the next invoice / due date. Built on the server from an explicit column list, so nothing about
 // employees (pay, worker_payment in contract_details, salary) can ever reach the seller.
-import { contractMonthly, storeOf } from './money.js'
+import { contractMonthly, storeOf, isEmbeddedItem } from './money.js'
 import { contractStartDate } from './schedulePlan.js'
 
 /** Columns the server reads from service_contracts — commercial facts only. */
@@ -48,6 +48,7 @@ function locationRow(c) {
     visits: Number(c.visits_per_month || 0),
     perVisit: c.billing_type === 'fixed_monthly' ? 0 : Math.round(Number(c.price_per_visit || 0)),
     monthly: contractMonthly(c),
+    embedded: isEmbeddedItem(c), // v1.0.256 · deep inside the store's fixed
     discount: Number(c.discount_percent || 0),
     taxIncluded: c.price_includes_tax !== false,
     days: Array.isArray(c.days_of_week) ? c.days_of_week : [],
