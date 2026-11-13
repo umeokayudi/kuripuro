@@ -36,6 +36,7 @@ const Facility = lazy(() => import('./Facility'))
 import './client-portal.css'
 import ClientBell, { clientBellItems } from '../components/ClientBell'
 import { tabFromUrl, clearTabParam } from '../lib/push'
+import { homeLogoProps } from '../lib/homeLogo'
 import { pollWhileVisible } from '../lib/visiblePoll'
 
 function sanitizePostgrestToken(value) {
@@ -762,7 +763,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
       <div className="cp-layout">
         {desktopMode && (
           <aside className="cp-sidebar">
-            <div className="cp-brand">
+            <div className="cp-brand" {...homeLogoProps(() => { setTab('home'); window.scrollTo(0, 0) }, c.home || 'Home')}>
               <div className="cp-brand-tag">KuriPuro</div>
               <div className="cp-brand-name">{user.client_name || user.name}</div>
               <div className="cp-brand-sub">{user.location_name || c.allLocations}</div>
@@ -789,7 +790,7 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
         <div className="cp-main">
           <header className={`cp-header cpx-header${tab === 'home' ? ' is-home' : ''}`}>
             <div className="cp-header-row">
-              <div className="cp-header-mobile-only cpx-brand">
+              <div className="cp-header-mobile-only cpx-brand" {...homeLogoProps(() => { setTab('home'); window.scrollTo(0, 0) }, c.home || 'Home')}>
                 <span className="cpx-kp">KP</span>
                 <span>KuriPuro · {c.portal}</span>
               </div>

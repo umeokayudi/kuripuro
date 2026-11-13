@@ -1,3 +1,4 @@
+import { homeLogoProps } from './lib/homeLogo'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { maybeAutoSync } from './lib/googleAgenda'
 import ClientSheetHost from './components/ClientSheetHost'
@@ -285,7 +286,7 @@ function AppContent() {
       <div className={`main${location.pathname === '/facility' || location.pathname === '/facility/edit' ? ' kw-full' : ''}`}>
         <header className="topbar">
           <button type="button" className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)} aria-label={sidebarOpen ? a.closeMenu : a.openMenu} aria-expanded={sidebarOpen}>☰<MobileMenuCount /></button>
-          <div className="mobile-kp-brand">KP</div>
+          <div className="mobile-kp-brand" {...homeLogoProps(() => { navigate('/'); setSidebarOpen(false) }, 'Home')}>KP</div>
           <div className="ref-topbar-search">
             <span>⌕</span>
             <input

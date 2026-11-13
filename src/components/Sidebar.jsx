@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { homeLogoProps } from '../lib/homeLogo'
 import { useEffect, useState } from 'react'
 import { TIME_OFF_CHANGED } from '../lib/timeOff'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
@@ -133,14 +134,16 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }) {
   // Unresolved items per menu entry (day-off requests, client quote requests, unread chat…):
   // the number stays next to the item until it is dealt with, on every page.
   const counts = usePendingCounts()
+  const navigate = useNavigate()
+  const goHome = () => { navigate('/'); onMobileClose?.() }
 
   return (
     <>
     <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " sidebar-mobile-open" : ""}`}>
       <div className="sidebar-logo">
         {/* Brand: blue rounded box with a white "K" (same look as the user avatar), name beside it. */}
-        <div className="brand-box" aria-hidden="true">K</div>
-        <div className="brand-text">
+        <div className="brand-box" {...homeLogoProps(goHome, s.home || 'Home')}>K</div>
+        <div className="brand-text" {...homeLogoProps(goHome, s.home || 'Home')}>
           <div className="brand">KuriPuro</div>
           <div className="sub">by JBM · {s.adminTag || 'Admin'}</div>
         </div>

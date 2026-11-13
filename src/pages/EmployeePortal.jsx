@@ -116,6 +116,7 @@ import { loadAgendaSettings, logJobAdmin } from '../lib/jobAdminOps'
 import { quickRoundEnabledFor } from '../lib/quickRound'
 import QuickRound from '../components/QuickRound'
 import { tabFromUrl, clearTabParam } from '../lib/push'
+import { homeLogoProps } from '../lib/homeLogo'
 import { canJoinDupla, isDupla, duplaInfo } from '../lib/duplaJob'
 import { joinDupla, leaveDupla } from '../lib/duplaJobOps'
 import {
@@ -2181,7 +2182,7 @@ export default function EmployeePortal() {
       <div className="emp-app-header">
         <div className="emp-header-top">
           <div className="emp-header-identity">
-            <div className="emp-brand"><span className="emp-kp-mark">KP</span><span className="emp-brand-text">KURIPURO<br />BY JBM</span></div>
+            <div className="emp-brand" {...homeLogoProps(() => { setTab('home'); window.scrollTo(0, 0) }, 'Home')}><span className="emp-kp-mark">KP</span><span className="emp-brand-text">KURIPURO<br />BY JBM</span></div>
           </div>
           <div className="emp-header-actions">
             <div className={`emp-score-card ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}>

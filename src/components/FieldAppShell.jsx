@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import LanguageToggle from './LanguageToggle'
 import { localeOf, pickLang } from '../hooks/useLang'
+import { homeLogoProps } from '../lib/homeLogo'
 
 // Phone-first frame shared by the seller and marketing portals, built like the
 // employee portal: small brand header with bell + menu, a greeting card, the
@@ -71,7 +72,7 @@ export default function FieldAppShell({
   return (
     <div className="fa-app">
       <header className="fa-header">
-        <div className="fa-brand"><span className="fa-mark">KP</span><span>{kicker}</span></div>
+        <div className="fa-brand" {...homeLogoProps(() => { setMenuOpen(false); if (tabs[0]) onTab(tabs[0].key); window.scrollTo(0, 0) }, pickLang(lang, 'Home', 'ホーム', 'Início'))}><span className="fa-mark">KP</span><span>{kicker}</span></div>
         <div className="fa-header-actions">
           <button type="button" className="fa-icon-btn fa-bell" aria-label={pickLang(lang, 'Notifications', 'お知らせ', 'Notificações')} onClick={onBell}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>

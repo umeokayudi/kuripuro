@@ -1,0 +1,97 @@
+/* v1.0.242 · "Cor que trabalha" no portal do vendedor/marketing (só visual; usa os tokens --c-* de cor.css).
+   1) Contadores: o atalho "font: 700 10px/18px inherit" era inválido e o número saía desalinhado e cortado.
+      Agora são pílulas de um tamanho só, com o número centralizado.
+   2) O logo vira botão de "Início" (ver FieldAppShell). 3) Painel inicial mais limpo e na cor da marca. */
+
+[data-home-logo] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+[data-home-logo]:focus-visible { outline: 2px solid var(--c-teal, #0ba39b); outline-offset: 3px; border-radius: 10px; }
+
+/* ───────── Contadores (sino, barra de baixo, menu) ───────── */
+.fa-bell-count, .fa-nav-badge {
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; line-height: 1; text-align: center;
+  font-family: var(--c-font, inherit); font-size: 11px; font-weight: 800; letter-spacing: 0; font-variant-numeric: tabular-nums;
+  color: #fff; background: var(--c-red, #d92d20); box-shadow: 0 0 0 2px #fff;
+}
+.fa-bell-count { top: -6px; right: -6px; }
+.fa-nav-badge { top: 1px; right: calc(50% - 30px); background: var(--c-amber, #dd8a00); color: #231600; }
+.fa-nav-badge.is-inline { position: static; flex: 0 0 auto; margin-right: 4px; box-shadow: none; min-width: 24px; height: 24px; font-size: 12px; }
+.fa-menu-item .fa-nav-badge.is-inline { background: var(--c-amber-soft, #fdf3dd); color: var(--c-amber-ink, #92580a); border: 1px solid var(--c-amber-line, #f0d48a); }
+.fa-pill { font-family: var(--c-font, inherit); font-variant-numeric: tabular-nums; background: var(--c-gray-soft, #edf1f4); color: var(--c-gray-ink, #5c707d); }
+.bq-group-n { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--c-amber-soft, #fdf3dd); color: var(--c-amber-ink, #92580a); font-size: 12px; font-weight: 800; vertical-align: middle; margin-left: 4px; }
+
+/* ───────── Moldura (topo, saudação, barra de baixo) ───────── */
+.fa-app { --fa-bg: var(--c-ice, #eef5f9); --fa-blue: var(--c-teal-dark, #07837c); --fa-blue-soft: var(--c-teal-soft, #e3f6f4); --fa-line: var(--c-line-soft, #e7eff3); --fa-text: var(--c-ink, #10222f); --fa-muted: var(--c-ink-3, #718894); --fa-green: var(--c-green, #1da448); --fa-amber: var(--c-amber, #dd8a00); --fa-red: var(--c-red, #d92d20); font-family: var(--c-font, inherit); }
+.fa-sheet { --fa-blue: var(--c-teal-dark, #07837c); --fa-blue-soft: var(--c-teal-soft, #e3f6f4); --fa-line: var(--c-line-soft, #e7eff3); --fa-text: var(--c-ink, #10222f); --fa-muted: var(--c-ink-3, #718894); font-family: var(--c-font, inherit); }
+.fa-app h1, .fa-app h2, .fa-app h3, .fa-sheet h2 { font-family: var(--c-font-display, inherit); }
+.fa-mark { background: var(--c-teal, #0ba39b); font-family: var(--c-font-display, Georgia, serif); font-weight: 900; box-shadow: var(--c-tile-shadow); }
+.fa-brand { color: var(--c-navy, #0a2138); }
+.fa-icon-btn { border-color: var(--c-line, #d5e2ea); border-radius: var(--c-radius-sm, 10px); }
+.fa-hello { background: linear-gradient(135deg, var(--c-navy, #0a2138), var(--c-navy-2, #0e2c49)); border: 0; color: #fff; box-shadow: var(--c-shadow-pop); }
+.fa-hello h1 { color: #fff; font-size: 24px; }
+.fa-hello-kicker { color: #6fe3d9; }
+.fa-hello p { color: #a9c0d0; }
+.fa-clock { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .18); color: #fff; font-family: var(--c-font-display, inherit); }
+.fa-card { border-color: var(--c-line-soft, #e7eff3); border-radius: var(--c-radius, 14px); box-shadow: var(--c-shadow); }
+.fa-card-head h2 { color: var(--c-navy, #0a2138); font-size: 15px; }
+.fa-link { color: var(--c-teal-dark, #07837c); }
+.fa-btn-primary { background: var(--c-teal, #0ba39b); border-color: var(--c-teal, #0ba39b); box-shadow: 0 6px 16px rgba(11, 163, 155, .28); }
+.fa-plus { background: linear-gradient(135deg, var(--c-teal, #0ba39b), var(--c-teal-dark, #07837c)); box-shadow: 0 10px 22px rgba(11, 163, 155, .38); }
+.fa-bottom-nav { border-top-color: var(--c-line-soft, #e7eff3); }
+.fa-nav-item.is-active { color: var(--c-teal-dark, #07837c); background: var(--c-teal-soft, #e3f6f4); }
+
+/* ───────── Painel: "Meu dia" ───────── */
+.sp-day { border-color: var(--c-line-soft, #e7eff3); border-radius: var(--c-radius, 14px); box-shadow: var(--c-shadow); border-left: 4px solid var(--c-blue, #2563eb); }
+.sp-day-icon { background: var(--c-blue-soft, #e4ecfe); color: var(--c-blue-ink, #1d4ed8); }
+.sp-day.is-working { background: linear-gradient(135deg, var(--c-teal-dark, #07837c), var(--c-teal, #0ba39b)); border-left-color: transparent; }
+.sp-day.is-working .fa-btn-dark { color: var(--c-teal-dark, #07837c); }
+.sp-day.is-closed { border-left-color: var(--c-green, #1da448); }
+.sp-day.is-closed .sp-day-icon { background: var(--c-green-soft, #e5f6ea); color: var(--c-green-ink, #147a35); }
+.sp-day.is-idle { border-left-color: var(--c-amber, #dd8a00); }
+.sp-day.is-idle .sp-day-icon { background: var(--c-amber-soft, #fdf3dd); color: var(--c-amber-ink, #92580a); }
+.sp-day-copy strong { font-family: var(--c-font-display, inherit); color: var(--c-navy, #0a2138); }
+.sp-day.is-working .sp-day-copy strong { color: #fff; }
+.sp-kicker { color: var(--c-ink-3, #718894); }
+
+/* ───────── Painel: atalhos ───────── */
+.sp-cta { border-color: var(--c-line-soft, #e7eff3); border-radius: var(--c-radius, 14px); box-shadow: var(--c-shadow); }
+.sp-cta-icon { background: var(--c-gray-soft, #edf1f4); }
+.sp-cta-grid .sp-cta:nth-of-type(2) .sp-cta-icon { background: var(--c-blue-soft, #e4ecfe); }
+.sp-cta-grid .sp-cta:nth-of-type(3) .sp-cta-icon { background: var(--c-amber-soft, #fdf3dd); color: var(--c-amber-ink, #92580a); }
+.sp-cta.is-main { background: linear-gradient(135deg, var(--c-teal-dark, #07837c), var(--c-teal, #0ba39b)); box-shadow: 0 10px 24px rgba(11, 163, 155, .3); }
+.sp-cta small { font-variant-numeric: tabular-nums; }
+
+/* ───────── Painel: Meus números (um número grande por bloco, cor com significado) ───────── */
+.sh-tiles { gap: 10px; }
+.sh-tile { border-radius: var(--c-radius, 14px); padding: 12px 12px 11px; gap: 3px; border: 1px solid transparent; }
+.sh-tile strong { font-family: var(--c-font-display, inherit); font-size: 26px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.sh-tile span { font-size: 11.5px; font-weight: 700; color: var(--c-ink-2, #47606f); line-height: 1.25; }
+.sh-tile.is-blue { background: var(--c-blue-soft, #e4ecfe); } .sh-tile.is-blue strong { color: var(--c-blue-ink, #1d4ed8); }
+.sh-tile.is-purple { background: #efe9fb; } .sh-tile.is-purple strong { color: #5b3fb0; }
+.sh-tile.is-teal { background: var(--c-teal-soft, #e3f6f4); } .sh-tile.is-teal strong { color: var(--c-teal-dark, #07837c); }
+.sh-tile.is-amber { background: var(--c-amber-soft, #fdf3dd); } .sh-tile.is-amber strong { color: var(--c-amber-ink, #92580a); }
+.sh-tile.is-green { background: var(--c-green-soft, #e5f6ea); } .sh-tile.is-green strong { color: var(--c-green-ink, #147a35); }
+.sh-tile.is-dark { background: var(--c-navy, #0a2138); } .sh-tile.is-dark strong { color: #fff; font-size: 20px; } .sh-tile.is-dark span { color: #9fb8c9; }
+.sh-bar { background: var(--c-track, #e2ecf1); height: 10px; }
+.sh-bar i { background: var(--c-progress); }
+.sh-rate b { font-family: var(--c-font-display, inherit); font-variant-numeric: tabular-nums; color: var(--c-navy, #0a2138); }
+.fn-seg { background: var(--c-gray-soft, #edf1f4); }
+.fn-seg button { font-family: var(--c-font, inherit); }
+.fn-seg button.is-active { color: var(--c-teal-dark, #07837c); }
+
+/* ───────── Painel: Comissões ───────── */
+.sh-comm-grid > div { border-color: var(--c-line-soft, #e7eff3); border-radius: var(--c-radius, 14px); background: var(--c-surface-2, #f4f9fb); }
+.sh-comm-grid strong { font-family: var(--c-font-display, inherit); font-variant-numeric: tabular-nums; color: var(--c-navy, #0a2138); }
+.sh-comm-grid .is-main { background: linear-gradient(135deg, var(--c-green-ink, #147a35), var(--c-green, #1da448)); }
+.sh-comm-grid .is-main strong { color: #fff; font-size: 26px; }
+.sh-comm-grid span { color: var(--c-ink-2, #47606f); }
+
+/* ───────── Painel: próximos follow-ups ───────── */
+.sh-fu-date { background: var(--c-blue-soft, #e4ecfe) !important; } .sh-fu-date b { color: var(--c-blue-ink, #1d4ed8); }
+.sh-fu.is-overdue .sh-fu-date { background: var(--c-red-soft, #fdecea) !important; } .sh-fu.is-overdue .sh-fu-date b, .sh-fu.is-overdue .sh-fu-date small { color: var(--c-red-ink, #b42318); }
+.sh-fu.is-today .sh-fu-date { background: var(--c-amber-soft, #fdf3dd) !important; } .sh-fu.is-today .sh-fu-date b, .sh-fu.is-today .sh-fu-date small { color: var(--c-amber-ink, #92580a); }
+.sh-fu-date b { font-family: var(--c-font-display, inherit); font-variant-numeric: tabular-nums; }
+
+/* ───────── Menu (folha) ───────── */
+.fa-menu-icon { background: var(--c-teal-soft, #e3f6f4); border-radius: 12px; }
+.fa-menu-item.is-active { background: var(--c-teal-soft, #e3f6f4); border-color: var(--c-teal, #0ba39b); }
