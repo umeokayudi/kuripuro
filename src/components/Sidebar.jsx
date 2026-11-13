@@ -30,6 +30,7 @@ const groups = [
       { to: '/users', key: 'users', icon: Icons.user },
       { to: '/employees', key: 'employees', icon: Icons.users },
       { to: '/evaluations', key: 'evaluations', icon: Icons.users },
+      { to: '/meetings', key: 'meetings', icon: Icons.users },
       { to: '/training', key: 'training', icon: Icons.file },
       { to: '/equipment-requests', key: 'equipmentRequests', icon: Icons.list },
       { to: '/transport-claims', key: 'transport', icon: Icons.list },
