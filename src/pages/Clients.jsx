@@ -22,6 +22,7 @@ import AddressInput from '../components/AddressInput'
 import SetupLinkCard from '../components/SetupLinkCard'
 import ClientReportPanel from '../components/ClientReportPanel'
 import ViewAsClientButton from '../components/ClientPortalPreview'
+import { ClientEmailToggle, ClientEmailLog, useClientEmailSettings } from '../components/ClientEmail'
 
 export default function Clients() {
   const [searchParams] = useSearchParams()
@@ -252,6 +253,7 @@ export default function Clients() {
 
   const [costMonth, setCostMonth] = useState('')
   const [reportFor, setReportFor] = useState(null)
+  const emailCfg = useClientEmailSettings()
   const load = async () => {
     setLoading(true)
     const { data } = await supabase.from('clients').select('*').order('company_name')
@@ -328,6 +330,7 @@ export default function Clients() {
         <button className={`tab-pill${tab==='register'?' active':''}`} onClick={()=>setTab('register')}>{editing?`✏️ ${L('Edit','編集','Editar')}`:`+ ${L('Register','登録','Cadastrar')}`}</button>
         <button className={`tab-pill${tab==='services'?' active':''}`} onClick={()=>setTab('services')}>{L('Services','サービス','Serviços')}</button>
         <button className={`tab-pill${tab==='portal'?' active':''}`} onClick={()=>setTab('portal')}>🔐 {L('Portal','ポータル','Portal')}</button>
+        <button className={`tab-pill${tab==='emails'?' active':''}`} onClick={()=>setTab('emails')}>📧 {L('E-mails sent','送信メール','E-mails enviados')}</button>
         <button className={`tab-pill${tab==='care'?' active':''}`} onClick={()=>setTab('care')}>🤝 {L('Manager & stores','担当者・店舗','Gerente e lojas')}</button>
         <button className="tab-pill" onClick={()=>navigate('/facility')}>🌏 Kuripuro World</button>
       </div>
@@ -335,6 +338,7 @@ export default function Clients() {
       {newLink && <SetupLinkCard name={newLink.name} url={newLink.url} lang={lang} onClose={()=>setNewLink(null)} />}
 
       {tab==='care'&&<ClientCareAdmin clients={clients} onClientsChanged={load} />}
+      {tab==='emails'&&<ClientEmailLog clients={clients} mode={emailCfg.mode} />}
 
       {/* LIST */}
       {tab==='list'&&(
@@ -378,6 +382,7 @@ export default function Clients() {
                     {c.salesperson_id && !sellers.some(p => p.id === c.salesperson_id) && <option value={c.salesperson_id}>…</option>}
                   </select>
                 </label>
+                <ClientEmailToggle client={c} setting={emailCfg.settings.clients?.[c.id]} onChange={emailCfg.setOne} compact />
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <button className="btn btn-sm btn-primary" onClick={()=>handleEdit(c)}>✏️ {L('Edit','編集','Editar')}</button>
                   <button className="btn btn-sm" onClick={()=>navigate(`/jobs?tab=locations&client=${c.id}`)}>📍 {L('Places','拠点','Locais')}</button>
@@ -413,6 +418,7 @@ export default function Clients() {
               <div style={{marginTop:4}}>👤 {L('The contact person is registered only here (or in the client sheet). Contracts and the portal read it from here.','担当者はここ（または顧客シート）だけで登録します。契約やポータルはここから読み込みます。','O contato do cliente é cadastrado só aqui (ou na ficha do cliente). Contratos e portal leem daqui.')}</div></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Address','住所','Endereço')}</label><AddressInput value={form.address} onChange={e=>upd('address',e.target.value)} /></div>
             <div className="form-group" style={{gridColumn:'1/-1'}}><label>{L('Notes','メモ','Observações')}</label><textarea value={form.notes} onChange={e=>upd('notes',e.target.value)} /></div>
+            {editing && <div className="form-group" style={{gridColumn:'1/-1'}}><ClientEmailToggle client={clients.find(x => x.id === editing) || { id: editing, email: form.email }} setting={emailCfg.settings.clients?.[editing]} onChange={emailCfg.setOne} /></div>}
           </div>
           <div style={{display:'flex',gap:8}}>
             <button className="btn btn-primary" onClick={handleSave}>{editing?`✅ ${L('Update','更新','Atualizar')}`:`✅ ${L('Register','登録','Cadastrar')}`}</button>

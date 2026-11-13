@@ -16,6 +16,7 @@ const steps = [
   ['node scripts/test-day-check.mjs', 'Conferir o dia (feito certo / conferir / falta)'],
   ['npx vite-node scripts/test-day-count.mjs', 'Painel do Dia: um contador só'],
   ['npx vite-node scripts/test-seller-visits.mjs', 'Vendedor: jogar tudo na IA + visita agendada (Google Agenda)'],
+  ['node scripts/test-client-email.mjs', 'E-mail de confirmação com relatórios (dia / spot, sem e-mail real)'],
   ['node scripts/test-dupla.mjs', 'Serviço em dupla (valor meio a meio, relatório dos dois)'],
   ['npx vite-node scripts/test-redo-done-store.mjs', 'Loja já feita por outro: rótulos certos e refazer só com justificativa'], 
   ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],

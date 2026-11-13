@@ -15,6 +15,7 @@
 //                          and each event is sent once (push_log), so a forged call can only
 //                          repeat a notice that really exists, never invent one.
 import webpush from 'web-push'
+import { onJobEvent as clientEmailOnJobEvent } from './_client-email.js'
 import { salesDb, readSalesSession } from './_salesSession.js'
 import { fetchBellSnapshot, bellNotice, bellSummary, BELL_SKIP_KINDS, BELL_SKIP_GROUPS } from './_bell.bundle.js'
 import { isChannelPath, coverPushText, textPushText, channelOfPath, inChannel, showsCovers, MEMBERS_PATH, isDmKey, inDm } from '../src/lib/teamChannel.js'
@@ -300,19 +301,22 @@ async function deliver(db, notice) {
   return { key: notice.key, sent }
 }
 
-async function handleEvent(req, res) {
+async function handleEvent(req, res, afterPush = () => null) {
   const { table, op, id, old } = req.body || {}
   const rule = TABLES[table]
   if (!rule || !id || !['INSERT', 'UPDATE'].includes(op)) return res.status(400).json({ error: 'bad event' })
   const db = salesDb()
   const { data: row, error } = await db.from(table).select(rule[0]).eq('id', id).maybeSingle()
   if (error) return res.status(500).json({ error: error.message })
-  if (!row) return res.status(200).json({ ok: true, sent: 0 })
+  if (!row) return res.status(200).json({ ok: true, sent: 0, clientEmail: await afterPush() })
   // `old` only decides whether a change is new; the text always comes from the current row.
   const notices = rule[1](row, op, old && typeof old === 'object' ? old : {})
   const results = []
-  for (const n of notices) results.push(await deliver(db, n))
-  return res.status(200).json({ ok: true, results })
+  let pushError = null
+  try { for (const n of notices) results.push(await deliver(db, n)) } catch (err) { pushError = err }
+  const clientEmail = await afterPush()
+  if (pushError) return res.status(500).json({ error: pushError?.message || 'push failed', clientEmail })
+  return res.status(200).json({ ok: true, results, ...(clientEmail ? { clientEmail } : {}) })
 }
 
 
@@ -461,10 +465,15 @@ export default async function handler(req, res) {
     return res.status(200).json({ configured: pushConfigured(), publicKey: process.env.VAPID_PUBLIC_KEY || null })
   }
   if (req.method !== 'POST' && op !== 'bell') return res.status(405).json({ error: 'Method not allowed' })
+  // v1.0.213 · the same job event also drives the client confirmation e-mail (day / spot).
+  // Push goes out first; the e-mail runs after it, on its own, and works even without VAPID keys.
+  const emailEvent = op === 'event' && req.body?.table === 'jobs' && req.body?.op === 'UPDATE'
+  const runEmail = () => (emailEvent ? clientEmailOnJobEvent(req.body).catch(err => ({ error: err?.message })) : null)
+  if (emailEvent && !pushConfigured()) return res.status(200).json({ ok: true, push: 'not-configured', clientEmail: await runEmail() })
   if (!pushConfigured()) return res.status(503).json({ error: 'Push não configurado no servidor (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).' })
 
   try {
-    if (op === 'event') return await handleEvent(req, res)
+    if (op === 'event') return await handleEvent(req, res, runEmail)
     if (op === 'bell') return await handleBell(req, res)
 
     const db = salesDb()
