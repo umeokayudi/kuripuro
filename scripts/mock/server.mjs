@@ -16,6 +16,9 @@ process.env.SUPABASE_ANON_KEY = 'mock-anon'
 process.env.SALES_SESSION_SECRET = 'mock-secret-mock-secret-mock-secret-mock'
 process.env.OWNER_EMAILS = 'admin@kuripuro.com,teste.admin@kuripuro.com'
 process.env.CRON_SECRET = 'mock-cron'
+// fake 3D scanning service (scripts/mock/kiri.mjs): the real KIRI is never called from the test stack
+process.env.KIRI_API_KEY = 'mock-kiri'
+process.env.KIRI_API_BASE = `http://127.0.0.1:${PORT}/_kiri`
 process.env.CLIENT_EMAIL_MODE = 'off'
 for (const k of ['GEMINI_API_KEY', 'META_AI_API_KEY', 'RESEND_API_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY']) if (!process.env.MOCK_KEEP_KEYS) delete process.env[k]
 
@@ -59,6 +62,8 @@ http.createServer(async (req, res) => {
       res.writeHead(out.status, { ...cors, 'content-type': 'application/json', ...(out.headers || {}) })
       return res.end(out.body == null ? '' : JSON.stringify(out.body))
     }
+    if (url.pathname.startsWith('/_kiri/')) { const { kiriFake } = await import('./kiri.mjs'); return kiriFake(req, res, url, await readBody(req), PORT) }
+    if (url.pathname === '/_mock/kiri') { const { kiriCalls } = await import('./kiri.mjs'); res.writeHead(200, { ...cors, 'content-type': 'application/json' }); return res.end(JSON.stringify(kiriCalls)) }
     if (url.pathname === '/_mock/reset') { seed(); res.writeHead(200, cors); return res.end('ok') }
     if (url.pathname === '/_mock/state') { res.writeHead(200, { ...cors, 'content-type': 'application/json' }); return res.end(JSON.stringify({ counts: Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, v.length])), writes: log.writes.slice(-50) })) }
     if (url.pathname.startsWith('/_mock/table/')) { res.writeHead(200, { ...cors, 'content-type': 'application/json' }); return res.end(JSON.stringify(tables[url.pathname.slice(13)] || null)) }

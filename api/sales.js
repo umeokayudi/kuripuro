@@ -3,6 +3,7 @@ import clientEmail from './_client-email.js'
 import contractSales from './_contract-sales.js'
 import google from './_google-calendar.js'
 import meetings from './_meetings.js'
+import scan3d from './_kiri.js'
 import payrollClose from './_payroll-close.js'
 import push from './_push.js'
 import optout from './_sales-outreach.js'
@@ -27,6 +28,7 @@ const handlers = {
   files: salesFiles,
   meetings,
   optout,
+  scan3d,
   'payroll-close': payrollClose,
   push,
   reminders: salesReminders,

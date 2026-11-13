@@ -1,0 +1,22 @@
+/* v1.0.234 · Modelo 3D real */
+.s3-back { position: fixed; inset: 0; z-index: 2800; background: rgba(11, 15, 25, .45); display: grid; place-items: center; padding: 16px; }
+.s3-sheet { background: #fff; border-radius: 16px; width: min(560px, 100%); max-height: 92vh; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; color: #0b0f19; }
+.s3-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.s3-head h2 { margin: 0; font-size: 18px; } .s3-head p { margin: 2px 0 0; color: #5b6475; font-size: 14px; }
+.s3-x { border: 0; background: #f1f3f7; width: 40px; height: 40px; border-radius: 10px; font-size: 20px; cursor: pointer; flex: none; }
+.s3-warn { margin: 0; padding: 10px 12px; border: 1px solid #e7eaf0; border-left: 3px solid #b7791f; border-radius: 10px; font-size: 14px; line-height: 1.5; }
+.s3-block { border: 1px solid #e7eaf0; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.s3-block h3 { margin: 0; font-size: 15px; } .s3-sub { margin: 0; font-size: 13.5px; color: #5b6475; line-height: 1.5; }
+.s3-pick { display: flex; gap: 8px; flex-wrap: wrap; } .s3-pick .btn { flex: 1; min-height: 44px; }
+.s3-chosen { margin: 0; font-size: 14px; font-weight: 600; } .s3-chosen.is-low { color: #8a5a00; }
+.s3-go { min-height: 46px; }
+.s3-scan { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #eef0f4; }
+.s3-scan:first-of-type { border-top: 0; }
+.s3-scan > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .s3-scan span { font-size: 13px; color: #6b7280; }
+.s3-scan-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.s3-st.st-ready { color: #116639; } .s3-st.st-failed, .s3-st.st-expired { color: #a12a1c; }
+.s3-viewer { position: fixed; inset: 0; z-index: 2850; background: #f1f3f7; display: flex; flex-direction: column; }
+.s3-viewer-bar { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; background: #0b0f19; color: #fff; }
+.s3-viewer-bar button { border: 1px solid rgba(255, 255, 255, .35); background: transparent; color: #fff; border-radius: 999px; padding: 7px 14px; font: inherit; font-weight: 600; cursor: pointer; min-height: 36px; }
+.s3-canvas { flex: 1; min-height: 0; position: relative; touch-action: none; } .s3-canvas canvas { width: 100%; height: 100%; display: block; }
+.s3-loading { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: #5b6475; }
