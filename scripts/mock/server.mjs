@@ -14,6 +14,7 @@ process.env.VITE_SUPABASE_URL = `http://127.0.0.1:${PORT}/_sb`
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'mock-service-role'
 process.env.SUPABASE_ANON_KEY = 'mock-anon'
 process.env.SALES_SESSION_SECRET = 'mock-secret-mock-secret-mock-secret-mock'
+process.env.OWNER_EMAILS = 'admin@kuripuro.com,teste.admin@kuripuro.com'
 process.env.CRON_SECRET = 'mock-cron'
 process.env.CLIENT_EMAIL_MODE = 'off'
 for (const k of ['GEMINI_API_KEY', 'META_AI_API_KEY', 'RESEND_API_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY']) if (!process.env.MOCK_KEEP_KEYS) delete process.env[k]

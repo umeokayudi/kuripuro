@@ -36,7 +36,20 @@ const withToken = (init = {}) => {
   headers.set('Authorization', `Bearer ${dbToken}`)
   return { ...init, headers }
 }
+// v1.0.234 · "Ver como" (owner looking at somebody's portal): reads go through, every write is refused
+// here, before it leaves the browser. Listing and signing files are reads even though they use POST.
+let readOnly = false
+export function setReadOnly(on) { readOnly = !!on }
+const isWrite = (input, init = {}) => {
+  const method = String(init.method || 'GET').toUpperCase()
+  if (method === 'GET' || method === 'HEAD') return false
+  const url = typeof input === 'string' ? input : input?.url || ''
+  return !/\/storage\/v1\/object\/(list|sign)\//.test(url)
+}
 async function dbFetch(input, init) {
+  if (readOnly && isWrite(input, init)) {
+    return new Response(JSON.stringify({ message: 'Ver como — somente leitura. Nada foi alterado.', code: 'view_as' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
+  }
   const response = await fetch(input, withToken(init))
   if (response.status !== 401 || !dbToken) return response
   // the key ran out (24 h): get a new one with the login cookie and try once more

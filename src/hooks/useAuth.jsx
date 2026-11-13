@@ -4,7 +4,7 @@ import { findClientUserForLogin, clientUserToSession } from '../lib/clientCreden
 import { isSetupPassword } from '../lib/passwordLink'
 import { disablePush } from '../lib/push'
 
-const AuthContext = createContext()
+export const AuthContext = createContext()
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)

@@ -1153,6 +1153,11 @@ async function postAction(db, user, body, res) {
   return jsonError(res, 400, 'Ação não reconhecida.')
 }
 
+async function sellerRow(db, id) {
+  const r = await db.from('salespeople').select('id,full_name,email,team').eq('id', id).maybeSingle()
+  return r.error ? db.from('salespeople').select('id,full_name,email').eq('id', id).maybeSingle() : r
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
   const user = await requireActiveSalesSession(req, res)
@@ -1160,6 +1165,16 @@ export default async function handler(req, res) {
   try {
     const db = salesDb()
     if (req.method === 'GET') {
+      // v1.0.234 · "Ver como": only the owner's login may read as one seller, and only read.
+      const viewAs = String(req.query?.view_as || '')
+      if (viewAs) {
+        const owners = String(process.env.OWNER_EMAILS || 'admin@kuripuro.com').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
+        if (user.role !== 'admin' || !owners.includes(String(user.email || '').toLowerCase())) return res.status(403).json({ error: 'Somente a conta do dono usa o Ver como.' })
+        const { data: seller } = await sellerRow(db, viewAs)
+        if (!seller) return res.status(404).json({ error: 'Vendedor não encontrado.' })
+        const as = { id: seller.id, role: 'salesperson', name: seller.full_name, email: seller.email, team: seller.team === 'marketing' ? 'marketing' : 'sales' }
+        return res.status(200).json(await getAction(db, as, String(req.query?.action || 'dashboard'), req.query || {}))
+      }
       const result = await getAction(db, user, String(req.query?.action || 'dashboard'), req.query || {})
       return res.status(200).json(result)
     }

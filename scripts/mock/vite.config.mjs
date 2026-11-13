@@ -3,6 +3,6 @@ import { defineConfig, mergeConfig } from 'vite'
 import base from '../../vite.config.js'
 const target = `http://127.0.0.1:${process.env.MOCK_PORT || 5199}`
 export default mergeConfig(base, defineConfig({
-  define: { 'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('http://localhost:5173/_sb'), 'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('mock-anon') },
+  define: { 'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('http://localhost:5173/_sb'), 'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('mock-anon'), 'import.meta.env.VITE_OWNER_EMAILS': JSON.stringify('teste.admin@kuripuro.com') },
   server: { port: 5173, strictPort: true, proxy: { '/api': target, '/_sb': target, '/_mock': target } },
 }))
