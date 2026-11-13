@@ -3,6 +3,7 @@ export function assignText(tr) {
   return {
     reason: {
       notCreated: tr('Not created yet', '未作成', 'Falta criar'),
+      wasCancelled: tr('Cancelled before — tick to create again', '以前キャンセル済み — 再作成はチェック', 'Foi cancelado — marque pra criar de novo'),
       contractMissing: tr('Contract visit with no job', '契約の訪問に作業なし', 'Visita do contrato sem job'),
       noPerson: tr('No person', '担当なし', 'Sem pessoa'),
       spotDeclined: tr('Spot declined', 'スポット辞退', 'Spot recusado'),

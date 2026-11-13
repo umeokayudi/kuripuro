@@ -52,9 +52,9 @@ const COPY = {
     home: 'Home', more: 'More', kicker: 'KURIPURO · SALES', newLeadShort: 'New lead', logVisit: 'Log visit', todo: 'To do today', allDone: 'Nothing due today. Go find new clients!',
     monthOverview: 'This month', seeAll: 'See all', search: 'Search shop, company or contact', all: 'All',
     cardStep: 'Business card photo', cardStepHint: 'Take a photo of the business card. AI fills in the details and your location is saved.', takePhoto: 'Take photo of the card', retake: 'Retake photo', reading: 'Reading the card…',
-    gps: 'Location (GPS)', gpsGetting: 'Getting your location…', gpsOk: acc => `Location saved (±${acc} m)`, gpsFail: 'Could not get your location. Turn on location for this site and try again.', gpsRetry: 'Try again',
+    gps: 'Location (GPS)', gpsGetting: 'Getting your location…', gpsOk: acc => `Location saved (±${acc} m)`, gpsFail: 'No location. You can save the lead anyway.', gpsRetry: 'Try again',
     mapsLink: 'Google Maps link of the shop', mapsHint: 'In Google Maps: find the shop → Share → Copy link, then paste here.', openMaps: 'Open Google Maps here', paste: 'Paste', useGps: 'Use my location', mapsBad: 'Paste a Google Maps link (google.com/maps or maps.app.goo.gl).',
-    needCard: 'Take the business card photo first.', needGps: 'Location is required to save a lead.', required: 'required', details: 'More details', call: 'Call', map: 'Map', card: 'Card',
+    needCard: 'Take the business card photo first.', needGps: 'No location yet: the lead is saved without it.', required: 'required', details: 'More details', call: 'Call', map: 'Map', card: 'Card',
     leadInfo: 'Details', editLead: 'Edit details', stage: 'Stage', history: 'History', noCard: 'No card photo', workingFor: 'Working', dayClosed: 'Day closed', endDaySheet: 'End the day',
     menuReports: 'Visits & day reports', menuContracts: 'Contracts', menuGoals: 'My goals', menuKpi: 'My KPIs', menuAi: 'AI funnel review', menuHint: { approaches: 'Every visit and day you logged', contracts: 'Active contracts · send a signed one', goals: 'Monthly targets', kpi: 'Numbers and trends', ai: 'Ask the AI what to do next' },
     notifications: 'Notifications', visitFor: 'Visit', visitDetails: 'Time, travel, recording', hoursLog: 'Hours of a past day',
@@ -89,9 +89,9 @@ const COPY = {
     home: 'ホーム', more: 'その他', kicker: 'KURIPURO · 営業', newLeadShort: '新規リード', logVisit: '訪問を記録', todo: '今日やること', allDone: '今日の期限はありません。新しいお客様を探しましょう！',
     monthOverview: '今月', seeAll: 'すべて見る', search: '店舗・会社・担当者で検索', all: 'すべて',
     cardStep: '名刺の写真', cardStepHint: '名刺を撮影してください。AIが内容を読み取り、現在地も保存されます。', takePhoto: '名刺を撮影', retake: '撮り直す', reading: '名刺を読み取り中…',
-    gps: '現在地（GPS）', gpsGetting: '現在地を取得中…', gpsOk: acc => `現在地を保存しました（±${acc} m）`, gpsFail: '現在地を取得できません。位置情報を許可して再度お試しください。', gpsRetry: '再取得',
+    gps: '現在地（GPS）', gpsGetting: '現在地を取得中…', gpsOk: acc => `現在地を保存しました（±${acc} m）`, gpsFail: '現在地なし。このまま保存できます。', gpsRetry: '再取得',
     mapsLink: '店舗のGoogleマップリンク', mapsHint: 'Googleマップで店舗を探し → 共有 → リンクをコピーして貼り付けてください。', openMaps: 'Googleマップを開く', paste: '貼り付け', useGps: '現在地を使う', mapsBad: 'Googleマップのリンクを貼り付けてください（google.com/maps または maps.app.goo.gl）。',
-    needCard: '先に名刺を撮影してください。', needGps: 'リードの保存には現在地が必要です。', required: '必須', details: '詳細', call: '電話', map: '地図', card: '名刺',
+    needCard: '先に名刺を撮影してください。', needGps: '現在地なしでも保存できます。', required: '必須', details: '詳細', call: '電話', map: '地図', card: '名刺',
     leadInfo: '情報', editLead: '情報を編集', stage: '段階', history: '履歴', noCard: '名刺写真なし', workingFor: '稼働中', dayClosed: '終了', endDaySheet: '業務終了',
     menuReports: '訪問・日報', menuContracts: '契約', menuGoals: '目標', menuKpi: 'KPI・推移', menuAi: 'AI営業分析', menuHint: { approaches: '記録した訪問と日報', contracts: '有効契約・署名済み契約の提出', goals: '今月の目標', kpi: '数字と推移', ai: '次にやることをAIに相談' },
     notifications: 'お知らせ', visitFor: '訪問', visitDetails: '時間・交通費・録音', hoursLog: '過去日の稼働時間',
@@ -126,9 +126,9 @@ const COPY = {
     home: 'Início', more: 'Mais', kicker: 'KURIPURO · VENDAS', newLeadShort: 'Novo lead', logVisit: 'Registrar visita', todo: 'Para fazer hoje', allDone: 'Nada pendente hoje. Bora buscar clientes novos!',
     monthOverview: 'Este mês', seeAll: 'Ver todos', search: 'Buscar loja, empresa ou responsável', all: 'Todos',
     cardStep: 'Foto do cartão de visita', cardStepHint: 'Tire uma foto do cartão de visita. A IA preenche os dados e sua localização é salva.', takePhoto: 'Fotografar o cartão', retake: 'Tirar outra foto', reading: 'Lendo o cartão…',
-    gps: 'Localização (GPS)', gpsGetting: 'Obtendo sua localização…', gpsOk: acc => `Localização salva (±${acc} m)`, gpsFail: 'Não foi possível obter sua localização. Ative a localização para este site e tente de novo.', gpsRetry: 'Tentar de novo',
+    gps: 'Localização (GPS)', gpsGetting: 'Obtendo sua localização…', gpsOk: acc => `Localização salva (±${acc} m)`, gpsFail: 'Sem localização. Você pode salvar o lead assim mesmo.', gpsRetry: 'Tentar de novo',
     mapsLink: 'Link do Google Maps da loja', mapsHint: 'No Google Maps: encontre a loja → Compartilhar → Copiar link e cole aqui.', openMaps: 'Abrir o Google Maps aqui', paste: 'Colar', useGps: 'Usar minha localização', mapsBad: 'Cole um link do Google Maps (google.com/maps ou maps.app.goo.gl).',
-    needCard: 'Tire primeiro a foto do cartão de visita.', needGps: 'A localização é obrigatória para salvar um lead.', required: 'obrigatório', details: 'Mais detalhes', call: 'Ligar', map: 'Mapa', card: 'Cartão',
+    needCard: 'Tire primeiro a foto do cartão de visita.', needGps: 'Sem localização por enquanto: o lead é salvo mesmo assim.', required: 'obrigatório', details: 'Mais detalhes', call: 'Ligar', map: 'Mapa', card: 'Cartão',
     leadInfo: 'Dados', editLead: 'Editar dados', stage: 'Etapa', history: 'Histórico', noCard: 'Sem foto do cartão', workingFor: 'Trabalhando', dayClosed: 'Dia encerrado', endDaySheet: 'Encerrar o dia',
     menuReports: 'Visitas e relatórios do dia', menuContracts: 'Contratos', menuGoals: 'Minhas metas', menuKpi: 'Meus KPIs', menuAi: 'Análise do funil com IA', menuHint: { approaches: 'Todas as visitas e dias registrados', contracts: 'Contratos ativos · enviar um assinado', goals: 'Metas do mês', kpi: 'Números e tendências', ai: 'Pergunte à IA o que fazer agora' },
     notifications: 'Notificações', visitFor: 'Visita', visitDetails: 'Horário, transporte, gravação', hoursLog: 'Horas de um dia anterior',
@@ -266,7 +266,8 @@ export default function SalespersonPortal() {
 
   const saveLead = async event => {
     event?.preventDefault()
-    if (!leadId && (lead.gps_lat == null || lead.gps_lng == null)) return toast.error(c.needGps)
+    // v1.0.234 · the lead is saved with or without the phone's location (it used to stop here when
+    // the browser refused or was slow to give the GPS). The location is added when it is available.
     if (!lead.company_name.trim()) return toast.error(c.companyRequired)
     if (lead.maps_url && !MAPS_RE.test(lead.maps_url.trim())) return toast.error(c.mapsBad)
     const wantsVisit = !leadId && visitDraft?.on
@@ -764,7 +765,7 @@ export default function SalespersonPortal() {
             <label className="sp-visit-toggle"><input type="checkbox" checked={visitDraft.on} onChange={e => setVisitDraft(v => ({ ...v, on: e.target.checked }))} /><span>📅 {visitCopy(lang).toggle}</span></label>
             {visitDraft.on && <VisitFields visit={visitDraft} onChange={next => setVisitDraft({ ...next, on: true })} lang={lang} today={today} />}
           </div>}
-          <button disabled={saving || dumpBusy || lead.gps_lat == null} className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" type="submit">{saving ? c.saving : visitDraft?.on ? `${c.save} + ${visitCopy(lang).title.toLowerCase()}` : c.save}</button>
+          <button disabled={saving || dumpBusy} className="fa-btn fa-btn-primary fa-btn-block fa-btn-lg" type="submit">{saving ? c.saving : visitDraft?.on ? `${c.save} + ${visitCopy(lang).title.toLowerCase()}` : c.save}</button>
           {lead.gps_lat == null && <p className="sp-hint is-center">{c.needGps}</p>}
         </form>
       </Sheet>}

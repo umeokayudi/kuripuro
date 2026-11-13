@@ -71,6 +71,10 @@ function visitRangeForPreset(preset, today) {
 }
 
 // v1.0.155 · `previewUser` = admin "Ver como o cliente": same screens, read only, no client password.
+// v1.0.234 · what the client's browser receives about a visit: never the price charged, what the
+// worker is paid, the internal description (it carries the worker's pay) or the internal review fields.
+const CLIENT_JOB_COLUMNS = 'id,title,client_id,client_name,employee_id,employee_name,scheduled_date,scheduled_time,address,gps_lat,gps_lng,status,started_at,completed_at,photo_start_url,photo_end_url,created_at,job_category,checklist_template,checklist_total,checklist_done,checklist_missed_items,signature_url,area,notes_employee,retro_report,retro_ai_summary,photo_ai_score,photo_ai_approved'
+
 export default function ClientPortal({ previewUser = null, onExitPreview } = {}) {
   const auth = useAuth()
   const preview = !!previewUser
@@ -187,15 +191,17 @@ export default function ClientPortal({ previewUser = null, onExitPreview } = {})
         ? `client_id.eq.${user.client_id},and(client_id.is.null,title.ilike.%${locToken}%)`
         : `client_id.eq.${user.client_id}`
       const [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes] = await Promise.all([
-        supabase.from('jobs').select('*').or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
+        supabase.from('jobs').select(CLIENT_JOB_COLUMNS).or(locOrFilter).gte('scheduled_date', since).order('scheduled_date', { ascending: false }).limit(200),
         supabase.from('service_contracts').select('location_name,salesperson_id').eq('client_id', user.client_id).eq('is_active', true),
-        supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at').limit(100),
+        // v1.0.234 · the NEWEST messages (it used to read the oldest 100, so a long conversation stopped updating)
+        supabase.from('client_messages').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(300),
         supabase.from('client_complaints').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
         supabase.from('client_compliments').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
         supabase.from('client_ratings').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(100),
         supabase.from('client_requests').select('*').eq('client_id', user.client_id).order('created_at', { ascending: false }).limit(30),
       ])
 
+      if (Array.isArray(msgsRes.data)) msgsRes.data.reverse()
       const firstErr = [jobsRes, contractsRes, msgsRes, compRes, cmplRes, ratRes, reqRes]
         .map(r => r.error?.message)
         .find(Boolean)

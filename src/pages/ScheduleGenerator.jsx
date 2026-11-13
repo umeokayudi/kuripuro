@@ -159,6 +159,8 @@ export default function ScheduleGenerator() {
   const periodJobs = useMemo(() => existing.filter(j => inPeriod.has(j.scheduled_date)), [existing, inPeriod])
   const liveJobs = useMemo(() => periodJobs.filter(j => j.status !== 'cancelled'), [periodJobs])
   const existingKeys = useMemo(() => new Set(liveJobs.map(j => dupKey(j.scheduled_date, j.title))), [liveJobs])
+  // v1.0.234 · a visit somebody cancelled comes back as a suggestion, but unticked and labelled: it is never re-created by accident
+  const cancelledKeys = useMemo(() => new Set(periodJobs.filter(j => j.status === 'cancelled').map(j => dupKey(j.scheduled_date, j.title)).filter(k => !existingKeys.has(k))), [periodJobs, existingKeys])
 
   // Who usually does each place (last 4 weeks) — only the first suggestion, never a lock.
   const placeOwners = useMemo(() => {
@@ -224,7 +226,7 @@ export default function ScheduleGenerator() {
       if (p) Object.assign(r, { employeeId: p.emp.id, employee: firstName(p.emp), employeeName: p.emp.full_name, why: p.why })
     }
     const gone = new Set(dismissed.map(d => d.dismiss_key))
-    setRows([...next, ...extra].filter(r => !gone.has(dismissKey(r))).sort(byTime))
+    setRows([...next, ...extra].filter(r => !gone.has(dismissKey(r))).map(r => cancelledKeys.has(dupKey(r.date, r.title)) ? { ...r, checked: false, wasCancelled: true } : r).sort(byTime))
   }
   useEffect(() => { if (loaded) buildRows() }, [loaded, employees, locations, templates, owners, forced, dismissed])
 
@@ -272,7 +274,7 @@ export default function ScheduleGenerator() {
   const lines = useMemo(() => {
     const fromRows = rows.map(r => ({
       key: r.key, kind: 'new', row: r, item: asItem(r), checked: r.checked,
-      reason: r.source === 'contract' ? 'contractMissing' : 'notCreated',
+      reason: r.wasCancelled ? 'wasCancelled' : r.source === 'contract' ? 'contractMissing' : 'notCreated',
       personId: r.employeeId || '',
       why: r.why?.length ? r.why : r.assignReason === 'owner' ? ['route'] : r.assignReason === 'ownerOff' ? ['covering'] : r.employeeId && r.assignReason === 'auto' ? ['onRoute'] : [],
       coveringFor: r.coveringFor,

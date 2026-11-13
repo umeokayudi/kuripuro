@@ -1,4 +1,5 @@
 import { escapeHtml } from './escapeHtml.js'
+import { shownRegNumber } from './quoteIssuer.js'
 
 /** Shared A4 print styles for 見積書 and 請求書. */
 export const PRINT_DOC_CSS = `
@@ -184,7 +185,7 @@ export function printIssuerHtml(L, loc, { bank = '' } = {}) {
         <div class="issuer-brand">${escapeHtml(loc.company || '')}</div>
         ${line(L.rep, `<span class="rep-name">${escapeHtml(loc.name || '')}</span>`)}
         ${line(L.address, escapeHtml(loc.address || ''))}
-        ${line(L.reg, escapeHtml(loc.regNumber || ''))}
+        ${line(L.reg, escapeHtml(shownRegNumber(loc.regNumber)))}
         ${line(L.email, escapeHtml(loc.email || ''))}
         ${line(L.phone, escapeHtml(loc.phone || ''))}
         ${line(L.bank, escapeHtml(bank || loc.bank || ''))}

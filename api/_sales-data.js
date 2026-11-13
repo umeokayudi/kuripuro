@@ -548,7 +548,7 @@ async function postAction(db, user, body, res) {
       // v1.0.206 · proof = the card photo OR what the seller dumped into the AI (kept in system-private).
       const proof = String(payload.business_card_object_path || '')
       if (proof.includes('..') || !(proof.startsWith(`cards/${own}/`) || proof.startsWith(`sales-dumps/${own}/`))) return jsonError(res, 400, 'Jogue os dados na IA (texto, foto ou áudio) ou tire a foto do cartão antes de salvar o lead.')
-      if (payload.gps_lat == null || payload.gps_lng == null) return jsonError(res, 400, 'Ative a localização (GPS) para registrar o lead.')
+      // v1.0.234 · location is welcome but no longer required: a phone that refuses the GPS still saves the lead.
     }
     if (body.id) {
       const { data, error } = await writeLead(db, payload, { id: body.id, own: admin ? null : own })

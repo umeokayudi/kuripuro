@@ -1707,6 +1707,8 @@ export default function EmployeePortal() {
 
   const todayJobs = sortByOrder(allJobs.filter(j=>j.scheduled_date===today))
   const todayPendingJobs = todayJobs.filter(j=>['assigned','in_progress'].includes(j.status))
+  // v1.0.234 · cancelled services are not part of the day's count ("3 locais", "X de Y")
+  const todayLiveJobs = todayJobs.filter(j=>j.status!=='cancelled')
 
   // GPS on the home map: where the employee is now, where today's sites are, and the nearest one.
   const pendingKey = todayPendingJobs.map(j=>j.id).join(',')
@@ -2401,9 +2403,9 @@ export default function EmployeePortal() {
               {todayJobs.length>0&&(
                 <button type="button" role="listitem" className="ex-card is-wide" onClick={()=>goToTab('shift')}>
                   <div className="ex-card-head"><strong>{todayAllDone?e.todayShiftDone:e.todayShift}</strong><span className="ex-card-icon">▶</span></div>
-                  <div className="ex-card-big">{todayJobs.length} <small>{e.locations}</small></div>
-                  <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
-                  <div className="ex-progress"><i className="is-green" style={{width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%'}} /><i style={{width:(todayJobs.filter(j=>j.status==='in_progress').length/todayJobs.length*100)+'%'}} /></div>
+                  <div className="ex-card-big">{todayLiveJobs.length} <small>{e.locations}</small></div>
+                  <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayLiveJobs.length*0.75)})}</div>
+                  <div className="ex-progress"><i className="is-green" style={{width:(todayJobs.filter(j=>j.status==='completed').length/todayLiveJobs.length*100)+'%'}} /><i style={{width:(todayJobs.filter(j=>j.status==='in_progress').length/todayLiveJobs.length*100)+'%'}} /></div>
                   <span className="ex-pill">{todayAllDone?e.tapToReview:e.startArrow}</span>
                 </button>
               )}
@@ -2946,6 +2948,8 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
 
 /** v1.0.131 · "💴 ¥1.000" (the employee's own pay for the job) or "a definir" — never ¥0 for empty. */
 function PayChip({ job, L, lang }) {
+  // v1.0.234 · a cancelled service pays nothing: never show "Você recebe" on it
+  if (job?.status === 'cancelled') return null
   return <span style={{fontSize:10,fontWeight:700,color:payKind(job)==='undefined'?'rgba(255,255,255,0.35)':'#c19c56'}}>💴 {L('You receive','受取','Você recebe')}: {payText(job,L,lang)}</span>
 }
 
@@ -2964,7 +2968,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
   const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
   // v1.0.216 · a job a coworker already did ("Coberto por") is not part of my day's count
-  const total = todayJobs.filter(j=>j.status!=='covered').length
+  const total = todayJobs.filter(j=>j.status!=='covered'&&j.status!=='cancelled').length
   const beforePhotos = jobPhotos.filter(p=>p.slot==='start')
   const afterPhotos = jobPhotos.filter(p=>p.slot==='end')
   const showActivePanel = !!activeJob
