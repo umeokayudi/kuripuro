@@ -137,9 +137,10 @@ async function loadSeller(db, id) {
 }
 
 // v1.0.253 · the owner's own accounts are found by the server, with no setup screen:
-// 1) ids saved before (Usuários, v1.0.240) win; 2) env OWNER_EMPLOYEE_ID / OWNER_SALESPERSON_ID;
+// 1) env OWNER_EMPLOYEE_ID / OWNER_SALESPERSON_ID (Vercel, owner only); 2) ids already saved (pinned);
 // 3) the ONE active account whose name starts with OWNER_LINK_NAME (default "Alexandre").
 // If there is none, or more than one, that entry simply does not appear (nothing is guessed).
+// Whatever is found is saved by id on the owner's next request and never looked up by name again.
 // The owner can only ever enter these two accounts; nothing else is reachable from here.
 const KNOWN_OWNER_EMPLOYEE = '4c064fb5-e39d-4086-a798-f6e670730bac' // Alexandre (src/lib/employeeLang.js)
 const linkName = () => String(process.env.OWNER_LINK_NAME || 'Alexandre').trim().toLowerCase()
@@ -156,8 +157,9 @@ async function onlyOne(db, table, activeCol) {
 }
 
 export async function resolveOwnerLinks(db, cfg) {
-  let employeeId = cfg.employee_id || (UUID.test(String(process.env.OWNER_EMPLOYEE_ID || '')) ? process.env.OWNER_EMPLOYEE_ID : null)
-  let sellerId = cfg.salesperson_id || (UUID.test(String(process.env.OWNER_SALESPERSON_ID || '')) ? process.env.OWNER_SALESPERSON_ID : null)
+  const env = k => (UUID.test(String(process.env[k] || '')) ? process.env[k] : null)
+  let employeeId = env('OWNER_EMPLOYEE_ID') || cfg.employee_id || null
+  let sellerId = env('OWNER_SALESPERSON_ID') || cfg.salesperson_id || null
   if (!employeeId) employeeId = (await loadEmployee(db, KNOWN_OWNER_EMPLOYEE)) ? KNOWN_OWNER_EMPLOYEE : await onlyOne(db, 'employees', 'is_active')
   if (!sellerId) sellerId = await onlyOne(db, 'salespeople', 'is_active')
   return { ...cfg, employee_id: employeeId || null, salesperson_id: sellerId || null }
@@ -202,25 +204,40 @@ export default async function handler(req, res) {
 
   try {
     const db = salesDb()
-    let cfg = await readOwnerConfig(db)
-    // A config whose owner is not (or no longer) an owner login does nothing and can be claimed again.
+    // v1.0.253 · the owner is pinned by ADMIN ID, never by name:
+    //  - env OWNER_ADMIN_ID (set in Vercel, only the owner has access) always wins;
+    //  - otherwise the id saved in the private config;
+    //  - only while NO config exists yet: the one admin row whose e-mail is the owner e-mail is
+    //    pinned (written to the config) on its first request. Two admins with that e-mail → nobody.
+    //  A saved owner whose row no longer has the owner e-mail makes the feature inert (fail closed):
+    //  nothing is re-assigned automatically.
+    const stored = await readOwnerConfig(db)
+    let cfg = stored
+    const envOwner = UUID.test(String(process.env.OWNER_ADMIN_ID || '')) ? process.env.OWNER_ADMIN_ID : null
+    if (envOwner && cfg?.owner_admin_id !== envOwner) cfg = { owner_admin_id: envOwner, employee_id: null, salesperson_id: null }
     if (cfg && !isOwnerEmail((await loadAdmin(db, cfg.owner_admin_id))?.email)) cfg = null
-    // v1.0.253 · no "Definir como dono" step any more: while nobody owns it, the owner login
-    // (OWNER_EMAILS, checked against the admins table, not only the cookie) IS the owner.
-    // (While inside a linked account the owner is named by the signed owner cookie instead.)
-    if (!cfg) {
-      const candidate = session.role === 'admin' ? session.id : readOwnerCookie(req)
-      const me = candidate ? await loadAdmin(db, candidate) : null
-      if (me && isOwnerEmail(me.email)) cfg = { owner_admin_id: me.id, employee_id: null, salesperson_id: null }
+    else if (!cfg && !stored && session.role === 'admin') {
+      const { data: owners } = await db.from('admins').select('id,email').in('email', ownerEmails())
+      const only = (owners || []).filter(r => isOwnerEmail(r.email))
+      if (only.length === 1 && only[0].id === session.id) cfg = { owner_admin_id: session.id, employee_id: null, salesperson_id: null }
     }
-    if (cfg) cfg = await resolveOwnerLinks(db, cfg)
+    if (cfg) {
+      // the two target accounts are pinned by id too: found once, then saved and never looked up by name again
+      const resolved = await resolveOwnerLinks(db, cfg)
+      const changed = !stored || stored.owner_admin_id !== resolved.owner_admin_id
+        || (resolved.employee_id || null) !== (stored.employee_id || null) || (resolved.salesperson_id || null) !== (stored.salesperson_id || null)
+      if (changed && session.role === 'admin' && session.id === resolved.owner_admin_id) {
+        await writeOwnerConfig(db, { owner_admin_id: resolved.owner_admin_id, employee_id: resolved.employee_id, salesperson_id: resolved.salesperson_id, updated_at: new Date().toISOString(), updated_by: 'auto' })
+      }
+      cfg = resolved
+    }
     const owner = ownerBehind(req, session, cfg)
 
     // ── GET status: everyone may ask; non-owners only learn "no" ──
     if (req.method === 'GET' && op === 'status') {
       if (!owner) {
         // An admin may claim ownership only while nobody owns it yet.
-        return res.status(200).json({ isOwner: false, canClaim: session.role === 'admin' && !cfg && isOwnerEmail(session.email) })
+        return res.status(200).json({ isOwner: false, canClaim: false })
       }
       const [emp, seller, ownerAdmin] = await Promise.all([
         cfg.employee_id ? loadEmployee(db, cfg.employee_id) : null,
@@ -247,18 +264,6 @@ export default async function handler(req, res) {
 
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
     const body = req.body || {}
-
-    // ── POST claim: the owner login (OWNER_EMAILS) makes ITSELF the owner, by id. Locked afterwards. ──
-    if (op === 'claim') {
-      if (session.role !== 'admin') return res.status(403).json({ error: 'Só um administrador.' })
-      if (cfg) return res.status(409).json({ error: 'A conta do dono já foi definida. Só ela pode mudar as contas vinculadas.' })
-      const me = await loadAdmin(db, session.id)
-      if (!me || !isOwnerEmail(me.email)) return res.status(403).json({ error: 'Só a conta do dono.' })
-      const next = { owner_admin_id: me.id, employee_id: null, salesperson_id: null, updated_at: new Date().toISOString(), updated_by: me.id }
-      await writeOwnerConfig(db, next)
-      await writeLog(db, { at: next.updated_at, owner_id: me.id, owner_name: me.name, action: 'claim', ip: clientIp(req) }).catch(() => {})
-      return res.status(200).json({ success: true })
-    }
 
     // ── POST links: only the owner, signed in as himself ──
     if (op === 'links') {
