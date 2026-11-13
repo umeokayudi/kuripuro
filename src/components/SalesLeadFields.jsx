@@ -6,7 +6,7 @@ export default function SalesLeadFields({ form, onChange, s, locked = false }) {
       <div className="card-title">{s.companySection}</div>
       <div className="grid-2">
         <div className="form-group" style={{ gridColumn: '1/-1' }}>
-          <label>{s.siteName} *</label>
+          <label>{s.siteName}</label>
           <input value={form.site_name || ''} disabled={locked} onChange={e => update('site_name', e.target.value)} placeholder={s.siteHint} />
         </div>
         <div className="form-group" style={{ gridColumn: '1/-1' }}>

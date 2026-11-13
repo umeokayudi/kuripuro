@@ -22,6 +22,8 @@ const ALLOWED_TABLES = [
   'faturas', 'salary_periods', 'cashflow',
   'locations', 'client_users', 'client_messages', 'client_complaints', 'client_compliments',
   'client_ratings', 'client_requests', 'service_contracts', 'service_reports',
+  // v1.0.211 · the office's 見積書 live in these two tables (not in the browser): the AI can read them now
+  'mitsumori', 'mitsumori_items',
 ]
 
 async function sbFetch(path, options = {}) {

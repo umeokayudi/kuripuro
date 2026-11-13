@@ -18,6 +18,7 @@ import SellerLeadDump from '../components/SellerLeadDump'
 import { GoogleAgendaConnect, UpcomingVisits, VisitFields, VisitRow, blankVisit, visitCopy, visitGoogleUrl } from '../components/SellerVisits'
 import { isImagePath, normalizeVisit, upcomingVisits } from '../lib/sellerVisits'
 import { toMp3 } from '../lib/audioToMp3.js'
+import TeamChannel from '../components/TeamChannel'
 
 const COPY = {
   en: {
@@ -165,7 +166,7 @@ export default function SalespersonPortal() {
   const { user, logout } = useAuth()
   const { lang } = useLang()
   const c = COPY[lang === 'ja' ? 'ja' : lang === 'pt' ? 'pt' : 'en']
-  const [tab, setTab] = useState(() => tabFromUrl(['home','leads','followups','offers','clients','quotes','commissions','approaches']) || 'home')
+  const [tab, setTab] = useState(() => tabFromUrl(['home','leads','followups','offers','clients','quotes','commissions','approaches','team']) || 'home')
   useEffect(() => { clearTabParam() }, [])
   const [sheet, setSheet] = useState('')
   const [gps, setGps] = useState({ state: 'idle' })
@@ -604,6 +605,8 @@ export default function SalespersonPortal() {
     { section: SEC.portfolio, key: 'goals', icon: '🏁', label: c.menuGoals, hint: c.menuHint.goals },
     { section: SEC.portfolio, key: 'kpi', icon: '📈', label: c.menuKpi, hint: c.menuHint.kpi },
     { section: SEC.clients, key: 'clients', icon: '👥', label: pickLang(lang, 'My clients', '自分の顧客', 'Meus clientes'), hint: pickLang(lang, 'Every client and its stage', '全顧客と状況', 'Todos os clientes e a etapa de cada um') },
+    // v1.0.221 · team channels (Geral + Vendas, or what the admin added)
+    { section: SEC.clients, key: 'team', icon: '💬', label: pickLang(lang, 'Team channels', 'チームチャンネル', 'Canais da Equipe'), hint: pickLang(lang, 'Talk with your area and the office', 'エリアと事務所との会話', 'Conversa com a sua área e o escritório') },
     { section: 'AI', key: 'ai', icon: '✦', label: c.menuAi, hint: c.menuHint.ai, onClick: () => setSheet('ai') },
   ]
 
@@ -624,7 +627,8 @@ export default function SalespersonPortal() {
     <FieldAppShell kicker={c.kicker} userName={user.name} lang={lang} bellCount={bellCount} onBell={() => setSheet('bell')}
       menuItems={menuItems} onLogout={logout} logoutLabel={c.logout} tabs={tabs} tab={tab} onTab={key => { setTab(key); window.scrollTo(0, 0) }}
       onPlus={openNewLead} plusLabel={c.newLeadShort}>
-      {loading && !data ? <div className="fa-card fa-muted">{c.loading}</div> : !data ? <div className="fa-card fa-muted">{c.unavailable}</div> : <>
+      {tab === 'team' && <div className="fa-stack"><TeamChannel me={{ role: 'salesperson', id: user.id, name: user.name }} lang={lang} L={(en, ja, pt) => pickLang(lang, en, ja, pt)} /></div>}
+      {tab !== 'team' && (loading && !data ? <div className="fa-card fa-muted">{c.loading}</div> : !data ? <div className="fa-card fa-muted">{c.unavailable}</div> : <>
 
         {tab === 'home' && <div className="fa-stack fa-dash">
           {dayCard}
@@ -737,7 +741,7 @@ export default function SalespersonPortal() {
           </section>
           <SellerContractCommissions data={data} lang={lang} />
         </div>}
-      </>}
+      </>)}
 
       {dealView && deals.find(d => d.lead.id === dealView.id) && <ClientPage key={dealView.id} deal={deals.find(d => d.lead.id === dealView.id)} data={data} lang={lang} today={today}
         startWithContact={dealView.contact} onClose={() => setDealView(null)} onChanged={load} onEdit={openEditLead} onLogVisit={row => openVisit(row)} onScheduleVisit={row => openScheduleVisit(row)} />}

@@ -265,3 +265,6 @@ body:has(.kw-root) .kp-ai-trigger { bottom: 18px; }
 .kw-quote-btns { display: flex; gap: 8px; }
 .kw-quote-btns button { flex: 1; height: 46px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--kw-line); font-weight: 800; }
 .kw-quote-btns button.primary { background: linear-gradient(135deg, #f5c76a, #d99a2b); color: #2a1a00; border-color: transparent; }
+
+/* v1.0.211 · client portal: clear call to open the store plan */
+.kw-list-card .kw-list-cta{align-self:flex-start;display:inline-block;margin-top:8px;padding:6px 10px;border-radius:999px;background:#2563eb;color:#fff;font-size:12px;font-weight:700}

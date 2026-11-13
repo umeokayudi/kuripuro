@@ -21,12 +21,14 @@ import { contractForPlace } from '../lib/places'
 import { parseEmployeePay, isMissingColumn } from '../lib/jobEmployeePay'
 import './new-job.css'
 import AddressInput from './AddressInput'
+import { endTime, minutesBetween, insertJobWithMinutes, DURATION_PICKS } from '../lib/jobDuration'
+import { hoursText } from '../lib/routePlan'
 
 const EMPTY = {
   title: '', client_id: '', employee_id: '', scheduled_date: '', scheduled_time: '',
   address: '', gps_lat: '', gps_lng: '', value: 0, description: '', checklist_template: '',
   photo_required: false, location_id: '', job_category: 'regular', spot_value: 0, cleaning_type: 'basic',
-  employee_pay: '', deep_tasks: [], custom_tasks: [],
+  employee_pay: '', deep_tasks: [], custom_tasks: [], expected_minutes: '',
 }
 
 function addDays(dateStr, n) {
@@ -185,6 +187,11 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
   })()
   const isCatalogPlace = !!LOCATION_CHECKLISTS[resolveChecklistLocationName(form.title)]
   const placeContract = selectedLoc ? contractForPlace(selectedLoc, form.cleaning_type) : null
+  // v1.0.220 · spot or place with no contract: planned duration + "Concluir até" shown in the form
+  // (the starting value is visible and saved, never a silent default).
+  const showDuration = isSpot || !placeContract
+  const durationMin = form.expected_minutes !== '' ? Number(form.expected_minutes) || 0 : (isDeep ? 240 : 120)
+  const finishBy = endTime(form.scheduled_time, durationMin)
   const contractChecklist = splitChecklist(selectedLoc?.checklist || placeContract?.training_checklist).join('\n')
   const autoChecklist = finalTitle ? (checklistTemplateForJob({ title: finalTitle }) || contractChecklist) : ''
   const checklistText = checklistEdited ? form.checklist_template : autoChecklist
@@ -230,7 +237,7 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
     setSaving(true)
     const emp = employees.find(e => e.id === form.employee_id)
     const cli = clients.find(c => c.id === form.client_id)
-    const { data: inserted, error } = await supabase.from('jobs').insert({
+    const { data: inserted, error, durationSaved } = await insertJobWithMinutes(supabase, {
       title: finalTitle,
       client_id: form.client_id || null,
       client_name: cli?.company_name || '',
@@ -251,13 +258,16 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
       spot_status: isSpot ? 'pending' : null,
       // only sent when filled, so the form keeps working before the SQL adds the column
       ...(employeePay !== null ? { employee_pay: employeePay } : {}),
-    }).select().single()
+      // v1.0.220 · planned duration (spot / no contract); contract jobs keep the contract hours
+      ...(showDuration && durationMin > 0 ? { expected_minutes: Math.round(durationMin) } : {}),
+    })
     if (error) {
       setSaving(false)
       return toast.error(isMissingColumn(error)
         ? L('Employee pay needs the SQL 2026-11-02_pagamento_funcionario_job.sql — leave it empty for now', 'SQL未適用のため作業者への支払いは保存できません', 'O pagamento do funcionário precisa do SQL 2026-11-02_pagamento_funcionario_job.sql — deixe vazio por enquanto')
         : error.message)
     }
+    if (showDuration && durationMin > 0 && !durationSaved) toast.error(L('Job created, but the duration was not saved: the SQL for jobs.expected_minutes is missing', '作成しましたが所要時間は保存されていません（SQL未適用）', 'Serviço criado, mas a duração não foi gravada: falta o SQL da coluna jobs.expected_minutes'))
     if (!isSpot) notifyCreated([inserted]).catch(() => {})
     // v1.0.133 · the address completed in this form goes back to the saved place (only when it had none)
     if (placeFix?.address && form.location_id) {
@@ -463,6 +473,20 @@ export default function NewJobForm({ jobs = [], employees = [], clients = [], lo
             <button type="button" className="nj-chip" onClick={() => upd('scheduled_time', lastTime)}>🕐 {lastTime} <small>{L('last time', '前回', 'última vez')}</small></button>
           )}
         </div>
+        {showDuration && (
+          <div className="nj-when">
+            <label>{L('Planned duration', '予定所要時間', 'Duração planejada')}
+              <select value={DURATION_PICKS.includes(durationMin) ? String(durationMin) : 'other'} onChange={e => { if (e.target.value !== 'other') upd('expected_minutes', e.target.value) }}>
+                {DURATION_PICKS.map(m => <option key={m} value={m}>{hoursText(m)}</option>)}
+                {!DURATION_PICKS.includes(durationMin) && <option value="other">{durationMin > 0 ? hoursText(durationMin) : '—'}</option>}
+              </select>
+            </label>
+            <label>{L('Finish by', '完了予定', 'Concluir até')}
+              <input type="time" value={finishBy} disabled={!form.scheduled_time}
+                onChange={e => { const m = minutesBetween(form.scheduled_time, e.target.value); if (m) upd('expected_minutes', String(m)) }} />
+            </label>
+          </div>
+        )}
       </section>
 
       {/* 5 — price and client */}

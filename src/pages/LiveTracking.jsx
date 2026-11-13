@@ -16,6 +16,7 @@ import { adminMarkNotDone } from '../lib/jobAdminOps'
 import { EliminateJobButton } from '../components/EliminateJobButton'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchDayCoverage } from '../lib/dayCoverage'
+import { ownMinutes, slotText } from '../lib/jobDuration'
 import DayStoreStrip from '../components/DayStoreStrip'
 
 const TZ = 'Asia/Tokyo'
@@ -150,7 +151,7 @@ export default function LiveTracking() {
     loadRetros()
     const today = tokyoToday()
     const n = tokyoNow()
-    fetchDayCoverage(today, { nowMin: n.getHours() * 60 + n.getMinutes() }).then(setCov, () => {})
+    fetchDayCoverage(today, { nowMin: n.getHours() * 60 + n.getMinutes(), respectStart: true }).then(setCov, () => {})
     const [e, activeRes, todayRes, offRes] = await Promise.all([
       supabase.from('employees').select('id,full_name,phone,is_active,last_lat,last_lng,last_location_at,location_sharing').eq('is_active',true).order('full_name'),
       supabase.from('jobs').select('*').eq('status','in_progress'),
@@ -310,6 +311,8 @@ export default function LiveTracking() {
                 <span className="lt-tl-time">{isDeadlineJob(j) ? jobTimeShort(j, tr) : j.scheduled_time ? shortTime(j.scheduled_time) : '—'}</span>
                 <span className="lt-tl-body">
                   <b>{jobPlace(j)}</b>{jobKind(j) && <span className="lt-tl-kind"> · {jobKind(j)}</span>}{jobService(j) && <span className="lt-tl-kind"> · {jobService(j)}</span>}
+                  {/* v1.0.220 · planned duration + finish, for any job that has its own (with or without contract) */}
+                  {!isDeadlineJob(j) && ownMinutes(j) && <span className="lt-tl-meta">{slotText(j.scheduled_time, ownMinutes(j), tr)}</span>}
                   <span className="lt-tl-meta">
                     {j.status === 'completed' ? fill(L.tlDone, { start: hhmm(j.started_at) || '—', end: hhmm(j.completed_at) || '—' }) + (j.started_at && j.completed_at ? ` (${fmtDuration((new Date(j.completed_at) - new Date(j.started_at)) / 60000, L)})` : '')
                       : j.status === 'in_progress' ? fill(L.tlWorking, { start: hhmm(j.started_at) || '—' })

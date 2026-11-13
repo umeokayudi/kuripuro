@@ -10,7 +10,7 @@ const dm = d => (d && d.length >= 10 ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : ''
 const addDays = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10) }
 
 /** Builds the client's bell items. Each: { id, icon, tone, title, sub, tab }. */
-export function clientBellItems({ lang, today, invoices = [], unreadMsgs = 0, lastAdminMsg = null, requests = [], complaints = [], reports = [], jobs = [], placeOf = j => j.title, unratedCount = 0, facilityRecs = [], maintAlerts = [] }) {
+export function clientBellItems({ lang, today, invoices = [], unreadMsgs = 0, lastAdminMsg = null, requests = [], complaints = [], reports = [], jobs = [], placeOf = j => j.title, unratedCount = 0, facilityRecs = [], maintAlerts = [], quoteDocs = [] }) {
   const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
   const out = []
   for (const inv of invoices) {
@@ -19,6 +19,10 @@ export function clientBellItems({ lang, today, invoices = [], unreadMsgs = 0, la
     else if (st === 'open') out.push({ id: `inv:${inv.id}`, icon: '🧾', tone: 'info', tab: 'billing', title: L('New invoice', '新しい請求書', 'Nova fatura'), sub: [yen(inv.total), inv.due_date ? L(`due ${dm(inv.due_date)}`, `期限 ${dm(inv.due_date)}`, `vence ${dm(inv.due_date)}`) : ''].filter(Boolean).join(' · ') })
   }
   if (unreadMsgs > 0) out.push({ id: `msg:${lastAdminMsg?.id || unreadMsgs}`, icon: '💬', tone: 'info', tab: 'chat', title: L(`${unreadMsgs} new message${unreadMsgs > 1 ? 's' : ''} from KuriPuro`, `KuriPuroから新着メッセージ ${unreadMsgs}件`, unreadMsgs > 1 ? `${unreadMsgs} mensagens novas da KuriPuro` : 'Mensagem nova da KuriPuro'), sub: String(lastAdminMsg?.content || '').replace(/\s+/g, ' ').slice(0, 80) })
+  // v1.0.211 · 見積書 sent by the office and still waiting for the client's answer
+  for (const q of quoteDocs) {
+    if (q.status === 'sent' && !(q.valid_until && String(q.valid_until) < String(today))) out.push({ id: `mit:${q.id}`, icon: '📝', tone: 'info', tab: 'requests', title: L('A quote is waiting for your answer', 'お見積もりのご回答をお願いします', 'Orçamento aguardando sua resposta'), sub: [q.quote_number, q.site_name].filter(Boolean).join(' · ') })
+  }
   for (const rq of requests) {
     if (rq.quote_status === 'quoted') out.push({ id: `quote:${rq.id}`, icon: '📝', tone: 'info', tab: 'requests', title: L('Your quote is ready', 'お見積もりが届きました', 'Seu orçamento está pronto'), sub: [rq.location_name, rq.category || String(rq.description || '').slice(0, 50)].filter(Boolean).join(' · ') })
     else if (rq.status === 'completed' && rq.completed_at && rq.completed_at.slice(0, 10) >= addDays(today, -7)) out.push({ id: `req-done:${rq.id}`, icon: '✅', tone: 'good', tab: 'requests', title: L('Request completed', 'ご依頼が完了しました', 'Pedido concluído'), sub: rq.location_name || '' })

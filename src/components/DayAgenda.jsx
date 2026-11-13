@@ -39,6 +39,7 @@ import { pendingChanged } from '../lib/adminPending'
 import { assignText, conflictLabel, RED_CONFLICTS } from './assignText'
 import './assign.css'
 import { isDeadlineJob, jobTimeLabel } from '../lib/jobDeadline'
+import { endTime, minutesBetween, saveJobMinutes, DURATION_PICKS } from '../lib/jobDuration'
 import { aiScoreView, aiReasonShort } from '../lib/aiScore'
 
 const STATUS_COLOR = { assigned: '#60a5fa', in_progress: '#f59e0b', completed: '#22c55e', cancelled: '#ef4444' }
@@ -475,7 +476,7 @@ function AgendaCard({ job, idx, count, colId, info, lang, tr, dragging, onHandle
               ? <span className="ag-nowrap">🕐 {jobTimeLabel(job, tr)}</span>
               : <span className="ag-nowrap">🕐 <input type="time" className="ag-time" value={job.scheduled_time || ''} onChange={e => onTime(job, e.target.value)}
               aria-label={tr('Time', '時刻', 'Horário')} /></span>}
-            {' '}<span className="ag-nowrap">· ⏱ {fmtMin(info.expected)} {tr('planned', '予定', 'previsto')}</span>
+            {' '}<DurationEdit job={job} minutes={info.expected} tr={tr} onSaved={onSaved} />
           </div>
           {job.started_at && (
             <div className="ag-meta" style={{ fontWeight: 700, color: alert ? '#ef4444' : 'var(--text)' }}>
@@ -686,5 +687,52 @@ function AiQueue({ date, refreshKey, onGraded }) {
         </div>
       ))}
     </div>
+  )
+}
+
+// v1.0.220 · Planned duration of the job, editable on the card (any job, with or without contract).
+// Normal jobs show "⏱1h · até 10:30" (finish = start + duration); On The Planet deadline jobs keep
+// "⏱ 42 min previsto" next to their "Concluir até 10:00".
+function DurationEdit({ job, minutes, tr, onSaved }) {
+  const [open, setOpen] = useState(false)
+  const [min, setMin] = useState(minutes || 0)
+  const [busy, setBusy] = useState(false)
+  const deadline = isDeadlineJob(job)
+  const end = deadline ? '' : endTime(job.scheduled_time, minutes)
+  if (!open) {
+    return (
+      <button type="button" className="ag-nowrap ag-dur" onClick={() => { setMin(minutes || 0); setOpen(true) }}
+        title={tr('Change the planned duration', '予定所要時間を変更', 'Mudar a duração planejada')}>
+        {deadline
+          ? <>· ⏱ {fmtMin(minutes)} {tr('planned', '予定', 'previsto')}</>
+          : <>· ⏱{fmtMin(minutes)}{end ? ` · ${tr(`by ${end}`, `${end}まで`, `até ${end}`)}` : ''}</>} ✏️
+      </button>
+    )
+  }
+  const save = async () => {
+    if (!(min > 0)) return toast.error(tr('Pick a duration', '所要時間を選択', 'Escolha a duração'))
+    setBusy(true)
+    try {
+      await saveJobMinutes(supabase, job.id, min)
+      toast.success(tr('Duration saved', '所要時間を保存しました', 'Duração salva'))
+      setOpen(false)
+      onSaved?.()
+    } catch (e) { toast.error(e.message) }
+    setBusy(false)
+  }
+  const picks = DURATION_PICKS.includes(min) || !(min > 0) ? DURATION_PICKS : [...DURATION_PICKS, min].sort((a, b) => a - b)
+  return (
+    <span className="ag-dur-edit">
+      ⏱ <select className="ag-select" value={min > 0 ? String(min) : ''} onChange={e => setMin(Number(e.target.value))} aria-label={tr('Planned duration', '予定所要時間', 'Duração planejada')}>
+        {!(min > 0) && <option value="">—</option>}
+        {picks.map(m => <option key={m} value={m}>{fmtMin(m)}</option>)}
+      </select>
+      {!deadline && job.scheduled_time && (
+        <label className="ag-nowrap">{tr('by', 'まで', 'até')} <input type="time" className="ag-select" value={endTime(job.scheduled_time, min)}
+          onChange={e => { const m = minutesBetween(job.scheduled_time, e.target.value); if (m) setMin(m) }} aria-label={tr('Finish by', '完了予定', 'Concluir até')} /></label>
+      )}
+      <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={save}>{busy ? '…' : tr('Save', '保存', 'Salvar')}</button>
+      <button type="button" className="btn btn-sm" disabled={busy} onClick={() => setOpen(false)}>{tr('Cancel', 'キャンセル', 'Cancelar')}</button>
+    </span>
   )
 }

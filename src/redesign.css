@@ -424,7 +424,7 @@
 .emp-hello{margin-top:10px;padding:12px 14px;border-radius:16px;background:#fff;border:1px solid #e4e9f1;box-shadow:0 4px 14px rgba(24,39,75,.05)}
 .emp-hello>div:first-child{min-width:0}
 .emp-hello h1{font-size:18px}
-.emp-hello p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emp-hello p{white-space:normal;overflow-wrap:anywhere;line-height:1.35}
 .emp-hello p b{color:#3b62f0;font-weight:800}
 .av-planner{display:flex;flex-direction:column;gap:12px}
 .av-intro{font-size:12px;color:#66758b;line-height:1.5;margin:0}
@@ -947,3 +947,7 @@
 .lt-card,#lt-contracts{scroll-margin-top:84px}
 .lt-card.is-focus{box-shadow:0 0 0 2px var(--blue)}
 .lt-cov-list li.is-focus{background:var(--blue-bg,rgba(37,99,235,.08));border-radius:8px;padding-left:8px;padding-right:8px}
+/* v1.0.222 · greeting header: face photo, text and clock on one centred line (another rule set baseline, which pushed the photo to the top) */
+.ex-greet.emp-hello{align-items:center!important}
+.ex-greet.emp-hello>*{align-self:center!important}
+.emp-hello>.emp-hello-face{display:flex;align-items:center;justify-content:center;width:44px;height:44px}

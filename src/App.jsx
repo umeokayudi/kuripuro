@@ -49,6 +49,7 @@ const ScheduleGenerator = lazy(() => import('./pages/ScheduleGenerator'))
 const Faturas = lazy(() => import('./pages/Faturas'))
 const Mitsumori = lazy(() => import('./pages/Mitsumori'))
 const AdminChat = lazy(() => import('./pages/AdminChat'))
+const TeamChannelPage = lazy(() => import('./pages/TeamChannel'))
 const TransportClaims = lazy(() => import('./pages/TransportClaims'))
 const LiveTracking = lazy(() => import('./pages/LiveTracking'))
 const Deductions = lazy(() => import('./pages/Deductions'))
@@ -128,6 +129,7 @@ const PAGE_KEYS = {
   '/marketing': 'marketing',
   '/payments': 'payments',
   '/adminchat': 'chat',
+  '/team-channel': 'teamChannel',
   '/live': 'liveTrack',
   '/transport-claims': 'transport',
   '/deductions': 'deductions',
@@ -326,6 +328,7 @@ function AppContent() {
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/adminchat" element={<AdminChat />} />
+              <Route path="/team-channel" element={<TeamChannelPage />} />
               <Route path="/live" element={<LiveTracking />} />
               <Route path="/transport-claims" element={<TransportClaims />} />
               <Route path="/deductions" element={<Deductions />} />

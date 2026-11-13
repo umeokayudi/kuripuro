@@ -300,6 +300,16 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
     if (own) setParams({ model: own.id }, { replace: true })
     else navigate(`/facility/edit?client=${wantClient}`, { replace: true })
   }, [loaded, wantClient]) // eslint-disable-line react-hooks/exhaustive-deps
+  // v1.0.211 · Client portal: the client came to see the plan. With one published store it opens the
+  // store's 3D plan straight away (the list with one small card looked like an empty page); with several,
+  // the list shows each store with a clear "See 3D plan" button. "‹ World" still goes back to the list.
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (!isClient || !loaded || autoOpenedRef.current || storeId) return
+    const real = stores.filter(st => !st.placeOnly && !st.draft)
+    autoOpenedRef.current = true
+    if (real.length === 1) setParams({ model: real[0].id })
+  }, [isClient, loaded, stores, storeId]) // eslint-disable-line react-hooks/exhaustive-deps
   const enterStore = (id, sel = null) => {
     if (String(id).startsWith('place:')) { setPlaceTab('map'); setPlaceTimeline(null); setPlaceOpen(stores.find(s => s.id === id) || null); return }
     setPendingSel(sel)
@@ -405,6 +415,9 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
             </Suspense>
           )}
           {!loaded && <div className="kw-loading">{w.loading}</div>}
+          {listMode && !mapView && loaded && isClient && stores.length === 0 && (
+            <div className="kw-loading">{pickLang(lang, 'No published 3D plan yet.', '公開された3D図面はまだありません。', 'Ainda não há planta 3D publicada.')}</div>
+          )}
           {listMode && !mapView && loaded && (
             <div className="kw-list">
               {stores.map(s => (
@@ -417,6 +430,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                     {s.noGps && <> · 📍 {pickLang(lang, 'no GPS', 'GPSなし', 'sem GPS')}</>}
                     {s.today.length > 0 && <> · 🧹 {pickLang(lang, `${s.today.length} today`, `今日${s.today.length}件`, `${s.today.length} hoje`)}</>}
                   </span>
+                  {isClient && !s.placeOnly && <span className="kw-list-cta">🏠 {pickLang(lang, 'See 3D plan', '3D図面を見る', 'Ver planta 3D')} ›</span>}
                 </button>
               ))}
             </div>

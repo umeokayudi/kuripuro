@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// v1.0.212 · AI_PROVIDER=muse: Meta Model API (Muse) provider behind api/_ai.js.
+// v1.0.233 · AI_PROVIDER=muse: Meta Model API (Muse) provider behind api/_ai.js.
 // The Meta API and Supabase are mocked, nothing leaves this machine.
 import assert from 'node:assert/strict'
 

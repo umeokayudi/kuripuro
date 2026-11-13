@@ -85,6 +85,12 @@ function splitName(name) {
   const m = /^(.*?)\s+[—–-]\s+(.*)$/.exec(String(name || "").trim());
   return m ? { base: m[1].trim(), rest: m[2].trim() } : { base: String(name || "").trim(), rest: "" };
 }
+function contractStartDate(c) {
+  const raw = String(c?.contract_details?.start_date || "").trim().replace(/\//g, "-");
+  const m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!m) return null;
+  return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+}
 function contractTargets(contracts, clients = []) {
   const clientById = Object.fromEntries((clients || []).map((c) => [c.id, c]));
   return (contracts || []).filter((c) => c.is_active !== false && clientById[c.client_id]?.is_active !== false).map((c) => {
@@ -105,7 +111,8 @@ function contractTargets(contracts, clients = []) {
       address: c.location_address || "",
       kind: !days.length ? "nodays" : weekly ? "weekly" : "periodic",
       hours: Number(c.hours_per_visit) || null,
-      price: c.price_per_visit ?? null
+      price: c.price_per_visit ?? null,
+      startDate: contractStartDate(c)
     };
   });
 }
@@ -116,7 +123,7 @@ function jobFulfils(title, target) {
   if (isBasic(rest)) return false;
   return target.keyword ? norm(rest).includes(norm(target.keyword)) : true;
 }
-var DOW, dowOf, norm, isBasic;
+var DOW, dowOf, norm, isBasic, startedOn;
 var init_schedulePlan = __esm({
   "src/lib/schedulePlan.js"() {
     init_employeeRoles();
@@ -124,6 +131,7 @@ var init_schedulePlan = __esm({
     dowOf = (date) => (/* @__PURE__ */ new Date(date + "T12:00:00Z")).getUTCDay();
     norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
     isBasic = (text) => /basic/i.test(text || "");
+    startedOn = (target, date) => !target?.startDate || !date || date >= target.startDate;
   }
 });
 
@@ -415,7 +423,7 @@ function routeLoads(items = []) {
     return { ...r, available, deadline: hm(r.deadlineMin), impossible: r.minutes > available };
   }).sort((a, b) => (a.bucket === b.bucket ? 0 : a.bucket === "morning" ? -1 : 1) || b.minutes - a.minutes || a.name.localeCompare(b.name));
 }
-var toMin3, hm, ROUTE_OPEN_MIN, MORNING_DEADLINE_MIN, DEFAULT_MINUTES2, norm3, deepDeadlineMin;
+var toMin3, hm, ROUTE_OPEN_MIN, MORNING_DEADLINE_MIN, DEFAULT_MINUTES2, norm3, deepDeadlineMin, hoursText;
 var init_routePlan = __esm({
   "src/lib/routePlan.js"() {
     init_schedulePlan();
@@ -430,6 +438,78 @@ var init_routePlan = __esm({
     DEFAULT_MINUTES2 = { basic: 120, deep: 240 };
     norm3 = (s) => String(s || "").toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim();
     deepDeadlineMin = (minutes) => Math.max(MORNING_DEADLINE_MIN, ROUTE_OPEN_MIN + (Number(minutes) || 0));
+    hoursText = (m) => {
+      const h = Math.floor(m / 60), r = m % 60;
+      return r ? `${h}h${String(r).padStart(2, "0")}` : `${h}h`;
+    };
+  }
+});
+
+// src/lib/jobDuration.js
+var jobDuration_exports = {};
+__export(jobDuration_exports, {
+  DURATION_PICKS: () => DURATION_PICKS,
+  DURATION_SQL_HINT: () => DURATION_SQL_HINT,
+  endTime: () => endTime,
+  hasJobMinutesColumn: () => hasJobMinutesColumn,
+  insertJobWithMinutes: () => insertJobWithMinutes,
+  minutesBetween: () => minutesBetween,
+  ownMinutes: () => ownMinutes,
+  saveJobMinutes: () => saveJobMinutes,
+  slotText: () => slotText
+});
+function endTime(start, minutes) {
+  const s = toMin4(start);
+  const m = Number(minutes);
+  if (s == null || !(m > 0)) return "";
+  return hhmm2(s + Math.round(m));
+}
+function minutesBetween(start, end) {
+  const s = toMin4(start), e = toMin4(end);
+  if (s == null || e == null) return null;
+  const d = e - s;
+  return d > 0 ? d : d + 24 * 60;
+}
+function slotText(time, minutes, L = (en, ja, pt) => pt) {
+  const t = String(time || "").slice(0, 5);
+  const parts = [];
+  if (t) parts.push(t);
+  if (Number(minutes) > 0) parts.push(`\u23F1${hoursText(Math.round(Number(minutes)))}`);
+  const end = endTime(t, minutes);
+  if (end) parts.push(L(`by ${end}`, `${end}\u307E\u3067`, `at\xE9 ${end}`));
+  return parts.join(" \xB7 ");
+}
+async function saveJobMinutes(supabase2, jobId, minutes) {
+  const value = Number(minutes) > 0 ? Math.round(Number(minutes)) : null;
+  const { error } = await supabase2.from("jobs").update({ expected_minutes: value }).eq("id", jobId);
+  if (error) throw new Error(missingColumn(error) ? DURATION_SQL_HINT : error.message);
+  return value;
+}
+async function insertJobWithMinutes(supabase2, row, select = "*") {
+  const first = await supabase2.from("jobs").insert(row).select(select).single();
+  if (!first.error || !("expected_minutes" in row) || !missingColumn(first.error)) return { ...first, durationSaved: !first.error };
+  const { expected_minutes, ...rest } = row;
+  const second = await supabase2.from("jobs").insert(rest).select(select).single();
+  return { ...second, durationSaved: false };
+}
+function hasJobMinutesColumn(supabase2) {
+  if (!probe) probe = supabase2.from("jobs").select("expected_minutes").limit(1).then((r) => !r.error, () => false);
+  return probe;
+}
+var toMin4, hhmm2, ownMinutes, DURATION_PICKS, missingColumn, DURATION_SQL_HINT, probe;
+var init_jobDuration = __esm({
+  "src/lib/jobDuration.js"() {
+    init_routePlan();
+    toMin4 = (t) => {
+      const m = String(t || "").match(/^(\d{1,2}):(\d{2})/);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    hhmm2 = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+    ownMinutes = (job2) => Number(job2?.expected_minutes) > 0 ? Math.round(Number(job2.expected_minutes)) : null;
+    DURATION_PICKS = [30, 45, 60, 90, 120, 180, 240];
+    missingColumn = (err) => /expected_minutes/i.test(String(err?.message || "")) && /column|schema|does not exist|could not find/i.test(String(err?.message || ""));
+    DURATION_SQL_HINT = "Falta rodar o SQL da dura\xE7\xE3o (jobs.expected_minutes).";
+    probe = null;
   }
 });
 
@@ -550,7 +630,10 @@ function storeRow(st, planBNames = []) {
 }
 function buildDayPanel({ date, jobs = [], employees = [], availability = [], targets = [], owners = {}, planB = {}, now = /* @__PURE__ */ new Date(), nowMin = null, cutoff = SHIFT_CUTOFF, keepTests = false, today = null }) {
   const live = (jobs || []).filter((j) => j && j.scheduled_date === date && j.status !== "cancelled" && (keepTests || !isTestJob(j)));
-  const cov = coveredJobs(live);
+  const cov = new Map([...coveredJobs(live)].filter(([id]) => {
+    const a = live.find((x) => x.id === id);
+    return a && a.status !== "in_progress" && !a.started_at;
+  }));
   const nm = nowMin ?? (() => {
     const d = new Date(now.getTime() + 9 * 36e5);
     return d.getUTCHours() * 60 + d.getUTCMinutes();
@@ -574,7 +657,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
     const b = cov.get(j.id);
     const done = !!b || j.status === "completed";
     const bucket = bucketOf(j);
-    const minutes = jobMinutes2(j, targets);
+    const minutes = ownMinutes(j) || jobMinutes2(j, targets);
     const deadline = bucketDeadline(j, minutes) || deadlineOf(j);
     let late = !done && isLateJob(j, day, nm);
     if (bucket === "deep" && !done && deadline > OTP_DEADLINE) late = date < day || date === day && nm >= deepDeadlineMin(minutes);
@@ -593,6 +676,9 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       time: isDeadlineJob(j) ? null : String(j.scheduled_time || "").slice(0, 5) || null,
       bucket,
       minutes,
+      // v1.0.227 · THE count of the day: done = completed (or done by the person who covered it),
+      // working = started and not completed (late or not), not_started = everything else
+      phase: done ? "done" : j.status === "in_progress" || j.started_at ? "working" : "not_started",
       doneBy: b ? b.employee_name || "" : done ? j.employee_name || "" : "",
       doneAt: tokyoHM(b ? b.completed_at : j.completed_at),
       coveredBy: b ? b.employee_name || "" : "",
@@ -624,6 +710,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
   const noJobRows = [];
   for (const t of targets || []) {
     if (t.kind !== "weekly" || !t.days.includes(dowOf(date))) continue;
+    if (!startedOn(t, date)) continue;
     const k = norm4(t.base);
     if (byStore.has(k) || noJobRows.some((r) => r.key === k)) continue;
     if (live.some((j) => jobFulfils(j.title, t))) continue;
@@ -644,8 +731,8 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
   const people = (employees || []).filter((e) => e.is_active !== false && (keepTests || !isTestEmployee(e)));
   const loadOf = (id) => ({ morning: loads.find((l) => l.employeeId === id && l.bucket === "morning") || null, deep: loads.find((l) => l.employeeId === id && l.bucket === "deep") || null });
   for (const emp of people) {
-    const mine = services.filter((s) => s.assignedId === emp.id && !s.coveredBy);
-    const coveredMine = services.filter((s) => s.assignedId === emp.id && s.coveredBy);
+    const mine = counted.filter((s) => s.assignedId === emp.id && !s.coveredBy);
+    const coveredMine = counted.filter((s) => s.assignedId === emp.id && s.coveredBy);
     if (!mine.length && !coveredMine.length && !roleCan(emp.job_role, "routes")) continue;
     seenEmp.add(emp.id);
     const mark = marks[emp.id] || null;
@@ -660,11 +747,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       first: firstName(emp.full_name),
       mark,
       ...sh,
-      total: mine.length,
-      done: mine.filter((s) => s.status === "done").length,
-      working: mine.filter((s) => s.status === "working").length,
-      late: mine.filter((s) => s.status === "late").length,
-      notStarted: mine.filter((s) => s.status === "not_started").length,
+      ...personCount([...mine, ...coveredMine]),
       taken: mine.filter((s) => s.taken).length,
       coveredByOthers: coveredMine.map((s) => s.coveredBy),
       firstStart,
@@ -673,10 +756,10 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       uncoveredStores: sh.state === "cant" ? [.../* @__PURE__ */ new Set([...notDone.map((s) => s.store), ...usual.map((u) => u.store)])] : []
     });
   }
-  for (const s of services) {
+  for (const s of counted) {
     if (!s.assignedId || seenEmp.has(s.assignedId)) continue;
     seenEmp.add(s.assignedId);
-    const mine = services.filter((x) => x.assignedId === s.assignedId && !x.coveredBy);
+    const mine = counted.filter((x) => x.assignedId === s.assignedId && !x.coveredBy);
     team.push({
       id: s.assignedId,
       name: s.assigned || "\u2014",
@@ -684,11 +767,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       mark: marks[s.assignedId] || null,
       state: "unconfirmed",
       expected: false,
-      total: mine.length,
-      done: mine.filter((x) => x.status === "done").length,
-      working: mine.filter((x) => x.status === "working").length,
-      late: mine.filter((x) => x.status === "late").length,
-      notStarted: mine.filter((x) => x.status === "not_started").length,
+      ...personCount(counted.filter((x) => x.assignedId === s.assignedId)),
       taken: mine.filter((x) => x.taken).length,
       coveredByOthers: [],
       firstStart: mine.map((x) => x.startedAt).filter(Boolean).sort()[0] || "",
@@ -722,11 +801,13 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
 async function fetchDayPanels(from, to = from, { nowMin = null, now = /* @__PURE__ */ new Date(), today = null } = {}) {
   const { supabase: supabase2 } = await Promise.resolve().then(() => (init_supabase(), supabase_exports));
   const { fetchRouteSettings: fetchRouteSettings2 } = await Promise.resolve().then(() => (init_routeSettings(), routeSettings_exports));
+  const { hasJobMinutesColumn: hasJobMinutesColumn2 } = await Promise.resolve().then(() => (init_jobDuration(), jobDuration_exports));
+  const minutesCol = await hasJobMinutesColumn2(supabase2) ? ",expected_minutes" : "";
   const [c, cl, e, j, h, av, rs] = await Promise.all([
     supabase2.from("service_contracts").select("*").eq("is_active", true),
     supabase2.from("clients").select("id,company_name,is_active"),
     supabase2.from("employees").select("*"),
-    supabase2.from("jobs").select("id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template,checklist_missed_items,photo_required,photo_start_url,photo_end_url,checklist_total,checklist_done,gps_start_distance,start_lat,retro_time_min").gte("scheduled_date", from).lte("scheduled_date", to).limit(5e3),
+    supabase2.from("jobs").select("id,title,description,client_id,client_name,scheduled_date,scheduled_time,status,employee_id,employee_name,job_category,spot_status,started_at,completed_at,admin_reviewed,retro_report,checklist_template,checklist_missed_items,photo_required,photo_start_url,photo_end_url,checklist_total,checklist_done,gps_start_distance,start_lat,retro_time_min" + minutesCol).gte("scheduled_date", from).lte("scheduled_date", to).limit(5e3),
     supabase2.from("jobs").select("title,employee_id").gte("scheduled_date", addDays(from, -28)).lt("scheduled_date", from).not("employee_id", "is", null).neq("status", "cancelled").limit(3e3),
     supabase2.from("employee_availability").select("*").gte("date", from).lte("date", to),
     fetchRouteSettings2().catch(() => null)
@@ -753,7 +834,7 @@ function usualOwners(history, empById = {}) {
   }
   return Object.fromEntries(Object.entries(counts).map(([p, c]) => [p, Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]]));
 }
-var SHIFT_CUTOFF, SHIFT_KINDS, SHIFT_DAILY_CONFIRM, norm4, storeOf, tokyoHM, firstName, STORE_ORDER, sortStores, countOf;
+var SHIFT_CUTOFF, SHIFT_KINDS, SHIFT_DAILY_CONFIRM, norm4, storeOf, tokyoHM, firstName, STORE_ORDER, personCount, sortStores, countOf;
 var init_dayPanel = __esm({
   "src/lib/dayPanel.js"() {
     init_schedulePlan();
@@ -763,6 +844,7 @@ var init_dayPanel = __esm({
     init_jobCounts();
     init_jobDeadline();
     init_routePlan();
+    init_jobDuration();
     SHIFT_CUTOFF = "21:00";
     SHIFT_KINDS = ["confirmed", "off", "extra"];
     SHIFT_DAILY_CONFIRM = false;
@@ -775,6 +857,13 @@ var init_dayPanel = __esm({
     };
     firstName = (n) => String(n || "").trim().split(/\s+/)[0] || "";
     STORE_ORDER = { late: 0, not_started: 1, working: 2, done: 3 };
+    personCount = (list) => ({
+      total: list.length,
+      done: list.filter((s) => s.phase === "done").length,
+      working: list.filter((s) => s.phase === "working").length,
+      late: list.filter((s) => s.status === "late").length,
+      notStarted: list.filter((s) => s.phase === "not_started").length
+    });
     sortStores = (list) => list.sort((a, b) => STORE_ORDER[a.state] - STORE_ORDER[b.state] || a.store.localeCompare(b.store));
     countOf = (stores, services) => ({
       stores: stores.length,
@@ -788,7 +877,10 @@ var init_dayPanel = __esm({
       servicesDone: services.filter((s) => s.status === "done").length,
       servicesWorking: services.filter((s) => s.status === "working").length,
       servicesLate: services.filter((s) => s.status === "late").length,
-      servicesNotStarted: services.filter((s) => s.status === "not_started").length
+      servicesNotStarted: services.filter((s) => s.status === "not_started").length,
+      // v1.0.227 · one count (done + inProgress + toStart = services); late is a part of the last two
+      inProgress: services.filter((s) => s.phase === "working").length,
+      toStart: services.filter((s) => s.phase === "not_started").length
     });
   }
 });

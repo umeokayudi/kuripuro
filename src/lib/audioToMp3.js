@@ -1,4 +1,4 @@
-// v1.0.212 · Voice recordings → MP3 before they go to the AI.
+// v1.0.233 · Voice recordings → MP3 before they go to the AI.
 // Phones record audio/webm (Chrome/Android) or audio/mp4 (iPhone). The Meta Model API (Muse)
 // only reads MP3 or WAV, so the browser converts the recording here: mono, 16 kHz, 32 kbps
 // (5 minutes ≈ 1.2 MB, smaller than the original). Gemini reads MP3 too, so this works with

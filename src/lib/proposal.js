@@ -109,6 +109,8 @@ export function blankProposal(quote = {}, items = [], { lang = 'ja', by = '' } =
     created_by: by,
     updated_at: new Date().toISOString(),
     shared: null, // { path, url, at } of the last PDF made for the client
+    // v1.0.211 · shown to the client in the portal (Quotes), next to its 見積書, when the quote is sent
+    client_visible: true,
   }
 }
 
@@ -304,6 +306,34 @@ export async function searchJobPhotos(text, { clientId = null, limit = 36 } = {}
     if (j.photo_end_url) out.push({ path: j.photo_end_url, side: 'after', title: j.title, date: j.scheduled_date, job_id: j.id })
   }
   return out
+}
+
+/**
+ * v1.0.211 · REAL photos of this client first: before/after photos of the client's own jobs (the same
+ * photos of 報告書・写真) and the photos of its 3D store plans. Words narrow the jobs when they match;
+ * when nothing matches, all of the client's photos are used. Empty list = the client has no photos yet.
+ */
+export async function clientPhotos(clientId, text = '', { limit = 80 } = {}) {
+  if (!clientId) return []
+  const words = String(text || '').split(/[,、，/]+|\s{2,}/).map(cleanWord).filter(w => w.length >= 2).slice(0, 6)
+  const [{ data: jobs }, { data: models }] = await Promise.all([
+    supabase.from('jobs').select('id,title,scheduled_date,photo_start_url,photo_end_url,client_id,status')
+      .eq('client_id', clientId).or('photo_start_url.not.is.null,photo_end_url.not.is.null')
+      .order('scheduled_date', { ascending: false }).limit(limit),
+    supabase.from('facility_models').select('id,location_name,photos,status').eq('client_id', clientId),
+  ])
+  const all = []
+  for (const j of jobs || []) {
+    if (j.status === 'cancelled') continue
+    if (j.photo_start_url) all.push({ path: j.photo_start_url, side: 'before', title: j.title, date: j.scheduled_date, job_id: j.id })
+    if (j.photo_end_url) all.push({ path: j.photo_end_url, side: 'after', title: j.title, date: j.scheduled_date, job_id: j.id })
+  }
+  for (const m of models || []) for (const [i, ph] of (Array.isArray(m.photos) ? m.photos : []).entries()) {
+    if (ph) all.push({ path: ph, side: 'before', title: m.location_name || '', date: '', job_id: `fm-${m.id}-${i}` })
+  }
+  if (!words.length) return all
+  const hit = all.filter(f => words.some(w => String(f.title || '').toLowerCase().includes(w.toLowerCase())))
+  return hit.length ? hit : all
 }
 
 /** Every photo slot of the proposal, in reading order: { key, slot, side } */

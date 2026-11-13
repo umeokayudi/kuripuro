@@ -1,4 +1,5 @@
-import { fill } from '../hooks/useLang'
+import { fill, pickLang } from '../hooks/useLang'
+import CameraOrGallery from './CameraOrGallery'
 
 const fmtSize = (b) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`
 
@@ -7,19 +8,24 @@ const fmtSize = (b) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` :
  * video: { status: 'compressing'|'ready'|'uploading'|'uploaded'|'queued'|'failed', progress, size } | null
  * v1.0.199: after compressing it is sent at once (status uploading → uploaded), during the job.
  */
-export default function JobVideoPicker({ video, onPick, onRemove, labels = {} }) {
+export default function JobVideoPicker({ video, onPick, onRemove, labels = {}, lang }) {
   const L = labels
+  const pick3 = (en, ja, pt) => pickLang(lang, en, ja, pt)
   if (!video) {
+    // v1.0.222: one button; tapping it asks camera or gallery (CameraOrGallery).
     return (
       <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: '1.5px dashed rgba(255,255,255,0.2)', cursor: 'pointer' }}>
-          <span style={{ fontSize: 20 }}>🎬</span>
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>{L.add || 'Add video (optional)'}</span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{L.hint}</span>
-          </span>
-          <input type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={ev => { const f = ev.target.files?.[0]; ev.target.value = ''; if (f) onPick(f) }} />
-        </label>
+        <CameraOrGallery L={pick3} kind="video" onFiles={files => onPick(files[0])}>
+          {open => (
+            <button type="button" onClick={open} data-testid="video-add" style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: '1.5px solid #3b82f666', background: '#3b82f614', cursor: 'pointer', textAlign: 'left', boxSizing: 'border-box' }}>
+              <span style={{ fontSize: 22 }}>🎬</span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#3b82f6' }}>{L.add || 'Add video (optional)'}</span>
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>{L.hint}</span>
+              </span>
+            </button>
+          )}
+        </CameraOrGallery>
       </div>
     )
   }

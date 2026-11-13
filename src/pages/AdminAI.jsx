@@ -48,7 +48,7 @@ export default function AdminAI() {
   const [chatKey, setChatKey] = useState(0)
   const [openCap, setOpenCap] = useState(() => (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 900px)').matches ? null : 'analyze'))
   const [pending, setPending] = useState(null)
-  // v1.0.212 · owner only (this page is admin-only): which AI answers and what this conversation cost.
+  // v1.0.233 · owner only (this page is admin-only): which AI answers and what this conversation cost.
   const [aiInfo, setAiInfo] = useState(null)
   const [convUsage, setConvUsage] = useState(EMPTY_USAGE)
   useEffect(() => {

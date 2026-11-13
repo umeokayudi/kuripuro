@@ -2,7 +2,7 @@
 // which ones are missing, with who should do it and why (not started, nobody, no job created).
 // Same contract rules as the Schedule Generator (weekly Basic Cleaning on its days_of_week).
 import { supabase } from './supabase'
-import { contractTargets, jobFulfils, dowOf, addDays, splitName } from './schedulePlan.js'
+import { contractTargets, jobFulfils, dowOf, addDays, splitName, startedOn } from './schedulePlan.js'
 import { pendingReason } from './assignFlow.js'
 import { isDeadlineJob, DEADLINE_MIN } from './jobDeadline.js'
 
@@ -28,13 +28,15 @@ export function usualOwners(history, empById = {}) {
  * state: done | working | late | waiting | noPerson | noJob.
  * `nowMin` = Tokyo minutes since midnight (for "late"). Missing = everything not done.
  */
-export function dayCoverage(targets, date, jobs, { empById = {}, availability = {}, owners = {}, nowMin = null } = {}) {
+export function dayCoverage(targets, date, jobs, { empById = {}, availability = {}, owners = {}, nowMin = null, respectStart = false } = {}) {
   const live = (jobs || []).filter(j => j.scheduled_date === date && j.status !== 'cancelled')
   const rank = { completed: 0, in_progress: 1, assigned: 2 }
   const seen = new Set()
   const items = []
   for (const t of targets || []) {
     if (t.kind !== 'weekly' || !t.days.includes(dowOf(date))) continue
+    // v1.0.219 · Ao vivo: a contract that starts later (contract_details.start_date) is not due yet
+    if (respectStart && !startedOn(t, date)) continue
     const key = norm(t.base)
     if (seen.has(key)) continue
     seen.add(key)
@@ -68,7 +70,7 @@ export function dayCoverage(targets, date, jobs, { empById = {}, availability = 
 export const needsAction = item => ['noJob', 'noPerson', 'late'].includes(item.state)
 
 /** Load everything for `date` and return dayCoverage(). */
-export async function fetchDayCoverage(date, { nowMin = null } = {}) {
+export async function fetchDayCoverage(date, { nowMin = null, respectStart = false } = {}) {
   const [c, cl, e, j, h, av] = await Promise.all([
     supabase.from('service_contracts').select('*').eq('is_active', true),
     supabase.from('clients').select('id,company_name,is_active'),
@@ -84,7 +86,7 @@ export async function fetchDayCoverage(date, { nowMin = null } = {}) {
   const availability = {}
   for (const r of av.data || []) if (r.status !== 'rejected') availability[`${r.employee_id}|${r.date}`] = r
   const targets = contractTargets(c.data || [], cl.data || [])
-  return dayCoverage(targets, date, j.data || [], { empById, availability, owners: usualOwners(h.data || [], empById), nowMin })
+  return dayCoverage(targets, date, j.data || [], { empById, availability, owners: usualOwners(h.data || [], empById), nowMin, respectStart })
 }
 
 /**

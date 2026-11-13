@@ -143,3 +143,13 @@
 .earn-status.is-ok { background: #e8f6ee; color: #15803d; border-color: #bfe6cd; }
 .earn-status.is-bad { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
 .earn-status.is-link { cursor: pointer; }
+
+/* v1.0.224 · Meu salário: botões Holerite / Minhas questões logo abaixo de Ganhos */
+.salary-more-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 14px; }
+.salary-more-btn { position: relative; display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 10px 12px; border-radius: 16px; border: 1px solid var(--emp-border, #e3e8f0); background: var(--emp-card, #fff); color: var(--emp-text, #111827); font-weight: 700; font-size: 14px; line-height: 1.2; text-align: left; cursor: pointer; min-width: 0; }
+.salary-more-btn.is-open { border-color: #c19c56; box-shadow: 0 0 0 2px rgba(193, 156, 86, 0.25); }
+.salary-more-icon { font-size: 20px; flex: 0 0 auto; }
+.salary-more-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.salary-more-badge { flex: 0 0 auto; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #ef4444; color: #fff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.salary-more-chev { flex: 0 0 auto; opacity: 0.55; font-size: 12px; }
+@media (max-width: 340px) { .salary-more-btns { grid-template-columns: 1fr; } }

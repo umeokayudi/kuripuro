@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
 import { useLang } from '../hooks/useLang'
+import { companyKey } from '../lib/clientQuotes'
 import { supabase } from '../lib/supabase'
 import { askConfirm } from './ConfirmDialog'
 import { yen } from '../lib/quoteMath'
@@ -15,7 +16,7 @@ import { canShareFiles, shareFiles } from '../lib/reportShare'
 import {
   SHEET_W, SHEET_H, COLORS, COLOR_KEYS, ICON_KEYS, iconSvg, sheetLabels,
   blankProposal, loadProposal, saveProposal, uploadProposalPhoto, uploadSharedPdf, proposalAi, draftPayload, applyDraft,
-  linesFromItems, planTotals, switchSheetLang, searchJobPhotos, photoSlots, setSlot, defaultPrompt, photoUrl,
+  linesFromItems, planTotals, switchSheetLang, searchJobPhotos, clientPhotos, photoSlots, setSlot, defaultPrompt, photoUrl,
   proposalHtml, proposalCanvas, proposalPdfFile, proposalFileBase,
 } from '../lib/proposal'
 import './proposal.css'
@@ -93,7 +94,7 @@ function PhotoPicker({ proposal, slotKey, initialTab, clientId, onUse, onClose }
   const [tab, setTab] = useState(initialTab || 'upload')
   const [busy, setBusy] = useState(false)
   const [query, setQuery] = useState(slot?.slot?.search || '')
-  const [onlyClient, setOnlyClient] = useState(false)
+  const [onlyClient, setOnlyClient] = useState(!!clientId)
   const [found, setFound] = useState(null)
   const [prompt, setPrompt] = useState(slot?.slot?.prompt || defaultPrompt(proposal, slotKey))
   const [style, setStyle] = useState('photo')
@@ -102,7 +103,7 @@ function PhotoPicker({ proposal, slotKey, initialTab, clientId, onUse, onClose }
 
   const search = async () => {
     setBusy(true)
-    try { setFound(await searchJobPhotos(query, { clientId: onlyClient ? clientId : null })) } catch (e) { toast.error(e.message); setFound([]) } finally { setBusy(false) }
+    try { setFound(onlyClient && clientId ? await clientPhotos(clientId, query) : await searchJobPhotos(query)) } catch (e) { toast.error(e.message); setFound([]) } finally { setBusy(false) }
   }
   useEffect(() => { if (tab === 'library' && found === null) search() }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -209,6 +210,19 @@ function Preview({ html }) {
 
 /* ------------------------------------------------------------ editor */
 
+// v1.0.211 · fills the empty photo slots with this client's REAL photos (before/after of its jobs, store plan photos)
+function fillWithClientPhotos(p, found) {
+  let next = p; let ok = 0
+  const used = new Set(photoSlots(p).map(x => x.slot?.photo).filter(Boolean))
+  for (const sl of photoSlots(p).filter(x => !x.slot?.photo)) {
+    const want = sl.side === 'during' ? 'before' : sl.side
+    const pick = found.find(f => f.side === want && !used.has(f.path)) || found.find(f => !used.has(f.path))
+    if (!pick) break
+    used.add(pick.path); next = setSlot(next, sl.key, { photo: pick.path }); ok++
+  }
+  return { next, ok }
+}
+
 export default function ProposalEditor({ quote, onClose }) {
   const { tr } = useLang()
   const [p, setP] = useState(null)
@@ -222,19 +236,37 @@ export default function ProposalEditor({ quote, onClose }) {
   const [hint, setHint] = useState('')
   const [html, setHtml] = useState('')
   const me = (() => { try { return JSON.parse(localStorage.getItem('kp_user') || '{}')?.name || '' } catch { return '' } })()
+  // v1.0.211 · the client of this quote (same company name) → its real photos + where the client sees the sheet
+  const [client, setClient] = useState(null)
+  const clientId = client?.id || quote.client_id || null
 
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const [{ data }, saved] = await Promise.all([
+      const [{ data }, saved, { data: cls }] = await Promise.all([
         supabase.from('mitsumori_items').select('*').eq('mitsumori_id', quote.id),
         loadProposal(quote.id),
+        supabase.from('clients').select('id,company_name'),
       ])
       if (!alive) return
       const its = data || []
       setItems(its)
+      const owner = (cls || []).find(c => companyKey(c.company_name) === companyKey(quote.company_name)) || null
+      setClient(owner)
       if (saved) setP(saved)
-      else { setP(blankProposal(quote, its, { lang: 'ja', by: me })); setIsNew(true) }
+      else {
+        let fresh = blankProposal(quote, its, { lang: 'ja', by: me })
+        // new sheet: the client's real photos go in straight away (placeholders only when it has none)
+        const found = owner ? await clientPhotos(owner.id, quote.site_name || '').catch(() => []) : []
+        if (!alive) return
+        if (found.length) {
+          const { next, ok } = fillWithClientPhotos(fresh, found)
+          fresh = next
+          toast.success(tr(`${ok} real photos of ${owner.company_name} placed.`, `${owner.company_name} の実際の写真を${ok}枚入れました。`, `${ok} fotos reais de ${owner.company_name} colocadas.`))
+          setDirty(true)
+        }
+        setP(fresh); setIsNew(true)
+      }
     })()
     return () => { alive = false }
   }, [quote.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -305,7 +337,9 @@ export default function ProposalEditor({ quote, onClose }) {
         try {
           if (source === 'library') {
             const words = s.slot?.search || `${s.context || ''}`
-            const found = await searchJobPhotos(words)
+            // v1.0.211 · this client's real photos first; other services' photos only when it has none
+            let found = clientId ? await clientPhotos(clientId, words).catch(() => []) : []
+            if (!found.length) found = await searchJobPhotos(words)
             const pick = found.find(f => f.side === (s.side === 'during' ? 'before' : s.side) && !used.has(f.path)) || found.find(f => !used.has(f.path))
             if (pick) { used.add(pick.path); next = setSlot(next, s.key, { photo: pick.path }); ok++ }
           } else {
@@ -567,6 +601,15 @@ export default function ProposalEditor({ quote, onClose }) {
           <button type="button" className="btn btn-sm" disabled={working} onClick={() => exportFile('share')}>{busy === 'share' ? '…' : `📤 ${tr('Send', '送る', 'Enviar')}`}</button>
           <button type="button" className="btn btn-sm btn-primary" disabled={working} onClick={() => exportFile('link')} title={tr('Makes the PDF, saves it and copies a link for the client', 'PDFを作成・保存し、お客様用リンクをコピー', 'Faz o PDF, guarda e copia um link para o cliente')}>{busy === 'link' ? '…' : `🔗 ${tr('Client link', 'お客様用リンク', 'Link p/ cliente')}`}</button>
         </div>
+        <div className="pv-shared">
+          📁 {tr(`Saved with quote ${quote.quote_number || ''} (💾 Save).`, `見積書 ${quote.quote_number || ''} と一緒に保存されます（💾 保存）。`, `Fica salva junto do orçamento ${quote.quote_number || ''} (💾 Salvar).`)}{' '}
+          {client
+            ? <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontWeight: 600 }}>
+                <input type="checkbox" checked={p.client_visible !== false} onChange={e => up({ client_visible: e.target.checked })} />
+                {tr(`Show in ${client.company_name}'s portal (Quotes), next to the quote once it is sent`, `${client.company_name} のポータル（見積もり）に、送付済みの見積書と一緒に表示`, `Mostrar no portal de ${client.company_name} (Orçamentos), junto do orçamento enviado`)}
+              </label>
+            : <span>{tr(`No client named "${quote.company_name}" yet: use 🔗 Client link to send it.`, `「${quote.company_name}」という顧客がまだありません。🔗 お客様用リンクで送ってください。`, `Ainda não há cliente com o nome "${quote.company_name}": envie pelo 🔗 Link p/ cliente.`)}</span>}
+        </div>
         {p.shared?.url && <div className="pv-shared">🔗 {tr('Last link sent', '最後に作成したリンク', 'Último link')}: <a href={p.shared.url} target="_blank" rel="noreferrer">{String(p.shared.at || '').slice(0, 16).replace('T', ' ')}</a></div>}
         <div className={`pv-body view-${view}`}>
           {form}
@@ -574,7 +617,7 @@ export default function ProposalEditor({ quote, onClose }) {
         </div>
       </div>
       {picker && (
-        <PhotoPicker proposal={p} slotKey={picker.key} initialTab={picker.tab} clientId={quote.client_id || null}
+        <PhotoPicker proposal={p} slotKey={picker.key} initialTab={picker.tab} clientId={clientId}
           onClose={() => setPicker(null)}
           onUse={(path, extra) => { up(x => setSlot(x, picker.key, { photo: path, ...extra })); setPicker(null) }} />
       )}

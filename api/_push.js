@@ -7,6 +7,9 @@
 //   POST ?op=test          send a test notification to the caller's own devices
 //   POST ?op=bell          every 5 min (Supabase pg_cron): each NEW item of the admin bell → push to admins.
 //                          ?dry=1 only lists what would be sent.
+//   POST ?op=team          v1.0.217 · Canal da Equipe: a new cover request → push to the team (and admins).
+//                          { path } of the channel file; it is re-read from Storage, so only a real,
+//                          fresh request is pushed, once (push_log 'team:<path>').
 //   POST ?op=event         called by the database triggers (sql/2026-10-25_push_notificacoes.sql)
 //                          with { table, op, id }. The row is re-read here with the service key
 //                          and each event is sent once (push_log), so a forged call can only
@@ -14,6 +17,7 @@
 import webpush from 'web-push'
 import { salesDb, readSalesSession } from './_salesSession.js'
 import { fetchBellSnapshot, bellNotice, bellSummary, BELL_SKIP_KINDS, BELL_SKIP_GROUPS } from './_bell.bundle.js'
+import { isChannelPath, coverPushText, textPushText, channelOfPath, inChannel, showsCovers, MEMBERS_PATH } from '../src/lib/teamChannel.js'
 
 const MAX_FAILS = 3
 
@@ -359,6 +363,71 @@ export async function handleBell(req, res, { snapshot = fetchBellSnapshot, db = 
   return res.status(200).json({ ok: true, total: items.length, results })
 }
 
+// ── Canal da Equipe (v1.0.217) ───────────────────────────────────────────
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://fxsakrshmldmkdmbevna.supabase.co'
+const TEAM_FRESH_MS = 30 * 60_000
+
+export async function handleTeam(req, res, { db = salesDb(), who, readFile = null, loadPeople = null } = {}) {
+  const path = String(req.body?.path || '')
+  if (!isChannelPath(path)) return res.status(400).json({ error: 'bad path' })
+  const read = readFile || (async p => {
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/public/service-photos/${p}?t=${Date.now()}`, { cache: 'no-store' })
+    return r.ok ? r.json() : null
+  })
+  const file = await read(path).catch(() => null)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  // A request file: { job_id, from, status }. A message: { kind, author, job }.
+  const isReq = path.startsWith('team-channel/requests/')
+  const channel = channelOfPath(path)
+  const msg = isReq ? { kind: 'cant_go', channel, author: { role: 'employee', ...file.from }, job: null, at: file.at, open: file.status === 'open' }
+    : { ...file, channel, open: ['cover', 'cant_go', 'text'].includes(file.kind) }
+  if (!msg.open) return res.status(200).json({ ok: true, sent: 0, skipped: 'not-pushed-kind' })
+  if (!msg.at || Date.now() - new Date(msg.at).getTime() > TEAM_FRESH_MS) return res.status(200).json({ ok: true, sent: 0, skipped: 'old' })
+  // v1.0.221 · only the caller's own message (or own cover request) can be pushed
+  if (who && msg.author?.id && who.user_id !== msg.author.id && who.role !== 'admin') return res.status(403).json({ error: 'not yours' })
+  if (isReq) {
+    const { data: job } = await db.from('jobs').select('id,title,client_name,scheduled_date,scheduled_time').eq('id', file.job_id).maybeSingle()
+    if (job) {
+      const [store, ...rest] = String(job.title || '').split(' — ')
+      msg.job = { id: job.id, store: store || job.client_name || '', service: rest.join(' — '), date: job.scheduled_date || '', time: String(job.scheduled_time || '').slice(0, 5) }
+    }
+  }
+  const key = `team:${path}`
+  const { error: claimErr } = await db.from('push_log').insert({ dedupe_key: key, recipient: `{"role":"team","channel":"${channel}"}` })
+  if (claimErr) return res.status(200).json({ ok: true, sent: 0, skipped: claimErr.code === '23505' ? 'duplicate' : claimErr.message })
+  // Who is in the channel: role + the admin's changes (members.json). Covers also reach Geral when mirrored.
+  const members = await read(MEMBERS_PATH).catch(() => null)
+  const people = await (loadPeople ? loadPeople() : teamPeople(db))
+  const isCover = msg.kind !== 'text'
+  const targetsOf = p => inChannel(p, channel, members) || (isCover && showsCovers('geral', members) && inChannel(p, 'geral', members))
+  const allowed = new Set(people.filter(targetsOf).map(p => `${p.role}:${p.id}`))
+  const { data: subs, error } = await db.from('push_subscriptions').select('id,endpoint,p256dh,auth,lang,fail_count,role,user_id').in('role', ['employee', 'admin', 'salesperson']).limit(300)
+  if (error) return res.status(500).json({ error: error.message })
+  const authorId = msg.author?.id || who?.user_id
+  const targets = (subs || []).filter(s => s.user_id !== authorId && allowed.has(`${s.role}:${s.user_id}`))
+  const tag = isCover ? `team-${msg.job?.id || path}` : `team-ch-${channel}`
+  const text = l => (isCover ? coverPushText(msg, l) : textPushText(msg, l))
+  const emps = targets.filter(s => s.role !== 'admin'), admins = targets.filter(s => s.role === 'admin')
+  const sent = (emps.length ? await sendTo(db, emps, l => ({ ...text(l), url: `/?tab=team&ch=${channel}`, tag })) : 0)
+    + (admins.length ? await sendTo(db, admins, l => ({ ...text(l), url: `/team-channel?ch=${channel}`, tag })) : 0)
+  await db.from('push_log').update({ sent }).eq('dedupe_key', key)
+  return res.status(200).json({ ok: true, sent })
+}
+
+/** Active internal people for the channel rules (service key; no money columns). */
+async function teamPeople(db) {
+  const [a, e, s] = await Promise.all([
+    db.from('admins').select('id,name'),
+    db.from('employees').select('id,full_name,job_role,is_active').eq('is_active', true),
+    db.from('salespeople').select('id,full_name,is_active,team').eq('is_active', true),
+  ])
+  return [
+    ...(a.data || []).map(x => ({ role: 'admin', id: x.id, is_active: true })),
+    ...(e.data || []).map(x => ({ role: 'employee', id: x.id, job_role: x.job_role, is_active: x.is_active })),
+    ...(s.data || []).map(x => ({ role: 'salesperson', id: x.id, team: x.team || 'sales', is_active: x.is_active })),
+  ]
+}
+
 // ── Who is this browser? ──────────────────────────────────────────────────
 async function identify(req) {
   const session = readSalesSession(req)
@@ -401,6 +470,11 @@ export default async function handler(req, res) {
 
     const who = await identify(req)
     if (!who) return res.status(401).json({ error: 'Entre de novo para ativar as notificações.' })
+
+    if (op === 'team') {
+      if (!['admin', 'employee', 'salesperson'].includes(who.role)) return res.status(403).json({ error: 'team only' })
+      return await handleTeam(req, res, { db, who })
+    }
 
     if (op === 'subscribe') {
       const sub = req.body?.subscription

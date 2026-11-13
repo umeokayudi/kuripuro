@@ -81,6 +81,20 @@ const isBasic = text => /basic/i.test(text || '')
  * What an active contract asks for. Weekly = Basic Cleaning on its days_of_week (checked per day).
  * Periodic = deep / maintenance items (checked once per month). No days = not schedulable.
  */
+/**
+ * v1.0.219 · Start date of a contract (contract_details.start_date, "YYYY-MM-DD" or "YYYY/MM/DD").
+ * No date or an unreadable one → null = already started (nothing that shows today disappears).
+ */
+export function contractStartDate(c) {
+  const raw = String(c?.contract_details?.start_date || '').trim().replace(/\//g, '-')
+  const m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (!m) return null
+  return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+}
+
+/** v1.0.219 · Has the contract target started on `date`? (no start date = yes) */
+export const startedOn = (target, date) => !target?.startDate || !date || date >= target.startDate
+
 export function contractTargets(contracts, clients = []) {
   const clientById = Object.fromEntries((clients || []).map(c => [c.id, c]))
   return (contracts || [])
@@ -96,6 +110,7 @@ export function contractTargets(contracts, clients = []) {
         location: c.location_name, base, service, keyword, days, address: c.location_address || '',
         kind: !days.length ? 'nodays' : weekly ? 'weekly' : 'periodic',
         hours: Number(c.hours_per_visit) || null, price: c.price_per_visit ?? null,
+        startDate: contractStartDate(c),
       }
     })
 }
@@ -135,14 +150,16 @@ export function coverage(targets, days, rows, { wholeMonth = false } = {}) {
     let ok = true
     if (t.kind === 'weekly') {
       for (const d of days) {
-        if (!t.days.includes(dowOf(d))) continue
+        if (!t.days.includes(dowOf(d)) || !startedOn(t, d)) continue
         if (!(byDate[d] || []).some(r => jobFulfils(r.title, t))) { ok = false; missing.push({ target: t, date: d }) }
       }
     } else {
+      // v1.0.219 · never due before the contract start date
+      const open = days.filter(d => startedOn(t, d))
       const done = days.some(d => (byDate[d] || []).some(r => jobFulfils(r.title, t)))
-      if (!done) {
+      if (!done && (open.length || !t.startDate)) {
         ok = false
-        const date = days.find(d => t.days.includes(dowOf(d))) || days[0]
+        const date = open.find(d => t.days.includes(dowOf(d))) || open[0]
         missing.push({ target: t, date, periodic: true })
       }
     }
@@ -175,7 +192,9 @@ export function contractCheck(targets, days, jobs = [], rows = [], { wholeMonth 
   for (const t of targets || []) {
     if (t.kind === 'nodays') continue
     if (t.kind === 'periodic' && !wholeMonth) continue
-    const slotDates = t.kind === 'weekly' ? days.filter(d => t.days.includes(dowOf(d))) : [null]
+    // v1.0.219 · days before the contract start date are not expected
+    if (t.startDate && !days.some(d => startedOn(t, d))) continue
+    const slotDates = t.kind === 'weekly' ? days.filter(d => t.days.includes(dowOf(d)) && startedOn(t, d)) : [null]
     const slots = slotDates.map(date => {
       const inDays = date ? [date] : days
       const js = inDays.flatMap(d => (byDate[d] || []).filter(j => jobFulfils(j.title, t)))

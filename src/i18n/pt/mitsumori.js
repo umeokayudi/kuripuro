@@ -1,7 +1,7 @@
 export const mitsumoriPt = {
   clientQuoteRequests:'Pedidos de orçamento dos clientes',
   companySection:'Restaurante e empresa', contactSection:'Responsável', salesSection:'Detalhes do lead',
-  siteName:'Nome do restaurante / loja', siteHint:'Nome exibido no orçamento', company:'Empresa', companyKana:'Nome em kana / inglês', industry:'Ramo', address:'Endereço', phone:'Telefone', email:'E-mail', website:'Site', locations:'Número de unidades',
+  siteName:'Nome do restaurante / loja', siteHint:'Local do serviço (opcional) — o orçamento é endereçado à Empresa', company:'Empresa', companyKana:'Nome em kana / inglês', industry:'Ramo', address:'Endereço', phone:'Telefone', email:'E-mail', website:'Site', locations:'Número de unidades',
   contact:'Pessoa responsável', contactTitle:'Cargo', contactPhone:'Telefone direto', contactEmail:'E-mail direto', contactLine:'ID do LINE', decisionMaker:'Quem decide',
   firstContact:'Primeiro contato', nextFollowup:'Próximo retorno', source:'Origem', sources:{visit:'Visita presencial',phone:'Telefone',referral:'Indicação',web:'Site / redes sociais',walkin:'Veio até nós',other:'Outro'},
   expectedMonthly:'Valor mensal previsto (¥)', expectedStart:'Início desejado', competitor:'Fornecedor atual', needs:'Necessidades', needsHint:'Limpeza diária / limpeza pesada / horas extras…', stillNeeded:'O que falta para fechar', stillNeededHint:'Visita ao local, chaves, aprovação, preço…',

@@ -8,7 +8,7 @@ import {
   locationsFromContracts, DEFAULT_LOCATIONS, DOW_EN, DOW_JA,
 } from '../lib/scheduleGenerator'
 import {
-  periodDays, canWork, outOfSchedule, contractTargets, dupKey, dowOf, isTestAccount, addDays, contractCheck, shiftPeriod,
+  periodDays, canWork, outOfSchedule, contractTargets, startedOn, jobFulfils, dupKey, dowOf, isTestAccount, addDays, contractCheck, shiftPeriod,
 } from '../lib/schedulePlan'
 import {
   asItem, pendingReason, conflictsFor, suggestPeople, planBatch, placeInDay, coverageCounts, requiredRole,
@@ -197,7 +197,10 @@ export default function ScheduleGenerator() {
     for (const [k, v] of Object.entries(owners)) if (v && pool.some(e => e.id === v)) suggested[k] = v
     const seen = new Set(existingKeys)
     const next = []
-    for (const j of assignEmployees(base, { employees: pool, availability: workIndex, owners: suggested })) {
+    // v1.0.219 · never suggest a contract visit before that contract's start date
+    const notStarted = targets.filter(t => t.startDate)
+    const beforeStart = j => notStarted.some(t => !startedOn(t, j.date) && jobFulfils(j.title, t))
+    for (const j of assignEmployees(base.filter(j => !beforeStart(j)), { employees: pool, availability: workIndex, owners: suggested })) {
       const k = dupKey(j.date, j.title)
       if (seen.has(k)) continue
       seen.add(k)
