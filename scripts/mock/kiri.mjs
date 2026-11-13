@@ -41,13 +41,14 @@ export async function kiriFake(req, res, url, bodyBuffer, port) {
   const send = (status, data, type = 'application/json') => { res.writeHead(status, { 'content-type': type }); res.end(type === 'application/json' ? JSON.stringify(data) : data) }
   if (url.pathname === '/_kiri/file.zip') return send(200, zipOne('scan/model.glb', tinyGlb()), 'application/zip')
   if (req.headers.authorization !== 'Bearer mock-kiri') return send(401, { code: 401, ok: false, msg: 'bad key' })
-  const m = /^\/_kiri\/v1\/open\/photo-scan\/(image|video)$/.exec(url.pathname)
+  if (url.pathname === '/_kiri/v1/open/balance') return send(200, { code: 0, ok: true, msg: 'success', data: { balance: Math.max(0, 9 - jobs.size) } })
+  const m = /^\/_kiri\/v1\/open\/3dgs\/(image|video)$/.exec(url.pathname)
   if (m && req.method === 'POST') {
     const text = bodyBuffer.toString('latin1')
     const files = (text.match(/name="(imagesFiles|videoFile)"/g) || []).length
     const serialize = `mock-${jobs.size + 1}`
     jobs.set(serialize, 0)
-    kiriCalls.push({ kind: m[1], files, bytes: bodyBuffer.length, glb: /name="fileFormat"\r\n\r\nGLB/.test(text) })
+    kiriCalls.push({ kind: m[1], files, bytes: bodyBuffer.length, glb: /name="fileFormat"\r\n\r\nGLB/i.test(text), mesh: /name="isMesh"\r\n\r\n1/.test(text) })
     return send(200, { code: 0, ok: true, msg: 'success', data: { serialize, calculateType: 1 } })
   }
   const serialize = url.searchParams.get('serialize')

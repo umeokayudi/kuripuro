@@ -596,7 +596,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                 : <CleaningTimeline dark entries={placeTimeline} placePhotos={[]} title={placeOpen.name} />)}
             <div style={{ fontSize: 12, opacity: .6, marginTop: 12 }}>{pickLang(lang, 'This place has no 3D plan yet.', 'この場所の3D図面はまだありません。', 'Este local ainda não tem planta 3D.')}</div>
             {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 10 }} onClick={() => navigate(placeOpen.model.client_id ? `/facility/edit?client=${placeOpen.model.client_id}` : '/facility/edit')}>＋ {w.newStore}</button>}
-            {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 10, marginLeft: 8 }} onClick={() => setPlaceScan({ id: placeScanKey(placeOpen), name: placeOpen.name })}>📷 {pickLang(lang, 'Real 3D', '実物3D', '3D real')}</button>}
+            {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 10, marginLeft: 8 }} onClick={() => setPlaceScan({ id: placeScanKey(placeOpen), name: placeOpen.name })}>📷 {pickLang(lang, 'Plan and 3D model', '図面と3Dモデル', 'Planta e modelo 3D')}</button>}
           </div>
         </div>
       )}
@@ -660,7 +660,7 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
   const isAdmin = audience === 'admin'
   const [tab, setTab] = useState('map')
   const [scanOpen, setScanOpen] = useState(false)
-  const scanLabel = lang === 'ja' ? '実物3D' : lang === 'pt' ? '3D real' : 'Real 3D'
+  const scanLabel = lang === 'ja' ? '図面と3Dモデル' : lang === 'pt' ? 'Planta e modelo 3D' : 'Plan and 3D model'
   const [mode, setMode] = useState('3d')
   const [level, setLevel] = useState(0)
   const [selId, setSelId] = useState(initialSel)
