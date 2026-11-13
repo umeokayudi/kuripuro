@@ -26,8 +26,6 @@ export function fetchOwnerStatus({ fresh = false } = {}) {
 }
 
 export const fetchOwnerLog = () => call('log').then(r => r.log || [])
-export const claimOwner = () => call('claim', { method: 'POST', body: {} }).then(r => { statusPromise = null; return r })
-export const saveOwnerLinks = links => call('links', { method: 'POST', body: links }).then(r => { statusPromise = null; return r })
 
 export function savedViewAs() {
   try { return JSON.parse(localStorage.getItem(VIEW_KEY) || 'null') } catch { return null }
