@@ -2529,7 +2529,7 @@ export default function EmployeePortal() {
 
         {tab==='reports'&&(
           <section className="emp-shift-screen">
-            <div className="emp-section-heading"><span>{L('Last 7 days','過去7日間','Últimos 7 dias')}</span><h1>📄 {L('Service reports','作業報告書','Relatórios de serviço')}</h1><p>{L('Photos and notes now or later — the AI writes it, the office sends it to the client.','写真とメモは作業中でも後でもOK。AIが文章を作成し、事務所が送付します。','Fotos e notas agora ou depois — a IA escreve e o escritório envia ao cliente.')}</p></div>
+            <div className="emp-section-heading"><span>{L('By period','期間別','Por período')}</span><h1>📄 {L('Service reports','作業報告書','Relatórios de serviço')}</h1><p>{L('Photos and notes now or later — the AI writes it, the office sends it to the client.','写真とメモは作業中でも後でもOK。AIが文章を作成し、事務所が送付します。','Fotos e notas agora ou depois — a IA escreve e o escritório envia ao cliente.')}</p></div>
             <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} flat />
           </section>
         )}
