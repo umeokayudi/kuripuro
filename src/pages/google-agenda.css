@@ -76,3 +76,11 @@
 .ga-int-steps a { color: var(--navy); text-decoration: none; }
 .ga-int-p { margin: 0; font-size: 13px; }
 .ga-int-muted { color: var(--text3); margin-top: 6px; font-size: 12px; }
+
+/* v1.0.242 · active: static status banner; install checklist in a discreet closed block at the end */
+.ga-int-static { cursor: default; }
+.ga-support { margin: 18px 0 8px; font-size: 13px; color: var(--muted, #64748b); }
+.ga-support > summary { cursor: pointer; padding: 8px 2px; list-style: none; }
+.ga-support > summary::before { content: '▸ '; }
+.ga-support[open] > summary::before { content: '▾ '; }
+.ga-support .ga-int-body { border: 1px solid var(--border, #e2e8f0); border-radius: 12px; background: #fff; }
