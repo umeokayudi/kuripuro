@@ -28,8 +28,11 @@
     { "source": "/api/sales-session", "destination": "/api/sales?route=session" },
     { "source": "/api/calendar/:e/:t/kuripuro.ics", "destination": "/api/sales?route=calendar&e=:e&t=:t" },
     { "source": "/api/push", "destination": "/api/sales?route=push" },
+    { "source": "/api/client-email", "destination": "/api/sales?route=client-email" },
     { "source": "/api/google/:op", "destination": "/api/sales?route=google&op=:op" },
     { "source": "/api/youtube/:op", "destination": "/api/sales?route=youtube&op=:op" },
+    { "source": "/api/meetings", "destination": "/api/sales?route=meetings" },
+    { "source": "/api/scan3d", "destination": "/api/sales?route=scan3d" },
     { "source": "/api/upload-photo", "destination": "/api/photo" },
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ]

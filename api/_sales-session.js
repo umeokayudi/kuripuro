@@ -7,6 +7,8 @@ import {
   setSalesSessionCookie,
   verifySalesPassword,
   EMPLOYEE_SESSION_TTL,
+  createDbToken,
+  dbTokensConfigured,
 } from './_salesSession.js'
 
 const attempts = new Map()
@@ -40,6 +42,16 @@ async function isOtherAccount(db, email) {
   return Boolean(emp.data || client.data)
 }
 
+async function clientLogin(db, login, password) {
+  const pw = String(password || '').trim()
+  const fields = 'id,client_id,client_name,location_name,contact_name,email,password,is_active'
+  const { data: byEmail } = await db.from('client_users').select(fields).eq('email', login).eq('is_active', true).limit(5)
+  const hit = (byEmail || []).find(u => u.client_id && u.password === pw)
+  if (hit) return hit
+  const { data: stores } = await db.from('client_users').select(fields).eq('is_active', true).not('location_name', 'is', null)
+  return (stores || []).find(u => u.client_id && u.password === pw && String(u.location_name || '').trim().toLowerCase() === login) || null
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
   if (!salesSessionConfigured()) return res.status(503).json({ error: 'Configure SUPABASE_SERVICE_ROLE_KEY e SALES_SESSION_SECRET no servidor.' })
@@ -55,7 +67,9 @@ export default async function handler(req, res) {
       const { data } = await sellerAccess(user.id).catch(() => ({}))
       if (data) user.team = data.team === 'marketing' ? 'marketing' : 'sales'
     }
-    return res.status(user ? 200 : 401).json(user ? { user } : { error: 'Sessão expirada.' })
+    // db_keys tells the browser whether this server hands out per-person database keys;
+    // when it does, a saved login without a cookie has to sign in again to get one.
+    return res.status(user ? 200 : 401).json(user ? { user, db_token: createDbToken(user), db_keys: dbTokensConfigured() } : { error: 'Sessão expirada.', db_keys: dbTokensConfigured() })
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (limited(req)) return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.' })
@@ -74,7 +88,7 @@ export default async function handler(req, res) {
       // Admins stay signed in on the app for weeks (kp_user in localStorage), so the
       // server session must last as long or Sales Team, Marketing and the AI stop working.
       setSalesSessionCookie(res, createSalesSession(user, EMPLOYEE_SESSION_TTL), EMPLOYEE_SESSION_TTL)
-      return res.status(200).json({ success: true, user })
+      return res.status(200).json({ success: true, user, db_token: createDbToken(user) })
     }
 
     // Employees get a signed session too, so their AI can only ever read their own account.
@@ -84,7 +98,7 @@ export default async function handler(req, res) {
     if (emp && emp.password === password) {
       const user = { id: emp.id, name: emp.full_name, email: emp.email, role: 'employee', contract_type: emp.contract_type, hourly_rate: emp.hourly_rate, fixed_salary: emp.fixed_salary, salary_type: emp.salary_type, score: emp.score }
       setSalesSessionCookie(res, createSalesSession(user, EMPLOYEE_SESSION_TTL), EMPLOYEE_SESSION_TTL)
-      return res.status(200).json({ success: true, user })
+      return res.status(200).json({ success: true, user, db_token: createDbToken(user) })
     }
 
     const sellerQuery = cols => db.from('salespeople').select(cols).eq('email', email).eq('is_active', true).maybeSingle()
@@ -92,6 +106,17 @@ export default async function handler(req, res) {
     // Before the team column exists every sales login is a seller.
     if (sellerErr) ({ data: seller } = await sellerQuery('id,full_name,email,password_hash,phone,is_active'))
     if (!seller || !verifySalesPassword(password, seller.password_hash, email)) {
+      // v1.0.234 · client portal logins (e-mail, or the store name) get the signed cookie too,
+      // same rules as the browser used: active login, exact password.
+      const client = await clientLogin(db, email, password)
+      if (client) {
+        const user = {
+          id: client.id, name: client.contact_name?.trim() || client.location_name || client.client_name || client.email,
+          email: client.email, role: 'client', client_id: client.client_id, client_name: client.client_name, location_name: client.location_name,
+        }
+        setSalesSessionCookie(res, createSalesSession(user, EMPLOYEE_SESSION_TTL), EMPLOYEE_SESSION_TTL)
+        return res.status(200).json({ success: true, user, db_token: createDbToken(user) })
+      }
       // Employee and client logins also pass here first; only count a failure
       // when no other account type matches, which the browser checks next.
       if (!(await isOtherAccount(db, email))) recordFailure(req)
@@ -106,7 +131,7 @@ export default async function handler(req, res) {
     // made sellers look signed in while every Sales portal call failed. Deactivation
     // still applies at once (requireActiveSalesSession checks is_active per request).
     setSalesSessionCookie(res, createSalesSession(user, EMPLOYEE_SESSION_TTL), EMPLOYEE_SESSION_TTL)
-    return res.status(200).json({ success: true, user })
+    return res.status(200).json({ success: true, user, db_token: createDbToken(user) })
   } catch (error) {
     return res.status(500).json({ error: 'Não foi possível iniciar a sessão comercial.' })
   }

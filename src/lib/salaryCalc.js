@@ -19,10 +19,10 @@ export function jobPay(job) {
  * is set (field or description line), else the old rule (client value × rate). On employee screens the
  * client value is never loaded, so there only the worker's own pay counts.
  */
-export function perJobWorkerPay(job, rate = 100) {
-  const own = jobEmployeePay(job)
-  if (own !== null) return own
-  return Math.round(jobPay(job) * (rate / 100))
+export function perJobWorkerPay(job, _rate = 0) {
+  // v1.0.214 · owner rule (12/11): pay comes ONLY from what is set on the job ("Pagamento do funcionário")
+  // or a registered package. No client price, no contract price, no automatic % — empty = 'a definir' (¥0).
+  return jobEmployeePay(job) ?? 0
 }
 
 export function completedJobsInMonth(jobs, month, todayStr = tokyoToday()) {
@@ -86,9 +86,9 @@ export function monthBase(emp, jobs, month) {
   const hourly = Math.round(minutes / 60 * yenAmount(emp?.hourly_rate))
   const type = emp?.salary_type
   if (type === 'hourly') return hourly
-  if (type === 'per_job') return done.reduce((s, j) => s + perJobWorkerPay(j, emp?.job_bonus_rate || 100), 0)
+  if (type === 'per_job') return done.reduce((s, j) => s + perJobWorkerPay(j, emp?.job_bonus_rate), 0)
   if (type === 'mixed') {
-    return fixedMonthBase(emp, month) + hourly + done.reduce((s, j) => s + Math.round(jobPay(j) * ((emp?.job_bonus_rate || 0) / 100)), 0)
+    return fixedMonthBase(emp, month) + hourly + done.reduce((s, j) => s + perJobWorkerPay(j), 0)
   }
   return fixedMonthBase(emp, month)
 }
@@ -118,8 +118,10 @@ export function calcEmployeeMonthlySalary(empInfo, allJobs, deductionsList = [],
     if (day !== 0 && day !== 6) remain++
   }
 
-  const total = base + spotEarned
+  const extras = one.extras || 0
+  const total = base + spotEarned + extras
   return {
+    extras, extraRows: one.extraRows || [],
     // v1.0.173 · which rule paid the month + its packages, so each job / day is shown with the same rule
     payRule: payRuleOf(one),
     jobs: completed.length,
@@ -164,6 +166,9 @@ export function payRatesMissing(empInfo) {
 /** Month a salary_payments row belongs to: its period, else the month of its date. */
 export const lineMonth = row => row?.period || String(row?.payment_date || row?.created_at || '').slice(0, 7)
 
+/** v1.0.209 · An "extra" line of the month: part of the payslip total (added in Folha), paid with the salary. */
+export const isPayslipExtra = row => row?.payment_type === 'extra' && !row?.is_deduction && row?.status !== 'cancelled'
+
 /** A deduction that counts in pay: not cancelled (automatic suggestions wait as cancelled until approved). */
 export const countsAsDeduction = row => !!row?.is_deduction && row.status !== 'cancelled'
 
@@ -206,15 +211,18 @@ export function payrollMonth({ emp, jobs = [], lines = [], month, basis = null }
   const mine = (lines || []).filter(l => lineMonth(l) === month)
   const dedRows = mine.filter(countsAsDeduction)
   const deductions = dedRows.reduce((s, d) => s + yenAmount(d.amount), 0)
+  // v1.0.209 · lines the admin adds to the payslip (Folha → relatório) count inside it, never paid apart
+  const extraRows = mine.filter(isPayslipExtra)
+  const extras = extraRows.reduce((s, d) => s + yenAmount(d.amount), 0)
   return {
-    month, base, jobsPay, deductions, dedRows,
+    month, base, jobsPay, deductions, dedRows, extras, extraRows,
     basis: pick, autoBasis: pick ? null : auto, fixedTotal, perJob, packages, packageTotal, packageJobs: pkgJobs.length,
     // v1.0.133 · never blocks the close any more (fixed wins by default); kept for old callers.
     needsBasis: false,
     // both a fixed salary and jobs with employee pay: the admin may switch (fixed counts until then)
     bothOptions: !pick && fixedTotal > 0 && perJob.priced > 0,
-    gross: base + jobsPay,
-    net: Math.max(0, base + jobsPay - deductions),
+    gross: base + jobsPay + extras,
+    net: Math.max(0, base + jobsPay + extras - deductions),
     jobs: done.length,
     minutes: done.reduce((s, j) => s + jobMinutes(j), 0),
     salaryLine: mine.find(l => l.payment_type === 'salary' && l.status !== 'cancelled') || null,
@@ -254,8 +262,8 @@ export function jobWorkerPay(job, emp, rule = null) {
   const type = emp?.salary_type || 'fixed'
   const hourly = Math.round(jobMinutes(job) / 60 * yenAmount(emp?.hourly_rate))
   if (type === 'hourly') return hourly + spot
-  if (type === 'per_job') return perJobWorkerPay(job, emp?.job_bonus_rate || 100) + spot
-  if (type === 'mixed') return hourly + Math.round(jobPay(job) * ((emp?.job_bonus_rate || 0) / 100)) + spot
+  if (type === 'per_job') return perJobWorkerPay(job, emp?.job_bonus_rate) + spot
+  if (type === 'mixed') return hourly + perJobWorkerPay(job) + spot
   if (type !== 'fixed') return hourly + spot
   return spot
 }

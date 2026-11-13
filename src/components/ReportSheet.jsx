@@ -2,6 +2,7 @@
 // here, in a fixed order; a missing piece shows a "not sent" tag instead of disappearing.
 // header · summary · checklist · media (before / after / video) · notes · GPS
 // signature · AI grade with reasons · audit
+import MediaZipButton from './MediaZipButton'
 import { jaFizStamp, jaFizAuditFromJob } from '../lib/jaFiz'
 import { loadJaFizAudit } from '../lib/jaFizOps'
 import { useEffect, useState } from 'react'
@@ -318,6 +319,8 @@ export default function ReportSheet({ row, tr, lang, contracts = [], user, onPho
       </Section>
 
       {/* 9 · v1.0.164 · the admin's own signature, added with one button at the end */}
+      {/* v1.0.234 · every photo and video of this service in one file */}
+      {row.job_id && user?.role === 'admin' && <div style={{ margin: '12px 0' }}><MediaZipButton className="btn" jobs={[{ id: row.job_id, title: job?.title || row.job_title || row.client_name || '', scheduled_date: job?.scheduled_date || row.report_date || '', photo_start_url: job?.photo_start_url, photo_end_url: job?.photo_end_url }]} name={`kuripuro ${job?.scheduled_date || row.report_date || ''} ${job?.title || row.job_title || ''}`} label={L('Download all photos and videos (ZIP)', '写真・動画をまとめてダウンロード（ZIP）', 'Baixar todas as fotos e vídeos (ZIP)')} /></div>}
       {row.job_id && <AdminSignatureSection jobId={row.job_id} user={user} L={L} lang={lang} />}
 
       <div style={{ display: 'flex', gap: 8, paddingTop: 14, borderTop: '1px solid var(--border)' }}>

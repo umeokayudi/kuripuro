@@ -63,6 +63,8 @@ import {
   isJobFullyRegistered,
   isDuskinJob,
   pastServicePrefillFromJob,
+  doneTimeText,
+  REDO_REASON_MIN,
   ALL_DEEP_COMPONENT_IDS,
 } from '../lib/employeeAddJob'
 import {
@@ -90,6 +92,7 @@ import { monthLabel } from '../lib/earnings'
 import AvailabilityPlanner, { TimeOffList, ShiftWeekButton, fmtDay } from '../components/AvailabilityPlanner'
 import FreeJobsCard from '../components/FreeJobsCard'
 import TeamChannel from '../components/TeamChannel'
+import ChatHub from '../components/ChatHub'
 import { unseenDecisions, timeOffListRows, loadSeen, markSeen } from '../lib/timeOffNotices'
 import { planningAlert, addDays as addDaysIso } from '../lib/availability'
 import { SIGNATURE_INK } from '../lib/signature'
@@ -233,6 +236,8 @@ export default function EmployeePortal() {
   const [coworkers, setCoworkers] = useState([])
   const [teamMessages, setTeamMessages] = useState([])
   const [chatKey, setChatKey] = useState(null)
+  // v1.0.228 · Chat tab: null = list (office, groups, gerência); 'office' = office chat; else a group / private key
+  const [chatView, setChatView] = useState(() => { try { const q = new URLSearchParams(window.location.search); return q.get('tab') === 'chat' ? (q.get('ch') || null) : null } catch { return null } })
   const coworkersRef = useRef([])
   coworkersRef.current = coworkers
   const [badges, setBadges] = useState([])
@@ -433,7 +438,7 @@ export default function EmployeePortal() {
   }, [activeJob])
 
   useEffect(() => {
-    if (tab==='chat') {
+    if (tab==='chat' && chatView==='office') {
       if (chatOnOffice) { if (officeUnread > 0) markRead() }
       else if (chatKey && teamMessages.some(m=>m.from_employee_id===chatKey&&m.to_employee_id===user.id&&!m.read)) markTeamRead(chatKey)
       // Only auto-scroll if user hasn't scrolled up
@@ -441,13 +446,16 @@ export default function EmployeePortal() {
         setTimeout(()=>msgEndRef.current?.scrollIntoView({behavior:'smooth'}),100)
       }
     }
-  }, [tab, messages, teamMessages, chatKey])
+  }, [tab, messages, teamMessages, chatKey, chatView])
 
   // Phones open the people list first; wider screens open the leader (or the office) beside it.
   useEffect(() => {
     if (tab!=='chat' || !teamReady || chatKey) return
     if (window.matchMedia('(min-width: 821px)').matches) setChatKey(coworkers.find(c=>c.id===user.id)?.leader_id || OFFICE_KEY)
   }, [tab, teamReady])
+
+  // leaving the Chat tab goes back to its list next time
+  useEffect(() => { if (tab!=='chat') setChatView(null) }, [tab])
 
   const openChat = (key) => { setChatKey(key); setNewMsg(''); setUserScrolled(false) }
 
@@ -973,6 +981,7 @@ export default function EmployeePortal() {
           toast(e.finishExistingShift || e.pastServiceInProgress)
           setTab('shift')
         } else if (result.error === 'blocked') toast.error(e.pastServiceBlocked)
+        else if (result.error === 'done_by_other') toast.error(fill(result.doneAt ? e.addServiceDoneByAt : e.addServiceDoneBy, { name: result.doneBy || '—', time: result.doneAt || '' }) + ' — ' + e.addServiceRedoUseAdd)
         else if (result.error === 'day_closed') toast.error(e.lateRegisterClosed)
         else if (result.error === 'deep_components_required') toast.error(e.deepComponentsRequired)
         else if (result.error === 'basic_not_available') toast.error(e.basicNotAvailable)
@@ -1041,7 +1050,7 @@ export default function EmployeePortal() {
     }
   }
 
-  const handleAddService = async (location, cleaningType, deepComponents, option, plan = null, mode = 'take') => {
+  const handleAddService = async (location, cleaningType, deepComponents, option, plan = null, mode = 'take', redoReason = '') => {
     if (addServiceBusy) return
     if (mode === 'dupla') return handleJoinDupla(option?.job)
     const date = plan?.date || tokyoToday()
@@ -1050,9 +1059,12 @@ export default function EmployeePortal() {
       return toast.error(e.addServiceAlreadyYours)
     }
     if (option?.state === 'blocked') {
-      return toast.error(e.addServiceBlocked)
+      return toast.error(option.reason === 'planned' ? fill(e.addServicePlannedFor, { name: option.byName || '—' }) : fill(e.addServiceInProgressBy, { name: option.byName || '—' }))
     }
-    if (option?.state === 'done_today') {
+    if (option?.state === 'done_today' && option.byOther && !redoReason) {
+      return toast.error(e.addServiceRedoNeedReason)
+    }
+    if (option?.state === 'done_today' && !option.byOther) {
       if (forTomorrow) return toast.error(e.addServiceDoneToday)
       if (isJobFullyRegistered(option.job)) return toast.error(e.pastServiceAlreadyDone)
       setShowAddService(false)
@@ -1069,9 +1081,11 @@ export default function EmployeePortal() {
         deepComponents: cleaningType === 'deep' ? deepComponents : [],
         shiftStart: plan?.start || null,
         shiftEnd: plan?.end || null,
+        redoReason,
       })
       if (!result.ok) {
         if (result.error === 'already_yours') toast.error(e.addServiceAlreadyYours)
+        else if (result.error === 'done_by_other') toast.error(e.addServiceRedoNeedReason)
         else if (result.error === 'already_done_today') toast.error(e.addServiceDoneToday)
         else if (result.error === 'blocked') toast.error(e.addServiceBlocked)
         else if (result.error === 'transfer_race') toast.error(e.addServiceRace)
@@ -1089,6 +1103,8 @@ export default function EmployeePortal() {
         toast.success(fill(e.addServiceTransferred, { location: location.name, name: result.fromEmployee || '—' }))
       } else if (result.action === 'claimed') {
         toast.success(fill(e.addServiceClaimed, { location: location.name }))
+      } else if (result.action === 'redo') {
+        toast.success(fill(e.addServiceRedoDone, { location: location.name }))
       } else {
         toast.success(fill(e.addServiceSuccess, { location: location.name }))
       }
@@ -1691,6 +1707,8 @@ export default function EmployeePortal() {
 
   const todayJobs = sortByOrder(allJobs.filter(j=>j.scheduled_date===today))
   const todayPendingJobs = todayJobs.filter(j=>['assigned','in_progress'].includes(j.status))
+  // v1.0.234 · cancelled services are not part of the day's count ("3 locais", "X de Y")
+  const todayLiveJobs = todayJobs.filter(j=>j.status!=='cancelled')
 
   // GPS on the home map: where the employee is now, where today's sites are, and the nearest one.
   const pendingKey = todayPendingJobs.map(j=>j.id).join(',')
@@ -2385,9 +2403,9 @@ export default function EmployeePortal() {
               {todayJobs.length>0&&(
                 <button type="button" role="listitem" className="ex-card is-wide" onClick={()=>goToTab('shift')}>
                   <div className="ex-card-head"><strong>{todayAllDone?e.todayShiftDone:e.todayShift}</strong><span className="ex-card-icon">▶</span></div>
-                  <div className="ex-card-big">{todayJobs.length} <small>{e.locations}</small></div>
-                  <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayJobs.length*0.75)})}</div>
-                  <div className="ex-progress"><i className="is-green" style={{width:(todayJobs.filter(j=>j.status==='completed').length/todayJobs.length*100)+'%'}} /><i style={{width:(todayJobs.filter(j=>j.status==='in_progress').length/todayJobs.length*100)+'%'}} /></div>
+                  <div className="ex-card-big">{todayLiveJobs.length} <small>{e.locations}</small></div>
+                  <div className="ex-card-sub">{fill(e.doneRemaining,{done:todayJobs.filter(j=>j.status==='completed').length,remaining:todayPendingJobs.length})} · ⏱ {fill(e.estHours,{hours:Math.round(todayLiveJobs.length*0.75)})}</div>
+                  <div className="ex-progress"><i className="is-green" style={{width:(todayJobs.filter(j=>j.status==='completed').length/todayLiveJobs.length*100)+'%'}} /><i style={{width:(todayJobs.filter(j=>j.status==='in_progress').length/todayLiveJobs.length*100)+'%'}} /></div>
                   <span className="ex-pill">{todayAllDone?e.tapToReview:e.startArrow}</span>
                 </button>
               )}
@@ -2523,7 +2541,7 @@ export default function EmployeePortal() {
 
         {tab==='reports'&&(
           <section className="emp-shift-screen">
-            <div className="emp-section-heading"><span>{L('Last 7 days','過去7日間','Últimos 7 dias')}</span><h1>📄 {L('Service reports','作業報告書','Relatórios de serviço')}</h1><p>{L('Photos and notes now or later — the AI writes it, the office sends it to the client.','写真とメモは作業中でも後でもOK。AIが文章を作成し、事務所が送付します。','Fotos e notas agora ou depois — a IA escreve e o escritório envia ao cliente.')}</p></div>
+            <div className="emp-section-heading"><span>{L('By period','期間別','Por período')}</span><h1>📄 {L('Service reports','作業報告書','Relatórios de serviço')}</h1><p>{L('Photos and notes now or later — the AI writes it, the office sends it to the client.','写真とメモは作業中でも後でもOK。AIが文章を作成し、事務所が送付します。','Fotos e notas agora ou depois — a IA escreve e o escritório envia ao cliente.')}</p></div>
             <EmployeeWorkReports jobs={allJobs} activeJob={activeJob} today={today} user={user} flat />
           </section>
         )}
@@ -2777,12 +2795,25 @@ export default function EmployeePortal() {
         {tab==='team'&&<TeamChannel me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L} onChanged={loadAll} />}
 
         {/* CHAT */}
-        {tab==='chat'&&(
+        {tab==='chat'&&chatView===null&&(
+          <ChatHub me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L}
+            officeUnread={officeUnread}
+            officeLast={lastAdminMsg ? chatPreview(lastAdminMsg.content, '📷').substring(0,60) : ''}
+            coverCount={spotJobs.filter(j=>j._open).length}
+            onOpen={k=>{ if (k==='office') openChat(OFFICE_KEY); setChatView(k) }} />
+        )}
+        {tab==='chat'&&chatView&&chatView!=='office'&&(
+          <TeamChannel key={chatView} me={{ role:'employee', id:user.id, name:user.name }} lang={lang} L={L} onChanged={loadAll}
+            focus={chatView} onBack={()=>setChatView(null)} />
+        )}
+        {tab==='chat'&&chatView==='office'&&(
           <EmployeeChat
-            messages={chatOnOffice ? officeThread(messages) : threadWith(teamMessages, user.id, chatKey)}
-            teamReady={teamReady}
+            showBack
+            onBackToList={()=>{ setChatView(null); setChatKey(null) }}
+            messages={officeThread(messages)}
+            teamReady={false}
             sections={chatSections}
-            activeKey={teamReady ? chatKey : OFFICE_KEY}
+            activeKey={OFFICE_KEY}
             onOpen={openChat}
             onBack={()=>setChatKey(null)}
             labels={e}
@@ -2917,6 +2948,8 @@ function DayGroupView({ allJobs, today, setSelectedJob, fmt, S, labels }) {
 
 /** v1.0.131 · "💴 ¥1.000" (the employee's own pay for the job) or "a definir" — never ¥0 for empty. */
 function PayChip({ job, L, lang }) {
+  // v1.0.234 · a cancelled service pays nothing: never show "Você recebe" on it
+  if (job?.status === 'cancelled') return null
   return <span style={{fontSize:10,fontWeight:700,color:payKind(job)==='undefined'?'rgba(255,255,255,0.35)':'#c19c56'}}>💴 {L('You receive','受取','Você recebe')}: {payText(job,L,lang)}</span>
 }
 
@@ -2934,7 +2967,8 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
   const todayQueue = todayJobs.filter(j => j.id !== activeJob?.id)
   const movableIds = todayQueue.filter(j => j.status === 'assigned').map(j => j.id)
   const done = todayJobs.filter(j=>j.status==='completed').length
-  const total = todayJobs.length
+  // v1.0.216 · a job a coworker already did ("Coberto por") is not part of my day's count
+  const total = todayJobs.filter(j=>j.status!=='covered'&&j.status!=='cancelled').length
   const beforePhotos = jobPhotos.filter(p=>p.slot==='start')
   const afterPhotos = jobPhotos.filter(p=>p.slot==='end')
   const showActivePanel = !!activeJob
@@ -3140,7 +3174,7 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
                 <div>
                   <div style={{fontSize:14,fontWeight:600,color:isDone||job.covered_by?'rgba(255,255,255,0.4)':'#fff',textDecoration:isDone||job.covered_by?'line-through':'none'}}>{job.title.replace(/ — .*/,'')}</div>
                   <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3,flexWrap:'wrap'}}>
-                    {job.covered_by&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#a5b4fc',background:'rgba(165,180,252,0.15)'}}>🔁 {L(`Covered by ${job.covered_by}`,`${job.covered_by}が実施`,`Coberto por ${job.covered_by}`)}</span>}
+                    {job.covered_by&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#a5b4fc',background:'rgba(165,180,252,0.15)'}}>🔁 {L(`Already done by ${job.covered_by} · the office removes it from your route`,`${job.covered_by}が実施済み · 事務所がルートから外します`,`Já feito por ${job.covered_by} · o escritório tira da sua rota`)}</span>}
                     {(() => {
                       const ct = getCleaningType(job)
                       const cfg = cleaningTypesForLang(lang)[ct]
@@ -3608,6 +3642,8 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   const [shiftEnd, setShiftEnd] = useState('05:00')
   // v1.0.197 · 'take' = the service becomes mine; 'dupla' = I join the other person, pay split 50/50
   const [mode, setMode] = useState('take')
+  // v1.0.216 · reason to redo a store a coworker already finished today
+  const [redoReason, setRedoReason] = useState('')
 
   const typeLabels = cleaningTypesForLang(lang)
   const locations = manualAddLocations()
@@ -3633,13 +3669,18 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
     if (opt.state === 'blocked' && joinable(opt)) return { text: fill(labels.duplaJoinBadge, { name: partnerName(opt) }), color: '#7c3aed', bg: 'rgba(124,58,237,0.12)' }
     if (opt.state === 'blocked' && isDupla(opt.job)) return { text: labels.duplaAlready, color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' }
     if (opt.state === 'mine') return { text: labels.addServiceMine, color: '#4ade80', bg: 'rgba(74,222,128,0.12)' }
+    if (opt.state === 'done_today' && opt.byOther) {
+      const at = doneTimeText(opt.job)
+      return { text: fill(at ? labels.addServiceDoneByAt : labels.addServiceDoneBy, { name: opt.doneBy, time: at }), color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' }
+    }
     if (opt.state === 'done_today') {
       if (isJobFullyRegistered(opt.job)) return { text: labels.addServiceDoneToday, color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' }
       return { text: labels.addServiceDoneTodayRetro, color: '#e8c47a', bg: 'rgba(193,156,86,0.15)' }
     }
     if (opt.state === 'claim') return { text: labels.addServiceClaim, color: '#34d399', bg: 'rgba(52,211,153,0.12)' }
     if (opt.state === 'transfer') return { text: fill(labels.addServiceTransfer, { name: opt.fromEmployee }), color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
-    if (opt.state === 'blocked') return { text: labels.addServiceBlocked, color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
+    if (opt.state === 'blocked' && opt.reason === 'planned') return { text: fill(labels.addServicePlannedFor, { name: opt.byName || '—' }), color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' }
+    if (opt.state === 'blocked') return { text: fill(labels.addServiceInProgressBy, { name: opt.byName || '—' }), color: '#f87171', bg: 'rgba(248,113,113,0.12)' }
     return { text: labels.addServiceAvailable, color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' }
   }
 
@@ -3660,12 +3701,16 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
   }
 
   const deepReady = cleaningType !== 'deep' || deepComponents.length > 0
-  const doneNeedsRetro = picked?.state === 'done_today' && !isJobFullyRegistered(picked.job)
+  const redoPick = picked?.state === 'done_today' && !!picked.byOther
+  const redoOk = redoPick && !isTomorrow && redoReason.trim().length >= REDO_REASON_MIN
+  const doneNeedsRetro = picked?.state === 'done_today' && !picked.byOther && !isJobFullyRegistered(picked.job)
   const duplaMode = mode === 'dupla' && joinable(picked)
-  const canConfirm = duplaMode || (picked && deepReady && shiftCheck.ok && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || (doneNeedsRetro && !isTomorrow)))
+  const canConfirm = duplaMode || (picked && deepReady && shiftCheck.ok && picked.state !== 'mine' && picked.state !== 'blocked' && (picked.state !== 'done_today' || redoOk || (doneNeedsRetro && !isTomorrow)))
 
   const confirmLabel = duplaMode
     ? fill(labels.duplaConfirm, { name: partnerName(picked) })
+    : redoPick
+    ? labels.addServiceRedoConfirm
     : picked?.state === 'done_today' && doneNeedsRetro
     ? labels.addServiceDoneTodayRetro
     : picked?.state === 'transfer'
@@ -3776,13 +3821,14 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
           {filtered.map(opt => {
             const b = badge(opt)
             const selected = picked?.location?.name === opt.location.name
-            const disabled = opt.state === 'mine' || (opt.state === 'blocked' && !joinable(opt)) || (opt.state === 'done_today' && isJobFullyRegistered(opt.job))
+            const disabled = opt.state === 'mine' || (opt.state === 'blocked' && !joinable(opt))
+              || (opt.state === 'done_today' && (opt.byOther ? isTomorrow : isJobFullyRegistered(opt.job)))
             return (
               <button
                 key={opt.location.name}
                 type="button"
                 disabled={disabled}
-                onClick={() => { setPicked(opt); setMode(opt.state === 'blocked' ? 'dupla' : 'take') }}
+                onClick={() => { setPicked(opt); setRedoReason(''); setMode(opt.state === 'blocked' ? 'dupla' : 'take') }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 8, borderRadius: 12,
                   border: selected ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.08)',
@@ -3801,6 +3847,25 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
             )
           })}
         </div>
+
+        {redoPick && !isTomorrow && (
+          <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 12, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.35)' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#f87171', marginBottom: 4 }}>
+              {fill(doneTimeText(picked.job) ? labels.addServiceDoneByAt : labels.addServiceDoneBy, { name: picked.doneBy, time: doneTimeText(picked.job) })}
+            </div>
+            <div style={{ fontSize: 12, lineHeight: 1.5, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>{labels.addServiceRedoHint}</div>
+            <textarea
+              value={redoReason}
+              onChange={ev => setRedoReason(ev.target.value)}
+              rows={3}
+              placeholder={labels.addServiceRedoPlaceholder}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14, boxSizing: 'border-box', resize: 'vertical' }}
+            />
+            {redoReason.trim().length < REDO_REASON_MIN && (
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 6 }}>{labels.addServiceRedoNeedReason}</div>
+            )}
+          </div>
+        )}
 
         {picked && joinable(picked) && (
           <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 12, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.3)' }}>
@@ -3829,7 +3894,7 @@ function AddServiceModal({ employeeId, todayJobs, labels, lang, busy, onClose, o
         <button
           type="button"
           disabled={!canConfirm || busy}
-          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked, isTomorrow ? { date: dayDate, start: shiftStart, end: shiftEnd } : null, duplaMode ? 'dupla' : 'take')}
+          onClick={() => picked && onAdd(picked.location, cleaningType, deepComponents, picked, isTomorrow ? { date: dayDate, start: shiftStart, end: shiftEnd } : null, duplaMode ? 'dupla' : 'take', redoPick ? redoReason.trim() : '')}
           style={{
             width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 15, fontWeight: 800,
             background: canConfirm && !busy ? 'linear-gradient(135deg,#60a5fa,#3b82f6)' : 'rgba(255,255,255,0.08)',

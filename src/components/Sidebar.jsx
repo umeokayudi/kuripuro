@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { isOwner } from '../lib/viewAs'
 import { TIME_OFF_CHANGED } from '../lib/timeOff'
 import { PAYROLL_CHANGED } from '../lib/payrollAlerts'
 import { fetchPendingCounts, PENDING_CHANGED } from '../lib/adminPending'
@@ -7,6 +8,8 @@ import { tokyoToday } from '../lib/dates'
 import { useLang, fill } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { Icons } from './Icons'
+
+const ViewAsPicker = lazy(() => import('./ViewAs'))
 import LanguageToggle from './LanguageToggle'
 
 const groups = [
@@ -14,14 +17,14 @@ const groups = [
     key: 'navOps',
     items: [
       { to: '/', key: 'dashboard', icon: Icons.dashboard },
-      { to: '/jobs', key: 'jobs', icon: Icons.list },
-      { to: '/schedule', key: 'schedule', icon: Icons.list },
-      { to: '/live', key: 'liveTrack', icon: Icons.users },
-      { to: '/team-channel', key: 'teamChannel', icon: Icons.users },
-      { to: '/reports', key: 'reports', icon: Icons.file },
-      { to: '/work-reports', key: 'workReports', icon: Icons.file },
-      { to: '/videos', key: 'videos', icon: Icons.file },
-      { to: '/google-agenda', key: 'googleAgenda', icon: Icons.list },
+      { to: '/jobs', key: 'jobs', icon: Icons.briefcase },
+      { to: '/schedule', key: 'schedule', icon: Icons.calendar },
+      { to: '/live', key: 'liveTrack', icon: Icons.live },
+      { to: '/team-channel', key: 'teamChannel', icon: Icons.messages },
+      { to: '/reports', key: 'reports', icon: Icons.chart },
+      { to: '/work-reports', key: 'workReports', icon: Icons.clipboard },
+      { to: '/videos', key: 'videos', icon: Icons.video },
+      { to: '/google-agenda', key: 'googleAgenda', icon: Icons.calendarCheck },
     ],
   },
   {
@@ -29,48 +32,49 @@ const groups = [
     items: [
       { to: '/users', key: 'users', icon: Icons.user },
       { to: '/employees', key: 'employees', icon: Icons.users },
-      { to: '/evaluations', key: 'evaluations', icon: Icons.users },
-      { to: '/training', key: 'training', icon: Icons.file },
-      { to: '/equipment-requests', key: 'equipmentRequests', icon: Icons.list },
-      { to: '/transport-claims', key: 'transport', icon: Icons.list },
+      { to: '/evaluations', key: 'evaluations', icon: Icons.award },
+      { to: '/meetings', key: 'meetings', icon: Icons.users },
+      { to: '/training', key: 'training', icon: Icons.cap },
+      { to: '/equipment-requests', key: 'equipmentRequests', icon: Icons.tool },
+      { to: '/transport-claims', key: 'transport', icon: Icons.train },
     ],
   },
   {
     key: 'navPayroll',
     items: [
       { to: '/salary', key: 'salary', icon: Icons.calc },
-      { to: '/salary-periods', key: 'payrollClose', icon: Icons.calc },
-      { to: '/payments', key: 'payments', icon: Icons.calc },
-      { to: '/deductions', key: 'deductions', icon: Icons.calc },
-      { to: '/salary-complaints', key: 'salaryIssues', icon: Icons.list },
+      { to: '/salary-periods', key: 'payrollClose', icon: Icons.calendarCheck },
+      { to: '/payments', key: 'payments', icon: Icons.yen },
+      { to: '/deductions', key: 'deductions', icon: Icons.minusCircle },
+      { to: '/salary-complaints', key: 'salaryIssues', icon: Icons.help },
     ],
   },
   {
     key: 'navClients',
     items: [
       { to: '/clients', key: 'clients', icon: Icons.building },
-      { to: '/facility', key: 'facility', icon: Icons.building },
+      { to: '/facility', key: 'facility', icon: Icons.map },
       { to: '/contracts', key: 'contracts', icon: Icons.file },
-      { to: '/client-feedback', key: 'clientFeedback', icon: Icons.receipt },
-      { to: '/partners', key: 'partners', icon: Icons.building },
-      { to: '/adminchat', key: 'chat', icon: Icons.users },
+      { to: '/client-feedback', key: 'clientFeedback', icon: Icons.star2 },
+      { to: '/partners', key: 'partners', icon: Icons.handshake },
+      { to: '/adminchat', key: 'chat', icon: Icons.message },
     ],
   },
   {
     key: 'navBilling',
     items: [
-      { to: '/faturas', key: 'faturas', icon: Icons.file },
+      { to: '/faturas', key: 'faturas', icon: Icons.invoice },
       { to: '/ryoshu', key: 'ryoshu', icon: Icons.receipt },
-      { to: '/cashflow', key: 'cashflow', icon: Icons.chart },
+      { to: '/cashflow', key: 'cashflow', icon: Icons.wallet },
     ],
   },
   {
     key: 'navSales',
     items: [
-      { to: '/mitsumori', key: 'mitsumori', icon: Icons.file },
-      { to: '/sales-funnel', key: 'salesFunnel', icon: Icons.chart },
+      { to: '/mitsumori', key: 'mitsumori', icon: Icons.quote },
+      { to: '/sales-funnel', key: 'salesFunnel', icon: Icons.funnel },
       { to: '/sales-team', key: 'salesTeam', icon: Icons.users },
-      { to: '/marketing', key: 'marketing', icon: Icons.chart },
+      { to: '/marketing', key: 'marketing', icon: Icons.megaphone },
     ],
   },
 ]
@@ -123,8 +127,9 @@ export function usePendingCounts() {
 }
 
 export default function Sidebar({ mobileOpen = false, onMobileClose }) {
-  const { t } = useLang()
-  const { logout } = useAuth()
+  const { t, tr } = useLang()
+  const { logout, user } = useAuth()
+  const [viewAs, setViewAs] = useState(false)
   const s = t.sidebar
   const [collapsed, setCollapsed] = useState(false)
   // Unresolved items per menu entry (day-off requests, client quote requests, unread chat…):
@@ -162,6 +167,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }) {
         ))}
       </nav>
       <div className="sidebar-footer">
+        {isOwner(user) && <button type="button" onClick={() => setViewAs(true)} className="sidebar-logout sidebar-viewas">{tr('View as…', '画面を見る…', 'Ver como…')}</button>}
+        {viewAs && <Suspense fallback={null}><ViewAsPicker onClose={() => setViewAs(false)} /></Suspense>}
         <LanguageToggle variant="dark" />
         <button type="button" onClick={logout} className="sidebar-logout">
           {s.logout}

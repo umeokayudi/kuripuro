@@ -21,7 +21,8 @@ function testEnrichJobValues() {
 
 function testEmployeeEarnings() {
   const job = { status: 'completed', value: 10000, retro_value: null, started_at: '2026-09-10T01:00:00Z', completed_at: '2026-09-10T02:00:00Z' }
-  assert(employeeEarningsForJob(job, { salary_type: 'per_job', job_bonus_rate: 50 }) === 5000, 'per_job 50%')
+  assert(employeeEarningsForJob(job, { salary_type: 'per_job', job_bonus_rate: 50 }) === 0, 'per_job without employee_pay = a definir (never % of client price)')
+  assert(employeeEarningsForJob({ ...job, employee_pay: 1200 }, { salary_type: 'per_job', job_bonus_rate: 50 }) === 1200, 'per_job = employee_pay')
   assert(employeeEarningsForJob(job, { salary_type: 'hourly', hourly_rate: 1500 }) === 1500, 'hourly 1h')
   assert(employeeEarningsForJob(job, { salary_type: 'fixed', fixed_salary: 220000 }) === 0, 'fixed per-job display')
 }

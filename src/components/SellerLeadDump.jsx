@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { pickLang } from '../hooks/useLang'
 import { prepareImageForUpload } from '../lib/imageUpload'
 import { applyLeadDump, findDuplicateLead } from '../lib/sellerVisits'
+import { toMp3 } from '../lib/audioToMp3.js'
 
 const baseMime = type => String(type || '').toLowerCase().split(';')[0].trim()
 
@@ -133,12 +134,13 @@ export default function SellerLeadDump({ lang, today, leads, lead, onLead, onVis
       recorder.ondataavailable = e => { if (e.data.size) chunks.current.push(e.data) }
       recorder.onstop = async () => {
         stream.getTracks().forEach(tr => tr.stop())
-        const type = baseMime(recorder.mimeType) || 'audio/webm'
-        const blob = new Blob(chunks.current, { type })
-        if (!blob.size) return setState('')
+        const recorded = new Blob(chunks.current, { type: baseMime(recorder.mimeType) || 'audio/webm' })
+        if (!recorded.size) return setState('')
         setState('uploading')
         try {
-          const file = new File([blob], `lead.${type.includes('mp4') ? 'm4a' : 'webm'}`, { type })
+          const blob = await toMp3(recorded)
+          const type = baseMime(blob.type) || 'audio/webm'
+          const file = new File([blob], `lead.${type === 'audio/mpeg' ? 'mp3' : type.includes('mp4') ? 'm4a' : 'webm'}`, { type })
           const up = await uploadFile(file, 'meeting-audio')
           const next = [...latest.current.files.filter(f => f.kind !== 'audio'), { ...up, kind: 'audio' }]
           setFiles(next)

@@ -1,0 +1,218 @@
+/* v1.0.234 — MODERN LAYER. Loaded last, so it wins over every older stylesheet.
+   What changes is only how things look: one neutral palette, flat white surfaces with a hairline
+   border, one blue accent, calm status colours, the same buttons / fields / tabs / badges on every
+   screen and profile (admin, employee, sales, client), and one-colour pictograms.
+   Nothing here moves, hides or removes a screen, a button or a step.
+   Speed: no blur, no big shadows, no gradients that repaint, no hover "lift". */
+
+@import './emoji-font.css';
+
+:root {
+  --m-ink: #0b0f19;
+  --m-ink-2: #2b3445;
+  --m-muted: #667085;
+  --m-faint: #98a2b3;
+  --m-line: #e7eaf0;
+  --m-line-strong: #d5dae3;
+  --m-bg: #f6f7f9;
+  --m-surface: #ffffff;
+  --m-fill: #f3f5f8;
+  --m-blue: #2f5bf6;
+  --m-blue-ink: #1f46d8;
+  --m-blue-soft: #eef2ff;
+  --m-green: #0e8f5a;
+  --m-green-soft: #e9f7f0;
+  --m-amber: #a15c07;
+  --m-amber-soft: #fdf3e1;
+  --m-red: #d92d3a;
+  --m-red-soft: #fdecee;
+  --m-radius: 14px;
+  --m-radius-sm: 10px;
+  --m-shadow: 0 1px 2px rgba(11, 15, 25, .04);
+  --m-pop: 0 12px 32px rgba(11, 15, 25, .14);
+
+  /* the older variables follow the new palette */
+  --bg: var(--m-bg); --surface: var(--m-surface); --surface2: var(--m-fill);
+  --border: var(--m-line); --text: var(--m-ink); --text2: #475467; --text3: var(--m-faint);
+  --green: var(--m-green); --green-bg: var(--m-green-soft); --red: var(--m-red); --red-bg: var(--m-red-soft);
+  --amber: var(--m-amber); --amber-bg: var(--m-amber-soft); --blue: var(--m-blue-ink); --blue-bg: var(--m-blue-soft);
+  --kp-blue: var(--m-blue); --kp-blue-dark: var(--m-blue-ink); --kp-blue-soft: var(--m-blue-soft);
+  --kp-ink: var(--m-ink); --kp-muted: var(--m-muted); --kp-line: var(--m-line); --kp-field: var(--m-surface);
+  --kp-field-line: var(--m-line-strong); --kp-track: var(--m-fill); --kp-red: var(--m-red);
+  --kp-card-shadow: var(--m-shadow); --shadow: var(--m-shadow); --radius: var(--m-radius); --radius-sm: var(--m-radius-sm);
+  --font: 'Plus Jakarta Sans', 'Noto Sans JP', 'KP Emoji', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: var(--font);
+}
+
+html { text-rendering: optimizeLegibility; font-variant-emoji: text; }
+body { background: var(--m-bg); color: var(--m-ink); font-family: var(--font); letter-spacing: -.006em; }
+button, input, select, textarea { font-family: var(--font); }
+.cp-shell, .cp-brand-tag, .cp-brand-name, .cp-header-title, .cp-stat-val, .cp-deep-progress-title, .cp-deep-donut-pct, .fa-app, .fa-sheet, .fn-root, .fn-page, .cp-backdrop, .emp-shell, .login-shell { font-family: var(--font); }
+::selection { background: rgba(47, 91, 246, .18); color: var(--m-ink); }
+h1, h2, h3, .brand, .topbar-title { font-family: var(--font); }
+
+/* ───────── Admin shell ───────── */
+.sidebar { background: #0b0f19; border-right: 1px solid #0b0f19; }
+.sidebar-logo { border-bottom-color: rgba(255, 255, 255, .08); }
+.sidebar-logo .sub { color: rgba(255, 255, 255, .45); letter-spacing: .01em; }
+.nav-group { margin-bottom: 10px; }
+.nav-group-label { color: rgba(255, 255, 255, .38); font-size: 10.5px; letter-spacing: .08em; font-weight: 700; }
+.nav-item { color: rgba(255, 255, 255, .7); font-size: 13.5px; font-weight: 600; border-radius: 10px; padding: 9px 10px; transition: background-color .12s ease, color .12s ease; }
+.nav-item:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+.nav-item.active { background: #fff; color: var(--m-ink); box-shadow: none; }
+.nav-item.active svg { opacity: 1; }
+.nav-item svg { width: 17px; height: 17px; stroke-width: 1.8; }
+.nav-count { font-variant-numeric: tabular-nums; }
+.sidebar-footer { border-top-color: rgba(255, 255, 255, .08); }
+.sidebar-logout { border-radius: 10px; }
+
+.topbar { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; border-bottom: 1px solid var(--m-line); box-shadow: none; }
+.ref-topbar-search { background: var(--m-fill); border: 1px solid transparent; border-radius: 12px; box-shadow: none; }
+.ref-topbar-search:focus-within { background: #fff; border-color: var(--m-blue); box-shadow: 0 0 0 3px rgba(47, 91, 246, .12); }
+.ref-topbar-search kbd { background: #fff; border: 1px solid var(--m-line); color: var(--m-muted); border-radius: 6px; }
+.ref-search-results { border: 1px solid var(--m-line); border-radius: 14px; box-shadow: var(--m-pop); }
+.ref-avatar { background: var(--m-ink); color: #fff; }
+.ref-user-name { color: var(--m-ink); font-weight: 700; }
+.ref-user-role { color: var(--m-muted); }
+.ref-top-action { border: 1px solid var(--m-line); background: #fff; border-radius: 10px; color: var(--m-ink-2); box-shadow: none; }
+.ref-top-action:hover { background: var(--m-fill); }
+.kp-clock { color: var(--m-ink-2) !important; font-weight: 600; }
+.page-content { background: var(--m-bg); }
+.page-head h2, .dash-hero h2, .dx-hero h1 { color: var(--m-ink); letter-spacing: -.03em; font-weight: 800; }
+.page-head p { color: var(--m-muted); }
+.dx-hero-name { color: var(--m-blue); }
+.dx-eyebrow, .eyebrow, .finance-eyebrow, .sales-kicker { color: var(--m-muted); font-weight: 600; letter-spacing: 0; text-transform: none; }
+
+/* ───────── Surfaces ───────── */
+.card, .main .card, .metric-card, .main .metric-card, .dx-kpi, .kpi-card, .kpi-tile, .executive-card, .fa-card, .fn-card, .fn-kpi, .sh-tile, .cpx-panel, .cpx-kpi, .cpx-invoice, .cpx-request, .kp-users-kpi {
+  background: var(--m-surface); border: 1px solid var(--m-line); border-radius: var(--m-radius); box-shadow: var(--m-shadow);
+}
+.metric-card:hover { transform: none; box-shadow: var(--m-shadow); }
+.card-title, .form-section-title { color: var(--m-ink); font-size: 15px; font-weight: 800; letter-spacing: -.015em; text-transform: none; }
+.metric-label, .dx-kpi-label, .kpi-tile-label { color: var(--m-muted); font-weight: 600; font-size: 12.5px; text-transform: none; letter-spacing: 0; }
+.metric-value, .dx-kpi-value, .kpi-tile-value { color: var(--m-ink); font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.metric-sub { color: var(--m-muted); }
+.dx-kpi { border-radius: var(--m-radius); padding-left: 16px; }
+.dx-kpi:before { width: 3px; top: 14px; bottom: 14px; left: 0; border-radius: 0 3px 3px 0; }
+.divider { background: var(--m-line); }
+
+/* ───────── Buttons ───────── */
+.btn, .fa-btn, .emp-outline-button, .cpx-link {
+  border-radius: var(--m-radius-sm); font-weight: 700; letter-spacing: -.005em; box-shadow: none;
+}
+.btn { min-height: 38px; padding: 8px 14px; border: 1px solid var(--m-line-strong); background: #fff; color: var(--m-ink); font-size: 13.5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.btn:hover { background: var(--m-fill); }
+.btn:active { transform: scale(.985); }
+.btn-sm { min-height: 32px; padding: 5px 11px; font-size: 12.5px; border-radius: 9px; }
+.btn-primary, .main .btn-primary, .btn-gold, .fa-btn-primary, .emp-primary-button { background: var(--m-blue); border-color: var(--m-blue); color: #fff; }
+.btn-primary:hover, .main .btn-primary:hover, .btn-gold:hover, .fa-btn-primary:hover { background: var(--m-blue-ink); border-color: var(--m-blue-ink); }
+.btn-primary:not(:disabled):hover { box-shadow: none; }
+.btn-success { background: var(--m-green); border-color: var(--m-green); color: #fff; }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--m-ink-2); }
+.btn-ghost:hover { background: var(--m-fill); }
+/* Destructive actions sit next to everyday ones on every card: a quiet outline there,
+   and the solid red only where the person is confirming (dialogs). */
+.btn-danger, .fa-btn-danger { background: #fff; border-color: #f3c2c6; color: var(--m-red); }
+.btn-danger:hover, .fa-btn-danger:hover { background: var(--m-red-soft); opacity: 1; }
+.kp-dialog .btn-danger, [role="dialog"] .btn-danger, [role="alertdialog"] .btn-danger { background: var(--m-red); border-color: var(--m-red); color: #fff; }
+.kp-dialog .btn-danger:hover, [role="dialog"] .btn-danger:hover { background: #c02531; }
+.btn:disabled, .btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* ───────── Tabs, filters, chips ───────── */
+.tab-pills { gap: 8px; }
+.tab-pill { height: 38px; padding: 0 15px; border-radius: 999px; border: 1px solid var(--m-line-strong); background: #fff; color: var(--m-ink-2); font-weight: 700; font-size: 13.5px; }
+.tab-pill:hover { background: var(--m-fill); color: var(--m-ink); }
+.tab-pill.active, .sales-tabs button.active, .sales-filter-pills .btn.active, .sales-quick-dates .btn.active, .sales-tag-picker .btn.active, .kp-users-tab.active, .cpx-store-tabs button.is-active {
+  background: var(--m-ink) !important; border-color: var(--m-ink) !important; color: #fff !important; box-shadow: none !important;
+}
+.page-content [style*="background: var(--navy)"] { background: var(--m-ink) !important; border-color: var(--m-ink) !important; }
+.badge { border-radius: 999px; padding: 3px 10px; font-weight: 700; font-size: 11.5px; letter-spacing: 0; }
+.badge-green { background: var(--m-green-soft); color: var(--m-green); }
+.badge-red { background: var(--m-red-soft); color: var(--m-red); }
+.badge-amber { background: var(--m-amber-soft); color: var(--m-amber); }
+.badge-blue { background: var(--m-blue-soft); color: var(--m-blue-ink); }
+.badge-gray, .badge-navy { background: var(--m-fill); color: var(--m-ink-2); }
+
+/* ───────── Fields ───────── */
+.form-group label { color: var(--m-ink-2); font-size: 12.5px; font-weight: 700; }
+.main .form-group input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+.main .form-group select, .main .form-group textarea,
+.page-content input[type=month], .page-content input[type=date], .page-content select {
+  min-height: 42px; border: 1px solid var(--m-line-strong); border-radius: var(--m-radius-sm); background-color: #fff; color: var(--m-ink); font-size: 14px;
+}
+.main .form-group input:focus, .main .form-group select:focus, .main .form-group textarea:focus,
+.page-content input:focus, .page-content select:focus, .page-content textarea:focus { border-color: var(--m-blue); box-shadow: 0 0 0 3px rgba(47, 91, 246, .14); outline: 0; }
+input[type=checkbox], input[type=radio] { accent-color: var(--m-blue); }
+::placeholder { color: var(--m-faint); }
+
+/* ───────── Tables, lists ───────── */
+.table-wrap { border-radius: var(--m-radius-sm); }
+table th { color: var(--m-muted); font-size: 11.5px; font-weight: 700; letter-spacing: .02em; text-transform: none; background: transparent; border-bottom: 1px solid var(--m-line); }
+table td { border-bottom: 1px solid var(--m-line); color: var(--m-ink); font-variant-numeric: tabular-nums; }
+.table-wrap table tbody tr:hover { background: var(--m-fill); }
+
+/* ───────── Empty, loading, notices ───────── */
+.empty-state { background: transparent; border: 1px dashed var(--m-line-strong); border-radius: var(--m-radius); color: var(--m-muted); padding: 28px 18px; text-align: center; }
+.empty-state strong { color: var(--m-ink); font-weight: 700; }
+.alert { border-radius: var(--m-radius-sm); border: 1px solid transparent; font-weight: 600; }
+.alert-info { background: var(--m-blue-soft); color: var(--m-blue-ink); }
+.alert-success { background: var(--m-green-soft); color: var(--m-green); }
+.alert-error { background: var(--m-red-soft); color: var(--m-red); }
+.kp-skel i { background: linear-gradient(90deg, #eceff3 25%, #f6f7f9 37%, #eceff3 63%); background-size: 400% 100%; border-radius: var(--m-radius); }
+.kp-portal-loading { background: var(--m-bg); }
+.kp-portal-loading .kp-mark { background: var(--m-blue); box-shadow: none; border-radius: 14px; }
+.kp-bell-slot { background: var(--m-fill); }
+
+/* ───────── Pop-ups ───────── */
+.kp-dialog-backdrop, .fa-sheet-backdrop, .emp-sheet-backdrop, .drs-overlay { background: rgba(11, 15, 25, .5); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.kp-dialog, .drs-sheet { border-radius: 18px; border: 1px solid var(--m-line); box-shadow: var(--m-pop); }
+.drs-save { box-shadow: none; background: var(--m-blue); }
+.undo-toast { border-radius: 12px; background: var(--m-ink); box-shadow: var(--m-pop); }
+
+/* ───────── Login ───────── */
+.login-shell { background: var(--m-bg); }
+.login-card { border: 1px solid var(--m-line); border-radius: 20px; box-shadow: 0 1px 2px rgba(11, 15, 25, .04), 0 24px 48px -24px rgba(11, 15, 25, .18); background: #fff; }
+.login-card input { background: #fff; border: 1px solid var(--m-line-strong); min-height: 50px; }
+.login-card input:focus { border-color: var(--m-blue); box-shadow: 0 0 0 3px rgba(47, 91, 246, .14); }
+.login-go { background: var(--m-ink); box-shadow: none; min-height: 50px; font-size: 15px; font-weight: 700; }
+.login-go:hover:not(:disabled) { filter: none; background: #1b2232; }
+.login-kp-mark, .login-mark { box-shadow: none; }
+
+/* ───────── Dashboard / day panel ───────── */
+.dx-range { border: 1px solid var(--m-line-strong); box-shadow: none; color: var(--m-ink); border-radius: 12px; }
+.dx-range span { color: var(--m-ink); }
+.attention-card, .attention-item { border-radius: var(--m-radius-sm); }
+
+/* ───────── Employee portal ───────── */
+.emp-shell { --emp-blue: var(--m-blue); --emp-text: var(--m-ink); --emp-muted: var(--m-muted); --emp-border: var(--m-line); background: var(--m-bg) !important; }
+.emp-app-header { background: #fff !important; box-shadow: none !important; border-bottom: 1px solid var(--m-line) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.emp-bottom-nav, .fa-bottom-nav { background: #fff !important; border-top: 1px solid var(--m-line) !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.emp-bottom-item, .fa-nav-item { color: var(--m-muted); font-weight: 600; }
+.emp-bottom-item.active, .fa-nav-item.active, .fa-nav-item.is-active { color: var(--m-ink); }
+.emp-shell .card, .emp-shell .emp-today-shift-card, .emp-shell .emp-score-card, .emp-shell .emp-no-shift-card, .ex-checkin { border: 1px solid var(--m-line) !important; border-radius: 16px; box-shadow: var(--m-shadow) !important; }
+.emp-shell [style*="boxShadow"] { box-shadow: var(--m-shadow) !important; }
+.ex-clock { box-shadow: none; border-color: var(--m-line); }
+.ex-checkin-btn { background: var(--m-ink); box-shadow: none; }
+.ex-checkin.is-active .ex-checkin-btn { background: var(--m-green); box-shadow: none; }
+.emp-sheet, .fa-sheet { border-radius: 20px 20px 0 0; box-shadow: var(--m-pop); }
+.emp-menu-panel { box-shadow: var(--m-pop); }
+
+/* ───────── Sales and client portals ───────── */
+.fa-app, .sales-portal, .cpx-shell, .cpx-app { background: var(--m-bg); }
+.fa-header, .cpx-header { background: #fff; box-shadow: none; border-bottom: 1px solid var(--m-line); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.fa-icon-btn, .cpx-icon-btn { border: 1px solid var(--m-line); background: #fff; box-shadow: none; border-radius: 12px; color: var(--m-ink-2); }
+.fa-tile, .sp-cta { box-shadow: var(--m-shadow); border: 1px solid var(--m-line); }
+.cpx-manager { background: var(--m-ink); box-shadow: none; }
+
+/* ───────── One-colour pictograms take the colour of the text ───────── */
+.nav-item, .tab-pill, .btn, .badge, .card-title, .fa-menu-icon, .emp-menu-item-icon { font-variant-emoji: text; }
+
+/* Phones: comfortable tap targets, no sideways scroll */
+@media (max-width: 720px) {
+  .page-content { padding: 16px 14px 96px; }
+  .btn { min-height: 42px; }
+  .btn-sm { min-height: 36px; }
+  .tab-pill { height: 40px; }
+  .card, .main .card { border-radius: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

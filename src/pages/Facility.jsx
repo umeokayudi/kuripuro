@@ -27,6 +27,13 @@ import { mapsOpenUrl } from '../lib/mapsLink'
 // three.js só é baixado quando a tela abre
 const CityWorld = lazy(() => import('../components/facility/CityWorld'))
 const CityMap = lazy(() => import('../components/facility/CityMap'))
+const Scan3D = lazy(() => import('../components/Scan3D'))
+// A place without a 3D plan has no id of its own: its real-3D scans are filed under client + name.
+function placeScanKey(st) {
+  let h = 5381
+  for (const ch of String(st.id)) h = ((h * 33) ^ ch.codePointAt(0)) >>> 0
+  return `p-${String(st.model?.client_id || 'semcliente').slice(0, 8)}-${h.toString(36)}`
+}
 
 const tokyoToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
 const storeBase = name => String(name || '').split(/\s+[-—–]\s+/)[0].trim().toLowerCase()
@@ -104,6 +111,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
   // v1.0.96 · every place of the single location registry shows in the World, with today's jobs,
   // even without a 3D plan yet (those show as a plain building and open a simple sheet).
   const [places, setPlaces] = useState([])
+  const [placeScan, setPlaceScan] = useState(null)
   const [todayJobs, setTodayJobs] = useState([])
   const [delays, setDelays] = useState(null)
   // v1.0.113 · today's contract places (same fact as Live Track "Today by contract")
@@ -392,9 +400,9 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
         />
       ) : (
         <>
-          {mapView && loaded && isAdmin && (
+          {mapView && loaded && (isAdmin || isEmployee) && (
             <Suspense fallback={<div className="kw-loading">{w.loading}</div>}>
-              <CityMap stores={stores} m={w.cityMap || {}} lang={lang} query={query} mobile={mobile} onOpenStore={id => enterStore(id)} />
+              <CityMap stores={stores} m={w.cityMap || {}} lang={lang} query={query} mobile={mobile} onOpenStore={id => enterStore(id)} employeeId={isEmployee ? viewer?.id : null} />
             </Suspense>
           )}
           {listMode || mapView || !loaded ? null : (
@@ -457,7 +465,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                 </div>
               )}
             </div>
-            {isAdmin && <button type="button" className={`kw-pill kw-mapbtn${mapView ? ' on' : ''}`} onClick={() => setParams(mapView ? {} : { view: 'map' })}>
+            {(isAdmin || isEmployee) && <button type="button" className={`kw-pill kw-mapbtn${mapView ? ' on' : ''}`} onClick={() => setParams(mapView ? {} : { view: 'map' })}>
               {mapView ? `🌏 ${w.cityMap?.world3d}` : `🗺️ ${w.cityMap?.open}`}
             </button>}
           </div>
@@ -550,6 +558,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
         </>
       )}
 
+      {placeScan && <Suspense fallback={null}><Scan3D modelId={placeScan.id} storeName={placeScan.name} onClose={() => setPlaceScan(null)} /></Suspense>}
       {placeOpen && (
         <div className="kw-place-sheet" role="dialog" aria-modal="true" onClick={() => setPlaceOpen(null)}
           style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(5,12,25,.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 12 }}>
@@ -568,7 +577,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
               {placeOpen.place?.address
                 ? <div style={{ fontSize: 13, marginTop: 10 }}>📍 {isAdmin ? placeOpen.place.address : placeOpen.name} · <a href={mapsOpenUrl(placeOpen.place.address, placeOpen.name)} target="_blank" rel="noreferrer" style={{ color: '#7fb0ff' }}>Google Maps</a></div>
                 : <div style={{ fontSize: 13, marginTop: 10, color: '#fbbf24' }}>📍 {pickLang(lang, 'No GPS: this place has no address yet. Add it in the contract (or search it on the map).', 'GPSなし：住所が未登録です。契約に追加してください（または地図で検索）。', 'Sem GPS: este local ainda não tem endereço. Complete no contrato (ou busque no mapa).')}</div>}
-              {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 8 }} onClick={() => { setPlaceOpen(null); setParams({ view: 'map' }) }}>🗺️ {w.cityMap?.open || 'Map'}</button>}
+              {(isAdmin || isEmployee) && <button type="button" className="kw-pill" style={{ marginTop: 8 }} onClick={() => { setPlaceOpen(null); setParams({ view: 'map' }) }}>🗺️ {w.cityMap?.open || 'Map'}</button>}
               {placeOpen.todayMissing?.length > 0 && <div style={{ fontSize: 13, marginTop: 10, color: '#fca5a5' }}>⚠️ {tr.live?.covTitle}: {placeOpen.todayMissing.map(it => ({ noJob: tr.live?.covNoJob, noPerson: tr.live?.covNoPerson, late: tr.live?.covLate, waiting: tr.live?.covWaiting, working: tr.live?.covWorking })[it.state] || it.state).join(', ')}</div>}
               <div style={{ marginTop: 14, fontWeight: 700, fontSize: 13 }}>🧹 {pickLang(lang, "Today's jobs", '今日の作業', 'Jobs de hoje')} ({placeOpen.today.length})</div>
               {placeOpen.today.length === 0 && <div style={{ fontSize: 13, opacity: .7, marginTop: 6 }}>{pickLang(lang, 'Nothing today.', '今日はありません。', 'Nada hoje.')}</div>}
@@ -587,6 +596,7 @@ export default function Facility({ audience = 'admin', viewer = null, onClose, o
                 : <CleaningTimeline dark entries={placeTimeline} placePhotos={[]} title={placeOpen.name} />)}
             <div style={{ fontSize: 12, opacity: .6, marginTop: 12 }}>{pickLang(lang, 'This place has no 3D plan yet.', 'この場所の3D図面はまだありません。', 'Este local ainda não tem planta 3D.')}</div>
             {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 10 }} onClick={() => navigate(placeOpen.model.client_id ? `/facility/edit?client=${placeOpen.model.client_id}` : '/facility/edit')}>＋ {w.newStore}</button>}
+            {isAdmin && <button type="button" className="kw-pill" style={{ marginTop: 10, marginLeft: 8 }} onClick={() => setPlaceScan({ id: placeScanKey(placeOpen), name: placeOpen.name })}>📷 {pickLang(lang, 'Real 3D', '実物3D', '3D real')}</button>}
           </div>
         </div>
       )}
@@ -649,6 +659,8 @@ function QuoteSheet({ w, initial, onClose, onSend }) {
 function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, mobile, initialSel, busy, onBack, onOffer, onDone, onDetails, onEdit, onQuote, audience = 'admin', onAskQuote }) {
   const isAdmin = audience === 'admin'
   const [tab, setTab] = useState('map')
+  const [scanOpen, setScanOpen] = useState(false)
+  const scanLabel = lang === 'ja' ? '実物3D' : lang === 'pt' ? '3D real' : 'Real 3D'
   const [mode, setMode] = useState('3d')
   const [level, setLevel] = useState(0)
   const [selId, setSelId] = useState(initialSel)
@@ -786,6 +798,8 @@ function StoreView({ store, t, w, lang, logs, recs, missions, nextJob, height, m
           <button type="button" className="kw-chip-btn" onClick={() => openClientSheet({ id: store.model.client_id })} title={w.clientSheet}>📇 <span>{w.clientSheet}</span></button>
           <button type="button" className="kw-chip-btn" onClick={onQuote} title={w.quote}>💴 <span>{w.quote}</span></button>
           <button type="button" className="kw-chip-btn" onClick={onEdit} title={w.editPlan}>✏️ <span>{w.editPlan}</span></button>
+          <button type="button" className="kw-chip-btn" onClick={() => setScanOpen(true)} title={scanLabel}>📷 <span>{scanLabel}</span></button>
+          {scanOpen && <Suspense fallback={null}><Scan3D modelId={store.id} storeName={store.name} onClose={() => setScanOpen(false)} /></Suspense>}
         </>}
         {onAskQuote && <button type="button" className="kw-chip-btn gold" onClick={() => onAskQuote('')} title={w.askQuote}>💴 <span>{w.askQuote}</span></button>}
         <div className="kw-next">🗓 {nextJob ? fill(w.nextJob, { date: fmtDate(String(nextJob.scheduled_date).slice(0, 10)), who: nextJob.employee_name || '—' }) : w.noNextJob}</div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AIChatPanel from '../components/AIChatPanel'
 
 const SUGGESTIONS = [
@@ -41,10 +41,30 @@ const CAPABILITIES = [
   },
 ]
 
+const EMPTY_USAGE = { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: null, heavyCalls: 0, escalated: 0, model: null }
+const fmtTokens = n => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
 export default function AdminAI() {
   const [chatKey, setChatKey] = useState(0)
   const [openCap, setOpenCap] = useState(() => (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 900px)').matches ? null : 'analyze'))
   const [pending, setPending] = useState(null)
+  // v1.0.233 · owner only (this page is admin-only): which AI answers and what this conversation cost.
+  const [aiInfo, setAiInfo] = useState(null)
+  const [convUsage, setConvUsage] = useState(EMPTY_USAGE)
+  useEffect(() => {
+    let alive = true
+    fetch('/api/admin-ai').then(r => r.json()).then(d => { if (alive) setAiInfo(d?.ai || null) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
+  const addUsage = u => setConvUsage(prev => ({
+    calls: prev.calls + (u.calls || 0),
+    inputTokens: prev.inputTokens + (u.inputTokens || 0),
+    outputTokens: prev.outputTokens + (u.outputTokens || 0),
+    costUsd: u.costUsd == null ? prev.costUsd : (prev.costUsd || 0) + u.costUsd,
+    heavyCalls: prev.heavyCalls + (u.heavyCalls || 0),
+    escalated: prev.escalated + (u.escalated?.length || 0),
+    model: u.model || prev.model,
+  }))
 
   const runAction = (action) => {
     setPending({ id: Date.now(), text: action.prompt, send: action.send })
@@ -59,7 +79,7 @@ export default function AdminAI() {
           <div className="eyebrow">KURIPURO AI</div>
           <p>Pergunte, analise ou peça para executar. A IA trabalha com os dados do Kuripuro.</p>
         </div>
-        <button type="button" className="btn ai-new-chat" onClick={() => { setPending(null); setChatKey(v => v + 1) }}>
+        <button type="button" className="btn ai-new-chat" onClick={() => { setPending(null); setConvUsage(EMPTY_USAGE); setChatKey(v => v + 1) }}>
           ＋ Novo chat
         </button>
       </div>
@@ -96,6 +116,17 @@ export default function AdminAI() {
               )
             })}
           </div>
+          {aiInfo && (
+            <div className="ai-side-note">
+              <strong>IA em uso</strong>
+              <p>
+                Provedor: {aiInfo.provider === 'muse' ? 'Meta (Muse)' : aiInfo.provider === 'gemini' ? 'Google (Gemini)' : aiInfo.provider}{aiInfo.configured ? '' : ' · chave não configurada'}<br />
+                Modelo: {convUsage.model || aiInfo.model || '—'}<br />
+                Esta conversa: {convUsage.calls} chamada{convUsage.calls === 1 ? '' : 's'} · {fmtTokens(convUsage.inputTokens + convUsage.outputTokens)} tokens · {convUsage.costUsd == null ? (convUsage.calls ? 'custo não informado' : 'US$ 0') : `≈ US$ ${convUsage.costUsd.toFixed(4)}`}
+                {convUsage.heavyCalls > 0 && <><br />Modelo pesado usado {convUsage.heavyCalls}×{convUsage.escalated ? ` (${convUsage.escalated} subida${convUsage.escalated === 1 ? '' : 's'} automática${convUsage.escalated === 1 ? '' : 's'})` : ''}</>}
+              </p>
+            </div>
+          )}
           <div className="ai-side-note">
             <strong>Dica</strong>
             <p>Você não precisa saber o nome da tela. Diga o que quer fazer em linguagem normal. → envia na hora · ✎ escreve no chat para você completar.</p>
@@ -103,7 +134,7 @@ export default function AdminAI() {
         </aside>
 
         <main className="ai-command-chat">
-          <AIChatPanel key={chatKey} newChatId={chatKey} mode="admin" suggestions={SUGGESTIONS} pendingPrompt={pending} />
+          <AIChatPanel key={chatKey} newChatId={chatKey} mode="admin" suggestions={SUGGESTIONS} pendingPrompt={pending} onUsage={addUsage} />
         </main>
       </div>
     </div>

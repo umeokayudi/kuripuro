@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { statusLabel } from '../lib/statusLabel'
 import SkeletonRows from '../components/SkeletonRows'
 import { pendingChanged } from '../lib/adminPending'
 import { supabase } from '../lib/supabase'
@@ -23,7 +24,7 @@ function salaryAnswerMessage(c, status, answer) {
 }
 
 export default function SalaryComplaints() {
-  const { t, tr } = useLang()
+  const { t, tr, lang } = useLang()
   const s = t.salaryIssues
   const [complaints, setComplaints] = useState([])
   const [filter, setFilter] = useState('pending')
@@ -111,7 +112,7 @@ export default function SalaryComplaints() {
               <div style={{ fontWeight: 600 }}>{c.employee_name}</div>
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fmtPeriod(c.period)} · {c.category === 'contact' ? tr('📞 Asks to be contacted', '📞 連絡希望', '📞 Pede contato') : c.category === 'reply' ? tr('↩ Reply to your answer', '↩ 回答への返信', '↩ Resposta à sua resposta') : c.category === 'chat' ? tr('💬 From the chat', '💬 チャットから', '💬 Veio do chat') : (c.category || s.general)}</div>
             </div>
-            <span className={`badge ${c.status === 'resolved' ? 'badge-green' : c.status === 'rejected' ? 'badge-red' : 'badge-amber'}`}>{c.status}</span>
+            <span className={`badge ${c.status === 'resolved' ? 'badge-green' : c.status === 'rejected' ? 'badge-red' : 'badge-amber'}`}>{statusLabel(c.status, lang)}</span>
           </div>
           <div style={{ fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>{c.description}</div>
           <Link to={`/adminchat?employee=${c.employee_id}`} className="btn btn-sm" style={{ marginBottom: 10, marginRight: 6 }}>💬 {tr('Open chat', 'チャットを開く', 'Abrir conversa')}</Link>

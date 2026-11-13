@@ -17,6 +17,10 @@ export const QUOTE_ISSUER = {
   phone: '070-9073-2909',
 }
 
+/** v1.0.234 · the example number is never printed: until the real 登録番号 is set above, the line stays out. */
+export const REG_PLACEHOLDER = /^T1234567890123$/
+export const shownRegNumber = value => (REG_PLACEHOLDER.test(String(value || '').trim()) ? '' : String(value || '').trim())
+
 export const QUOTE_ISSUER_EN = {
   company: 'KuriPuro',
   title: 'Rep.',

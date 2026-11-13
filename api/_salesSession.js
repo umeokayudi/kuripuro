@@ -34,6 +34,7 @@ export function createSalesSession(user, ttl = SESSION_TTL) {
     name: user.name,
     email: user.email,
     ...(user.team ? { team: user.team } : {}),
+    ...(user.role === 'client' && user.client_id ? { cid: user.client_id } : {}),
     exp: Math.floor(Date.now() / 1000) + ttl,
   })).toString('base64url')
   return `${payload}.${sign(payload)}`
@@ -50,9 +51,33 @@ export function readSalesSession(req) {
   if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return null
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
-    if (!data.sub || !['admin', 'salesperson', 'employee'].includes(data.role) || data.exp < Date.now() / 1000) return null
-    return { id: data.sub, role: data.role, name: data.name, email: data.email, ...(data.team ? { team: data.team } : {}) }
+    if (!data.sub || !['admin', 'salesperson', 'employee', 'client'].includes(data.role) || data.exp < Date.now() / 1000) return null
+    // v1.0.234 · the client portal login also gets a signed cookie (role 'client' + its own client_id).
+    // Every route names the roles it accepts, so a client cookie opens nothing that was staff-only.
+    if (data.role === 'client' && !data.cid) return null
+    return { id: data.sub, role: data.role, name: data.name, email: data.email, ...(data.team ? { team: data.team } : {}), ...(data.role === 'client' ? { client_id: data.cid } : {}) }
   } catch { return null }
+}
+
+// ── v1.0.234 · database key per person ─────────────────────────────────────
+// Today the browser talks to the database with one public key that anyone can copy from the page.
+// With SUPABASE_JWT_SECRET on the server, each login also receives a short-lived key that says who
+// the person is (admin / employee / salesperson / client + client id). The database rules in
+// sql/2026-11-13_seguranca_etapa1_acesso_por_login.sql then answer only to those keys.
+// Without the secret nothing changes: no key is issued and the app works as before.
+export const DB_TOKEN_TTL = 60 * 60 * 24
+export function dbTokensConfigured() {
+  return String(process.env.SUPABASE_JWT_SECRET || '').length >= 32
+}
+export function createDbToken(user, ttl = DB_TOKEN_TTL) {
+  if (!dbTokensConfigured() || !user?.id || !user?.role) return null
+  const b64 = value => Buffer.from(JSON.stringify(value)).toString('base64url')
+  const now = Math.floor(Date.now() / 1000)
+  const body = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({
+    role: 'authenticated', aud: 'authenticated', iss: 'kuripuro', sub: user.id, iat: now, exp: now + ttl,
+    app_role: user.role, ...(user.role === 'client' ? { client_id: user.client_id } : {}),
+  })}`
+  return `${body}.${createHmac('sha256', process.env.SUPABASE_JWT_SECRET).update(body).digest('base64url')}`
 }
 
 export function setSalesSessionCookie(res, token, ttl = SESSION_TTL) {

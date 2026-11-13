@@ -72,3 +72,22 @@
 .tc-mem.is-on{background:#f5fbf7;border-color:#bfe6cf}
 .tc-mem-name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}
 .tc-mem small{font-size:11.5px;color:#5f6b7d;white-space:nowrap}
+/* v1.0.228 · one conversation (Chat hub) + hub list */
+.tc-head.tc-head-focus{display:flex;align-items:center;gap:10px}
+.tc-back{flex-shrink:0;width:40px;height:40px;border:1px solid #dfe5ee;border-radius:12px;background:#fff;color:#14213a;font:inherit;font-size:24px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.tc-focus-title{min-width:0}
+.tc-focus-title h2{overflow-wrap:anywhere}
+.ch-hub{display:flex;flex-direction:column;gap:12px;max-width:820px;margin:0 auto;width:100%;color:#14213a;min-width:0}
+.ch-hub *{box-sizing:border-box}
+.ch-sec{background:#fff;border:1px solid #e4e9f1;border-radius:18px;padding:12px;box-shadow:0 6px 18px rgba(24,39,75,.06);display:grid;gap:6px}
+.ch-sec h3{margin:0 0 2px;font-size:12px;font-weight:800;color:#5f6b7d;text-transform:uppercase;letter-spacing:.04em}
+.ch-row{display:flex;align-items:center;gap:10px;width:100%;min-height:58px;border:1px solid #eef2f7;border-radius:12px;background:#fbfcfe;padding:8px 10px;font:inherit;color:inherit;text-align:left;cursor:pointer;min-width:0}
+.ch-row:hover{background:#f3f6fb}
+.ch-ico{flex-shrink:0;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:19px;background:#eef3ff}
+.ch-txt{flex:1;min-width:0;display:grid;gap:1px}
+.ch-txt strong{font-size:14.5px;overflow-wrap:anywhere}
+.ch-txt small{font-size:12px;color:#5f6b7d;overflow-wrap:anywhere}
+.ch-go{flex-shrink:0;color:#9aa5b4;font-size:20px}
+.ch-badge{flex-shrink:0;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#dc2626;color:#fff;font-size:12px;font-weight:800;display:inline-grid;place-items:center}
+.ch-back-bar{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.ch-ico.ch-office{background:#14213a;color:#fff;font-size:12px;font-weight:800}
