@@ -37,6 +37,12 @@
   --c-shadow: 0 1px 2px rgba(10, 33, 56, .05), 0 6px 18px -10px rgba(10, 33, 56, .18);
   --c-shadow-pop: 0 18px 44px -18px rgba(10, 33, 56, .32);
   --c-tile-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18), 0 2px 5px rgba(0, 0, 0, .22);
+  /* selecionado (aba/filtro ativo) = azul da marca, como era antes da v1.0.234 */
+  --c-select: #315cf5;
+  --c-select-dark: #2449dc;
+  /* o mesmo azul em degradê do quadradinho "KP" do login (o dono gosta desse modelo para botões) */
+  --c-kp-grad: linear-gradient(145deg, #315cf5, #173aa8);
+  --c-kp-shadow: 0 8px 18px rgba(49, 92, 245, .22);
   --c-font: 'Manrope', 'Noto Sans JP', 'KP Emoji', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --c-font-display: 'Archivo', 'Manrope', 'Noto Sans JP', 'KP Emoji', -apple-system, BlinkMacSystemFont, sans-serif;
 
@@ -99,11 +105,7 @@ body:has(> #root > .app-shell) {
 /* ───────── Sidebar marinho com tiles coloridos ───────── */
 .app-shell .sidebar { background: var(--c-navy) !important; border-right: 0; }
 .app-shell .sidebar-logo { border-bottom-color: rgba(255, 255, 255, .08) !important; }
-.app-shell .sidebar .sidebar-logo .brand-box,
-.app-shell .sidebar-collapsed .brand-mark {
-  background: var(--c-teal) !important; box-shadow: var(--c-tile-shadow) !important;
-  font-family: var(--c-font-display) !important; font-weight: 900 !important; border-radius: 10px;
-}
+/* v1.0.244 · o "K" da marca fica como era (quadrado azul em degradê, index.css) — pedido do dono */
 .app-shell .sidebar-logo .brand { font-family: var(--c-font-display); font-weight: 800; color: #fff; }
 .app-shell .sidebar-logo .sub { color: #7e9db1 !important; opacity: 1 !important; font-size: 10.5px !important; font-weight: 600; }
 .app-shell .nav-group-label { color: #64829a !important; font-size: 10px !important; font-weight: 800 !important; letter-spacing: .14em !important; }
@@ -169,11 +171,12 @@ body:has(> #root > .app-shell) {
 .app-shell .topbar { background: #fff !important; border-bottom: 1px solid var(--c-line) !important; }
 .app-shell .ref-topbar-search { background: var(--c-surface-2) !important; border: 1px solid var(--c-line) !important; border-radius: 12px !important; color: var(--c-ink-3); }
 .app-shell .ref-topbar-search:focus-within { background: #fff !important; border-color: var(--c-teal) !important; box-shadow: 0 0 0 3px rgba(11, 163, 155, .15) !important; }
-.app-shell .ref-avatar { background: var(--c-navy) !important; color: #fff; font-family: var(--c-font-display); font-weight: 800; }
-.app-shell .ref-user-name { color: var(--c-navy) !important; font-weight: 800; }
-.app-shell .ref-user-role { color: var(--c-ink-3) !important; }
+/* v1.0.244 · avatar e nome do usuário como eram antes (círculo em degradê azul, letra Plus Jakarta) — pedido do dono */
+.ref-avatar { background: linear-gradient(135deg, #162c46, #315cf5) !important; color: #fff !important; }
+.ref-user, .ref-user-name, .ref-user-role, .ref-avatar { font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif !important; }
+.ref-user-name { color: #111827 !important; font-weight: 700 !important; }
+.ref-user-role { color: #738096 !important; }
 .app-shell .ref-top-action { border-color: var(--c-line) !important; border-radius: 12px !important; }
-.app-shell .mobile-kp-brand { background: var(--c-teal) !important; color: #fff !important; box-shadow: var(--c-tile-shadow) !important; font-family: var(--c-font-display); font-weight: 900; }
 .app-shell .kp-clock { color: var(--c-navy) !important; }
 
 /* ───────── Componentes base (usados no Painel agora; Blocos 2/3 usam os mesmos) ───────── */
@@ -262,10 +265,10 @@ body:has(> #root > .app-shell) {
 /* Conferir o dia: segmento, filtros e linhas coloridos pelo estado */
 .app-shell .dc-seg { background: var(--c-surface-2); border: 1px solid var(--c-line); border-radius: 999px; padding: 4px; gap: 4px; }
 .app-shell .dc-seg button { border-radius: 999px; padding: 8px 16px; color: var(--c-ink-2); min-height: 36px; }
-.app-shell .dc-seg button.on { background: var(--c-navy); color: #fff; box-shadow: none; }
+.app-shell .dc-seg button.on { background: var(--c-select); color: #fff; box-shadow: none; }
 .app-shell .dc-all { color: var(--c-teal-dark); font-weight: 800; }
 .app-shell .dc-f { border-color: var(--c-line); color: var(--c-ink-2); min-height: 36px; padding: 6px 14px; }
-.app-shell .dc-f.on { background: var(--c-navy); border-color: var(--c-navy); }
+.app-shell .dc-f.on { background: var(--c-select); border-color: var(--c-select); }
 .app-shell .dc-f.is-working:not(.on) b { color: var(--c-blue-ink); }
 .app-shell .dc-f.is-todo:not(.on) b { color: var(--c-gray-ink); }
 .app-shell .dc-f.is-warn:not(.on) b { color: var(--c-amber-ink); }
@@ -356,3 +359,50 @@ body:has(> #root > .app-shell) {
   .app-shell .sidebar:not(.sidebar-mobile-open) .nav-item > svg { width: 26px !important; height: 26px !important; padding: 5px; }
 }
 @media (prefers-reduced-motion: reduce) { .app-shell .dp-progress i { transition: none; } }
+
+/* ───────── v1.0.244 · botões que a v1.0.234 deixou pretos voltam ao azul de antes (pedido do dono) ───────── */
+.tab-pill.active, .sales-tabs button.active, .sales-filter-pills .btn.active, .sales-quick-dates .btn.active, .sales-tag-picker .btn.active, .kp-users-tab.active, .cpx-store-tabs button.is-active, .so-tab.active {
+  background: var(--c-select) !important; border-color: var(--c-select) !important; color: #fff !important;
+}
+.page-content [style*="background: var(--navy)"] { background: var(--c-kp-grad) !important; border-color: #2a4fd6 !important; }
+.login-go, .ex-checkin:not(.is-active) .ex-checkin-btn, .so-call {
+  background: var(--c-kp-grad) !important; box-shadow: var(--c-kp-shadow) !important; border-radius: 14px !important; border: 0 !important; color: #fff !important;
+}
+.login-go:hover:not(:disabled), .so-call:hover { background: linear-gradient(145deg, #2a50e0, #132f8c) !important; }
+.tab-pill.active, .sales-tabs button.active, .kp-users-tab.active, .cpx-store-tabs button.is-active, .so-tab.active,
+.app-shell .dc-seg button.on, .app-shell .dc-f.on { background-image: var(--c-kp-grad) !important; box-shadow: var(--c-kp-shadow) !important; }
+.s3-steps li.is-now { background: var(--c-select); border-color: var(--c-select); }
+/* ✅/❌ desenhados em uma cor só: verde quando ok, vermelho quando falta (não preto) */
+.ga-int-check > span:first-child { color: var(--c-red); }
+.ga-int-check.ok > span:first-child { color: var(--c-green); }
+
+/* ───────── v1.0.247 · NENHUM botão preto em nenhum portal (admin, funcionário, vendedor, cliente, login) ─────────
+   Pedido do dono: "tira esses pretos pq eu odeio". Tudo que era preto/quase preto em botão, aba, chip
+   ou quadradinho de ícone passa ao azul em degradê do "KP" do login. Só cor: nada muda de lugar. */
+:is(
+  .rpc-f.on, .cs-chips button.on, .dp-shortcuts button.on, .dc-f.on, .dc-seg button.on, .so-tab.active,
+  .wr-seg button.on, .ag-people button.on, .emp-portal-lang button.on, .bq-chips button.on, .ewr-days button.on,
+  .pm-chips button.is-on, .pm-types button.is-on, .cpx-store-tabs button.is-active, .ga-chip.on, .mt-tabs button.on span,
+  .sales-tabs button.active, .sales-filter-pills .btn.active, .sales-quick-dates .btn.active, .sales-tag-picker .btn.active,
+  .kp-users-tab.active, .tab-pill.active
+) {
+  background: var(--c-kp-grad) !important; border-color: #2a4fd6 !important; color: #fff !important; box-shadow: var(--c-kp-shadow) !important;
+}
+:is(
+  .login-go, .ex-checkin:not(.is-active) .ex-checkin-btn, .so-call, .fa-btn-dark, .ewr-all, .ewr-btn, .ewr-go,
+  .wr-ai-bar button:first-child, .ai-composer-send:not(:disabled), .ai-call-mic, .cpx-manager
+) {
+  background: var(--c-kp-grad) !important; border-color: transparent !important; color: #fff !important; box-shadow: var(--c-kp-shadow) !important;
+}
+.ai-call-mic { box-shadow: 0 0 0 1px #dde4ee, var(--c-kp-shadow) !important; }
+/* quadradinhos de ícone e números que eram pretos */
+:is(.tc-av-office, .ch-ico.ch-office, .qt-session-n, .mt-topic-n, .ai-card-icon, .sh-tile.is-dark, .cs-avatar) { background: var(--c-kp-grad) !important; color: #fff !important; }
+.ai-msg.is-user .ai-bubble { background: var(--c-kp-grad) !important; color: #fff !important; }
+.jf-thumb button { background: var(--c-select) !important; }
+.cpx-progress .is-deep { background: #173aa8 !important; }
+/* estilos escritos direto na tela com o marinho quase preto */
+[style*="background: var(--navy)"], [style*="background:var(--navy)"] { background: var(--c-kp-grad) !important; border-color: #2a4fd6 !important; }
+
+/* Funcionário · menu "Mais": cada ícone num quadradinho azul do KP (o item aberto continua destacado) */
+.emp-menu-item-icon { background: var(--c-kp-grad) !important; border-color: transparent !important; color: #fff !important; box-shadow: var(--c-kp-shadow); }
+.emp-menu-item.is-active .emp-menu-item-icon { box-shadow: 0 0 0 3px #d5e0ff, var(--c-kp-shadow); }
