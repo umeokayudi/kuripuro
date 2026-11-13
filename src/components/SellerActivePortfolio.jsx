@@ -15,7 +15,7 @@ function fmtDate(v, lang) {
   return `${y}-${m}-${d}`
 }
 
-export default function SellerActivePortfolio({ lang = 'en' }) {
+export default function SellerActivePortfolio({ lang = 'en', limit = 0, onSeeAll = null }) {
   const L = (en, ja, pt) => pickLang(lang, en, ja, pt)
   const [state, setState] = useState({ loading: true, error: '', clients: [] })
   const [query, setQuery] = useState('')
@@ -36,6 +36,35 @@ export default function SellerActivePortfolio({ lang = 'en' }) {
 
   const total = portfolioTotal(state.clients)
   const locCount = state.clients.reduce((n, g) => n + g.locations.length, 0)
+
+  // v1.0.254 · home block: same data, read only — client, stores, value per month; "See all" opens the tab
+  if (limit) {
+    const rows = [...state.clients].sort((a, b) => Number(b.monthly || 0) - Number(a.monthly || 0)).slice(0, limit)
+    return (
+      <section className="fh-card fh-contracts">
+        <div className="fh-card-head">
+          <span className="th-tile is-gray" style={{ width: 34, height: 34, flexBasis: 34 }} aria-hidden="true">📋</span>
+          <h2>{L('Active contracts', '有効契約', 'Contratos ativos')}</h2>
+          <span className="th-chip is-gray">{L('View only', '閲覧のみ', 'Só leitura')}</span>
+          {onSeeAll && <button type="button" className="fh-link" onClick={onSeeAll}>{L('See all', 'すべて', 'Ver todos')} ›</button>}
+        </div>
+        {state.loading && <p className="th-empty is-small">…</p>}
+        {state.error && <p className="th-empty">{state.error}</p>}
+        {!state.loading && !state.error && <div className="fh-stats is-3">
+          <div className="is-navy"><b>{state.clients.length}</b><span>{L('clients', '顧客', 'clientes')}</span></div>
+          <div className="is-navy"><b>{locCount}</b><span>{L('stores / items', '拠点・項目', 'lojas / itens')}</span></div>
+          <div className="is-green"><b>{yen(total)}</b><span>{L('per month', '月額合計', 'por mês')}</span></div>
+        </div>}
+        {rows.map(g => (
+          <button type="button" className="fh-row" key={g.client_id || g.company} onClick={onSeeAll || undefined}>
+            <span className="fh-row-text"><strong>{g.company}</strong><small>{g.stores.length} {g.stores.length === 1 ? L('store', '拠点', 'loja') : L('stores', '拠点', 'lojas')} · {g.stores.slice(0, 3).join(' · ')}{g.stores.length > 3 ? ` +${g.stores.length - 3}` : ''}</small></span>
+            <b className="fh-row-value">{yen(g.monthly)}<small>{L('/month', '/月', '/mês')}</small></b>
+          </button>
+        ))}
+        {!state.loading && !state.error && !state.clients.length && <p className="th-empty">{L('No active contracts.', '有効な契約はありません。', 'Nenhum contrato ativo.')}</p>}
+      </section>
+    )
+  }
 
   return (
     <section className="fa-card is-list sp-portfolio">
