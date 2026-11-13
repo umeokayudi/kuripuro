@@ -3,6 +3,7 @@
 export const name = 'gemini'
 export const configured = () => !!process.env.GEMINI_API_KEY
 export const modelLabel = () => (cachedModels && cachedModels[0]) || 'gemini (auto)'
+export const canEscalate = false
 
 const PREFERRED = [
   'gemini-3.7-flash',

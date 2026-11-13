@@ -17,6 +17,7 @@ import { tabFromUrl, clearTabParam } from '../lib/push'
 import SellerLeadDump from '../components/SellerLeadDump'
 import { GoogleAgendaConnect, UpcomingVisits, VisitFields, VisitRow, blankVisit, visitCopy, visitGoogleUrl } from '../components/SellerVisits'
 import { isImagePath, normalizeVisit, upcomingVisits } from '../lib/sellerVisits'
+import { toMp3 } from '../lib/audioToMp3.js'
 import TeamChannel from '../components/TeamChannel'
 import SellerActivePortfolio from '../components/SellerActivePortfolio'
 
@@ -358,11 +359,12 @@ export default function SalespersonPortal() {
     setRecording(false)
   }
 
-  const transcribeAudio = async blob => {
+  const transcribeAudio = async recorded => {
     setBusyAi(true)
     try {
+      const blob = await toMp3(recorded)
       const mime = baseMime(blob.type) || 'audio/webm'
-      const file = new File([blob], `meeting.${mime.includes('mp4') || mime.includes('m4a') ? 'm4a' : 'webm'}`, { type: mime })
+      const file = new File([blob], `meeting.${mime === 'audio/mpeg' ? 'mp3' : mime === 'audio/wav' ? 'wav' : mime.includes('mp4') || mime.includes('m4a') ? 'm4a' : 'webm'}`, { type: mime })
       const storedAudio = await uploadFile(file, 'meeting-audio')
       const { answer } = await callApi('/api/sales-ai', { task: 'voice-note', object_path: storedAudio.path, mime_type: storedAudio.mime_type, language: lang })
       setApproach(prev => ({ ...prev, audio_object_path:storedAudio.path, notes: [prev.notes, answer?.transcript].filter(Boolean).join('\n\n'), meeting_transcript: answer?.transcript || prev.meeting_transcript, meeting_summary: answer?.summary || '', ai_next_step: answer?.next_step || '', followup_date: answer?.followup_date || prev.followup_date }))
