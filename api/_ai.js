@@ -17,7 +17,7 @@
 import * as gemini from './_ai-gemini.js'
 import * as muse from './_ai-muse.js'
 
-export const API_BUILD = '2026-11-13-v1.0.253'
+export const API_BUILD = '2026-11-13-v1.0.254'
 
 const PROVIDERS = { gemini, muse }
 const KNOWN = ['gemini', 'muse']

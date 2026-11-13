@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import LanguageToggle from './LanguageToggle'
 import { localeOf, pickLang } from '../hooks/useLang'
 import { homeLogoProps } from '../lib/homeLogo'
+import FieldHeader, { FieldHello } from './FieldHeader'
 
 // Phone-first frame shared by the seller and marketing portals, built like the
 // employee portal: small brand header with bell + menu, a greeting card, the
@@ -54,6 +55,9 @@ export function Sheet({ title, onClose, children, wide = false }) {
 export default function FieldAppShell({
   kicker, userName, lang, bellCount = 0, onBell, menuItems = [], onLogout, logoutLabel = 'Log out',
   tabs, tab, onTab, onPlus, plusLabel, statusChip, children,
+  // v1.0.254 · header = { area, name?, photoUrl?, role? } → new header (K + area + date/clock with seconds + bell)
+  // and the photo/greeting card on the first tab. Without it the old header stays (nothing changes).
+  header = null, appClass = '',
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const now = useClock()
@@ -70,7 +74,12 @@ export default function FieldAppShell({
   )
 
   return (
-    <div className="fa-app">
+    <div className={`fa-app${header ? ' has-fh' : ''}${appClass ? ` ${appClass}` : ''}`}>
+      {header ? <>
+        <FieldHeader area={header.area || kicker} lang={lang} bellCount={bellCount} onBell={onBell} menuOpen={menuOpen}
+          onMenu={() => setMenuOpen(true)} onHome={() => { setMenuOpen(false); if (tabs[0]) onTab(tabs[0].key); window.scrollTo(0, 0) }} />
+        {tab === tabs[0]?.key && <FieldHello name={header.name || userName} photoUrl={header.photoUrl} lang={lang} role={header.role}>{header.helloSide}</FieldHello>}
+      </> : <>
       <header className="fa-header">
         <div className="fa-brand" {...homeLogoProps(() => { setMenuOpen(false); if (tabs[0]) onTab(tabs[0].key); window.scrollTo(0, 0) }, pickLang(lang, 'Home', 'ホーム', 'Início'))}><span className="fa-mark">KP</span><span>{kicker}</span></div>
         <div className="fa-header-actions">
@@ -92,6 +101,7 @@ export default function FieldAppShell({
         </div>
         <div className="fa-clock">{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
       </div>}
+      </>}
       {statusChip}
 
       <main className="fa-content">{children}</main>
