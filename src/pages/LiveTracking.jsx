@@ -22,7 +22,7 @@ import { fetchDayPanel } from '../lib/dayPanel'
 
 const TZ = 'Asia/Tokyo'
 import { countJobs, LATE_AFTER_MIN } from '../lib/jobCounts'
-import { isDeadlineJob, isDeadlineLate, DEADLINE_MIN, OTP_DEADLINE, otpRouteAlerts, otpRouteAlertText, jobTimeLabel, jobTimeShort } from '../lib/jobDeadline'
+import { isDeadlineJob, hasDeadline, deadlineOf, deadlineMinOf, isDeadlineLate, OTP_DEADLINE, otpRouteAlerts, otpRouteAlertText, jobTimeLabel, jobTimeShort } from '../lib/jobDeadline'
 import { pollWhileVisible } from '../lib/visiblePoll'
 const LOCATION_FRESH_MIN = 15
 
@@ -63,10 +63,10 @@ function classify(emp, jobs, offToday, now, today, routeAlerts = []) {
   const staleOpen = active && active.scheduled_date < today ? active : null
   const nowMin = now.getHours() * 60 + now.getMinutes()
   // v1.0.147 · OTP night jobs: no start time, only "concluir até 10:00"; late = not finished at 10:00 (running too)
-  const nextIn = next ? (isDeadlineJob(next) ? DEADLINE_MIN - nowMin : minutesUntil(next.scheduled_time, now)) : null
+  const nextIn = next ? (hasDeadline(next) ? deadlineMinOf(next) - nowMin : minutesUntil(next.scheduled_time, now)) : null
   const deadlineLate = todayJobs.filter(j => isDeadlineLate(j, { today, nowMin }))
-  const lateMin = deadlineLate.length ? nowMin - DEADLINE_MIN
-    : !active && next && !isDeadlineJob(next) && nextIn != null && nextIn <= -LATE_AFTER_MIN ? -nextIn : 0
+  const lateMin = deadlineLate.length ? nowMin - deadlineMinOf(deadlineLate[0])
+    : !active && next && !hasDeadline(next) && nextIn != null && nextIn <= -LATE_AFTER_MIN ? -nextIn : 0
   const routeAlert = routeAlerts.find(a => a.employeeId === emp.id) || null
 
   let group
@@ -215,6 +215,10 @@ export default function LiveTracking() {
     const { active, next, nextIn, lateMin, staleOpen, done, todayJobs, deadlineLate, routeAlert } = p
     const routeNote = routeAlert ? otpRouteAlertText(routeAlert, tr) : ''
     if (staleOpen) return { main: fill(L.staleOpen, { place: jobPlace(staleOpen), date: staleOpen.scheduled_date }), sub: L.staleOpenHint }
+    if (deadlineLate?.length && !isDeadlineJob(deadlineLate[0])) { const dl = deadlineOf(deadlineLate[0]); return {
+      main: tr(`Late — ${jobPlace(deadlineLate[0])} not finished by ${dl} (${fmtDuration(lateMin, L)} ago)`, `遅れ — ${jobPlace(deadlineLate[0])}が${dl}までに完了していません（${fmtDuration(lateMin, L)}経過）`, `Atrasado — ${jobPlace(deadlineLate[0])} não concluído até ${dl} (há ${fmtDuration(lateMin, L)})`),
+      sub: fill(L.doneSoFar, { done: done.length, total: todayJobs.length }),
+    } }
     if (deadlineLate?.length) return {
       main: tr(`Late — OTP not finished by ${OTP_DEADLINE} (${fmtDuration(lateMin, L)} ago)`, `遅れ — OTPが${OTP_DEADLINE}までに完了していません（${fmtDuration(lateMin, L)}経過）`, `Atrasado — OTP não concluído até ${OTP_DEADLINE} (há ${fmtDuration(lateMin, L)})`),
       sub: [fill(L.doneSoFar, { done: done.length, total: todayJobs.length }), routeNote].filter(Boolean).join(' · '),
@@ -229,7 +233,7 @@ export default function LiveTracking() {
     }
     if (active) {
       const since = active.started_at ? (Date.now() - new Date(active.started_at)) / 60000 : null
-      const startedLate = active.started_at && active.scheduled_time && active.scheduled_date === today && !isDeadlineJob(active)
+      const startedLate = active.started_at && active.scheduled_time && active.scheduled_date === today && !hasDeadline(active)
         ? toMin(hhmm(active.started_at)) - toMin(active.scheduled_time)
         : 0
       return {
@@ -238,13 +242,13 @@ export default function LiveTracking() {
           : fill(L.workingNoTime, { place: jobPlace(active) }),
         sub: [
           startedLate >= 10 ? fill(L.startedLate, { d: fmtDuration(startedLate, L) }) : '',
-          isDeadlineJob(active) ? jobTimeLabel(active, tr) : '',
-          next ? fill(L.thenNext, { place: jobPlace(next), time: isDeadlineJob(next) ? jobTimeLabel(next, tr) : next.scheduled_time ? shortTime(next.scheduled_time) : '—' }) : '',
+          hasDeadline(active) ? jobTimeLabel(active, tr) : '',
+          next ? fill(L.thenNext, { place: jobPlace(next), time: hasDeadline(next) ? jobTimeLabel(next, tr) : next.scheduled_time ? shortTime(next.scheduled_time) : '—' }) : '',
           routeNote,
         ].filter(Boolean).join(' · '),
       }
     }
-    if (next && isDeadlineJob(next)) return {
+    if (next && hasDeadline(next)) return {
       main: `${jobPlace(next)} · ${jobTimeLabel(next, tr)}`,
       sub: [done.length ? fill(L.doneSoFar, { done: done.length, total: todayJobs.length }) : '', routeNote].filter(Boolean).join(' · '),
     }
@@ -315,11 +319,11 @@ export default function LiveTracking() {
           <ol className="lt-timeline">
             {todayJobs.map(j => (
               <li key={j.id} className={`is-${j.status}`}>
-                <span className="lt-tl-time">{isDeadlineJob(j) ? jobTimeShort(j, tr) : j.scheduled_time ? shortTime(j.scheduled_time) : '—'}</span>
+                <span className="lt-tl-time">{hasDeadline(j) ? jobTimeShort(j, tr) : j.scheduled_time ? shortTime(j.scheduled_time) : '—'}</span>
                 <span className="lt-tl-body">
                   <b>{jobPlace(j)}</b>{jobKind(j) && <span className="lt-tl-kind"> · {jobKind(j)}</span>}{jobService(j) && <span className="lt-tl-kind"> · {jobService(j)}</span>}
                   {/* v1.0.220 · planned duration + finish, for any job that has its own (with or without contract) */}
-                  {!isDeadlineJob(j) && ownMinutes(j) && <span className="lt-tl-meta">{slotText(j.scheduled_time, ownMinutes(j), tr)}</span>}
+                  {!hasDeadline(j) && ownMinutes(j) && <span className="lt-tl-meta">{slotText(j.scheduled_time, ownMinutes(j), tr)}</span>}
                   <span className="lt-tl-meta">
                     {j.status === 'completed' ? fill(L.tlDone, { start: hhmm(j.started_at) || '—', end: hhmm(j.completed_at) || '—' }) + (j.started_at && j.completed_at ? ` (${fmtDuration((new Date(j.completed_at) - new Date(j.started_at)) / 60000, L)})` : '')
                       : j.status === 'in_progress' ? fill(L.tlWorking, { start: hhmm(j.started_at) || '—' })
@@ -387,7 +391,7 @@ export default function LiveTracking() {
                   <li key={it.place} className={focusStores.has(it.place) ? 'is-focus' : undefined}>
                     <span className="lt-cov-place">
                       <b>{it.place}</b>
-                      <span>{it.personName ? (it.usual ? fill(L.covUsual, { name: it.personName }) : it.personName) : L.covNobody}{it.job && isDeadlineJob(it.job) ? ` · ${jobTimeLabel(it.job, tr)}` : it.job?.scheduled_time ? ` · ${shortTime(it.job.scheduled_time)}` : ''}</span>
+                      <span>{it.personName ? (it.usual ? fill(L.covUsual, { name: it.personName }) : it.personName) : L.covNobody}{it.job && hasDeadline(it.job) ? ` · ${jobTimeLabel(it.job, tr)}` : it.job?.scheduled_time ? ` · ${shortTime(it.job.scheduled_time)}` : ''}</span>
                     </span>
                     <span className={`lt-cov-chip st-${it.state}`}>{stLabel[it.state]}</span>
                   </li>

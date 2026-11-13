@@ -15,7 +15,7 @@ import { roleCan } from './employeeRoles.js'
 import { isTestJob, isTestEmployee } from './testData.js'
 import { coveredJobs } from './jobCoverage.js'
 import { isLateJob } from './jobCounts.js'
-import { isDeadlineJob, deadlineOf, otpRouteAlerts, OTP_CLIENT_ID, OTP_DEADLINE, ALERT_MIN } from './jobDeadline.js'
+import { isDeadlineJob, hasDeadline, deadlineOf, otpRouteAlerts, OTP_CLIENT_ID, OTP_DEADLINE, ALERT_MIN } from './jobDeadline.js'
 import { bucketOf, jobMinutes, bucketDeadline, deepDeadlineMin, routeLoads, hm, impossibleText, hoursText } from './routePlan.js'
 import { ownMinutes } from './jobDuration.js'
 
@@ -163,7 +163,7 @@ export function buildDayPanel({ date, jobs = [], employees = [], availability = 
     const svc = {
       id: j.id, job: j, store: storeOf(j), service: serviceOf(j), assigned: j.employee_name || '', assignedId: j.employee_id || null,
       status: done ? 'done' : j.status === 'in_progress' ? 'working' : late ? 'late' : 'not_started',
-      late, deadline, time: isDeadlineJob(j) ? null : String(j.scheduled_time || '').slice(0, 5) || null, bucket, minutes,
+      late, deadline, time: hasDeadline(j) ? null : String(j.scheduled_time || '').slice(0, 5) || null, bucket, minutes,
       // v1.0.227 · THE count of the day: done = completed (or done by the person who covered it),
       // working = started and not completed (late or not), not_started = everything else
       phase: done ? 'done' : (j.status === 'in_progress' || j.started_at) ? 'working' : 'not_started',

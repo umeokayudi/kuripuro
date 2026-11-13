@@ -12,7 +12,7 @@ import { isTestJob } from './testData.js'
 import { coveredJobs } from './jobCoverage.js'
 import { isDuplaHelper } from './duplaJob.js'
 import { tokyoToday, tokyoNow } from './dates.js'
-import { isDeadlineJob, isDeadlineLate } from './jobDeadline.js'
+import { hasDeadline, isDeadlineLate } from './jobDeadline.js'
 
 export const LATE_AFTER_MIN = 5
 
@@ -30,7 +30,7 @@ export const isNotStarted = j => !!j && j.status === 'assigned' && !j.started_at
  * v1.0.147 · On The Planet night jobs: late = not COMPLETED at 10:00 (running ones too), never by the start.
  */
 export function isLateJob(j, today = tokyoToday(), nowMin = nowMinutes()) {
-  if (isDeadlineJob(j)) return isDeadlineLate(j, { today, nowMin })
+  if (hasDeadline(j)) return isDeadlineLate(j, { today, nowMin })
   if (!isNotStarted(j) || !j.scheduled_date) return false
   if (j.scheduled_date < today) return true
   if (j.scheduled_date > today) return false

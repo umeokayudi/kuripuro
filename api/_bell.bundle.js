@@ -17,6 +17,7 @@ __export(supabase_exports, {
   hasDbToken: () => hasDbToken,
   refreshDbToken: () => refreshDbToken,
   setDbToken: () => setDbToken,
+  setReadOnly: () => setReadOnly,
   supabase: () => supabase
 });
 import { createClient } from "@supabase/supabase-js";
@@ -42,14 +43,20 @@ function refreshDbToken() {
   }
   return refreshing;
 }
+function setReadOnly(on) {
+  readOnly = !!on;
+}
 async function dbFetch(input, init) {
+  if (readOnly && isWrite(input, init)) {
+    return new Response(JSON.stringify({ message: "Ver como \u2014 somente leitura. Nada foi alterado.", code: "view_as" }), { status: 403, headers: { "Content-Type": "application/json" } });
+  }
   const response = await fetch(input, withToken(init));
   if (response.status !== 401 || !dbToken) return response;
   const sent = dbToken;
   if (!await refreshDbToken() && dbToken === sent) return response;
   return fetch(input, withToken(init));
 }
-var DEFAULT_URL, DEFAULT_ANON_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, DB_TOKEN_KEY, dbToken, hasDbToken, refreshing, withToken, supabase;
+var DEFAULT_URL, DEFAULT_ANON_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, DB_TOKEN_KEY, dbToken, hasDbToken, refreshing, withToken, readOnly, isWrite, supabase;
 var init_supabase = __esm({
   "src/lib/supabase.js"() {
     DEFAULT_URL = "https://fxsakrshmldmkdmbevna.supabase.co";
@@ -69,6 +76,13 @@ var init_supabase = __esm({
       const headers = new Headers(init.headers || {});
       headers.set("Authorization", `Bearer ${dbToken}`);
       return { ...init, headers };
+    };
+    readOnly = false;
+    isWrite = (input, init = {}) => {
+      const method = String(init.method || "GET").toUpperCase();
+      if (method === "GET" || method === "HEAD") return false;
+      const url = typeof input === "string" ? input : input?.url || "";
+      return !/\/storage\/v1\/object\/(list|sign)\//.test(url);
     };
     supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: dbFetch } });
   }
@@ -190,21 +204,27 @@ function isOtpJob(job2) {
 function isDeadlineJob(job2) {
   return isOtpJob(job2) && hhmm(job2.scheduled_time) === OTP_ROUTE_TIME;
 }
+function isAtomicDeadlineJob(job2) {
+  if (!job2) return false;
+  const atomic = job2.client_id ? job2.client_id === ATOMIC_CLIENT_ID : /atomic\s*bar/i.test(`${job2.client_name || ""} ${job2.title || ""}`);
+  return atomic && hhmm(job2.scheduled_time) === ATOMIC_MARK_TIME && !/coleta de lixo|garbage/i.test(job2.title || "");
+}
 function deadlineMs(job2) {
-  if (!isDeadlineJob(job2) || !job2.scheduled_date) return null;
-  return (/* @__PURE__ */ new Date(`${job2.scheduled_date}T${OTP_DEADLINE}:00+09:00`)).getTime();
+  const d = deadlineOf(job2);
+  if (!d || !job2.scheduled_date) return null;
+  return (/* @__PURE__ */ new Date(`${job2.scheduled_date}T${d}:00+09:00`)).getTime();
 }
 function minutesPastDeadline(job2, now = /* @__PURE__ */ new Date()) {
   const d = deadlineMs(job2);
   return d == null ? null : Math.round((now.getTime() - d) / 6e4);
 }
 function isDeadlineLate(job2, { now = /* @__PURE__ */ new Date(), today = null, nowMin = null } = {}) {
-  if (!isDeadlineJob(job2) || !job2.scheduled_date) return false;
+  if (!hasDeadline(job2) || !job2.scheduled_date) return false;
   if (job2.status === "completed" || job2.status === "cancelled") return false;
   if (today != null && nowMin != null) {
     if (job2.scheduled_date < today) return true;
     if (job2.scheduled_date > today) return false;
-    return nowMin >= DEADLINE_MIN;
+    return nowMin >= deadlineMinOf(job2);
   }
   return minutesPastDeadline(job2, now) >= 0;
 }
@@ -241,13 +261,16 @@ async function fetchOtpRouteAlerts(today, nowMin) {
   if (error) throw error;
   return otpRouteAlerts(data || [], { today, nowMin });
 }
-var OTP_CLIENT_ID, OTP_ROUTE_TIME, OTP_DEADLINE, OTP_ALERT_AT, toMin, hhmm, DEADLINE_MIN, ALERT_MIN, deadlineOf, tokyoHHMM;
+var OTP_CLIENT_ID, OTP_ROUTE_TIME, OTP_DEADLINE, OTP_ALERT_AT, ATOMIC_CLIENT_ID, ATOMIC_MARK_TIME, ATOMIC_DEADLINE, toMin, hhmm, DEADLINE_MIN, ALERT_MIN, hasDeadline, deadlineOf, deadlineMinOf, tokyoHHMM;
 var init_jobDeadline = __esm({
   "src/lib/jobDeadline.js"() {
     OTP_CLIENT_ID = "7138f082-0d38-43e4-bd77-00c4598690b3";
     OTP_ROUTE_TIME = "00:30";
     OTP_DEADLINE = "10:00";
     OTP_ALERT_AT = "05:00";
+    ATOMIC_CLIENT_ID = "bf3f7ab5-24c4-4ec1-b25f-d91becb166de";
+    ATOMIC_MARK_TIME = "21:00";
+    ATOMIC_DEADLINE = "21:00";
     toMin = (t) => {
       const m = String(t || "").match(/^(\d{1,2}):(\d{2})/);
       return m ? Number(m[1]) * 60 + Number(m[2]) : null;
@@ -258,7 +281,12 @@ var init_jobDeadline = __esm({
     };
     DEADLINE_MIN = toMin(OTP_DEADLINE);
     ALERT_MIN = toMin(OTP_ALERT_AT);
-    deadlineOf = (job2) => isDeadlineJob(job2) ? OTP_DEADLINE : null;
+    hasDeadline = (job2) => isDeadlineJob(job2) || isAtomicDeadlineJob(job2);
+    deadlineOf = (job2) => isDeadlineJob(job2) ? OTP_DEADLINE : isAtomicDeadlineJob(job2) ? ATOMIC_DEADLINE : null;
+    deadlineMinOf = (job2) => {
+      const d = deadlineOf(job2);
+      return d ? toMin(d) : null;
+    };
     tokyoHHMM = (iso) => new Date(iso).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hour12: false });
   }
 });
@@ -404,7 +432,7 @@ var init_jobCoverage = __esm({
 
 // src/lib/jobCounts.js
 function isLateJob(j, today = tokyoToday(), nowMin = nowMinutes()) {
-  if (isDeadlineJob(j)) return isDeadlineLate(j, { today, nowMin });
+  if (hasDeadline(j)) return isDeadlineLate(j, { today, nowMin });
   if (!isNotStarted(j) || !j.scheduled_date) return false;
   if (j.scheduled_date < today) return true;
   if (j.scheduled_date > today) return false;
@@ -721,7 +749,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       status: done ? "done" : j.status === "in_progress" ? "working" : late ? "late" : "not_started",
       late,
       deadline,
-      time: isDeadlineJob(j) ? null : String(j.scheduled_time || "").slice(0, 5) || null,
+      time: hasDeadline(j) ? null : String(j.scheduled_time || "").slice(0, 5) || null,
       bucket,
       minutes,
       // v1.0.227 · THE count of the day: done = completed (or done by the person who covered it),
@@ -1439,7 +1467,7 @@ function buildExceptions({ jobs = [], contracts = [], payroll = {}, problems = [
     if (hideTests && (isTestName(j.employee_name) || isTestName(j.client_name))) continue;
     const done = j.status === "completed";
     if (!done && !j.employee_id && j.spot_status !== "pending" && j.scheduled_date >= today && j.scheduled_date <= addDays(today, 1)) push("no_person", j, {});
-    else if (isDeadlineJob(j) ? j.scheduled_date === today && isDeadlineLate(j, { now }) : !done && j.status === "assigned" && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5) push("late", j, { minutes: Math.round(hoursPastDue(j, now) * 60), ...isDeadlineJob(j) ? { deadline: deadlineOf(j) } : {} });
+    else if (hasDeadline(j) ? j.scheduled_date === today && isDeadlineLate(j, { now }) : !done && j.status === "assigned" && !j.started_at && j.scheduled_date === today && hoursPastScheduled(j, now) >= 0.5) push("late", j, { minutes: Math.round(hoursPastDue(j, now) * 60), ...hasDeadline(j) ? { deadline: deadlineOf(j) } : {} });
     else if (isMissedJob(j, now) && j.scheduled_date >= addDays(today, -14)) push("incomplete", j, {});
     if (j.retro_report != null && !j.admin_reviewed && j.scheduled_date >= addDays(today, -14)) push("retro_review", j, { at: j.completed_at || null });
     if (j.scheduled_date >= today.slice(0, 8) + "01" && needsPayDefinition(j, today)) push("pay_undefined", j, {});

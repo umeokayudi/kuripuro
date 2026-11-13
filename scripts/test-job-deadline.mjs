@@ -1,6 +1,6 @@
 // v1.0.147 · On The Planet: deadline 10:00 + 05:00 route alert (acceptance tests of the spec)
 import assert from 'node:assert/strict'
-import { isDeadlineJob, isDeadlineLate, otpRouteAlerts, otpRouteAlertText, jobTimeText, finishDelayMin, OTP_CLIENT_ID } from '../src/lib/jobDeadline.js'
+import { isDeadlineJob, hasDeadline, deadlineOf, windowStartOf, isDeadlineLate, otpRouteAlerts, otpRouteAlertText, jobTimeText, finishDelayMin, OTP_CLIENT_ID } from '../src/lib/jobDeadline.js'
 import { isLateJob, countJobs } from '../src/lib/jobCounts.js'
 import { progressBucket } from '../src/lib/agenda.js'
 import { isOverdueAssignedJob } from '../src/lib/jobOverdue.js'
@@ -74,6 +74,25 @@ t('acceptance 4: Atomic Bar at 00:30 → unchanged (late 5 min after 00:30)', ()
   assert.equal(isLateJob(atomic(), D, min('00:36')), true)
   assert.equal(jobTimeText(atomic(), 'pt'), '00:30')
   assert.equal(startDelayMin(atomic({ status: 'completed', started_at: at('01:30').toISOString() })), 60)
+})
+
+t('v1.0.247 Atomic Bar basic 21:00: start from 14:00, finish by 21:00', () => {
+  const ab = (x = {}) => atomic({ title: 'Atomic Bar — Basic Cleaning', scheduled_time: '21:00', ...x })
+  assert.equal(hasDeadline(ab()), true); assert.equal(isDeadlineJob(ab()), false) // not part of the OTP route
+  assert.equal(deadlineOf(ab()), '21:00'); assert.equal(windowStartOf(ab()), '14:00')
+  assert.equal(jobTimeText(ab(), 'pt'), 'Concluir até 21:00')
+  // never late before 21:00, not even while "not started" at 20:59; late from 21:00 if not completed
+  assert.equal(isLateJob(ab(), D, min('20:59')), false)
+  assert.equal(isLateJob(ab(), D, min('21:00')), true)
+  assert.equal(isLateJob(ab({ status: 'in_progress', started_at: at('20:00').toISOString() }), D, min('21:30')), true)
+  assert.equal(isLateJob(ab({ status: 'completed' }), D, min('23:00')), false)
+  assert.equal(progressBucket(ab(), { now: at('20:00') }), 'pending')
+  assert.equal(progressBucket(ab(), { now: at('21:05') }), 'late')
+  // the garbage pick-up (20:00) and the 00:30 deep keep their own rules
+  assert.equal(hasDeadline(ab({ title: 'Atomic Bar — Deep Clean (Coleta de lixo)', scheduled_time: '20:00' })), false)
+  assert.equal(hasDeadline(atomic({ title: 'Atomic Bar — Deep Clean' })), false)
+  // other clients at 21:00 unchanged
+  assert.equal(hasDeadline(ab({ client_id: 'x', client_name: 'Kodama', title: 'Kodama' })), false)
 })
 
 t('employee card text', () => {

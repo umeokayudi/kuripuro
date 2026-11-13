@@ -4,7 +4,7 @@ import { checklistTemplateForJob, parseChecklistTemplate, splitChecklist } from 
 
 export { splitChecklist }
 import { isMissedJob, hoursPastScheduled, tokyoDateString } from './jobOverdue'
-import { isDeadlineJob, isDeadlineLate } from './jobDeadline.js'
+import { hasDeadline, isDeadlineLate } from './jobDeadline.js'
 
 export const DEFAULT_AGENDA_SETTINGS = { tolerance_min: 30, cap_factor: 2 }
 const DEFAULT_MINUTES = { basic: 120, deep: 240 }
@@ -117,7 +117,7 @@ export function progressBucket(job, { expected, settings = DEFAULT_AGENDA_SETTIN
   if (!job || job.status === 'cancelled') return null
   if (job.status === 'completed') return 'done'
   // v1.0.147 · OTP night jobs: only the 10:00 deadline counts (not the start, not the running time)
-  if (isDeadlineJob(job)) return isDeadlineLate(job, { now }) ? 'late' : 'pending'
+  if (hasDeadline(job)) return isDeadlineLate(job, { now }) ? 'late' : 'pending'
   if (job.scheduled_date && job.scheduled_date < tokyoDateString(now)) return 'late'
   if (isMissedJob(job, now)) return 'late'
   const tol = Number(settings?.tolerance_min ?? 30)
