@@ -1,0 +1,157 @@
+/* v1.0.255 · Área do Marketing no padrão "Cor que trabalha" (só visual e organização).
+   Tudo fica preso ao portal de Marketing: o quadro (.fa-app) só muda quando tem .mk-root dentro,
+   então o portal do vendedor, que usa a mesma moldura, não é tocado. Tokens --c-* e --mod-* de cor.css. */
+
+/* ───────── Moldura do Marketing: azul do "KP", nunca preto nem teal ───────── */
+.fa-app.is-mkt { --fa-blue: var(--c-select, #315cf5); --fa-blue-soft: #e8eeff; }
+.fa-app.is-mkt .fa-mark { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); box-shadow: var(--c-kp-shadow); }
+.fa-app.is-mkt .fa-plus { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); box-shadow: 0 10px 22px rgba(49, 92, 245, .34); }
+.fa-app.is-mkt .fa-nav-item.is-active { color: var(--c-select, #315cf5); background: #e8eeff; }
+.fa-app.is-mkt .fa-btn-primary { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; border-radius: var(--c-radius-btn, 12px); box-shadow: var(--c-kp-shadow); }
+.fa-app.is-mkt .fa-chip.is-active { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; }
+.fa-app.is-mkt .fa-hello-kicker { color: #9db4ff; }
+.fa-app.is-mkt .fa-menu-icon { background: transparent; }
+.fa-app.is-mkt .fa-menu-item.is-active { background: #e8eeff; border-color: var(--c-select, #315cf5); }
+.fa-app.is-mkt .kpi-pills button.active, .fa-app.is-mkt .kpi-pills .active { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); color: #fff; border-color: transparent; }
+.fa-app.is-mkt .btn-primary { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; box-shadow: var(--c-kp-shadow); }
+
+.mk-root { font-family: var(--c-font, inherit); color: var(--c-ink, #10222f); display: grid; gap: 14px; min-width: 0; }
+.mk-root h2 { font-family: var(--c-font-display, inherit); color: var(--c-navy, #0a2138); margin: 0; letter-spacing: -.01em; }
+.mk-muted { margin: 4px 0 0; color: var(--c-ink-3, #718894); font-size: 14px; }
+
+/* ───────── Tiles de módulo (mesma cor do menu do admin) ───────── */
+.mk-tile { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 12px; display: inline-grid; place-items: center; color: #fff;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--tile, #315cf5) 82%, #fff), var(--tile, #315cf5)); box-shadow: var(--c-tile-shadow); }
+.mk-tile.is-small { width: 32px; height: 32px; border-radius: 10px; }
+.mk-tile.is-small svg { width: 16px; height: 16px; }
+.fa-menu-icon .mk-tile { width: 36px; height: 36px; }
+
+/* ───────── Cartões ───────── */
+.mk-card { background: var(--c-surface, #fff); border: 1px solid var(--c-line-soft, #e7eff3); border-radius: 18px; box-shadow: var(--c-shadow); padding: 16px; min-width: 0; }
+.mk-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.mk-card-head h2 { font-size: 16px; flex: 1; min-width: 0; }
+.mk-section-title { font-family: var(--c-font-display, inherit); font-weight: 800; font-size: 15px; color: var(--c-navy, #0a2138); margin: 2px 2px 8px; }
+
+/* contador: pílula redonda, número no centro */
+.mk-count { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; box-sizing: border-box; border-radius: 999px; background: var(--c-amber-soft, #fdf3dd); color: var(--c-amber-ink, #92580a); border: 1px solid var(--c-amber-line, #f0d48a); font-size: 12px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+
+/* selos de status com significado fixo */
+.mk-chip { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; line-height: 1; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.mk-chip.is-green { background: var(--c-green-soft, #e5f6ea); color: var(--c-green-ink, #147a35); }
+.mk-chip.is-amber { background: var(--c-amber-soft, #fdf3dd); color: var(--c-amber-ink, #92580a); }
+.mk-chip.is-blue { background: var(--c-blue-soft, #e4ecfe); color: var(--c-blue-ink, #1d4ed8); }
+.mk-chip.is-red { background: var(--c-red-soft, #fdecea); color: var(--c-red-ink, #b42318); }
+.mk-chip.is-gray { background: var(--c-gray-soft, #edf1f4); color: var(--c-gray-ink, #5c707d); }
+.is-red { color: var(--c-red-ink, #b42318) !important; }
+
+/* ───────── Pra hoje ───────── */
+.mk-today { border-top: 4px solid var(--c-select, #315cf5); }
+.mk-list { display: grid; gap: 8px; }
+.mk-row { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; background: var(--c-surface-2, #f4f9fb); border: 1px solid var(--c-line-soft, #e7eff3); border-left: 4px solid var(--c-gray, #8496a5); cursor: pointer; min-width: 0; }
+.mk-row.is-amber { border-left-color: var(--c-amber, #dd8a00); }
+.mk-row.is-red { border-left-color: var(--c-red, #d92d20); background: #fff8f7; }
+.mk-row.is-blue { border-left-color: var(--c-blue, #2563eb); }
+.mk-row.is-green { border-left-color: var(--c-green, #1da448); }
+.mk-row:focus-visible { outline: 2px solid var(--c-select, #315cf5); outline-offset: 2px; }
+.mk-row-icon { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; }
+.mk-row-icon.is-amber { background: var(--c-amber-soft, #fdf3dd); color: var(--c-amber-ink, #92580a); }
+.mk-row-icon.is-red { background: var(--c-red-soft, #fdecea); color: var(--c-red-ink, #b42318); }
+.mk-row-icon.is-blue { background: var(--c-blue-soft, #e4ecfe); color: var(--c-blue-ink, #1d4ed8); }
+.mk-row-icon.is-green { background: var(--c-green-soft, #e5f6ea); color: var(--c-green-ink, #147a35); }
+.mk-row-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.mk-row-text strong { font-size: 14.5px; color: var(--c-navy, #0a2138); overflow-wrap: anywhere; }
+.mk-row-text small { font-size: 12.5px; color: var(--c-ink-3, #718894); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-clear { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; background: var(--c-green-soft, #e5f6ea); }
+.mk-clear strong { display: block; color: var(--c-green-ink, #147a35); font-size: 15px; }
+.mk-clear small { color: var(--c-ink-2, #47606f); font-size: 13px; }
+.mk-dot { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; flex: 0 0 auto; }
+.mk-dot.is-green { background: var(--c-green, #1da448); color: #fff; }
+
+/* ───────── Botão principal (azul do KP, forma de app) ───────── */
+.mk-cta { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 18px; color: #fff; cursor: pointer; background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); box-shadow: 0 12px 26px -10px rgba(49, 92, 245, .55); }
+.mk-cta:focus-visible { outline: 3px solid #9db4ff; outline-offset: 2px; }
+.mk-cta strong { display: block; font-family: var(--c-font-display, inherit); font-size: 17px; }
+.mk-cta small { color: rgba(255, 255, 255, .82); font-size: 13px; font-variant-numeric: tabular-nums; }
+.mk-cta > span:nth-child(2) { flex: 1; min-width: 0; }
+.mk-cta-icon { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; font-weight: 900; background: rgba(255, 255, 255, .18); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22); }
+.mk-cta-go { font-size: 26px; opacity: .8; }
+.mk-btn { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 14px; border-radius: 12px; font-weight: 800; font-size: 14px; color: #fff; cursor: pointer; background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); box-shadow: var(--c-kp-shadow); white-space: nowrap; }
+.mk-btn:focus-visible { outline: 2px solid #9db4ff; outline-offset: 2px; }
+
+/* ───────── Números do mês ───────── */
+.mk-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mk-stat { background: var(--c-surface, #fff); border: 1px solid var(--c-line-soft, #e7eff3); border-radius: 16px; box-shadow: var(--c-shadow); padding: 14px; display: grid; gap: 2px; min-width: 0; }
+.mk-stat .mk-tile { width: 34px; height: 34px; border-radius: 10px; margin-bottom: 8px; }
+.mk-stat .mk-tile svg { width: 18px; height: 18px; }
+.mk-stat strong { font-family: var(--c-font-display, inherit); font-size: 24px; color: var(--c-navy, #0a2138); font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; }
+.mk-stat > span:not(.mk-tile) { font-size: 13px; color: var(--c-ink-2, #47606f); font-weight: 700; }
+.mk-stat small { font-size: 12px; color: var(--c-ink-3, #718894); }
+
+/* ───────── Barras ───────── */
+.mk-root .mk-bar { padding: 8px 0; border-top: 1px solid var(--c-line-soft, #e7eff3); }
+.mk-root .mk-bar:first-of-type { border-top: 0; }
+.mk-root .mk-bar-top { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; font-size: 14px; }
+.mk-root .mk-bar-top span { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--c-navy, #0a2138); }
+.mk-root .mk-track { height: 8px; border-radius: 999px; background: var(--c-track, #e2ecf1); overflow: hidden; }
+.mk-root .mk-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--c-select, #315cf5), #5b7bff); }
+.mk-root .mk-track.is-none i { background: var(--c-amber, #dd8a00); }
+.mk-root .mk-track.is-over i { background: var(--c-red, #d92d20); }
+
+/* ───────── Atalhos da área ───────── */
+.mk-shortcuts { display: grid; gap: 8px; }
+.mk-shortcut { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 14px; border: 1px solid var(--c-line-soft, #e7eff3); background: var(--c-surface, #fff); cursor: pointer; min-width: 0; }
+.mk-shortcut:hover { background: var(--c-surface-2, #f4f9fb); }
+.mk-shortcut:focus-visible { outline: 2px solid var(--c-select, #315cf5); outline-offset: 2px; }
+.mk-shortcut > span:nth-child(2) { flex: 1; min-width: 0; display: grid; }
+.mk-shortcut strong { font-size: 15px; color: var(--c-navy, #0a2138); }
+.mk-shortcut small { font-size: 12.5px; color: var(--c-ink-3, #718894); }
+.mk-chev { color: var(--c-ink-3, #718894); font-size: 22px; }
+
+/* ───────── Telas (Campanhas, Canais, Leads, KPIs) ───────── */
+.mk-screen-head { display: flex; align-items: center; gap: 12px; }
+.mk-screen-head h2 { flex: 1; min-width: 0; font-size: 21px; }
+.mk-list-card { padding: 6px 14px; }
+.mk-campaign { padding: 14px 0; border-top: 1px solid var(--c-line-soft, #e7eff3); display: grid; gap: 12px; }
+.mk-campaign:first-child { border-top: 0; }
+.mk-campaign-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mk-campaign-name { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.mk-campaign-name strong { font-size: 15.5px; color: var(--c-navy, #0a2138); overflow-wrap: anywhere; }
+.mk-campaign-name small { font-size: 12.5px; color: var(--c-ink-3, #718894); }
+.mk-root .mk-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.mk-root .mk-kpis span { display: grid; gap: 2px; padding: 8px; border-radius: 12px; background: var(--c-surface-2, #f4f9fb); font-size: 11.5px; color: var(--c-ink-3, #718894); min-width: 0; }
+.mk-root .mk-kpis b { font-family: var(--c-font-display, inherit); font-size: 15px; color: var(--c-navy, #0a2138); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mk-budget .mk-bar-top { margin-bottom: 4px; }
+.mk-budget small { font-size: 12px; color: var(--c-ink-3, #718894); font-variant-numeric: tabular-nums; }
+.mk-line { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--c-line-soft, #e7eff3); min-width: 0; }
+.mk-line:first-child { border-top: 0; }
+.mk-line-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.mk-line-text strong { font-size: 15px; color: var(--c-navy, #0a2138); overflow-wrap: anywhere; }
+.mk-line-text small { font-size: 12.5px; color: var(--c-ink-3, #718894); }
+.mk-line-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 46%; }
+.mk-filters { display: grid; gap: 10px; }
+.mk-search { box-sizing: border-box; width: 100%; height: 46px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--c-line, #d5e2ea); background: #fff; font: inherit; font-size: 15px; }
+.mk-search:focus { outline: 2px solid var(--c-select, #315cf5); outline-offset: 0; border-color: transparent; }
+.mk-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.mk-pills button { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--c-line, #d5e2ea); background: #fff; font-weight: 800; font-size: 13.5px; color: var(--c-ink-2, #47606f); cursor: pointer; }
+.mk-pills button span { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 999px; background: var(--c-gray-soft, #edf1f4); font-size: 12px; line-height: 1; }
+.mk-pills button.is-active { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); color: #fff; border-color: transparent; box-shadow: var(--c-kp-shadow); }
+.mk-pills button.is-active span { background: rgba(255, 255, 255, .22); color: #fff; }
+.mk-kpi .kpi-panel .card, .mk-kpi .kpi-tile { border-radius: 16px; }
+
+/* ───────── Computador: duas colunas, nada esticado ───────── */
+@media (min-width: 900px) {
+  .mk-home { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-areas: "today cta" "today month" "chan budget" "short short"; align-items: start; gap: 16px; }
+  .mk-home > .mk-today { grid-area: today; }
+  .mk-home > .mk-cta { grid-area: cta; }
+  .mk-home > .mk-month { grid-area: month; }
+  .mk-home > .mk-card:nth-of-type(3) { grid-area: chan; }
+  .mk-home > .mk-card:nth-of-type(4) { grid-area: budget; }
+  .mk-home > .mk-shortcuts-card { grid-area: short; }
+  .mk-shortcuts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .mk-shortcut { flex-direction: column; align-items: flex-start; padding: 14px; }
+  .mk-shortcut .mk-chev { display: none; }
+  .mk-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mk-filters { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+}
+@media (max-width: 380px) { .mk-root .mk-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mk-campaign-name strong, .mk-line-text strong { white-space: normal !important; text-overflow: clip !important; overflow: visible !important; }

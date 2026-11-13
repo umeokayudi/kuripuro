@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { dueDateAfter } from '../lib/spotContract'
 import { useLang, fill } from '../hooks/useLang'
-import { buildContractLine, monthBounds, monthlyTotals, monthlySubject } from '../lib/invoiceAutomation'
+import { buildStoreLines, monthBounds, monthlyTotals, monthlySubject } from '../lib/invoiceAutomation'
 import { ClientLink } from '../components/ClientSheetHost'
 import { askConfirm } from '../components/ConfirmDialog'
 import { invoiceMonth, isReceivable, isOverdueInvoice } from '../lib/money'
@@ -81,7 +81,7 @@ export default function Faturas() {
     if (!form.client_id) return toast.error(inv.selectClient)
     const { data: contracts, error } = await supabase.from('service_contracts').select('*').eq('client_id', form.client_id).eq('is_active', true).order('created_at')
     if (error) return toast.error(error.message)
-    const lines = (contracts || []).map(c => buildContractLine(c, jobs)).filter(Boolean)
+    const lines = buildStoreLines(contracts || [], jobs)
     if (!lines.length) return toast(tr('This client has no active contract with a value.', 'この顧客に金額のある有効な契約がありません。', 'Este cliente não tem contrato ativo com valor.'))
     setItems(lines.map(l => ({ job_id: null, contract_id: l.contract_id, description: l.restaurant, quantity: 1, unit_price: l.total, total: l.total, job_ids: l.job_ids.join(',') })))
     if (!form.period_start && !form.period_end) {
@@ -143,9 +143,8 @@ export default function Faturas() {
           .lte('scheduled_date', end)
           .eq('status', 'completed')
 
-        const lines = clientContracts
-          .map(contract => buildContractLine(contract, (completedJobs || []).filter(j => !spotBilledJobs.has(j.id))))
-          .filter(Boolean)
+        // v1.0.256 · one line per store (its fixed amount); operational deep items add nothing
+        const lines = buildStoreLines(clientContracts, (completedJobs || []).filter(j => !spotBilledJobs.has(j.id)))
         if (!lines.length) continue
 
         const taxRate = Number(clientContracts[0]?.tax_rate ?? 10)
