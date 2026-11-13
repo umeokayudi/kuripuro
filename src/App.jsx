@@ -40,6 +40,7 @@ const Cashflow = lazy(() => import('./pages/Cashflow'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Videos = lazy(() => import('./pages/Videos'))
 const Training = lazy(() => import('./pages/Training'))
+const Meetings = lazy(() => import('./pages/Meetings'))
 const GoogleAgenda = lazy(() => import('./pages/GoogleAgenda'))
 const WorkReports = lazy(() => import('./pages/WorkReports'))
 const Ryoshu = lazy(() => import('./pages/Ryoshu'))
@@ -117,6 +118,7 @@ const PAGE_KEYS = {
   '/reports': 'reports',
   '/videos': 'videos',
   '/training': 'training',
+  '/meetings': 'meetings',
   '/work-reports': 'workReports',
   '/ryoshu': 'ryoshu',
   '/evaluations': 'evaluations',
@@ -143,6 +145,7 @@ const PAGE_KEYS = {
 
 function pageTitle(pathname, sidebar) {
   if (pathname.startsWith('/employees/')) return sidebar.employees
+  if (pathname.startsWith('/meetings/')) return sidebar.meetings
   return sidebar[PAGE_KEYS[pathname]] || sidebar.dashboard
 }
 
@@ -315,6 +318,8 @@ function AppContent() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/videos" element={<Videos />} />
               <Route path="/training" element={<Training />} />
+              <Route path="/meetings" element={<Meetings />} />
+              <Route path="/meetings/:id" element={<Meetings />} />
               <Route path="/google-agenda" element={<GoogleAgenda />} />
               <Route path="/work-reports" element={<WorkReports />} />
               <Route path="/ryoshu" element={<Ryoshu />} />
