@@ -17,6 +17,7 @@ const steps = [
   ['npx vite-node scripts/test-day-count.mjs', 'Painel do Dia: um contador só'],
   ['npx vite-node scripts/test-seller-visits.mjs', 'Vendedor: jogar tudo na IA + visita agendada (Google Agenda)'],
   ['node scripts/test-dupla.mjs', 'Serviço em dupla (valor meio a meio, relatório dos dois)'],
+  ['npx vite-node scripts/test-redo-done-store.mjs', 'Loja já feita por outro: rótulos certos e refazer só com justificativa'], 
   ['npx vite-node scripts/test-bell-queue.mjs', 'bell queue (Aguardando você)'],
   ['npx vite-node scripts/test-deep-month.mjs', 'deep cleaning of the month (Painel + Deep & Spot)'],
   ['npx vite-node scripts/test-deep-items-edit.mjs', 'editar só os itens feitos num restaurante (deep)'],
