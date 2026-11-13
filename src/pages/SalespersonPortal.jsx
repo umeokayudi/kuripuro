@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import SellerBell, { sellerBellCount } from '../components/SellerBell'
 import SalesOutreach from '../components/SalesOutreach'
 import toast from 'react-hot-toast'
 import { useAuth } from '../hooks/useAuth'
@@ -523,7 +524,7 @@ export default function SalespersonPortal() {
   const quoteAlerts = quoteRequestsToSend(data).length + quoteRequestsWaiting(data).length
   const offers = data?.facilityOffers || []
   const offersTodo = offers.filter(r => !r.offered)
-  const bellCount = (data?.notifications?.length || 0) + counts.needsAction + quoteAlerts + (offersTodo.length ? 1 : 0)
+  const bellCount = sellerBellCount({ data, alerts, offersTodo }) // v1.0.234 · the badge is the real size of the list, like the admin's bell
   const selectedLead = leads.find(row => row.id === leadId)
   const deals = useMemo(() => buildDeals(data, today), [data, today])
   const dayState = todayRow?.closed_at ? 'closed' : todayRow?.started_at ? 'working' : 'idle'
@@ -853,10 +854,9 @@ export default function SalespersonPortal() {
       </Sheet>}
 
       {sheet === 'bell' && <Sheet title={c.notifications} onClose={() => setSheet('')}>
-        {counts.needsAction > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setFollowFilter('action'); setTab('followups') }}><span aria-hidden="true">↻</span><div><strong>{f.alertTitle}</strong><small>{[alerts.filter(a => a.reasons.includes('quote_expired')).length && `${alerts.filter(a => a.reasons.includes('quote_expired')).length} ${alertReasonCopy(lang).quote_expired.toLowerCase()}`, alerts.filter(a => a.reasons.includes('no_contact')).length && `${alerts.filter(a => a.reasons.includes('no_contact')).length} ${f.alertStale}`].filter(Boolean).join(' · ')}</small></div><b>›</b></button>}
-        {quoteAlerts > 0 && <QuoteRequestsAlert data={data} lang={lang} onOpen={() => { setSheet(''); setTab('quotes') }} />}
-        {offersTodo.length > 0 && <button type="button" className="sp-bell-item is-alert" onClick={() => { setSheet(''); setTab('offers') }}><span aria-hidden="true">🧽</span><div><strong>{offersCopy(lang).title}</strong><small>{offersCopy(lang).offerTo(offersTodo[0].task_name, offersTodo[0].client_name || offersTodo[0].location)}{offersTodo.length > 1 ? ` +${offersTodo.length - 1}` : ''}</small></div><b>›</b></button>}
-        <SalesInbox lang={lang} notifications={data?.notifications || []} onChanged={load} onOpenLead={id => { const row = leads.find(l => l.id === id); if (row) { setSheet(''); openDeal(row) } }} />
+        <SellerBell data={data} alerts={alerts} offersTodo={offersTodo} lang={lang} onChanged={load}
+          onGo={key => { setSheet(''); if (key === 'followups') setFollowFilter('action'); setTab(key); window.scrollTo(0, 0) }}
+          onOpenLead={row => { setSheet(''); openDeal(row) }} />
       </Sheet>}
 
       {sheet === 'ai' && <Sheet title={c.aiReview} onClose={() => setSheet('')}>
