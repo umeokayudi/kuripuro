@@ -3,10 +3,35 @@
 import { supabase } from './supabase'
 import { mediaForJobs } from './workMedia'
 import { loadReport, reportIdForJob, storagePublicUrl } from './workReport'
-import { buildDeepMonthReport, isDeepJob, isOtpJob, monthRange } from './deepMonthReport'
+import { aiFacts, buildDeepMonthReport, isClientJob, isDeepJob, monthRange, OTP_CLIENT } from './deepMonthReport'
+import { isTestClient, isTestJob } from './testData'
+import { ONTHEPLANET_CLIENT_ID } from './cleaningType'
 
-// No value / pay columns are read at all (hard rule: never show money).
-const JOB_COLS = 'id,title,client_id,client_name,employee_name,scheduled_date,scheduled_time,status,started_at,photo_start_url,photo_end_url,job_category'
+// No value / pay columns are read at all (hard rule: never show money). No completed_at either:
+// the end of a visit is never needed. v1.0.247: + the checklist and the worker's note (AI facts).
+const JOB_COLS = 'id,title,client_id,client_name,employee_name,scheduled_date,scheduled_time,status,started_at,photo_start_url,photo_end_url,job_category,checklist_template,checklist_total,checklist_done,checklist_missed_items,notes_employee'
+
+/**
+ * v1.0.247 · Clients for the selector: every non-test client (id + name only), with how many deep
+ * cleanings of the month each one has. OTP first, then the ones with deeps, then the rest.
+ */
+export async function loadReportClients(month) {
+  const [from, to] = monthRange(month)
+  const [{ data: cl, error }, { data: jobs }] = await Promise.all([
+    supabase.from('clients').select('id,company_name,is_active').order('company_name').limit(2000),
+    supabase.from('jobs').select('id,title,client_id,client_name,status,employee_name').gte('scheduled_date', from).lte('scheduled_date', to).limit(5000),
+  ])
+  if (error) throw new Error(error.message)
+  const deep = (jobs || []).filter(j => isDeepJob(j) && !isTestJob(j) && j.status !== 'cancelled')
+  const list = (cl || []).filter(c => !isTestClient(c)).map(c => {
+    const client = { id: c.id, name: c.company_name || '—' }
+    const mine = deep.filter(j => isClientJob(j, client))
+    return { ...client, active: c.is_active !== false, deep: mine.length, done: mine.filter(j => j.status === 'completed').length }
+  }).filter(c => c.active || c.deep)
+  if (!list.some(c => c.id === ONTHEPLANET_CLIENT_ID)) list.push({ ...OTP_CLIENT, active: true, deep: 0, done: 0 })
+  const rank = c => (c.id === ONTHEPLANET_CLIENT_ID ? 0 : c.deep ? 1 : 2)
+  return list.sort((a, b) => rank(a) - rank(b) || b.done - a.done || a.name.localeCompare(b.name))
+}
 
 async function pool(items, size, fn) {
   let i = 0
@@ -29,19 +54,35 @@ async function reportNotes(jobId) {
   return r ? String(r.notices || '') : ''
 }
 
-/** Loads everything for one month and returns buildDeepMonthReport() + a progress callback. */
-export async function loadDeepMonthReport(month, { onProgress } = {}) {
+/** Loads everything for one month of one client and returns buildDeepMonthReport(). */
+export async function loadDeepMonthReport(month, { onProgress, client = OTP_CLIENT } = {}) {
   const [from, to] = monthRange(month)
   const { data, error } = await supabase.from('jobs').select(JOB_COLS)
     .gte('scheduled_date', from).lte('scheduled_date', to).limit(5000)
   if (error) throw new Error(error.message)
-  const jobs = (data || []).filter(j => isOtpJob(j) && isDeepJob(j))
+  const jobs = (data || []).filter(j => isClientJob(j, client) && isDeepJob(j))
   const done = jobs.filter(j => j.status === 'completed')
   onProgress?.({ step: 'photos', done: 0, total: done.length })
   const media = await mediaForJobs(done, { onProgress: (d, t) => onProgress?.({ step: 'photos', done: d, total: t }) })
   onProgress?.({ step: 'notes', done: 0, total: done.length })
   const notes = await pool(done, 6, j => reportNotes(j.id))
-  return buildDeepMonthReport({ month, jobs, media, notes })
+  return buildDeepMonthReport({ month, jobs, media, notes, client })
+}
+
+/**
+ * v1.0.247 · Asks the AI (server, admin login) for the opening, each visit's "what was done and
+ * why" and the closing. Sends only aiFacts() — no time of day, duration, value or names.
+ */
+export async function aiMonthTexts(report, { lang, clientName, today }) {
+  const resp = await fetch('/api/evaluate-report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ kind: 'month-report', lang, facts: aiFacts(report, { lang, clientName, today }) }),
+  })
+  const data = await resp.json().catch(() => ({}))
+  if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`)
+  return { intro: data.intro || '', closing: data.closing || '', visits: data.visits || {}, missing: data.missing || [], models: data.models || [] }
 }
 
 /** Photo → small JPEG data URL (max side `max` px), so the PDF stays light. null when it can't be read. */

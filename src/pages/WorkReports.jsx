@@ -139,9 +139,9 @@ export default function WorkReports() {
           <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('The system gathers the month\'s services and every photo/video, store by store.', '当月の作業と写真・動画を店舗ごとに自動で集めます。', 'O sistema junta os serviços do mês e todas as fotos/vídeos, loja por loja.')}</small>
         </div>
         <div>
-          <b>{tr('Monthly Deep Cleaning report — On The Planet', 'ディープ月次報告書 — On The Planet', 'Relatório mensal de Deep — On The Planet')}</b>
+          <b>{tr('Client monthly report (deep cleanings)', 'お客様月次報告書（ディープ）', 'Relatório mensal do cliente (deep)')}</b>
           <a className="btn btn-sm btn-primary" href="/deep-report" onClick={e => { e.preventDefault(); navigate('/deep-report') }} style={{ alignSelf: 'flex-start' }}>{tr('Open', '開く', 'Abrir')} ›</a>
-          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('PDF of the month with charts and before/after photos of each deep visit (start time only, no values).', '今月のPDF：グラフと訪問ごとの作業前後写真（開始時刻のみ・金額なし）。', 'PDF do mês com gráficos e fotos de antes/depois de cada deep (só hora de início, sem valores).')}</small>
+          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('Any client: PDF of the month with charts, before/after photos of each deep visit and texts written by the AI (start time only, no values).', 'どのお客様でも：グラフ・訪問ごとの作業前後写真・AIが作成する文章入りの月次PDF（開始時刻のみ・金額なし）。', 'Qualquer cliente: PDF do mês com gráficos, fotos de antes/depois de cada deep e textos escritos pela IA (só hora de início, sem valores).')}</small>
         </div>
         <div>
           <b>{tr('Photos and videos of a client in a period (one ZIP)', '期間内の写真・動画をまとめてダウンロード（ZIP）', 'Fotos e vídeos de um cliente no período (um ZIP)')}</b>
