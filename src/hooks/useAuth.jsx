@@ -81,6 +81,7 @@ export function AuthProvider({ children }) {
         setSessionExpired(false)
         setUser(result.user)
         localStorage.setItem('kp_user', JSON.stringify(result.user))
+        localStorage.removeItem('kp_owner_view')
         return { success: true }
       }
       if (response.status === 429) return { success: false, error: result.error }
@@ -142,6 +143,7 @@ export function AuthProvider({ children }) {
     setUser(null)
     setDbToken(null)
     localStorage.removeItem('kp_user')
+    localStorage.removeItem('kp_owner_view')
     fetch('/api/sales-session', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {})
   }
 

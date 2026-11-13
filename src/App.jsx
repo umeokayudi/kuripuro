@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { maybeAutoSync } from './lib/googleAgenda'
 import ClientSheetHost from './components/ClientSheetHost'
+import { OwnerUserMenu, OwnerViewBanner } from './components/OwnerView'
 import { APP_VERSION, APP_BUILD_LABEL } from './version'
 import { startAppUpdateWatch } from './lib/appUpdate'
 
@@ -249,6 +250,7 @@ function AppContent() {
   if (!user) return <Login />
   if (user.role === 'employee') return (
     <PortalErrorBoundary label="Employee portal">
+      <OwnerViewBanner user={user} />
       <Suspense fallback={<PortalLoading />}>
         <EmployeePortal />
       </Suspense>
@@ -256,11 +258,13 @@ function AppContent() {
   )
   if (user.role === 'salesperson' && user.team === 'marketing') return (
     <PortalErrorBoundary label="Marketing portal">
+      <OwnerViewBanner user={user} />
       <Suspense fallback={<PortalLoading />}><MarketingPortal /></Suspense>
     </PortalErrorBoundary>
   )
   if (user.role === 'salesperson') return (
     <PortalErrorBoundary label="Sales portal">
+      <OwnerViewBanner user={user} />
       <Suspense fallback={<PortalLoading />}><SalespersonPortal /></Suspense>
     </PortalErrorBoundary>
   )
@@ -311,7 +315,7 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div className="topbar-right"><Suspense fallback={<BellSlot />}><TimeOffCenter /></Suspense><Clock /><div className="ref-user"><div className="ref-avatar">{(user.name || 'A').slice(0,2).toUpperCase()}</div><div><div className="ref-user-name">{user.name}</div><div className="ref-user-role">{a.administrator}</div></div></div><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
+          <div className="topbar-right"><Suspense fallback={<BellSlot />}><TimeOffCenter /></Suspense><Clock /><OwnerUserMenu user={user} roleText={a.administrator} /><button type="button" onClick={logout} className="ref-top-action" title={t.sidebar.logout}>↪</button></div>
         </header>
         <ClientSheetHost />
         <main className="page-content">

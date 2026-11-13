@@ -2133,3 +2133,34 @@ body { background: var(--hq-bg); }
 .client-email-item-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .client-email-when { font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
 .client-email-item a { font-size: 12px; }
+/* v1.0.236 · "Ver como" do dono — same avatar block as the topbar, plus a small menu; strip while viewing */
+.kp-owner-menu{position:relative}
+.kp-owner-trigger{display:flex;align-items:center;gap:8px;border:0;background:transparent;padding:4px 6px;margin:-4px -6px;border-radius:9px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.kp-owner-trigger:hover,.kp-owner-trigger[aria-expanded="true"]{background:#f5f7fb}
+.kp-owner-caret{font-size:10px;color:var(--ref-muted)}
+.kp-owner-pop{position:absolute;top:calc(100% + 10px);right:0;width:260px;background:#fff;border:1px solid var(--ref-border);border-radius:12px;box-shadow:0 16px 40px rgba(18,32,55,.14);padding:6px;z-index:300}
+.kp-owner-pop-title{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ref-muted);padding:8px 10px 6px}
+.kp-owner-opt{width:100%;display:flex;align-items:center;gap:10px;padding:10px;border:0;background:transparent;border-radius:8px;text-align:left;color:var(--ref-text);cursor:pointer;font:inherit}
+.kp-owner-opt:hover:not(:disabled){background:#f5f7fb}
+.kp-owner-opt:disabled{cursor:default}
+.kp-owner-opt.is-current{background:var(--ref-primary-soft)}
+.kp-owner-opt-main{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.kp-owner-opt-main strong{font-size:13px}
+.kp-owner-opt-main small{font-size:12px;color:var(--ref-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kp-owner-opt-side{color:var(--ref-primary);font-weight:800}
+.kp-owner-pop-note{font-size:12px;color:var(--ref-muted);padding:4px 10px 8px}
+.kp-owner-pop-link{display:block;border-top:1px solid var(--ref-border);margin-top:4px;padding:10px 10px 6px;font-size:12px;font-weight:700;color:var(--ref-primary);text-decoration:none}
+.kp-owner-banner{position:sticky;top:0;z-index:5000;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:8px 16px;background:#315cf5;color:#fff;font-size:13px;line-height:1.3;box-shadow:0 2px 10px rgba(18,32,55,.18)}
+.kp-owner-banner-text strong{font-weight:800;letter-spacing:.02em}
+.kp-owner-banner-back{border:0;background:#fff;color:#1e3fae;font-weight:800;font-size:13px;border-radius:8px;padding:6px 14px;cursor:pointer;min-height:32px}
+.kp-owner-banner-back:disabled{opacity:.7}
+.kp-owner-card{padding:16px;margin:0;display:grid;gap:12px}
+.kp-owner-card-text{margin:0;font-size:13px;color:var(--text2);line-height:1.5}
+.kp-owner-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.kp-owner-card-grid .form-group{margin:0}
+.kp-owner-warn{display:block;margin-top:4px;color:#c2410c;font-size:12px}
+.kp-owner-log{border-top:1px solid var(--ref-border);padding-top:10px;display:grid;gap:4px}
+.kp-owner-log-title{font-size:12px;font-weight:800;color:var(--text2);margin-bottom:2px}
+.kp-owner-log-row{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--text3)}
+.kp-owner-log-row strong{color:var(--text2)}
+@media(max-width:720px){.kp-owner-card-grid{grid-template-columns:1fr}.kp-owner-pop{right:-8px;width:min(260px,calc(100vw - 24px))}}

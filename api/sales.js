@@ -4,6 +4,7 @@ import contractSales from './_contract-sales.js'
 import google from './_google-calendar.js'
 import meetings from './_meetings.js'
 import scan3d from './_kiri.js'
+import ownerView from './_owner-view.js'
 import payrollClose from './_payroll-close.js'
 import push from './_push.js'
 import optout from './_sales-outreach.js'
@@ -29,6 +30,7 @@ const handlers = {
   meetings,
   optout,
   scan3d,
+  'owner-view': ownerView,
   'payroll-close': payrollClose,
   push,
   reminders: salesReminders,

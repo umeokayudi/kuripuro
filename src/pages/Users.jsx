@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import ViewAsClientButton from '../components/ClientPortalPreview'
-import { ViewAsButton } from '../components/ViewAs'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
@@ -9,6 +8,7 @@ import { useLang, localeOf } from '../hooks/useLang'
 import { useAuth } from '../hooks/useAuth'
 import { RoleBadge } from '../components/EmployeeRole'
 import UserEditDialog from '../components/UserEditDialog'
+import OwnerLinksCard from '../components/OwnerLinksCard'
 import { isTestEmployee, isTestSeller, isTestClientUser } from '../lib/testData'
 import { maskEmail, maskPhone } from '../lib/contactMask'
 
@@ -176,7 +176,6 @@ export default function Users() {
         <button type="button" className="btn btn-sm btn-primary" onClick={() => setEditing(r)}>{t.edit}</button>
         {r.type !== 'admin' && <button type="button" className="btn btn-sm" onClick={() => open(r)}>{t.open}</button>}
         {r.type === 'client' && r.portalRow && <ViewAsClientButton row={r.portalRow} />}
-        {(r.type === 'employee' || r.type === 'salesperson') && r.active && <ViewAsButton target={r.type === 'salesperson' ? { ...r, type: 'seller' } : r} />}
         {r.type !== 'admin' && (
           <button type="button" className="btn btn-sm" disabled={busy === r.type + r.id} onClick={() => toggleActive(r)}>
             {r.active ? t.deactivate : t.activate}
@@ -213,6 +212,8 @@ export default function Users() {
           {t.showInactive}
         </label>
       </div>
+
+      {!loading && me?.role === 'admin' && <OwnerLinksCard me={me} rows={rows} />}
 
       {loading && <div aria-busy="true" aria-label={t.loading}>{[0,1,2,3].map(i => <div key={i} className="kp-skel kp-skel-row" />)}</div>}
       {!loading && sections.map(({ type, list }) => (
