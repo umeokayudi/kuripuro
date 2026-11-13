@@ -1,7 +1,7 @@
 // Assistente de IA para funcionários — somente leitura e somente da própria conta.
 // O funcionário vem da sessão assinada no servidor, nunca do corpo da requisição.
 
-import { runGeminiToolLoop } from './_tool-loop.js'
+import { runToolLoop } from './_tool-loop.js'
 import { requireSalesSession, salesDb } from './_salesSession.js'
 import { trimHistory, workOnlyRule, mergeTurns, packContinuation, readContinuation, maskPendingRows, PENDING_RULE } from './_ai-guard.js'
 import { transcribeAudio } from './_transcribe.js'
@@ -140,7 +140,7 @@ ${workOnlyRule(responseLanguage)}`
     const baseLength = contents.length
     contents.push(...readContinuation(req.body.continuation))
 
-    const { reply, toolLog, incomplete } = await runGeminiToolLoop({
+    const { reply, toolLog, incomplete } = await runToolLoop({
       contents,
       tools: TOOLS,
       systemInstruction: { parts: [{ text: systemInstruction }] },

@@ -12,7 +12,7 @@ globalThis.fetch = async (url, opts) => {
   if (reject && body.generationConfig?.thinkingConfig) return j({ error: { code: 400, message: 'thinking_level is not supported', status: 'INVALID_ARGUMENT' } }, 400)
   return j({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] })
 }
-const { geminiGenerate } = await import('../api/_gemini.js')
+const { generate: geminiGenerate } = await import('../api/_ai-gemini.js')
 await geminiGenerate({ contents: [] }, { lowThinking: true })
 assert.deepEqual(bodies[0].generationConfig.thinkingConfig, { thinkingLevel: 'low' })
 await geminiGenerate({ contents: [] })

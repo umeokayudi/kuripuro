@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 
 process.env.GEMINI_API_KEY = 'gemini-test'
-const { runGeminiToolLoop } = await import('../api/_tool-loop.js')
+const { runToolLoop } = await import('../api/_tool-loop.js')
 
 let script = []
 let geminiBodies = []
@@ -36,7 +36,7 @@ await ok('several lookups in one Gemini turn are all answered in one round', asy
   ]
   geminiBodies = []
   const ran = []
-  const { reply, toolLog } = await runGeminiToolLoop({
+  const { reply, toolLog } = await runToolLoop({
     contents: [{ role: 'user', parts: [{ text: 'marca dia 25' }] }],
     executeTool: async (name, args) => { ran.push(args.who); return [{ id: args.who }] },
   })
@@ -54,7 +54,7 @@ await ok('stops at the time budget and still answers', async () => {
   geminiBodies = []
   delayMs = 400
   const started = Date.now()
-  const { reply } = await runGeminiToolLoop({
+  const { reply } = await runToolLoop({
     contents: [{ role: 'user', parts: [{ text: 'tudo' }] }],
     executeTool: async () => [],
     maxIterations: 20,
@@ -74,7 +74,7 @@ await ok('out of time with canContinue: hands the work back, then the next call 
   assert.equal(base.length, 1, 'pieces sent in a row become one turn')
   assert.equal(base[0].parts.length, 2)
   const contents = [...base]
-  const first = await runGeminiToolLoop({ contents, executeTool: async () => [{ id: 1 }], maxIterations: 20, budgetMs: 6000, canContinue: true })
+  const first = await runToolLoop({ contents, executeTool: async () => [{ id: 1 }], maxIterations: 20, budgetMs: 6000, canContinue: true })
   delayMs = 0
   assert.equal(first.incomplete, true)
   assert.equal(first.reply, '')
@@ -86,7 +86,7 @@ await ok('out of time with canContinue: hands the work back, then the next call 
   assert.deepEqual(readContinuation([{ role: 'system', parts: [] }]), [])
   script = [[{ text: 'Tudo pronto.' }]]
   geminiBodies = []
-  const second = await runGeminiToolLoop({ contents: [...base, ...back], executeTool: async () => [], canContinue: true })
+  const second = await runToolLoop({ contents: [...base, ...back], executeTool: async () => [], canContinue: true })
   assert.equal(second.reply, 'Tudo pronto.')
   assert.equal(geminiBodies[0].contents.length, base.length + back.length, 'the second call sees the earlier lookups')
 })

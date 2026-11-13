@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 
 // v1.0.77 · Minimum company price for a quote the seller sends straight to the client.
 // The AI reads the company's own price history (company prices of past client quotes,
@@ -97,7 +97,7 @@ export async function estimateMinimum(db, job) {
   }
   if (!h) return plain
   try {
-    const result = await geminiGenerate({
+    const result = await aiGenerate({
       contents: [{ role: 'user', parts: [{ text: `You price professional cleaning jobs for a Japanese cleaning company (Tokyo, yen, tax excluded).
 Give the MINIMUM price the company accepts for the job below: it must cover labour, chemicals, travel and a healthy margin. Base it on the company's own past prices; adjust for the store size and how many units of the equipment there are. Never go below past company prices for the same kind of job unless the job is clearly smaller.
 Answer JSON only: {"min_price": integer yen, "reason": "one short sentence in Portuguese explaining the number"}.

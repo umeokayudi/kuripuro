@@ -1,4 +1,4 @@
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate } from './_ai.js'
 import { SALES_BUCKET, normalizeMime, ownsSalesObject, requireActiveSalesSession, salesDb } from './_salesSession.js'
 import { saveLeadDump } from './_sales-visits.js'
 
@@ -128,7 +128,7 @@ SALES DATA:
 ${text.slice(0, 45_000)}` }]
     }
 
-    const result = await geminiGenerate({
+    const result = await aiGenerate({
       contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.2, maxOutputTokens: task === 'sales-insights' ? 2200 : task === 'funnel-review' ? 1200 : task === 'lead-dump' ? 8000 : 1600, ...(json ? { responseMimeType: 'application/json' } : {}) },
     }, task === 'lead-dump' ? { timeoutMs: 45000 } : undefined)
