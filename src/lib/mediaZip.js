@@ -8,6 +8,7 @@ import { storagePublicUrl } from './workReport'
 import { splitName } from './schedulePlan'
 
 export const PART_BYTES = 350 * 1024 * 1024
+// eslint-disable-next-line no-control-regex
 const safe = s => String(s || '').normalize('NFKC').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'servico'
 const LABEL = { before: 'antes', after: 'depois' }
 

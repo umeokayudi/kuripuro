@@ -190,7 +190,7 @@ function OutreachEmail({ data, lang, L, onDone }) {
     .filter((r, i, a) => a.findIndex(x => x.id === r.id) === i)
     .filter(r => (r.contact_email || r.email) && !r.opted_out && !(r.last_email && r.last_email >= day14)), [data, day14])
   const blocked = data.targets.filter(r => r.opted_out).length
-  const useTpl = k => { setTplLang(k); setSubject(EMAIL_TEMPLATES[k].subject); setBody(EMAIL_TEMPLATES[k].body) }
+  const pickTpl = k => { setTplLang(k); setSubject(EMAIL_TEMPLATES[k].subject); setBody(EMAIL_TEMPLATES[k].body) }
   const toggle = id => setPicked(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const pickAll = () => setPicked(p => p.size ? new Set() : new Set(candidates.slice(0, set.left_today || set.limit).map(c => c.id)))
   const send = async dry => {
@@ -212,7 +212,7 @@ function OutreachEmail({ data, lang, L, onDone }) {
           ? <p className="so-sub">{L(`Sent from ${set.from} · ${set.left_today} of ${set.limit} left today.`, `送信元 ${set.from} · 本日残り ${set.left_today}/${set.limit}`, `Sai de ${set.from} · restam ${set.left_today} de ${set.limit} hoje.`)}</p>
           : <p className="so-warn">{L('Test mode: nothing is sent yet. You can write, choose companies and see exactly what would go out. Sending starts when the office sets the sales e-mail address (separate domain).', 'テストモード：まだ送信されません。送信内容の確認のみ可能です。', 'Modo de teste: nada é enviado ainda. Dá para escrever, escolher as empresas e ver exatamente o que sairia. O envio começa quando o escritório cadastrar o endereço de e-mail de vendas (domínio separado).')}</p>}
         <div className="so-tpl">
-          {[['ja', '日本語'], ['pt', 'Português'], ['en', 'English']].map(([k, label]) => <button key={k} type="button" className={`so-tab${tplLang === k ? ' active' : ''}`} onClick={() => useTpl(k)}>{label}</button>)}
+          {[['ja', '日本語'], ['pt', 'Português'], ['en', 'English']].map(([k, label]) => <button key={k} type="button" className={`so-tab${tplLang === k ? ' active' : ''}`} onClick={() => pickTpl(k)}>{label}</button>)}
         </div>
         <label className="so-label">{L('Subject', '件名', 'Assunto')}<input value={subject} onChange={e => setSubject(e.target.value)} /></label>
         <label className="so-label">{L('Text', '本文', 'Texto')}<textarea rows={11} value={body} onChange={e => setBody(e.target.value)} /></label>
