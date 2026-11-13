@@ -13,6 +13,8 @@ import PeriodReportEditor from '../components/PeriodReportEditor'
 import { ReportViewerById } from '../components/QuickReport'
 import { combinedReportsHtml, isOnThePlanet, loadClientDayReports } from '../lib/clientDayPdf'
 import { openPrintHtml } from '../lib/openPrintHtml'
+import { useMediaZip } from '../components/MediaZipButton'
+import { jobsForClientPeriod } from '../lib/mediaZip'
 import { loadDeepMonthReport, deepMonthReportHtml } from '../lib/deepMonthReport'
 import '../components/work-report.css'
 
@@ -45,6 +47,17 @@ export default function WorkReports() {
   const [mLang, setMLang] = useState('ja')
   const [mBusy, setMBusy] = useState('')
   useEffect(() => { if (!mClient) { const otp = clients.find(c => isOnThePlanet(c.company_name)); if (otp) setMClient(otp.id) } }, [clients]) // eslint-disable-line react-hooks/exhaustive-deps
+  // v1.0.234 · every photo and video of a client in a period, one ZIP
+  const [zClient, setZClient] = useState('')
+  const [zFrom, setZFrom] = useState(() => monthRange(lastMonth()).from)
+  const [zTo, setZTo] = useState(() => monthRange(lastMonth()).to)
+  const zip = useMediaZip()
+  const makeZip = async () => {
+    try {
+      const c = clients.find(x => x.id === zClient)
+      zip.run(await jobsForClientPeriod(zClient, zFrom, zTo), `kuripuro ${c?.company_name || ''} ${zFrom} a ${zTo}`)
+    } catch (e) { toast.error(e.message) }
+  }
   const makeDeepMonth = async () => {
     setMBusy('…')
     try {
@@ -153,6 +166,19 @@ export default function WorkReports() {
             <button type="button" className="btn btn-sm btn-primary" disabled={!mClient || !mMonth || !!mBusy} onClick={makeDeepMonth}>{mBusy || tr('Make PDF', 'PDF作成', 'Gerar PDF')}</button>
           </div>
           <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('Done against the contract, a chart per store and per service, then each Deep service with its day, start time and before/after photos. It never shows the finish time, how long it took or any value.', '契約回数に対する実施状況、店舗別・作業別のグラフ、各作業の実施日・開始時刻・作業前後の写真。終了時刻・所要時間・金額は記載しません。', 'Feitos contra o contrato, gráfico por loja e por serviço, depois cada Deep com o dia, a hora de início e as fotos de antes e depois. Nunca mostra hora de término, duração nem valores.')}</small>
+        </div>
+        <div>
+          <b>{tr('Photos and videos of a client in a period (one ZIP)', '期間内の写真・動画をまとめてダウンロード（ZIP）', 'Fotos e vídeos de um cliente no período (um ZIP)')}</b>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <select value={zClient} onChange={e => setZClient(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }} aria-label={tr('Client', '顧客', 'Cliente')}>
+              <option value="">{tr('Choose the client', '顧客を選択', 'Escolha o cliente')}</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+            </select>
+            <input type="date" value={zFrom} onChange={e => setZFrom(e.target.value)} aria-label={tr('From', '開始日', 'De')} style={{ font: 'inherit', fontSize: 13, padding: '7px 8px', border: '1px solid var(--border)', borderRadius: 8 }} />
+            <input type="date" value={zTo} onChange={e => setZTo(e.target.value)} aria-label={tr('To', '終了日', 'Até')} style={{ font: 'inherit', fontSize: 13, padding: '7px 8px', border: '1px solid var(--border)', borderRadius: 8 }} />
+            <button type="button" className="btn btn-sm btn-primary" disabled={!zClient || !zFrom || !zTo || zFrom > zTo || !!zip.busy} onClick={makeZip}>{zip.busy || tr('Download ZIP', 'ZIPをダウンロード', 'Baixar ZIP')}</button>
+          </div>
+          <small style={{ fontSize: 11.5, color: 'var(--text2)' }}>{tr('One folder per service (date + store), files named before / after / video. Very large periods come in more than one ZIP.', '作業ごとに1フォルダ（日付＋店舗）。大きい期間は複数のZIPに分かれます。', 'Uma pasta por serviço (data + loja), arquivos com nome antes / depois / vídeo. Períodos muito grandes saem em mais de um ZIP.')}</small>
         </div>
         <div>
           <b>📑 {tr('One PDF: all stores of a client on a day', '1日分・全店舗を1つのPDFに', 'Um PDF só: todas as lojas do cliente no dia')}</b>
