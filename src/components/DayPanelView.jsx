@@ -43,8 +43,11 @@ export function DayCounter({ count, L, compact = false, unified = false }) {
   // stores only in their own labelled line (a store is done when all its services are done).
   if (unified) {
     const svc = n => L(n === 1 ? 'service' : 'services', '件', n === 1 ? 'serviço' : 'serviços')
+    // v1.0.241 · só visual: a cor do número segue o estado (verde = tudo feito, azul = andando, cinza = nada hoje) + barra teal→verde
+    const pct = count.services ? Math.round((count.servicesDone / count.services) * 100) : 0
+    const tone = !count.services ? 'none' : count.servicesDone === count.services ? 'done' : 'live'
     return (
-      <div className={`dp-counter${compact ? ' is-compact' : ''}`} role="group" aria-label={L('Services of the day', '本日の作業', 'Serviços do dia')}>
+      <div className={`dp-counter is-${tone}${compact ? ' is-compact' : ''}`} role="group" aria-label={L('Services of the day', '本日の作業', 'Serviços do dia')}>
         <div className="dp-counter-main">
           <strong>{L(`${count.servicesDone} of ${count.services}`, `${count.services}件中 ${count.servicesDone}`, `${count.servicesDone} de ${count.services}`)}</strong>
           <span>{L(`${svc(count.services)} done`, '件 完了', `${svc(count.services)} ${count.services === 1 ? 'concluído' : 'concluídos'}`)}</span>
@@ -55,6 +58,7 @@ export function DayCounter({ count, L, compact = false, unified = false }) {
           <span className={`dp-pill late${count.servicesLate ? '' : ' zero'}`}>{L(`${count.servicesLate} late`, `遅れ ${count.servicesLate}`, plural(count.servicesLate, 'atrasado', 'atrasados'))}</span>
           <span className="dp-pill muted">{L(`${count.storesDone} of ${count.stores} stores done`, `${count.stores}店舗中 ${count.storesDone}店舗 完了`, `${count.storesDone} de ${plural(count.stores, 'loja feita', 'lojas feitas')}`)}</span>
         </div>
+        <div className="dp-progress" aria-hidden="true"><i style={{ width: `${pct}%` }} /></div>
       </div>
     )
   }
