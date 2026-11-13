@@ -195,7 +195,7 @@ export default function MarketingPortal() {
   ]
 
   return (
-    <FieldAppShell kicker={t.kicker} userName={user.name} lang={lang} bellCount={data?.notifications?.length || 0} onBell={() => setSheet('bell')}
+    <FieldAppShell kicker={t.kicker} appClass="is-mkt" header={{ area: 'Marketing', role: L('Marketing team', 'マーケティング担当', 'Equipe de Marketing') }} userName={user.name} lang={lang} bellCount={data?.notifications?.length || 0} onBell={() => setSheet('bell')}
       menuItems={menuItems} onLogout={logout} logoutLabel={t.logout} tabs={tabs} tab={tab} onTab={key => { if (key !== 'leads') setOnlyNoSource(false); go(key) }}
       onPlus={() => { setSpend(blankSpend()); setSheet('spend') }} plusLabel={t.recordSpend}>
       {tab === 'team' && <div className="fa-stack mk-root"><TeamChannel me={{ role: 'salesperson', id: user.id, name: user.name }} lang={lang} L={L} focus="marketing" /></div>}

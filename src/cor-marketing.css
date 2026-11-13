@@ -3,17 +3,17 @@
    então o portal do vendedor, que usa a mesma moldura, não é tocado. Tokens --c-* e --mod-* de cor.css. */
 
 /* ───────── Moldura do Marketing: azul do "KP", nunca preto nem teal ───────── */
-.fa-app:has(.mk-root) { --fa-blue: var(--c-select, #315cf5); --fa-blue-soft: #e8eeff; }
-.fa-app:has(.mk-root) .fa-mark { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); box-shadow: var(--c-kp-shadow); }
-.fa-app:has(.mk-root) .fa-plus { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); box-shadow: 0 10px 22px rgba(49, 92, 245, .34); }
-.fa-app:has(.mk-root) .fa-nav-item.is-active { color: var(--c-select, #315cf5); background: #e8eeff; }
-.fa-app:has(.mk-root) .fa-btn-primary { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; border-radius: var(--c-radius-btn, 12px); box-shadow: var(--c-kp-shadow); }
-.fa-app:has(.mk-root) .fa-chip.is-active { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; }
-.fa-app:has(.mk-root) .fa-hello-kicker { color: #9db4ff; }
-.fa-app:has(.mk-root) .fa-menu-icon { background: transparent; }
-.fa-app:has(.mk-root) .fa-menu-item.is-active { background: #e8eeff; border-color: var(--c-select, #315cf5); }
-.fa-app:has(.mk-root) .kpi-pills button.active, .fa-app:has(.mk-root) .kpi-pills .active { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); color: #fff; border-color: transparent; }
-.fa-app:has(.mk-root) .btn-primary { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; box-shadow: var(--c-kp-shadow); }
+.fa-app.is-mkt { --fa-blue: var(--c-select, #315cf5); --fa-blue-soft: #e8eeff; }
+.fa-app.is-mkt .fa-mark { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); box-shadow: var(--c-kp-shadow); }
+.fa-app.is-mkt .fa-plus { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); box-shadow: 0 10px 22px rgba(49, 92, 245, .34); }
+.fa-app.is-mkt .fa-nav-item.is-active { color: var(--c-select, #315cf5); background: #e8eeff; }
+.fa-app.is-mkt .fa-btn-primary { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; border-radius: var(--c-radius-btn, 12px); box-shadow: var(--c-kp-shadow); }
+.fa-app.is-mkt .fa-chip.is-active { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; }
+.fa-app.is-mkt .fa-hello-kicker { color: #9db4ff; }
+.fa-app.is-mkt .fa-menu-icon { background: transparent; }
+.fa-app.is-mkt .fa-menu-item.is-active { background: #e8eeff; border-color: var(--c-select, #315cf5); }
+.fa-app.is-mkt .kpi-pills button.active, .fa-app.is-mkt .kpi-pills .active { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); color: #fff; border-color: transparent; }
+.fa-app.is-mkt .btn-primary { background: var(--c-kp-grad, linear-gradient(145deg, #315cf5, #173aa8)); border-color: transparent; color: #fff; box-shadow: var(--c-kp-shadow); }
 
 .mk-root { font-family: var(--c-font, inherit); color: var(--c-ink, #10222f); display: grid; gap: 14px; min-width: 0; }
 .mk-root h2 { font-family: var(--c-font-display, inherit); color: var(--c-navy, #0a2138); margin: 0; letter-spacing: -.01em; }
