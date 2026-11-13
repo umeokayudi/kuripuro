@@ -9,6 +9,7 @@ import './polish.css'
 import './modern.css'
 import './cor.css'
 import './cor-vendedor.css'
+import './jobcard.css'
 import ErrorBoundary from './ErrorBoundary.jsx'
 import { installChunkRecovery } from './lib/chunkReload'
 

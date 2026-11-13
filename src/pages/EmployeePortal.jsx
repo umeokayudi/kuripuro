@@ -19,7 +19,8 @@ import { supabase } from '../lib/supabase'
 import { finishQuoteJob } from '../lib/quoteFlow'
 import { distanceMeters, formatDistance, getCurrentPosition } from '../lib/geocode'
 import ServiceTimer from '../components/ServiceTimer'
-import { hasDeadline, deadlineOf, windowStartOf, jobTimeText, deadlineLateText } from '../lib/jobDeadline'
+import { hasDeadline, deadlineOf, windowStartOf, jobTimeText, jobTimeShort, deadlineLateText } from '../lib/jobDeadline'
+import { StatusChip, ActionTiles, BigCamera, MainButton, PointsRing } from '../components/JobCardParts'
 import NfcScanSheet from '../components/NfcScanSheet'
 import { loadNfcConfig, nfcSupported, saveNfcResult } from '../lib/nfcClock'
 import { summarizeJobs, weeklyEvolution, formatMinutes, expectedJobMinutes, ON_SITE_METERS } from '../lib/workKpis'
@@ -2190,10 +2191,6 @@ export default function EmployeePortal() {
             <div className="emp-brand" {...homeLogoProps(() => { setTab('home'); window.scrollTo(0, 0) }, 'Home')}><span className="emp-kp-mark">KP</span><span className="emp-brand-text">KURIPURO<br />BY JBM</span></div>
           </div>
           <div className="emp-header-actions">
-            <div className={`emp-score-card ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}>
-              <div className="emp-score-value">{empScore}</div>
-              <div className="emp-score-label">{e.score}</div>
-            </div>
             <LanguageToggle variant="dark" compact />
             <button aria-label={e.notifications} aria-expanded={bellOpen} onClick={()=>setBellOpen(true)} className="emp-header-icon-button">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
@@ -2208,7 +2205,10 @@ export default function EmployeePortal() {
         {/* Same greeting header on every screen except the AI helper, which gets the whole height */}
         {tab!=='ai'&&<div className="ex-greet emp-hello">
           <button type="button" className="emp-hello-face" onClick={()=>setTab('profile')} aria-label={L('My profile','マイプロフィール','Meu perfil')}>
-            <FaceAvatar id={user.id} name={user.name} size={44} className="" />
+            {/* v1.0.250 · pontos saem da barra de cima: anel ao redor da foto (pontos de 0 a 100, cor pela faixa de sempre) */}
+            <PointsRing value={empScore/100} tone={empScore>=90?'good':empScore>=70?'mid':'low'}>
+              <FaceAvatar id={user.id} name={user.name} size={44} className="" />
+            </PointsRing>
           </button>
           <div>
             {personalGreeting?(
@@ -2219,6 +2219,7 @@ export default function EmployeePortal() {
             ):(
               <h1>{fill(clock.getHours()<12?e.greetMorning:clock.getHours()<18?e.greetAfternoon:e.greetEvening,{name:user.name.split(' ')[0]})}{'\u00a0'}<span aria-hidden="true">😊</span></h1>
             )}
+            <div className={`emp-hello-points ${empScore>=90?'is-good':empScore>=70?'is-mid':'is-low'}`}><span aria-hidden="true">⭐</span> <b>{empScore}</b> {e.score.toLowerCase()}</div>
             <p>{clock.toLocaleDateString(localeOf(lang),{weekday:'long',day:'numeric',month:'long'})}{tab!=='home'&&currentTabLabel?<b> · {currentTabLabel}</b>:null}</p>
           </div>
           <div><span className="ex-clock">{clock.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span></div>
@@ -3004,68 +3005,70 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
   // v1.0.96 · any pending job opens and can be started; by default the next one in the day's order is open.
   const [openId, setOpenId] = useState(null)
   const [reorderOpen, setReorderOpen] = useState(false)
+  const [keyOpenId, setKeyOpenId] = useState(null)
   useEffect(() => { if (focusJobId) { setOpenId(focusJobId); setTimeout(() => document.getElementById(`job-card-${focusJobId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250) } }, [focusJobId])
   const firstNextId = activeJob ? null : todayQueue.find((j, idx) => j.status === 'assigned' && todayQueue.slice(0, idx).every(x => x.status === 'completed' || x.status === 'cancelled' || isOverdueAssignedJob(x)))?.id
   const expandedId = activeJob ? null : (openId && todayQueue.some(j => j.id === openId && j.status === 'assigned') ? openId : firstNextId)
-  const photoRule = job => job.photo_required
-    ? <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#f87171',background:'rgba(248,113,113,0.12)'}}>📷 {L('Before photo required','作業前写真必須','Foto Antes obrigatória')}</span>
-    : <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.06)'}}>📷 {L('Photo optional','写真任意','Foto opcional')}</span>
-
   return (
     <div>
       {showActivePanel && (
-        <div id="active-job-card" style={{...S.card,marginBottom:14,border:'1px solid rgba(251,191,36,0.45)',background:'linear-gradient(135deg,rgba(251,191,36,0.12),rgba(251,191,36,0.03))'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <div>
-              <div style={{fontSize:10,color:activeIsStale?'#fbbf24':'#4ade80',fontWeight:700,letterSpacing:1,marginBottom:4}}>● {activeIsStale ? labels.staleShiftTitle : labels.activeShiftTitle}</div>
-              <div style={{fontSize:16,fontWeight:700,color:'#fff'}}>{activeJob.title.replace(/ — .*/,'')}</div>
-              <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:3}}>{activeJob.scheduled_date} · {labels.tapToFinish}</div>
+        <div id="active-job-card" className={`jc is-active${activeIsStale?' is-stale':''}`}>
+          {/* v1.0.250 · em andamento: chip verde com o tempo decorrido, loja grande, mesmas ações em tiles */}
+          <div className="jc-top">
+            <div className="jc-top-main">
+              <div className="jc-chiprow">
+                <StatusChip tone={activeIsStale?'amber':needBefore?'amber':'green'} live={!activeIsStale}>
+                  {activeIsStale ? labels.staleShiftTitle : labels.activeShiftTitle} · {activeIsStale ? formatShiftElapsed(elapsed, lang) : fmt(elapsed)}
+                </StatusChip>
+                {activeJob.started_at&&<span className="jc-since">{L('started','開始','iniciado às')} {new Date(activeJob.started_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'})}</span>}
+              </div>
+              <div className="jc-store">{activeJob.title.replace(/ — .*/,'')}</div>
+              <div className="jc-meta"><span className="jc-when">{activeJob.scheduled_date} · {labels.tapToFinish}</span></div>
               {(() => { const pair = duplaInfo(activeJob); return pair ? (
                 <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:8,marginTop:6}}>
-                  <span style={{fontSize:11,fontWeight:800,color:'#7c3aed',background:'rgba(124,58,237,0.12)',padding:'3px 9px',borderRadius:99}}>{fill(labels.duplaWith, { name: pair.partnerName })} · {labels.duplaHalf}</span>
-                  {pair.role === 'helper' && onLeaveDupla && <button type="button" onClick={()=>onLeaveDupla(activeJob, pair)} style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.55)',background:'none',border:'1px solid rgba(255,255,255,0.15)',borderRadius:99,padding:'3px 9px',cursor:'pointer'}}>{labels.duplaLeave}</button>}
+                  <span className="jc-tag is-dupla">{fill(labels.duplaWith, { name: pair.partnerName })} · {labels.duplaHalf}</span>
+                  {pair.role === 'helper' && onLeaveDupla && <button type="button" className="jc-link-btn" onClick={()=>onLeaveDupla(activeJob, pair)}>{labels.duplaLeave}</button>}
                 </div>
               ) : null })()}
             </div>
-            {activeIsStale&&<div style={{fontSize:13,fontWeight:700,color:'#fbbf24',fontFamily:'monospace',textAlign:'right'}}>
-              {formatShiftElapsed(elapsed, lang)}
-            </div>}
           </div>
           {!activeIsStale&&<ServiceTimer job={activeJob} elapsed={elapsed} history={allJobs} voiceOn={voiceOn} onToggleVoice={onToggleVoice} labels={labels} lang={lang} />}
-          {activeInstructions && (
-            <div style={{background:'rgba(193,156,86,0.12)',border:'1px solid rgba(193,156,86,0.25)',borderRadius:12,padding:'10px 12px',marginBottom:12}}>
-              <div style={{fontSize:10,color:'#c19c56',fontWeight:700,marginBottom:4,letterSpacing:0.5}}>🔑 {labels.keybox}</div>
-              <KeyReveal value={activeInstructions} multiline icon="" source="employee_job" refId={activeJob.id} label={activeJob.title} linkColor="#c19c56" style={{fontSize:13,color:'rgba(255,255,255,0.85)',lineHeight:1.6}} />
+          <ActionTiles items={[
+            hasFacility?.(activeJob)&&{ key:'map3d', label:L('3D map','3Dマップ','Mapa 3D'), title:facilityLabel, onClick:()=>onOpenFacility(activeJob) },
+            activeInstructions&&{ key:'access', label:L('Access','入館','Acesso'), on:keyOpenId===activeJob.id, onClick:()=>setKeyOpenId(keyOpenId===activeJob.id?null:activeJob.id) },
+            onAskAI&&{ key:'ai', label:L('Ask the AI','AIに質問','Perguntar à IA'), onClick:()=>onAskAI(activeJob) },
+            onReportProblem&&{ key:'problem', label:L('Problem','問題','Problema'), onClick:()=>onReportProblem(activeJob) },
+          ]} />
+          {activeInstructions && keyOpenId===activeJob.id && (
+            <div className="jc-access is-block">
+              <div className="jc-access-title">🔑 {labels.keybox}</div>
+              <KeyReveal value={activeInstructions} multiline icon="" source="employee_job" refId={activeJob.id} label={activeJob.title} linkColor="var(--c-blue, #2563eb)" />
             </div>
           )}
-          {onReportProblem&&<button type="button" onClick={()=>onReportProblem(activeJob)} style={{width:'100%',padding:'11px',borderRadius:12,border:'1px solid rgba(248,113,113,0.4)',background:'rgba(248,113,113,0.1)',color:'#fca5a5',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:8}}>🛠 {L('Report a problem','問題を報告','Reportar problema')}</button>}
-          {onAskAI&&<button type="button" onClick={()=>onAskAI(activeJob)} style={{width:'100%',padding:'11px',borderRadius:12,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.12)',color:'#d8b4fe',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:12}}>✦ {L('Ask the AI about this job','この作業についてAIに質問','Perguntar à IA sobre este job')}</button>}
-          {hasFacility?.(activeJob)&&(
-            <button type="button" onClick={ev=>{ ev.stopPropagation(); onOpenFacility(activeJob) }} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.45)',background:'rgba(193,156,86,0.14)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
-              {facilityLabel}
-            </button>
-          )}
-          {!activeJob.photo_start_url && (
-            <div id="active-job-before" style={{marginBottom:12,...(needBefore?{padding:'10px 10px 8px',borderRadius:12,border:'1.5px solid rgba(248,113,113,0.55)',background:'rgba(248,113,113,0.08)'}:{})}}>
-              <div style={{fontSize:10,color:needBefore?'#f87171':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1,fontWeight:needBefore?800:400}}>📷 {labels.before} ({labels.required}){needBefore ? ` — ${L('needed to finish','完了に必要','precisa para concluir')}` : ''}</div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {beforePhotos.map((p,i)=>(
+          {/* v1.0.250 · ANTES e DEPOIS lado a lado, no mesmo lugar do cartão */}
+          <div className="jc-pair">
+            <div id="active-job-before" className={`jc-pair-col${needBefore?' is-needed':''}`}>
+              <div className="jc-pair-head"><b>{labels.before}</b><span className={`jc-photos-state ${needBefore?'is-warn':'is-ok'}`}>{needBefore?L('needed to finish','完了に必要','precisa para concluir'):'✓'}</span></div>
+              <div className="jc-pair-body">
+                {activeJob.photo_start_url&&<img className="jc-thumb is-big" src={viewablePhotoUrl(activeJob.photo_start_url)} alt={labels.before} />}
+                {!activeJob.photo_start_url&&beforePhotos.map((p,i)=>(
                   <PhotoThumb key={i} p={p} st={photoStatus[p.id]} alt={labels.before} onRetry={onRetryPhotos} L={L} />
                 ))}
-                <PhotoPickTiles L={L} required={!!activeJob.photo_required} onFiles={files=>addPhoto('start',files)} />
+                {!activeJob.photo_start_url&&<BigCamera compact L={L} label={labels.before} onFiles={files=>addPhoto('start',files)} />}
               </div>
             </div>
-          )}
-          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder={labels.notes+'...'} style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,resize:'none',height:60,boxSizing:'border-box',marginBottom:12}} />
-          <div style={{marginBottom:12}}>
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.after} ({afterPhotos.length}) — {labels.afterLater || L('camera or gallery · can be sent later', 'カメラまたはギャラリー・あとで送信可', 'câmera ou galeria · pode enviar depois')}</div>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-              {afterPhotos.map((p,i)=>(
-                <PhotoThumb key={i} p={p} st={photoStatus[p.id]} alt={labels.after} onRetry={onRetryPhotos} L={L} />
-              ))}
-              <PhotoPickTiles L={L} onFiles={files=>addPhoto('end',files)} />
+            <div className="jc-pair-col">
+              <div className="jc-pair-head"><b>{labels.after}</b><span className={`jc-photos-state ${afterPhotos.length?'is-ok':''}`}>{afterPhotos.length?`✓ ${afterPhotos.length}`:L('later is ok','あとでOK','pode depois')}</span></div>
+              <div className="jc-pair-body">
+                {afterPhotos.map((p,i)=>(
+                  <PhotoThumb key={i} p={p} st={photoStatus[p.id]} alt={labels.after} onRetry={onRetryPhotos} L={L} />
+                ))}
+                <BigCamera compact L={L} label={labels.after} onFiles={files=>addPhoto('end',files)} />
+              </div>
             </div>
           </div>
+          <div className="jc-pair-note">📷 {labels.afterLater || L('camera or gallery · can be sent later', 'カメラまたはギャラリー・あとで送信可', 'câmera ou galeria · pode enviar depois')}</div>
+          <textarea className="jc-notes" value={notes} onChange={e=>setNotes(e.target.value)} placeholder={labels.notes+'...'} />
           {onPickVideo && <JobVideoPicker video={jobVideo} onPick={onPickVideo} onRemove={onRemoveVideo} labels={videoLabels} lang={lang} />}
           {activeIsStale && (
             <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginBottom:8,lineHeight:1.4}}>
@@ -3075,11 +3078,11 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
           <ChecklistPicker checklist={activeChecklist} setChecklist={setChecklist} relaxed={activeIsStale} labels={labels} lang={lang} />
           {/* v1.0.218: fixed in place (no sticky float) and no red hint box — the button text already says what is missing */}
           <div id="active-job-finish">
-          <button onClick={()=>{ if(needBefore){document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'});return}; if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||(activeChecklistBlocked&&!needBefore)} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||activeChecklistBlocked||needBefore?'#64748b':'linear-gradient(135deg,#4ade80,#22c55e)',color:submitting||activeChecklistBlocked||needBefore?'#fff':'#0a1929',fontSize:15,fontWeight:800,cursor:submitting||activeChecklistBlocked?'not-allowed':'pointer',marginBottom:8}}>
-            {submitting?L('Saving...','保存中...','Salvando...'):needBefore?`📷 ${L('Before photo missing','作業前の写真がありません','Falta a foto do Antes')}`:activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:`✅ ${labels.complete}`}
-          </button>
+          <MainButton tone={submitting||activeChecklistBlocked||needBefore?'muted':'green'} icon={submitting||activeChecklistBlocked||needBefore?null:'check'} onClick={()=>{ if(needBefore){document.getElementById('active-job-before')?.scrollIntoView({behavior:'smooth',block:'center'});return}; if(activeChecklistBlocked){toast.error(activeIsStale?fill(labels.staleChecklistHint || 'Mark at least {required} of {total}', { required: activeChecklistRequired, total: activeChecklist.length }):labels.markAllChecklist);return}; handleCompleteWithSig(activeJob) }} disabled={submitting||(activeChecklistBlocked&&!needBefore)}>
+            {submitting?L('Saving...','保存中...','Salvando...'):needBefore?`📷 ${L('Before photo missing','作業前の写真がありません','Falta a foto do Antes')}`:activeChecklistBlocked?`✓ ${activeChecklistDone}/${activeChecklistRequired}`:labels.complete}
+          </MainButton>
           </div>
-          <button type="button" onClick={()=>handleAbandonStale?.(activeJob)} disabled={submitting} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(251,191,36,0.35)',background:'rgba(251,191,36,0.08)',color:'#fbbf24',fontSize:13,fontWeight:600,cursor:submitting?'not-allowed':'pointer'}}>
+          <button type="button" className="jc-quiet-btn" onClick={()=>handleAbandonStale?.(activeJob)} disabled={submitting}>
             {labels.staleShiftReset}
           </button>
         </div>
@@ -3104,14 +3107,13 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
           + {labels?.addService || 'Add service'}
         </button>
       )}
-      {total>0&&<div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'14px 16px',marginBottom:14}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-          <div style={{fontSize:13,fontWeight:600,color:'#fff'}}>{(labels?.locationsProgress || '{done}/{total} locations').replace('{done}', done).replace('{total}', total)}</div>
-          <div style={{fontSize:12,color:done===total&&total>0?'#4ade80':'rgba(255,255,255,0.4)'}}>{done===total&&total>0?`✅ ${labels?.allDone || 'All done!'}`:(labels?.remaining || '{n} remaining').replace('{n}', total-done)}</div>
+      {total>0&&<div className="jc-progress">
+        {/* v1.0.250 · progresso do dia: feitos × total, barra colorida */}
+        <div className="jc-progress-row">
+          <b>{(labels?.locationsProgress || '{done}/{total} locations').replace('{done}', done).replace('{total}', total)}</b>
+          <span className={done===total&&total>0?'is-all':''}>{done===total&&total>0?`✅ ${labels?.allDone || 'All done!'}`:(labels?.remaining || '{n} remaining').replace('{n}', total-done)}</span>
         </div>
-        <div style={{height:4,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden'}}>
-          <div style={{height:'100%',width:total>0?(done/total*100)+'%':'0%',background:'linear-gradient(90deg,#60a5fa,#4ade80)',borderRadius:2,transition:'width 0.4s'}} />
-        </div>
+        <div className="jc-progress-track"><i style={{width:total>0?(done/total*100)+'%':'0%'}} /></div>
       </div>}
 
       {/* v1.0.102 · the employee changes the order of today's services; the admin sees the same order. */}
@@ -3179,41 +3181,43 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
         return (
           <div key={job.id} id={isActive?'active-job-card':`job-card-${job.id}`}
             onClick={()=>{ if(isDone&&setSelectedJob) setSelectedJob(job); else if(canOpen) setOpenId(job.id) }}
-            style={{...S.card,marginBottom:10,opacity:isDone?0.85:1,cursor:isDone||canOpen?'pointer':'default',border:isActive?'1px solid rgba(74,222,128,0.4)':isDone?'1px solid rgba(74,222,128,0.2)':'1px solid rgba(255,255,255,0.08)'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isActive||isNext||isDone?8:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,background:isDone?'rgba(74,222,128,0.2)':isActive?'rgba(74,222,128,0.15)':'rgba(255,255,255,0.06)',color:isDone?'#4ade80':isActive?'#4ade80':'rgba(255,255,255,0.4)'}}>
-                  {isDone?'✓':idx+1}
+            className={`jc${isNext?' is-next':''}${isDone?' is-done':''}${isOverdue?' is-late':''}${canOpen||isDone?' is-tappable':''}`}>
+            {/* v1.0.250 · topo do cartão: chip de status + horário, loja grande, tipo e "Você recebe" discretos */}
+            <div className="jc-top">
+              <div className="jc-top-main">
+                <div className="jc-chiprow">
+                  {(() => {
+                    const lateTxt = !isDone&&!job.covered_by ? deadlineLateText(job,lang) : ''
+                    const when = jobTimeShort(job, L) || job.scheduled_time?.slice(0,5) || ''
+                    if (isDone) return <StatusChip tone="green">✓ {L('Done','完了','Concluído')}{job.completed_at?` · ${new Date(job.completed_at).toLocaleTimeString(localeOf(lang),{hour:'2-digit',minute:'2-digit'})}`:''}</StatusChip>
+                    if (job.covered_by) return <StatusChip tone="gray">🔁 {when}</StatusChip>
+                    if (isOverdue||lateTxt) return <StatusChip tone="red">{lateTxt||L('Late','遅れ','Atrasado')}{when?` · ${when}`:''}</StatusChip>
+                    if (isNext) return <StatusChip tone={job.photo_required&&beforePhotos.length===0?'amber':'blue'}>{L('Next','次','Próximo')}{when?` · ${when}`:''}</StatusChip>
+                    return <StatusChip tone="gray">{idx+1} · {when||'—'}</StatusChip>
+                  })()}
+                  {isRetroJob(job)&&<RetroBadge labels={labels} />}
                 </div>
-                <div>
-                  <div style={{fontSize:14,fontWeight:600,color:isDone||job.covered_by?'rgba(255,255,255,0.4)':'#fff',textDecoration:isDone||job.covered_by?'line-through':'none'}}>{job.title.replace(/ — .*/,'')}</div>
-                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3,flexWrap:'wrap'}}>
-                    {job.covered_by&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#a5b4fc',background:'rgba(165,180,252,0.15)'}}>🔁 {L(`Already done by ${job.covered_by} · the office removes it from your route`,`${job.covered_by}が実施済み · 事務所がルートから外します`,`Já feito por ${job.covered_by} · o escritório tira da sua rota`)}</span>}
-                    {(() => {
-                      const ct = getCleaningType(job)
-                      const cfg = cleaningTypesForLang(lang)[ct]
-                      if (!cfg) return null
-                      return (
-                        <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:cfg.color,background:ct==='deep'?'rgba(251,191,36,0.15)':'rgba(96,165,250,0.15)'}}>
-                          {cfg.short}
-                        </span>
-                      )
-                    })()}
-                    {isRetroJob(job)&&<RetroBadge labels={labels} />}
-                    {!isDone&&!job.covered_by&&photoRule(job)}
-                    {!isDone&&!job.covered_by&&deadlineLateText(job,lang)&&<span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:20,color:'#f87171',background:'rgba(248,113,113,0.15)'}}>{deadlineLateText(job,lang)}</span>}
-                    <span style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>{jobTimeText(job,lang,'')}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
-                    {job.job_category!=='spot'&&<PayChip job={job} L={L} lang={lang} />}
-                    {canOpen&&<span style={{fontSize:10,color:'#60a5fa',fontWeight:700}}>{L('Tap to open','タップして開く','Toque para abrir')} ›</span>}
-                  </div>
+                <div className="jc-store">{job.title.replace(/ — .*/,'')}</div>
+                <div className="jc-meta">
+                  {job.covered_by&&<span className="jc-tag is-covered">🔁 {L(`Already done by ${job.covered_by} · the office removes it from your route`,`${job.covered_by}が実施済み · 事務所がルートから外します`,`Já feito por ${job.covered_by} · o escritório tira da sua rota`)}</span>}
+                  {(() => {
+                    const ct = getCleaningType(job)
+                    const cfg = cleaningTypesForLang(lang)[ct]
+                    if (!cfg) return null
+                    return <span className={`jc-tag ${ct==='deep'?'is-deep':'is-type'}`}>{cfg.short}</span>
+                  })()}
+                  {!isDone&&!job.covered_by&&<span className={`jc-tag ${job.photo_required?'is-photo-req':'is-photo-opt'}`}>📷 {job.photo_required?L('Before photo required','作業前写真必須','Foto Antes obrigatória'):L('Photo optional','写真任意','Foto opcional')}</span>}
+                  <span className="jc-when">{jobTimeText(job,lang,'')}{instructions&&` · ${instructions.split('\n')[0]}`}</span>
                 </div>
+                {job.job_category!=='spot'&&<div className="jc-pay"><PayChip job={job} L={L} lang={lang} /></div>}
+                {canOpen&&<div className="jc-open-hint">{L('Tap to open','タップして開く','Toque para abrir')} ›</div>}
+                {isDone&&<div className="jc-open-hint is-done">{L('View details','詳細を見る','Ver detalhes')} ›</div>}
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <div className="jc-top-icons">
                 {isActive&&<span style={{fontSize:14,color:'#4ade80',fontWeight:700,fontFamily:'monospace'}}>▶ {fmt(elapsed)}</span>}
-                {isDone&&<span style={{fontSize:10,color:'#4ade80',fontWeight:600}}>{L('View details','詳細を見る','Ver detalhes')} ›</span>}
-                {hasMapsLink(job.address, job.title)&&<a href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:20,textDecoration:'none'}}>🗺</a>}
-                {!isDone&&<a href={googleCalendarUrl(job)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label={labels?.calGoogle} title={labels?.calGoogle} style={{fontSize:18,textDecoration:'none'}}>📅</a>}
-                {!isDone&&job.job_category==='spot'&&setSelectedJob&&<button type="button" onClick={e=>{e.stopPropagation();setSelectedJob(job)}} aria-label={labels?.contractTitle} title={labels?.contractTitle} style={{fontSize:18,background:'none',border:'none',padding:0,cursor:'pointer'}}>📄</button>}
+                {hasMapsLink(job.address, job.title)&&<a className="jc-ico-btn" href={mapsOpenUrl(job.address, job.title)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label="Google Maps" title="Google Maps">🗺</a>}
+                {!isDone&&<a className="jc-ico-btn" href={googleCalendarUrl(job)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label={labels?.calGoogle} title={labels?.calGoogle}>📅</a>}
+                {!isDone&&job.job_category==='spot'&&setSelectedJob&&<button type="button" className="jc-ico-btn" onClick={e=>{e.stopPropagation();setSelectedJob(job)}} aria-label={labels?.contractTitle} title={labels?.contractTitle}>📄</button>}
               </div>
             </div>
 
@@ -3244,14 +3248,17 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
               </button>
             )}
 
-            {isNext&&!isActive&&instructions&&(
-              <KeyReveal value={instructions.split('\n')[0]} source="employee_job" refId={job.id} label={job.title} linkColor="#c19c56" style={{background:'rgba(193,156,86,0.08)',borderRadius:10,padding:'8px 10px',marginBottom:8,fontSize:12,color:'rgba(255,255,255,0.65)',lineHeight:1.5}} />
+            {/* v1.0.250 · Mapa 3D · Acesso · Perguntar à IA numa fileira de tiles; o acesso abre como detalhe discreto */}
+            {isNext&&!isActive&&(
+              <ActionTiles items={[
+                hasFacility?.(job)&&{ key:'map3d', label:L('3D map','3Dマップ','Mapa 3D'), title:facilityLabel, onClick:()=>onOpenFacility(job) },
+                instructions&&{ key:'access', label:L('Access','入館','Acesso'), on:keyOpenId===job.id, onClick:()=>setKeyOpenId(keyOpenId===job.id?null:job.id) },
+                !(isPendingSpot(job)&&onAcceptSpot)&&onAskAI&&{ key:'ai', label:L('Ask the AI','AIに質問','Perguntar à IA'), onClick:()=>onAskAI(job) },
+                !(isPendingSpot(job)&&onAcceptSpot)&&hasTraining&&{ key:'manual', label:L('Manual','マニュアル','Manual'), onClick:()=>onOpenTraining({ job, contract: trainingContract }) },
+              ]} />
             )}
-
-            {(isNext||isActive)&&hasFacility?.(job)&&(
-              <button type="button" onClick={ev=>{ ev.stopPropagation(); onOpenFacility(job) }} style={{width:'100%',padding:'10px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.1)',color:'#c19c56',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:8}}>
-                {facilityLabel}
-              </button>
+            {isNext&&!isActive&&instructions&&keyOpenId===job.id&&(
+              <KeyReveal value={instructions.split('\n')[0]} source="employee_job" refId={job.id} label={job.title} className="jc-access" linkColor="var(--c-blue, #2563eb)" />
             )}
 
             {isActive&&(() => {
@@ -3318,25 +3325,27 @@ function ShiftView({ allJobs, tomorrowJobs = [], activeJob, elapsed, checklist, 
 
             {isNext&&!(isPendingSpot(job)&&onAcceptSpot)&&(
               <div>
-                {onAskAI&&<button type="button" onClick={()=>onAskAI(job)} style={{width:'100%',padding:'11px',borderRadius:12,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.12)',color:'#d8b4fe',fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:12}}>✦ {L('Ask the AI about this job','この作業についてAIに質問','Perguntar à IA sobre este job')}</button>}
-                {hasTraining&&(
-                  <button type="button" onClick={()=>onOpenTraining({ job, contract: trainingContract })} style={{width:'100%',padding:'12px',borderRadius:12,border:'1px solid rgba(193,156,86,0.35)',background:'rgba(193,156,86,0.12)',color:'#c19c56',fontSize:14,fontWeight:700,cursor:'pointer',marginBottom:12}}>
-                    🎬 {L('View cleaning manual', '清掃マニュアルを見る', 'Ver manual de limpeza')}
-                  </button>
-                )}
-                <div style={{marginBottom:12}}>
-                  <div style={{fontSize:10,color:job.photo_required?'#f87171':'rgba(255,255,255,0.4)',marginBottom:6,letterSpacing:1}}>📷 {labels.before} ({beforePhotos.length}) — {job.photo_required?labels.required:L('optional','任意','opcional')}</div>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                {/* v1.0.250 · fotos do ANTES dentro do fluxo do cartão: etapa 1, câmera grande + miniaturas */}
+                <div className={`jc-photos${job.photo_required&&beforePhotos.length===0?' is-needed':''}`}>
+                  <div className="jc-photos-head">
+                    <span className="jc-step">1</span>
+                    <b>{L('Photos','写真','Fotos')} · {labels.before}</b>
+                    <span className={`jc-photos-state ${beforePhotos.length?'is-ok':job.photo_required?'is-warn':''}`}>
+                      {beforePhotos.length?`✓ ${beforePhotos.length}`:job.photo_required?labels.required:L('optional','任意','opcional')}
+                    </span>
+                  </div>
+                  <div className="jc-photos-row">
+                    <BigCamera L={L} onFiles={files=>addPhoto('start',files)} />
                     {beforePhotos.map((p,i)=>(
-                      <img key={i} src={p.preview} style={{width:64,height:64,borderRadius:8,objectFit:'cover'}} alt={labels.before} />
+                      <img key={i} className="jc-thumb" src={p.preview} alt={labels.before} />
                     ))}
-                    <PhotoPickTiles L={L} required={!!job.photo_required} onFiles={files=>addPhoto('start',files)} />
+                    {Array.from({length:Math.max(0,3-beforePhotos.length)}).map((_,i)=><span key={`ph${i}`} className="jc-thumb is-empty" aria-hidden="true" />)}
                   </div>
                 </div>
                 {(() => { const needPhoto = job.photo_required && beforePhotos.length===0; return (
-                <button onClick={()=>handleStart(job)} disabled={submitting||needPhoto} style={{width:'100%',padding:'16px',borderRadius:14,border:'none',background:submitting||needPhoto?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#60a5fa,#3b82f6)',color:'#fff',fontSize:15,fontWeight:800,cursor:submitting||needPhoto?'not-allowed':'pointer'}}>
-                  {submitting?L('Starting...','開始中...','Iniciando...'):needPhoto?L('📷 Take the Before photo first','📷 先に作業前の写真を撮ってください','📷 Tire a foto Antes primeiro'):`▶ ${L('Start','開始','Iniciar')} — `+job.title.replace(/ — .*/,'')}
-                </button>
+                <MainButton tone="brand" icon={submitting||needPhoto?null:'play'} onClick={()=>handleStart(job)} disabled={submitting||needPhoto}>
+                  {submitting?L('Starting...','開始中...','Iniciando...'):needPhoto?L('📷 Take the Before photo first','📷 先に作業前の写真を撮ってください','📷 Tire a foto Antes primeiro'):`${L('Start','開始','Iniciar')} — `+job.title.replace(/ — .*/,'')}
+                </MainButton>
                 ) })()}
               </div>
             )}
