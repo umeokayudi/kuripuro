@@ -3,6 +3,7 @@
 // into topics, proposes decisions and next steps; the admin confirms. Rules: src/lib/meetings.js.
 //   /meetings        list, searchable history, new meeting
 //   /meetings/:id    Preparação (pauta, convidados) · Reunião (presença, conteúdo, anotações) · Resultado
+import MeetingRecorder from '../components/MeetingRecorder'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -571,6 +572,7 @@ function ContentCard({ T, m, fromServer, flush }) {
 
       {busy && <div className="mt-progress"><span className="mt-spinner" />{busyLabel}</div>}
 
+      <MeetingRecorder meetingId={m.id} T={T} flush={flush} onMeeting={fromServer} disabled={!!busy} />
       {(m.audio || []).length > 0 && (
         <div className="mt-audio-list">
           {m.audio.map(a => (

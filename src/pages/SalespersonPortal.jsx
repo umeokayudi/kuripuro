@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import SalesOutreach from '../components/SalesOutreach'
 import toast from 'react-hot-toast'
 import { useAuth } from '../hooks/useAuth'
 import { pickLang, useLang } from '../hooks/useLang'
@@ -601,6 +602,7 @@ export default function SalespersonPortal() {
     { section: SEC.quotes, key: 'quotes', icon: '📝', label: pickLang(lang, 'Quote requests', '見積もり依頼', 'Pedidos de orçamento'), hint: pickLang(lang, 'From your clients · add your extra', 'お客様からの依頼・上乗せ額', 'Dos seus clientes · some o seu valor'), badge: quoteAlerts },
     { section: SEC.quotes, key: 'contracts', icon: '✍️', label: c.menuContracts, hint: c.menuHint.contracts },
     { section: SEC.funnel, key: 'leads', icon: '🎯', label: c.leads, hint: pickLang(lang, 'Contact → Proposal → Contract', '連絡 → 提案 → 契約', 'Contato → Proposta → Contrato') },
+    { section: SEC.funnel, key: 'calls', icon: '📞', label: pickLang(lang, 'Calls', '架電', 'Ligações'), hint: pickLang(lang, 'Today’s queue · target companies · e-mails', '本日のリスト・ターゲット企業・メール', 'Fila de hoje · empresas-alvo · e-mails') },
     { section: SEC.funnel, key: 'followups', icon: '⏰', label: c.followups, badge: counts.needsAction },
     { section: SEC.funnel, key: 'approaches', icon: '🗒', label: c.menuReports, hint: c.menuHint.approaches },
     { section: SEC.portfolio, key: 'commissions', icon: '💴', label: pickLang(lang, 'Commissions & payments', 'コミッションと支払い', 'Comissões e pagamentos'), hint: pickLang(lang, 'To receive and received', '受取予定・受取済み', 'A receber e recebidos') },
@@ -661,6 +663,7 @@ export default function SalespersonPortal() {
           <ClientList className="fa-wide" deals={deals} lang={lang} onOpen={row => openDeal(row)} limit={6} onSeeAll={() => setTab('clients')} seeAllLabel={c.seeAll} />
         </div>}
 
+        {tab === 'calls' && <div className="fa-stack"><SalesOutreach lang={lang} onChanged={load} /></div>}
         {tab === 'offers' && <div className="fa-stack"><SellerFacilityOffers offers={offers} lang={lang} /></div>}
         {tab === 'clients' && <div className="fa-stack"><ClientList deals={deals} lang={lang} onOpen={row => openDeal(row)} /></div>}
         {tab === 'quotes' && <div className="fa-stack">

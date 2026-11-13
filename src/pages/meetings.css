@@ -244,3 +244,18 @@ textarea.mt-input { resize: vertical; line-height: 1.5; }
   .mt-topic-sum, .mt-topic-notes, .mt-topic > .mt-link, .mt-topic > .mt-lines { margin-left: 0; }
   .mt-att-btns button { min-width: 58px; padding: 8px 10px; }
 }
+
+/* v1.0.234 · recorder */
+.mt-rec { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 12px 0; }
+.mt-rec-live { padding: 12px 14px; border: 1px solid #e7eaf0; border-radius: 12px; background: #fff; flex-direction: column; align-items: stretch; }
+.mt-rec-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.mt-rec-clock { font-variant-numeric: tabular-nums; font-size: 18px; }
+.mt-rec-actions { margin-left: auto; display: flex; gap: 8px; }
+.mt-rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #c0392b; display: inline-block; flex: none; }
+.mt-rec-start .mt-rec-dot { background: #fff; margin-right: 8px; }
+.mt-rec-dot.on { animation: mt-rec-blink 1.2s steps(2, start) infinite; }
+.mt-rec-live.is-paused .mt-rec-dot { background: #9aa3b2; }
+.mt-rec-fail { font-size: 13px; color: #9a2b1f; display: flex; flex-wrap: wrap; gap: 8px; }
+@keyframes mt-rec-blink { to { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .mt-rec-dot.on { animation: none; } }
+@media (max-width: 640px) { .mt-rec-actions { margin-left: 0; width: 100%; } .mt-rec-actions .btn { flex: 1; } }

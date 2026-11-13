@@ -5,6 +5,7 @@ import google from './_google-calendar.js'
 import meetings from './_meetings.js'
 import payrollClose from './_payroll-close.js'
 import push from './_push.js'
+import optout from './_sales-outreach.js'
 import salesAi from './_sales-ai.js'
 import salesData from './_sales-data.js'
 import salesFiles from './_sales-files.js'
@@ -25,6 +26,7 @@ const handlers = {
   'google-sync': google,
   files: salesFiles,
   meetings,
+  optout,
   'payroll-close': payrollClose,
   push,
   reminders: salesReminders,

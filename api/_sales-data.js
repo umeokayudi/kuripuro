@@ -264,7 +264,8 @@ async function loadDashboard(db, user) {
   const id = user.id
   const scope = q => isAdmin ? q : q.eq('salesperson_id', id)
   const [leadsRes, quotesRes, approachesRes, reportsRes, submissionsRes, peopleRes, rulesRes, notificationsRes, channelsRes, campaignsRes, spendRes, touchpointsRes, goalsRes, marketingGoalsRes] = await Promise.all([
-    scope(db.from('sales_leads').select('*').order('updated_at', { ascending: false }).limit(500)),
+    // v1.0.234 · companies of the target base (stage 'target') are not in the funnel yet: they live in Ligações
+    scope(db.from('sales_leads').select('*').or('stage.is.null,stage.neq.target').order('updated_at', { ascending: false }).limit(500)),
     scope(db.from('mitsumori').select('id,salesperson_id,lead_id,quote_number,status,total,subtotal,created_at,company_name,valid_until,sent_at,decided_at,decision_reason,frequency,items:mitsumori_items(description,quantity,unit_price,total)').order('created_at', { ascending: false }).limit(500)),
     scope(db.from('sales_field_approaches').select('*').order('work_date', { ascending: false }).limit(1000)),
     scope(db.from('sales_day_reports').select('*').order('work_date', { ascending: false }).limit(500)),
@@ -361,6 +362,7 @@ async function getAction(db, user, action, query = {}) {
   }
   if (action === 'deal') return loadDeal(db, user, String(query.lead_id || ''))
   if (action === 'portfolio') return loadPortfolio(db, user)
+  if (action === 'outreach') { const { loadOutreach } = await import('./_sales-outreach.js'); return loadOutreach(db, user) }
   throw Object.assign(new Error('Ação de leitura inválida.'), { status: 400 })
 }
 
@@ -1160,6 +1162,13 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const result = await getAction(db, user, String(req.query?.action || 'dashboard'), req.query || {})
       return res.status(200).json(result)
+    }
+    if (req.method === 'POST' && ['targets-import', 'call-result', 'outreach-email'].includes(req.body?.action)) {
+      // v1.0.234 · target base, call queue and meeting-request e-mails (api/_sales-outreach.js)
+      if (user.role === 'salesperson' && user.team === 'marketing') return res.status(403).json({ error: 'Não disponível nesta conta.' })
+      const outreach = await import('./_sales-outreach.js')
+      const run = { 'targets-import': outreach.importTargets, 'call-result': outreach.callResult, 'outreach-email': outreach.outreachEmail }[req.body.action]
+      return res.status(200).json(await run(db, user, req.body, req))
     }
     if (req.method === 'POST') {
       const result = await postAction(db, user, req.body || {}, res)
