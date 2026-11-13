@@ -5,6 +5,7 @@ import { aiGenerate } from './_ai.js'
 import { aiRateLimited, requireAppSession } from './_auth.js'
 import { workReportAi } from './_work-report-ai.js'
 import { proposalAi } from './_proposal-ai.js'
+import { monthReportAi } from './_month-report-ai.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
@@ -13,6 +14,12 @@ export default async function handler(req, res) {
     const admin = await requireAppSession(req, res, ['admin'])
     if (!admin || aiRateLimited(admin, res, { max: 60, windowMin: 10 })) return
     return proposalAi(req, res)
+  }
+  // v1.0.247 · Relatório mensal do cliente: the AI writes the texts — admin only, same function.
+  if (req.body?.kind === 'month-report') {
+    const admin = await requireAppSession(req, res, ['admin'])
+    if (!admin || aiRateLimited(admin, res, { max: 30, windowMin: 10 })) return
+    return monthReportAi(req, res)
   }
   const user = await requireAppSession(req, res)
   if (!user || aiRateLimited(user, res)) return
