@@ -16,7 +16,7 @@
 // speaks another format translates inside its own file.
 import * as gemini from './_ai-gemini.js'
 
-export const API_BUILD = '2026-11-12-v1.0.212'
+export const API_BUILD = '2026-11-13-v1.0.232'
 
 const PROVIDERS = { gemini }
 const KNOWN = ['gemini', 'muse']

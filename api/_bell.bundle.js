@@ -123,7 +123,7 @@ function jobFulfils(title, target) {
   if (isBasic(rest)) return false;
   return target.keyword ? norm(rest).includes(norm(target.keyword)) : true;
 }
-var DOW, dowOf, norm, isBasic;
+var DOW, dowOf, norm, isBasic, startedOn;
 var init_schedulePlan = __esm({
   "src/lib/schedulePlan.js"() {
     init_employeeRoles();
@@ -131,6 +131,7 @@ var init_schedulePlan = __esm({
     dowOf = (date) => (/* @__PURE__ */ new Date(date + "T12:00:00Z")).getUTCDay();
     norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
     isBasic = (text) => /basic/i.test(text || "");
+    startedOn = (target, date) => !target?.startDate || !date || date >= target.startDate;
   }
 });
 
@@ -631,7 +632,10 @@ function storeRow(st, planBNames = []) {
 }
 function buildDayPanel({ date, jobs = [], employees = [], availability = [], targets = [], owners = {}, planB = {}, now = /* @__PURE__ */ new Date(), nowMin = null, cutoff = SHIFT_CUTOFF, keepTests = false, today = null }) {
   const live = (jobs || []).filter((j) => j && j.scheduled_date === date && j.status !== "cancelled" && (keepTests || !isTestJob(j)));
-  const cov = coveredJobs(live);
+  const cov = new Map([...coveredJobs(live)].filter(([id]) => {
+    const a = live.find((x) => x.id === id);
+    return a && a.status !== "in_progress" && !a.started_at;
+  }));
   const nm = nowMin ?? (() => {
     const d = new Date(now.getTime() + 9 * 36e5);
     return d.getUTCHours() * 60 + d.getUTCMinutes();
@@ -674,6 +678,9 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       time: isDeadlineJob(j) ? null : String(j.scheduled_time || "").slice(0, 5) || null,
       bucket,
       minutes,
+      // v1.0.227 · THE count of the day: done = completed (or done by the person who covered it),
+      // working = started and not completed (late or not), not_started = everything else
+      phase: done ? "done" : j.status === "in_progress" || j.started_at ? "working" : "not_started",
       doneBy: b ? b.employee_name || "" : done ? j.employee_name || "" : "",
       doneAt: tokyoHM(b ? b.completed_at : j.completed_at),
       coveredBy: b ? b.employee_name || "" : "",
@@ -705,6 +712,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
   const noJobRows = [];
   for (const t of targets || []) {
     if (t.kind !== "weekly" || !t.days.includes(dowOf(date))) continue;
+    if (!startedOn(t, date)) continue;
     const k = norm4(t.base);
     if (byStore.has(k) || noJobRows.some((r) => r.key === k)) continue;
     if (live.some((j) => jobFulfils(j.title, t))) continue;
@@ -725,8 +733,8 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
   const people = (employees || []).filter((e) => e.is_active !== false && (keepTests || !isTestEmployee(e)));
   const loadOf = (id) => ({ morning: loads.find((l) => l.employeeId === id && l.bucket === "morning") || null, deep: loads.find((l) => l.employeeId === id && l.bucket === "deep") || null });
   for (const emp of people) {
-    const mine = services.filter((s) => s.assignedId === emp.id && !s.coveredBy);
-    const coveredMine = services.filter((s) => s.assignedId === emp.id && s.coveredBy);
+    const mine = counted.filter((s) => s.assignedId === emp.id && !s.coveredBy);
+    const coveredMine = counted.filter((s) => s.assignedId === emp.id && s.coveredBy);
     if (!mine.length && !coveredMine.length && !roleCan(emp.job_role, "routes")) continue;
     seenEmp.add(emp.id);
     const mark = marks[emp.id] || null;
@@ -741,11 +749,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       first: firstName(emp.full_name),
       mark,
       ...sh,
-      total: mine.length,
-      done: mine.filter((s) => s.status === "done").length,
-      working: mine.filter((s) => s.status === "working").length,
-      late: mine.filter((s) => s.status === "late").length,
-      notStarted: mine.filter((s) => s.status === "not_started").length,
+      ...personCount([...mine, ...coveredMine]),
       taken: mine.filter((s) => s.taken).length,
       coveredByOthers: coveredMine.map((s) => s.coveredBy),
       firstStart,
@@ -754,10 +758,10 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       uncoveredStores: sh.state === "cant" ? [.../* @__PURE__ */ new Set([...notDone.map((s) => s.store), ...usual.map((u) => u.store)])] : []
     });
   }
-  for (const s of services) {
+  for (const s of counted) {
     if (!s.assignedId || seenEmp.has(s.assignedId)) continue;
     seenEmp.add(s.assignedId);
-    const mine = services.filter((x) => x.assignedId === s.assignedId && !x.coveredBy);
+    const mine = counted.filter((x) => x.assignedId === s.assignedId && !x.coveredBy);
     team.push({
       id: s.assignedId,
       name: s.assigned || "\u2014",
@@ -765,11 +769,7 @@ function buildDayPanel({ date, jobs = [], employees = [], availability = [], tar
       mark: marks[s.assignedId] || null,
       state: "unconfirmed",
       expected: false,
-      total: mine.length,
-      done: mine.filter((x) => x.status === "done").length,
-      working: mine.filter((x) => x.status === "working").length,
-      late: mine.filter((x) => x.status === "late").length,
-      notStarted: mine.filter((x) => x.status === "not_started").length,
+      ...personCount(counted.filter((x) => x.assignedId === s.assignedId)),
       taken: mine.filter((x) => x.taken).length,
       coveredByOthers: [],
       firstStart: mine.map((x) => x.startedAt).filter(Boolean).sort()[0] || "",
@@ -836,7 +836,7 @@ function usualOwners(history, empById = {}) {
   }
   return Object.fromEntries(Object.entries(counts).map(([p, c]) => [p, Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]]));
 }
-var SHIFT_CUTOFF, SHIFT_KINDS, SHIFT_DAILY_CONFIRM, norm4, storeOf, tokyoHM, firstName, STORE_ORDER, sortStores, countOf;
+var SHIFT_CUTOFF, SHIFT_KINDS, SHIFT_DAILY_CONFIRM, norm4, storeOf, tokyoHM, firstName, STORE_ORDER, personCount, sortStores, countOf;
 var init_dayPanel = __esm({
   "src/lib/dayPanel.js"() {
     init_schedulePlan();
@@ -859,6 +859,13 @@ var init_dayPanel = __esm({
     };
     firstName = (n) => String(n || "").trim().split(/\s+/)[0] || "";
     STORE_ORDER = { late: 0, not_started: 1, working: 2, done: 3 };
+    personCount = (list) => ({
+      total: list.length,
+      done: list.filter((s) => s.phase === "done").length,
+      working: list.filter((s) => s.phase === "working").length,
+      late: list.filter((s) => s.status === "late").length,
+      notStarted: list.filter((s) => s.phase === "not_started").length
+    });
     sortStores = (list) => list.sort((a, b) => STORE_ORDER[a.state] - STORE_ORDER[b.state] || a.store.localeCompare(b.store));
     countOf = (stores, services) => ({
       stores: stores.length,
@@ -872,7 +879,10 @@ var init_dayPanel = __esm({
       servicesDone: services.filter((s) => s.status === "done").length,
       servicesWorking: services.filter((s) => s.status === "working").length,
       servicesLate: services.filter((s) => s.status === "late").length,
-      servicesNotStarted: services.filter((s) => s.status === "not_started").length
+      servicesNotStarted: services.filter((s) => s.status === "not_started").length,
+      // v1.0.227 · one count (done + inProgress + toStart = services); late is a part of the last two
+      inProgress: services.filter((s) => s.phase === "working").length,
+      toStart: services.filter((s) => s.phase === "not_started").length
     });
   }
 });

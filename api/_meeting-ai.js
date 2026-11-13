@@ -4,7 +4,7 @@
 // Muse note: audio needs a model that accepts audio input; transcription stays on the provider
 // that can hear the file, the summary can run on any text model.
 
-import { geminiGenerate } from './_gemini.js'
+import { aiGenerate as geminiGenerate } from './_ai.js'
 
 const textOf = data => (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim()
 
